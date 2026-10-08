@@ -200,6 +200,7 @@ export namespace SessionInbox {
   }
 
   export type StoredItem = Item & {
+    revision?: number
     input?: InvokeInput
     admission?: "idle_no_reply"
   }
@@ -261,6 +262,7 @@ export namespace SessionInbox {
 
   async function writeItem(item: StoredItem, preserveCreated = false): Promise<StoredItem> {
     return Storage.transaction(async () => {
+      item = { ...item, revision: (item.revision ?? 0) + 1 }
       {
         if (!preserveCreated) {
           const { SessionManager } = await import("./manager")
@@ -696,16 +698,22 @@ export namespace SessionInbox {
     const admitted = await Storage.transaction(async () => {
       const session = taskSession ?? (await readSession(input.sessionID))
       const root = StoragePath.sessionRoot(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(session.id))
-      const [existing, receipt] = await Storage.readMany<StoredItem | { messageID: string }>([
+      const [existing, receipt, removed] = await Storage.readMany<StoredItem | { messageID: string } | RemovedItem>([
         StoragePath.sessionInboxItem(
           Identifier.asScopeID(session.scope.id),
           Identifier.asSessionID(session.id),
           itemID,
         ),
         [...root, "inbox-materialized", itemID],
+        StoragePath.sessionInboxRemovedItem(
+          Identifier.asScopeID(session.scope.id),
+          Identifier.asSessionID(session.id),
+          itemID,
+        ),
       ])
       if (existing && "id" in existing) return { stored: normalizeStored(existing), created: false }
       if (receipt) return { stored: item, created: false }
+      if (removed && "item" in removed) return { stored: removed.item, created: false }
       if (taskSession) {
         const { RolloutLedger } = await import("./rollout/ledger")
         const { RolloutLifecycle } = await import("./rollout/lifecycle")
@@ -721,18 +729,6 @@ export namespace SessionInbox {
     })
     const stored = admitted.stored
     if (!admitted.created) return publicItem(stored)
-    if (taskSession) {
-      // Open a lightweight run shell (no configuration or provenance) so
-      // status polls and cancellation observe a durable record immediately;
-      // heavy admission work attaches at materialization, off this path. The
-      // shell is best-effort — materialization opens the run lazily when the
-      // shell write failed.
-      const { RolloutLifecycle } = await import("./rollout/lifecycle")
-      const { RolloutLedger } = await import("./rollout/ledger")
-      await RolloutLedger.beginRun(RolloutLifecycle.owner(taskSession), messageID).catch((error) => {
-        log.warn("failed to open queued task run shell", { sessionID: input.sessionID, messageID, error })
-      })
-    }
     return publicItem(stored)
   }
 
@@ -1057,6 +1053,21 @@ export namespace SessionInbox {
         const session = await readSession(item.sessionID)
         const scopeID = Identifier.asScopeID(session.scope.id)
         const sid = Identifier.asSessionID(item.sessionID)
+        const [current, receipt] = await Storage.readMany<StoredItem | { messageID: string }>([
+          StoragePath.sessionInboxItem(scopeID, sid, item.id),
+          [...StoragePath.sessionRoot(scopeID, sid), "inbox-materialized", item.id],
+        ])
+        if (receipt && receipt.messageID === item.messageID) return
+        if (!current || !("id" in current) || current.revision !== item.revision || current.mode !== item.mode)
+          throw new DOMException("Input changed during preparation", "AbortError")
+        const { RolloutLedger } = await import("./rollout/ledger")
+        const { RolloutLifecycle } = await import("./rollout/lifecycle")
+        const run = await RolloutLedger.getRun(RolloutLifecycle.owner(session), item.messageID).catch((error) => {
+          if (error instanceof Storage.NotFoundError) return
+          throw error
+        })
+        if (run?.cancelRequestedAt || run?.status === "cancelled")
+          throw new DOMException("Input was cancelled", "AbortError")
         await Storage.write([...StoragePath.sessionRoot(scopeID, sid), "inbox-materialized", item.id], {
           itemID: item.id,
           messageID: item.messageID,

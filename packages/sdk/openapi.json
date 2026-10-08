@@ -59520,7 +59520,17 @@
           },
           "status": {
             "type": "string",
-            "enum": ["running", "completed", "failed", "cancelled", "interrupted", "unknown"]
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "unknown",
+              "queued",
+              "paused",
+              "waiting"
+            ]
           },
           "elapsedMs": {
             "anyOf": [
@@ -59533,6 +59543,9 @@
             ]
           },
           "elapsedActive": {
+            "type": "boolean"
+          },
+          "elapsedLowerBound": {
             "type": "boolean"
           },
           "tokens": {
@@ -59601,6 +59614,7 @@
           "status",
           "elapsedMs",
           "elapsedActive",
+          "elapsedLowerBound",
           "tokens",
           "runs"
         ]
@@ -59859,9 +59873,25 @@
           "computedAt": {
             "type": "number"
           },
+          "clockID": {
+            "type": "string"
+          },
+          "sampledAt": {
+            "type": "number"
+          },
           "status": {
             "type": "string",
-            "enum": ["running", "completed", "failed", "cancelled", "interrupted", "unknown"]
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "unknown",
+              "queued",
+              "paused",
+              "waiting"
+            ]
           },
           "elapsedMs": {
             "anyOf": [
@@ -59874,6 +59904,9 @@
             ]
           },
           "elapsedActive": {
+            "type": "boolean"
+          },
+          "elapsedLowerBound": {
             "type": "boolean"
           },
           "accounting": {
@@ -60647,7 +60680,17 @@
                 },
                 "status": {
                   "type": "string",
-                  "enum": ["running", "completed", "failed", "cancelled", "interrupted", "unknown"]
+                  "enum": [
+                    "running",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    "interrupted",
+                    "unknown",
+                    "queued",
+                    "paused",
+                    "waiting"
+                  ]
                 },
                 "elapsedMs": {
                   "anyOf": [
@@ -60658,9 +60701,15 @@
                       "type": "null"
                     }
                   ]
+                },
+                "elapsedActive": {
+                  "type": "boolean"
+                },
+                "elapsedLowerBound": {
+                  "type": "boolean"
                 }
               },
-              "required": ["id", "title", "started", "status", "elapsedMs"]
+              "required": ["id", "title", "started", "status", "elapsedMs", "elapsedActive", "elapsedLowerBound"]
             }
           },
           "coverage": {
@@ -60754,9 +60803,12 @@
           "sessionID",
           "revision",
           "computedAt",
+          "clockID",
+          "sampledAt",
           "status",
           "elapsedMs",
           "elapsedActive",
+          "elapsedLowerBound",
           "accounting",
           "cost",
           "own",
@@ -60868,6 +60920,59 @@
         "properties": {
           "node": {
             "$ref": "#/components/schemas/ExecutionTrajectoryNode"
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "running",
+                  "completed",
+                  "failed",
+                  "cancelled",
+                  "interrupted",
+                  "unknown",
+                  "queued",
+                  "paused",
+                  "waiting"
+                ]
+              },
+              "elapsedMs": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "elapsedActive": {
+                "type": "boolean"
+              },
+              "elapsedLowerBound": {
+                "type": "boolean"
+              },
+              "clockID": {
+                "type": "string"
+              },
+              "sampledAt": {
+                "type": "number"
+              },
+              "revision": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "status",
+              "elapsedMs",
+              "elapsedActive",
+              "elapsedLowerBound",
+              "clockID",
+              "sampledAt",
+              "revision"
+            ]
           },
           "record": {
             "anyOf": [
@@ -62824,6 +62929,30 @@
           "cancelRequestedAt": {
             "type": "number"
           },
+          "admissionOnly": {
+            "type": "boolean"
+          },
+          "timingVersion": {
+            "type": "number",
+            "const": 1
+          },
+          "detectedAt": {
+            "type": "number"
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
+              },
+              "at": {
+                "type": "number"
+              }
+            },
+            "required": ["status", "at"],
+            "additionalProperties": false
+          },
           "parent": {
             "type": "object",
             "properties": {
@@ -62890,6 +63019,109 @@
           }
         },
         "required": ["version", "id", "owner", "started", "status", "recording"],
+        "additionalProperties": false
+      },
+      "RolloutExecutionInterval": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "session"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "sessionID"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "operation"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "operationID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "operationID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "runID": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "segmentID": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "branchID": {
+            "type": "string"
+          },
+          "clockID": {
+            "type": "string"
+          },
+          "started": {
+            "type": "number",
+            "minimum": 0
+          },
+          "ended": {
+            "type": "number",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "waiting", "closed", "interrupted"]
+          },
+          "coverage": {
+            "type": "string",
+            "enum": ["complete", "partial"]
+          },
+          "detectedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "version",
+          "id",
+          "owner",
+          "runID",
+          "segmentID",
+          "branchID",
+          "clockID",
+          "started",
+          "status",
+          "coverage"
+        ],
         "additionalProperties": false
       },
       "RolloutCallRecord": {
@@ -64868,6 +65100,9 @@
                 "ended": {
                   "type": "number"
                 },
+                "detectedAt": {
+                  "type": "number"
+                },
                 "status": {
                   "type": "string",
                   "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
@@ -64875,6 +65110,13 @@
               },
               "required": ["version", "id", "owner", "runID", "started", "status"],
               "additionalProperties": false
+            }
+          },
+          "intervals": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RolloutExecutionInterval"
             }
           },
           "calls": {
@@ -65041,9 +65283,15 @@
           "elapsedMs": {
             "type": "number",
             "minimum": 0
+          },
+          "elapsedActive": {
+            "type": "boolean"
+          },
+          "elapsedLowerBound": {
+            "type": "boolean"
           }
         },
-        "required": ["version", "run", "snapshots", "accounting", "elapsedMs"],
+        "required": ["version", "run", "snapshots", "accounting", "elapsedMs", "elapsedActive", "elapsedLowerBound"],
         "additionalProperties": false
       },
       "SessionChildCursor": {
@@ -65835,6 +66083,7 @@
               "retrying",
               "completed",
               "cancelled",
+              "removed",
               "failed"
             ]
           },
@@ -77557,45 +77806,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.permission.asked": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "permission.asked"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/PermissionRequest"
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.permission.replied": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "permission.replied"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "requestID": {
-                "type": "string"
-              },
-              "reply": {
-                "type": "string",
-                "enum": ["once", "session", "always", "reject"]
-              }
-            },
-            "required": ["sessionID", "requestID", "reply"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.usage.updated": {
         "type": "object",
         "properties": {
@@ -77765,6 +77975,9 @@
                   "ended": {
                     "type": "number"
                   },
+                  "detectedAt": {
+                    "type": "number"
+                  },
                   "status": {
                     "type": "string",
                     "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
@@ -77772,6 +77985,19 @@
                 },
                 "required": ["version", "id", "owner", "runID", "started", "status"],
                 "additionalProperties": false
+              }
+            },
+            "required": ["kind", "value"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "interval"
+              },
+              "value": {
+                "$ref": "#/components/schemas/RolloutExecutionInterval"
               }
             },
             "required": ["kind", "value"]
@@ -77995,6 +78221,45 @@
               }
             },
             "required": ["owner", "revision", "record"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.permission.asked": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "permission.asked"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/PermissionRequest"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.permission.replied": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "permission.replied"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "requestID": {
+                "type": "string"
+              },
+              "reply": {
+                "type": "string",
+                "enum": ["once", "session", "always", "reject"]
+              }
+            },
+            "required": ["sessionID", "requestID", "reply"]
           }
         },
         "required": ["type", "properties"]
@@ -79735,16 +80000,16 @@
             "$ref": "#/components/schemas/Event.config.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.permission.asked"
-          },
-          {
-            "$ref": "#/components/schemas/Event.permission.replied"
-          },
-          {
             "$ref": "#/components/schemas/Event.usage.updated"
           },
           {
             "$ref": "#/components/schemas/Event.rollout.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.permission.asked"
+          },
+          {
+            "$ref": "#/components/schemas/Event.permission.replied"
           },
           {
             "$ref": "#/components/schemas/Event.session.execution.updated"

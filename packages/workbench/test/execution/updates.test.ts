@@ -1,3 +1,4 @@
+import { RolloutExecution } from "@ericsanchezok/synergy-harness/rollout"
 import { afterAll, expect, spyOn, test } from "bun:test"
 import { z } from "zod"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
@@ -88,9 +89,10 @@ test(
           input: {},
           parent: { owner: call.owner, runID: rootID, messageID: rootID },
         })
+        await RolloutExecution.provide({ owner, runID: childRun }, () => RolloutExecution.start(segment))
         const initial = await ExecutionService.summary(session.id)
         expect(initial.status).toBe("running")
-        expect(initial.elapsedActive).toBe(false)
+        expect(initial.elapsedActive).toBe(true)
 
         const publish = Bus.publish
         let missed = 0
@@ -138,6 +140,7 @@ test(
               status: "completed",
               sdkUsage: { inputTokens: 7, outputTokens: 3 },
             })
+            await RolloutExecution.stop(segment)
             await RolloutLedger.finishSegment(segment, "completed")
             await RolloutLedger.finishRun(owner, childRun, "completed")
             const update = await completed.result

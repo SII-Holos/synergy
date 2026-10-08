@@ -64,3 +64,7 @@ Redact session content, absolute paths, credentials, and IDs before sharing evid
 ## Report
 
 Return the target home/Scope, commands and records inspected, violated invariant, affected indexes or messages, repair preview, and the safest supported next action.
+
+## Diagnose Execution Time
+
+Compare Inbox admission, canonical root semantics, Rollout execution intervals and the primary execution outcome separately. A running ledger alone does not prove active work. Check `elapsedActive` and `elapsedLowerBound` through the execution summary; inspect interval clock identity, branch, coverage and `detectedAt` when recovery is involved. Test queue changes, pause/abandon, human waits with parallel work, auxiliary settlement, reconnect and crash recovery in one isolated runtime. Historical corrections belong to the owning versioned migration and journal; never repair the live database to make a displayed timer stop.

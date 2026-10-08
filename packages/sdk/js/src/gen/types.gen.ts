@@ -7978,9 +7978,10 @@ export type ExecutionTask = {
   nodeID: string | null
   parentID: string | null
   title: string
-  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown" | "queued" | "paused" | "waiting"
   elapsedMs: number | null
   elapsedActive: boolean
+  elapsedLowerBound: boolean
   tokens: {
     known: number
     unknown: number
@@ -8076,9 +8077,12 @@ export type ExecutionSummary = {
   revision: number
   runID?: string
   computedAt: number
-  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+  clockID: string
+  sampledAt: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown" | "queued" | "paused" | "waiting"
   elapsedMs: number | null
   elapsedActive: boolean
+  elapsedLowerBound: boolean
   accounting: RolloutAccountingSummary
   cost: ExecutionCostPresentation
   own: RolloutAccountingSummary
@@ -8241,8 +8245,19 @@ export type ExecutionSummary = {
     id: string
     title: string
     started: number
-    status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+    status:
+      | "running"
+      | "completed"
+      | "failed"
+      | "cancelled"
+      | "interrupted"
+      | "unknown"
+      | "queued"
+      | "paused"
+      | "waiting"
     elapsedMs: number | null
+    elapsedActive: boolean
+    elapsedLowerBound: boolean
   }>
   coverage: {
     recorded: number
@@ -8292,6 +8307,24 @@ export type RolloutArtifactRef = {
 
 export type ExecutionNodeDetail = {
   node: ExecutionTrajectoryNode
+  execution?: {
+    status:
+      | "running"
+      | "completed"
+      | "failed"
+      | "cancelled"
+      | "interrupted"
+      | "unknown"
+      | "queued"
+      | "paused"
+      | "waiting"
+    elapsedMs: number | null
+    elapsedActive: boolean
+    elapsedLowerBound: boolean
+    clockID: string
+    sampledAt: number
+    revision: number
+  }
   record: ExecutionJson | null
   sources: Array<{
     field: string
@@ -8974,6 +9007,13 @@ export type RolloutRunRecord = {
     runID: string
   }
   cancelRequestedAt?: number
+  admissionOnly?: boolean
+  timingVersion?: 1
+  detectedAt?: number
+  execution?: {
+    status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+    at: number
+  }
   parent?: {
     owner:
       | {
@@ -8989,6 +9029,31 @@ export type RolloutRunRecord = {
     runID: string | null
     messageID: string
   }
+}
+
+export type RolloutExecutionInterval = {
+  version: 1
+  id: string
+  owner:
+    | {
+        kind: "session"
+        scopeID: string
+        sessionID: string
+      }
+    | {
+        kind: "operation"
+        scopeID: string
+        operationID: string
+      }
+  runID: string
+  segmentID: string
+  branchID: string
+  clockID: string
+  started: number
+  ended?: number
+  status: "active" | "waiting" | "closed" | "interrupted"
+  coverage: "complete" | "partial"
+  detectedAt?: number
 }
 
 export type RolloutCallRecord = {
@@ -9381,8 +9446,10 @@ export type RolloutSnapshot = {
     runID: string
     started: number
     ended?: number
+    detectedAt?: number
     status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
   }>
+  intervals?: Array<RolloutExecutionInterval>
   calls: Array<RolloutCallRecord>
   attempts: Array<RolloutAttemptRecord>
   tools: Array<RolloutToolExecutionRecord>
@@ -9418,6 +9485,8 @@ export type RolloutResult = {
   snapshots: Array<RolloutSnapshot>
   accounting: RolloutAccountingSummary
   elapsedMs: number
+  elapsedActive: boolean
+  elapsedLowerBound: boolean
 }
 
 export type SessionChildCursor = {
@@ -9740,6 +9809,7 @@ export type SessionInputProgress = {
     | "retrying"
     | "completed"
     | "cancelled"
+    | "removed"
     | "failed"
   durable: boolean
   canonical: boolean
@@ -13542,20 +13612,6 @@ export type EventConfigUpdated = {
   }
 }
 
-export type EventPermissionAsked = {
-  type: "permission.asked"
-  properties: PermissionRequest
-}
-
-export type EventPermissionReplied = {
-  type: "permission.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    reply: "once" | "session" | "always" | "reject"
-  }
-}
-
 export type EventUsageUpdated = {
   type: "usage.updated"
   properties: {
@@ -13604,8 +13660,13 @@ export type RolloutEvidenceRecord =
         runID: string
         started: number
         ended?: number
+        detectedAt?: number
         status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
       }
+    }
+  | {
+      kind: "interval"
+      value: RolloutExecutionInterval
     }
   | {
       kind: "call"
@@ -13663,6 +13724,20 @@ export type EventRolloutUpdated = {
         }
     revision: number
     record: RolloutEvidenceRecord
+  }
+}
+
+export type EventPermissionAsked = {
+  type: "permission.asked"
+  properties: PermissionRequest
+}
+
+export type EventPermissionReplied = {
+  type: "permission.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    reply: "once" | "session" | "always" | "reject"
   }
 }
 
@@ -14266,10 +14341,10 @@ export type Event =
   | EventMessagePartRemoved
   | EventProviderAuthUpdated
   | EventConfigUpdated
-  | EventPermissionAsked
-  | EventPermissionReplied
   | EventUsageUpdated
   | EventRolloutUpdated
+  | EventPermissionAsked
+  | EventPermissionReplied
   | EventSessionExecutionUpdated
   | EventSessionToolActivity
   | EventSessionInputProgress

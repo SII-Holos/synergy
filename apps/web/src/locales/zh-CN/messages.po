@@ -12514,6 +12514,10 @@ msgid "execution.partialHelp"
 msgstr "部分执行证据缺失，仅显示已有记录。"
 
 #. js-lingui-explicit-id
+msgid "execution.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
 msgid "execution.previous"
 msgstr "较早记录"
 
@@ -12776,6 +12780,10 @@ msgstr "此内容版本已不可用，请读取最新版本。"
 #. js-lingui-explicit-id
 msgid "execution.view"
 msgstr "视图"
+
+#. js-lingui-explicit-id
+msgid "execution.waiting"
+msgstr "等待输入"
 
 #. js-lingui-explicit-id
 msgid "execution.workspace.copyPath"
@@ -25993,12 +26001,24 @@ msgid "ui.execution.interrupted"
 msgstr "已中断"
 
 #. js-lingui-explicit-id
+msgid "ui.execution.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.queued"
+msgstr "排队中"
+
+#. js-lingui-explicit-id
 msgid "ui.execution.running"
 msgstr "运行中"
 
 #. js-lingui-explicit-id
 msgid "ui.execution.unknown"
-msgstr "未记录状态"
+msgstr "未知"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.waiting"
+msgstr "等待输入"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.close"

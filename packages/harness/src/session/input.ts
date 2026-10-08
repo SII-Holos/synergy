@@ -183,12 +183,16 @@ export async function createUserMessage(
   const messageID = input.messageID ?? Identifier.ascending("message")
   const runID = rootIDOverride ?? messageID
   try {
-    const configuration = await RolloutLifecycle.configuration(session, runID, input.experiment, input.model)
-    return await Experiment.provide(configuration, () =>
+    const configuration = await RolloutLifecycle.configuration(session, runID, input.experiment, input.model, {
+      prepareOnly: true,
+    })
+    const message = await Experiment.provide(configuration, () =>
       RolloutContext.provide({ owner: RolloutLifecycle.owner(session), runID }, () =>
         materializeUserMessage({ ...input, messageID }, rootIDOverride, commitOptions),
       ),
     )
+    await RolloutLedger.configureRun(RolloutLifecycle.owner(session), runID, configuration)
+    return message
   } catch (error) {
     if (
       error instanceof StorageBusyError ||
@@ -196,10 +200,7 @@ export async function createUserMessage(
       (error instanceof DOMException && error.name !== "AbortError")
     )
       throw error
-    // Terminalize the run so the failure is visible and retryable (rearm
-    // reopens it); a cancelled run settles as cancelled via its marker. The
-    // enqueue shell is best-effort, so a run that never landed stays absent
-    // without masking the materialization error.
+    // Only settle evidence created after canonical admission; preparation failures leave no run.
     await RolloutLedger.finishRun(RolloutLifecycle.owner(session), runID, "failed").catch((finishError) => {
       if (!(finishError instanceof Storage.NotFoundError))
         log.warn("failed to terminalize run after materialization error", {

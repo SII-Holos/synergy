@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { RolloutAccounting, type RolloutSchema } from "@ericsanchezok/synergy-harness/rollout"
+import { RolloutAccounting } from "@ericsanchezok/synergy-harness/rollout"
 
 export namespace ExecutionPresentation {
   const Estimate = z.object({
@@ -87,36 +87,5 @@ export namespace ExecutionPresentation {
       historical,
       knownUSD: RolloutAccounting.knownExpense(summary),
     }
-  }
-  export function elapsed(runs: RolloutSchema.RunRecord[], now = Date.now()) {
-    const intervals = runs
-      .filter((run) => run.ended != null || run.status === "running")
-      .map((run) => [run.started, Math.max(run.started, run.ended ?? now)] as const)
-      .sort((a, b) => a[0] - b[0])
-    let total = 0
-    let end = -Infinity
-    for (const [start, stop] of intervals) {
-      total += Math.max(0, stop - Math.max(start, end))
-      end = Math.max(end, stop)
-    }
-    return total
-  }
-
-  export function measuredElapsed(runs: RolloutSchema.RunRecord[]) {
-    if (!runs.length || runs.some((run) => run.status !== "running" && run.ended == null)) return null
-    return elapsed(runs)
-  }
-
-  export function status(runs: RolloutSchema.RunRecord[]): RolloutSchema.RunRecord["status"] | "unknown" {
-    if (!runs.length) return "unknown"
-    for (const status of ["running", "failed", "interrupted", "cancelled"] as const) {
-      if (runs.some((run) => run.status === status)) return status
-    }
-    return "completed"
-  }
-
-  export function taskStatus(roots: RolloutSchema.RunRecord[], descendants: RolloutSchema.RunRecord[]) {
-    if ([...roots, ...descendants].some((run) => run.status === "running")) return "running" as const
-    return roots.toSorted((a, b) => b.started - a.started || b.id.localeCompare(a.id))[0]?.status ?? "unknown"
   }
 }
