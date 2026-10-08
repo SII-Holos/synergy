@@ -614,6 +614,8 @@ import type {
   RegistryPublishInput,
   RegistryRefreshErrors,
   RegistryRefreshResponses,
+  RenderFindErrors,
+  RenderFindResponses,
   RenderGetErrors,
   RenderGetResponses,
   RenderStateWrite,
@@ -15190,6 +15192,38 @@ export class Voice extends HeyApiClient {
 }
 
 export class Render extends HeyApiClient {
+  /**
+   * Locate an owned visual source
+   */
+  public find<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      assetID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "assetID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<RenderFindResponses, RenderFindErrors, ThrowOnError>({
+      url: "/render/source/{sessionID}/{assetID}",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * Read an owned visual
    */

@@ -80,6 +80,8 @@ test("render state commits once, rejects racing writes and restores through cano
     fixture(async (target) => {
       const first = await Render.read(target)
       expect(first.state.revision).toBe(0)
+      expect((await Render.find(target.sessionID, first.descriptor.source))?.target).toEqual(target)
+      expect(await Render.find(target.sessionID, "asset://0000000000000000.bin")).toBeNull()
       const update = {
         revision: 0,
         mutationID: "one",

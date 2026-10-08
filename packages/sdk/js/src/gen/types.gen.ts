@@ -13265,6 +13265,12 @@ export type VoicePreviewInput = {
   text: string
 }
 
+export type RenderTarget = {
+  sessionID: string
+  messageID: string
+  partID: string
+}
+
 export type RenderDescriptor = {
   format: "synergy.visual"
   version: 1
@@ -14399,7 +14405,7 @@ export type Event =
   | EventRuntimeReloaded
   | EventReviewStateUpdated
 
-export type RenderTarget = string
+export type RenderTarget2 = string
 
 export type GlobalCapabilitiesData = {
   body?: never
@@ -29633,6 +29639,48 @@ export type VoicePreviewResponses = {
 }
 
 export type VoicePreviewResponse = VoicePreviewResponses[keyof VoicePreviewResponses]
+
+export type RenderFindData = {
+  body?: never
+  path: {
+    sessionID: string
+    assetID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/render/source/{sessionID}/{assetID}"
+}
+
+export type RenderFindErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RenderFindError = RenderFindErrors[keyof RenderFindErrors]
+
+export type RenderFindResponses = {
+  /**
+   * Producing call, if available in this transcript
+   */
+  200: {
+    target: RenderTarget
+    descriptor: RenderDescriptor
+  } | null
+}
+
+export type RenderFindResponse = RenderFindResponses[keyof RenderFindResponses]
 
 export type RenderGetData = {
   body?: never

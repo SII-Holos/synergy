@@ -146,6 +146,7 @@ import { DialogForkConfirm, forkReplyPreview } from "@/components/session/dialog
 import { hasSessionRenderableContent, sessionLoadView } from "@/components/session/session-load-state"
 import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
+import { SessionRenderProvider } from "@/context/render"
 import { ResourceOpenProvider } from "@/context/resource-open"
 import { BuiltinWorkbenchPanelsProvider } from "@/components/workspace/builtin-workbench-panels"
 import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
@@ -175,15 +176,17 @@ export default function Page() {
   const sdk = useGlobalSDK()
   return (
     <TerminalProvider>
-      <ResourceOpenProvider>
-        <PromptProvider connection={sdk.url} drafts={sdk.drafts}>
-          <BuiltinWorkbenchPanelsProvider>
-            <SessionPreparation>
-              <SessionPageData />
-            </SessionPreparation>
-          </BuiltinWorkbenchPanelsProvider>
-        </PromptProvider>
-      </ResourceOpenProvider>
+      <SessionRenderProvider>
+        <ResourceOpenProvider>
+          <PromptProvider connection={sdk.url} drafts={sdk.drafts}>
+            <BuiltinWorkbenchPanelsProvider>
+              <SessionPreparation>
+                <SessionPageData />
+              </SessionPreparation>
+            </BuiltinWorkbenchPanelsProvider>
+          </PromptProvider>
+        </ResourceOpenProvider>
+      </SessionRenderProvider>
     </TerminalProvider>
   )
 }

@@ -85,6 +85,30 @@ export namespace Render {
     })
   }
 
+  export async function find(sessionID: string, source: string) {
+    const session = await Session.get(sessionID)
+    if (session.scope.id !== ScopeContext.current.scope.id)
+      throw new Unavailable({ message: "Visual belongs to another Scope" })
+    for await (const { value } of Storage.records<MessageV2.Part>({
+      kind: "part",
+      scopeID: session.scope.id,
+      sessionID,
+    })) {
+      if (value.type !== "tool" || value.tool !== "render" || value.state.status !== "completed") continue
+      const descriptor = RenderArtifact.descriptor(value.state.metadata)
+      if (descriptor?.source !== source) continue
+      const target = { sessionID, messageID: value.messageID, partID: value.id }
+      try {
+        await owned(target)
+      } catch (error) {
+        if (error instanceof Storage.NotFoundError) return null
+        throw error
+      }
+      return { target, descriptor }
+    }
+    return null
+  }
+
   export async function assertVersion(sessionID: string, id: string) {
     const session = await Session.get(sessionID)
     for await (const { value } of Storage.records<MessageV2.Part>({

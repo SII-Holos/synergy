@@ -198,21 +198,18 @@ test("fullbleed content fits the frame without clipping or double padding", asyn
     '<html><head><style>.visual { height:150px; width:100% }</style></head><body><div class="visual" data-render-fullbleed>Full width</div></body></html>',
   ]) {
     await visual(html)
-    const metrics = await frame().evaluate((element) => {
-      const iframe = element as HTMLIFrameElement
-      const root = iframe.contentDocument!.querySelector("[data-render-fullbleed]")!.getBoundingClientRect()
-      return {
-        left: root.left,
-        top: root.top,
-        width: root.width,
-        frame: iframe.clientWidth,
-        height: iframe.clientHeight,
-      }
-    })
+    const frameSize = await frame().boundingBox()
+    const metrics = await page
+      .frameLocator('[data-component="render-html"] iframe')
+      .locator("body")
+      .evaluate((body) => {
+        const root = body.querySelector("[data-render-fullbleed]")!.getBoundingClientRect()
+        return { left: root.left, top: root.top, width: root.width }
+      })
     expect(metrics.left).toBe(0)
     expect(metrics.top).toBe(0)
-    expect(metrics.width).toBe(metrics.frame)
-    expect(metrics.height).toBe(150)
+    expect(metrics.width).toBe(frameSize!.width)
+    expect(frameSize!.height).toBe(150)
   }
 })
 
@@ -220,28 +217,33 @@ test("theme updates repaint the existing document and retain native disclosure a
   await visual(
     '<details id="detail"><summary>More</summary><p>Retained detail</p></details><div style="height:900px">Long result</div>',
   )
-  await frame().evaluate((element) => {
-    const doc = (element as HTMLIFrameElement).contentDocument!
-    doc.querySelector("details")!.open = true
-    doc.scrollingElement!.scrollTop = 120
-    ;(element as HTMLIFrameElement & { retainedDocument: Document }).retainedDocument = doc
-  })
+  await page
+    .frameLocator('[data-component="render-html"] iframe')
+    .locator("body")
+    .evaluate((body) => {
+      const doc = body.ownerDocument
+      doc.querySelector("details")!.open = true
+      doc.scrollingElement!.scrollTop = 120
+      ;(doc.defaultView as Window & { retainedDocument?: Document }).retainedDocument = doc
+    })
   await page.evaluate(() => {
     document.documentElement.dataset.colorScheme = "dark"
     document.documentElement.style.setProperty("--text-base", "rgb(220, 230, 240)")
     document.dispatchEvent(new Event("synergy:theme-change"))
   })
   await page.waitForTimeout(150)
-  const retained = await frame().evaluate((element) => {
-    const iframe = element as HTMLIFrameElement & { retainedDocument: Document }
-    const doc = iframe.contentDocument!
-    return {
-      same: doc === iframe.retainedDocument,
-      open: doc.querySelector("details")!.open,
-      scroll: doc.scrollingElement!.scrollTop,
-      color: doc.defaultView!.getComputedStyle(doc.body).color,
-    }
-  })
+  const retained = await page
+    .frameLocator('[data-component="render-html"] iframe')
+    .locator("body")
+    .evaluate((body) => {
+      const doc = body.ownerDocument
+      return {
+        same: doc === (doc.defaultView as Window & { retainedDocument?: Document }).retainedDocument,
+        open: doc.querySelector("details")!.open,
+        scroll: doc.scrollingElement!.scrollTop,
+        color: doc.defaultView!.getComputedStyle(doc.body).color,
+      }
+    })
   expect(retained.same).toBe(true)
   expect(retained.open).toBe(true)
   expect(retained.scroll).toBe(120)
@@ -254,17 +256,23 @@ test("theme updates repaint the existing document and retain native disclosure a
   })
   await page.waitForTimeout(150)
   expect(
-    await frame().evaluate(
-      (element) =>
-        (element as HTMLIFrameElement).contentDocument ===
-        (element as HTMLIFrameElement & { retainedDocument: Document }).retainedDocument,
-    ),
+    await page
+      .frameLocator('[data-component="render-html"] iframe')
+      .locator("body")
+      .evaluate(
+        (body) =>
+          body.ownerDocument ===
+          (body.ownerDocument.defaultView as Window & { retainedDocument?: Document }).retainedDocument,
+      ),
   ).toBe(true)
-  const finalTheme = await frame().evaluate((element) => {
-    const doc = (element as HTMLIFrameElement).contentDocument!
-    const style = doc.defaultView!.getComputedStyle(doc.body)
-    return { color: style.color, font: style.fontFamily }
-  })
+  const finalTheme = await page
+    .frameLocator('[data-component="render-html"] iframe')
+    .locator("body")
+    .evaluate((body) => {
+      const doc = body.ownerDocument
+      const style = doc.defaultView!.getComputedStyle(doc.body)
+      return { color: style.color, font: style.fontFamily }
+    })
   expect(finalTheme.color).toBe("rgb(210, 220, 230)")
   expect(finalTheme.font).toContain("Georgia")
 })
@@ -285,11 +293,14 @@ test("theme and font updates during document loading use the latest host values"
     document.dispatchEvent(new Event("synergy:font-change"))
   })
   await page.frameLocator('[data-component="render-html"] iframe').locator("#loading-theme").waitFor()
-  const theme = await frame().evaluate((element) => {
-    const doc = (element as HTMLIFrameElement).contentDocument!
-    const style = doc.defaultView!.getComputedStyle(doc.body)
-    return { color: style.color, font: style.fontFamily }
-  })
+  const theme = await page
+    .frameLocator('[data-component="render-html"] iframe')
+    .locator("body")
+    .evaluate((body) => {
+      const doc = body.ownerDocument
+      const style = doc.defaultView!.getComputedStyle(doc.body)
+      return { color: style.color, font: style.fontFamily }
+    })
   expect(theme.color).toBe("rgb(120, 130, 140)")
   expect(theme.font).toContain("Georgia")
 })
@@ -386,7 +397,7 @@ test("blocks malformed-document resource loads and HTML/SVG/MathML navigation in
         await current.locator("summary").click()
         expect((await current.locator("details").getAttribute("open")) !== null).toBe(open === null)
         expect(await current.locator("use").getAttribute("href")).toBe("#shape")
-        expect(await current.locator("form, script, meta[http-equiv=refresh], set").count()).toBe(0)
+        expect(await current.locator("form, script:not([nonce]), meta[http-equiv=refresh], set").count()).toBe(0)
         expect(await current.locator("#html-link").getAttribute("href")).toBeNull()
         expect(await current.locator("#safe").count()).toBe(1)
         if (expanded) {

@@ -20,6 +20,7 @@ Load `develop-frontend`; plugin registries also require `change-plugin-runtime`.
 - Follow [Frontend themes and color](../../docs/reference/frontend-theming.md) for the complete consumer contract and theme-authoring workflow. New distributable selectable themes belong in structured plugin contributions; the other built-in skins stay seeds-only in `default-themes.ts`, and `themes/synergy.json` owns the built-in default's curated overrides.
 - Public exports are package contracts. Add exports deliberately and keep App-only components in `apps/web`.
 - `DataProvider.view` accepts a host-owned read-only session projection; `data` remains the canonical store. Local submission overlays belong to the App and must retain message and Part identities through canonical admission.
+- `RenderProvider` supplies session-owned visual reads, revision-checked writes and confirmed follow-ups. The shared renderer owns the opaque iframe and document-bound channel; App owns Scope resolution and Inbox admission. Arbitrary HTML resources cannot obtain this bridge.
 
 ## Verify
 

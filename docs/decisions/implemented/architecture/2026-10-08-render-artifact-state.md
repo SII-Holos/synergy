@@ -14,6 +14,10 @@ State writes use the existing SQL transaction and Part publication path. Repeate
 
 Historical static HTML remains inert. Versioned descriptors do not upgrade the execution authority of historical results or arbitrary HTML attachments. The frontend uses one render surface with an explicit source policy.
 
+The shared UI mounts completed content in an opaque, credentialless iframe with a document-bound MessageChannel. Static history runs only the host bootstrap after sanitization. Interactive sources allow HTTPS static resources; connection APIs, forms and child frames remain blocked. Libraries load from separately bundled assets before authored scripts execute. Host theme, locale, dimensions, visibility and reduced-motion state are pushed through the channel. The same component serves inline results and expanded resource previews.
+
+Follow-up requests open a protected host dialog and enter the normal durable Inbox only after confirmation. Confirmation retains a stable message identity for retries and is cancelled when its connection, Scope or session changes. Frame state uses revision-checked saves; expansion flushes pending state before opening the viewer. Source links resolve through their producing call rather than granting a bridge based on MIME.
+
 ## Alternatives considered
 
 **A separate visual database and event stream.** This would require duplicate fork, delete, replay, rollback and import ownership logic. The current Part and Asset boundaries already supply these operations.

@@ -33610,6 +33610,110 @@
         ]
       }
     },
+    "/render/source/{sessionID}/{assetID}": {
+      "get": {
+        "operationId": "render.find",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses_[\\w]+$"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "assetID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{16}\\.bin$"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Locate an owned visual source",
+        "responses": {
+          "200": {
+            "description": "Producing call, if available in this transcript",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "target": {
+                          "$ref": "#/components/schemas/RenderTarget"
+                        },
+                        "descriptor": {
+                          "$ref": "#/components/schemas/RenderDescriptor"
+                        }
+                      },
+                      "required": ["target", "descriptor"]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.render.find({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/render/{sessionID}/{messageID}/{partID}": {
       "get": {
         "operationId": "render.get",
@@ -76976,6 +77080,25 @@
           }
         },
         "required": ["text"],
+        "additionalProperties": false
+      },
+      "RenderTarget": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses_[\\w]+$"
+          },
+          "messageID": {
+            "type": "string",
+            "pattern": "^msg_[\\w]+$"
+          },
+          "partID": {
+            "type": "string",
+            "pattern": "^prt_[\\w]+$"
+          }
+        },
+        "required": ["sessionID", "messageID", "partID"],
         "additionalProperties": false
       },
       "RenderDescriptor": {

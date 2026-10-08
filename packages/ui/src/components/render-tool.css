@@ -56,3 +56,58 @@
     animation: none !important;
   }
 }
+
+[data-component="render-tool"][data-layout="wide"] {
+  width: min(1024px, 100%);
+}
+[data-slot="render-actions"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+[data-slot="render-error"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 16px;
+  color: var(--text-on-critical-base);
+  background: var(--surface-critical-base);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+[data-component="render-confirm"] {
+  padding: 16px;
+  textarea {
+    width: 100%;
+    resize: vertical;
+    min-height: 120px;
+    padding: 10px;
+    border: 1px solid var(--border-base);
+    border-radius: 8px;
+    background: var(--surface-base);
+    color: var(--text-base);
+  }
+  p {
+    margin: 0 0 12px;
+    overflow-wrap: anywhere;
+  }
+  [role="alert"] {
+    margin-top: 12px;
+    color: var(--text-error);
+  }
+}
+@media (max-width: 480px) {
+  [data-component="render-tool"] figcaption {
+    flex-wrap: wrap;
+  }
+  [data-component="render-viewer"] [data-component="dialog"] {
+    --dialog-width: calc(100vw - 16px);
+  }
+}
+
+[data-slot="render-viewer-actions"] {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-weak-base);
+}

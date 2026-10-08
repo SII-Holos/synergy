@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import { errors } from "@ericsanchezok/synergy-server/server/error"
@@ -7,6 +8,42 @@ import { Render } from "."
 const route = "/:sessionID/:messageID/:partID"
 export function RenderRoute() {
   return new Hono()
+    .get(
+      "/source/:sessionID/:assetID",
+      describeRoute({
+        summary: "Locate an owned visual source",
+        operationId: "render.find",
+        responses: {
+          200: {
+            description: "Producing call, if available in this transcript",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({ target: RenderArtifact.Target, descriptor: RenderArtifact.Descriptor }).nullable(),
+                ),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: RenderArtifact.Target.shape.sessionID,
+          assetID: z.string().regex(/^[a-f0-9]{16}\.bin$/),
+        }),
+      ),
+      async (c) => {
+        const { sessionID, assetID } = c.req.valid("param")
+        try {
+          return c.json(await Render.find(sessionID, `asset://${assetID}`))
+        } catch (error) {
+          if (error instanceof Render.Unavailable) return c.json(error.toObject(), 404)
+          throw error
+        }
+      },
+    )
     .get(
       route,
       describeRoute({

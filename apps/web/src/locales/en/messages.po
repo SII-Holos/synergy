@@ -8618,6 +8618,38 @@ msgid "app.reference.workspaceChanged"
 msgstr "The source workspace was removed or its binding changed."
 
 #. js-lingui-explicit-id
+msgid "app.render.confirm"
+msgstr "Send a request about this visual"
+
+#. js-lingui-explicit-id
+msgid "app.render.confirmDescription"
+msgstr "Review the visual's request before sending it to this conversation. Your composer draft is preserved."
+
+#. js-lingui-explicit-id
+msgid "app.render.pending"
+msgstr "Review the open visual request first."
+
+#. js-lingui-explicit-id
+msgid "app.render.requestText"
+msgstr "Request"
+
+#. js-lingui-explicit-id
+msgid "app.render.send"
+msgstr "Send request"
+
+#. js-lingui-explicit-id
+msgid "app.render.sendFailed"
+msgstr "The visual request could not be sent."
+
+#. js-lingui-explicit-id
+msgid "app.render.sending"
+msgstr "Sending…"
+
+#. js-lingui-explicit-id
+msgid "app.render.stale"
+msgstr "The conversation changed. Reopen the visual before sending."
+
+#. js-lingui-explicit-id
 msgid "app.review.toolUnavailable"
 msgstr "This tool result is no longer available."
 
@@ -25017,12 +25049,124 @@ msgid "tool.misc.warnings"
 msgstr "Warnings"
 
 #. js-lingui-explicit-id
+msgid "tool.render.busy"
+msgstr "Wait for the current visual action to finish."
+
+#. js-lingui-explicit-id
+msgid "tool.render.changes"
+msgstr "Apply these visual changes:"
+
+#. js-lingui-explicit-id
+msgid "tool.render.closed"
+msgstr "This visual view is no longer active."
+
+#. js-lingui-explicit-id
+msgid "tool.render.conflict"
+msgstr "Visual state changed in another view. Review the restored values before editing."
+
+#. js-lingui-explicit-id
+msgid "tool.render.download"
+msgstr "Export interactive HTML"
+
+#. js-lingui-explicit-id
 msgid "tool.render.expand"
 msgstr "Expand visual"
 
 #. js-lingui-explicit-id
+msgid "tool.render.feedback"
+msgstr "Feedback on this visual:"
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidControls"
+msgstr "Invalid visual control definition."
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidDate"
+msgstr "Invalid calendar date."
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidIcon"
+msgstr "Unknown visual icon."
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidVariants"
+msgstr "Invalid visual variant definition."
+
+#. js-lingui-explicit-id
+msgid "tool.render.navigation"
+msgstr "The visual navigated away. Retry to reopen its saved source."
+
+#. js-lingui-explicit-id
+msgid "tool.render.next"
+msgstr "Next month"
+
+#. js-lingui-explicit-id
+msgid "tool.render.offline"
+msgstr "Agent actions are unavailable in an exported visual."
+
+#. js-lingui-explicit-id
+msgid "tool.render.original"
+msgstr "Hold to view original"
+
+#. js-lingui-explicit-id
+msgid "tool.render.parameters"
+msgstr "Parameters"
+
+#. js-lingui-explicit-id
 msgid "tool.render.preparing"
 msgstr "Preparing visual"
+
+#. js-lingui-explicit-id
+msgid "tool.render.previous"
+msgstr "Previous month"
+
+#. js-lingui-explicit-id
+msgid "tool.render.reset"
+msgstr "Reset"
+
+#. js-lingui-explicit-id
+msgid "tool.render.resourceFailed"
+msgstr "A visual resource failed to load."
+
+#. js-lingui-explicit-id
+msgid "tool.render.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "tool.render.review"
+msgstr "Review changes"
+
+#. js-lingui-explicit-id
+msgid "tool.render.selectFeedback"
+msgstr "Select an element for feedback"
+
+#. js-lingui-explicit-id
+msgid "tool.render.static"
+msgstr "This visual is read-only."
+
+#. js-lingui-explicit-id
+msgid "tool.render.stopFeedback"
+msgstr "Finish selecting"
+
+#. js-lingui-explicit-id
+msgid "tool.render.timeout"
+msgstr "The visual did not respond. Retry to restore its saved state."
+
+#. js-lingui-explicit-id
+msgid "tool.render.tooLarge"
+msgstr "Visual state exceeds 16 KiB."
+
+#. js-lingui-explicit-id
+msgid "tool.render.tooMany"
+msgstr "Too many visual controls or objects."
+
+#. js-lingui-explicit-id
+msgid "tool.render.unavailable"
+msgstr "Visual actions are unavailable in this view."
+
+#. js-lingui-explicit-id
+msgid "tool.render.variants"
+msgstr "Variants"
 
 #. js-lingui-explicit-id
 msgid "tool.render.visual"

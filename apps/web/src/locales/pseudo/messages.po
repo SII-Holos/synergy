@@ -8618,6 +8618,38 @@ msgid "app.reference.workspaceChanged"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.render.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.confirmDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.requestText"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.send"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.sendFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.sending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.stale"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.review.toolUnavailable"
 msgstr "⟦This tool result is no longer available.⟧"
 
@@ -25017,11 +25049,123 @@ msgid "tool.misc.warnings"
 msgstr "⟦Warnings⟧"
 
 #. js-lingui-explicit-id
+msgid "tool.render.busy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.changes"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.closed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.conflict"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.download"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "tool.render.expand"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "tool.render.feedback"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidControls"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidDate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidIcon"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidVariants"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.navigation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.next"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.offline"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.original"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.parameters"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "tool.render.preparing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.previous"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.reset"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.resourceFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.review"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.selectFeedback"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.static"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.stopFeedback"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.timeout"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.tooLarge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.tooMany"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.variants"
 msgstr ""
 
 #. js-lingui-explicit-id
