@@ -229,15 +229,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         loader: async () => {
           const { AttachmentWorkbenchContent } = await import("@/components/attachment-workbench/content")
           return {
-            default: (props: WorkbenchPanelContentProps) => (
-              <AttachmentWorkbenchContent
-                {...props}
-                sourceFileAction={(path) => {
-                  const normalized = file.normalize(path)
-                  return normalized ? () => void file.openWorkspaceFile(normalized) : undefined
-                }}
-              />
-            ),
+            default: (props: WorkbenchPanelContentProps) => <AttachmentWorkbenchContent {...props} />,
           }
         },
         title: (tab) => tab.title ?? i18n._(P.attachment),
@@ -263,6 +255,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         },
         title(tab, siblings) {
           if (!tab.resourceId) return tab.source === "explorer" ? i18n._(P.openFile) : tab.title
+          if (!workspaceFilePath(tab.resourceId)) return tab.title || i18n._(P.openFile)
           return shortestUniqueFileTitle(
             workspaceFilePath(tab.resourceId),
             siblings

@@ -12,6 +12,7 @@ import {
 } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import {
+  attachmentDocumentContext,
   formatAttachmentSize,
   resolveAttachmentUrl,
   type AttachmentFile,
@@ -19,6 +20,8 @@ import {
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { UserMarkdown } from "@ericsanchezok/synergy-ui/user-markdown"
+import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
+import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { RenderHtml } from "@ericsanchezok/synergy-ui/render-html"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -27,9 +30,9 @@ import {
   AttachmentTooLargeError,
   attachmentSourceMarkdown,
   attachmentOpenInBrowserUrl,
-  classifyAttachmentPreview,
   createAttachmentPreviewReader,
 } from "./model"
+import { classifyResourcePreview } from "../resource-preview"
 import { AttachmentPdfPreview } from "./pdf-preview"
 import { sanitizeAttachmentHtml } from "./html"
 import "./styles.css"
@@ -45,6 +48,10 @@ export interface AttachmentPreviewProps {
   file: AttachmentFile
   serverUrl: string
   fetcher?: typeof fetch
+  sourceUrl?: string
+  referenceContext?: ResourceReference.Context
+  location?: ResourceReference.Location
+  navigation?: number
   onOpenSource?: () => void
   onOpenBrowser?: (url: string) => void
   onOpenExternal?: (url: string) => void
@@ -54,13 +61,13 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
   const lingui = useLingui()
   const capability = createMemo(() => {
     const value = props.file
-    return value ? classifyAttachmentPreview(value.mime, value.filename) : undefined
+    return value ? classifyResourcePreview(value.mime, value.filename) : undefined
   })
   const [mode, setMode] = createSignal<"preview" | "source">("preview")
   const [mediaFailed, setMediaFailed] = createSignal(false)
   const url = createMemo(() => {
     const value = props.file
-    return value ? resolveAttachmentUrl(props.serverUrl, value) : undefined
+    return props.sourceUrl ?? (value ? resolveAttachmentUrl(props.serverUrl, value) : undefined)
   })
   const sourcePath = () => props.onOpenSource
   const previewRequest = createMemo(() => {
@@ -216,7 +223,9 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
             {(href) => <AttachmentImagePreview url={href()} filename={props.file.filename} />}
           </Match>
           <Match when={capability()?.kind === "pdf" ? safePayload() : undefined}>
-            {(bytes) => <AttachmentPdfPreview bytes={bytes()} />}
+            {(bytes) => (
+              <AttachmentPdfPreview bytes={bytes()} location={props.location} navigation={props.navigation} />
+            )}
           </Match>
           <Match when={displayMode() === "source" ? text() : undefined}>
             {(content) => (
@@ -228,7 +237,11 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
           <Match when={capability()?.kind === "markdown" ? text() : undefined}>
             {(content) => (
               <div class="attachment-markdown-preview">
-                <UserMarkdown text={content()} />
+                <Markdown
+                  text={content()}
+                  referenceContext={attachmentDocumentContext(props.file, props.referenceContext)}
+                  navigation={props.location ? { id: props.navigation ?? 0, location: props.location } : undefined}
+                />
               </div>
             )}
           </Match>
@@ -239,6 +252,9 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
                 <RenderHtml html={sanitizeAttachmentHtml(content())} />
               </div>
             )}
+          </Match>
+          <Match when={capability()?.kind === "svg" && url()}>
+            {(href) => <AttachmentImagePreview url={href()} filename={props.file.filename} />}
           </Match>
           <Match when={capability()?.kind === "source" ? text() : undefined}>
             {(content) => (

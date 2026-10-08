@@ -1,9 +1,8 @@
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
-import { OFFICE_INPUT_MAX_BYTES } from "./office-contract"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import type { ResourcePreviewKind } from "../resource-preview"
+export { ATTACHMENT_TEXT_MAX_BYTES, ATTACHMENT_PDF_MAX_BYTES } from "../resource-preview"
 import type { AttachmentPart, Part, ToolPart } from "@ericsanchezok/synergy-sdk"
-
-export const ATTACHMENT_TEXT_MAX_BYTES = 4 * 1024 * 1024
-export const ATTACHMENT_PDF_MAX_BYTES = 50 * 1024 * 1024
 
 export interface AttachmentLocator {
   version: 1
@@ -12,33 +11,17 @@ export interface AttachmentLocator {
   attachmentID: string
 }
 
-export type AttachmentResourceState = AttachmentLocator | { version: 1; url: string; filename?: string }
+export type AttachmentResourceState = (AttachmentLocator | { version: 1; url: string; filename?: string }) & {
+  referenceContext?: ResourceReference.Context
+  location?: ResourceReference.Location
+  navigation?: number
+}
 
 export interface AttachmentWorkbenchPanelInit {
   resourceId: string
   title?: string
   source: "conversation"
   state: AttachmentResourceState
-}
-
-export type AttachmentPreviewKind =
-  | "docx"
-  | "xlsx"
-  | "pptx"
-  | "image"
-  | "pdf"
-  | "markdown"
-  | "html"
-  | "source"
-  | "video"
-  | "audio"
-  | "unsupported"
-
-export interface AttachmentPreviewCapability {
-  kind: AttachmentPreviewKind
-  defaultMode: "preview" | "source"
-  dual: boolean
-  maxBytes?: number
 }
 
 export class AttachmentTooLargeError extends Error {
@@ -55,8 +38,18 @@ export function attachmentResourceState(value: unknown): AttachmentResourceState
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
   const state = value as Record<string, unknown>
   if (state.version !== 1) return undefined
+  const navigation = {
+    referenceContext: ResourceReference.Context.safeParse(state.referenceContext).data,
+    location: ResourceReference.Location.safeParse(state.location).data,
+    navigation: typeof state.navigation === "number" ? state.navigation : undefined,
+  }
   if (typeof state.url === "string" && AssetReference.parse(state.url))
-    return { version: 1, url: state.url, filename: typeof state.filename === "string" ? state.filename : undefined }
+    return {
+      version: 1,
+      url: state.url,
+      filename: typeof state.filename === "string" ? state.filename : undefined,
+      ...navigation,
+    }
   if (typeof state.sessionID !== "string" || !state.sessionID) return undefined
   if (typeof state.messageID !== "string" || !state.messageID) return undefined
   if (typeof state.attachmentID !== "string" || !state.attachmentID) return undefined
@@ -65,6 +58,7 @@ export function attachmentResourceState(value: unknown): AttachmentResourceState
     sessionID: state.sessionID,
     messageID: state.messageID,
     attachmentID: state.attachmentID,
+    ...navigation,
   }
 }
 
@@ -117,62 +111,8 @@ export function findAttachmentByLocator(
   return undefined
 }
 
-const TEXT_MIME_TYPES = new Set([
-  "application/json",
-  "application/ld+json",
-  "application/xml",
-  "application/x-yaml",
-  "application/yaml",
-  "text/csv",
-  "text/plain",
-  "text/xml",
-  "text/x-markdown",
-  "text/yaml",
-])
-
 function extension(filename: string | undefined) {
   return filename?.split(".").at(-1)?.toLowerCase()
-}
-
-export function classifyAttachmentPreview(mime: string, filename?: string): AttachmentPreviewCapability {
-  mime = mime.split(";")[0]!.trim().toLowerCase()
-  const ext = extension(filename)
-  const officeMime: Record<string, "docx" | "xlsx" | "pptx"> = {
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
-  }
-  const officeKind =
-    officeMime[mime] ?? (["docx", "xlsx", "pptx"].includes(ext ?? "") ? (ext as "docx" | "xlsx" | "pptx") : undefined)
-  if (officeKind)
-    return {
-      kind: officeKind,
-      defaultMode: "preview",
-      dual: false,
-      maxBytes: OFFICE_INPUT_MAX_BYTES,
-    }
-  if (mime.startsWith("image/")) return { kind: "image", defaultMode: "preview", dual: false }
-  if (mime === "application/pdf" || ext === "pdf") {
-    return { kind: "pdf", defaultMode: "preview", dual: false, maxBytes: ATTACHMENT_PDF_MAX_BYTES }
-  }
-  if (mime === "text/markdown" || mime === "text/x-markdown" || ext === "md" || ext === "markdown") {
-    return { kind: "markdown", defaultMode: "preview", dual: true, maxBytes: ATTACHMENT_TEXT_MAX_BYTES }
-  }
-  if (mime === "text/html" || ext === "html" || ext === "htm") {
-    return { kind: "html", defaultMode: "preview", dual: true, maxBytes: ATTACHMENT_TEXT_MAX_BYTES }
-  }
-  if (mime.startsWith("video/")) return { kind: "video", defaultMode: "preview", dual: false }
-  if (mime.startsWith("audio/")) return { kind: "audio", defaultMode: "preview", dual: false }
-  if (
-    mime.startsWith("text/") ||
-    TEXT_MIME_TYPES.has(mime) ||
-    ["json", "jsonc", "xml", "yaml", "yml", "csv", "ts", "tsx", "js", "jsx", "css", "py", "rs", "go", "sh"].includes(
-      ext ?? "",
-    )
-  ) {
-    return { kind: "source", defaultMode: "source", dual: false, maxBytes: ATTACHMENT_TEXT_MAX_BYTES }
-  }
-  return { kind: "unsupported", defaultMode: "preview", dual: false }
 }
 
 export async function fetchAttachmentBytes(
@@ -250,7 +190,7 @@ export function createAttachmentPreviewReader(
 }
 
 export function attachmentOpenInBrowserUrl(
-  kind: AttachmentPreviewKind | undefined,
+  kind: ResourcePreviewKind | undefined,
   url: string | undefined,
 ): string | undefined {
   return kind === "html" && url ? url : undefined

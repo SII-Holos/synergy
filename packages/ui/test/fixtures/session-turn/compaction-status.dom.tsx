@@ -53,8 +53,7 @@ render(
     <I18nProvider i18n={setupI18n()}>
       <ResourceOpenProvider
         value={{
-          open: () => false,
-          openAttachment: () => false,
+          open: async () => ({ status: "cancelled" as const }),
           openActivityDetail: (target) => {
             opened.push(target)
             setSelected(target)

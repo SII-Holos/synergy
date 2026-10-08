@@ -4,8 +4,10 @@ import type { MarkdownBlock, MarkdownDocument } from "../context/markdown-docume
 import { sanitizeHtml } from "./markdown-sanitize"
 import { markdownLayoutSignature, type MarkdownStreamLayout } from "./markdown-stream-source"
 import type { MarkdownLayoutCache } from "./markdown-render"
+import { focusMarkdownHeading, markdownHeadings } from "./markdown-navigation"
 import { markdownReadingPoint } from "./markdown-reading"
 import { markdownScrollViewport } from "./markdown-scroll-viewport"
+import { readSelectionElements } from "../utils/selection"
 
 export function MarkdownDocumentView(props: {
   root: HTMLDivElement
@@ -27,6 +29,34 @@ export function MarkdownDocumentView(props: {
   let virtual: VirtualizerHandle | WindowVirtualizerHandle | undefined
   let anchorRestored = false
   let disposed = false
+  let headingTarget: { block: number; heading: number } | undefined
+  const reveal = (root: HTMLElement, block: number) => {
+    if (headingTarget?.block !== block) return
+    const element = root.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6")[headingTarget.heading]
+    if (!element) return
+    headingTarget = undefined
+    queueMicrotask(() => {
+      if (!disposed && element.isConnected) focusMarkdownHeading(element)
+    })
+  }
+  const navigate = (event: Event) => {
+    const id = (event as CustomEvent<string>).detail
+    const counts = new Map<string, number>()
+    const template = document.createElement("template")
+    for (let index = 0; index < props.document.blocks.length; index++) {
+      const html = props.document.blocks[index].html
+      if (!/<h[1-6]\b/i.test(html)) continue
+      template.innerHTML = html
+      const heading = markdownHeadings(template.content, counts).findIndex((item) => item.id === id)
+      if (heading < 0) continue
+      event.preventDefault()
+      headingTarget = { block: index, heading }
+      virtual?.scrollToIndex(index, { align: "start" })
+      const mounted = props.root.querySelector<HTMLElement>(`[data-markdown-block="${index}"]`)
+      if (mounted) reveal(mounted, index)
+      return
+    }
+  }
   onCleanup(() => {
     disposed = true
   })
@@ -41,26 +71,19 @@ export function MarkdownDocumentView(props: {
       virtual.restoreToIndex(index, point - root.getBoundingClientRect().top - anchor.offset)
     })
   }
-  const pin = () => {
+  const pin = (event?: Event) => {
     const selected = new Set<number>()
     const add = (node: Node | null) => {
       const element = node instanceof Element ? node : node?.parentElement
       const block = element?.closest<HTMLElement>("[data-markdown-block]")
       if (block && props.root.contains(block)) selected.add(Number(block.dataset.markdownBlock))
     }
-    add(document.activeElement)
-    const selection = document.getSelection()
-    if (selection && !selection.isCollapsed) {
-      add(selection.anchorNode)
-      add(selection.focusNode)
-      const indices = [...selected]
-      if (indices.length > 1)
-        for (const block of props.root.querySelectorAll<HTMLElement>("[data-markdown-block]")) {
-          const index = Number(block.dataset.markdownBlock)
-          if (index >= Math.min(...indices) && index <= Math.max(...indices)) selected.add(index)
-        }
-    }
-    setKept([...selected])
+    const focus = event?.type === "focusout" ? (event as FocusEvent).relatedTarget : document.activeElement
+    add(focus instanceof Node ? focus : null)
+    for (const block of readSelectionElements(props.root, "[data-markdown-block]")) add(block)
+    setKept((previous) =>
+      previous.length === selected.size && previous.every((index) => selected.has(index)) ? previous : [...selected],
+    )
   }
   onMount(() => {
     const measure = () => {
@@ -74,6 +97,7 @@ export function MarkdownDocumentView(props: {
     if (props.root.parentElement) observer.observe(props.root.parentElement)
     if (scroller?.firstElementChild) observer.observe(scroller.firstElementChild)
     measure()
+    props.root.addEventListener("markdown-reveal-heading", navigate)
     scroller?.addEventListener("scroll", measure, { passive: true })
     props.root.addEventListener("load", measure, true)
     document.addEventListener("selectionchange", pin)
@@ -81,6 +105,7 @@ export function MarkdownDocumentView(props: {
     document.addEventListener("focusout", pin)
     onCleanup(() => {
       observer.disconnect()
+      props.root.removeEventListener("markdown-reveal-heading", navigate)
       scroller?.removeEventListener("scroll", measure)
       props.root.removeEventListener("load", measure, true)
       document.removeEventListener("selectionchange", pin)
@@ -96,7 +121,10 @@ export function MarkdownDocumentView(props: {
       index={index}
       source={value.codeID ? props.document.codes[value.codeID] : undefined}
       enhance={props.enhance}
-      ready={(root) => restoreAnchor(root, index())}
+      ready={(root) => {
+        restoreAnchor(root, index())
+        reveal(root, index())
+      }}
     />
   )
   return scroller ? (

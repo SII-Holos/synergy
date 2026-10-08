@@ -1,14 +1,26 @@
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import type { AssistantMessage, UserMessage, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
+import {
+  batch,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+  untrack,
+  type JSX,
+} from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { ActivityBatchLabel, ActivityBatchStatus } from "@ericsanchezok/synergy-ui/activity-batch"
 import { sessionActivityAnimating, sessionActivityLabel } from "@ericsanchezok/synergy-ui/session-status"
-import { createDisclosureMotionRef } from "@ericsanchezok/synergy-ui/hooks"
+import { createDisclosureMotionRef, readSelectionElements } from "@ericsanchezok/synergy-ui/hooks"
 import "./conversation-rows.css"
 import { Dynamic } from "solid-js/web"
 import { SessionTurn, resolveActivityDisclosure } from "@ericsanchezok/synergy-ui/session-turn"
@@ -20,7 +32,7 @@ import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { useExecution } from "@/context/execution"
-import { buildConversationRows, type ConversationRow } from "./conversation-rows"
+import { buildConversationRows, estimateConversationRowSize, type ConversationRow } from "./conversation-rows"
 import { ToolExpansionProvider } from "@ericsanchezok/synergy-ui/tool-expansion"
 import {
   ProcessViewport,
@@ -33,11 +45,17 @@ import { CompactionCard } from "@ericsanchezok/synergy-ui/compaction-card"
 import { useData } from "@ericsanchezok/synergy-ui/context/data"
 import { requestErrorMessage } from "../../utils/error"
 import { PartContentSyncError } from "../../context/part-materializer"
-import { createConversationLayoutBinding, createConversationLayoutCache } from "./conversation-layout"
+import {
+  conversationReadingIndex,
+  createConversationLayoutBinding,
+  createConversationLayoutCache,
+} from "./conversation-layout"
 
 // Provenance: https://github.com/inokawa/virtua/blob/0.42.3/src/solid/Virtualizer.tsx
 // Local adaptation: Part identities, retained interaction rows and prepend offsets share the existing scroll element.
 const layouts = createConversationLayoutCache()
+const sameItems = <T,>(previous: T[], next: T[]) =>
+  previous.length === next.length && previous.every((item) => next.includes(item))
 
 type ProcessControls = {
   layoutOwner: readonly [server: string, scope: string, sessionID: string]
@@ -59,6 +77,7 @@ export function VirtualConversationRows(
     context: PluginConversationService
     scrollRef?: HTMLDivElement
     onReady?: (ready: boolean) => void
+    onReadingMessage?: (messageID: string) => void
   },
 ) {
   const props = input.context
@@ -100,15 +119,17 @@ export function VirtualConversationRows(
   })
   const [handle, setHandle] = createSignal<VirtualizerHandle>()
   const [mounted, setMounted] = createSignal(false)
+  const [width, setWidth] = createSignal(0)
   const [located, setLocated] = createSignal<{ messageID: string; partID?: string }>()
   const [margin, setMargin] = createSignal(0)
-  const [retained, setRetained] = createSignal<string[]>([])
-  const [interactionBlocks, setInteractionBlocks] = createSignal<string[]>([])
+  const [retained, setRetained] = createSignal<string[]>([], { equals: sameItems })
+  const [interactionBlocks, setInteractionBlocks] = createSignal<string[]>([], { equals: sameItems })
   const [readingBlocks, setReadingBlocks] = createSignal<string[]>([])
   const [readingOwner, setReadingOwner] = createSignal<string>()
   const [outerReadingOwner, setOuterReadingOwner] = createSignal<string>()
-  const [interactionRoots, setInteractionRoots] = createSignal<string[]>([])
+  const [interactionRoots, setInteractionRoots] = createSignal<string[]>([], { equals: sameItems })
   const [expanded, setExpanded] = createSignal<ReadonlyMap<string, boolean>>(new Map())
+  let manualProcess: { rootID: string; opening: boolean } | undefined
   const activityView = {
     getExpanded: (key: string) => props.activityView?.getExpanded(key) ?? expanded().get(key),
     setExpanded: (key: string, value: boolean) => {
@@ -118,6 +139,7 @@ export function VirtualConversationRows(
   }
   const processState = createMemo((previous: Map<string, { working: boolean; held: boolean }> | undefined) => {
     const next = new Map<string, { working: boolean; held: boolean }>()
+    let changed = false
     for (const root of props.timeline()) {
       if (root.role !== "user") continue
       const state = input.executionFor?.(root.id)
@@ -137,9 +159,14 @@ export function VirtualConversationRows(
         props.scrolledUp() ||
         interactionRoots().includes(root.id) ||
         readingBlocks().some((key) => key.startsWith(`${root.id}:activity:`))
-      next.set(root.id, { working, held: reading && (!!last?.held || (!!last?.working && !working)) })
+      const held = reading && (!!last?.held || (!!last?.working && !working))
+      if (last && working === last.working && held === last.held) next.set(root.id, last)
+      else {
+        changed = true
+        next.set(root.id, { working, held })
+      }
     }
-    return next
+    return !changed && previous?.size === next.size ? previous : next
   })
   const projectionRows = createMemo<ConversationRow[]>((previous) =>
     buildConversationRows({
@@ -174,7 +201,10 @@ export function VirtualConversationRows(
   const [rows, setRows] = createSignal<ConversationRow[]>(requestedRows())
   createEffect(
     on(requestedRows, (next) => {
+      const manual = manualProcess?.rootID
+      const opening = manualProcess?.opening
       const current = untrack(rows)
+      const previous = new Map(current.map((row) => [row.key, row]))
       const nextKeys = new Set(next.map((row) => row.key))
       const mounted = new Set(
         [...(container?.querySelectorAll<HTMLElement>("[data-display-row]") ?? [])].map(
@@ -187,16 +217,38 @@ export function VirtualConversationRows(
           mounted.has(row.key) &&
           ((row.kind === "body" && row.processBody) || row.kind === "activity" || row.activity),
       )
-      const merged = [...next]
+      const entering = { kind: "enter" as const }
+      const merged = next.map((row) => {
+        const prior = previous.get(row.key)
+        const process = row.kind === "activity" || (row.kind === "body" && row.processBody)
+        if (opening && manual === row.root.id && process && (!prior || prior.exiting)) {
+          return { ...row, motion: entering }
+        }
+        return prior?.motion?.kind === "enter" && !prior.exiting ? { ...row, motion: prior.motion } : row
+      })
       for (const row of exits) {
         const following = current.slice(current.indexOf(row) + 1).find((item) => nextKeys.has(item.key))
         const index = following ? merged.findIndex((item) => item.key === following.key) : merged.length
-        merged.splice(index, 0, { ...row, exiting: true })
+        merged.splice(index, 0, {
+          ...row,
+          exiting: true,
+          motion: !opening && manual === row.root.id ? { kind: "exit" } : undefined,
+        })
       }
+      if (!opening || !next.some((row) => row.root.id === manual) || merged.some((row) => row.motion === entering))
+        manualProcess = undefined
       setRows(merged)
     }),
   )
   const finishExit = (key: string) => setRows((previous) => previous.filter((row) => row.key !== key || !row.exiting))
+  const releaseMotion = (motion: ConversationRow["motion"]) => {
+    if (motion?.kind !== "enter") return
+    setRows((previous) =>
+      previous.some((row) => row.motion === motion)
+        ? previous.map((row) => (row.motion === motion ? { ...row, motion: undefined } : row))
+        : previous,
+    )
+  }
   const rowLayout = createMemo<{ keys: string[]; shift: boolean }>((previous) => {
     const keys = rows().map((row) => row.key)
     if (previous && keys.length === previous.keys.length && keys.every((key, index) => key === previous.keys[index]))
@@ -211,7 +263,7 @@ export function VirtualConversationRows(
   const layout = createConversationLayoutBinding(layouts, {
     identity: () => untrack(layoutIdentity),
     keys: () => untrack(keys),
-    width: () => container?.clientWidth ?? 0,
+    width: () => untrack(width),
     changed: setHandle,
   })
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])))
@@ -308,7 +360,7 @@ export function VirtualConversationRows(
     disposed = true
     releaseLocation()
   })
-  const pinInteraction = () => {
+  const pinInteraction = (event?: Event) => {
     const ids = new Set<string>()
     const roots = new Set<string>()
     const blocks = new Set<string>()
@@ -324,33 +376,24 @@ export function VirtualConversationRows(
         if (row.dataset.activityBlock) blocks.add(row.dataset.activityBlock)
       }
     }
-    add(document.activeElement)
-    const selection = document.getSelection()
-    if (selection && !selection.isCollapsed) {
-      add(selection.anchorNode)
-      add(selection.focusNode)
-      const indices = [...ids].map((key) => keys().indexOf(key)).filter((index) => index >= 0)
-      if (indices.length === 2) {
-        const start = Math.min(...indices),
-          end = Math.max(...indices)
-        for (const element of container?.querySelectorAll<HTMLElement>("[data-display-row]") ?? []) {
-          const index = keys().indexOf(element.dataset.displayRow!)
-          if (index >= start && index <= end) ids.add(element.dataset.displayRow!)
-        }
-      }
-    }
-    setRetained([...ids])
-    setInteractionRoots([...roots])
-    setInteractionBlocks([...blocks])
+    const focus = event?.type === "focusout" ? (event as FocusEvent).relatedTarget : document.activeElement
+    add(focus instanceof Node ? focus : null)
+    if (container) for (const element of readSelectionElements(container, "[data-display-row]")) add(element)
+    batch(() => {
+      setRetained([...ids])
+      setInteractionRoots([...roots])
+      setInteractionBlocks([...blocks])
+    })
   }
   onMount(() => {
-    setMounted(true)
     let measureFrame: number | undefined
     let viewportLimit: number | undefined
     const measure = () => {
       const scroll = input.scrollRef
       if (scroll && container) {
-        layout.resize(container.clientWidth)
+        const measuredWidth = container.clientWidth
+        layout.resize(measuredWidth)
+        setWidth(measuredWidth)
         const limit = scroll.clientHeight * 0.45
         const margin = container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
         if (limit !== viewportLimit) {
@@ -372,6 +415,7 @@ export function VirtualConversationRows(
     if (container?.parentElement) observer.observe(container.parentElement)
     if (input.scrollRef) observer.observe(input.scrollRef)
     measure()
+    setMounted(true)
     document.addEventListener("focusin", pinInteraction)
     document.addEventListener("focusout", pinInteraction)
     document.addEventListener("selectionchange", pinInteraction)
@@ -458,6 +502,12 @@ export function VirtualConversationRows(
               overscan={4}
               keepMounted={kept()}
               cache={layout.restore()}
+              onScroll={() => {
+                const virtual = handle()
+                if (!virtual) return
+                const index = conversationReadingIndex(virtual, rows().length, margin())
+                if (index !== undefined) input.onReadingMessage?.(rows()[index].root.id)
+              }}
             >
               {(key) => {
                 const row = createMemo<ConversationRow>((previous) => byKey().get(key) ?? previous!, byKey().get(key)!)
@@ -469,6 +519,15 @@ export function VirtualConversationRows(
                     located={located()}
                     row={row}
                     onExit={finishExit}
+                    onMotionReleased={releaseMotion}
+                    onBeforeProcessDisclosure={(rootID, opening, event) => {
+                      props.autoScroll?.handleInteraction(event)
+                      if (
+                        event.currentTarget instanceof HTMLElement &&
+                        event.currentTarget.dataset.slot === "turn-process-trigger"
+                      )
+                        manualProcess = { rootID, opening }
+                    }}
                     activityView={activityView}
                     submissionFor={input.submissionFor}
                     takeUserArrival={input.takeUserArrival}
@@ -501,6 +560,8 @@ function ConversationDisplayRow(
     context: PluginConversationService
     row: () => ConversationRow
     onExit: (key: string) => void
+    onMotionReleased?: (motion: ConversationRow["motion"]) => void
+    onBeforeProcessDisclosure?: (rootID: string, opening: boolean, event: Event) => void
     activityView: NonNullable<PluginConversationService["activityView"]>
     onReading?: (key: string, reading: boolean) => void
     onReadingInteraction?: (key: string) => void
@@ -520,7 +581,7 @@ function ConversationDisplayRow(
     visible: () => !!row().activity?.open,
     animate: () => manualDisclosure,
     appear: () => manualDisclosure,
-    resize: false,
+    resize: true,
     onHidden: () => setActivityMounted(false),
     onSettled: () => {
       manualDisclosure = false
@@ -528,11 +589,15 @@ function ConversationDisplayRow(
   })
   const execution = useExecution()
   const { _ } = useLingui()
+  const entrance = untrack(() => (row().motion?.kind === "enter" ? row().motion : undefined))
+  onCleanup(() => input.onMotionReleased?.(row().motion))
   const exitMotion = createDisclosureMotionRef({
     visible: () => !row().exiting,
-    animate: () => !props.scrolledUp(),
-    resize: row().kind !== "activity",
+    animate: () => !!row().motion || !props.scrolledUp(),
+    appear: () => !!entrance && row().motion === entrance,
+    resize: () => !!row().motion || row().kind !== "activity",
     onHidden: () => input.onExit(row().key),
+    onSettled: () => input.onMotionReleased?.(row().motion),
   })
   const [loadFailure, setLoadFailure] = createSignal<{ error: unknown }>()
   const [partStates, setPartStates] = createStore<
@@ -543,21 +608,24 @@ function ConversationDisplayRow(
   onCleanup(() => input.onRowReady?.(readinessOwner, undefined))
   const [loading, setLoading] = createSignal(false)
   const [retry, setRetry] = createSignal(0)
-  createEffect(() => {
+  const ready = createMemo(() => {
     const current = row()
     const pageReady = !!content.page(current.message.id) || !!loadFailure()
-    const ready =
-      current.kind === "load"
-        ? pageReady
-        : current.kind !== "body" || current.event
-          ? true
-          : pageReady &&
-            current.parts.every((part) => {
-              const state = partStates[part.id]
-              return state && !state.pending
-            })
-    input.onRowReady?.(readinessOwner, !!ready)
+    return current.kind === "load"
+      ? pageReady
+      : current.kind !== "body" || current.event
+        ? true
+        : pageReady &&
+          current.parts.every((part) => {
+            const state = partStates[part.id]
+            return state && !state.pending
+          })
   })
+  const preparingProcess = createMemo(() => {
+    const current = row()
+    return current.kind === "body" && current.processBody && !ready()
+  })
+  createEffect(() => input.onRowReady?.(readinessOwner, !!ready()))
   let loadGeneration = 0
   let rowElement: HTMLDivElement | undefined
   let retryFocus: HTMLButtonElement | undefined
@@ -747,6 +815,10 @@ function ConversationDisplayRow(
       tabIndex={-1}
       data-display-row={row().key}
       data-row-kind={row().kind}
+      data-content-pending={preparingProcess() ? "" : undefined}
+      style={{
+        "min-height": preparingProcess() ? `${estimateConversationRowSize(row())}px` : undefined,
+      }}
       data-activity-block={row().activity?.key}
       data-process-body={segment().processBody ? "" : undefined}
       data-turn-root={row().root.id}
@@ -852,7 +924,11 @@ function ConversationDisplayRow(
                 }
                 fallback={
                   <SessionTurn
-                    onBeforeProcessLayoutChange={props.autoScroll?.handleInteraction}
+                    onBeforeProcessLayoutChange={(event) => {
+                      if (input.onBeforeProcessDisclosure)
+                        input.onBeforeProcessDisclosure(row().root.id, !row().process?.open, event)
+                      else props.autoScroll?.handleInteraction(event)
+                    }}
                     takeUserArrival={input.takeUserArrival}
                     sessionID={props.sessionID}
                     messageID={row().root.id}
@@ -1004,10 +1080,15 @@ function ConversationActivityBody(
   },
 ) {
   const [scroll, setScroll] = createSignal<HTMLDivElement>()
+  const [width, setWidth] = createSignal(0)
   const [handle, setHandle] = createSignal<VirtualizerHandle>()
-  const [retained, setRetained] = createSignal<number[]>([])
+  const [retained, setRetained] = createSignal<number[]>([], { equals: sameItems })
   const entries = () => input.row().activity?.entries ?? []
   const keys = createMemo(() => entries().map((entry) => entry.key))
+  const estimatedSize = createMemo(() => {
+    const rows = entries()
+    return rows.length ? rows.reduce((total, row) => total + estimateConversationRowSize(row), 0) / rows.length : 28
+  })
   let virtualRoot: HTMLDivElement | undefined
   const VirtualRoot = (props: JSX.HTMLAttributes<HTMLDivElement>) => (
     <div
@@ -1034,7 +1115,7 @@ function ConversationActivityBody(
   const layout = createConversationLayoutBinding(layouts, {
     identity: () => untrack(layoutIdentity),
     keys: () => untrack(keys),
-    width: () => viewport?.clientWidth ?? 0,
+    width: () => untrack(width),
     changed: setHandle,
   })
   let anchor: ProcessReadingAnchor | undefined
@@ -1100,7 +1181,7 @@ function ConversationActivityBody(
   onCleanup(() => {
     if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
   })
-  const pin = () => {
+  const pin = (event?: Event) => {
     const indices = new Set<number>()
     const add = (node: Node | null) => {
       const element = node instanceof Element ? node : node?.parentElement
@@ -1110,20 +1191,9 @@ function ConversationActivityBody(
         if (index >= 0) indices.add(index)
       }
     }
-    add(document.activeElement)
-    const selection = document.getSelection()
-    if (selection && !selection.isCollapsed) {
-      add(selection.anchorNode)
-      add(selection.focusNode)
-      if (indices.size === 2) {
-        const start = Math.min(...indices),
-          end = Math.max(...indices)
-        for (const element of viewport?.querySelectorAll<HTMLElement>("[data-display-row]") ?? []) {
-          const index = keys().indexOf(element.dataset.displayRow!)
-          if (index >= start && index <= end) indices.add(index)
-        }
-      }
-    }
+    const focus = event?.type === "focusout" ? (event as FocusEvent).relatedTarget : document.activeElement
+    add(focus instanceof Node ? focus : null)
+    if (viewport) for (const element of readSelectionElements(viewport, "[data-display-row]")) add(element)
     setRetained([...indices])
   }
   onMount(() => {
@@ -1171,7 +1241,10 @@ function ConversationActivityBody(
         return anchor
       }}
       restoreAnchor={restoreAnchor}
-      onWidthChange={layout.resize}
+      onWidthChange={(value) => {
+        layout.resize(value)
+        setWidth(value)
+      }}
       onBeforeLayoutChange={(event) => input.context.autoScroll?.handleInteraction(event)}
       active={input.row().activity?.active ?? false}
       following={!input.context.scrolledUp()}
@@ -1188,13 +1261,14 @@ function ConversationActivityBody(
         viewport = element
       }}
     >
-      <Show when={scroll()}>
+      <Show when={scroll() && width() > 0}>
         <Virtualizer
           as={VirtualRoot}
           ref={layout.ref}
           data={keys()}
           scrollRef={scroll()}
           overscan={2}
+          itemSize={estimatedSize()}
           keepMounted={retained()}
           cache={layout.restore()}
         >

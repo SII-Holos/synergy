@@ -1,6 +1,7 @@
 import { attachmentPurpose, type AttachmentPresentation } from "@ericsanchezok/synergy-util/attachment-presentation"
 export type { AttachmentPresentation } from "@ericsanchezok/synergy-util/attachment-presentation"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import type { ImagePreviewImage } from "./image-preview-model"
 export interface AttachmentFile {
   id?: string
@@ -15,6 +16,31 @@ export interface AttachmentFile {
   presentation?: AttachmentPresentation
   metadata?: Record<string, unknown>
   source?: unknown
+}
+
+export function attachmentReferenceContext(
+  file: AttachmentFile,
+  fallback?: ResourceReference.Context,
+): ResourceReference.Context {
+  const source = file.source
+  const workspace = ResourceReference.Workspace.safeParse(
+    source && typeof source === "object" && "workspace" in source ? source.workspace : undefined,
+  )
+  return workspace.success
+    ? { state: "bound", workspace: workspace.data, directory: "" }
+    : (fallback ?? { state: "unresolved" })
+}
+
+export function attachmentDocumentContext(
+  file: AttachmentFile,
+  fallback?: ResourceReference.Context,
+): ResourceReference.Context {
+  const context = attachmentReferenceContext(file, fallback)
+  const source = attachmentSourcePath(file)
+  if (!source || context.state !== "bound") return context
+  const path = ResourceReference.resolvePath(source, context)
+  if (path === undefined) return { state: "unresolved" }
+  return { ...context, directory: path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "" }
 }
 
 export type AttachmentRenderer = "image" | "video" | "audio" | "thumbnail" | "file"
@@ -32,6 +58,25 @@ export interface ResolvedAttachmentPresentation {
 export function attachmentFromReference(reference: string, filename?: string): AttachmentFile | undefined {
   const asset = AssetReference.parse(reference)
   return asset ? { url: asset.url, mime: asset.mime, filename: filename || asset.id } : undefined
+}
+
+export function attachmentCopyReference(
+  file: AttachmentFile,
+  location?: ResourceReference.Location,
+): string | undefined {
+  const url =
+    file.url || (file.assetId && AssetReference.isValidId(file.assetId) ? `asset://${file.assetId}` : undefined)
+  if (url) return ResourceReference.format(ResourceReference.parse(url), location) || undefined
+  const path = attachmentSourcePath(file)
+  if (!path) return
+  const source = file.source
+  const position = ResourceReference.Location.safeParse(
+    source && typeof source === "object" && "location" in source ? source.location : undefined,
+  )
+  return ResourceReference.format(
+    { kind: "workspace-file", path },
+    location ?? (position.success ? position.data : undefined),
+  )
 }
 
 export function joinServerUrl(serverUrl: string, pathname: string): string {
@@ -167,6 +212,7 @@ export function resolveImagePreviewImage(
     downloadUrl: src,
     externalUrl: src,
     sourcePath: attachmentSourcePath(file),
+    referenceContext: attachmentReferenceContext(file).state === "bound" ? attachmentReferenceContext(file) : undefined,
   }
 }
 
@@ -181,11 +227,12 @@ export function resolveAttachmentOpenTarget(file: AttachmentFile): AttachmentOpe
 }
 
 export function attachmentSourcePath(file: AttachmentFile): string | undefined {
-  if (file.localPath) return file.localPath
   const source = file.source as { type?: unknown; path?: unknown } | undefined
-  if (source?.type === "file" && typeof source.path === "string" && source.path) return source.path
+  if ((source?.type === "file" || source?.type === "symbol") && typeof source.path === "string" && source.path)
+    return source.path
   const attachment = file.metadata?.attachment as Record<string, unknown> | undefined
-  return typeof attachment?.sourcePath === "string" && attachment.sourcePath ? attachment.sourcePath : undefined
+  if (typeof attachment?.sourcePath === "string" && attachment.sourcePath) return attachment.sourcePath
+  return !file.url?.startsWith("asset://") && !file.assetId ? file.localPath : undefined
 }
 
 export function isPdfAttachment(file: AttachmentFile): boolean {

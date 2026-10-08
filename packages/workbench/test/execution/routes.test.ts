@@ -45,6 +45,9 @@ test("task summaries expose persisted origin and delegation controls without cha
         visibility: cortex.visibility,
       })
       expect(summary.accounting.tokens.total.known).toBe(520)
+      expect(summary.latency.request).toMatchObject({ samples: 0, excluded: 1, meanMs: null })
+      expect(summary.outcomes).toMatchObject({ completed: 1, retries: 0 })
+      expect(summary.tools).toEqual([])
     }),
   ))
 

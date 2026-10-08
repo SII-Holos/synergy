@@ -1,4 +1,5 @@
-import { createSignal, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createSignal, onCleanup, Show } from "solid-js"
+import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -13,7 +14,11 @@ const PDF_FIT_WIDTH_RESIZE_DEBOUNCE_MS = 100
 type PdfViewerModule = typeof import("pdfjs-dist/web/pdf_viewer.mjs")
 type PdfViewerInstance = InstanceType<PdfViewerModule["PDFViewer"]>
 
-export function AttachmentPdfPreview(props: { bytes: Uint8Array }) {
+export function AttachmentPdfPreview(props: {
+  bytes: Uint8Array
+  location?: ResourceReference.Location
+  navigation?: number
+}) {
   const lingui = useLingui()
   const [pageNumber, setPageNumber] = createSignal(1)
   const [pageCount, setPageCount] = createSignal(0)
@@ -23,16 +28,28 @@ export function AttachmentPdfPreview(props: { bytes: Uint8Array }) {
   let stage!: HTMLDivElement
   let container!: HTMLDivElement
   let viewerElement!: HTMLDivElement
-  let disposed = false
-  let loadingTask: import("pdfjs-dist").PDFDocumentLoadingTask | undefined
   let viewer: PdfViewerInstance | undefined
-  let abortController: AbortController | undefined
-  let resizeObserver: ResizeObserver | undefined
-  let resizeTimer: ReturnType<typeof setTimeout> | undefined
 
-  onMount(() => {
-    abortController = new AbortController()
+  createEffect(() => {
+    props.navigation
+    const count = pageCount()
+    const location = props.location
+    if (count && viewer && location?.kind === "page")
+      viewer.scrollPageIntoView({ pageNumber: Math.min(count, location.page) })
+  })
+
+  createEffect(() => {
+    const bytes = props.bytes
+    let disposed = false
+    let loadingTask: import("pdfjs-dist").PDFDocumentLoadingTask | undefined
+    let resizeObserver: ResizeObserver | undefined
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined
+    const abortController = new AbortController()
     const signal = abortController.signal
+    viewerElement.replaceChildren()
+    setPageCount(0)
+    setPageNumber(1)
+    setError(undefined)
 
     void (async () => {
       try {
@@ -99,7 +116,7 @@ export function AttachmentPdfPreview(props: { bytes: Uint8Array }) {
         })
         resizeObserver.observe(container)
 
-        loadingTask = pdfjs.getDocument({ data: props.bytes.slice() })
+        loadingTask = pdfjs.getDocument({ data: bytes.slice() })
         const documentProxy = await loadingTask.promise
         if (disposed) return
         viewer.setDocument(documentProxy)
@@ -109,14 +126,14 @@ export function AttachmentPdfPreview(props: { bytes: Uint8Array }) {
         setError(cause instanceof Error ? cause.message : String(cause))
       }
     })()
-  })
-
-  onCleanup(() => {
-    disposed = true
-    clearTimeout(resizeTimer)
-    resizeObserver?.disconnect()
-    abortController?.abort()
-    void loadingTask?.destroy()
+    onCleanup(() => {
+      disposed = true
+      clearTimeout(resizeTimer)
+      resizeObserver?.disconnect()
+      abortController.abort()
+      void loadingTask?.destroy()
+      viewer = undefined
+    })
   })
 
   const zoom = (direction: "in" | "out") => {
@@ -183,6 +200,14 @@ export function AttachmentPdfPreview(props: { bytes: Uint8Array }) {
           <Icon name={getSemanticIcon("action.zoomIn")} size="small" />
         </button>
       </div>
+      <Show when={pageCount() > 0 && props.location?.kind === "page" && props.location.page > pageCount()}>
+        <div class="attachment-workbench-error" role="status">
+          {lingui._({
+            id: "app.reference.pageUnavailable",
+            message: "The requested page is outside this document. Showing the last page.",
+          })}
+        </div>
+      </Show>
       <div ref={stage} class="attachment-pdf-stage">
         <div ref={container} class="attachment-pdf-viewer-container" data-hidden={error() ? "true" : undefined}>
           <div ref={viewerElement} class="pdfViewer" />

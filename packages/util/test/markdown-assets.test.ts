@@ -5,6 +5,7 @@ const image = "asset://0123456789abcdef.png"
 const document = "asset://fedcba9876543210.docx"
 
 test("collects only rendered managed Markdown references", () => {
+  expect(markdownAssetReferences(`[page](${document}#page=2)`)).toEqual([document])
   expect(markdownAssetReferences(`![chart](${image})\n[Word][report]\n\n[report]: ${document}`)).toEqual([
     image,
     document,

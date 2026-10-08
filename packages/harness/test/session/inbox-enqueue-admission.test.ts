@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionInbox } from "../../src/session/inbox"
@@ -34,6 +35,31 @@ function enqueueTask(sessionID: string) {
 }
 
 describe("session inbox enqueue admission", () => {
+  test("queued references use the target Session workspace instead of the caller's Scope", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const session = await ScopeContext.provide({ scope: await tmp.scope(), fn: () => Session.create({}) })
+      expect(session.workspace).not.toBeNull()
+      await using caller = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await caller.scope(),
+        fn: async () => {
+          const queued = await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            parts: [{ type: "text", text: "See src/app.ts" }],
+          })
+          expect(queued.message?.referenceContext).toEqual(ResourceReference.capture(session.workspace))
+          const delivered = await SessionInbox.deliver({
+            sessionID: session.id,
+            mode: "steer",
+            message: { role: "user", parts: [{ type: "text", text: "Another reference" }] },
+          })
+          expect((await SessionInbox.get(session.id, delivered.itemID)).message?.referenceContext).toEqual(
+            ResourceReference.capture(session.workspace),
+          )
+        },
+      })
+    }))
   test("passive inputs remain discoverable for recovery without requesting a model reply", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

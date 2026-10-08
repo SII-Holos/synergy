@@ -156,8 +156,44 @@ if (scenario) {
     )
   if (scenario === "mixed") faults.set("progress-2", "denied")
 }
+if (scenario === "cold-process") {
+  setData("part", "more", [
+    part("more", "cold-prose", "text", "Pending process prose."),
+    ...Array.from({ length: 80 }, (_, index) => part("more", `cold-${index}`, "tool")),
+  ])
+  setData("part", "final", [part("final", "answer", "text", "Final answer stays mounted.")])
+  setData("message", "session", [root, more, { ...final, time: { created: 2, completed: 10 } }])
+  setStatus("completed")
+  for (const item of data.part.more) faults.set(item.id, "pending")
+}
+if (scenario === "cold-user") {
+  setData(
+    "part",
+    "root",
+    Array.from(
+      { length: 32 },
+      (_, index): Part => ({
+        id: `file-${index}`,
+        sessionID: "session",
+        messageID: "root",
+        type: "attachment",
+        mime: "text/plain",
+        filename: `Document ${index}.txt`,
+        url: `https://example.com/document-${index}.txt`,
+      }),
+    ),
+  )
+  setData("part", "final", [part("final", "answer", "text", "Final answer stays mounted.")])
+  setData("message", "session", [root, { ...final, time: { created: 2, completed: 10 } }])
+  setStatus("completed")
+  for (const item of data.part.root) faults.set(item.id, "pending")
+}
 const canonicalParts =
-  scenario === "late-reconnect" ? new Map(Object.entries(data.part).map(([id, parts]) => [id, [...parts]])) : undefined
+  scenario === "late-reconnect" || scenario === "cold-process" || scenario === "cold-user"
+    ? new Map(Object.entries(data.part).map(([id, parts]) => [id, [...parts]]))
+    : undefined
+if (scenario === "cold-process") setData("part", "more", [])
+if (scenario === "cold-user") setData("part", "root", [])
 const scrolling = new URL(location.href).searchParams.has("scrolling")
 let summaryReads = 0
 const summaries = createMemo(() =>
@@ -178,12 +214,13 @@ let finishPage: (() => void) | undefined
 let pageRefresh: Promise<void> | undefined
 let finishPageRefresh: (() => void) | undefined
 let pageLoads = 0
-const pageReady = canonicalParts
-  ? new Promise<void>((resolve) => {
-      finishPage = resolve
-      setHasPage(false)
-    })
-  : Promise.resolve()
+const pageReady =
+  scenario === "late-reconnect"
+    ? new Promise<void>((resolve) => {
+        finishPage = resolve
+        setHasPage(false)
+      })
+    : Promise.resolve()
 const client = createSynergyClient({
   baseUrl: "http://fixture.local",
   fetch: Object.assign(
@@ -545,7 +582,7 @@ window.__conversationProcess = {
   },
   contentFinish(id) {
     faults.delete(id)
-    const body = Object.values(data.part)
+    const body = (canonicalParts ? [...canonicalParts.values()] : Object.values(data.part))
       .flat()
       .find((item) => item.id === id)!
     completions.get(id)?.(Response.json({ part: body, version: versions[id] ?? "v1" }))
@@ -586,10 +623,7 @@ const resource = {
     window.__processSelection = target
     return true
   },
-  open: () => false,
-  openAttachment: () => false,
-  resolveWorkspacePath: (v: string) => v,
-  openWorkspaceSource: () => false,
+  open: async () => ({ status: "cancelled" as const }),
 }
 function Scroller(props: ParentProps) {
   const autoScroll = scrolling

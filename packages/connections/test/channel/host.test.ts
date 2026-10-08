@@ -1,4 +1,5 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { describe, expect, test } from "bun:test"
 import { ChannelHost } from "../../src/channel/host"
 import { ManagedProjectOwnership } from "../../src/channel/managed-project-ownership"
@@ -176,7 +177,12 @@ describe("ChannelHost", () => {
         controlProfile: "autonomous",
         interaction: { mode: "unattended", source: `channel:${host.channelType}` },
       })
-      expect(await SessionInbox.list(first.sessionID)).toHaveLength(2)
+      const inbox = await SessionInbox.list(first.sessionID)
+      expect(inbox).toHaveLength(2)
+      expect(inbox.map((item) => item.message?.referenceContext)).toEqual([
+        ResourceReference.capture(session.workspace),
+        ResourceReference.capture(session.workspace),
+      ])
     }))
 
   test("dispatches separate hidden system guidance into the task Session", () =>

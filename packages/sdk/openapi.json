@@ -60036,6 +60036,342 @@
             },
             "required": ["ratio", "observedRatio", "read", "input", "samples", "excluded"]
           },
+          "latency": {
+            "type": "object",
+            "properties": {
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              },
+              "firstByte": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              },
+              "ttft": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              },
+              "request": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              },
+              "generation": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["headers", "firstByte", "ttft", "request", "generation"]
+          },
+          "outcomes": {
+            "type": "object",
+            "properties": {
+              "completed": {
+                "type": "number"
+              },
+              "failed": {
+                "type": "number"
+              },
+              "cancelled": {
+                "type": "number"
+              },
+              "interrupted": {
+                "type": "number"
+              },
+              "running": {
+                "type": "number"
+              },
+              "retries": {
+                "type": "number"
+              },
+              "transportRetries": {
+                "type": "number"
+              },
+              "logicalRetries": {
+                "type": "number"
+              },
+              "rootTasks": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "running",
+              "retries",
+              "transportRetries",
+              "logicalRetries",
+              "rootTasks"
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool": {
+                  "type": "string"
+                },
+                "calls": {
+                  "type": "number"
+                },
+                "completed": {
+                  "type": "number"
+                },
+                "failed": {
+                  "type": "number"
+                },
+                "cancelled": {
+                  "type": "number"
+                },
+                "interrupted": {
+                  "type": "number"
+                },
+                "running": {
+                  "type": "number"
+                },
+                "durationMs": {
+                  "type": "number"
+                },
+                "timedSamples": {
+                  "type": "number"
+                },
+                "averageMs": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "tool",
+                "calls",
+                "completed",
+                "failed",
+                "cancelled",
+                "interrupted",
+                "running",
+                "durationMs",
+                "timedSamples",
+                "averageMs"
+              ]
+            }
+          },
           "context": {
             "anyOf": [
               {
@@ -60435,6 +60771,9 @@
           "descendants",
           "rates",
           "cache",
+          "latency",
+          "outcomes",
+          "tools",
           "context",
           "contextDistribution",
           "tasks",
@@ -61126,6 +61465,86 @@
           },
           "path": {
             "type": "string"
+          },
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "generation": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              "root": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "generation", "root"]
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "text"
+                  },
+                  "line": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  },
+                  "column": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  },
+                  "endLine": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  },
+                  "endColumn": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  }
+                },
+                "required": ["kind", "line"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "heading"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "id"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "page"
+                  },
+                  "page": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  }
+                },
+                "required": ["kind", "page"]
+              }
+            ]
           }
         },
         "required": ["text", "type", "path"]
@@ -61172,6 +61591,24 @@
           },
           "path": {
             "type": "string"
+          },
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "generation": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              "root": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "generation", "root"]
           },
           "range": {
             "$ref": "#/components/schemas/Range"
@@ -65073,6 +65510,61 @@
                 "type": "string",
                 "enum": ["user", "assistant"]
               },
+              "referenceContext": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "bound"
+                      },
+                      "workspace": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "generation": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          "root": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["id", "generation", "root"]
+                      },
+                      "directory": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["state", "workspace", "directory"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "none"
+                      }
+                    },
+                    "required": ["state"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "unresolved"
+                      }
+                    },
+                    "required": ["state"]
+                  }
+                ]
+              },
               "parts": {
                 "type": "array",
                 "items": {
@@ -65881,6 +66373,61 @@
           "rootID": {
             "type": "string"
           },
+          "referenceContext": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "bound"
+                  },
+                  "workspace": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "generation": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 2147483647
+                      },
+                      "root": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id", "generation", "root"]
+                  },
+                  "directory": {
+                    "type": "string"
+                  }
+                },
+                "required": ["state", "workspace", "directory"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "none"
+                  }
+                },
+                "required": ["state"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "unresolved"
+                  }
+                },
+                "required": ["state"]
+              }
+            ]
+          },
           "role": {
             "type": "string",
             "const": "user"
@@ -66291,6 +66838,61 @@
           },
           "rootID": {
             "type": "string"
+          },
+          "referenceContext": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "bound"
+                  },
+                  "workspace": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "generation": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 2147483647
+                      },
+                      "root": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id", "generation", "root"]
+                  },
+                  "directory": {
+                    "type": "string"
+                  }
+                },
+                "required": ["state", "workspace", "directory"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "none"
+                  }
+                },
+                "required": ["state"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "unresolved"
+                  }
+                },
+                "required": ["state"]
+              }
+            ]
           },
           "modelSelection": {
             "$ref": "#/components/schemas/SessionRequestModelSelection"

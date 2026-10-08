@@ -96,11 +96,10 @@ test("user Markdown opens authoritative references and image resources without f
   const { root } = mount(() =>
     createComponent(ResourceOpenProvider, {
       value: {
-        open: (value) => {
+        open: async (value) => {
           opened.push(value)
-          return true
+          return { status: "opened" }
         },
-        openAttachment: () => false,
       },
       get children() {
         return createComponent(UserMarkdown, {

@@ -94,6 +94,8 @@ beforeAll(async () => {
     }})
     export const useParams=()=>({get id(){return session()},get dir(){return scope()+server()}})
     export const useFile=()=>({normalize:value=>value})
+    export const useProjectFiles=()=>({open:async()=>undefined})
+    export const usePlatform=()=>({platform:"web",openLink(){}})
     export const useSync=()=>({data:{session:[],message:{},part:{}}})
     export const useSessionTransition=()=>({get:()=>undefined}),draftTransitionKey=(server,scope)=>JSON.stringify([server,scope])
     export const usePluginHost=()=>({resources:{register:()=>()=>{}}})
@@ -137,6 +139,7 @@ beforeAll(async () => {
       alias: [
         { find: "lucide-solid", replacement: resolveUI.resolve("lucide-solid") },
         { find: "./browser-catalog", replacement: bridge },
+        { find: "./platform", replacement: bridge },
         ...[
           "@/context/sdk",
           "@/context/file",

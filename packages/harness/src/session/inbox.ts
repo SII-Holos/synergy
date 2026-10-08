@@ -1,3 +1,4 @@
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import z from "zod"
 import { ModelSelection } from "./model-selection-schema"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -88,6 +89,7 @@ export namespace SessionInbox {
       message: z
         .object({
           role: z.enum(["user", "assistant"]).default("user"),
+          referenceContext: ResourceReference.Context.optional(),
           parts: z.array(PayloadPart),
           agent: z.string().optional(),
           model: z
@@ -489,7 +491,10 @@ export namespace SessionInbox {
     return `inb_${hash}`
   }
 
-  function deliveryItem(input: z.infer<typeof Deliver.Input>, ids: { itemID: string; messageID: string }): StoredItem {
+  async function deliveryItem(
+    input: z.infer<typeof Deliver.Input>,
+    ids: { itemID: string; messageID: string },
+  ): Promise<StoredItem> {
     const summarized = summarizeParts(input.message.parts)
     const mode = input.mode
     const origin =
@@ -507,6 +512,7 @@ export namespace SessionInbox {
       deliveryKey: input.deliveryKey,
       mode,
       message: {
+        referenceContext: ResourceReference.capture((await Session.get(input.sessionID)).workspace),
         parts: input.message.parts as any,
         role: input.message.role,
         agent: input.message.agent,
@@ -542,7 +548,7 @@ export namespace SessionInbox {
       itemID: Identifier.ascending("inbox"),
       messageID: Identifier.ascending("message"),
     }
-    const item = deliveryItem(input, ids)
+    const item = await deliveryItem(input, ids)
     if (input.message.role === "assistant") {
       await materializeItem(item, await latestRootID(input.sessionID))
       return { ...ids, created: true }
@@ -590,7 +596,7 @@ export namespace SessionInbox {
     const ids = { itemID, messageID: Identifier.ascending("message") }
     const message = await input.prepareMessage(ids.messageID)
     await persistItem(
-      deliveryItem(
+      await deliveryItem(
         {
           sessionID: input.sessionID,
           deliveryKey: input.deliveryKey,
@@ -661,6 +667,7 @@ export namespace SessionInbox {
       mode,
       message: {
         role: "user",
+        referenceContext: ResourceReference.capture((await Session.get(input.sessionID)).workspace),
         parts: input.parts as any,
         agent: input.agent,
         model: input.model,
@@ -1091,6 +1098,7 @@ export namespace SessionInbox {
         return createUserMessage(
           {
             ...item.input,
+            referenceContext: item.message?.referenceContext ?? { state: "unresolved" },
             sessionID: item.sessionID,
             messageID,
             noReply: item.mode === "task" ? item.input.noReply : true,
@@ -1143,6 +1151,7 @@ export namespace SessionInbox {
       const info: MessageV2.User = {
         id: messageID,
         role: "user",
+        referenceContext: payload.referenceContext ?? { state: "unresolved" },
         sessionID: item.sessionID,
         time: { created: Date.now() },
         agent: runtime.agent.name,
@@ -1174,6 +1183,7 @@ export namespace SessionInbox {
     const info: MessageV2.Assistant = {
       id: messageID,
       role: "assistant",
+      referenceContext: payload.referenceContext ?? { state: "unresolved" },
       sessionID: item.sessionID,
       parentID: rootID ?? messageID,
       rootID: rootID ?? messageID,

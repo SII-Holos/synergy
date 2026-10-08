@@ -1,23 +1,51 @@
-import { createEffect, createSignal, onCleanup, untrack } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, untrack } from "solid-js"
+
+type Preparation = { read(): void; release(): void; measure(): void; play(): void }
+const preparations = new Set<Preparation>()
+let scheduled = false
+function prepare(work: Preparation) {
+  preparations.add(work)
+  if (scheduled) return
+  scheduled = true
+  queueMicrotask(() => {
+    scheduled = false
+    const work = [...preparations]
+    preparations.clear()
+    for (const item of work) item.read()
+    for (const item of work) item.release()
+    for (const item of work) item.measure()
+    for (const item of work) item.play()
+  })
+}
 
 export function createDisclosureMotion(
   element: HTMLElement,
   content = false,
   onHidden?: () => void,
-  resize = true,
+  resize: boolean | (() => boolean) = true,
   onSettled?: () => void,
 ) {
   const window = element.ownerDocument.defaultView
   const reduced = window?.matchMedia?.("(prefers-reduced-motion: reduce)")
   let animation: Animation | undefined
+  let animationTarget: boolean | undefined
   let visible: boolean | undefined
+  let pending: Preparation | undefined
+  let pendingFrom: boolean | undefined
+  let disposed = false
+  const cancelPreparation = () => {
+    if (pending) preparations.delete(pending)
+    pending = undefined
+  }
   const cancel = () => {
     if (!animation) return
     animation.onfinish = null
     animation.cancel()
     animation = undefined
+    animationTarget = undefined
   }
   const settle = () => {
+    cancelPreparation()
     cancel()
     element.hidden = !visible
     element.inert = !visible
@@ -33,20 +61,27 @@ export function createDisclosureMotion(
 
   return {
     setVisible(next: boolean, animate = false, appear = false) {
+      if (disposed) return
       if (next === visible) {
         if (!animate || reduced?.matches) settle()
         return
       }
       const initial = visible === undefined
+      const from = pending ? pendingFrom : initial ? false : visible
+      if (pending && !animation && next === from) {
+        visible = next
+        settle()
+        return
+      }
       const animated =
         animate &&
         !reduced?.matches &&
         typeof element.animate === "function" &&
         (!initial || (next && appear)) &&
         !(content && next && !appear)
-      const resizing = resize && !(next && content)
-      const height = resizing && animated && !element.hidden ? element.getBoundingClientRect().height : 0
-      cancel()
+      const resizing = (typeof resize === "function" ? resize() : resize) && !(next && content)
+      const hidden = element.hidden
+      cancelPreparation()
       visible = next
       element.inert = !next
       if (next) element.removeAttribute("aria-hidden")
@@ -56,32 +91,67 @@ export function createDisclosureMotion(
         return
       }
       element.hidden = false
-      const style = window?.getComputedStyle(element)
-      const role = next ? "base" : "slow"
-      const duration = style?.getPropertyValue(`--motion-duration-${role}`).trim() ?? ""
-      const milliseconds = duration ? parseFloat(duration) * (duration.endsWith("ms") ? 1 : 1000) : next ? 180 : 240
-      const easing = style?.getPropertyValue("--motion-ease-standard").trim() || "cubic-bezier(0.2, 0, 0, 1)"
-      const frames: Keyframe[] =
-        next && content
-          ? [{ opacity: 0.65 }, { opacity: 1 }]
-          : !resizing
-            ? [
-                { opacity: next ? 0.65 : 1, transform: next ? "translateY(2px)" : "translateY(0)" },
-                { opacity: next ? 1 : 0, transform: "translateY(0)" },
-              ]
-            : [
-                { height: `${initial ? 0 : height}px`, opacity: next ? 0.65 : 1 },
-                { height: `${next ? element.getBoundingClientRect().height : 0}px`, opacity: next ? 1 : 0 },
-              ]
-      element.setAttribute("data-motion-changing", "")
-      if (!next) element.setAttribute("data-motion-exiting", "")
-      const current = element.animate(frames, { duration: milliseconds, easing, fill: "both" })
-      animation = current
-      current.onfinish = () => {
-        if (animation === current) settle()
+      if (animation && animationTarget === next) {
+        if (animation.playState === "finished") settle()
+        return
       }
+      let height = 0,
+        target = 0,
+        opacity: string | number = next ? 0.65 : 1,
+        transform = next ? "translateY(2px)" : "translateY(0)",
+        milliseconds = next ? 180 : 240,
+        easing = "cubic-bezier(0.2, 0, 0, 1)"
+      const work: Preparation = {
+        read() {
+          if (pending !== work) return
+          if (resizing && !hidden) height = element.getBoundingClientRect().height
+          const style = window?.getComputedStyle(element)
+          if (animation) {
+            opacity = style?.opacity ?? opacity
+            transform = style?.transform ?? transform
+          }
+          const duration = style?.getPropertyValue(`--motion-duration-${next ? "base" : "slow"}`).trim()
+          if (duration) milliseconds = parseFloat(duration) * (duration.endsWith("ms") ? 1 : 1000)
+          easing = style?.getPropertyValue("--motion-ease-standard").trim() || easing
+        },
+        release() {
+          if (pending === work) cancel()
+        },
+        measure() {
+          if (pending === work && next && resizing) target = element.getBoundingClientRect().height
+        },
+        play() {
+          if (pending !== work) return
+          pending = undefined
+          const frames: Keyframe[] =
+            next && content
+              ? [{ opacity }, { opacity: 1 }]
+              : !resizing
+                ? [
+                    { opacity, transform },
+                    { opacity: next ? 1 : 0, transform: "translateY(0)" },
+                  ]
+                : [
+                    { height: `${initial ? 0 : height}px`, minHeight: "0px", opacity },
+                    { height: `${target}px`, minHeight: "0px", opacity: next ? 1 : 0 },
+                  ]
+          element.setAttribute("data-motion-changing", "")
+          if (!next) element.setAttribute("data-motion-exiting", "")
+          const current = element.animate(frames, { duration: milliseconds, easing, fill: "both" })
+          animation = current
+          animationTarget = next
+          current.onfinish = () => {
+            if (animation === current && !pending) settle()
+          }
+        },
+      }
+      pending = work
+      pendingFrom = from
+      prepare(work)
     },
     dispose() {
+      disposed = true
+      cancelPreparation()
       cancel()
       reduced?.removeEventListener?.("change", changedPreference)
       element.removeAttribute("data-motion-changing")
@@ -95,20 +165,27 @@ export function createDisclosureMotionRef(options: {
   animate: () => boolean
   appear?: () => boolean
   content?: boolean
-  resize?: boolean
+  resize?: boolean | (() => boolean)
   onHidden?: () => void
   onSettled?: () => void
 }) {
   const [element, setElement] = createSignal<HTMLElement>()
+  const visible = createMemo(options.visible)
   createEffect(() => {
     const target = element()
     if (!target) return
     const motion = createDisclosureMotion(target, options.content, options.onHidden, options.resize, options.onSettled)
-    createEffect(() => motion.setVisible(options.visible(), options.animate(), options.appear?.()))
+    createEffect(() => {
+      const next = visible()
+      untrack(() => motion.setVisible(next, options.animate(), options.appear?.()))
+    })
     onCleanup(() => motion.dispose())
   })
-  return (element: HTMLElement) => {
-    element.hidden = !untrack(options.visible)
-    setElement(element)
+  return (target: HTMLElement) => {
+    target.hidden = !untrack(visible)
+    setElement(target)
+    onCleanup(() => {
+      if (untrack(element) === target) setElement(undefined)
+    })
   }
 }
