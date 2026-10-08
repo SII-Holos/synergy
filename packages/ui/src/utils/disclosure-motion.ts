@@ -1,10 +1,10 @@
-import { createEffect, createSignal, onCleanup, untrack } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, untrack } from "solid-js"
 
 export function createDisclosureMotion(
   element: HTMLElement,
   content = false,
   onHidden?: () => void,
-  resize = true,
+  resize: boolean | (() => boolean) = true,
   onSettled?: () => void,
 ) {
   const window = element.ownerDocument.defaultView
@@ -44,8 +44,11 @@ export function createDisclosureMotion(
         typeof element.animate === "function" &&
         (!initial || (next && appear)) &&
         !(content && next && !appear)
-      const resizing = resize && !(next && content)
+      const resizing = (typeof resize === "function" ? resize() : resize) && !(next && content)
       const height = resizing && animated && !element.hidden ? element.getBoundingClientRect().height : 0
+      const painted = animation && animated ? window?.getComputedStyle(element) : undefined
+      const opacity = painted?.opacity ?? (next ? 0.65 : 1)
+      const transform = painted?.transform ?? (next ? "translateY(2px)" : "translateY(0)")
       cancel()
       visible = next
       element.inert = !next
@@ -63,15 +66,19 @@ export function createDisclosureMotion(
       const easing = style?.getPropertyValue("--motion-ease-standard").trim() || "cubic-bezier(0.2, 0, 0, 1)"
       const frames: Keyframe[] =
         next && content
-          ? [{ opacity: 0.65 }, { opacity: 1 }]
+          ? [{ opacity }, { opacity: 1 }]
           : !resizing
             ? [
-                { opacity: next ? 0.65 : 1, transform: next ? "translateY(2px)" : "translateY(0)" },
+                { opacity, transform },
                 { opacity: next ? 1 : 0, transform: "translateY(0)" },
               ]
             : [
-                { height: `${initial ? 0 : height}px`, opacity: next ? 0.65 : 1 },
-                { height: `${next ? element.getBoundingClientRect().height : 0}px`, opacity: next ? 1 : 0 },
+                { height: `${initial ? 0 : height}px`, minHeight: "0px", opacity },
+                {
+                  height: `${next ? element.getBoundingClientRect().height : 0}px`,
+                  minHeight: "0px",
+                  opacity: next ? 1 : 0,
+                },
               ]
       element.setAttribute("data-motion-changing", "")
       if (!next) element.setAttribute("data-motion-exiting", "")
@@ -95,20 +102,27 @@ export function createDisclosureMotionRef(options: {
   animate: () => boolean
   appear?: () => boolean
   content?: boolean
-  resize?: boolean
+  resize?: boolean | (() => boolean)
   onHidden?: () => void
   onSettled?: () => void
 }) {
   const [element, setElement] = createSignal<HTMLElement>()
+  const visible = createMemo(options.visible)
   createEffect(() => {
     const target = element()
     if (!target) return
     const motion = createDisclosureMotion(target, options.content, options.onHidden, options.resize, options.onSettled)
-    createEffect(() => motion.setVisible(options.visible(), options.animate(), options.appear?.()))
+    createEffect(() => {
+      const next = visible()
+      untrack(() => motion.setVisible(next, options.animate(), options.appear?.()))
+    })
     onCleanup(() => motion.dispose())
   })
-  return (element: HTMLElement) => {
-    element.hidden = !untrack(options.visible)
-    setElement(element)
+  return (target: HTMLElement) => {
+    target.hidden = !untrack(visible)
+    setElement(target)
+    onCleanup(() => {
+      if (untrack(element) === target) setElement(undefined)
+    })
   }
 }

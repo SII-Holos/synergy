@@ -138,6 +138,17 @@ test("reopening interrupts collection and a stale finish cannot hide the selecte
   dom.window.close()
 })
 
+test("reversing an active disclosure begins at its painted opacity", () => {
+  const { dom, element, animations, motion } = fixture()
+  motion.setVisible(true)
+  motion.setVisible(false, true)
+  element.style.opacity = "0.42"
+  motion.setVisible(true, true)
+  expect(Number(animations.at(-1)!.frames[0].opacity)).toBeCloseTo(0.42)
+  motion.dispose()
+  dom.window.close()
+})
+
 test("reduced motion and detached reading settle without space animations", () => {
   for (const reduced of [true, false]) {
     const { dom, element, animations, motion } = fixture(reduced)

@@ -20,7 +20,7 @@ import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { useExecution } from "@/context/execution"
-import { buildConversationRows, type ConversationRow } from "./conversation-rows"
+import { buildConversationRows, estimateConversationRowSize, type ConversationRow } from "./conversation-rows"
 import { ToolExpansionProvider } from "@ericsanchezok/synergy-ui/tool-expansion"
 import {
   ProcessViewport,
@@ -109,6 +109,7 @@ export function VirtualConversationRows(
   const [outerReadingOwner, setOuterReadingOwner] = createSignal<string>()
   const [interactionRoots, setInteractionRoots] = createSignal<string[]>([])
   const [expanded, setExpanded] = createSignal<ReadonlyMap<string, boolean>>(new Map())
+  let manualProcess: { rootID: string; opening: boolean } | undefined
   const activityView = {
     getExpanded: (key: string) => props.activityView?.getExpanded(key) ?? expanded().get(key),
     setExpanded: (key: string, value: boolean) => {
@@ -174,7 +175,10 @@ export function VirtualConversationRows(
   const [rows, setRows] = createSignal<ConversationRow[]>(requestedRows())
   createEffect(
     on(requestedRows, (next) => {
+      const manual = manualProcess?.rootID
+      const opening = manualProcess?.opening
       const current = untrack(rows)
+      const previous = new Map(current.map((row) => [row.key, row]))
       const nextKeys = new Set(next.map((row) => row.key))
       const mounted = new Set(
         [...(container?.querySelectorAll<HTMLElement>("[data-display-row]") ?? [])].map(
@@ -187,16 +191,38 @@ export function VirtualConversationRows(
           mounted.has(row.key) &&
           ((row.kind === "body" && row.processBody) || row.kind === "activity" || row.activity),
       )
-      const merged = [...next]
+      const entering = { kind: "enter" as const }
+      const merged = next.map((row) => {
+        const prior = previous.get(row.key)
+        const process = row.kind === "activity" || (row.kind === "body" && row.processBody)
+        if (opening && manual === row.root.id && process && (!prior || prior.exiting)) {
+          return { ...row, motion: entering }
+        }
+        return prior?.motion?.kind === "enter" && !prior.exiting ? { ...row, motion: prior.motion } : row
+      })
       for (const row of exits) {
         const following = current.slice(current.indexOf(row) + 1).find((item) => nextKeys.has(item.key))
         const index = following ? merged.findIndex((item) => item.key === following.key) : merged.length
-        merged.splice(index, 0, { ...row, exiting: true })
+        merged.splice(index, 0, {
+          ...row,
+          exiting: true,
+          motion: !opening && manual === row.root.id ? { kind: "exit" } : undefined,
+        })
       }
+      if (!opening || !next.some((row) => row.root.id === manual) || merged.some((row) => row.motion === entering))
+        manualProcess = undefined
       setRows(merged)
     }),
   )
   const finishExit = (key: string) => setRows((previous) => previous.filter((row) => row.key !== key || !row.exiting))
+  const releaseMotion = (motion: ConversationRow["motion"]) => {
+    if (motion?.kind !== "enter") return
+    setRows((previous) =>
+      previous.some((row) => row.motion === motion)
+        ? previous.map((row) => (row.motion === motion ? { ...row, motion: undefined } : row))
+        : previous,
+    )
+  }
   const rowLayout = createMemo<{ keys: string[]; shift: boolean }>((previous) => {
     const keys = rows().map((row) => row.key)
     if (previous && keys.length === previous.keys.length && keys.every((key, index) => key === previous.keys[index]))
@@ -469,6 +495,15 @@ export function VirtualConversationRows(
                     located={located()}
                     row={row}
                     onExit={finishExit}
+                    onMotionReleased={releaseMotion}
+                    onBeforeProcessDisclosure={(rootID, opening, event) => {
+                      props.autoScroll?.handleInteraction(event)
+                      if (
+                        event.currentTarget instanceof HTMLElement &&
+                        event.currentTarget.dataset.slot === "turn-process-trigger"
+                      )
+                        manualProcess = { rootID, opening }
+                    }}
                     activityView={activityView}
                     submissionFor={input.submissionFor}
                     takeUserArrival={input.takeUserArrival}
@@ -501,6 +536,8 @@ function ConversationDisplayRow(
     context: PluginConversationService
     row: () => ConversationRow
     onExit: (key: string) => void
+    onMotionReleased?: (motion: ConversationRow["motion"]) => void
+    onBeforeProcessDisclosure?: (rootID: string, opening: boolean, event: Event) => void
     activityView: NonNullable<PluginConversationService["activityView"]>
     onReading?: (key: string, reading: boolean) => void
     onReadingInteraction?: (key: string) => void
@@ -520,7 +557,7 @@ function ConversationDisplayRow(
     visible: () => !!row().activity?.open,
     animate: () => manualDisclosure,
     appear: () => manualDisclosure,
-    resize: false,
+    resize: true,
     onHidden: () => setActivityMounted(false),
     onSettled: () => {
       manualDisclosure = false
@@ -528,11 +565,15 @@ function ConversationDisplayRow(
   })
   const execution = useExecution()
   const { _ } = useLingui()
+  const entrance = untrack(() => (row().motion?.kind === "enter" ? row().motion : undefined))
+  onCleanup(() => input.onMotionReleased?.(row().motion))
   const exitMotion = createDisclosureMotionRef({
     visible: () => !row().exiting,
-    animate: () => !props.scrolledUp(),
-    resize: row().kind !== "activity",
+    animate: () => !!row().motion || !props.scrolledUp(),
+    appear: () => !!entrance && row().motion === entrance,
+    resize: () => !!row().motion || row().kind !== "activity",
     onHidden: () => input.onExit(row().key),
+    onSettled: () => input.onMotionReleased?.(row().motion),
   })
   const [loadFailure, setLoadFailure] = createSignal<{ error: unknown }>()
   const [partStates, setPartStates] = createStore<
@@ -543,21 +584,24 @@ function ConversationDisplayRow(
   onCleanup(() => input.onRowReady?.(readinessOwner, undefined))
   const [loading, setLoading] = createSignal(false)
   const [retry, setRetry] = createSignal(0)
-  createEffect(() => {
+  const ready = createMemo(() => {
     const current = row()
     const pageReady = !!content.page(current.message.id) || !!loadFailure()
-    const ready =
-      current.kind === "load"
-        ? pageReady
-        : current.kind !== "body" || current.event
-          ? true
-          : pageReady &&
-            current.parts.every((part) => {
-              const state = partStates[part.id]
-              return state && !state.pending
-            })
-    input.onRowReady?.(readinessOwner, !!ready)
+    return current.kind === "load"
+      ? pageReady
+      : current.kind !== "body" || current.event
+        ? true
+        : pageReady &&
+          current.parts.every((part) => {
+            const state = partStates[part.id]
+            return state && !state.pending
+          })
   })
+  const preparingProcess = createMemo(() => {
+    const current = row()
+    return current.kind === "body" && current.processBody && !ready()
+  })
+  createEffect(() => input.onRowReady?.(readinessOwner, !!ready()))
   let loadGeneration = 0
   let rowElement: HTMLDivElement | undefined
   let retryFocus: HTMLButtonElement | undefined
@@ -747,6 +791,10 @@ function ConversationDisplayRow(
       tabIndex={-1}
       data-display-row={row().key}
       data-row-kind={row().kind}
+      data-content-pending={preparingProcess() ? "" : undefined}
+      style={{
+        "min-height": preparingProcess() ? `${estimateConversationRowSize(row())}px` : undefined,
+      }}
       data-activity-block={row().activity?.key}
       data-process-body={segment().processBody ? "" : undefined}
       data-turn-root={row().root.id}
@@ -852,7 +900,11 @@ function ConversationDisplayRow(
                 }
                 fallback={
                   <SessionTurn
-                    onBeforeProcessLayoutChange={props.autoScroll?.handleInteraction}
+                    onBeforeProcessLayoutChange={(event) => {
+                      if (input.onBeforeProcessDisclosure)
+                        input.onBeforeProcessDisclosure(row().root.id, !row().process?.open, event)
+                      else props.autoScroll?.handleInteraction(event)
+                    }}
                     takeUserArrival={input.takeUserArrival}
                     sessionID={props.sessionID}
                     messageID={row().root.id}
@@ -1008,6 +1060,10 @@ function ConversationActivityBody(
   const [retained, setRetained] = createSignal<number[]>([])
   const entries = () => input.row().activity?.entries ?? []
   const keys = createMemo(() => entries().map((entry) => entry.key))
+  const estimatedSize = createMemo(() => {
+    const rows = entries()
+    return rows.length ? rows.reduce((total, row) => total + estimateConversationRowSize(row), 0) / rows.length : 28
+  })
   let virtualRoot: HTMLDivElement | undefined
   const VirtualRoot = (props: JSX.HTMLAttributes<HTMLDivElement>) => (
     <div
@@ -1195,6 +1251,7 @@ function ConversationActivityBody(
           data={keys()}
           scrollRef={scroll()}
           overscan={2}
+          itemSize={estimatedSize()}
           keepMounted={retained()}
           cache={layout.restore()}
         >
