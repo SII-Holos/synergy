@@ -178,7 +178,7 @@ test("migration refreshes materialized history across batches and records alread
         await Storage.transaction((tx) =>
           tx.writeMany(
             infos.map((value) => ({
-              key: StoragePath.messageInfo(scopeID, sessionID, value.id),
+              key: StoragePath.messageInfo(scopeID, sessionID, Identifier.asMessageID(value.id)),
               value,
             })),
           ),
@@ -187,7 +187,7 @@ test("migration refreshes materialized history across batches and records alread
         await SessionHistoryDisplay.prepare(scopeID, sessionID, async () => infos)
         await migrateReferenceContexts({ scopeID, sessionID }, () => {})
         const upgraded = await Storage.readMany<MessageV2.Info>(
-          infos.map((value) => StoragePath.messageInfo(scopeID, sessionID, value.id)),
+          infos.map((value) => StoragePath.messageInfo(scopeID, sessionID, Identifier.asMessageID(value.id))),
         )
         expect(upgraded.every((info) => info?.referenceContext?.state === "unresolved")).toBe(true)
         await SessionHistoryDisplay.prepare(scopeID, sessionID, async () => upgraded as MessageV2.Info[])
