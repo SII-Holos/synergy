@@ -155,10 +155,7 @@ export namespace RolloutLifecycle {
         break
       }
       if (!run) {
-        const message = await MessageV2.get({ sessionID, messageID: runID }).catch((error) => {
-          if (error instanceof Storage.NotFoundError) return
-          throw error
-        })
+        const message = (await SessionHistory.modelMessages({ sessionID })).find((message) => message.info.id === runID)
         if (message?.info.role === "user" && message.info.isRoot)
           run = await RolloutLedger.cancelUnopenedRun(identity, runID, message.info.time.created)
       }

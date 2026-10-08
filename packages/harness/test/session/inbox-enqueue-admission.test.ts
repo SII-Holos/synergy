@@ -8,6 +8,8 @@ import { RolloutLifecycle } from "../../src/session/rollout/lifecycle"
 import { Config } from "../../src/config/config"
 import { StorageBusyError } from "../../src/storage/errors"
 import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
+import { Identifier } from "../../src/id/id"
 import { Bus } from "../../src/bus"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -35,6 +37,52 @@ function enqueueTask(sessionID: string) {
 }
 
 describe("session inbox enqueue admission", () => {
+  for (const restored of [false, true])
+    test(`a historical input without a revision remains materializable after restoration=${restored}`, () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({})
+            if (restored) {
+              await enqueueTask(session.id)
+              await SessionInbox.materializeNextTask(session.id)
+            }
+            const item = await enqueueTask(session.id)
+            const { revision, ...historical } = await SessionInbox.getStored(session.id, item.id)
+            expect(revision).toBeGreaterThan(0)
+            if (restored) {
+              await SessionInbox.removeForRestore({ sessionID: session.id, itemID: item.id })
+              await Storage.update<{ item: Partial<SessionInbox.StoredItem> }>(
+                StoragePath.sessionInboxRemovedItem(
+                  Identifier.asScopeID(session.scope.id),
+                  Identifier.asSessionID(session.id),
+                  item.id,
+                ),
+                (draft) => {
+                  delete draft.item.revision
+                },
+              )
+              await SessionInbox.restore({ sessionID: session.id, itemID: item.id })
+              expect((await SessionInbox.getStored(session.id, item.id)).revision).toBe(1)
+            } else
+              await Storage.write(
+                StoragePath.sessionInboxItem(
+                  Identifier.asScopeID(session.scope.id),
+                  Identifier.asSessionID(session.id),
+                  item.id,
+                ),
+                historical,
+              )
+            expect(await SessionInbox.materializeNextTask(session.id)).toMatchObject({
+              status: "materialized",
+              messageID: item.messageID,
+            })
+          },
+        })
+      }))
+
   test("queued references use the target Session workspace instead of the caller's Scope", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

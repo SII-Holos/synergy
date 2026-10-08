@@ -8,9 +8,12 @@ async function run(
   delayedCommand = false,
   inputFailure?: string,
   steered = false,
+  admission?: "delayed" | "failed" | "removed" | "stalled",
 ) {
   await using tmp = await tmpdir()
   let polls = 0
+  let admissionPolls = 0
+  let prematureRunReads = 0
   let cancelled = false
   let rejected = false
   let commandStarted = !delayedCommand
@@ -112,8 +115,29 @@ async function run(
         return Response.json(true)
       }
       if (url.pathname.endsWith(`/run/${runID}`)) {
+        if (admission && admissionPolls < 3 && !cancelled) {
+          prematureRunReads++
+          return Response.json({ name: "NotFoundError", data: { message: "Run has not started" } }, { status: 404 })
+        }
         polls++
         return Response.json(state())
+      }
+      if (url.pathname.endsWith(`/input/${runID}/status`)) {
+        admissionPolls++
+        const pending = admission === "stalled" || (admission === "delayed" && admissionPolls < 3)
+        const unavailable = admission === "failed" || admission === "removed"
+        if (!pending && !unavailable) polls++
+        return Response.json({
+          sessionID,
+          messageID: runID,
+          state: cancelled ? "cancelled" : unavailable ? admission : pending ? "accepted" : state().status,
+          durable: true,
+          canonical: !pending && !unavailable,
+          updatedAt: 1,
+          ...(admission === "failed"
+            ? { error: { code: "InputMaterializationError", message: "Saved input could not be prepared" } }
+            : {}),
+        })
       }
       if (url.pathname.endsWith("/result"))
         return Response.json({
@@ -122,6 +146,8 @@ async function run(
           snapshots: [],
           accounting: RolloutAccounting.empty(),
           elapsedMs: 4,
+          elapsedActive: false,
+          elapsedLowerBound: false,
         })
       return Response.json({ name: "UnexpectedEndpoint", data: { message: url.pathname } }, { status: 404 })
     },
@@ -144,7 +170,7 @@ async function run(
       "json",
       "--non-interactive",
       "--timeout",
-      "10",
+      admission === "stalled" ? "1" : "10",
       "--experiment",
       config,
     ],
@@ -166,8 +192,37 @@ async function run(
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line))
-  return { events, stderr, exitCode, polls, cancelled, rejected, experiment }
+  return { events, stderr, exitCode, polls, cancelled, rejected, experiment, admissionPolls, prematureRunReads }
 }
+
+test("send waits for input admission without reading a nonexistent run", async () => {
+  const result = await run(undefined, false, false, undefined, false, "delayed")
+  expect(result.exitCode, result.stderr).toBe(0)
+  expect(result.admissionPolls).toBeGreaterThanOrEqual(3)
+  expect(result.prematureRunReads).toBe(0)
+  expect(result.events.at(-1)).toMatchObject({ type: "result", runID: "msg_test", exitCode: 0 })
+}, 20_000)
+
+for (const admission of ["failed", "removed"] as const)
+  test(`send reports ${admission} input before an execution exists`, async () => {
+    const result = await run(undefined, false, false, undefined, false, admission)
+    expect(result.exitCode, result.stderr).toBe(2)
+    expect(result.prematureRunReads).toBe(0)
+    expect(result.cancelled).toBe(false)
+    expect(result.events.at(-1)).toMatchObject({
+      type: "failed",
+      error: admission === "failed" ? "Saved input could not be prepared" : "Input was removed before execution",
+      exitCode: 2,
+    })
+  }, 20_000)
+
+test("send timeout cancels input while it is still queued", async () => {
+  const result = await run(undefined, false, false, undefined, false, "stalled")
+  expect(result.cancelled, result.stderr).toBe(true)
+  expect(result.exitCode, result.stderr).toBe(3)
+  expect(result.prematureRunReads).toBe(0)
+  expect(result.events.at(-1)).toMatchObject({ type: "result", outcome: "timeout", exitCode: 3 })
+}, 20_000)
 
 test("send ignores session idle and returns the persisted run result with sequenced JSON", async () => {
   const result = await run()
@@ -204,12 +259,14 @@ test("command processes non-interactive approvals before the command response co
   expect(result.cancelled, result.stderr).toBe(true)
   expect(result.rejected).toBe(true)
   expect(result.exitCode, result.stderr).toBe(4)
+  expect(result.events.at(-1)).toMatchObject({ type: "result", outcome: "interaction_required", exitCode: 4 })
 }, 20_000)
 
 test("command cancellation waits for its durable run to be created", async () => {
   const result = await run("permission", true, true)
   expect(result.cancelled, result.stderr).toBe(true)
   expect(result.exitCode, result.stderr).toBe(4)
+  expect(result.events.at(-1)).toMatchObject({ type: "result", outcome: "interaction_required", exitCode: 4 })
 }, 20_000)
 
 for (const [name, exitCode] of [

@@ -200,7 +200,7 @@ export namespace SessionInbox {
   }
 
   export type StoredItem = Item & {
-    revision?: number
+    revision: number
     input?: InvokeInput
     admission?: "idle_no_reply"
   }
@@ -238,9 +238,12 @@ export namespace SessionInbox {
   /** Canonicalize a stored item read from disk: older items may only carry the
    *  retired kind/state/deliveryTarget fields, so derive mode from them once. */
   function normalizeStored(item: StoredItem): StoredItem {
-    if (item.mode) return item
     const legacy = item as unknown as { kind?: string; state?: string; deliveryTarget?: string }
-    return { ...item, mode: modeFromLegacy(legacy.kind, legacy.state, legacy.deliveryTarget) }
+    return {
+      ...item,
+      revision: item.revision ?? 0,
+      mode: item.mode ?? modeFromLegacy(legacy.kind, legacy.state, legacy.deliveryTarget),
+    }
   }
 
   function sortItems<T extends { orderKey: string; id: string }>(items: T[]): T[] {
@@ -262,7 +265,8 @@ export namespace SessionInbox {
 
   async function writeItem(item: StoredItem, preserveCreated = false): Promise<StoredItem> {
     return Storage.transaction(async () => {
-      item = { ...item, revision: (item.revision ?? 0) + 1 }
+      item = normalizeStored(item)
+      item = { ...item, revision: item.revision + 1 }
       {
         if (!preserveCreated) {
           const { SessionManager } = await import("./manager")
@@ -510,6 +514,7 @@ export namespace SessionInbox {
         : { type: "agent", label: "Agent" }
     return {
       id: ids.itemID,
+      revision: 0,
       sessionID: input.sessionID,
       deliveryKey: input.deliveryKey,
       mode,
@@ -551,14 +556,16 @@ export namespace SessionInbox {
       messageID: Identifier.ascending("message"),
     }
     const item = await deliveryItem(input, ids)
-    if (input.message.role === "assistant") {
-      await materializeItem(item, await latestRootID(input.sessionID))
-      return { ...ids, created: true }
-    }
-
-    await writeItem(item)
+    await persistDelivery(item)
     return { ...ids, created: true }
   })
+
+  async function persistDelivery(item: StoredItem) {
+    return Storage.transaction(async () => {
+      const stored = await writeItem(item)
+      if (stored.message?.role === "assistant") await materializeItem(stored, await latestRootID(stored.sessionID))
+    })
+  }
 
   async function findExistingDelivery(sessionID: string, deliveryKey: string) {
     const itemID = stableDeliveryItemID(sessionID, deliveryKey)
@@ -621,13 +628,7 @@ export namespace SessionInbox {
         mode: input.mode,
         prepareMessage: async () => input.message,
       },
-      async (item) => {
-        if (input.message.role === "assistant") {
-          await materializeItem(item, await latestRootID(input.sessionID))
-          return
-        }
-        await writeItem(item)
-      },
+      persistDelivery,
     )
   }
 
@@ -665,6 +666,7 @@ export namespace SessionInbox {
     } else if (input.experiment) throw new Error("Experiment configuration requires a root task")
     const item: StoredItem = {
       id: itemID,
+      revision: 0,
       sessionID: input.sessionID,
       mode,
       message: {
@@ -695,7 +697,7 @@ export namespace SessionInbox {
       input: queuedInput,
       admission: options?.admission,
     }
-    const admitted = await Storage.transaction(async () => {
+    const stored = await Storage.transaction(async () => {
       const session = taskSession ?? (await readSession(input.sessionID))
       const root = StoragePath.sessionRoot(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(session.id))
       const [existing, receipt, removed] = await Storage.readMany<StoredItem | { messageID: string } | RemovedItem>([
@@ -711,9 +713,9 @@ export namespace SessionInbox {
           itemID,
         ),
       ])
-      if (existing && "id" in existing) return { stored: normalizeStored(existing), created: false }
-      if (receipt) return { stored: item, created: false }
-      if (removed && "item" in removed) return { stored: removed.item, created: false }
+      if (existing && "id" in existing) return normalizeStored(existing)
+      if (receipt) return item
+      if (removed && "item" in removed) return removed.item
       if (taskSession) {
         const { RolloutLedger } = await import("./rollout/ledger")
         const { RolloutLifecycle } = await import("./rollout/lifecycle")
@@ -721,14 +723,12 @@ export namespace SessionInbox {
           if (error instanceof Storage.NotFoundError) return
           throw error
         })
-        if (run && ["cancelled", "completed", "failed"].includes(run.status)) return { stored: item, created: false }
+        if (run && ["cancelled", "completed", "failed"].includes(run.status)) return item
       }
       const stored = await writeItem(item)
       await Session.recordActivity(input.sessionID)
-      return { stored, created: true }
+      return stored
     })
-    const stored = admitted.stored
-    if (!admitted.created) return publicItem(stored)
     return publicItem(stored)
   }
 
@@ -759,6 +759,7 @@ export namespace SessionInbox {
     const mode = mailMode(input.mail)
     return {
       id: ids.itemID,
+      revision: 0,
       sessionID: input.sessionID,
       deliveryKey,
       mode,
@@ -1058,7 +1059,8 @@ export namespace SessionInbox {
           [...StoragePath.sessionRoot(scopeID, sid), "inbox-materialized", item.id],
         ])
         if (receipt && receipt.messageID === item.messageID) return
-        if (!current || !("id" in current) || current.revision !== item.revision || current.mode !== item.mode)
+        const stored = current && "id" in current ? normalizeStored(current) : undefined
+        if (!stored || stored.revision !== item.revision || stored.mode !== item.mode)
           throw new DOMException("Input changed during preparation", "AbortError")
         const { RolloutLedger } = await import("./rollout/ledger")
         const { RolloutLifecycle } = await import("./rollout/lifecycle")
