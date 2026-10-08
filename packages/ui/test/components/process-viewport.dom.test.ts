@@ -152,6 +152,46 @@ test("repeated wheel pauses notify reading only when following changes, includin
   })
 })
 
+test("live growth keeps the painted tool in place and interrupted following yields without a jump", async () => {
+  const result = await page.evaluate(async () => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    const viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+    viewport.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    const root = document.querySelector('[data-slot="process-virtualizer"]')!
+    const last = root.lastElementChild!
+    const before = last.getBoundingClientRect().top
+    const height = viewport.scrollHeight
+    const added = document.createElement("div")
+    added.style.height = "32px"
+    added.textContent = "New tool"
+    root.append(added)
+    await harness.frames(2)
+    const during = last.getBoundingClientRect().top
+    const canonical = viewport.scrollTop
+    const interruptedFrom = last.getBoundingClientRect().top
+    viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -20, bubbles: true }))
+    const interrupted = last.getBoundingClientRect().top
+    await harness.frames(3)
+    return {
+      before,
+      during,
+      interruptedFrom,
+      interrupted,
+      canonical,
+      height,
+      client: viewport.clientHeight,
+      after: last.getBoundingClientRect().top,
+      scrollHeight: viewport.scrollHeight,
+    }
+  })
+  expect(result.canonical).toBe(result.height + 32 - result.client)
+  expect(result.before - result.during).toBeLessThan(24)
+  expect(Math.abs(result.interruptedFrom - result.interrupted)).toBeLessThan(1)
+  expect(Math.abs(result.after - result.interrupted)).toBeLessThan(1)
+  expect(result.scrollHeight).toBe(result.height + 32)
+})
+
 test("wheel, scroll, keyboard and touch input in one frame share one reading-anchor capture", async () => {
   const result = await page.evaluate(async () => {
     const harness = (window as unknown as FixtureWindow).processViewportFixture

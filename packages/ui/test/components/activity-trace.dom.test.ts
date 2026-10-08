@@ -9,6 +9,8 @@ const TRANSITION_MS = 180
 const TRANSITION_SETTLE_MS = TRANSITION_MS + 80
 
 interface ActivityDomHarness {
+  setBatchPending: (count: number) => void
+  setBatchLive: (live: boolean) => void
   setApproval: (enabled: boolean) => void
   getPermissionCalls: () => unknown[]
   finishPermission: (failed: boolean) => void
@@ -108,6 +110,21 @@ function closeResult() {
 }
 
 describe("AnimatedActivityCount DOM behavior", () => {
+  test("a visible pending total survives facts catching up across activity phases", async () => {
+    harness.resetCount("pending-total", 24)
+    harness.setBatchLive(false)
+    harness.setBatchPending(1)
+    await wait(20)
+    const total = document.querySelector('#batch-count-host [data-activity-fact="total"]')
+    expect(total).not.toBeNull()
+    harness.setCountValue(25)
+    harness.setBatchPending(0)
+    harness.setBatchLive(true)
+    await wait(20)
+    expect(document.querySelector('#batch-count-host [data-activity-fact="total"]')).toBe(total)
+    expect(total?.textContent).toContain("25")
+    harness.resetCount("after-pending", 9)
+  })
   test("first mount snaps to the initial value without a transition", () => {
     expect(countSlot("activity-count-new")?.textContent).toBe("9")
     expect(countSlot("activity-count-old")).toBeNull()

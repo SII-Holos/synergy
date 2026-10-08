@@ -125,7 +125,7 @@ export function ActivityBatchLabel(props: {
     ),
   )
   createEffect(() => {
-    if (props.live && needsTotal()) setTotalShown(true)
+    if (needsTotal()) setTotalShown(true)
   })
   const labels = createMemo(() => [
     ...entries().slice(0, 2),

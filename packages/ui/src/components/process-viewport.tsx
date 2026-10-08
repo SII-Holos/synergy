@@ -18,6 +18,7 @@ import { getSemanticIcon } from "./semantic-icon"
 import "./process-viewport.css"
 import { useConversationLiveRevision } from "./conversation-motion"
 import { readSelectionRanges } from "../utils/selection"
+import { createScrollMotion } from "../utils/scroll-motion"
 
 const Contained = createContext<{ disclose(event: Event): () => void }>()
 export const useProcessViewport = () => !!useContext(Contained)
@@ -140,7 +141,9 @@ export function ProcessViewport(
   const [overflow, setOverflow] = createSignal(false)
   const [above, setAbove] = createSignal(false)
   const [below, setBelow] = createSignal(false)
-  let viewport!: HTMLDivElement, content!: HTMLDivElement
+  let viewport!: HTMLDivElement, content!: HTMLDivElement, motionTarget!: HTMLDivElement
+  const motion = createScrollMotion(() => motionTarget)
+  let followReady = false
   let frame: number | undefined
   let restoreFrame: number | undefined
   let layoutReleaseFrame: number | undefined
@@ -223,6 +226,7 @@ export function ProcessViewport(
     layoutPending = false
   }
   const pause = (captureReading = true) => {
+    motion.interrupt(viewport)
     movementPending = false
     if (restoring || disclosureAnchor || layoutPending) cancelCapture()
     cancelPreserve()
@@ -263,7 +267,8 @@ export function ProcessViewport(
     }
   }
   const commitFollow = (force = false) => {
-    if (following() && viewport && (force || props.following !== false)) viewport.scrollTop = viewport.scrollHeight
+    if (following() && viewport && (force || props.following !== false))
+      motion.move(viewport, viewport.scrollHeight, followReady && !content.querySelector("[data-motion-changing]"))
   }
   const follow = (force = false) => {
     if (frame !== undefined) cancelAnimationFrame(frame)
@@ -368,9 +373,11 @@ export function ProcessViewport(
       notifyReading(false)
     })
     measure()
+    followReady = true
   })
   onCleanup(() => {
     disposed = true
+    motion.dispose()
     cancelCapture()
     if (frame !== undefined) cancelAnimationFrame(frame)
     if (restoreFrame !== undefined) cancelAnimationFrame(restoreFrame)
@@ -465,7 +472,9 @@ export function ProcessViewport(
         }}
       >
         <div ref={content} data-slot="process-viewport-content">
-          <Contained.Provider value={{ disclose }}>{props.children}</Contained.Provider>
+          <div ref={motionTarget} data-slot="process-viewport-motion">
+            <Contained.Provider value={{ disclose }}>{props.children}</Contained.Provider>
+          </div>
         </div>
       </div>
     </div>

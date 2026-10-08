@@ -330,6 +330,28 @@ test("compact activity titles reveal secondary arrows without moving their label
   }
 })
 
+test("live count updates keep the existing fact and number elements mounted", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  const result = await page.evaluate(async () => {
+    const title = () => [...document.querySelectorAll('[data-component="conversation-activity"] > button')].at(-1)!
+    const fact = title().querySelector('[data-activity-fact="execute"]')!
+    const number = fact.querySelector('[data-component="animated-activity-count"]')!
+    const before = number.getAttribute("aria-label")
+    window.__conversationProcess.append("next-count")
+    for (let index = 0; index < 3; index++) await new Promise(requestAnimationFrame)
+    return {
+      fact: title().querySelector('[data-activity-fact="execute"]') === fact,
+      number: title().querySelector('[data-component="animated-activity-count"]') === number,
+      before,
+      after: number.getAttribute("aria-label"),
+    }
+  })
+  expect(result.fact).toBe(true)
+  expect(result.number).toBe(true)
+  expect(result.after).not.toBe(result.before)
+})
+
 test("compact conversation flow keeps prose and folded summaries at an even visual distance", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
@@ -1617,12 +1639,12 @@ for (const scenario of [
     }
     const layout = await page.evaluate(async (width) => {
       const original = [...document.querySelectorAll<HTMLElement>('[data-component="process-viewport"]')].at(-1)!
-      const height = original.querySelector<HTMLElement>('[data-slot="process-viewport-content"] > div')!.style.height
+      const height = original.querySelector<HTMLElement>('[data-slot="process-viewport-motion"] > div')!.style.height
       const first = await new Promise<string>((resolve) => {
         const observer = new MutationObserver(() => {
           const current = [...document.querySelectorAll<HTMLElement>('[data-component="process-viewport"]')].at(-1)
           if (!current || current === original) return
-          const content = current.querySelector<HTMLElement>('[data-slot="process-viewport-content"] > div')
+          const content = current.querySelector<HTMLElement>('[data-slot="process-viewport-motion"] > div')
           if (!content) return
           observer.disconnect()
           resolve(content.style.height)

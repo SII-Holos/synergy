@@ -16,6 +16,9 @@
 [data-component="process-viewport"][data-overflow] {
   overscroll-behavior: contain;
 }
+[data-slot="process-viewport-content"] {
+  overflow: clip;
+}
 [data-component="process-viewport"]:focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: -2px;

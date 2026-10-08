@@ -95,3 +95,33 @@ test("a dynamic reduced-motion preference settles a running transition", async (
   await page.waitForFunction(() => document.querySelector("#target")!.getAnimations().length === 0)
   expect(await page.locator("#viewport").evaluate((node) => node.scrollTop)).toBe(232)
 })
+
+test("distant latest navigation exposes the destination without sliding an empty viewport", async () => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await page.goto(server.url.href)
+  await page.waitForFunction(() => !!(window as unknown as { motion: unknown }).motion)
+  const result = await page.evaluate(() => {
+    const viewport = document.querySelector<HTMLElement>("#viewport")!
+    const target = document.querySelector<HTMLElement>("#target")!
+    const anchor = document.querySelector<HTMLElement>("#anchor")!
+    target.style.height = "3000px"
+    anchor.style.paddingTop = "2960px"
+    viewport.scrollTop = 0
+    ;(window as unknown as { motion: { move(v: HTMLElement, top: number, animate: boolean): void } }).motion.move(
+      viewport,
+      viewport.scrollHeight,
+      true,
+    )
+    const text = document.createRange()
+    text.selectNodeContents(anchor)
+    return {
+      text: text.getBoundingClientRect().top,
+      top: viewport.getBoundingClientRect().top,
+      bottom: viewport.getBoundingClientRect().bottom,
+      opacity: Number(getComputedStyle(target).opacity),
+    }
+  })
+  expect(result.text).toBeGreaterThanOrEqual(result.top)
+  expect(result.text).toBeLessThan(result.bottom)
+  expect(result.opacity).toBeGreaterThanOrEqual(0.6)
+})
