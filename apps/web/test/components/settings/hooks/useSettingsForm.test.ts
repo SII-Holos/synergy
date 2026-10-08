@@ -369,6 +369,16 @@ describe("settings form activity display hydration", () => {
     expect(initializedActivityDisplay({ activityDisplay: "minimal" })).toBe("minimal")
   })
 })
+describe("settings form welcome games hydration", () => {
+  test("defaults to enabled when absent from config", () => {
+    expect(initializedWelcomeGames({})).toBe(true)
+  })
+
+  test("hydrates explicit disabled preference from config", () => {
+    expect(initializedWelcomeGames({ welcomeGames: false })).toBe(false)
+  })
+})
+
 describe("settings form skills compatibility hydration", () => {
   test("defaults all skill sources on when compatibility config is absent", () => {
     expect(initializedSkills({})).toEqual({
@@ -431,6 +441,25 @@ function initializedActivityDisplay(config: Record<string, unknown>) {
   })
 
   return settings.general.activityDisplay
+}
+
+function initializedWelcomeGames(config: Record<string, unknown>) {
+  const [settings, setSettings] = createStore(defaultSettingsState("enter"))
+
+  ensureInit({
+    cfg: config as Config,
+    setName: "global",
+    refreshing: () => false,
+    initialized: () => false,
+    initializedForSet: undefined,
+    sendShortcut: () => "enter",
+    colorScheme: () => "system",
+    setSettings,
+    setInitialized: () => undefined,
+    originalMcpsRef: { current: {} },
+  })
+
+  return settings.general.welcomeGames
 }
 
 function initializedGeneral(config: Record<string, unknown>) {

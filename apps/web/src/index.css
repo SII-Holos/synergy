@@ -213,6 +213,22 @@ a {
   gap: 12px;
 }
 
+.session-welcome-region > .session-greeting {
+  height: 100%;
+  min-height: 410px;
+  align-items: center;
+  text-align: center;
+  padding: clamp(24px, 6vh, 72px) 24px 12px;
+}
+
+.session-welcome-region > .session-greeting > * {
+  max-width: 50rem;
+}
+
+.session-welcome-region > .session-greeting .session-starter-actions {
+  justify-content: center;
+}
+
 .session-greeting-heading {
   display: flex;
   align-items: center;

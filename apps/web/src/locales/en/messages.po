@@ -20221,6 +20221,14 @@ msgid "settings.general.updates.web.description"
 msgstr "Refresh this browser when the server has newer Web assets."
 
 #. js-lingui-explicit-id
+msgid "settings.general.welcomeGames.description"
+msgstr "Show a playable mini game on the greeting of a new task. Turn off to keep a plain greeting."
+
+#. js-lingui-explicit-id
+msgid "settings.general.welcomeGames.title"
+msgstr "New task games"
+
+#. js-lingui-explicit-id
 msgid "settings.general.workspace.description"
 msgstr "Use the main folder or create a worktree for each new Git task. Projects can override this default."
 

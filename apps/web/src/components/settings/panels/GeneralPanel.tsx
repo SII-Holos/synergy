@@ -115,6 +115,11 @@ const copy = {
     id: "settings.general.compactReasoning.description",
     message: "Preview the original reasoning in one line. Reasoning remains expandable when this is off.",
   },
+  welcomeGamesTitle: { id: "settings.general.welcomeGames.title", message: "New task games" },
+  welcomeGamesDescription: {
+    id: "settings.general.welcomeGames.description",
+    message: "Show a playable mini game on the greeting of a new task. Turn off to keep a plain greeting.",
+  },
   preventSleepTitle: { id: "settings.general.preventSleep.title", message: "Prevent sleep while running" },
   preventSleepDescription: {
     id: "settings.general.preventSleep.description",
@@ -429,6 +434,16 @@ export function GeneralPanel(props: {
                 <Switch
                   checked={props.general.compactReasoning}
                   onChange={(value) => props.onGeneralChange("compactReasoning", value)}
+                />
+              }
+            />
+            <SettingRow
+              title={_(copy.welcomeGamesTitle)}
+              description={_(copy.welcomeGamesDescription)}
+              trailing={
+                <Switch
+                  checked={props.general.welcomeGames}
+                  onChange={(value) => props.onGeneralChange("welcomeGames", value)}
                 />
               }
             />
