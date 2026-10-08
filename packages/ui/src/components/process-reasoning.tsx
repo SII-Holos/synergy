@@ -11,6 +11,7 @@ import { createDisclosureMotionRef } from "../utils/disclosure-motion"
 import type { ActivityReasoningSummaryItem } from "./session-turn-activity"
 import "./activity-batch.css"
 import { useProcessViewport, useProcessDisclosure } from "./process-viewport"
+import { useConversationFlow, useConversationLayoutCapture } from "./conversation-flow"
 import { useConversationMotion } from "./conversation-motion"
 
 export function ActivityReasoning(props: {
@@ -57,10 +58,15 @@ export function ProcessReasoning(props: {
   onBeforeLayoutChange?: (event: Event) => void
 }) {
   const { _ } = useLingui()
-  const contained = useProcessViewport()
+  const contained = useConversationFlow() || useProcessViewport()
+  const captureLayout = useConversationLayoutCapture()
+  let commitLayout: (() => void) | undefined
   const disclosure = useProcessDisclosure()
   let releaseDisclosure: (() => void) | undefined
-  onCleanup(() => releaseDisclosure?.())
+  onCleanup(() => {
+    releaseDisclosure?.()
+    commitLayout = undefined
+  })
   const takeArrival = useConversationMotion()
   const [explicit, setExplicit] = createSignal<boolean>()
   const open = createMemo(() => props.view?.getExpanded(props.identity) ?? explicit() ?? props.defaultOpen === true)
@@ -75,15 +81,21 @@ export function ProcessReasoning(props: {
     }
     return result
   })
-  const scroll = createAutoScroll({ working: () => open() && !contained })
+  const scroll = contained ? undefined : createAutoScroll({ working: open })
   createEffect(() => {
     if (!open()) return
     text()
-    scroll.scrollToBottom()
+    scroll?.scrollToBottom()
   })
   const panelRef = createDisclosureMotionRef({
     visible: open,
     animate: () => true,
+    resize: !captureLayout,
+    onHidden: () => {
+      const commit = commitLayout
+      commitLayout = undefined
+      commit?.()
+    },
     onSettled: () => {
       const release = releaseDisclosure
       releaseDisclosure = undefined
@@ -101,6 +113,7 @@ export function ProcessReasoning(props: {
       <div
         ref={arrivalRef}
         data-component="process-reasoning"
+        data-conversation-flow={contained ? "" : undefined}
         data-part-id={props.entries[0]?.id}
         data-reasoning-identity={props.identity}
         data-reasoning-continuation={props.continuation ? "" : undefined}
@@ -117,12 +130,15 @@ export function ProcessReasoning(props: {
                 : _({ id: "session.process.viewReasoning", message: "View reasoning" })
             }
             onClick={(event) => {
-              if (!contained) scroll.handleInteraction(event)
+              scroll?.handleInteraction(event)
               releaseDisclosure = disclosure?.disclose(event)
               props.onBeforeLayoutChange?.(event)
               const next = !open()
+              const commit = captureLayout?.()
+              commitLayout = next ? undefined : commit
               if (props.view) props.view.setExpanded(props.identity, next)
               else setExplicit(next)
+              if (next) commit?.()
               if (next) props.onInspect?.()
             }}
           >
@@ -149,7 +165,7 @@ export function ProcessReasoning(props: {
           </span>
         </Show>
         <div data-slot="process-reasoning-panel" ref={panelRef}>
-          <Show when={segments().length > 1 || scroll.userScrolled()}>
+          <Show when={segments().length > 1 || scroll?.userScrolled()}>
             <div data-slot="reasoning-toolbar">
               <Show when={segments().length > 1}>
                 <span>
@@ -160,26 +176,28 @@ export function ProcessReasoning(props: {
                   })}
                 </span>
               </Show>
-              <button type="button" data-slot="reasoning-latest" onClick={() => scroll.forceScrollToBottom()}>
-                {_({ id: "session.reasoning.latest", message: "Latest reasoning" })}
-              </button>
+              <Show when={scroll}>
+                <button type="button" data-slot="reasoning-latest" onClick={() => scroll?.forceScrollToBottom()}>
+                  {_({ id: "session.reasoning.latest", message: "Latest reasoning" })}
+                </button>
+              </Show>
             </div>
           </Show>
           <div
             id={panelID()}
             ref={(element) => {
-              if (!contained) scroll.scrollRef(element)
+              scroll?.scrollRef(element)
             }}
-            onScroll={scroll.handleScroll}
+            onScroll={scroll?.handleScroll}
             onKeyDown={(event) => {
-              if (["ArrowUp", "PageUp", "Home"].includes(event.key)) scroll.handleInteraction()
+              if (["ArrowUp", "PageUp", "Home"].includes(event.key)) scroll?.handleInteraction()
             }}
             data-slot="process-reasoning-detail"
             tabindex={contained ? undefined : "0"}
             role="region"
             aria-label={_({ id: "session.process.viewReasoning", message: "View reasoning" })}
           >
-            <div ref={scroll.contentRef}>
+            <div ref={scroll?.contentRef}>
               <For each={segments().map((segment) => segment.messageID)}>
                 {(messageID, index) => (
                   <section data-slot="reasoning-segment" data-message-id={messageID}>

@@ -193,6 +193,11 @@
   overflow-wrap: anywhere;
 }
 
+[data-component="process-reasoning"][data-conversation-flow] [data-slot="process-reasoning-detail"] {
+  max-height: none;
+  overflow: visible;
+}
+
 [data-slot="process-reasoning-trigger"] > [data-component="icon"]:first-child {
   flex: 0 0 20px;
   width: 20px;

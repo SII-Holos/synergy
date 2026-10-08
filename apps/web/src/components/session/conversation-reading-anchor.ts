@@ -9,13 +9,14 @@ export function captureConversationReadingAnchor(container: HTMLElement, isCurre
   const row =
     target?.closest<HTMLElement>('[data-component="process-window"]') ??
     target?.closest<HTMLElement>("[data-scroll-anchor]") ??
+    target?.closest<HTMLElement>("[data-display-row]") ??
     Array.from((message ?? container).querySelectorAll<HTMLElement>("[data-scroll-anchor]")).find(visible) ??
     message
   if (!row || !container.contains(row)) return
   const rowBounds = row.getBoundingClientRect()
   const block =
     !target &&
-    Array.from(row.querySelectorAll<HTMLElement>("p,li,pre,h1,h2,h3,h4,h5,h6")).find((node) => {
+    Array.from(row.querySelectorAll<HTMLElement>("[data-reasoning-part],p,li,pre,h1,h2,h3,h4,h5,h6")).find((node) => {
       const rect = node.getBoundingClientRect()
       return visible(node) && rect.top >= rowBounds.top && rect.bottom <= rowBounds.bottom
     })

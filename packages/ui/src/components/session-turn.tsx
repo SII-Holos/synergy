@@ -18,6 +18,7 @@ import type {
   UserMessage,
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
+import type { SessionDataView } from "../context/session-data-view"
 import { isActivityGroupableTool, isCancelledMediaGeneration } from "@ericsanchezok/synergy-util/activity"
 
 import {
@@ -41,6 +42,7 @@ import { ActivityBatch } from "./activity-batch"
 import { ActivityReasoning } from "./process-reasoning"
 import { createDisclosureMotionRef } from "../utils/disclosure-motion"
 import { useConversationMotion } from "./conversation-motion"
+import { useConversationFlow } from "./conversation-flow"
 import { projectActivityBatches, resolveActivityDisclosure } from "./session-turn-process"
 export { resolveActivityDisclosure } from "./session-turn-process"
 import { TurnChangeSummaryPanel } from "./turn-change-summary-panel"
@@ -1024,58 +1026,236 @@ function MailboxSourceBadge(props: { message: UserMessage }) {
   )
 }
 
-export function SessionTurn(
-  props: ParentProps<{
-    sessionID: string
-    messageID: string
-    rootMessage: UserMessage
-    messages: readonly SessionTurnDisplayMessage[]
-    compactionParentIDs?: ReadonlySet<string>
-    lastUserMessageID?: string
-    onUserInteracted?: () => void
-    onBeforeProcessLayoutChange?: (event: Event) => void
-    onRewind?: () => void
-    rollbackActive?: boolean
-    onReviewChanges?: (input: { messageID: string; file?: string }) => void
-    onRestoreChanges?: (messageID: string) => void
-    onForkMessage?: (messageID: string) => void
-    executionSummary?: TurnExecutionSummary
-    onExecutionDetails?: () => void
-    activityDisplay?: ActivityDisplayMode
-    compactReasoning?: boolean
-    copyMessageText?: (messageID: string) => Promise<string>
-    userPresentation?: import("./user-message-content").UserMessagePresentation
-    segment?: {
-      user: boolean
-      userHasText?: boolean
-      footer: boolean
-      parts: readonly { messageID: string; id: string }[]
-      before: boolean
-      after: boolean
-      beforeTool?: boolean
-      beforeReasoning?: boolean
-      reasoningAnchors?: Readonly<Record<string, string>>
-      activityBody?: boolean
-      processHeader?: boolean
-      processBody?: boolean
-      toolAttachments?: "only" | "omit"
-      hiddenAttachments?: Readonly<Record<string, readonly string[]>>
-      contentMessageID?: string
-      process?: { open: boolean; working: boolean; hasContent: boolean; hasTurnContent: boolean }
-    }
-    activityView?: PluginConversationActivityView
-    following?: boolean
-    takeUserArrival?: (messageID: string) => boolean
-    submission?: { activity?: import("@ericsanchezok/synergy-sdk/client").SessionActivity; failed: boolean }
-    executionState?: import("@ericsanchezok/synergy-sdk/client").TurnExecutionState
-    connected?: boolean
-    classes?: {
-      root?: string
-      content?: string
-      container?: string
-    }
-  }>,
+type SessionTurnProps = ParentProps<{
+  sessionID: string
+  messageID: string
+  rootMessage: UserMessage
+  messages: readonly SessionTurnDisplayMessage[]
+  compactionParentIDs?: ReadonlySet<string>
+  lastUserMessageID?: string
+  onUserInteracted?: () => void
+  onBeforeProcessLayoutChange?: (event: Event) => void
+  onRewind?: () => void
+  rollbackActive?: boolean
+  onReviewChanges?: (input: { messageID: string; file?: string }) => void
+  onRestoreChanges?: (messageID: string) => void
+  onForkMessage?: (messageID: string) => void
+  executionSummary?: TurnExecutionSummary
+  onExecutionDetails?: () => void
+  activityDisplay?: ActivityDisplayMode
+  compactReasoning?: boolean
+  copyMessageText?: (messageID: string) => Promise<string>
+  userPresentation?: import("./user-message-content").UserMessagePresentation
+  segment?: {
+    user: boolean
+    userHasText?: boolean
+    footer: boolean
+    parts: readonly { messageID: string; id: string }[]
+    before: boolean
+    after: boolean
+    beforeTool?: boolean
+    beforeReasoning?: boolean
+    reasoningAnchors?: Readonly<Record<string, string>>
+    activityBody?: boolean
+    processHeader?: boolean
+    processBody?: boolean
+    toolAttachments?: "only" | "omit"
+    hiddenAttachments?: Readonly<Record<string, readonly string[]>>
+    contentMessageID?: string
+    process?: { open: boolean; working: boolean; hasContent: boolean; hasTurnContent: boolean }
+  }
+  activityView?: PluginConversationActivityView
+  following?: boolean
+  takeUserArrival?: (messageID: string) => boolean
+  submission?: { activity?: import("@ericsanchezok/synergy-sdk/client").SessionActivity; failed: boolean }
+  executionState?: import("@ericsanchezok/synergy-sdk/client").TurnExecutionState
+  connected?: boolean
+  classes?: {
+    root?: string
+    content?: string
+    container?: string
+  }
+}>
+
+export function SessionTurn(props: SessionTurnProps) {
+  const inherited = useConversationFlow()
+  return (
+    <Show
+      when={inherited && props.segment?.activityBody && props.messages.every((message) => message.role === "assistant")}
+      fallback={<SessionTurnContent {...props} />}
+    >
+      <SessionTurnAssistantActivityBody {...props} />
+    </Show>
+  )
+}
+
+function isToolRenderBoundary(tool: string) {
+  try {
+    return !!resolveExternalToolRenderer(tool, { externalLookup, externalLoadNotify })
+  } catch {
+    return true
+  }
+}
+
+function projectActivityMessage(
+  message: AssistantMessage,
+  parts: Record<string, PartType[] | undefined>,
+  segment: SessionTurnProps["segment"],
+  permissions: readonly PermissionRequest[],
+  hiddenAttachments = segment?.hiddenAttachments,
 ) {
+  const sourceItems = collectSessionTurnTimelineItems([message], parts, true, hiddenAttachments).filter((item) =>
+    segment?.toolAttachments === "only"
+      ? item.kind === "tool-attachments"
+      : segment?.toolAttachments === "omit"
+        ? item.kind !== "tool-attachments"
+        : true,
+  )
+  return projectAssistantActivityItems({
+    message,
+    sourceItems,
+    visibleItems: sourceItems,
+    permissions,
+    resolveToolInfo: getToolInfo,
+    isToolRenderBoundary,
+    reasoningAnchors: segment?.reasoningAnchors,
+  })
+}
+
+function sessionTurnWorking(props: SessionTurnProps, view: SessionDataView) {
+  if (props.submission) return !props.submission.failed
+  if (props.segment?.process) return props.segment.process.working
+  if (props.executionState) return ["preparing", "running", "approval"].includes(props.executionState.status)
+  return resolveTurnWorking({
+    isLastUserMessage: props.messageID === props.lastUserMessageID,
+    messages: props.messages,
+    sessionStatus: view.statusFor(props.sessionID),
+  })
+}
+
+function SessionTurnAssistantActivityBody(props: SessionTurnProps) {
+  const data = useData()
+  const parts = createMemo(
+    () =>
+      props.segment!.parts.flatMap((selected) => {
+        const part = data.view.partsFor(selected.messageID).find((part) => part.id === selected.id)
+        return part ? [part] : []
+      }),
+    [],
+    { equals: same },
+  )
+  const items = createMemo(() =>
+    props.messages.flatMap((message) =>
+      message.role === "assistant"
+        ? projectActivityMessage(
+            message,
+            { [message.id]: parts().filter((part) => part.messageID === message.id) },
+            props.segment,
+            data.view.permissionsFor(props.sessionID),
+          )
+        : [],
+    ),
+  )
+  const snapshot = createMemo(() => ({
+    keys: items().map(displayItemStableKey),
+    map: new Map(items().map((item) => [displayItemStableKey(item), item])),
+  }))
+  const indexes = createMemo(() => ({
+    reasoning: items().findIndex(isReasoningDisplayItem),
+    lastReasoning: items().findLastIndex(isReasoningDisplayItem),
+    tool: items().findIndex(isToolRegionDisplayItem),
+    lastTool: items().findLastIndex(isToolRegionDisplayItem),
+  }))
+  const boundaries = createMemo(() => {
+    const result = new Map<string, { first: number; last: number }>()
+    items().forEach((item, index) => {
+      const current = result.get(item.message.id)
+      if (current) current.last = index
+      else result.set(item.message.id, { first: index, last: index })
+    })
+    return result
+  })
+  const working = () => sessionTurnWorking(props, data.view)
+  const slot = (name: MessageSlotName, messageId = props.messageID, role?: "assistant") => (
+    <MessageSlotOutlet slot={name} sessionId={props.sessionID} messageId={messageId} role={role} />
+  )
+  return (
+    <div
+      data-component="session-turn"
+      data-activity-body=""
+      data-activity-display={resolveActivityDisplay(props.activityDisplay)}
+      class={props.classes?.root}
+    >
+      <div data-slot="session-turn-message-container" data-message={props.messageID} class={props.classes?.container}>
+        <For each={snapshot().keys}>
+          {(key, index) => {
+            return (
+              <Show when={snapshot().map.get(key)}>
+                {(item) => (
+                  <>
+                    <Show when={props.segment?.before && index() === boundaries().get(item().message.id)?.first}>
+                      {slot("message.before", item().message.id, "assistant")}
+                    </Show>
+                    <Show
+                      when={
+                        (props.segment?.beforeReasoning ?? props.segment?.before) && index() === indexes().reasoning
+                      }
+                    >
+                      {slot("message.before-reasoning")}
+                    </Show>
+                    <Show when={(props.segment?.beforeTool ?? props.segment?.before) && index() === indexes().tool}>
+                      {slot("message.before-tools")}
+                    </Show>
+                    <div
+                      data-slot="session-turn-timeline-item"
+                      data-scroll-anchor={key}
+                      data-kind={displayItemVisualKind(item())}
+                      data-activity-continues={
+                        adjacentActivityGroup(snapshot().keys, snapshot().map, index(), 1) ? "" : undefined
+                      }
+                      data-activity-follows={
+                        adjacentActivityGroup(snapshot().keys, snapshot().map, index(), -1) ? "" : undefined
+                      }
+                      data-compact-reasoning={
+                        props.compactReasoning && isReasoningDisplayItem(item()) ? "true" : undefined
+                      }
+                    >
+                      <TimelineDisplay
+                        item={item()}
+                        serverUrl={data.serverUrl}
+                        rollbackActive={props.rollbackActive === true}
+                        working={working()}
+                        compactReasoning={props.compactReasoning}
+                        activityView={props.activityView}
+                        following={props.following}
+                        onInspectProcess={() =>
+                          props.activityView?.setExpanded(`turn-process:${props.messageID}`, true)
+                        }
+                        onBeforeProcessLayoutChange={props.onBeforeProcessLayoutChange}
+                      />
+                    </div>
+                    <Show when={props.segment?.after && index() === indexes().lastReasoning}>
+                      {slot("message.after-reasoning")}
+                    </Show>
+                    <Show when={props.segment?.after && index() === indexes().lastTool}>
+                      {slot("message.after-tools")}
+                    </Show>
+                    <Show when={props.segment?.after && index() === boundaries().get(item().message.id)?.last}>
+                      {slot("message.actions", item().message.id, "assistant")}
+                      {slot("message.after", item().message.id, "assistant")}
+                    </Show>
+                  </>
+                )}
+              </Show>
+            )
+          }}
+        </For>
+      </div>
+    </div>
+  )
+}
+
+function SessionTurnContent(props: SessionTurnProps) {
   const data = useData()
   const view = data.view
   const { _, i18n } = useLingui()
@@ -1180,26 +1360,7 @@ export function SessionTurn(
     if (assistantPart?.type === "tool" && assistantPart.tool === "bash") return assistantPart
   })
 
-  const working = createMemo(() =>
-    props.submission
-      ? !props.submission.failed
-      : (props.segment?.process?.working ??
-        (props.executionState
-          ? ["preparing", "running", "approval"].includes(props.executionState.status)
-          : resolveTurnWorking({
-              isLastUserMessage: isLastUserMessage(),
-              messages: turnMessages(),
-              sessionStatus: view.statusFor(props.sessionID),
-            }))),
-  )
-
-  const isToolRenderBoundary = (tool: string) => {
-    try {
-      return !!resolveExternalToolRenderer(tool, { externalLookup, externalLoadNotify })
-    } catch {
-      return true
-    }
-  }
+  const working = createMemo(() => sessionTurnWorking(props, view))
 
   const projectAssistantMessage = (item: AssistantMessage): SessionTurnAssistantDisplayItem[] => {
     if (props.segment && isCompactionAssistant(item)) {
@@ -1210,23 +1371,7 @@ export function SessionTurn(
         !view.partsFor(item.id).some((part) => part.type === "compaction_recovery")
       if (!ownsRecovery && !placeholder) return []
     }
-    const sourceItems = collectSessionTurnTimelineItems([item], segmentParts(), true, hiddenAttachments()).filter(
-      (item) =>
-        props.segment?.toolAttachments === "only"
-          ? item.kind === "tool-attachments"
-          : props.segment?.toolAttachments === "omit"
-            ? item.kind !== "tool-attachments"
-            : true,
-    )
-    return projectAssistantActivityItems({
-      message: item,
-      sourceItems,
-      visibleItems: sourceItems,
-      permissions: permissions(),
-      resolveToolInfo: getToolInfo,
-      isToolRenderBoundary,
-      reasoningAnchors: props.segment?.reasoningAnchors,
-    })
+    return projectActivityMessage(item, segmentParts(), props.segment, permissions(), hiddenAttachments())
   }
 
   // Per-display-message projection memoization. Each message gets a stable
@@ -1366,7 +1511,7 @@ export function SessionTurn(
     // Copy Markdown is only presented after the turn settles; while the reply
     // streams, return early so a token delta neither re-joins the accumulated
     // text nor subscribes this memo to the streaming part's text leaf.
-    if (working()) return ""
+    if (!showFooter() || working()) return ""
     const last = lastAssistantMessage()
     if (!last) return ""
     const parts = view.partsFor(last.id)
@@ -1423,11 +1568,13 @@ export function SessionTurn(
   const showCurrentActivity = createMemo(() => shouldShowCurrentActivity({ working: working(), hasError: !!error() }))
   const showExecutionCompletion = createMemo(() => !working() && !!props.executionSummary)
 
-  const autoScroll = createAutoScroll({
-    working,
-    onUserInteracted: props.onUserInteracted,
-  })
-  const following = () => props.following ?? !autoScroll.userScrolled()
+  const autoScroll = useConversationFlow()
+    ? undefined
+    : createAutoScroll({
+        working,
+        onUserInteracted: props.onUserInteracted,
+      })
+  const following = () => props.following ?? !autoScroll?.userScrolled()
   const [explicitProcessOpen, setExplicitProcessOpen] = createSignal<boolean>()
   const [heldProcessOpen, setHeldProcessOpen] = createSignal(false)
   createEffect(
@@ -1493,7 +1640,7 @@ export function SessionTurn(
   )
   const showProcessHeader = () => !props.segment || props.segment.processHeader
   const beforeProcessLayoutChange = (event: Event) => {
-    autoScroll.handleInteraction(event)
+    autoScroll?.handleInteraction(event)
     props.onBeforeProcessLayoutChange?.(event)
   }
   const inspectProcess = () => {
@@ -1565,7 +1712,7 @@ export function SessionTurn(
     on(permissionCount, (count, prev) => {
       if (!count) return
       if (prev !== undefined && count <= prev) return
-      if (following()) autoScroll.forceScrollToBottom()
+      if (following()) autoScroll?.forceScrollToBottom()
     }),
   )
 
@@ -1578,16 +1725,16 @@ export function SessionTurn(
       class={props.classes?.root}
     >
       <div
-        ref={autoScroll.scrollRef}
-        onScroll={autoScroll.handleScroll}
+        ref={autoScroll?.scrollRef}
+        onScroll={autoScroll?.handleScroll}
         data-slot="session-turn-content"
         class={props.classes?.content}
       >
-        <div onClick={autoScroll.handleInteraction}>
+        <div onClick={autoScroll?.handleInteraction}>
           <Show when={message()}>
             {(msg) => (
               <div
-                ref={autoScroll.contentRef}
+                ref={autoScroll?.contentRef}
                 data-message={msg().id}
                 data-slot="session-turn-message-container"
                 class={props.classes?.container}

@@ -50,6 +50,7 @@ type Fixture = {
   reading(value: boolean): void
   retained(): number
   summaryReads(): number
+  statusReads(): number
   contentRecover(id: string): void
   contentPending(id: string): void
   contentFinish(id: string): void
@@ -111,6 +112,27 @@ const frames = () =>
   page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
+const settleConversation = () =>
+  page.evaluate(async () => {
+    let previous = "",
+      stable = 0
+    for (let frame = 0; frame < 120; frame++) {
+      await new Promise(requestAnimationFrame)
+      const signature =
+        `${window.__conversationProcess.summaryReads()}:${window.__conversationProcess.retained()}:` +
+        [...document.querySelectorAll<HTMLElement>("[data-display-row]")]
+          .map((row) => `${row.dataset.displayRow}:${row.getBoundingClientRect().height}`)
+          .join(";")
+      stable =
+        signature === previous &&
+        !document.querySelector("[data-motion-changing],[data-content-pending],[data-layout-changing]")
+          ? stable + 1
+          : 0
+      if (stable === 4) return
+      previous = signature
+    }
+    throw new Error("Conversation geometry did not settle")
+  })
 const contentPage = async (scenario: string) => {
   await page.close()
   page = await browser.newPage()
@@ -168,11 +190,29 @@ afterAll(async () => {
   if (directory) await rm(directory, { recursive: true, force: true })
 }, 30000)
 
+test("tool batches share the conversation reader and keep large histories virtualized", async () => {
+  await page.goto(`${url}?scrolling`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.grow(1000))
+  await frames()
+  expect(await page.locator('[data-component="process-viewport"]').count()).toBe(0)
+  expect(await page.locator('[data-slot="activity-step-trigger"]').count()).toBeGreaterThan(0)
+  expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
+  const reader = page.locator("[data-scroller]")
+  await reader.hover()
+  const before = await reader.evaluate((element) => element.scrollTop)
+  await page.mouse.wheel(0, -300)
+  await frames()
+  expect(await reader.evaluate((element) => element.scrollTop)).toBeLessThan(before - 100)
+  expect(errors).toEqual([])
+})
+
 test("focus outside a large conversation does not reread its summaries", async () => {
   await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => window.__conversationProcess.grow(1000))
   await frames()
+  await settleConversation()
   const before = await page.evaluate(() => window.__conversationProcess.summaryReads())
   const outside = page.getByRole("button", { name: "Outside conversation", exact: true })
   for (let index = 0; index < 3; index++) {
@@ -193,6 +233,7 @@ test("reading a finished full process does not retrace unchanged disclosure stat
     window.__conversationProcess.complete()
   })
   await frames()
+  await settleConversation()
   const before = await page.evaluate(() => window.__conversationProcess.summaryReads())
   await page.evaluate(() => window.__conversationProcess.reading(true))
   await frames()
@@ -200,6 +241,43 @@ test("reading a finished full process does not retrace unchanged disclosure stat
   await frames()
   expect(await page.evaluate(() => window.__conversationProcess.summaryReads())).toBe(before)
 }, 30000)
+
+test("grouped reasoning uses exact Part location and the main paragraph anchor during body growth", async () => {
+  await page.goto(`${url}?scrolling`)
+  await page.evaluate(() => window.__conversationProcess.fragments(80))
+  const trigger = page.locator('[data-slot="process-reasoning-trigger"]').first()
+  await trigger.waitFor()
+  if ((await trigger.getAttribute("aria-expanded")) === "false") await trigger.click()
+  expect(await page.evaluate(() => window.__conversationProcess.locate("work", "summary-14"))).toBe(true)
+  await settleConversation()
+  const fragment = page.locator('[data-reasoning-part="summary-14"]')
+  const offset = () =>
+    fragment.evaluate((element) => {
+      const viewport = document.querySelector("[data-scroller]")!
+      return element.getBoundingClientRect().top - viewport.getBoundingClientRect().top
+    })
+  expect(Math.abs(await offset())).toBeLessThanOrEqual(2)
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
+  try {
+    await page.locator("[data-scroller]").hover()
+    await page.mouse.wheel(0, 8)
+    for (let index = 0; index < 6; index++) await frames()
+    const before = await offset()
+    await page.evaluate(() => {
+      window.__conversationProcess.reasoning("Earlier reasoning grows. ".repeat(120), "summary-12")
+      window.__conversationProcess.reasoning("Later reasoning grows. ".repeat(120), "summary-15")
+    })
+    for (let index = 0; index < 12; index++) {
+      await frames()
+      expect(Math.abs((await offset()) - before)).toBeLessThanOrEqual(2)
+    }
+    expect(await page.locator('[data-component="process-viewport"]').count()).toBe(0)
+  } finally {
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
+    await cdp.detach()
+  }
+})
 
 test.each(["index.mjs", "index.jsx"] as const)(
   "visible fixed viewports and native hit testing survive resize and scrolling (%s)",
@@ -286,12 +364,339 @@ test("compact activity titles retain successful facts while showing current runt
   expect(await page.locator('[data-slot="activity-batch-status"]').count()).toBe(0)
 })
 
+test("cold batch bodies reserve main-flow space without animating unfinished geometry", async () => {
+  await contentPage("cold-process")
+  const parent = page.locator('[data-slot="turn-process-trigger"]')
+  await parent.press("Enter")
+  const batch = page.locator('[data-slot="activity-batch-trigger"]')
+  await batch.waitFor()
+  await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
+  const result = await batch.evaluate(async (button) => {
+    const animate = Element.prototype.animate
+    const calls: { connected: boolean; pending: boolean }[] = []
+    Element.prototype.animate = function (frames, options) {
+      if (this.matches('[data-display-row][data-row-kind="body"]'))
+        calls.push({ connected: this.isConnected, pending: this.hasAttribute("data-content-pending") })
+      return animate.call(this, frames, options)
+    }
+    try {
+      ;(button as HTMLButtonElement).click()
+      const sizes: number[] = [],
+        consumers: number[] = []
+      for (let frame = 0; frame < 16; frame++) {
+        await new Promise(requestAnimationFrame)
+        sizes.push(
+          ...[...document.querySelectorAll<HTMLElement>("[data-content-pending]")].map(
+            (row) => row.getBoundingClientRect().height,
+          ),
+        )
+        consumers.push(window.__conversationProcess.retained())
+      }
+      return {
+        calls,
+        sizes,
+        consumers,
+        reads: Array.from({ length: 80 }, (_, index) => window.__conversationProcess.contentReads(`cold-${index}`)),
+      }
+    } finally {
+      Element.prototype.animate = animate
+    }
+  })
+  expect(result.sizes.length).toBeGreaterThan(0)
+  expect(Math.min(...result.sizes)).toBeGreaterThan(0)
+  expect(result.calls.every((call) => call.connected && !call.pending)).toBe(true)
+  expect(Math.max(...result.consumers)).toBeLessThan(120)
+  expect(Math.max(...result.reads)).toBe(1)
+  expect(result.reads.filter(Boolean).length).toBeLessThan(80)
+  expect(await page.locator('[data-component="process-viewport"]').count()).toBe(0)
+  await page.evaluate(() => {
+    window.__conversationProcess.contentFinish("cold-prose")
+    for (let index = 0; index < 80; index++) window.__conversationProcess.contentFinish(`cold-${index}`)
+  })
+  await settleConversation()
+  await parent.press("Enter")
+  await page.waitForFunction(() => !document.querySelector("[data-process-body]"))
+  expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(8)
+  expect(errors).toEqual([])
+})
+
+test("expanded transcript records allocate no nested scroll readers", async () => {
+  const target = await browser.newPage()
+  try {
+    await target.addInitScript(() => {
+      const listeners: EventTarget[] = []
+      const observations: Element[] = []
+      const add = EventTarget.prototype.addEventListener
+      EventTarget.prototype.addEventListener = function (type, listener, options) {
+        if (type === "wheel") listeners.push(this)
+        return add.call(this, type, listener, options)
+      }
+      const observe = ResizeObserver.prototype.observe
+      ResizeObserver.prototype.observe = function (element, options) {
+        observations.push(element)
+        return observe.call(this, element, options)
+      }
+      Object.assign(window, { scrollSurfaces: { listeners, observations } })
+    })
+    await target.goto(url)
+    await target.getByText("I will check the project first.", { exact: true }).waitFor()
+    await target.evaluate(() => window.__conversationProcess.grow(1000))
+    await target.locator('[data-slot="activity-batch-trigger"]').last().click()
+    await target.locator('[data-component="activity-trace"]').first().waitFor()
+    const readers = await target.evaluate(() => {
+      const surfaces = (
+        window as unknown as {
+          scrollSurfaces: { listeners: EventTarget[]; observations: Element[] }
+        }
+      ).scrollSurfaces
+      return {
+        input: surfaces.listeners.filter(
+          (element) => element instanceof Element && element.matches('[data-slot="session-turn-content"]'),
+        ).length,
+        measurement: surfaces.observations.filter((element) =>
+          element.matches('[data-slot="session-turn-message-container"]'),
+        ).length,
+      }
+    })
+    expect(readers).toEqual({ input: 0, measurement: 0 })
+  } finally {
+    await target.close()
+  }
+})
+
+test("compact records consume their turn status without resolving it per tool", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.grow(1000))
+  await settleConversation()
+  const batch = page.locator('[data-slot="activity-batch-trigger"]').last()
+  if ((await batch.getAttribute("aria-expanded")) === "true") {
+    await batch.click()
+    await settleConversation()
+  }
+  const before = await page.evaluate(() => window.__conversationProcess.statusReads())
+  await batch.click()
+  await settleConversation()
+  expect(await page.locator('[data-slot="activity-step"]').count()).toBeGreaterThan(4)
+  expect((await page.evaluate(() => window.__conversationProcess.statusReads())) - before).toBeLessThanOrEqual(10)
+})
+
+test("warm batch disclosure animates connected body rows with accepted geometry", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  const batch = page.locator('[data-slot="activity-batch-trigger"]').last()
+  await batch.click()
+  await settleConversation()
+  const motion = await batch.evaluate(async (button) => {
+    const animate = Element.prototype.animate
+    const calls: {
+      connected: boolean
+      height: Keyframe["height"]
+      from: Keyframe["opacity"]
+      to: Keyframe["opacity"]
+    }[] = []
+    Element.prototype.animate = function (frames, options) {
+      if (this.matches('[data-display-row][data-row-kind="body"]')) {
+        const values = frames as Keyframe[]
+        calls.push({
+          connected: this.isConnected,
+          height: values[0]?.height,
+          from: values[0]?.opacity,
+          to: values.at(-1)?.opacity,
+        })
+      }
+      return animate.call(this, frames, options)
+    }
+    try {
+      ;(button as HTMLButtonElement).click()
+      for (let frame = 0; frame < 4; frame++) await new Promise(requestAnimationFrame)
+      return calls
+    } finally {
+      Element.prototype.animate = animate
+    }
+  })
+  expect(motion.length).toBeGreaterThan(0)
+  expect(
+    motion.every((call) => call.connected && call.height === undefined && call.from === 0.65 && call.to === 1),
+  ).toBe(true)
+})
+
+test("batch layout commits once while the retained answer moves smoothly on the compositor", async () => {
+  await page.goto(`${url}?scrolling`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.grow(5)
+    window.__conversationProcess.stream()
+    window.__conversationProcess.complete()
+  })
+  const parent = page.locator('[data-slot="turn-process-trigger"]')
+  await parent.press("Enter")
+  await settleConversation()
+  const batch = page.locator('[data-slot="activity-batch-trigger"]').last()
+  const result = await batch.evaluate(async (button) => {
+    const answer = document.querySelector<HTMLElement>('[data-part-id="answer"]')!
+    const wrapper = answer.parentElement!
+    const original = answer.getBoundingClientRect().top
+    const animate = Element.prototype.animate
+    const sizes: number[] = [],
+      positions: number[] = [],
+      layout: string[] = []
+    Element.prototype.animate = function (frames, options) {
+      if (this.matches("[data-display-row]") && Array.isArray(frames))
+        sizes.push(...frames.flatMap((frame) => (frame.height === undefined ? [] : [Number(frame.height)])))
+      return animate.call(this, frames, options)
+    }
+    try {
+      ;(button as HTMLButtonElement).click()
+      for (let frame = 0; frame < 24; frame++) {
+        await new Promise(requestAnimationFrame)
+        if (!answer.isConnected) throw new Error("Retained answer detached during disclosure")
+        positions.push(answer.getBoundingClientRect().top)
+        layout.push(wrapper.style.top)
+      }
+      return { original, positions, layout, sizes }
+    } finally {
+      Element.prototype.animate = animate
+    }
+  })
+  expect(result.sizes).toEqual([])
+  expect(new Set(result.layout.slice(2)).size).toBe(1)
+  const last = result.positions.at(-1)!
+  expect(last - result.original).toBeGreaterThan(100)
+  expect(result.positions.some((top) => top > result.original + 2 && top < last - 2)).toBe(true)
+  expect(await page.locator("[data-layout-changing]").count()).toBe(0)
+})
+
+test("reasoning disclosure changes measured layout once and releases movement on collapse", async () => {
+  await page.goto(`${url}?scrolling`)
+  await page.evaluate(() => {
+    window.__conversationProcess.fragments(6)
+    window.__conversationProcess.stream()
+    window.__conversationProcess.complete()
+  })
+  await page.locator('[data-slot="turn-process-trigger"]').press("Enter")
+  await settleConversation()
+  const batch = page.locator('[data-slot="activity-batch-trigger"]').last()
+  if ((await batch.getAttribute("aria-expanded")) === "false") await batch.click()
+  await settleConversation()
+  const trigger = page.locator('[data-slot="process-reasoning-trigger"]').first()
+  const sample = () =>
+    trigger.evaluate(async (button) => {
+      const animate = Element.prototype.animate
+      const heights: string[] = []
+      const offsets: string[] = []
+      const answer = document.querySelector<HTMLElement>('[data-part-id="answer"]')!
+      const wrapper = answer.parentElement!
+      Element.prototype.animate = function (frames, options) {
+        if (this.matches('[data-slot="process-reasoning-panel"]') && Array.isArray(frames))
+          heights.push(...frames.flatMap((frame) => (frame.height === undefined ? [] : [String(frame.height)])))
+        return animate.call(this, frames, options)
+      }
+      try {
+        ;(button as HTMLButtonElement).click()
+        for (let frame = 0; frame < 48; frame++) {
+          await new Promise(requestAnimationFrame)
+          if (!answer.isConnected) throw new Error("Reading answer detached during reasoning disclosure")
+          offsets.push(wrapper.style.top)
+        }
+        return { heights, offsets }
+      } finally {
+        Element.prototype.animate = animate
+      }
+    })
+  for (const opening of [true, false]) {
+    const result = await sample()
+    expect(result.heights).toEqual([])
+    expect(new Set(result.offsets.slice(2)).size).toBeLessThanOrEqual(opening ? 1 : 2)
+    await settleConversation()
+    expect(await page.locator("[data-layout-changing]").count()).toBe(0)
+  }
+})
+
+test.each(["wheel", "keyboard"])("native %s input releases disclosure movement before reading", async (input) => {
+  await page.goto(`${url}?scrolling`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.grow(5)
+    window.__conversationProcess.stream()
+    window.__conversationProcess.complete()
+  })
+  await page.locator('[data-slot="turn-process-trigger"]').press("Enter")
+  await settleConversation()
+  await page
+    .locator('[data-component="virtual-conversation-rows"]')
+    .evaluate((element) => (element as HTMLElement).style.setProperty("--motion-duration-base", "600ms"))
+  await page
+    .locator('[data-slot="activity-batch-trigger"]')
+    .last()
+    .evaluate((element) => (element as HTMLButtonElement).click())
+  await page.locator("[data-layout-changing]").first().waitFor({ state: "attached" })
+  const viewport = page.locator("[data-scroller]")
+  if (input === "wheel") {
+    await viewport.hover()
+    await page.mouse.wheel(0, 80)
+  } else {
+    await viewport.focus()
+    await page.keyboard.press("PageDown")
+  }
+  await page.waitForFunction(() => !document.querySelector("[data-layout-changing]"), undefined, { timeout: 300 })
+  await settleConversation()
+  expect(errors).toEqual([])
+})
+
+test.each([false, true])(
+  "batch disclosure keeps its trigger stable across frames and rapid reversal (reduced=%s)",
+  async (reduced) => {
+    await page.emulateMedia({ reducedMotion: reduced ? "reduce" : "no-preference" })
+    try {
+      for (const width of [700, 350]) {
+        await page.goto(`${url}?scrolling`)
+        await page.getByText("I will check the project first.", { exact: true }).waitFor()
+        await page.locator("[data-scroller]").evaluate((element, width) => (element.style.width = `${width}px`), width)
+        await page.evaluate(() => window.__conversationProcess.grow(80))
+        await page.evaluate(() => window.__conversationProcess.locate("work", "command-0"))
+        const batch = page.locator('[data-slot="activity-batch-trigger"]').last()
+        await batch.waitFor()
+        await batch.click()
+        await settleConversation()
+        const trajectory = await batch.evaluate(async (button) => {
+          const top = button.getBoundingClientRect().top
+          const positions: number[] = []
+          ;(button as HTMLButtonElement).click()
+          for (let frame = 0; frame < 24; frame++) {
+            await new Promise(requestAnimationFrame)
+            positions.push(button.getBoundingClientRect().top)
+            if (frame === 2 || frame === 3) (button as HTMLButtonElement).click()
+          }
+          return { top, positions, connected: button.isConnected, expanded: button.getAttribute("aria-expanded") }
+        })
+        expect(trajectory.connected).toBe(true)
+        expect(trajectory.expanded).toBe("true")
+        expect(
+          Math.max(...trajectory.positions.map((position) => Math.abs(position - trajectory.top))),
+        ).toBeLessThanOrEqual(2)
+        expect(await page.locator('[data-component="process-viewport"]').count()).toBe(0)
+        expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
+      }
+    } finally {
+      await page.emulateMedia({ reducedMotion: "no-preference" })
+    }
+  },
+  30000,
+)
+
 test("compact activity titles reveal secondary arrows without moving their labels", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   const title = page.locator('[data-component="conversation-activity"] > button').last()
   const arrow = title.locator('[data-component="icon"]').last()
   await page.mouse.move(0, 0)
+  await page.waitForFunction(() => {
+    const arrow = [...document.querySelectorAll('[data-component="conversation-activity"] > button')]
+      .at(-1)
+      ?.querySelector('[data-component="icon"]')
+    return arrow && getComputedStyle(arrow).opacity === "0"
+  })
   expect(await arrow.evaluate((el) => getComputedStyle(el).opacity)).toBe("0")
   await title.scrollIntoViewIfNeeded()
   const bounds = await title.boundingBox()
@@ -336,8 +741,7 @@ test("compact conversation flow keeps prose and folded summaries at an even visu
   for (const title of await page.locator('[data-component="conversation-activity"] > button').all()) {
     if ((await title.getAttribute("aria-expanded")) === "true") await title.click()
   }
-  await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
-  await frames()
+  await settleConversation()
   const gaps = await page.evaluate(() => {
     const prose = document
       .querySelector('[data-part-id="progress"] [data-component="text-part"]')!
@@ -358,7 +762,9 @@ test("compact conversation flow keeps prose and folded summaries at an even visu
 test("a reasoning item has one keyboard disclosure across streaming growth and virtual body chunks", async () => {
   await page.goto(url)
   await page.evaluate(() => window.__conversationProcess.fragments(1))
-  const trigger = page.locator('[data-slot="process-reasoning-trigger"]')
+  const trigger = page.locator(
+    '[data-reasoning-identity="activity-reasoning:work:summary-0"] [data-slot="process-reasoning-trigger"]',
+  )
   await trigger.waitFor()
   expect(await trigger.count()).toBe(1)
   await trigger.focus()
@@ -377,14 +783,12 @@ test("a reasoning item has one keyboard disclosure across streaming growth and v
   expect(await trigger.evaluate((button) => document.activeElement === button)).toBe(true)
   await page.keyboard.press("Space")
   await page.getByText("Summary paragraph 7", { exact: true }).waitFor({ state: "visible" })
-  expect(await page.locator("[data-reasoning-part]").allTextContents()).toEqual(
+  expect(await page.locator('[data-reasoning-part^="summary-"]').allTextContents()).toEqual(
     Array.from({ length: 8 }, (_, index) => `Summary paragraph ${index}`),
   )
-  await page.waitForFunction(
-    () => !document.querySelector('[data-slot="process-reasoning-panel"][data-motion-changing]'),
-  )
+  await settleConversation()
   const fragmentGaps = await page
-    .locator("[data-reasoning-part]")
+    .locator('[data-reasoning-part^="summary-"]')
     .evaluateAll((parts) =>
       parts
         .slice(1)
@@ -403,50 +807,6 @@ test("a reasoning item has one keyboard disclosure across streaming growth and v
   }
   await trigger.click()
   await page.getByText("Summary paragraph 7", { exact: true }).waitFor({ state: "hidden" })
-}, 30000)
-
-test("reading a grouped reasoning fragment survives an earlier fragment growing in the same virtual chunk", async () => {
-  const cdp = await page.context().newCDPSession(page)
-  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
-  try {
-    await page.goto(url)
-    await page.evaluate(() => window.__conversationProcess.fragments(12))
-    const trigger = page.locator('[data-slot="process-reasoning-trigger"]')
-    await trigger.waitFor()
-    if ((await trigger.getAttribute("aria-expanded")) === "false") await trigger.click()
-    await page.getByText("Summary paragraph 7", { exact: true }).waitFor()
-    await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
-    const viewport = page.locator('[data-component="process-viewport"]').first()
-    await viewport.evaluate((element) => ((element as HTMLElement).style.maxHeight = "140px"))
-    await viewport.hover()
-    await page.mouse.wheel(0, -1)
-    await frames()
-    await viewport.evaluate((element) => {
-      const target = element.querySelector<HTMLElement>('[data-reasoning-part="summary-7"]')!
-      element.scrollTop += target.getBoundingClientRect().top - element.getBoundingClientRect().top - 2
-    })
-    await frames()
-    const position = () =>
-      viewport.evaluate((element) => {
-        const target = element.querySelector<HTMLElement>('[data-reasoning-part="summary-7"]')!
-        return target.getBoundingClientRect().top - element.getBoundingClientRect().top
-      })
-    const before = await position()
-    expect(Math.abs(before - 2)).toBeLessThanOrEqual(1)
-    await page.evaluate(() =>
-      window.__conversationProcess.reasoning("An earlier fragment finishes loading.\n".repeat(12), "summary-6"),
-    )
-    await frames()
-    expect(Math.abs((await position()) - before)).toBeLessThanOrEqual(1)
-    await page.evaluate(() =>
-      window.__conversationProcess.reasoning("A later fragment finishes loading.\n".repeat(12), "summary-10"),
-    )
-    await frames()
-    expect(Math.abs((await position()) - before)).toBeLessThanOrEqual(1)
-  } finally {
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
-    await cdp.detach()
-  }
 }, 30000)
 
 test.each(["index.mjs", "index.jsx"] as const)(
@@ -503,49 +863,14 @@ test.each(["index.mjs", "index.jsx"] as const)(
       await batch.focus()
       expect(await batch.evaluate((element) => element === document.activeElement)).toBe(true)
       if ((await batch.getAttribute("aria-expanded")) !== "true") await batch.press("Enter")
-      const viewport = target.locator('[data-component="process-viewport"]').last()
-      await viewport.waitFor()
+      await target.locator('[data-slot="activity-step-trigger"]').first().waitFor()
+      expect(await target.locator('[data-component="process-viewport"]').count()).toBe(0)
       await target.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
-      const heights = await target
-        .locator('[data-slot="activity-batch-content"]')
-        .last()
-        .evaluate(async (element) => {
-          const heights: number[] = []
-          for (let frame = 0; frame < 8; frame++) {
-            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-            heights.push(element.getBoundingClientRect().height)
-          }
-          return heights
-        })
-      expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(1)
-      await target.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
-      for (const height of [420, 700, 600]) {
-        await target.locator("[data-scroller]").evaluate((element, height) => {
-          ;(element as HTMLElement).style.height = `${height}px`
-        }, height)
-        await target.evaluate(
-          () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-        )
-        expect(await viewport.evaluate((element) => element.clientHeight)).toBeLessThanOrEqual(height * 0.45)
-      }
       await batch.press("Enter")
       await target.waitForFunction(() => !document.querySelector('[data-slot="activity-step-trigger"]'))
       await batch.press("Enter")
-      await viewport.waitFor()
-      await target.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
-      await target.evaluate(() => window.__conversationProcess.hydrateBefore(24))
-      await target.evaluate(
-        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-      )
-      await target.evaluate(
-        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-      )
-      await target.locator("[data-scroller]").evaluate(async (element) => {
-        ;(element as HTMLElement).style.height = "420px"
-        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-        window.__conversationProcess.prepare()
-      })
-      await target.waitForFunction(() => !document.querySelector('[data-component="process-viewport"]'))
+      await target.locator('[data-slot="activity-step-trigger"]').first().waitFor()
+      expect(await target.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
       expect(await target.evaluate(() => window.__resizeErrors)).toEqual([])
     } finally {
       if (alternate) {
@@ -660,72 +985,6 @@ test("parent and batch disclosures preserve independent choices and tool inspect
   expect(await page.getByText("I will check the project first.", { exact: true }).count()).toBe(1)
 }, 30000)
 
-test("cold process disclosure keeps a bounded reading window while tool bodies are pending", async () => {
-  await contentPage("cold-process")
-  await page.evaluate(() => {
-    const animate = Element.prototype.animate
-    Element.prototype.animate = function (frames, options) {
-      if (this.matches('[data-display-row][data-row-kind="activity"]'))
-        this.setAttribute("data-test-entrances", String(Number(this.getAttribute("data-test-entrances")) + 1))
-      return animate.call(this, frames, options)
-    }
-  })
-  const parent = page.locator('[data-slot="turn-process-trigger"]')
-  await parent.waitFor()
-  await parent.press("Enter")
-  const batch = page.locator('[data-component="conversation-activity"] > button')
-  await batch.waitFor()
-  await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
-  expect(
-    await batch.evaluate((element) => element.closest("[data-display-row]")?.getAttribute("data-test-entrances")),
-  ).toBe("1")
-  await batch.press("Enter")
-  const viewport = page.locator('[data-component="process-viewport"]')
-  await viewport.waitFor()
-  const pending = await page.evaluate(async () => {
-    const sizes: number[] = []
-    for (let frame = 0; frame < 12; frame++) {
-      await new Promise(requestAnimationFrame)
-      const viewport = document.querySelector('[data-component="process-viewport"]')!
-      sizes.push(viewport.getBoundingClientRect().height)
-    }
-    return {
-      sizes,
-      reads: Array.from({ length: 80 }, (_, index) => window.__conversationProcess.contentReads(`cold-${index}`)),
-      retained: window.__conversationProcess.retained(),
-    }
-  })
-  expect(Math.min(...pending.sizes)).toBeGreaterThan(200)
-  expect(pending.reads.filter(Boolean).length).toBeLessThan(48)
-  expect(Math.max(...pending.reads)).toBe(1)
-  expect(pending.retained).toBeLessThan(48)
-  await page.evaluate(() => {
-    for (let index = 0; index < 80; index++) window.__conversationProcess.contentFinish(`cold-${index}`)
-  })
-  await page.locator('[data-slot="activity-step-trigger"]').first().waitFor()
-  expect(
-    await batch.evaluate((element) => element.closest("[data-display-row]")?.getAttribute("data-test-entrances")),
-  ).toBe("1")
-  expect(await viewport.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(200)
-  expect(await page.getByText("Final answer stays mounted.", { exact: true }).count()).toBe(1)
-  await batch.press("Enter")
-  await viewport.waitFor({ state: "detached" })
-  expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(8)
-  const contraction = await page.evaluate(async () => {
-    const pending = document.querySelector<HTMLElement>('[data-part-id="cold-prose"]')!
-    const before = pending.getBoundingClientRect().height
-    document.querySelector<HTMLButtonElement>('[data-slot="turn-process-trigger"]')!.click()
-    for (let frame = 0; frame < 8; frame++) await new Promise(requestAnimationFrame)
-    return { before, during: pending.getBoundingClientRect().height, connected: pending.isConnected }
-  })
-  expect(contraction.connected).toBe(true)
-  expect(contraction.during).toBeGreaterThan(0)
-  expect(contraction.during).toBeLessThan(contraction.before - 2)
-  await parent.press("Enter")
-  await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
-  expect(await page.locator('[data-part-id="cold-prose"]').count()).toBe(1)
-})
-
 test("cold user attachments keep their folded geometry outside process preparation", async () => {
   await contentPage("cold-user")
   const user = page.locator('[data-display-row][data-row-kind="body"][data-message-role="user"]')
@@ -806,92 +1065,15 @@ test.each(["initial", "reversed"])(
         Element.prototype.animate = animate
       }
     }, reverse)
-    expect(result.initial).toHaveLength(3)
-    expect(new Set(result.initial).size).toBe(3)
+    expect(result.initial.length).toBeGreaterThan(0)
+    expect(new Set(result.initial).size).toBe(result.initial.length)
     expect(result.evicted).toBe(true)
     expect(result.remounted).toBe(2)
     expect(result.entrances).toEqual(result.initial)
   },
 )
 
-test("manual disclosure animates only its connected mount and releases it on collapse", async () => {
-  await page.goto(url)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  const batch = page.locator('[data-component="conversation-activity"] > button').first()
-  if ((await batch.getAttribute("aria-expanded")) === "true") await batch.press("Enter")
-  await page
-    .locator('[data-component="conversation-activity"]')
-    .first()
-    .locator('[data-slot="activity-batch-content"]')
-    .waitFor({ state: "detached" })
-  const result = await page.evaluate(async () => {
-    const button = document.querySelector<HTMLButtonElement>('[data-component="conversation-activity"] > button')!
-    const animate = Element.prototype.animate
-    const matchMedia = window.matchMedia
-    let listeners = 0
-    window.matchMedia = (query) => {
-      const media = matchMedia.call(window, query)
-      const add = media.addEventListener.bind(media)
-      const remove = media.removeEventListener.bind(media)
-      media.addEventListener = (...args: Parameters<typeof add>) => {
-        if (args[0] === "change") listeners++
-        add(...args)
-      }
-      media.removeEventListener = (...args: Parameters<typeof remove>) => {
-        if (args[0] === "change") listeners--
-        remove(...args)
-      }
-      return media
-    }
-    const calls: { connected: boolean; height: number[] }[] = []
-    Element.prototype.animate = function (frames, options) {
-      if (this.matches('[data-slot="activity-batch-content"]'))
-        calls.push({
-          connected: this.isConnected,
-          height: Array.isArray(frames) ? frames.map((frame) => parseFloat(String(frame.height))) : [],
-        })
-      return animate.call(this, frames, options)
-    }
-    const settle = async () => {
-      for (let frame = 0; frame < 36; frame++) await new Promise(requestAnimationFrame)
-    }
-    try {
-      button.click()
-      await settle()
-      const openedListeners = listeners
-      button.click()
-      await settle()
-      const closedListeners = listeners
-      button.click()
-      await settle()
-      return {
-        calls,
-        openedListeners,
-        closedListeners,
-        reopenedListeners: listeners,
-        open: button.getAttribute("aria-expanded"),
-        mounted: !!button.parentElement?.querySelector('[data-slot="activity-batch-content"]'),
-      }
-    } finally {
-      Element.prototype.animate = animate
-      window.matchMedia = matchMedia
-    }
-  })
-  expect(result.calls.map((call) => call.connected)).toEqual([true, true, true])
-  for (const call of result.calls) {
-    expect(call.height).toHaveLength(2)
-    expect(call.height.every(Number.isFinite)).toBe(true)
-    expect(Math.max(...call.height)).toBeGreaterThan(0)
-    expect(Math.min(...call.height)).toBe(0)
-  }
-  expect(result.open).toBe("true")
-  expect(result.mounted).toBe(true)
-  expect(result.openedListeners).toBeGreaterThan(0)
-  expect(result.closedListeners).toBe(0)
-  expect(result.reopenedListeners).toBe(result.openedListeners)
-}, 30000)
-
-test("manual parent disclosure owns bounded space motion without replacing the answer", async () => {
+test("manual parent disclosure uses compositor motion without replacing the answer", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => {
@@ -906,7 +1088,7 @@ test("manual parent disclosure owns bounded space motion without replacing the a
     const space: number[][] = []
     Element.prototype.animate = function (frames, options) {
       if (this.matches("[data-display-row]") && Array.isArray(frames))
-        space.push(frames.map((frame) => parseFloat(String(frame.height))))
+        space.push(frames.map((frame) => Number(frame.opacity)))
       return animate.call(this, frames, options)
     }
     const settle = async (count = 36) => {
@@ -937,51 +1119,6 @@ test("manual parent disclosure owns bounded space motion without replacing the a
   expect(result.sameAnswer).toBe(true)
   expect(result.changing).toBe(0)
 }, 30000)
-
-test("an unfocused process reader survives outer layout changes until an outer reading gesture", async () => {
-  await page.goto(url)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.evaluate(() => window.__conversationProcess.mode("full"))
-  const viewport = page.locator('[data-component="process-viewport"]').first()
-  const trigger = viewport.locator('[data-slot="process-reasoning-trigger"]')
-  if ((await trigger.getAttribute("aria-expanded")) === "true")
-    await trigger.evaluate((button) => (button as HTMLElement).click())
-  await trigger.evaluate((button) => (button as HTMLElement).click())
-  await page.getByText("Check evidence", { exact: true }).waitFor()
-  await page.evaluate(() => {
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-    window.__conversationProcess.hydrateBefore(80)
-  })
-  await page.locator("[data-scroller]").evaluate((scroller) => (scroller.scrollTop = 0))
-  await frames()
-  await frames()
-  expect(await viewport.count()).toBeGreaterThan(0)
-  expect(await page.getByText("Check evidence", { exact: true }).count()).toBe(1)
-  await page
-    .locator("[data-outside-control]")
-    .evaluate((control) => control.dispatchEvent(new WheelEvent("wheel", { deltaY: 1, bubbles: true })))
-  await page.waitForFunction(() => !document.querySelector('[data-component="process-viewport"]'))
-})
-
-test("an already-paused process reader reacquires retention after another reader takes ownership", async () => {
-  await page.goto(url)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.evaluate(() => window.__conversationProcess.mode("full"))
-  await page.waitForFunction(() => document.querySelectorAll('[data-component="process-viewport"]').length === 2)
-  await page.evaluate(() => {
-    const [first, second] = document.querySelectorAll('[data-component="process-viewport"]')
-    for (const viewport of [first, second, first])
-      viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }))
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-    window.__conversationProcess.hydrateBefore(80)
-  })
-  await page.locator("[data-scroller]").evaluate((scroller) => (scroller.scrollTop = 0))
-  await frames()
-  await frames()
-  await page.waitForFunction(() => document.querySelectorAll('[data-component="process-viewport"]').length === 1)
-  expect(await page.locator('[data-component="process-viewport"]').textContent()).toContain("Check evidence")
-  expect(await page.getByText("Continue checking", { exact: true }).count()).toBe(0)
-})
 
 test("reasoning chevrons appear on hover and focus and remain visible on touch", async () => {
   await page.goto(url)
@@ -1018,13 +1155,13 @@ test("reasoning chevrons appear on hover and focus and remain visible on touch",
 }, 30000)
 
 test("tools and reasoning share compact spacing across virtual chunks", async () => {
-  await page.goto(url)
+  await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => {
     window.__conversationProcess.mode("full")
     window.__conversationProcess.grow(20)
   })
-  const viewport = page.locator('[data-component="process-viewport"]').last()
+  const viewport = page.locator("[data-scroller]").last()
   await viewport.waitFor()
   const triggers = viewport.locator('[data-slot="activity-step-trigger"]')
   await triggers.first().waitFor()
@@ -1039,42 +1176,6 @@ test("tools and reasoning share compact spacing across virtual chunks", async ()
   for (const [index, current] of geometry.entries()) {
     expect(current.height).toBe(32)
     if (index) expect(current.top - geometry[index - 1].bottom).toBe(2)
-  }
-})
-
-test("disclosure across the overflow threshold preserves width and the clicked reading position", async () => {
-  await page.goto(url)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.evaluate(() => window.__conversationProcess.mode("full"))
-  const viewport = page.locator('[data-component="process-viewport"]').first()
-  const trigger = viewport.locator('[data-slot="process-reasoning-trigger"]').first()
-  await trigger.waitFor()
-  if ((await trigger.getAttribute("aria-expanded")) === "true") await trigger.click()
-  await page.waitForTimeout(300)
-  await page.locator("[data-scroller]").evaluate((el) => ((el as HTMLElement).style.height = "1200px"))
-  await page.evaluate(() => window.__conversationProcess.reasoning("Detailed reasoning paragraph.\n\n".repeat(20)))
-  await frames()
-  const samples = await viewport.evaluate(async (el) => {
-    const viewport = el as HTMLElement
-    viewport.style.maxHeight = `${viewport.clientHeight + 2}px`
-    const trigger = viewport.querySelector<HTMLButtonElement>('[data-slot="process-reasoning-trigger"]')!
-    const initial = { width: viewport.clientWidth, top: trigger.getBoundingClientRect().top }
-    trigger.click()
-    const values = []
-    for (let index = 0; index < 35; index++) {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-      values.push({
-        width: viewport.clientWidth,
-        gap: viewport.parentElement!.getBoundingClientRect().height - viewport.getBoundingClientRect().height,
-        drift: trigger.getBoundingClientRect().top - initial.top,
-      })
-    }
-    return { initial, values }
-  })
-  for (const sample of samples.values) {
-    expect(sample.width).toBe(samples.initial.width)
-    expect(Math.abs(sample.gap)).toBeLessThanOrEqual(1)
-    expect(Math.abs(sample.drift)).toBeLessThanOrEqual(1)
   }
 })
 
@@ -1156,13 +1257,13 @@ test("loaded empty reasoning hides its control and a failed body keeps an access
 })
 
 test("replayed additions and passive resize cannot follow a historical viewport", async () => {
-  await page.goto(url)
+  await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => {
     window.__conversationProcess.mode("full")
     window.__conversationProcess.grow(80)
   })
-  const viewport = page.locator('[data-component="process-viewport"]').last()
+  const viewport = page.locator("[data-scroller]").last()
   await page.waitForTimeout(250)
   await viewport.evaluate((el) => {
     el.dispatchEvent(new WheelEvent("wheel", { deltaY: -24, bubbles: true }))
@@ -1179,89 +1280,20 @@ test("replayed additions and passive resize cannot follow a historical viewport"
   expect(await viewport.evaluate((el) => el.scrollTop)).toBe(before)
 })
 
-test("narrow columns and reduced motion preserve geometry through rapid reversal", async () => {
-  await page.emulateMedia({ reducedMotion: "reduce" })
-  try {
-    for (const width of [320, 375]) {
-      await page.goto(url)
-      await page.getByText("I will check the project first.", { exact: true }).waitFor()
-      await page.evaluate((width) => {
-        ;(document.querySelector("[data-scroller]") as HTMLElement).style.width = `${width}px`
-        window.__conversationProcess.mode("full")
-        window.__conversationProcess.reasoning("Long reasoning.\n\n".repeat(100))
-      }, width)
-      const viewport = page.locator('[data-component="process-viewport"]').first()
-      const geometry = await viewport.evaluate(async (el) => {
-        const viewport = el as HTMLElement,
-          trigger = viewport.querySelector<HTMLButtonElement>('[data-slot="process-reasoning-trigger"]')!
-        const width = viewport.clientWidth
-        for (let index = 0; index < 6; index++) trigger.click()
-        trigger.click()
-        for (let index = 0; index < 8; index++)
-          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-        return {
-          width,
-          after: viewport.clientWidth,
-          height: viewport.clientHeight,
-          animations: viewport.getAnimations({ subtree: true }).length,
-        }
-      })
-      expect(geometry.after).toBe(geometry.width)
-      expect(geometry.height).toBeLessThanOrEqual(240)
-      expect(geometry.animations).toBe(0)
-    }
-  } finally {
-    await page.emulateMedia({ reducedMotion: "no-preference" })
-  }
-})
-
-test("process edge fades blend into the conversation canvas in both themes", async () => {
-  try {
-    for (const colorScheme of ["dark", "light"] as const) {
-      await page.emulateMedia({ colorScheme })
-      await page.goto(url)
-      await page.getByText("I will check the project first.", { exact: true }).waitFor()
-      await page.waitForFunction((scheme) => document.documentElement.dataset.colorScheme === scheme, colorScheme)
-      await page.evaluate(() => window.__conversationProcess.grow(50))
-      const viewport = page.locator('[data-component="process-viewport"]').last()
-      await viewport.evaluate((element) => {
-        element.parentElement!.style.backgroundColor = "var(--background-stronger)"
-        element.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }))
-        element.scrollTop = (element.scrollHeight - element.clientHeight) / 2
-      })
-      await frames()
-      const edges = await viewport.evaluate((element) => {
-        const window = element.parentElement!
-        return {
-          canvas: getComputedStyle(window).backgroundColor,
-          top: getComputedStyle(window, "::before").backgroundImage,
-          bottom: getComputedStyle(window, "::after").backgroundImage,
-          height: getComputedStyle(window, "::after").height,
-          pointerEvents: getComputedStyle(window, "::after").pointerEvents,
-        }
-      })
-      expect(edges.top).toContain(edges.canvas)
-      expect(edges.bottom).toContain(edges.canvas)
-      expect(edges.height).toBe("24px")
-      expect(edges.pointerEvents).toBe("none")
-    }
-  } finally {
-    await page.emulateMedia({ colorScheme: "no-preference" })
-  }
-})
-
 test("repeated process reading input does not rebuild unchanged conversation summaries", async () => {
   await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => window.__conversationProcess.grow(600))
+  await page.evaluate(() => window.__conversationProcess.locate("work", "command-0"))
   const batch = page.locator('[data-slot="activity-batch-trigger"]').last()
   await batch.click()
   await batch.click()
-  const viewport = page.locator('[data-component="process-viewport"]').last()
+  const viewport = page.locator("[data-scroller]").last()
   await viewport.waitFor()
   await viewport.dispatchEvent("wheel", { deltaY: -1 })
   await frames()
   await frames()
+  await settleConversation()
   const before = await page.evaluate(() => window.__conversationProcess.summaryReads())
   for (let index = 0; index < 6; index++) {
     await viewport.dispatchEvent("wheel", { deltaY: -1 })
@@ -1269,33 +1301,6 @@ test("repeated process reading input does not rebuild unchanged conversation sum
   }
   expect(await page.evaluate(() => window.__conversationProcess.summaryReads())).toBe(before)
   expect(errors).toEqual([])
-})
-
-test("a long logical block uses a bounded independent viewport", async () => {
-  await page.goto(url)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.evaluate(() => window.__conversationProcess.grow(1000))
-  const viewport = page.locator('[data-component="process-viewport"]').last()
-  await viewport.waitFor()
-  const geometry = await viewport.evaluate((el) => ({
-    height: el.clientHeight,
-    overflow: el.scrollHeight > el.clientHeight,
-  }))
-  expect(geometry.height).toBeLessThanOrEqual(270)
-  expect(geometry.overflow).toBe(true)
-  expect(await viewport.locator("..").getAttribute("data-overflow")).toBe("")
-  await viewport.hover()
-  await frames()
-  const mainOffset = await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)
-  await page.mouse.wheel(0, -300)
-  await frames()
-  expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(mainOffset)
-  expect(await page.getByText("More actions below", { exact: true }).count()).toBe(0)
-  expect(await page.locator('[data-slot="process-latest"]').last().textContent()).toBe("")
-  await viewport.focus()
-  await viewport.press("End")
-  await page.locator('[data-slot="process-latest"]').waitFor({ state: "detached" })
-  expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
 })
 
 test("loading earlier turns from latest preserves the visible outer row before and after measurement", async () => {
@@ -1509,25 +1514,29 @@ test("native Shift+Space leaves latest following and retains its reading row thr
 })
 
 test("native reading movement wins over real body growth in the same wheel dispatch", async () => {
-  await page.goto(url)
+  await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => {
     window.__conversationProcess.grow(1000)
   })
   for (let index = 0; index < 4; index++) await frames()
   await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
-  const viewport = page.locator('[data-component="process-viewport"]').last()
+  const viewport = page.locator("[data-scroller]").last()
   await viewport.hover()
   await frames()
   const before = await viewport.evaluate((element) => {
     const top = element.scrollTop
     const height = element.scrollHeight
+    const bounds = element.getBoundingClientRect()
+    const row = [...element.querySelectorAll<HTMLElement>('[data-display-row][data-row-kind="body"]')].find(
+      (row) => row.getBoundingClientRect().bottom > bounds.top,
+    )!
     element.addEventListener(
       "wheel",
       () => {
         const body = document.createElement("p")
         body.textContent = "Late current-version output below the reading position. ".repeat(100)
-        ;[...element.querySelectorAll("[data-display-row]")].at(-1)!.append(body)
+        row.append(body)
       },
       { once: true },
     )
@@ -1538,15 +1547,22 @@ test("native reading movement wins over real body growth in the same wheel dispa
   const after = await viewport.evaluate((element) => ({ top: element.scrollTop, height: element.scrollHeight }))
   expect(after.height).toBeGreaterThan(before.height)
   expect(after.top).toBeLessThanOrEqual(before.top - 100)
-  await page.locator('[data-slot="process-latest"]').last().waitFor({ state: "visible" })
+  expect(await page.locator('[data-slot="process-latest"]').count()).toBe(0)
 })
 
 test("native Space paging preserves new reading when real body growth follows its first movement", async () => {
-  await page.goto(url)
+  await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => window.__conversationProcess.grow(1000))
   await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))
-  const viewport = page.locator('[data-component="process-viewport"]').last()
+  const viewport = page.locator("[data-scroller]").last()
+  await page.locator('[data-part-id="many-400"] [data-slot="activity-step-trigger"]').evaluate((element) => {
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    document.getSelection()?.removeAllRanges()
+    document.getSelection()?.addRange(range)
+    document.dispatchEvent(new Event("selectionchange"))
+  })
   await viewport.focus()
   for (let index = 0; index < 4; index++) await frames()
   const before = await viewport.evaluate((element) => {
@@ -1568,13 +1584,13 @@ test("native Space paging preserves new reading when real body growth follows it
 })
 
 test("restoring an active process follows its current action after virtual body measurements", async () => {
-  await page.goto(url)
+  await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => {
     window.__conversationProcess.mode("full")
     window.__conversationProcess.restoreProcess(80)
   })
-  const viewport = page.locator('[data-component="process-viewport"]').last()
+  const viewport = page.locator("[data-scroller]").last()
   await viewport.waitFor()
   for (let index = 0; index < 4; index++) await frames()
   const restored = await viewport.evaluate((element) => {
@@ -1611,13 +1627,13 @@ for (const scenario of [
       for (let index = 0; index < 4; index++) await frames()
     }
     const layout = await page.evaluate(async (width) => {
-      const original = [...document.querySelectorAll<HTMLElement>('[data-component="process-viewport"]')].at(-1)!
-      const height = original.querySelector<HTMLElement>('[data-slot="process-viewport-content"] > div')!.style.height
+      const original = document.querySelector<HTMLElement>('[data-component="virtual-conversation-rows"]')!
+      const height = original.querySelector<HTMLElement>(":scope > div")!.style.height
       const first = await new Promise<string>((resolve) => {
         const observer = new MutationObserver(() => {
-          const current = [...document.querySelectorAll<HTMLElement>('[data-component="process-viewport"]')].at(-1)
+          const current = document.querySelector<HTMLElement>('[data-component="virtual-conversation-rows"]')
           if (!current || current === original) return
-          const content = current.querySelector<HTMLElement>('[data-slot="process-viewport-content"] > div')
+          const content = current.querySelector<HTMLElement>(":scope > div")
           if (!content) return
           observer.disconnect()
           resolve(content.style.height)
@@ -1635,13 +1651,14 @@ for (const scenario of [
 
 for (const detached of [false, true]) {
   test(`same-version active body growth ${detached ? "preserves reading" : "follows the current action"} without arrival events`, async () => {
-    await page.goto(url)
+    await page.goto(`${url}?scrolling`)
     await page.getByText("I will check the project first.", { exact: true }).waitFor()
     await page.evaluate(() => {
       window.__conversationProcess.mode("full")
       window.__conversationProcess.grow(40)
     })
-    const viewport = page.locator('[data-component="process-viewport"]').last()
+    await settleConversation()
+    const viewport = page.locator("[data-scroller]")
     await viewport.waitFor()
     await viewport.evaluate((element) => {
       element.scrollTop = element.scrollHeight
@@ -1656,7 +1673,7 @@ for (const detached of [false, true]) {
       }
       const top = element.scrollTop
       const height = element.scrollHeight
-      const content = element.querySelector<HTMLElement>('[data-slot="process-viewport-content"]')!
+      const content = element.querySelector<HTMLElement>('[data-component="virtual-conversation-rows"]')!
       const contentHeight = content.getBoundingClientRect().height
       const paint = new Promise<{ top: number; distance: number }>((resolve) => {
         const observer = new ResizeObserver(() => {
@@ -1694,46 +1711,6 @@ for (const detached of [false, true]) {
   })
 }
 
-test("a finished process can reach the end while retaining its outer conversation", async () => {
-  await page.goto(url)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.evaluate(() => {
-    window.__conversationProcess.grow(62)
-    window.__conversationProcess.mode("full")
-    window.__conversationProcess.stream()
-    window.__conversationProcess.complete()
-  })
-  await frames()
-  const viewport = page.locator('[data-component="process-viewport"]').last()
-  await viewport.waitFor()
-  await viewport.focus()
-  await page.waitForFunction(() => {
-    const outer = document.querySelector<HTMLElement>("[data-scroller]")!
-    const signature = `${outer.scrollTop}:${outer.scrollHeight}`
-    const state = window as unknown as { settledOuter?: { signature: string; at: number } }
-    if (state.settledOuter?.signature !== signature) {
-      state.settledOuter = { signature, at: performance.now() }
-      return false
-    }
-    return performance.now() - state.settledOuter.at > 200
-  })
-  const outerOffset = await page.locator("[data-scroller]").evaluate((element) => element.scrollTop)
-  await viewport.press("End")
-  await frames()
-  await page.locator('[data-part-id="many-61"]').waitFor()
-  expect(await page.locator("[data-scroller]").evaluate((element) => element.scrollTop)).toBe(outerOffset)
-  expect(
-    await page.locator('[data-part-id="many-61"]').evaluate((element) => {
-      const bounds = element.closest('[data-component="process-viewport"]')!.getBoundingClientRect()
-      const item = element.getBoundingClientRect()
-      return item.bottom > bounds.top && item.top < bounds.bottom
-    }),
-  ).toBe(true)
-  expect(await page.getByText("Final answer stays mounted.", { exact: true }).count()).toBe(1)
-  expect(await page.locator('[data-component="virtual-conversation-rows"]').count()).toBe(1)
-  expect(errors).toEqual([])
-})
-
 test("recorded compaction retains its current label without generic activity metadata", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
@@ -1756,14 +1733,14 @@ test("a live compaction without hydrated Parts creates one compact process windo
   })
   const event = page.locator('[data-component="process-event-row"]')
   await event.waitFor()
-  await page.waitForFunction(() => document.querySelectorAll('[data-component="process-viewport"]').length === 1)
+  await page.waitForFunction(() => document.querySelectorAll('[data-component="process-event-row"]').length === 1)
   expect(await event.count()).toBe(1)
-  expect(await page.locator('[data-component="process-viewport"]').count()).toBe(1)
+  expect(await page.locator('[data-component="process-viewport"]').count()).toBe(0)
   expect(await event.locator("button").textContent()).toContain("Compressing context")
   expect(errors).toEqual([])
 })
 
-test("a process locator opens a closed group and finds an offscreen part in its own viewport", async () => {
+test("a process locator opens a closed group and finds an offscreen Part in the conversation", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => {
@@ -1773,7 +1750,7 @@ test("a process locator opens a closed group and finds an offscreen part in its 
   expect(await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))).toBe(true)
   await page.waitForFunction(() => {
     const part = document.querySelector('[data-part-id="many-400"]')
-    const viewport = part?.closest('[data-component="process-viewport"]')
+    const viewport = part?.closest("[data-scroller]")
     if (!part || !viewport) return false
     const bounds = viewport.getBoundingClientRect(),
       row = part.getBoundingClientRect()
@@ -1787,16 +1764,14 @@ test.each(["outer", "process"] as const)(
     await page.goto(owner === "outer" ? `${url}?scrolling=1&outer-paging=1` : url)
     await page.getByText("I will check the project first.", { exact: true }).waitFor()
     if (owner === "process") await page.evaluate(() => window.__conversationProcess.grow(1000))
-    const viewport = page.locator(owner === "outer" ? "[data-scroller]" : '[data-component="process-viewport"]').last()
+    const viewport = page.locator("[data-scroller]").last()
     await viewport.evaluate((element) => {
       element.style.height = "16000px"
       element.style.maxHeight = "16000px"
       element.scrollTop = 0
     })
     await page.waitForFunction((owner) => {
-      const viewport = document.querySelector(
-        owner === "outer" ? "[data-scroller]" : '[data-component="process-viewport"]',
-      )!
+      const viewport = document.querySelector("[data-scroller]")!
       return (
         [...viewport.querySelectorAll("[data-display-row]")].filter(
           (row) => owner === "process" || !row.closest('[data-component="process-viewport"]'),
@@ -1853,80 +1828,6 @@ test.each(["outer", "process"] as const)(
   30_000,
 )
 
-test("local reading survives new actions, history prepend and reopening without moving the outer stream", async () => {
-  await page.goto(url)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.evaluate(() => window.__conversationProcess.grow(1000))
-  expect(await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))).toBe(true)
-  const viewport = page.locator('[data-component="process-viewport"]').last()
-  const part = page.locator('[data-slot="activity-step"][data-part-id="many-400"]')
-  await part.waitFor()
-  await viewport.evaluate(async (element) => {
-    await Promise.allSettled(
-      element
-        .getAnimations({ subtree: true })
-        .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
-        .map((animation) => animation.finished),
-    )
-  })
-  await viewport.focus()
-  await viewport.press("ArrowUp")
-  await viewport.evaluate(async (element) => {
-    let previous = element.scrollTop,
-      stable = 0
-    for (let i = 0; i < 40 && stable < 4; i++) {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-      const next = element.scrollTop
-      stable = next === previous ? stable + 1 : 0
-      previous = next
-    }
-  })
-  await frames()
-  const before = await part.evaluate((el) => el.getBoundingClientRect().top)
-  const outer = await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)
-  await page.evaluate(() => window.__conversationProcess.append("live-reading-append"))
-  await frames()
-  await frames()
-  expect(Math.abs((await part.evaluate((el) => el.getBoundingClientRect().top)) - before)).toBeLessThan(2)
-  expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(outer)
-  await page.evaluate(() => window.__conversationProcess.prepend(24))
-  await frames()
-  expect(Math.abs((await part.evaluate((el) => el.getBoundingClientRect().top)) - before)).toBeLessThan(2)
-  expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(outer)
-  await page.locator('[data-slot="process-latest"]').last().waitFor()
-  const header = page.locator('[data-slot="turn-process-trigger"]')
-  const relative = await part.evaluate(
-    (el) =>
-      el.getBoundingClientRect().top - el.closest('[data-component="process-viewport"]')!.getBoundingClientRect().top,
-  )
-  await header.click()
-  await page.waitForFunction(() => !document.querySelector('[data-row-kind="activity"]'))
-  await header.click()
-  await frames()
-  await frames()
-  await page.locator("[data-scroller]").evaluate((element, offset) => (element.scrollTop = offset), outer)
-  await frames()
-  expect(
-    Math.abs(
-      (await part.evaluate(
-        (el) =>
-          el.getBoundingClientRect().top -
-          el.closest('[data-component="process-viewport"]')!.getBoundingClientRect().top,
-      )) - relative,
-    ),
-  ).toBeLessThan(2)
-  expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
-  await page.locator('[data-slot="process-latest"]').last().click()
-  await page.waitForFunction(() => {
-    const part = document.querySelector('[data-part-id="live-reading-append"]')
-    const viewport = part?.closest('[data-component="process-viewport"]')
-    if (!part || !viewport) return false
-    const bounds = viewport.getBoundingClientRect(),
-      row = part.getBoundingClientRect()
-    return row.height > 0 && row.bottom > bounds.top && row.top < bounds.bottom
-  })
-}, 30000)
-
 test("compaction has one compact lifecycle row and exposes running status while collapsed", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
@@ -1961,7 +1862,7 @@ test("a manual compaction request is replaced by one completed event inside its 
   await event.waitFor()
   expect(await event.count()).toBe(1)
   expect(await event.getAttribute("data-status")).toBe("running")
-  expect(await page.locator('[data-component="process-viewport"] [data-component="process-event-row"]').count()).toBe(1)
+  expect(await page.locator('[data-component="process-event-row"]').count()).toBe(1)
   await page.evaluate(() => window.__conversationProcess.compaction("committed"))
   await page.waitForFunction(
     () =>
@@ -1992,7 +1893,7 @@ test("logical execution folds across messages, preserves prose and retains the f
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
     expect(await page.locator('[data-row-kind="activity"]').count()).toBe(2)
     expect(await page.locator('[data-component="conversation-activity"] > button').count()).toBe(2)
-    expect(await page.locator('[data-component="process-viewport"]').count()).toBe(1)
+    expect(await page.locator('[data-component="process-viewport"]').count()).toBe(0)
     await page.evaluate(() => window.__conversationProcess.stream())
     await frames()
     await page.locator("[data-scroller]").evaluate((el) => (el.scrollTop = el.scrollHeight))

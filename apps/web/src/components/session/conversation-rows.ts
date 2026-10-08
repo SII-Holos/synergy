@@ -233,14 +233,14 @@ export function buildConversationRows(input: {
             offset++
           }
         }
-        if (process && isExecutionPart(parts[first])) {
+        if (process && parts[first].type === "reasoning") {
           while (
             offset < parts.length &&
             !separatesDeliverables(parts[first]) &&
             !separatesDeliverables(parts[offset]) &&
             offset - first < 6 &&
             !boundaries.has(`${messageKey(message.id)}:${parts[offset].id}`) &&
-            isExecutionPart(parts[offset]) &&
+            parts[offset].type === "reasoning" &&
             bytes + bodyBytes(parts[offset]) <= 128 * 1024
           ) {
             bytes += bodyBytes(parts[offset])

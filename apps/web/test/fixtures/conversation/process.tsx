@@ -357,7 +357,9 @@ const context: Partial<PluginConversationService> = {
   },
 }
 let toolCaseSequence = 0
+let statusReads = 0
 window.__conversationProcess = {
+  statusReads: () => statusReads,
   fragments(count: number) {
     setData("message", "session", [root, work])
     setData("part", "work", [
@@ -608,8 +610,10 @@ window.__conversationProcess = {
   contentPageLoads: () => pageLoads,
 }
 const runtime = {
-  statusFor: (): SessionStatus =>
-    status() === "running" || status() === "approval" ? { type: "busy", activity: activity() } : { type: "idle" },
+  statusFor: (): SessionStatus => {
+    statusReads++
+    return status() === "running" || status() === "approval" ? { type: "busy", activity: activity() } : { type: "idle" }
+  },
   permissionsFor: () => [],
   questionsFor: () => [],
   cortexTasks: () => [],
@@ -648,6 +652,7 @@ function Scroller(props: ParentProps) {
       onScroll={() => autoScroll?.handleScroll()}
       style="height:600px;overflow:auto;width:700px;max-width:100%"
       data-scroller
+      tabIndex={0}
     >
       <div ref={(element) => autoScroll?.contentRef(element)}>{props.children}</div>
       <button type="button" data-outside-control>

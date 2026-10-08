@@ -26,7 +26,9 @@ Opening the latest conversation or explicitly returning to its end establishes a
 
 The implementation is [virtual conversation rows](../../../../apps/web/src/components/session/virtual-conversation-rows.tsx), [process viewport](../../../../packages/ui/src/components/process-viewport.tsx), [event rows](../../../../packages/ui/src/components/process-event-row.tsx) and [event details](../../../../apps/web/src/components/workspace/process-event-detail.tsx). This extends the [bounded rendering decision](../architecture/2026-10-03-bounded-conversation-process-rendering.md).
 
-Tool-row geometry and semantic disclosure are subsequently refined by [semantic process disclosure](2026-10-04-semantic-process-disclosure.md); this record continues to own window bounds and system-event details.
+Tool-row geometry and semantic disclosure are subsequently refined by [semantic process disclosure](2026-10-04-semantic-process-disclosure.md); this record retains the system-event details decision.
+
+The nested scroll owner is superseded by [conversation scroll ownership](../architecture/2026-10-09-conversation-scroll-ownership.md); semantic grouping, system-event identity, live arrival and recovery requirements continue to apply.
 
 ## Alternatives considered
 
