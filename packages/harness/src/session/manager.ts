@@ -1,6 +1,7 @@
 import { SessionRecords } from "./records"
 import { ExecutionCapacity } from "./execution-capacity"
 import { WorkspaceAccess } from "../workspace/access"
+import { WorkspaceCatalog } from "../workspace/catalog"
 import { RuntimeContext } from "../lifecycle/context"
 import { SessionInputProgress } from "./input-progress"
 import { Bus } from "../bus"
@@ -448,7 +449,12 @@ export namespace SessionManager {
       }
       const session = await SessionWorkspaceRuntime.withBinding(
         sessionID,
-        () => requireSession(sessionID),
+        async () => {
+          const session = await requireSession(sessionID)
+          if (session.workspaceID != null && options?.workspace !== "history")
+            await WorkspaceCatalog.assertActive(session.workspaceID, session.scope.id)
+          return session
+        },
         lease.signal,
       )
       const scope = session.scope as Scope

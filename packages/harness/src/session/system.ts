@@ -73,7 +73,7 @@ export namespace SystemPrompt {
           envLines.push(`  Original checkout: ${workspace.originalCheckout}`)
         }
         envLines.push(
-          `  Leaving: use worktree_leave when isolated work is complete or you need to return to the main checkout.`,
+          `  Leaving: use worktree_leave to return to the original checkout without requesting reclamation. Use worktree_archive when isolated work is finished; it returns you to the original checkout and attempts safe reclamation while keeping this conversation running.`,
         )
       }
     }

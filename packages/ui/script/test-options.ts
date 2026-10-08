@@ -11,6 +11,7 @@ export const testOptions = {
     "test/components/message-readers.render.test.ts",
     "test/components/execution-completion.dom.test.ts",
     "test/components/tool/computer-tool-renders.test.tsx",
+    "test/components/tool/worktree-tool-presentation.test.tsx",
     "test/components/basic-tool-lifecycle.dom.test.ts",
     "test/components/countdown-anchor.dom.test.ts",
     "test/components/message-part-error-boundary.test.ts",
@@ -54,6 +55,7 @@ export const testOptions = {
   browserOnly: [
     "test/solid-ordered-rows.test.ts",
     "test/components/message-readers.render.test.ts",
+    "test/components/tool/worktree-tool-presentation.test.tsx",
     "test/components/render-html.test.ts",
     "test/hooks/create-auto-scroll.test.ts",
     "test/hooks/use-filtered-list.test.tsx",

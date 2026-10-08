@@ -1,3 +1,4 @@
+import path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -113,6 +114,138 @@ export namespace WorkspaceCatalog {
     return records.map((record) => (record === undefined ? undefined : Info.parse(record)))
   }
 
+  async function* catalogRecords(reader: Pick<StoreTransaction, "query"> = Storage) {
+    let after: string[] | undefined
+    for (;;) {
+      const page = await reader.query({ kind: "workspace", after, limit: 128 })
+      for (const row of page) yield Info.parse(row.value)
+      if (page.length < 128) return
+      after = page.at(-1)!.key
+    }
+  }
+
+  export function listAll(): Promise<Info[]> {
+    return Storage.snapshot(async () => {
+      const records: Info[] = []
+      for await (const record of catalogRecords()) records.push(record)
+      return records
+    })
+  }
+
+  function directoryContains(root: string, target: string) {
+    const relative = path.relative(root, target)
+    return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
+  }
+
+  function liveDirectory(record: Info): record is Info & { binding: { path: string } } {
+    return record.binding.state === "bound" && !!record.binding.path && record.lifecycle !== "deleted"
+  }
+
+  function samePhysicalDirectory(first: Info, second: Info) {
+    return !!first.binding.physicalID && first.binding.physicalID === second.binding.physicalID
+  }
+
+  async function assertDirectoryAdmission(candidate: Info, reader: Pick<StoreTransaction, "query"> = Storage) {
+    if (!liveDirectory(candidate)) return
+    for await (const record of catalogRecords(reader)) {
+      if (
+        record.id === candidate.id ||
+        record.lifecycle !== "deleting" ||
+        !liveDirectory(record) ||
+        record.binding.hostID !== candidate.binding.hostID
+      )
+        continue
+      if (
+        samePhysicalDirectory(record, candidate) ||
+        directoryContains(record.binding.path, candidate.binding.path) ||
+        directoryContains(candidate.binding.path, record.binding.path)
+      )
+        throw new Unavailable({ workspaceID: candidate.id, message: "An overlapping Workspace is being removed" })
+    }
+  }
+
+  async function assertRetirementReferences(records: Info[]) {
+    const owned = new Set(records.map((record) => record.id))
+    const roots = records.filter(liveDirectory)
+    if (!roots.length) return
+    for await (const record of catalogRecords()) {
+      if (owned.has(record.id) || !liveDirectory(record)) continue
+      const root = roots.find(
+        (root) =>
+          record.binding.hostID === root.binding.hostID &&
+          (samePhysicalDirectory(record, root) ||
+            directoryContains(root.binding.path, record.binding.path) ||
+            (record.lifecycle === "deleting" && directoryContains(record.binding.path, root.binding.path))),
+      )
+      if (root)
+        throw new Unavailable({
+          workspaceID: root.id,
+          message: "Another Workspace references this directory or a child directory",
+        })
+    }
+  }
+
+  export async function assertActive(id: string, scopeID: string): Promise<Info> {
+    const record = await get(id, scopeID)
+    if (record.lifecycle !== "active") throw new Unavailable({ workspaceID: id, message: "Workspace is not active" })
+    return record
+  }
+
+  export function beginRetirement(records: Info[]): Promise<Info[]> {
+    return transitionRetirement(records, "active", "deleting")
+  }
+
+  export async function assertRetirement(records: Info[]): Promise<void> {
+    await Storage.snapshot(() => retirementRecords(records, "deleting"))
+  }
+
+  export function completeRetirement(records: Info[], lifecycle: "active" | "deleted"): Promise<Info[]> {
+    return transitionRetirement(records, "deleting", lifecycle)
+  }
+
+  async function retirementRecords(records: Info[], lifecycle: Info["lifecycle"]): Promise<Info[]> {
+    const ids = new Set<string>()
+    for (const record of records) {
+      if (ids.has(record.id))
+        throw new Invalid({ workspaceID: record.id, message: "Workspace retirement contains duplicate identities" })
+      ids.add(record.id)
+    }
+    const current = await readMany(records.map((record) => record.id))
+    const verified = records.map((expected, index) => {
+      const record = current[index]
+      if (!record || record.scopeID !== expected.scopeID)
+        throw new Storage.NotFoundError({ message: "Workspace not found in this Scope" })
+      if (record.revision !== expected.revision)
+        throw new BindingChanged({ workspaceID: record.id, message: "Workspace changed during retirement" })
+      if (record.lifecycle !== lifecycle)
+        throw new Unavailable({ workspaceID: record.id, message: "Workspace retirement lifecycle changed" })
+      return record
+    })
+    await assertRetirementReferences(verified)
+    return verified
+  }
+
+  function transitionRetirement(
+    records: Info[],
+    expectedLifecycle: "active" | "deleting",
+    lifecycle: Info["lifecycle"],
+  ): Promise<Info[]> {
+    return Storage.transaction(async () => {
+      const current = await retirementRecords(records, expectedLifecycle)
+      const next = current.map((record) => ({
+        ...record,
+        lifecycle,
+        revision: record.revision + 1,
+        updatedAt: Date.now(),
+      }))
+      for (const record of next) {
+        await Storage.write(recordKey(record.id), record)
+        await publishUpdated(record)
+      }
+      return next
+    })
+  }
+
   export async function list(scopeID: string): Promise<Info[]> {
     const keys = await Storage.list(StoragePath.workspaceScope(scopeID))
     const records = await Storage.readMany<unknown>(keys.map((key) => recordKey(key[2])))
@@ -146,6 +279,7 @@ export namespace WorkspaceCatalog {
     return Storage.transaction(async () => {
       const existing = await findRegistration(candidate)
       if (existing) return existing
+      await assertDirectoryAdmission(candidate)
       await Storage.write(recordKey(candidate.id), candidate)
       await Storage.write(scopeKey(candidate.scopeID, candidate.id), candidate.id)
       for (const key of locations(candidate)) await Storage.write(key, candidate.id)
@@ -313,6 +447,7 @@ export namespace WorkspaceCatalog {
   export async function writeRelocated(info: Info, tx: StoreTransaction) {
     if (info.binding.state !== "bound" || !info.binding.path || !info.binding.physicalID || info.lifecycle !== "active")
       throw new Invalid({ message: "Relocated Workspace requires verified local authority", workspaceID: info.id })
+    await assertDirectoryAdmission(info, tx)
     const keys = locations(info)
     if ((await tx.readMany([recordKey(info.id), ...keys])).some((value) => value !== undefined))
       throw new BindingChanged({
@@ -377,6 +512,7 @@ export namespace WorkspaceCatalog {
         backend: { provider: "directory", spec: {} },
         activeMount: undefined,
       })
+      await assertDirectoryAdmission(next)
       const keys = locations(next)
       const conflicts = await Storage.readMany<string>(keys)
       if (conflicts.some((value) => value !== undefined && value !== id))
@@ -392,6 +528,8 @@ export namespace WorkspaceCatalog {
     return Storage.transaction(async () => {
       const raw = await Storage.read<Info>(recordKey(previous.id))
       const current = await get(previous.id, previous.scopeID)
+      if (current.lifecycle !== "active")
+        throw new Unavailable({ workspaceID: current.id, message: "Workspace is not active" })
       if (current.revision !== previous.revision || current.binding.physicalID !== previous.binding.physicalID)
         throw new BindingChanged({ workspaceID: previous.id, message: "Workspace changed during identity upgrade" })
       const next: Info = {
@@ -399,6 +537,7 @@ export namespace WorkspaceCatalog {
         revision: current.revision + 1,
         binding: { ...current.binding, physicalID },
       }
+      await assertDirectoryAdmission(next)
       const keys = locations(next)
       if ((await Storage.readMany<string>(keys)).some((owner) => owner !== undefined && owner !== current.id))
         throw new BindingChanged({

@@ -25005,6 +25005,10 @@ msgid "tool.title.archive-note"
 msgstr "Archive Note"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.archive-worktree"
+msgstr "Archive isolated workspace"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.ast-search"
 msgstr "Search AST"
 

@@ -17,6 +17,8 @@ When hydrating references from a batch of records, deduplicate referenced identi
 
 For composed domain reads, use `Storage.snapshot()` and make every paginated projection query join its parent transaction; a direct `TransactionalStore` query inside it can reenter the non-reentrant reader queue or lose writer-local visibility. Release a reader snapshot before a cold derived-index write and recheck after writer admission. Verify with a real held writer, committed external reads, transaction-local writes and a concurrent publication; use physical barriers with bounded rescue and cleanup rather than latency targets.
 
+For physical directory retirement, enumerate host-qualified canonical Workspace authority across the Storage namespace, not only one Scope or registry. Repeat subtree and physical-alias exclusion inside the serialized catalog write transaction, and reject overlapping authority publication through registration, rebinding, relocation and identity upgrades while deleting. Keep filesystem identity checks outside SQL callbacks. Cover both writer commit orders with barriers, descendant and foreign-Scope references, active ancestors, unbound imports and blockers beyond a page boundary; a native claim does not prove the absence of dormant logical references.
+
 ### Authoritative Agent records
 
 1. Build logical keys through `StoragePath`; use an explicit `Storage.Handle`. Normal Agent record code must never read or write legacy JSON files.

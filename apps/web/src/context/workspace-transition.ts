@@ -22,7 +22,10 @@ export function resolveWorkspaceTransition(part: Part): WorkspaceTransition {
   if (part.tool === "worktree_enter" && metadata?.action === "entered") {
     const workspace = metadata?.workspace as Record<string, unknown> | undefined
     if (workspace) return { kind: "enter", workspace }
-  } else if (part.tool === "worktree_leave" && metadata?.action === "left") {
+  } else if (
+    (part.tool === "worktree_leave" && metadata?.action === "left") ||
+    (part.tool === "worktree_archive" && metadata?.action === "archived")
+  ) {
     const restored = metadata?.restored as { type?: string; path?: string } | undefined
     if (restored && restored.path) {
       return {
