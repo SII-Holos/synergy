@@ -16,6 +16,8 @@ New live prose receives one subtle entrance; tool entry and history collection u
 
 The shared primary progress guidance favors continuing with tools. An initial explanation is optional. An important finding, changed approach, decision or blocker warrants an update; elapsed time or another model reply alone does not. The prompt describes useful collaboration without exposing rendering, persistence or orchestration.
 
+The update trigger and optional initial explanation are superseded by [novel progress guidance](2026-10-08-novel-progress-guidance.md), which asks for brief initial direction on substantial work and new information in later updates.
+
 This supersedes the reasoning-placement and timed-progress choices in [live tool history and reasoning segments](../feature/2026-10-02-live-tool-history-and-reasoning-segments.md), while retaining its continuous grouping and pagination decisions. No message persistence, model protocol or SDK contract changes.
 
 ## Alternatives considered
