@@ -443,7 +443,7 @@ For browser-local document readers, validate actual streamed decompression in a 
 
 ## Conversation navigation motion
 
-Test the production conversation's start-aligned flex column when adding a presentation wrapper; an un-sized intermediary can collapse percentage-width virtual rows despite isolated component tests passing. Keep scrollable geometry independent from presentation transforms and measure virtual margins in canonical coordinates. Interrupt following from the painted position and do not run a second compensation during disclosure space motion.
+Test the production conversation's start-aligned flex column when adding a presentation wrapper; an un-sized intermediary can collapse percentage-width virtual rows despite isolated component tests passing. Include the real presentation layer in toolbar tests and compare vertical centers with portaled workspace controls and the open workspace header. A new positioned ancestor must not inherit content padding as a toolbar offset. Keep scrollable geometry independent from presentation transforms and measure virtual margins in canonical coordinates. Interrupt following from the painted position and do not run a second compensation during disclosure space motion.
 
 Exercise the Composer inside the real conversation presentation layers after changing their structure. Measure reserved chrome through its explicit current-view owner, never a child index or retained snapshot. Verify empty-draft text visibility, native height dragging, full expansion and collapse, and resizing while an outgoing conversation is retained; isolated resize controls with a fixed height cannot cover available-space measurement.
 
