@@ -76,10 +76,7 @@ const runtime = {
 }
 
 const resourceController = {
-  open: () => false,
-  openAttachment: () => false,
-  resolveWorkspacePath: (value) => value,
-  openWorkspaceSource: () => false,
+  open: async () => ({ status: "cancelled" as const }),
 }
 const EmptyDiff = () => null
 const [following, setFollowing] = createSignal(true)

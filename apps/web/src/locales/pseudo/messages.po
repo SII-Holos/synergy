@@ -1342,10 +1342,6 @@ msgid "app.attachment.office.unsupported"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.attachment.openFailed"
-msgstr "⟦Couldn’t open attachment⟧"
-
-#. js-lingui-explicit-id
 msgid "app.attachment.pdf.fitWidth"
 msgstr "⟦Fit width⟧"
 
@@ -8578,6 +8574,50 @@ msgid "app.rawMessages.title"
 msgstr "⟦Raw messages⟧"
 
 #. js-lingui-explicit-id
+msgid "app.reference.chooseWorkspace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.invalid"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.locationUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.noWorkspace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.openFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.outsideWorkspace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.pageUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.searchWorkspace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.workspaceChanged"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.review.toolUnavailable"
 msgstr "⟦This tool result is no longer available.⟧"
 
@@ -12166,10 +12206,6 @@ msgid "execution.context"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.contextHelp"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "execution.contextStale"
 msgstr ""
 
@@ -12634,10 +12670,6 @@ msgid "execution.toolOutput"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.totalHelp"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "execution.trajectory"
 msgstr ""
 
@@ -12659,6 +12691,78 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.unknownBilling"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.cacheHit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.cacheRead"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.cacheWrite"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.details"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.firstContent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.generationRate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.observedCacheHit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.reasoning"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requestDuration"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requestMetrics"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requestRate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requests"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.retryCount"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.seconds"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.tokenRate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.toolCalls"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.toolDuration"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.usage.uncached"
 msgstr ""
 
 #. js-lingui-explicit-id

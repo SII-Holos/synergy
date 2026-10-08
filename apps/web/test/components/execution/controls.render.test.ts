@@ -144,6 +144,7 @@ function summary(revision = 1, id = "root"): ExecutionSummary {
     cacheWrites: {},
   }
   const rate = () => ({ value: null, tokens: 0, milliseconds: 0, samples: 0, excluded: 0 })
+  const latency = { samples: 0, excluded: 0, totalMs: 0, meanMs: null, p50Ms: null, p95Ms: null }
   return {
     sessionID: id,
     revision,
@@ -165,6 +166,19 @@ function summary(revision = 1, id = "root"): ExecutionSummary {
     },
     rates: { generation: rate(), endToEnd: rate() },
     cache: { ratio: null, observedRatio: null, read: 0, input: 0, samples: 0, excluded: 0 },
+    latency: { headers: latency, firstByte: latency, ttft: latency, request: latency, generation: latency },
+    outcomes: {
+      completed: 1,
+      failed: 0,
+      cancelled: 0,
+      interrupted: 0,
+      running: 0,
+      retries: 0,
+      logicalRetries: 0,
+      transportRetries: 0,
+      rootTasks: 1,
+    },
+    tools: [],
     context: null,
     contextDistribution: null,
     tasks: [

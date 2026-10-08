@@ -1,13 +1,6 @@
 export type FileViewMode = "source" | "preview"
-export type FilePreviewKind = "source" | "markdown" | "html" | "svg" | "image" | "pdf" | "unsupported"
-
-export type FilePreviewCapability = {
-  kind: FilePreviewKind
-  defaultMode: FileViewMode
-  dual: boolean
-}
-
-export const PDF_PREVIEW_MAX_BYTES = 50 * 1024 * 1024
+export { ATTACHMENT_PDF_MAX_BYTES as PDF_PREVIEW_MAX_BYTES } from "../resource-preview"
+import { ATTACHMENT_PDF_MAX_BYTES as PDF_PREVIEW_MAX_BYTES } from "../resource-preview"
 
 export type PdfPreviewAction = "fetch" | "cached" | "too-large"
 
@@ -23,8 +16,6 @@ export async function pdfPreviewBytes(data: unknown): Promise<Uint8Array | undef
   if (data instanceof Blob) return new Uint8Array(await data.arrayBuffer())
   return undefined
 }
-
-const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "ico"])
 
 export function normalizeWorkspacePath(input: string) {
   if (!input) return undefined
@@ -64,44 +55,6 @@ export function shortestUniqueFileTitle(path: string, siblings: string[]) {
   return `${name} · ${parent.join("/")}`
 }
 
-export function classifyFilePreview(
-  path: string,
-  resultKind: "text" | "image" | "binary",
-  mimeType?: string,
-): FilePreviewCapability {
-  const extension = filename(path).split(".").at(-1)?.toLowerCase() ?? ""
-  if (resultKind === "image" || IMAGE_EXTENSIONS.has(extension)) {
-    return { kind: "image", defaultMode: "preview", dual: false }
-  }
-  if (resultKind === "binary") {
-    if (extension === "pdf" || mimeType === "application/pdf") {
-      return { kind: "pdf", defaultMode: "preview", dual: false }
-    }
-    return { kind: "unsupported", defaultMode: "preview", dual: false }
-  }
-  if (extension === "md" || extension === "markdown") {
-    return { kind: "markdown", defaultMode: "preview", dual: true }
-  }
-  if (extension === "html" || extension === "htm") {
-    return { kind: "html", defaultMode: "preview", dual: true }
-  }
-  if (extension === "svg") return { kind: "svg", defaultMode: "preview", dual: true }
-  return { kind: "source", defaultMode: "source", dual: false }
-}
-
 export function mergeDirectoryPage(existing: string[], incoming: string[], reset: boolean) {
   return Array.from(new Set(reset ? incoming : [...existing, ...incoming]))
-}
-
-export function resolveWorkspaceRelativePath(fromFile: string, target: string) {
-  if (!target || target.startsWith("#")) return undefined
-  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(target) || target.startsWith("//")) return undefined
-  let decoded: string
-  try {
-    decoded = decodeURIComponent(target.split(/[?#]/, 1)[0] ?? "")
-  } catch {
-    return undefined
-  }
-  const parent = fromFile.split("/").slice(0, -1).join("/")
-  return normalizeWorkspacePath(parent ? `${parent}/${decoded}` : decoded)
 }

@@ -9,6 +9,7 @@ import { CostBreakdown, executionDuration } from "./overview"
 import { compactTokenText, type TaskDetailsStatus } from "./task-details-model"
 import { executionCostText, executionMoney } from "./cost"
 import { E } from "./i18n"
+import { ExecutionPerformance, UsagePopover } from "./usage"
 
 export function TaskStatusIcon(props: { status: TaskDetailsStatus }) {
   const { _ } = useLingui()
@@ -53,17 +54,6 @@ export function CompactExecutionOverview(props: { summary: ExecutionSummary; now
   const context = () => (props.summary.context?.stale ? null : props.summary.context?.ratio)
   const contextText = () =>
     new Intl.NumberFormat(i18n().locale, { style: "percent", maximumFractionDigits: 0 }).format(context() ?? 0)
-  const usageHelp = () => {
-    const own = compactTokenText(props.summary.own.tokens.total, props.summary.own.calls, i18n().locale)
-    const children = compactTokenText(
-      props.summary.descendants.tokens.total,
-      props.summary.descendants.calls,
-      i18n().locale,
-    )
-    return [_(E.totalHelp), own && `${_(E.own)}: ${own}`, children && `${_(E.children)}: ${children}`]
-      .filter(Boolean)
-      .join("\n")
-  }
   return (
     <section class="execution-compact-metrics" aria-label={_(E.overview)}>
       <Tooltip value={_(E[props.summary.status])} hideWhenDetached>
@@ -82,12 +72,10 @@ export function CompactExecutionOverview(props: { summary: ExecutionSummary; now
         </Show>
         <Show when={tokens()}>
           {(value) => (
-            <Tooltip value={usageHelp()} hideWhenDetached>
-              <span class="execution-compact-metric" tabindex="0" aria-label={`${_(E.tokens)}: ${value()}`}>
-                <Icon name={getSemanticIcon("execution.tokens")} size="small" />
-                <span>{value()}</span>
-              </span>
-            </Tooltip>
+            <UsagePopover summary={props.summary} class="execution-compact-metric">
+              <Icon name={getSemanticIcon("execution.tokens")} size="small" />
+              <span>{value()}</span>
+            </UsagePopover>
           )}
         </Show>
         <Show when={cost() !== "—"}>
@@ -111,7 +99,7 @@ export function CompactExecutionOverview(props: { summary: ExecutionSummary; now
           </Popover>
         </Show>
         <Show when={context() != null}>
-          <Tooltip value={_(E.contextHelp)} hideWhenDetached>
+          <Tooltip value={_(E.context)} hideWhenDetached>
             <span class="execution-compact-metric" tabindex="0" aria-label={`${_(E.context)}: ${contextText()}`}>
               <Icon name={getSemanticIcon("session.context")} size="small" />
               <span>{contextText()}</span>
@@ -119,6 +107,7 @@ export function CompactExecutionOverview(props: { summary: ExecutionSummary; now
           </Tooltip>
         </Show>
       </div>
+      <ExecutionPerformance summary={props.summary} />
     </section>
   )
 }

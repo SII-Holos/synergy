@@ -118,10 +118,7 @@ const resourceController = {
     openedTools.push(target)
     return true
   },
-  open: () => false,
-  openAttachment: () => false,
-  resolveWorkspacePath: (value) => value,
-  openWorkspaceSource: () => false,
+  open: async () => ({ status: "cancelled" as const }),
 }
 const EmptyDiff = () => null
 const [mode, setMode] = createSignal("minimal")

@@ -1,3 +1,4 @@
+import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import type { ControlProfileId } from "@/context/input"
 import type { MessageDescriptor } from "@lingui/core"
 import type {
@@ -89,6 +90,7 @@ export interface SlashCommand {
 }
 
 export type AtOption = {
+  workspace: ResourceReference.Workspace
   type: "file"
   path: string
   display: string

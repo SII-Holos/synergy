@@ -412,6 +412,9 @@ export namespace ExecutionService {
       descendants: usage.descendants,
       rates: usage.rates,
       cache: usage.cache,
+      latency: usage.latency,
+      outcomes: usage.outcomes,
+      tools: usage.tools,
       context: context.context,
       contextDistribution:
         distribution &&

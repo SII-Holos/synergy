@@ -101,6 +101,7 @@ test("header projection keeps compact change metadata and resolves full original
           id: Identifier.ascending("message"),
           sessionID: session.id,
           role: "user",
+          referenceContext: { state: "none" },
           agent: "synergy",
           model: { providerID: "test", modelID: "test" },
           time: { created: 1 },

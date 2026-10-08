@@ -120,10 +120,7 @@ render(
               openedTools.push(target.partID)
               return true
             },
-            open: () => false,
-            openAttachment: () => false,
-            resolveWorkspacePath: (path) => path,
-            openWorkspaceSource: () => false,
+            open: async () => ({ status: "cancelled" as const }),
           }}
         >
           <DataProvider data={data} runtime={runtime} directory="/project" serverUrl="http://localhost">

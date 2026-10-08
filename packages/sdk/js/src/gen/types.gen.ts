@@ -8113,6 +8113,71 @@ export type ExecutionSummary = {
     samples: number
     excluded: number
   }
+  latency: {
+    headers: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    firstByte: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    ttft: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    request: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    generation: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+  }
+  outcomes: {
+    completed: number
+    failed: number
+    cancelled: number
+    interrupted: number
+    running: number
+    retries: number
+    transportRetries: number
+    logicalRetries: number
+    rootTasks: number
+  }
+  tools: Array<{
+    tool: string
+    calls: number
+    completed: number
+    failed: number
+    cancelled: number
+    interrupted: number
+    running: number
+    durationMs: number
+    timedSamples: number
+    averageMs: number | null
+  }>
   context: {
     attemptID: string
     callID: string
@@ -8401,6 +8466,27 @@ export type FileSource = {
   text: AttachmentSourceText
   type: "file"
   path: string
+  workspace?: {
+    id: string
+    generation: number
+    root: string
+  }
+  location?:
+    | {
+        kind: "text"
+        line: number
+        column?: number
+        endLine?: number
+        endColumn?: number
+      }
+    | {
+        kind: "heading"
+        id: string
+      }
+    | {
+        kind: "page"
+        page: number
+      }
 }
 
 export type Range = {
@@ -8418,6 +8504,11 @@ export type SymbolSource = {
   text: AttachmentSourceText
   type: "symbol"
   path: string
+  workspace?: {
+    id: string
+    generation: number
+    root: string
+  }
   range: Range
   name: string
   kind: number
@@ -9534,6 +9625,22 @@ export type SessionInboxItem = {
   deliveryKey?: string
   message?: {
     role?: "user" | "assistant"
+    referenceContext?:
+      | {
+          state: "bound"
+          workspace: {
+            id: string
+            generation: number
+            root: string
+          }
+          directory: string
+        }
+      | {
+          state: "none"
+        }
+      | {
+          state: "unresolved"
+        }
     parts: Array<
       | {
           id?: string
@@ -9867,6 +9974,22 @@ export type UserMessage = {
   visible?: boolean
   includeInContext?: boolean
   rootID?: string
+  referenceContext?:
+    | {
+        state: "bound"
+        workspace: {
+          id: string
+          generation: number
+          root: string
+        }
+        directory: string
+      }
+    | {
+        state: "none"
+      }
+    | {
+        state: "unresolved"
+      }
   role: "user"
   isRoot?: boolean
   time: {
@@ -10011,6 +10134,22 @@ export type AssistantMessage = {
   visible?: boolean
   includeInContext?: boolean
   rootID?: string
+  referenceContext?:
+    | {
+        state: "bound"
+        workspace: {
+          id: string
+          generation: number
+          root: string
+        }
+        directory: string
+      }
+    | {
+        state: "none"
+      }
+    | {
+        state: "unresolved"
+      }
   modelSelection?: SessionRequestModelSelection
   role: "assistant"
   time: {

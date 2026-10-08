@@ -1342,10 +1342,6 @@ msgid "app.attachment.office.unsupported"
 msgstr "此 Office 文件使用了暂不支持的格式，请下载原文件打开。"
 
 #. js-lingui-explicit-id
-msgid "app.attachment.openFailed"
-msgstr "无法打开附件"
-
-#. js-lingui-explicit-id
 msgid "app.attachment.pdf.fitWidth"
 msgstr "适应宽度"
 
@@ -8578,6 +8574,50 @@ msgid "app.rawMessages.title"
 msgstr "原始消息"
 
 #. js-lingui-explicit-id
+msgid "app.reference.chooseWorkspace"
+msgstr "选择这条引用所属的工作区"
+
+#. js-lingui-explicit-id
+msgid "app.reference.copy"
+msgstr "复制引用"
+
+#. js-lingui-explicit-id
+msgid "app.reference.invalid"
+msgstr "这条引用的路径、协议或位置无效。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.locationUnavailable"
+msgstr "引用位置超出了可用内容，已显示最接近的位置。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.noWorkspace"
+msgstr "原工作区不可用，请选择工作区来打开这条引用。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openFailed"
+msgstr "无法打开引用"
+
+#. js-lingui-explicit-id
+msgid "app.reference.outsideWorkspace"
+msgstr "这个路径不在引用所属的工作区内。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.pageUnavailable"
+msgstr "引用的页码超出了文档范围，已显示最后一页。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.searchWorkspace"
+msgstr "搜索工作区"
+
+#. js-lingui-explicit-id
+msgid "app.reference.unavailable"
+msgstr "资源不可用。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.workspaceChanged"
+msgstr "原工作区已被移除，或其绑定已更改。"
+
+#. js-lingui-explicit-id
 msgid "app.review.toolUnavailable"
 msgstr "此工具结果已不可用。"
 
@@ -12166,10 +12206,6 @@ msgid "execution.context"
 msgstr "上下文占用"
 
 #. js-lingui-explicit-id
-msgid "execution.contextHelp"
-msgstr "最近一次主任务请求的上下文占用，与累计用量分别统计。推理用量已包含在输出中。"
-
-#. js-lingui-explicit-id
 msgid "execution.contextStale"
 msgstr "此请求之后，上下文已发生变化。"
 
@@ -12634,10 +12670,6 @@ msgid "execution.toolOutput"
 msgstr "工具输出"
 
 #. js-lingui-explicit-id
-msgid "execution.totalHelp"
-msgstr "整个任务及其子任务的累计输入和输出，包含已记录的重试用量。"
-
-#. js-lingui-explicit-id
 msgid "execution.trajectory"
 msgstr "执行轨迹"
 
@@ -12660,6 +12692,78 @@ msgstr "未知"
 #. js-lingui-explicit-id
 msgid "execution.unknownBilling"
 msgstr "未记录计费方式"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.cacheHit"
+msgstr "缓存命中"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.cacheRead"
+msgstr "缓存读取"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.cacheWrite"
+msgstr "缓存写入"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.details"
+msgstr "Token 用量明细"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.firstContent"
+msgstr "平均首个内容耗时"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.generationRate"
+msgstr "平均生成"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.observedCacheHit"
+msgstr "缓存命中（已测）"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.reasoning"
+msgstr "推理（计入输出）"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requestDuration"
+msgstr "平均请求耗时"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requestMetrics"
+msgstr "请求与工具"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requestRate"
+msgstr "平均请求吞吐"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requests"
+msgstr "模型请求"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.retryCount"
+msgstr "重试次数"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.seconds"
+msgstr "{value} 秒"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.tokenRate"
+msgstr "{value} tok/s"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.toolCalls"
+msgstr "工具调用"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.toolDuration"
+msgstr "累计工具耗时"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.uncached"
+msgstr "未缓存输入"
 
 #. js-lingui-explicit-id
 msgid "execution.used"
