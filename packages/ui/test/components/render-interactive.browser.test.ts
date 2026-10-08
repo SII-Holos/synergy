@@ -447,3 +447,14 @@ test("form restoration preserves named radio groups without explicit element IDs
   await page.locator('[data-component="render-viewer"]').getByRole("button", { name: "Close dialog" }).click()
   await page.locator('[data-component="render-viewer"]').waitFor({ state: "detached" })
 })
+
+test("deferred browser resize notifications do not hide a working visual or suppress authored errors", async () => {
+  await setup(
+    `<button id="notice">Resize notification</button><button id="error">Authored error</button><script>synergy.render.ready.then(()=>{const message='ResizeObserver loop completed with undelivered notifications.';document.getElementById('notice').onclick=()=>window.dispatchEvent(new ErrorEvent('error',{message}));document.getElementById('error').onclick=()=>window.dispatchEvent(new ErrorEvent('error',{message,error:new Error(message)}));document.body.dataset.ready='true'})</script>`,
+  )
+  await inline().getByRole("button", { name: "Resize notification" }).click()
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 50)))
+  expect(await page.getByRole("alert").count()).toBe(0)
+  await inline().getByRole("button", { name: "Authored error" }).click()
+  await page.getByRole("alert").filter({ hasText: "ResizeObserver loop completed" }).waitFor()
+})

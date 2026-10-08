@@ -374,7 +374,16 @@ export function renderRuntime(
     },
     { passive: true },
   )
-  window.addEventListener("error", (event) => report(event.message || labels.resourceFailed))
+  window.addEventListener("error", (event) => {
+    if (
+      !event.error &&
+      ["ResizeObserver loop completed with undelivered notifications.", "ResizeObserver loop limit exceeded"].includes(
+        event.message,
+      )
+    )
+      return
+    report(event.message || labels.resourceFailed)
+  })
   window.addEventListener("unhandledrejection", (event) => report(event.reason))
   document.addEventListener(
     "DOMContentLoaded",
