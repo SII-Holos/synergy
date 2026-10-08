@@ -156,8 +156,21 @@ if (scenario) {
     )
   if (scenario === "mixed") faults.set("progress-2", "denied")
 }
+if (scenario === "cold-process") {
+  setData("part", "more", [
+    part("more", "cold-prose", "text", "Pending process prose."),
+    ...Array.from({ length: 80 }, (_, index) => part("more", `cold-${index}`, "tool")),
+  ])
+  setData("part", "final", [part("final", "answer", "text", "Final answer stays mounted.")])
+  setData("message", "session", [root, more, { ...final, time: { created: 2, completed: 10 } }])
+  setStatus("completed")
+  for (const item of data.part.more) faults.set(item.id, "pending")
+}
 const canonicalParts =
-  scenario === "late-reconnect" ? new Map(Object.entries(data.part).map(([id, parts]) => [id, [...parts]])) : undefined
+  scenario === "late-reconnect" || scenario === "cold-process"
+    ? new Map(Object.entries(data.part).map(([id, parts]) => [id, [...parts]]))
+    : undefined
+if (scenario === "cold-process") setData("part", "more", [])
 const scrolling = new URL(location.href).searchParams.has("scrolling")
 let summaryReads = 0
 const summaries = createMemo(() =>
@@ -178,12 +191,13 @@ let finishPage: (() => void) | undefined
 let pageRefresh: Promise<void> | undefined
 let finishPageRefresh: (() => void) | undefined
 let pageLoads = 0
-const pageReady = canonicalParts
-  ? new Promise<void>((resolve) => {
-      finishPage = resolve
-      setHasPage(false)
-    })
-  : Promise.resolve()
+const pageReady =
+  scenario === "late-reconnect"
+    ? new Promise<void>((resolve) => {
+        finishPage = resolve
+        setHasPage(false)
+      })
+    : Promise.resolve()
 const client = createSynergyClient({
   baseUrl: "http://fixture.local",
   fetch: Object.assign(
@@ -545,7 +559,7 @@ window.__conversationProcess = {
   },
   contentFinish(id) {
     faults.delete(id)
-    const body = Object.values(data.part)
+    const body = (canonicalParts ? [...canonicalParts.values()] : Object.values(data.part))
       .flat()
       .find((item) => item.id === id)!
     completions.get(id)?.(Response.json({ part: body, version: versions[id] ?? "v1" }))

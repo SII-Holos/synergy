@@ -446,6 +446,7 @@ test.each(["index.mjs", "index.jsx"] as const)(
       if ((await batch.getAttribute("aria-expanded")) !== "true") await batch.press("Enter")
       const viewport = target.locator('[data-component="process-viewport"]').last()
       await viewport.waitFor()
+      await target.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
       const heights = await target
         .locator('[data-slot="activity-batch-content"]')
         .last()
@@ -598,6 +599,196 @@ test("parent and batch disclosures preserve independent choices and tool inspect
   await batches.last().press("Space")
   await page.waitForFunction(() => !document.querySelector('[data-slot="activity-step-trigger"]'))
   expect(await page.getByText("I will check the project first.", { exact: true }).count()).toBe(1)
+}, 30000)
+
+test("cold process disclosure keeps a bounded reading window while tool bodies are pending", async () => {
+  await contentPage("cold-process")
+  await page.evaluate(() => {
+    const animate = Element.prototype.animate
+    Element.prototype.animate = function (frames, options) {
+      if (this.matches('[data-display-row][data-row-kind="activity"]'))
+        this.setAttribute("data-test-entrances", String(Number(this.getAttribute("data-test-entrances")) + 1))
+      return animate.call(this, frames, options)
+    }
+  })
+  const parent = page.locator('[data-slot="turn-process-trigger"]')
+  await parent.waitFor()
+  await parent.press("Enter")
+  const batch = page.locator('[data-component="conversation-activity"] > button')
+  await batch.waitFor()
+  await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
+  expect(
+    await batch.evaluate((element) => element.closest("[data-display-row]")?.getAttribute("data-test-entrances")),
+  ).toBe("1")
+  await batch.press("Enter")
+  const viewport = page.locator('[data-component="process-viewport"]')
+  await viewport.waitFor()
+  const pending = await page.evaluate(async () => {
+    const sizes: number[] = []
+    for (let frame = 0; frame < 12; frame++) {
+      await new Promise(requestAnimationFrame)
+      const viewport = document.querySelector('[data-component="process-viewport"]')!
+      sizes.push(viewport.getBoundingClientRect().height)
+    }
+    return {
+      sizes,
+      reads: Array.from({ length: 80 }, (_, index) => window.__conversationProcess.contentReads(`cold-${index}`)),
+      retained: window.__conversationProcess.retained(),
+    }
+  })
+  expect(Math.min(...pending.sizes)).toBeGreaterThan(200)
+  expect(pending.reads.filter(Boolean).length).toBeLessThan(48)
+  expect(Math.max(...pending.reads)).toBe(1)
+  expect(pending.retained).toBeLessThan(48)
+  await page.evaluate(() => {
+    for (let index = 0; index < 80; index++) window.__conversationProcess.contentFinish(`cold-${index}`)
+  })
+  await page.locator('[data-slot="activity-step-trigger"]').first().waitFor()
+  expect(
+    await batch.evaluate((element) => element.closest("[data-display-row]")?.getAttribute("data-test-entrances")),
+  ).toBe("1")
+  expect(await viewport.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(200)
+  expect(await page.getByText("Final answer stays mounted.", { exact: true }).count()).toBe(1)
+  await batch.press("Enter")
+  await viewport.waitFor({ state: "detached" })
+  expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(8)
+  const contraction = await page.evaluate(async () => {
+    const pending = document.querySelector<HTMLElement>('[data-part-id="cold-prose"]')!
+    const before = pending.getBoundingClientRect().height
+    document.querySelector<HTMLButtonElement>('[data-slot="turn-process-trigger"]')!.click()
+    for (let frame = 0; frame < 8; frame++) await new Promise(requestAnimationFrame)
+    return { before, during: pending.getBoundingClientRect().height, connected: pending.isConnected }
+  })
+  expect(contraction.connected).toBe(true)
+  expect(contraction.during).toBeGreaterThan(0)
+  expect(contraction.during).toBeLessThan(contraction.before - 2)
+  await parent.press("Enter")
+  await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
+  expect(await page.locator('[data-part-id="cold-prose"]').count()).toBe(1)
+})
+
+test("manual disclosure animates only its connected mount and releases it on collapse", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  const batch = page.locator('[data-component="conversation-activity"] > button').first()
+  if ((await batch.getAttribute("aria-expanded")) === "true") await batch.press("Enter")
+  await page
+    .locator('[data-component="conversation-activity"]')
+    .first()
+    .locator('[data-slot="activity-batch-content"]')
+    .waitFor({ state: "detached" })
+  const result = await page.evaluate(async () => {
+    const button = document.querySelector<HTMLButtonElement>('[data-component="conversation-activity"] > button')!
+    const animate = Element.prototype.animate
+    const matchMedia = window.matchMedia
+    let listeners = 0
+    window.matchMedia = (query) => {
+      const media = matchMedia.call(window, query)
+      const add = media.addEventListener.bind(media)
+      const remove = media.removeEventListener.bind(media)
+      media.addEventListener = (...args: Parameters<typeof add>) => {
+        if (args[0] === "change") listeners++
+        add(...args)
+      }
+      media.removeEventListener = (...args: Parameters<typeof remove>) => {
+        if (args[0] === "change") listeners--
+        remove(...args)
+      }
+      return media
+    }
+    const calls: { connected: boolean; height: number[] }[] = []
+    Element.prototype.animate = function (frames, options) {
+      if (this.matches('[data-slot="activity-batch-content"]'))
+        calls.push({
+          connected: this.isConnected,
+          height: Array.isArray(frames) ? frames.map((frame) => parseFloat(String(frame.height))) : [],
+        })
+      return animate.call(this, frames, options)
+    }
+    const settle = async () => {
+      for (let frame = 0; frame < 36; frame++) await new Promise(requestAnimationFrame)
+    }
+    try {
+      button.click()
+      await settle()
+      const openedListeners = listeners
+      button.click()
+      await settle()
+      const closedListeners = listeners
+      button.click()
+      await settle()
+      return {
+        calls,
+        openedListeners,
+        closedListeners,
+        reopenedListeners: listeners,
+        open: button.getAttribute("aria-expanded"),
+        mounted: !!button.parentElement?.querySelector('[data-slot="activity-batch-content"]'),
+      }
+    } finally {
+      Element.prototype.animate = animate
+      window.matchMedia = matchMedia
+    }
+  })
+  expect(result.calls.map((call) => call.connected)).toEqual([true, true, true])
+  for (const call of result.calls) {
+    expect(call.height).toHaveLength(2)
+    expect(call.height.every(Number.isFinite)).toBe(true)
+    expect(Math.max(...call.height)).toBeGreaterThan(0)
+    expect(Math.min(...call.height)).toBe(0)
+  }
+  expect(result.open).toBe("true")
+  expect(result.mounted).toBe(true)
+  expect(result.openedListeners).toBeGreaterThan(0)
+  expect(result.closedListeners).toBe(0)
+  expect(result.reopenedListeners).toBe(result.openedListeners)
+}, 30000)
+
+test("manual parent disclosure owns bounded space motion without replacing the answer", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.stream()
+    window.__conversationProcess.complete()
+  })
+  await page.waitForFunction(() => !document.querySelector('[data-row-kind="activity"]'))
+  const result = await page.evaluate(async () => {
+    const parent = document.querySelector<HTMLButtonElement>('[data-slot="turn-process-trigger"]')!
+    const answer = document.querySelector('[data-part-id="answer"]')
+    const animate = Element.prototype.animate
+    const space: number[][] = []
+    Element.prototype.animate = function (frames, options) {
+      if (this.matches("[data-display-row]") && Array.isArray(frames))
+        space.push(frames.map((frame) => parseFloat(String(frame.height))))
+      return animate.call(this, frames, options)
+    }
+    const settle = async (count = 36) => {
+      for (let frame = 0; frame < count; frame++) await new Promise(requestAnimationFrame)
+    }
+    try {
+      parent.click()
+      await settle()
+      parent.click()
+      await settle(3)
+      parent.click()
+      await settle()
+      return {
+        space,
+        open: parent.getAttribute("aria-expanded"),
+        activities: document.querySelectorAll('[data-row-kind="activity"]').length,
+        sameAnswer: answer === document.querySelector('[data-part-id="answer"]'),
+        changing: document.querySelectorAll("[data-motion-changing]").length,
+      }
+    } finally {
+      Element.prototype.animate = animate
+    }
+  })
+  expect(result.space.length).toBeGreaterThan(0)
+  expect(result.space.every((frames) => frames.length === 2 && frames.every(Number.isFinite))).toBe(true)
+  expect(result.open).toBe("true")
+  expect(result.activities).toBe(2)
+  expect(result.sameAnswer).toBe(true)
+  expect(result.changing).toBe(0)
 }, 30000)
 
 test("an unfocused process reader survives outer layout changes until an outer reading gesture", async () => {

@@ -483,7 +483,7 @@ Adjacent tools, reasoning, Agent returns and context compaction share compact pr
 
 Continuous summaries from one reasoning item use one expandable Reasoning row and retain their paragraphs in order. Appending a summary preserves the user's expansion choice and keyboard focus. Reasoning before and after a tool or public paragraph keeps separate entrances.
 
-Large conversation process windows allocate their expanded space once and use opacity feedback during disclosure. Their virtualized contents keep stable dimensions throughout the transition; reduced motion settles immediately. Individual process rows retain their compact structural transitions.
+Manual process and batch disclosure open and close their bounded space smoothly with height and opacity feedback. Pending content reserves summary-based space so first expansion does not collapse and refill the window. Their virtualized contents keep their natural dimensions inside the transition; repeated or reversed actions continue from the current frame and reduced motion settles immediately. Restored content and later virtual mounts do not replay a manual entrance. Individual process rows retain their compact structural transitions.
 
 ### Task progress
 

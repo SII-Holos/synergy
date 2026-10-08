@@ -37,6 +37,7 @@ export type ConversationRow = {
   activity?: ConversationActivity
   activities?: ConversationActivity[]
   exiting?: boolean
+  motion?: { kind: "enter" | "exit" }
   process?: {
     open: boolean
     working: boolean
@@ -62,6 +63,11 @@ export type ConversationRow = {
   | { kind: "footer" }
   | { kind: "load"; more: boolean; older?: boolean }
 )
+
+// Provenance: docs/postmortem/0059-cold-process-disclosure-jank.md
+// Local adaptation: Pending bodies reserve compact summary lines until accepted content can be measured.
+export const estimateConversationRowSize = (row: ConversationRow) =>
+  28 * (row.kind === "body" ? Math.max(1, row.parts.length) : 1)
 
 export function buildConversationRows(input: {
   previous?: readonly ConversationRow[]
