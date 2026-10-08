@@ -57,6 +57,7 @@ export type FileOpenOptions = {
   location?: ResourceReference.Location
   directory?: boolean
   signal?: AbortSignal
+  focusTarget?: () => HTMLElement | undefined
 }
 
 export type FileSelection = {
@@ -748,7 +749,12 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
   }
 
   const [navigation, setNavigation] =
-    createStore<Record<string, { id: number; location: ResourceReference.Location } | undefined>>()
+    createStore<
+      Record<
+        string,
+        { id: number; location: ResourceReference.Location; focusTarget?: () => HTMLElement | undefined } | undefined
+      >
+    >()
   let navigationID = 0
   const openWorkspaceFile = (input: string, options?: FileOpenOptions) => {
     const path = options?.directory ? "" : normalize(input)
@@ -786,7 +792,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
         if (disposed || options?.signal?.aborted) return undefined
         if (options?.location) {
           view().setMode(path, options.location.kind === "text" ? "source" : "preview")
-          setNavigation(path, { id: ++navigationID, location: options.location })
+          setNavigation(path, { id: ++navigationID, location: options.location, focusTarget: options.focusTarget })
         }
         if (view().explorerOpen()) void reveal(path)
         const error = store.documents[path]?.error

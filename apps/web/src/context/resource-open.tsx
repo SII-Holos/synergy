@@ -464,6 +464,7 @@ export function ResourceOpenProvider(props: ParentProps) {
       location: options.location,
       directory: response.data?.type === "directory",
       signal: options.signal,
+      focusTarget: options.focusTarget,
     })
     if (current() && tab)
       setOpenedResource({ session: workbench.sessionKey(), tabID: tab.id, origin: options.focusTarget })

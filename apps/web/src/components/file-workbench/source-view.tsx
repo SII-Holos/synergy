@@ -158,7 +158,7 @@ export function FileSourceView(props: {
     if (
       document.activeElement === document.body ||
       host.contains(document.activeElement) ||
-      document.activeElement?.closest("[data-resource-reference]")
+      document.activeElement === request.focusTarget?.()
     )
       editor.focus()
   })
