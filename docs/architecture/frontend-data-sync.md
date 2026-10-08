@@ -434,6 +434,12 @@ Loaded message and part buckets are memory-bounded independently of session meta
 
 Session lists, inbox, todo, and other non-message state are not evicted by this policy. Session runtime state is not subject to it either: status, the pending permission/question requests, and the visible Cortex task list live in the global indexes, so message-bucket eviction never touches them.
 
+## Conversation presentation and reading
+
+The conversation presentation owner spans loading and body admission. Within one server and Scope it retains at most one inert outgoing rendered frame while the target prepares; the previous view releases subscriptions, leases and callback ownership normally. Target title and content fade together after accepted body and initial reading placement. A later navigation supersedes the pending target, and a server or Scope change removes the outgoing frame. This is transient presentation, not a data snapshot or replay source.
+
+Layout owns a bounded, runtime-only reading bookmark per session view: message identity, optional Part and paragraph, viewport offset and following intent. Returning readers locate the accepted content window before restoring the paragraph. Pagination demand rows sharing a message ID are excluded when a concrete Part or body is available. Admission waits for the paragraph to render; missing content falls back through its message, nearby root and latest. A captured local submission requests latest explicitly, while ordinary background arrivals preserve reading. Canonical virtual measurements exclude the separate following-animation offset. See [the continuity decision](../decisions/implemented/bug-fix/2026-10-08-conversation-motion-continuity.md).
+
 ## Composer Intent
 
 Composer model selection has strict one-way layering:

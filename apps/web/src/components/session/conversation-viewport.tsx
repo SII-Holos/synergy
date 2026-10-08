@@ -94,7 +94,13 @@ export function ConversationViewport(props: {
           class={["min-w-0 w-full max-w-full", props.contentClass].filter(Boolean).join(" ")}
           classList={props.contentClassList}
         >
-          <div data-conversation-motion>{props.children}</div>
+          <div
+            data-conversation-motion
+            class="w-full min-w-0"
+            style={{ display: "inherit", "flex-direction": "inherit", "align-items": "inherit", gap: "inherit" }}
+          >
+            {props.children}
+          </div>
         </div>
       </div>
     </div>

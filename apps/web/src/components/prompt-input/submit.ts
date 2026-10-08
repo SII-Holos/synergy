@@ -1064,7 +1064,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         const existing = current.messages.some((message) => message.id === messageID)
         const result = reconcileMessage(current, optimisticMessage)
         const visible = result.window.messages.some((message) => message.id === messageID)
-        if (visible && !existing && !preparation)
+        if (!existing && !preparation)
           sessionTransition.messageArrival.add([submissionServer, sessionScopeKey, activeSession.id], messageID)
         globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
         setSyncStore(

@@ -1,3 +1,4 @@
+import { ConversationPresentation } from "@/components/session/conversation-presentation"
 import { useFileRestore } from "@/components/session/file-restore-dialog-loader"
 import { isSessionSubmissionContentReady } from "@/components/session/session-transition-handoff"
 import { submissionPartPage } from "@/context/session-submission-view"
@@ -60,7 +61,11 @@ import { hasSpecialUserMessageRenderer } from "@ericsanchezok/synergy-ui/special
 
 import { sessionSideWorkspaceMounts, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
-import { captureConversationReadingAnchor } from "@/components/session/conversation-reading-anchor"
+import {
+  captureConversationReadingAnchor,
+  captureConversationReadingPosition,
+  restoreConversationReadingPosition,
+} from "@/components/session/conversation-reading-anchor"
 import { conversationReadingInset } from "@/components/session/conversation-layout"
 
 import { useSync } from "@/context/sync"
@@ -1291,7 +1296,10 @@ function SessionPageContent() {
   }
 
   const autoScroll = createAutoScroll({
-    motionTarget: () => scroller?.querySelector<HTMLElement>("[data-conversation-motion]") ?? undefined,
+    motionTarget: () =>
+      initialScrollSettled() === params.id
+        ? (scroller?.querySelector<HTMLElement>("[data-conversation-motion]") ?? undefined)
+        : undefined,
     working: isWorking,
     captureReadingAnchor(input) {
       const container = scroller
@@ -1322,6 +1330,30 @@ function SessionPageContent() {
   let initScrollFrame: number | undefined
   let historyScrollFrame: number | undefined
   const [initialScrollSettled, setInitialScrollSettled] = createSignal<string>()
+  const [presentedSession, setPresentedSession] = createSignal<string>()
+  let scrollView: ReturnType<typeof layout.view> | undefined
+  let scrollSession: string | undefined
+  let scrollWasReady = false
+  const saveReadingPosition = () => {
+    if (!scroller || !scrollWasReady) return
+    const following = !autoScroll.userScrolled()
+    scrollView?.conversation.set({
+      following,
+      position: following ? undefined : captureConversationReadingPosition(scroller),
+    })
+  }
+  const admittedConversation = (id: string) => {
+    if (id !== scrollSession || id !== params.id || !scroller) return
+    const saved = scrollView?.conversation.get()
+    if (saved && !saved.following && saved.position && !window.location.hash) {
+      restoreConversationReadingPosition(scroller, saved.position)
+      scroller.dispatchEvent(new Event("conversation-reading-restored"))
+      autoScroll.handleInteraction()
+      setScrolledUp(true)
+    }
+    scrollWasReady = true
+    setPresentedSession(id)
+  }
 
   const anchor = (id: string) => `message-${id}`
 
@@ -1330,6 +1362,10 @@ function SessionPageContent() {
     // before the swapped-out owner's cleanup runs; only clear when the
     // binding is still the element this releaser bound.
     if (!el && releaseOf !== undefined && scroller !== releaseOf) return
+    saveReadingPosition()
+    scrollView = el ? view() : undefined
+    scrollSession = el ? params.id : undefined
+    scrollWasReady = false
     scroller?.removeEventListener("wheel", releaseHistoryLocation)
     scroller?.removeEventListener("keydown", releaseHistoryLocation)
     scroller = el
@@ -1391,6 +1427,20 @@ function SessionPageContent() {
       })
     }
   }
+
+  createEffect(
+    on(
+      sessionTransition.messageArrival.submitted,
+      (intent) => {
+        if (!intent || intent.owner[0] !== sdk.url || intent.owner[1] !== sdk.scopeKey || intent.owner[2] !== params.id)
+          return
+        clearHash()
+        view().conversation.set({ following: true })
+        void returnToLatestMessages()
+      },
+      { defer: true },
+    ),
+  )
 
   // When the bounded history window no longer reaches the true latest
   // (cap-evicted tail or unseen arrivals), recover through the existing
@@ -1573,6 +1623,7 @@ function SessionPageContent() {
       const target = scrollSpyTarget
       scrollSpyTarget = undefined
       if (!target) return
+      if (target === scroller) saveReadingPosition()
 
       const nodes = target.querySelectorAll<HTMLElement>("[data-message-id]")
       const cutoff = target.scrollTop + conversationReadingInset
@@ -1594,7 +1645,8 @@ function SessionPageContent() {
   createEffect(
     on(
       () => [params.id, messagesReady()] as const,
-      ([sessionID, ready]) => {
+      ([sessionID, ready], previous) => {
+        if (sessionID && previous?.[0] !== sessionID) initializedSessions.delete(sessionID)
         if (initScrollFrame !== undefined) {
           cancelAnimationFrame(initScrollFrame)
           initScrollFrame = undefined
@@ -1624,9 +1676,51 @@ function SessionPageContent() {
 
           const hash = window.location.hash.slice(1)
           if (!hash) {
+            const saved = view().conversation.get()
             afterLayoutSettles(() => {
-              setInitialScrollSettled(sessionID)
-              autoScroll.forceScrollToBottom({ untilInteraction: true })
+              const restore = async () => {
+                if (saved && !saved.following && saved.position && messageLocator) {
+                  autoScroll.handleInteraction()
+                  setHistoryLocationPinned(true)
+                  const locate = messageLocator
+                  let found = await locate(saved.position.messageID, "auto", saved.position.partID).catch(() => false)
+                  if (params.id !== sessionID || messageLocator !== locate) return
+                  if (!found && saved.position.partID)
+                    found = await locate(saved.position.messageID, "auto").catch(() => false)
+                  if (params.id !== sessionID || messageLocator !== locate) return
+                  if (!found) {
+                    const nearest =
+                      rootMessages().find((message) => message.id >= saved.position!.messageID) ?? rootMessages().at(-1)
+                    if (nearest) found = await locate(nearest.id, "auto").catch(() => false)
+                  }
+                  if (params.id !== sessionID || messageLocator !== locate) return
+                  if (found && scroller) {
+                    const target = scroller
+                    const deadline = performance.now() + 3000
+                    while (
+                      !restoreConversationReadingPosition(target, saved.position, true) &&
+                      performance.now() < deadline
+                    ) {
+                      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+                      if (params.id !== sessionID || messageLocator !== locate || scroller !== target) return
+                    }
+                    restoreConversationReadingPosition(target, saved.position)
+                    scroller.dispatchEvent(new Event("conversation-reading-restored"))
+                    autoScroll.handleInteraction()
+                    setScrolledUp(true)
+                    setInitialScrollSettled(sessionID)
+                    return
+                  }
+                }
+                if (params.id !== sessionID) return
+                autoScroll.forceScrollToBottom({ untilInteraction: true })
+                setInitialScrollSettled(sessionID)
+              }
+              void restore().catch(() => {
+                if (params.id !== sessionID) return
+                autoScroll.forceScrollToBottom({ untilInteraction: true })
+                setInitialScrollSettled(sessionID)
+              })
             })
             return
           }
@@ -1798,7 +1892,10 @@ function SessionPageContent() {
             onNewSessionTransitionChange: setNewSessionTransition,
             onWorkspaceTransition: startWorkspaceTransition,
             get sessionTransitionPending() {
-              return sessionTransitionPending()
+              return (
+                sessionTransitionPending() ||
+                (!!params.id && presentedSession() !== params.id && conversationLoadView().type === "conversation")
+              )
             },
             get sessionTransitionError() {
               return visibleSessionTransition()?.phase === "error"
@@ -2141,7 +2238,21 @@ function SessionPageContent() {
   }
   const views = {
     conversation: () => (
-      <div data-ui-part="conversation" class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
+      <ConversationPresentation
+        owner={[sdk.url, sdk.scopeKey, params.id ?? ""]}
+        ready={
+          isNewSession() ||
+          presentedSession() === params.id ||
+          ["initial-error", "empty-error", "empty"].includes(conversationLoadView().type) ||
+          ("failed" in preparation && preparation.failed()) ||
+          ("status" in preparation && ["failed", "blocked"].includes(preparation.status()?.state ?? ""))
+        }
+        onLeave={() => {
+          saveReadingPosition()
+          scrollWasReady = false
+          setPresentedSession(undefined)
+        }}
+      >
         <SessionTopBar
           hasCanonicalRoot={rootMessages().length > 0}
           inboxFrozen={rollbackActive()}
@@ -2158,6 +2269,7 @@ function SessionPageContent() {
             >
               <SessionConversation
                 context={conversation}
+                onAdmitted={admittedConversation}
                 initialScrollSettled={() =>
                   !!submissionDraft()?.message ||
                   !params.id ||
@@ -2241,7 +2353,7 @@ function SessionPageContent() {
             </Match>
           </Switch>
         </div>
-      </div>
+      </ConversationPresentation>
     ),
     composer: () => <PromptDock context={composerLayout} />,
     "workbench.side": () => (

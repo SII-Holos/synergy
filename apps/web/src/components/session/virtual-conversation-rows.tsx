@@ -326,6 +326,12 @@ export function VirtualConversationRows(
     if (locationFrame !== undefined) cancelAnimationFrame(locationFrame)
     locationFrame = undefined
   }
+  createEffect(() => {
+    const scroll = input.scrollRef
+    scroll?.addEventListener("conversation-reading-restored", releaseLocation)
+    onCleanup(() => scroll?.removeEventListener("conversation-reading-restored", releaseLocation))
+  })
+
   const locationElement = (row: ConversationRow, partID?: string) =>
     [...(container?.querySelectorAll<HTMLElement>(partID ? "[data-part-id]" : "[data-display-row]") ?? [])].find(
       (element) => (partID ? element.dataset.partId === partID : element.dataset.displayRow === row.key),
@@ -404,7 +410,14 @@ export function VirtualConversationRows(
         layout.resize(measuredWidth)
         setWidth(measuredWidth)
         const limit = scroll.clientHeight * 0.45
-        const margin = container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
+        let parent: HTMLElement | null = container
+        let margin = 0
+        while (parent && parent !== scroll) {
+          margin += parent.offsetTop
+          parent = parent.offsetParent as HTMLElement | null
+        }
+        if (parent !== scroll)
+          margin = container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
         if (limit !== viewportLimit) {
           viewportLimit = limit
           container.style.setProperty("--process-viewport-limit", `${limit}px`)

@@ -41,6 +41,7 @@ import { useExecution } from "@/context/execution"
 
 type SessionConversationProps = PluginComponentProps<PluginConversationService> & {
   initialScrollSettled?: () => boolean
+  onAdmitted?: (sessionID: string) => void
 }
 
 export function SessionConversation(input: SessionConversationProps) {
@@ -52,6 +53,7 @@ export function SessionConversation(input: SessionConversationProps) {
         <SessionConversationView
           context={mergeProps(input.context, { sessionID: untrack(() => input.context.sessionID) })}
           initialScrollSettled={input.initialScrollSettled}
+          onAdmitted={input.onAdmitted}
         />
       )}
     </Show>
@@ -67,7 +69,10 @@ function SessionConversationView(input: SessionConversationProps) {
     if (!input.initialScrollSettled || admitted()) return
     if (!input.initialScrollSettled() || (props.content && !contentReady())) return
     let frame = requestAnimationFrame(() => {
-      frame = requestAnimationFrame(() => setAdmitted(true))
+      frame = requestAnimationFrame(() => {
+        input.onAdmitted?.(props.sessionID)
+        setAdmitted(true)
+      })
     })
     onCleanup(() => cancelAnimationFrame(frame))
   })
@@ -331,7 +336,7 @@ function SessionConversationView(input: SessionConversationProps) {
     <ConversationMotionProvider takeArrival={takePartArrival} liveRevision={() => arrivalView()?.revision() ?? 0}>
       <ConversationViewport
         ready={admitted()}
-        animateAdmission={animateAdmission}
+        animateAdmission={animateAdmission && !input.onAdmitted}
         scrolledUp={props.scrolledUp()}
         onScrolledUpChange={props.onScrolledUpChange}
         autoScroll={props.autoScroll}
