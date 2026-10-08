@@ -57,28 +57,33 @@ test("an invalid structured path keeps its error feedback even when it cannot be
   expect(errors).toEqual([])
 })
 
-test("image syntax for a known document opens the file reader", async () => {
-  await page.route("**/workspace/files/stat?**", (route) =>
-    route.fulfill({ json: { type: "file", path: "docs/README.md" } }),
-  )
-  await visit()
-  const result = await page.evaluate(() =>
-    (window as unknown as { openResource: ResourceOpenController["open"] }).openResource(
-      { kind: "workspace-file", path: "docs/README.md", mime: "image/*" },
-      {
-        prefer: "preview",
-        context: { state: "bound", workspace: { id: "wsp_fixture", generation: 1, root: "/fixture" }, directory: "" },
-      },
-    ),
-  )
-  expect(result.status).toBe("opened")
-  expect(await page.evaluate(() => (window as unknown as { openedFiles: string[] }).openedFiles)).toEqual([
-    "docs/README.md",
-  ])
-  expect(await page.locator('[data-component="image-preview"]').count()).toBe(0)
-  expect(errors).toEqual([])
-  await page.unroute("**/workspace/files/stat?**")
-})
+test.each(["docs/README.md", "docs/notes.txt", "docs/README"])(
+  "image syntax for %s opens the file reader",
+  async (path) => {
+    await page.route("**/workspace/files/stat?**", (route) => route.fulfill({ json: { type: "file", path } }))
+    await visit()
+    const result = await page.evaluate(
+      (path) =>
+        (window as unknown as { openResource: ResourceOpenController["open"] }).openResource(
+          { kind: "workspace-file", path, mime: "image/*" },
+          {
+            prefer: "preview",
+            context: {
+              state: "bound",
+              workspace: { id: "wsp_fixture", generation: 1, root: "/fixture" },
+              directory: "",
+            },
+          },
+        ),
+      path,
+    )
+    expect(result.status).toBe("opened")
+    expect(await page.evaluate(() => (window as unknown as { openedFiles: string[] }).openedFiles)).toEqual([path])
+    expect(await page.locator('[data-component="image-preview"]').count()).toBe(0)
+    expect(errors).toEqual([])
+    await page.unroute("**/workspace/files/stat?**")
+  },
+)
 
 test("a captured first-send attachment uses the temporary reader until canonical admission", async () => {
   await visit("?preparing")

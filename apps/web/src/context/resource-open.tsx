@@ -451,7 +451,7 @@ export function ResourceOpenProvider(props: ParentProps) {
       options.prefer === "preview" &&
       mime?.startsWith("image/") &&
       response.data?.type !== "directory" &&
-      ["image", "svg", "unsupported"].includes(preview.kind)
+      (["image", "svg"].includes(preview.kind) || (preview.kind === "unsupported" && mime !== "image/*"))
     ) {
       const src = resolveUrl({ kind: "workspace-file", path }, options.context)
       if (!src) return false
