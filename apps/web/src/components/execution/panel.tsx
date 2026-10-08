@@ -1,3 +1,5 @@
+import { executionDuration } from "@ericsanchezok/synergy-ui/execution-completion"
+import { createExecutionClock } from "@/composables/create-execution-clock"
 import { batch, createEffect, createMemo, createSignal, createUniqueId, For, on, onCleanup, Show } from "solid-js"
 import { z } from "zod"
 import { useLingui } from "@lingui/solid"
@@ -15,7 +17,7 @@ import { useExecution } from "@/context/execution"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
-import { ExecutionOverview, executionDuration } from "./overview"
+import { ExecutionOverview } from "./overview"
 import { ExecutionInspector } from "./inspector"
 import { createExecutionTrajectory } from "./trajectory"
 import { mergeExecutionWindow } from "./window"
@@ -89,7 +91,6 @@ function ExecutionPanelBody(
   const [anchor, setAnchor] = createSignal(initial.nodeID ?? "")
   const [expandedTasks, setExpandedTasks] = createSignal(new Set(initial.expanded ?? []))
   const [branches, setBranches] = createSignal(new Map<string, Branch>())
-  const [now, setNow] = createSignal(Date.now())
   const [exporting, setExporting] = createSignal(false)
   const [exportError, setExportError] = createSignal(false)
   const [filtersOpen, setFiltersOpen] = createSignal(false)
@@ -104,7 +105,6 @@ function ExecutionPanelBody(
   let debounce: ReturnType<typeof setTimeout> | undefined
   const branchAbort = new Map<string, AbortController>()
   const exportAbort = new AbortController()
-  const timer = setInterval(() => setNow(Date.now()), 1000)
   const active = () => props.active?.() !== false
   const branchCount = createMemo(() => [...branches().values()].reduce((sum, branch) => sum + branch.rows.length, 0))
   const trajectory = createExecutionTrajectory({
@@ -127,6 +127,22 @@ function ExecutionPanelBody(
     rounds: () => execution.state.summary?.rounds ?? [],
   })
   const summary = () => trajectory.state.summary ?? execution.state.summary
+  const now = createExecutionClock(summary, execution.connected)
+  const nodeExecution = (node: ExecutionTrajectoryNode) =>
+    node.kind === "subtask"
+      ? summary()?.tasks.find((task) => task.sessionID === node.sessionID)
+      : node.kind === "turn" && node.sessionID === params.id
+        ? summary()?.rounds.find((round) => round.id === node.runID)
+        : undefined
+  const nodeDuration = (node: ExecutionTrajectoryNode) => {
+    const value = nodeExecution(node)
+    if (value)
+      return value.elapsedMs == null
+        ? undefined
+        : executionDuration(value.elapsedMs + (value.elapsedActive ? now() : 0), value.elapsedLowerBound)
+    if (node.kind === "turn" || node.kind === "subtask") return undefined
+    return node.ended === undefined ? time(node.started) : executionDuration(node.ended - node.started)
+  }
   const remember = () => {
     const state = {
       runID: runID() || undefined,
@@ -446,7 +462,6 @@ function ExecutionPanelBody(
     }
   }
   onCleanup(() => {
-    clearInterval(timer)
     clearTimeout(debounce)
     if (frame) cancelAnimationFrame(frame)
     exportAbort.abort()
@@ -830,17 +845,17 @@ function ExecutionPanelBody(
                         </Show>
                       </span>
                       <span class="execution-node-meta">
-                        <small data-state={line.node.status}>
-                          <Show when={["failed", "cancelled", "interrupted"].includes(line.node.status)}>
+                        <small data-state={nodeExecution(line.node)?.status ?? line.node.status}>
+                          <Show
+                            when={["failed", "cancelled", "interrupted"].includes(
+                              nodeExecution(line.node)?.status ?? line.node.status,
+                            )}
+                          >
                             <Icon name={getSemanticIcon("state.error")} size="small" />
                           </Show>
-                          {_(E[line.node.status])}
+                          {_(E[nodeExecution(line.node)?.status ?? line.node.status])}
                         </small>
-                        <span>
-                          {line.node.ended === undefined
-                            ? time(line.node.started)
-                            : executionDuration(line.node.ended - line.node.started)}
-                        </span>
+                        <Show when={nodeDuration(line.node)}>{(duration) => <span>{duration()}</span>}</Show>
                         <Show when={line.node.kind === "subtask" && line.node.tokens?.known}>
                           <span>
                             {new Intl.NumberFormat(i18n().locale, {

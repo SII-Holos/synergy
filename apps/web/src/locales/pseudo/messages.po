@@ -12514,6 +12514,10 @@ msgid "execution.partialHelp"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.paused"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.previous"
 msgstr ""
 
@@ -12775,6 +12779,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.view"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.waiting"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -25993,11 +26001,23 @@ msgid "ui.execution.interrupted"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "ui.execution.paused"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.execution.queued"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "ui.execution.running"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.execution.unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.execution.waiting"
 msgstr ""
 
 #. js-lingui-explicit-id

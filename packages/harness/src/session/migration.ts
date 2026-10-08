@@ -1,3 +1,4 @@
+import { RolloutExecutionMigration } from "./rollout/execution-migration"
 import { migrateReferenceContexts, upgradeReferenceContext } from "./reference-context"
 import { migrateAttachmentPurposes, upgradeAttachmentPresentation } from "./attachment-migration"
 import { primaryAgentMigration } from "./primary-agent-migration"
@@ -2428,6 +2429,7 @@ export const migrations: Migration[] = [
   },
   RolloutMigration.migration,
   RolloutMigration.pricingMigration,
+  RolloutExecutionMigration.migration,
 
   {
     id: "20260907-snapshot-shared-store",

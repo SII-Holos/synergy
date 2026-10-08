@@ -30,10 +30,10 @@ beforeAll(async () => {
     const node=(id,sessionID,kind,title,parentID=null)=>({id,sessionID,runID:sessionID+"-round",kind,title,parentID,preview:title,started:1,ended:2,status:"completed",revision:1,source:"recorded"})
     const child=node("child","child","subtask","Child analysis","root")
     const nested=node("nested","nested","subtask","Nested analysis","child")
-    const task=(n,parentID)=>({sessionID:n.sessionID,nodeID:n.id,parentID,title:n.title,status:"completed",elapsedMs:1,elapsedActive:false,tokens:metric(),runs:[n.runID]})
+    const task=(n,parentID)=>({sessionID:n.sessionID,nodeID:n.id,parentID,title:n.title,status:"completed",elapsedMs:17000,elapsedActive:false,elapsedLowerBound:true,tokens:metric(),runs:[n.runID]})
     const rate={value:null,tokens:0,milliseconds:0,samples:0,excluded:0}
     const latency={samples:0,excluded:0,totalMs:0,meanMs:null,p50Ms:null,p95Ms:null}
-    const summary={sessionID:"root",revision:1,computedAt:1,status:"completed",elapsedMs:1,elapsedActive:false,accounting:accounting(),own:accounting(),descendants:accounting(),rates:{generation:rate,endToEnd:rate},cache:{ratio:null,observedRatio:null,read:0,input:0,samples:0,excluded:0},latency:{headers:latency,firstByte:latency,ttft:latency,request:latency,generation:latency},outcomes:{completed:0,failed:0,cancelled:0,interrupted:0,running:0,retries:0,logicalRetries:0,transportRetries:0,rootTasks:0},tools:[],context:null,contextDistribution:null,tasks:[task(child,"root"),task(nested,"child")],rounds:[{id:"root-round",started:1,status:"completed"},{id:"round-2",started:2,status:"completed"}],coverage:{recorded:2,messages:0,gaps:0,partial:false},lanes:[]}
+    const summary={sessionID:"root",revision:1,computedAt:1,status:"completed",elapsedMs:1,elapsedActive:false,accounting:accounting(),own:accounting(),descendants:accounting(),rates:{generation:rate,endToEnd:rate},cache:{ratio:null,observedRatio:null,read:0,input:0,samples:0,excluded:0},latency:{headers:latency,firstByte:latency,ttft:latency,request:latency,generation:latency},outcomes:{completed:0,failed:0,cancelled:0,interrupted:0,running:0,retries:0,logicalRetries:0,transportRetries:0,rootTasks:0},tools:[],context:null,contextDistribution:null,tasks:[task(child,"root"),task(nested,"child")],rounds:[{id:"root-round",started:1,status:"completed",elapsedMs:3000,elapsedActive:false,elapsedLowerBound:false},{id:"round-2",started:2,status:"completed"}],coverage:{recorded:2,messages:0,gaps:0,partial:false},lanes:[]}
     const records={root:[node("root","root","turn","Root task"),child],child:[child,node("read","child","tool","Read architecture"),nested],nested:[nested,node("answer","nested","output","Nested result")]}
     const exportRows=[...new Map(Object.values(records).flat().map(n=>[n.id,n])).values(),...Array.from({length:600},(_,i)=>node("export-"+i,"root","context","Export row "+i))]
     const event=createGlobalEmitter()
@@ -45,7 +45,7 @@ beforeAll(async () => {
       const added={...node("long-new","root","tool","New tool"),started:10001,revision:2}
       event.emit("execution.updated",{type:"execution.updated",properties:{sessionID:"root",revision:2,previousRevision:1,summary:{...summary,revision:2},roundSummaries:[],upserts:[changed,added],processUpserts:[changed,added],removed:[]}})
     }
-    const sdk={event,client:{session:{executionTrajectory:async(q)=>{
+    const sdk={event,connected:()=>true,client:{session:{executionTrajectory:async(q)=>{
       (window.trajectoryRequests ??= []).push(q)
       if(long()){
         const all=longRows.filter(n=>!q.query || n.title.includes(q.query))
@@ -59,7 +59,7 @@ beforeAll(async () => {
     },executionSummary:async()=>({data:summary}),executionNode:async(q)=>({data:{node:q.nodeID==="read"?{...fixtureNode(q.nodeID),status:"failed"}:fixtureNode(q.nodeID),record:q.nodeID==="read"?{error:"File not found: architecture.md"}:null,sources:[],definitions:null,related:[]}})}}}
     export const useParams=()=>({id:"root"})
     export const useSDK=()=>sdk
-    export const useExecution=()=>({state:{summary},connectionVersion:()=>0})
+    export const useExecution=()=>({advance:()=>0,connected:()=>true,state:{summary},connectionVersion:()=>0})
     export const useWorkbenchPanels=()=>({updateTab:()=>{}})
     export const useNavigateToSession=()=>()=>{}
   `,
@@ -390,3 +390,8 @@ test("ten thousand persistent events keep rendering bounded and restore history 
   expect(await page.locator(".execution-node").count()).toBe(1)
   expect(errors).toEqual([])
 }, 30_000)
+
+test("task and round rows use recorded intervals instead of their transcript envelope", async () => {
+  expect(await page.locator('[data-node-id="child"] .execution-node-meta').textContent()).toContain("≥ 00:17")
+  expect(await page.locator('[data-node-id="root"] .execution-node-meta').textContent()).toContain("00:03")
+})

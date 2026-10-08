@@ -205,7 +205,7 @@ describe("Channel conversation acceptance lane", () => {
             },
           })
           const item = (await SessionInbox.list(session.id))[0]
-          await SessionInbox.materializeItem(item)
+          await SessionInbox.materializeItem(await SessionInbox.getStored(item.sessionID, item.id))
           await SessionInbox.commitReady(session.id, [item.id])
 
           let executed = false

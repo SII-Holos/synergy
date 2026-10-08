@@ -962,7 +962,9 @@ function ConversationDisplayRow(
                     onRestoreChanges={input.onRestoreChanges}
                     onForkMessage={props.onForkMessage}
                     executionSummary={
-                      row().kind === "footer" && execution.available() ? execution.round(row().root.id) : undefined
+                      (row().kind === "footer" || row().kind === "process") && execution.available()
+                        ? execution.round(row().root.id)
+                        : undefined
                     }
                     onExecutionDetails={
                       row().kind === "footer" && execution.available()
