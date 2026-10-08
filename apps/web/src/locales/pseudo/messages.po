@@ -20221,6 +20221,14 @@ msgid "settings.general.updates.web.description"
 msgstr "⟦Refresh this browser when the server has newer Web assets.⟧"
 
 #. js-lingui-explicit-id
+msgid "settings.general.welcomeGames.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.welcomeGames.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.general.workspace.description"
 msgstr "Use project files or create an independent copy for each new Git task. Projects can override this default."
 

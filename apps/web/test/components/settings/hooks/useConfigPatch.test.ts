@@ -797,6 +797,31 @@ describe("settings config patch", () => {
     })
   })
 
+  test("persists welcome games toggle on the general domain", () => {
+    const state = defaultSettingsState("enter")
+    state.general.welcomeGames = false
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).welcomeGames,
+    ).toBe(false)
+  })
+
+  test("does not emit welcome games patch when the preference is unchanged", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: { welcomeGames: true } as Config,
+        state,
+        originalMcps: {},
+      }).welcomeGames,
+    ).toBeUndefined()
+  })
+
   test("unmuting the last toast type sends muted:[] so domain merge can clear it", () => {
     const state = defaultSettingsState("enter")
 
