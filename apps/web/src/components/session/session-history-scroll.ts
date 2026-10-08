@@ -1,38 +1,7 @@
-export type PrependAnchorCandidate = {
-  messageID: string
-  rowKey?: string
-  top: number
-  bottom: number
-}
-
-export type PrependScrollAnchor = {
-  messageID: string
-  rowKey?: string
-  offsetTop: number
-}
-
-export function selectPrependAnchor(
-  candidates: readonly PrependAnchorCandidate[],
-  viewportTop: number,
-): PrependScrollAnchor | undefined {
-  const anchor = candidates.find((candidate) => candidate.bottom > viewportTop)
-  if (!anchor) return
-  return {
-    messageID: anchor.messageID,
-    ...(anchor.rowKey ? { rowKey: anchor.rowKey } : {}),
-    offsetTop: anchor.top - viewportTop,
-  }
-}
-
-export function adjustedScrollTop(input: { scrollTop: number; beforeOffsetTop: number; afterOffsetTop: number }) {
-  return input.scrollTop + input.afterOffsetTop - input.beforeOffsetTop
-}
-
 /**
  * Keeps the visible content stable when the top of the timeline is trimmed
  * (turnStart auto-advance). The container shrinks from the top, so the same
  * visual position requires scrollTop to decrease by the removed height.
- * Mirrors `adjustedScrollTop` for the "removal" direction.
  */
 export function adjustTrimScrollTop(input: {
   scrollTop: number

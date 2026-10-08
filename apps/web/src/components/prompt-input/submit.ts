@@ -73,6 +73,7 @@ import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { reconcileMessage, removeMessageFromWindow, type MessageWindowState } from "@/context/session-message-window"
 import { clearConversationContent } from "@/context/conversation-content-state"
+import { partSummaryPageState } from "@/context/part-summary-loader"
 import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/context/session-message-total"
 import { promptSubmitFailure } from "./submit-failure"
 import type { WorkspaceRecoveryRequest } from "../dialog/workspace-dialog-model"
@@ -1086,7 +1087,13 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             if (visible) {
               draft.partSummary[messageID] = optimisticPartSummaries(optimisticParts)
               for (const part of optimisticParts) draft.partVersion[part.id] = `optimistic:${part.id}`
-              draft.partPage[messageID] = { hasMore: false, hasEarlier: false, nextCursor: null, previousCursor: null }
+              draft.partPage[messageID] = partSummaryPageState({
+                items: draft.partSummary[messageID],
+                hasMore: false,
+                hasEarlier: false,
+                nextCursor: null,
+                previousCursor: null,
+              })
               draft.part[messageID] = optimisticParts
                 .filter((part) => !!part?.id)
                 .slice()

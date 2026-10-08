@@ -111,12 +111,27 @@ const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
 const [scroll, setScroll] = createSignal<HTMLDivElement>()
 const [versions, setVersions] = createStore<Record<string, string>>({})
 const [hasPage, setHasPage] = createSignal(true)
+const [pageStale, setPageStale] = createSignal(false)
 const [mounted, setMounted] = createSignal(true)
 const arrivals = createPartArrivalState()
 const arrivalOwner = ["http://localhost", "/project", "session"]
 const arrivalView = arrivals.open(arrivalOwner)
 arrivalView.ready(true)
 const scenario = new URL(location.href).searchParams.get("content")
+if (new URL(location.href).searchParams.has("outer-paging"))
+  setData("part", "work", [
+    part("work", "thought", "reasoning", "Check evidence"),
+    ...Array.from({ length: 60 }, (_, index) =>
+      part(
+        "work",
+        `reading-${index}`,
+        "text",
+        `Reading paragraph ${index}. ${"The existing project notes remain available during historical loading. ".repeat(8)}\n\n[Project reference ${index}](https://example.com/project/${index})`,
+      ),
+    ),
+    part("work", "progress", "text", "I will check the project first."),
+    part("work", "command-0", "tool"),
+  ])
 const faults = new Map<string, "denied" | "conflict" | "stalled" | "pending" | "malformed">()
 const reads = new Map<string, number>()
 const completions = new Map<string, (response: Response) => void>()
@@ -160,6 +175,9 @@ const summaries = createMemo(() =>
   ),
 )
 let finishPage: (() => void) | undefined
+let pageRefresh: Promise<void> | undefined
+let finishPageRefresh: (() => void) | undefined
+let pageLoads = 0
 const pageReady = canonicalParts
   ? new Promise<void>((resolve) => {
       finishPage = resolve
@@ -243,13 +261,14 @@ let retained = 0
 let locate: ((messageID: string, behavior?: ScrollBehavior, partID?: string) => Promise<boolean>) | undefined
 const context: Partial<PluginConversationService> = {
   sessionID: "session",
-  timeline: () => [data.message.session[0]],
+  timeline: () => data.message.session.filter((message) => message.role === "user" && message.isRoot) as UserMessage[],
   lastUserMessage: () => root,
   turnProjection: () => ({
     roots: [],
     byRoot: new Map(),
     memberIndex: new Map(),
-    turnMessagesFor: () => data.message.session.slice(1),
+    turnMessagesFor: (turn = root) =>
+      data.message.session.filter((message) => message.rootID === turn.id && message.id !== turn.id),
     compactionParentIDs: new Set<string>(),
   }),
   activityDisplay: mode,
@@ -278,9 +297,12 @@ const context: Partial<PluginConversationService> = {
         content: { version: versions[p.id] ?? "v1", bytes: 64 },
       }))
     },
-    page: () => (hasPage() ? { hasMore: false } : undefined),
+    page: () => (hasPage() ? { hasMore: false, stale: pageStale() } : undefined),
     load: async () => {
+      pageLoads++
       await pageReady
+      await pageRefresh
+      setPageStale(false)
       setHasPage(true)
     },
     text: async () => "Final answer stays mounted.",
@@ -382,6 +404,19 @@ window.__conversationProcess = {
       Array.from({ length: count }, (_, i) => part("more", "many-" + i, "tool")),
     )
   },
+  restoreProcess(count: number) {
+    setData(
+      "part",
+      "more",
+      Array.from({ length: count }, (_, i) => part("more", "restored-" + i, "tool")),
+    )
+    setMounted(false)
+    queueMicrotask(() => setMounted(true))
+  },
+  backfill(count: number) {
+    context.autoScroll?.handleInteraction(new Event("history-load"))
+    window.__conversationProcess.hydrateBefore(count)
+  },
   hydrateBefore(count: number) {
     setData("part", "root", [
       part("root", "request", "text", "Describe the project"),
@@ -389,6 +424,62 @@ window.__conversationProcess = {
         part("root", `history-${index}`, "text", `Historical section ${index}`),
       ),
     ])
+  },
+  growReadingParagraph(id: string, count: number) {
+    const index = data.part.work.findIndex((item) => item.id === id)
+    const current = data.part.work[index]
+    if (current?.type !== "text") return
+    setData(
+      "part",
+      "work",
+      index,
+      reconcile({ ...current, text: `${current.text}\n\n${"Earlier accepted paragraph grows. ".repeat(count)}` }),
+    )
+  },
+  growToolEvidence(id: string) {
+    const index = data.part.more.findIndex((item) => item.id === id)
+    const current = data.part.more[index]
+    if (current?.type !== "tool" || current.state.status !== "completed") return
+    const evidence: Extract<Part, { type: "attachment" }> = {
+      id: `${id}-evidence`,
+      sessionID: current.sessionID,
+      messageID: current.messageID,
+      type: "attachment",
+      mime: "image/svg+xml",
+      filename: "Late reading evidence.svg",
+      url: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="160"><text x="10" y="20">Late body while native paging is moving</text></svg>')}`,
+      presentation: { purpose: "evidence" },
+    }
+    setData(
+      "part",
+      "more",
+      index,
+      reconcile({
+        ...current,
+        state: {
+          ...current.state,
+          attachments: [...(current.state.attachments ?? []), evidence],
+        },
+      }),
+    )
+  },
+  latest() {
+    context.autoScroll?.forceScrollToBottom()
+  },
+  prependTurns(count: number) {
+    context.autoScroll?.handleInteraction(new Event("history-load"))
+    const older = Array.from(
+      { length: count },
+      (_, index): UserMessage => ({
+        ...root,
+        id: `earlier-turn-${index}`,
+        rootID: `earlier-turn-${index}`,
+        time: { created: -count + index },
+      }),
+    )
+    for (const message of older)
+      setData("part", message.id, [part(message.id, `${message.id}-text`, "text", `Earlier turn ${message.id}`)])
+    setData("message", "session", (messages) => [...older, ...messages])
   },
   prepend(count: number) {
     setData("part", "more", [
@@ -467,7 +558,17 @@ window.__conversationProcess = {
   },
   contentPageFinish() {
     finishPage?.()
+    finishPageRefresh?.()
+    finishPageRefresh = undefined
+    pageRefresh = undefined
   },
+  contentStale() {
+    pageRefresh = new Promise<void>((resolve) => {
+      finishPageRefresh = resolve
+    })
+    setPageStale(true)
+  },
+  contentPageLoads: () => pageLoads,
 }
 const runtime = {
   statusFor: (): SessionStatus =>
@@ -501,7 +602,10 @@ function Scroller(props: ParentProps) {
         },
       })
     : undefined
-  context.autoScroll = autoScroll
+  context.autoScroll = autoScroll && {
+    ...autoScroll,
+    forceScrollToBottom: () => autoScroll.forceScrollToBottom({ untilInteraction: true }),
+  }
   if (autoScroll) context.scrolledUp = () => reading() || autoScroll.userScrolled()
   createEffect(on(scroll, (element) => autoScroll?.scrollRef(element)))
   return (
@@ -518,7 +622,6 @@ function Scroller(props: ParentProps) {
     </div>
   )
 }
-
 render(
   () => (
     <I18nProvider i18n={setupI18n({ locale: "en", messages: { en: {} } })}>
@@ -531,6 +634,7 @@ render(
                   <Scroller>
                     <Show when={mounted()}>
                       <VirtualConversationRows
+                        layoutOwner={["http://localhost", "/project", "session"]}
                         takePartArrival={arrivalView.take}
                         liveRevision={arrivalView.revision}
                         context={context as PluginConversationService}

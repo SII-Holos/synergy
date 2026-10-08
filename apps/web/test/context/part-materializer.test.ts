@@ -153,6 +153,44 @@ test("keeps the accepted body and its memory accounting until a newer version su
   expect(memory.bytes).toBe(0)
 })
 
+test("revalidation cancels obsolete work while retaining accepted content until the new summary succeeds", async () => {
+  const memory = createContentBudget()
+  const pending: Array<(value: { part: Part; version: string }) => void> = []
+  const applied: string[] = []
+  const evicted: string[] = []
+  const signals: AbortSignal[] = []
+  const materializer = createPartMaterializer({
+    memory,
+    read: async (item, signal) => {
+      signals.push(signal)
+      return item.content.version === "one"
+        ? { part: body(item.id), version: "one" }
+        : new Promise((resolve) => pending.push(resolve))
+    },
+    apply: (_, item) => applied.push(item.content.version),
+    evict: (item) => evicted.push(item.content.version),
+  })
+  const accepted = materializer.retain(summary("a"))
+  await accepted.ready
+  const obsolete = materializer.retain(summary("a", "two"))
+  materializer.revalidate("message")
+  expect(signals[1].aborted).toBe(true)
+  expect(evicted).toEqual([])
+  expect(memory.bytes).toBe(24)
+  expect(materializer.bytes).toBe(24)
+  const current = materializer.retain(summary("a", "three"))
+  pending[0]({ part: body("obsolete"), version: "two" })
+  pending[1]({ part: body("current"), version: "three" })
+  await Promise.all([obsolete.ready, current.ready])
+  expect(applied).toEqual(["one", "three"])
+  expect(memory.bytes).toBe(24)
+  accepted.release()
+  obsolete.release()
+  current.release()
+  materializer.dispose()
+  expect(memory.bytes).toBe(0)
+})
+
 test("bounds conflicts across advancing versions, then allows a manual retry", async () => {
   let reads = 0
   let recover = false

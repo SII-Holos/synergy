@@ -156,13 +156,7 @@ import {
   previousMessage,
   selectMessagesInCanonicalOrder,
 } from "@/components/session/session-message-order"
-import {
-  adjustedScrollTop,
-  adjustTrimScrollTop,
-  computeTurnTrim,
-  selectPrependAnchor,
-  type PrependScrollAnchor,
-} from "@/components/session/session-history-scroll"
+import { adjustTrimScrollTop, computeTurnTrim } from "@/components/session/session-history-scroll"
 import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
 import { resolveActivityDisplay } from "@ericsanchezok/synergy-ui/session-turn-activity"
 import { hasMessageWindowSnapshot } from "@/context/session-message-window"
@@ -1302,10 +1296,6 @@ function SessionPageContent() {
       const scope = sdk.scopeKey
       const current = () =>
         owner === sessionKey() && sdk.url === server && sdk.scopeKey === scope && scroller === container
-      if (!input.reading && container.scrollHeight - container.clientHeight - container.scrollTop < 10)
-        return () => {
-          if (current()) container.scrollTop = container.scrollHeight
-        }
       return captureConversationReadingAnchor(container, current, input.target)
     },
     onMeasure: (distance) => {
@@ -1353,63 +1343,19 @@ function SessionPageContent() {
     })
   }
 
-  const capturePrependScrollAnchor = (): PrependScrollAnchor | undefined => {
-    const container = scroller
-    if (!container) return
-    const viewportTop = container.getBoundingClientRect().top
-    const rows = container.querySelectorAll<HTMLElement>("[data-display-row]")
-    const candidates = Array.from(
-      rows.length ? rows : container.querySelectorAll<HTMLElement>("[data-message-id]"),
-    ).map((node) => {
-      const rect = node.getBoundingClientRect()
-      return {
-        messageID: node.dataset.messageId ?? "",
-        rowKey: node.dataset.displayRow,
-        top: rect.top,
-        bottom: rect.bottom,
-      }
-    })
-    return selectPrependAnchor(
-      candidates.filter((candidate) => candidate.messageID),
-      viewportTop,
-    )
-  }
-
-  const restorePrependScrollAnchor = (anchor: PrependScrollAnchor | undefined) => {
-    const container = scroller
-    if (!container || !anchor) return
-    const node = Array.from(
-      container.querySelectorAll<HTMLElement>(anchor.rowKey ? "[data-display-row]" : "[data-message-id]"),
-    ).find((candidate) =>
-      anchor.rowKey ? candidate.dataset.displayRow === anchor.rowKey : candidate.dataset.messageId === anchor.messageID,
-    )
-    if (!node) return
-    const afterOffsetTop = node.getBoundingClientRect().top - container.getBoundingClientRect().top
-    container.scrollTop = adjustedScrollTop({
-      scrollTop: container.scrollTop,
-      beforeOffsetTop: anchor.offsetTop,
-      afterOffsetTop,
-    })
-  }
-
   const loadEarlierMessages = async () => {
     const id = params.id
     if (!id) return
     setHistoryLocationPinned(true)
     autoScroll.handleInteraction()
-    const scrollAnchor = capturePrependScrollAnchor()
     try {
       const result = await sync.session.history.loadMore(id)
       if (!result || params.id !== id) return
       setStore("turnStart", 0)
-      afterHistoryLayoutSettles(() => {
-        if (params.id !== id) return
-        if (result === "latest") {
-          autoScroll.forceScrollToBottom({ untilInteraction: true })
-          return
-        }
-        restorePrependScrollAnchor(scrollAnchor)
-      })
+      if (result === "latest")
+        afterHistoryLayoutSettles(() => {
+          if (params.id === id) autoScroll.forceScrollToBottom({ untilInteraction: true })
+        })
     } catch (error) {
       showToast({
         type: "error",

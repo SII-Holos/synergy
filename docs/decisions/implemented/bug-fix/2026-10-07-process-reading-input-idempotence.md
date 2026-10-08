@@ -26,6 +26,8 @@ The App supplies a conservative mutation predicate using the exact DOM root of i
 
 **Remove content observation or ignore all virtualizer descendants.** Same-version body hydration and unsequenced text growth need not change summary revision. Their nested mutation records must protect the anchor before virtual measurements; mixed deliveries cannot be treated as pure churn.
 
+The later [conversation rendering lifetime decision](../architecture/2026-10-07-conversation-rendering-lifetime.md) extends this input policy with one accepted viewport reading owner and native movement arbitration. That current contract takes precedence over the earlier pause-on-every-scroll behavior; the combined branch retains its implementation and regressions.
+
 ## Consequences
 
 Unchanged reading membership no longer invalidates conversation projections, while input cancellation and reading retention remain independent of notification transitions. Ordinary same-frame input at an unchanged scroll offset shares its geometry capture; real displacement and targeted disclosure remain synchronous. This deliberately avoids a one-scan-per-frame limit for actual scrolling. The App owns the narrower virtual-root classification; other shared UI consumers retain conservative protection. Browser regressions exercise repeated input, owner reacquisition, immediate characterData/childList growth with scroll displacement, same-frame cross-paragraph scrolling with intermediate growth, mixed mutations, live append, prepend, reopening, Latest, and focus/selection retention. Physical trackpad performance remains device-specific rather than established by these deterministic tests.
