@@ -67,7 +67,7 @@ export function createMarkdownParser() {
             const reference = ResourceReference.parse(href)
             const titleAttr = title ? ` title="${escapeHtmlAttribute(title)}"` : ""
             const src =
-              reference.kind === "url" && /^https?:/i.test(reference.url)
+              reference.kind === "image" || (reference.kind === "url" && /^https?:/i.test(reference.url))
                 ? ` src="${escapeHtmlAttribute(reference.url)}"`
                 : ""
             return `<img data-resource-reference="${escapeHtmlAttribute(href)}"${src} alt="${escapeHtmlAttribute(text)}"${titleAttr}>`

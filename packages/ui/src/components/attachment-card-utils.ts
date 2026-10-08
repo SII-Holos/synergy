@@ -60,6 +60,25 @@ export function attachmentFromReference(reference: string, filename?: string): A
   return asset ? { url: asset.url, mime: asset.mime, filename: filename || asset.id } : undefined
 }
 
+export function attachmentCopyReference(
+  file: AttachmentFile,
+  location?: ResourceReference.Location,
+): string | undefined {
+  const url =
+    file.url || (file.assetId && AssetReference.isValidId(file.assetId) ? `asset://${file.assetId}` : undefined)
+  if (url) return ResourceReference.format(ResourceReference.parse(url), location) || undefined
+  const path = attachmentSourcePath(file)
+  if (!path) return
+  const source = file.source
+  const position = ResourceReference.Location.safeParse(
+    source && typeof source === "object" && "location" in source ? source.location : undefined,
+  )
+  return ResourceReference.format(
+    { kind: "workspace-file", path },
+    location ?? (position.success ? position.data : undefined),
+  )
+}
+
 export function joinServerUrl(serverUrl: string, pathname: string): string {
   return `${serverUrl.replace(/\/$/, "")}${pathname.startsWith("/") ? pathname : `/${pathname}`}`
 }

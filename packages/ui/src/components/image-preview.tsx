@@ -1,4 +1,5 @@
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useDialog } from "../context/dialog"
@@ -125,10 +126,15 @@ export function ImagePreview(props: ImagePreviewProps) {
     setRotation((value) => (value + 90) % 360)
   }
 
-  function openExternal() {
+  const externalUrl = () => {
     const image = current()
-    if (!image) return
-    window.open(image.externalUrl ?? image.src, "_blank", "noopener,noreferrer")
+    const target = image && ResourceReference.parse(image.externalUrl ?? image.src)
+    return target?.kind === "url" && /^https?:/i.test(target.url) ? target.url : undefined
+  }
+
+  function openExternal() {
+    const url = externalUrl()
+    if (url) window.open(url, "_blank", "noopener,noreferrer")
   }
 
   async function openSource() {
@@ -311,16 +317,18 @@ export function ImagePreview(props: ImagePreviewProps) {
                         <Icon name={getSemanticIcon("workspace.files")} size="small" />
                       </button>
                     </Show>
-                    <button
-                      type="button"
-                      data-component="icon-button"
-                      data-variant="ghost"
-                      aria-label={_(openNewWindowDescriptor)}
-                      title={_(openNewWindowDescriptor)}
-                      onClick={openExternal}
-                    >
-                      <Icon name="arrow-up-right" size="small" />
-                    </button>
+                    <Show when={externalUrl()}>
+                      <button
+                        type="button"
+                        data-component="icon-button"
+                        data-variant="ghost"
+                        aria-label={_(openNewWindowDescriptor)}
+                        title={_(openNewWindowDescriptor)}
+                        onClick={openExternal}
+                      >
+                        <Icon name="arrow-up-right" size="small" />
+                      </button>
+                    </Show>
                   </div>
                   <Show when={canNavigate()}>
                     <button

@@ -82,7 +82,7 @@ function Fixture() {
   )
   const [body, setBody] = createSignal("Inspect this image")
   const [markdown, setMarkdown] = createSignal(
-    "![Plot](asset://1111111111111111.png)\n\n[Report.txt](asset://2222222222222222.txt)",
+    query.has("inline") ? "" : "![Plot](asset://1111111111111111.png)\n\n[Report.txt](asset://2222222222222222.txt)",
   )
   const [streaming, setStreaming] = createSignal(true)
   const parts = () => [

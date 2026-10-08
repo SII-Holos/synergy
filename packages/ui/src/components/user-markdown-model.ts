@@ -16,7 +16,8 @@ export interface UserMarkdownReference {
 
 export function userMarkdownImageUrl(value: string) {
   const target = ResourceReference.parse(value)
-  return ["workspace-file", "asset"].includes(target.kind) || (target.kind === "url" && /^https?:/i.test(target.url))
+  return ["workspace-file", "asset", "image"].includes(target.kind) ||
+    (target.kind === "url" && /^https?:/i.test(target.url))
     ? value
     : undefined
 }

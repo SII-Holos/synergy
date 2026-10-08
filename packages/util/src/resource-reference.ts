@@ -34,6 +34,7 @@ export namespace ResourceReference {
     | { kind: "workspace-file"; path: string; location?: Location }
     | { kind: "asset"; url: string; location?: Location }
     | { kind: "url"; url: string }
+    | { kind: "image"; url: string }
     | { kind: "anchor"; id: string }
     | { kind: "unavailable"; value: string; reason: "invalid-target" | "invalid-location" | "unsupported-protocol" }
 
@@ -59,6 +60,17 @@ export namespace ResourceReference {
       reason,
     })
     if (!value || controls.test(value)) return unavailable()
+    if (/^data:image\/(?:png|jpe?g|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon|svg\+xml)(?:;[^,]*)?,/i.test(value))
+      return { kind: "image", url: value }
+    if (value.startsWith("blob:")) {
+      if (/^blob:null\/[^/]+$/.test(value)) return { kind: "image", url: value }
+      try {
+        const source = new URL(value.slice(5))
+        if (["http:", "https:"].includes(source.protocol) && source.hostname && source.pathname !== "/")
+          return { kind: "image", url: value }
+      } catch {}
+      return unavailable("unsupported-protocol")
+    }
     if (/^(https?:|mailto:|tel:)/i.test(value)) {
       try {
         const url = new URL(value)
@@ -130,7 +142,7 @@ export namespace ResourceReference {
   export function format(reference: Target, location?: Location): string {
     if (reference.kind === "unavailable") return reference.value
     if (reference.kind === "anchor") return `#${encodeURIComponent(reference.id)}`
-    if (reference.kind === "url") return reference.url
+    if (reference.kind === "url" || reference.kind === "image") return reference.url
     const target =
       reference.kind === "asset"
         ? reference.url

@@ -35,7 +35,7 @@ export function observeMarkdownResources(
     if (!element.hasAttribute("data-resource-reference")) element.setAttribute("data-resource-reference", value)
     if (element.tagName === "IMG") {
       const url =
-        reference.kind === "url" && /^https?:/i.test(reference.url)
+        reference.kind === "image" || (reference.kind === "url" && /^https?:/i.test(reference.url))
           ? reference.url
           : resources.resolveUrl?.(reference, context())
       if (url && element.getAttribute("src") !== url) {
@@ -112,18 +112,23 @@ export function observeMarkdownResources(
       )
     const occurrence = Math.max(0, peers().indexOf(element as HTMLElement))
     const reference = ResourceReference.parse(value)
+    const image = element.querySelector("img")
     element.setAttribute("aria-busy", "true")
     const activation = {}
     activations.set(element, activation)
     busy.add(element)
     void resources
       .open(
-        { ...reference, ...(element.querySelector("img") ? { mime: "image/*" } : {}) },
+        {
+          ...reference,
+          filename: (image?.getAttribute("alt") ?? element.textContent)?.trim() || undefined,
+          ...(image ? { mime: "image/*" } : {}),
+        },
         {
           context: context(),
           focusTarget: () => peers()[occurrence],
           newTab: event.ctrlKey || event.metaKey || (event instanceof view.MouseEvent && event.button === 1),
-          prefer: element.querySelector("img") ? "preview" : "workspace",
+          prefer: image ? "preview" : "workspace",
         },
       )
       .then((result) => {

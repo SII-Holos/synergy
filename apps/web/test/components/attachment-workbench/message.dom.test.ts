@@ -16,6 +16,7 @@ beforeAll(async () => {
     aliases: [
       { find: /^@\/context\/(layout|locale|file|sdk|platform|sync)$/, replacement: host },
       { find: "../layout", replacement: host },
+      { find: "./platform", replacement: host },
       { find: "@/plugin/host", replacement: host },
       { find: "@/components/dialog/confirm-dialog", replacement: host },
       { find: "@", replacement: path.resolve(import.meta.dir, "../../../src") },
@@ -110,9 +111,9 @@ test("reader fullscreen and closing retain the original attachment and return fo
 test.each(["throw", "empty"])("a %s open result gives feedback and an actionable retry", async (failure) => {
   await visit(`?failure=${failure}`)
   await page.getByRole("button", { name: "Open portrait.svg", exact: true }).click()
-  await page.getByText("Couldn’t open attachment", { exact: true }).waitFor()
+  await page.getByText("Couldn’t open reference", { exact: true }).waitFor()
   await page.evaluate("window.fixture.repair()")
-  await page.getByText("Couldn’t open attachment", { exact: true }).hover()
+  await page.getByText("Couldn’t open reference", { exact: true }).hover()
   await page.getByRole("button", { name: "Retry", exact: true }).click()
   await page.locator(".attachment-workbench").waitFor()
   expect(errors).toEqual([])
@@ -121,9 +122,9 @@ test.each(["throw", "empty"])("a %s open result gives feedback and an actionable
 test("an unavailable panel gives feedback and a later registration can be retried", async () => {
   await visit("?unregistered")
   await page.getByRole("button", { name: "Open portrait.svg", exact: true }).click()
-  await page.getByText("Couldn’t open attachment", { exact: true }).waitFor()
+  await page.getByText("Couldn’t open reference", { exact: true }).waitFor()
   await page.evaluate("window.fixture.repair()")
-  await page.getByText("Couldn’t open attachment", { exact: true }).hover()
+  await page.getByText("Couldn’t open reference", { exact: true }).hover()
   await page.getByRole("button", { name: "Retry", exact: true }).click()
   await page.locator(".attachment-workbench").waitFor()
   expect(errors).toEqual([])
@@ -135,7 +136,7 @@ test("switching targets cancels a late opening without a stale error", async () 
   await page.evaluate("window.fixture.navigate(); window.fixture.release()")
   await page.waitForTimeout(80)
   expect(await page.evaluate<number>("window.fixture.tabs().length")).toBe(0)
-  expect(await page.getByText("Couldn’t open attachment", { exact: true }).count()).toBe(0)
+  expect(await page.getByText("Couldn’t open reference", { exact: true }).count()).toBe(0)
   expect(errors).toEqual([])
 })
 
@@ -238,6 +239,39 @@ test("transparent images remain readable and actionable at 200 percent interface
   expect(errors).toEqual([])
 })
 
+test.each(["data", "blob"])("%s Markdown images load and open the shared preview", async (scheme) => {
+  await visit("?markdown&inline")
+  const url = await page.evaluate((scheme) => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10" onload="document.documentElement.dataset.imageExecuted=1"><rect width="20" height="10" fill="gray"/></svg>'
+    const url =
+      scheme === "data"
+        ? `data:image/svg+xml,${encodeURIComponent(svg)}`
+        : URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }))
+    ;(window as unknown as { fixture: { setMarkdown(value: string): void } }).fixture.setMarkdown(
+      `![Inline chart](${url})\n\n`,
+    )
+    return url
+  }, scheme)
+  try {
+    await page.waitForFunction(
+      (url) => document.querySelector('[data-component="markdown"] img')?.getAttribute("src") === url,
+      url,
+    )
+    const image = page.locator('[data-component="markdown"] img').first()
+    await image.evaluate((element: HTMLImageElement) => element.decode())
+    await image.locator("..").press("Enter")
+    await page.locator('[data-component="image-preview"]').waitFor()
+    expect(await page.locator('[data-component="image-preview"] img').first().getAttribute("src")).toBe(url)
+    expect(await page.getByRole("button", { name: "Open image in new window", exact: true }).count()).toBe(0)
+    expect(await page.evaluate(() => document.documentElement.dataset.imageExecuted)).toBeUndefined()
+    await page.keyboard.press("Escape")
+    expect(errors).toEqual([])
+  } finally {
+    if (scheme === "blob") await page.evaluate((url) => URL.revokeObjectURL(url), url)
+  }
+})
+
 test("streamed and completed Markdown references open the shared image preview and document reader", async () => {
   await page.route("**/asset/1111111111111111.png", (route) =>
     route.fulfill({
@@ -268,7 +302,7 @@ test("streamed and completed Markdown references open the shared image preview a
   await page.waitForFunction(
     () => document.activeElement?.getAttribute("data-resource-reference") === "asset://1111111111111111.png",
   )
-  await page.getByRole("link", { name: "Report.txt", exact: true }).focus()
+  await page.getByRole("button", { name: "Report.txt", exact: true }).focus()
   await page.keyboard.press("Enter")
   await page.locator(".attachment-workbench").waitFor()
   await page.getByText("Captured document verification: APPLE-7319", { exact: false }).waitFor()

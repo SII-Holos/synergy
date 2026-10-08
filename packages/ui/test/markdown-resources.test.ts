@@ -54,6 +54,26 @@ function fixture() {
 }
 
 describe("Markdown managed resources", () => {
+  test.each(["stream", "settled"])("preserves inline image previews in %s Markdown", async (mode) => {
+    const f = fixture()
+    const urls = ["data:image/png;base64,AAAA", "blob:https://ui.example/image"]
+    const markdown = urls.map((url) => `![Chart](${url})`).join("\n\n")
+    try {
+      if (mode === "stream") {
+        const stream = createMarkdownStreamController(f.root)
+        stream.update(markdown)
+        stream.end()
+      } else f.root.innerHTML = sanitizeHtml(await parser.parse(markdown))
+      await flush()
+      const images = [...f.root.querySelectorAll("img")]
+      expect(images.map((image) => image.getAttribute("src"))).toEqual(urls)
+      for (const image of images) image.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }))
+      expect(f.references).toHaveLength(2)
+      expect(f.references[0]).toMatchObject({ resource: { kind: "image", url: urls[0], filename: "Chart" } })
+    } finally {
+      f.dispose()
+    }
+  })
   test.each(["stream", "settled"])(
     "opens workspace citations without browser navigation in %s Markdown",
     async (mode) => {
@@ -105,6 +125,7 @@ describe("Markdown managed resources", () => {
         "image/png",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       ])
+      expect(f.references.at(-1)).toMatchObject({ resource: { filename: "Report.docx" } })
     } finally {
       f.dispose()
     }

@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test"
 import { renderUserMarkdown } from "../../src/components/user-markdown-model"
 
 describe("user Markdown", () => {
+  test("keeps inline images as explicit preview actions", async () => {
+    for (const url of ["data:image/png;base64,AAAA", "blob:https://ui.example/image"])
+      expect(await renderUserMarkdown(`![Chart](${url})`, [])).toContain(`data-user-image="${url}"`)
+    expect(await renderUserMarkdown("![Unsafe](data:text/html,unsafe)", [])).not.toContain("data-user-image")
+  })
   test("routes explicit file links through resource references and leaves code literal", async () => {
     const html = await renderUserMarkdown(
       "[源码](src/main.ts#L3-L7) [网页](https://example.com) `src/main.ts`\n\n[文件][file]\n\n[file]: docs/a%20b.md#intro",

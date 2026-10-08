@@ -55,6 +55,7 @@ export const useSDK = () => ({
   client: createSynergyClient({ baseUrl: location.origin }),
 })
 export const usePlatform = () => ({ fetch, openLink: () => {} })
+export const useProjectFiles = () => ({ open: async () => undefined })
 export const useFile = () => ({
   normalize: (value?: string) => (value?.startsWith("docs/") ? value : undefined),
   openWorkspaceFile: async () => {},

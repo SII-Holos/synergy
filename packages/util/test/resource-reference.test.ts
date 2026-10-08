@@ -8,6 +8,25 @@ const context: ResourceReference.Context = {
 }
 
 describe("resource references", () => {
+  test("inline images retain preview semantics without becoming external navigation", () => {
+    for (const url of [
+      "data:image/png;base64,AAAA",
+      "data:image/svg+xml,%3Csvg%3E",
+      "blob:https://ui.example/id",
+      "blob:null/id",
+    ]) {
+      const target = ResourceReference.parse(url)
+      expect(target).toEqual({ kind: "image", url })
+      expect(ResourceReference.format(target)).toBe(url)
+    }
+    for (const url of [
+      "data:text/html,<script>",
+      "data:application/javascript,alert(1)",
+      "blob:javascript:alert(1)",
+      "blob:invalid",
+    ])
+      expect(ResourceReference.parse(url).kind).toBe("unavailable")
+  })
   test("copied references preserve encoded filenames and their navigation location", () => {
     for (const input of [
       "src/中文%20%23%3F%25.ts#L2C3-L4C7",

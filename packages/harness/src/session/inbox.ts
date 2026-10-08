@@ -491,7 +491,10 @@ export namespace SessionInbox {
     return `inb_${hash}`
   }
 
-  function deliveryItem(input: z.infer<typeof Deliver.Input>, ids: { itemID: string; messageID: string }): StoredItem {
+  async function deliveryItem(
+    input: z.infer<typeof Deliver.Input>,
+    ids: { itemID: string; messageID: string },
+  ): Promise<StoredItem> {
     const summarized = summarizeParts(input.message.parts)
     const mode = input.mode
     const origin =
@@ -509,7 +512,7 @@ export namespace SessionInbox {
       deliveryKey: input.deliveryKey,
       mode,
       message: {
-        referenceContext: ResourceReference.capture(ScopeContext.current.workspace),
+        referenceContext: ResourceReference.capture((await Session.get(input.sessionID)).workspace),
         parts: input.message.parts as any,
         role: input.message.role,
         agent: input.message.agent,
@@ -545,7 +548,7 @@ export namespace SessionInbox {
       itemID: Identifier.ascending("inbox"),
       messageID: Identifier.ascending("message"),
     }
-    const item = deliveryItem(input, ids)
+    const item = await deliveryItem(input, ids)
     if (input.message.role === "assistant") {
       await materializeItem(item, await latestRootID(input.sessionID))
       return { ...ids, created: true }
@@ -593,7 +596,7 @@ export namespace SessionInbox {
     const ids = { itemID, messageID: Identifier.ascending("message") }
     const message = await input.prepareMessage(ids.messageID)
     await persistItem(
-      deliveryItem(
+      await deliveryItem(
         {
           sessionID: input.sessionID,
           deliveryKey: input.deliveryKey,
@@ -664,7 +667,7 @@ export namespace SessionInbox {
       mode,
       message: {
         role: "user",
-        referenceContext: ResourceReference.capture((taskSession ?? (await readSession(input.sessionID))).workspace),
+        referenceContext: ResourceReference.capture((await Session.get(input.sessionID)).workspace),
         parts: input.parts as any,
         agent: input.agent,
         model: input.model,

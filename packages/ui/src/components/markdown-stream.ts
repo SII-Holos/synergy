@@ -59,6 +59,10 @@ function createSafeRenderer(
         const reference = ResourceReference.parse(value)
         if (type === smd.SRC) {
           data.nodes[data.index]?.setAttribute("data-resource-reference", value)
+          if (reference.kind === "image") {
+            smd.default_set_attr(data, type, reference.url)
+            return
+          }
           if (reference.kind !== "url" || !/^https?:/i.test(reference.url)) return
         }
         if (reference.kind !== "url" && reference.kind !== "anchor") {

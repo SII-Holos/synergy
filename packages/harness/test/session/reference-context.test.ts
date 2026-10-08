@@ -190,13 +190,16 @@ test("migration refreshes materialized history across batches and records alread
           infos.map((value) => StoragePath.messageInfo(scopeID, sessionID, Identifier.asMessageID(value.id))),
         )
         expect(upgraded.every((info) => info?.referenceContext?.state === "unresolved")).toBe(true)
-        await SessionHistoryDisplay.prepare(scopeID, sessionID, async () => upgraded as MessageV2.Info[])
+        const noRebuild = async (): Promise<MessageV2.Info[]> => {
+          throw new Error("Reference migration must preserve the ready display projection")
+        }
+        await SessionHistoryDisplay.prepare(scopeID, sessionID, noRebuild)
         expect(
           (await SessionHistoryDisplay.header(scopeID, sessionID, infos.at(-1)!.id))?.info.referenceContext,
         ).toEqual({ state: "unresolved" })
         await SessionHistoryDisplay.messageWritten(scopeID, infos[0]!)
         await migrateReferenceContexts({ scopeID, sessionID }, () => {})
-        await SessionHistoryDisplay.prepare(scopeID, sessionID, async () => upgraded as MessageV2.Info[])
+        await SessionHistoryDisplay.prepare(scopeID, sessionID, noRebuild)
         expect((await SessionHistoryDisplay.header(scopeID, sessionID, infos[0]!.id))?.info.referenceContext).toEqual({
           state: "unresolved",
         })

@@ -23,6 +23,7 @@ import {
 } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { ImagePreview, type ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import {
+  attachmentCopyReference,
   attachmentFromReference,
   attachmentReferenceContext,
   attachmentSourcePath,
@@ -96,7 +97,7 @@ function previewImageForUrl(input: { url: string; mime?: string; filename?: stri
     mime: input.mime ?? "image/*",
     alt: filename,
     downloadUrl: src,
-    externalUrl: src,
+    externalUrl: /^https?:/i.test(src) ? src : undefined,
   }
 }
 
@@ -190,7 +191,10 @@ export function ResourceOpenProvider(props: ParentProps) {
       },
     })
     if (disposed || options?.signal?.aborted || ownerKey() !== owner || !workbench.isCurrent(session)) return false
-    if (!tab) return false
+    if (!tab) {
+      if (side.selectionRevision() !== selectionRevision) return false
+      throw new Error(_({ id: "app.reference.unavailable", message: "The resource is unavailable." }))
+    }
     setOpenedResource({ session, tabID: tab.id, origin: options?.focusTarget ?? (() => origin) })
     return true
   }
@@ -476,7 +480,7 @@ export function ResourceOpenProvider(props: ParentProps) {
       const attachment = attachmentFromReference(reference.url)
       return attachment ? resolveAttachmentUrl(sdk.url, attachment) : undefined
     }
-    if (reference.kind === "url") return reference.url
+    if (reference.kind === "url" || reference.kind === "image") return reference.url
     if (reference.kind !== "workspace-file") return
     try {
       const target = workspaceTarget(reference.path, context)
@@ -596,11 +600,11 @@ export function ResourceOpenProvider(props: ParentProps) {
 
     if (path) return openWorkspaceFile(path, options)
     if (url) return openUrl({ url, mime: attachment.mime, filename: attachment.filename })
-    return false
+    throw new Error(_({ id: "app.reference.unavailable", message: "The resource is unavailable." }))
   }
 
   const open = async (resource: OpenableResource, supplied: ResourceOpenOptions = {}): Promise<ResourceOpenResult> => {
-    if (resource.kind === "url" && !/^(data:image\/|blob:)/i.test(resource.url))
+    if (resource.kind === "url")
       resource = { ...ResourceReference.parse(resource.url), mime: resource.mime, filename: resource.filename }
     resourceRequest?.abort()
     const request = new AbortController()
@@ -626,6 +630,7 @@ export function ResourceOpenProvider(props: ParentProps) {
       } else if (resource.kind === "workspace-file")
         opened = await openWorkspaceFile(resource.path, options, resource.mime)
       else if (resource.kind === "url") opened = await openUrl(resource)
+      else if (resource.kind === "image") opened = await openUrl({ ...resource, mime: "image/*" })
       else if (resource.kind === "unavailable")
         throw new Error(
           _({ id: "app.reference.invalid", message: "This reference has an invalid path, protocol or location." }),
@@ -640,6 +645,10 @@ export function ResourceOpenProvider(props: ParentProps) {
         (error instanceof Error
           ? error.message
           : _({ id: "app.reference.unavailable", message: "The resource is unavailable." }))
+      const reference =
+        resource.kind === "attachment"
+          ? attachmentCopyReference(resource.file, options.location)
+          : ResourceReference.format(resource, options.location)
       showToast({
         type: "error",
         title: _({ id: "app.reference.openFailed", message: "Couldn’t open reference" }),
@@ -651,17 +660,16 @@ export function ResourceOpenProvider(props: ParentProps) {
               void open(resource, supplied)
             },
           },
-          {
-            label: _({ id: "app.reference.copy", message: "Copy reference" }),
-            onClick: () => {
-              void copyTextToClipboard(
-                ResourceReference.format(
-                  resource.kind === "attachment" ? ResourceReference.parse(resource.file.url ?? "") : resource,
-                  options.location,
-                ),
-              )
-            },
-          },
+          ...(reference
+            ? [
+                {
+                  label: _({ id: "app.reference.copy", message: "Copy reference" }),
+                  onClick: () => {
+                    void copyTextToClipboard(reference)
+                  },
+                },
+              ]
+            : []),
         ],
       })
       return { status: "unavailable", reason }

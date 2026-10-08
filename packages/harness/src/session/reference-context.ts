@@ -2,6 +2,7 @@ import { ResourceReference } from "@ericsanchezok/synergy-util/resource-referenc
 import { Storage } from "../storage/storage"
 import { UpgradeWork } from "../storage/upgrade-work"
 import { SessionHistoryDisplay } from "./history-display"
+import type { MessageV2 } from "./message-v2"
 
 function object(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
@@ -41,28 +42,28 @@ export async function migrateReferenceContexts(
   progress: (current: number, total: number) => void,
 ) {
   let done = 0
-  let writes: Array<{ key: string[]; value: Record<string, unknown> }> = []
+  let writes: Array<{ key: string[]; value: MessageV2.Info }> = []
+  let infos: MessageV2.Info[] = []
   let bytes = 0
-  let invalidated = false
   const flush = async () => {
-    if (!writes.length) return
+    if (!infos.length) return
     await Storage.transaction(async (tx) => {
-      await tx.writeMany(writes)
-      await SessionHistoryDisplay.invalidate(owner.scopeID, owner.sessionID)
+      if (writes.length) await tx.writeMany(writes)
+      await SessionHistoryDisplay.prepareWindow(owner.scopeID, owner.sessionID, infos)
     })
-    invalidated = true
     writes = []
+    infos = []
     bytes = 0
   }
-  for await (const entry of Storage.records<Record<string, unknown>>({ kind: "message", ...owner })) {
+  for await (const entry of Storage.records<MessageV2.Info>({ kind: "message", ...owner })) {
     await UpgradeWork.checkpoint()
     const current = ResourceReference.Context.safeParse(entry.value.referenceContext)
-    if (current.success && current.data.state !== "unresolved") {
-      progress(++done, 0)
-      continue
-    }
     const sources: ResourceReference.Workspace[] = []
-    if (typeof object(entry.value.path)?.cwd === "string")
+    if (
+      (!current.success || current.data.state === "unresolved") &&
+      entry.value.role === "assistant" &&
+      typeof entry.value.path?.cwd === "string"
+    )
       for await (const part of Storage.records<Record<string, unknown>>({
         kind: "part",
         ...owner,
@@ -82,16 +83,15 @@ export async function migrateReferenceContexts(
           sources.push(source.data)
       }
     const referenceContext = historicalReferenceContext(entry.value, sources)
-    if (JSON.stringify(referenceContext) !== JSON.stringify(entry.value.referenceContext)) {
-      const value = { ...entry.value, referenceContext }
-      const size = Buffer.byteLength(JSON.stringify(value))
-      if (writes.length >= 100 || bytes + size > 4 * 1024 * 1024) await flush()
-      writes.push({ key: entry.key, value })
-      bytes += size
-    }
+    const changed = JSON.stringify(referenceContext) !== JSON.stringify(entry.value.referenceContext)
+    const value = changed ? { ...entry.value, referenceContext } : entry.value
+    const size = Buffer.byteLength(JSON.stringify(value))
+    if (infos.length >= 100 || bytes + size > 4 * 1024 * 1024) await flush()
+    if (changed) writes.push({ key: entry.key, value })
+    infos.push(value)
+    bytes += size
     progress(++done, 0)
   }
   await flush()
-  if (!invalidated) await SessionHistoryDisplay.invalidate(owner.scopeID, owner.sessionID)
   progress(done, done)
 }
