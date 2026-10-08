@@ -4,6 +4,7 @@ import { z } from "zod"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { RolloutEvents } from "@ericsanchezok/synergy-harness/rollout"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutTransportRecorder } from "@ericsanchezok/synergy-harness/session/rollout/transport-recorder"
@@ -14,6 +15,50 @@ import { ExecutionService } from "../../src/execution/service"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
+
+test("a delayed inbox read cannot attach a newer revision to stale active intervals", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      await complete(call)
+      const segment = await RolloutLedger.beginSegment({ owner: call.owner, runID: rootID, input: {} })
+      await RolloutExecution.provide({ owner: call.owner, runID: rootID }, () => RolloutExecution.start(segment))
+      expect((await ExecutionService.summary(session.id)).elapsedActive).toBe(true)
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const list = SessionInbox.list
+      let held = false
+      const read = spyOn(SessionInbox, "list").mockImplementation(async (sessionID) => {
+        const items = await list(sessionID)
+        if (sessionID === session.id && !held) {
+          held = true
+          entered.resolve()
+          await release.promise
+        }
+        return items
+      })
+      const pending = ExecutionService.summary(session.id)
+      try {
+        await Promise.race([entered.promise, pending])
+        await RolloutExecution.stop(segment)
+        await RolloutLedger.finishSegment(segment, "completed")
+        await RolloutLedger.finishRun(call.owner, rootID, "completed")
+        const completed = await ExecutionService.summary(session.id)
+        expect(completed.elapsedActive).toBe(false)
+        release.resolve()
+        const delayed = await pending
+        if (delayed.revision >= completed.revision) {
+          expect(delayed.status).toBe("completed")
+          expect(delayed.elapsedActive).toBe(false)
+          expect(delayed.elapsedMs).toBe(completed.elapsedMs)
+        } else expect(delayed.sampledAt).toBeLessThanOrEqual(completed.sampledAt)
+        expect((await ExecutionService.summary(session.id)).elapsedActive).toBe(false)
+      } finally {
+        release.resolve()
+        await pending
+        read.mockRestore()
+      }
+    }),
+  ))
 
 function nextUpdate(sessionID: string, predicate: (event: ExecutionSchema.Summary) => boolean) {
   let dispose = () => {}
@@ -161,3 +206,50 @@ test(
     ),
   15000,
 )
+
+test("inbox changes during initial loading and after caching converge through execution updates", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      await complete(call)
+      await RolloutLedger.finishRun(call.owner, rootID, "completed")
+      const first = await SessionInbox.enqueueUser({ sessionID: session.id, parts: [{ type: "text", text: "queued" }] })
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const list = SessionInbox.list
+      let held = false
+      const read = spyOn(SessionInbox, "list").mockImplementation(async (sessionID) => {
+        const items = await list(sessionID)
+        if (sessionID === session.id && !held) {
+          held = true
+          entered.resolve()
+          await release.promise
+        }
+        return items
+      })
+      const pending = ExecutionService.summary(session.id)
+      try {
+        await entered.promise
+        await SessionInbox.remove({ sessionID: session.id, itemID: first.id })
+        release.resolve()
+        expect((await pending).status).toBe("completed")
+        const queued = nextUpdate(session.id, (summary) => summary.status === "queued")
+        const item = await SessionInbox.enqueueUser({ sessionID: session.id, parts: [{ type: "text", text: "later" }] })
+        try {
+          expect((await queued.result).properties.summary.elapsedActive).toBe(false)
+          const removed = nextUpdate(session.id, (summary) => summary.status === "completed")
+          try {
+            await SessionInbox.remove({ sessionID: session.id, itemID: item.id })
+            expect((await removed.result).properties.summary.elapsedActive).toBe(false)
+          } finally {
+            removed.dispose()
+          }
+        } finally {
+          queued.dispose()
+        }
+      } finally {
+        release.resolve()
+        await pending
+        read.mockRestore()
+      }
+    }),
+  ))

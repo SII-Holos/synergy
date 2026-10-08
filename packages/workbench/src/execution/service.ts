@@ -36,6 +36,7 @@ export namespace ExecutionService {
     messages: Map<string, { sessionID: string; messageID: string; partID: string }>
     usage: Map<string, UsageSchema.Record>
     contexts: Map<string, NonNullable<MessageV2.Assistant["contextUsage"]>>
+    inboxes: Map<string, SessionInbox.Item[]>
     revision: number
     summary: ExecutionSchema.Summary
     touched: number
@@ -59,6 +60,7 @@ export namespace ExecutionService {
     bufferedMessages: new Map<string, string>(),
     bufferedUsage: new Map<string, UsageSchema.Record>(),
     bufferedSessions: new Map<string, Session.Info>(),
+    bufferedInboxes: new Map<string, SessionInbox.Item[]>(),
     dispose: undefined as (() => void) | undefined,
   }))
   const preview = (value: string) => value.replace(/\s+/g, " ").slice(0, 240)
@@ -343,6 +345,9 @@ export namespace ExecutionService {
       () => Usage.collect({ scopeID: root.scope.id, sessionID: root.id, includeDescendants: true }),
     ))
       usage.set(record.id, record)
+    const inboxes = new Map(
+      await Promise.all(sessions.map(async (session) => [session.id, await SessionInbox.list(session.id)] as const)),
+    )
     const revision = ++state().sequence
     const data = {
       root,
@@ -353,6 +358,7 @@ export namespace ExecutionService {
       messages,
       usage,
       contexts,
+      inboxes,
       revision,
       touched: Date.now(),
       pendingMessages: new Map<string, string>(),
@@ -364,9 +370,9 @@ export namespace ExecutionService {
       recordRows: new Map(ExecutionProcess.project(nodes, "records", root.id).map((node) => [node.id, node])),
       publishedRevision: revision,
     } as Omit<Data, "summary">
-    return { ...data, summary: await summarize(data) }
+    return { ...data, summary: summarize(data) }
   }
-  async function summarize(data: Omit<Data, "summary">, runID?: string): Promise<ExecutionSchema.Summary> {
+  function summarize(data: Omit<Data, "summary">, runID?: string): ExecutionSchema.Summary {
     const nodes = selected(data as Data, runID)
     const identities = new Set(nodes.map((node) => node.sessionID + ":" + node.runID))
     const snapshots = data.snapshots.map((snapshot) => ({
@@ -384,11 +390,6 @@ export namespace ExecutionService {
         identities.has((snapshot.owner.kind === "session" ? snapshot.owner.sessionID : "") + ":" + attempt.runID),
       ),
     }))
-    const inboxes = new Map(
-      await Promise.all(
-        data.sessions.map(async (session) => [session.id, await SessionInbox.list(session.id)] as const),
-      ),
-    )
     const sample = RolloutExecution.clock()
     const projection = (scope: RolloutSnapshot.Info[], rootRuns = scope[0].runs, selectedRunID?: string) =>
       RolloutExecution.summarize(
@@ -428,7 +429,7 @@ export namespace ExecutionService {
                 (snapshot) => snapshot.owner.kind === "session" && snapshot.owner.sessionID === candidate.id,
               ) &&
               ((!selectedRunID && candidate.cortex?.status === "queued") ||
-                (inboxes.get(candidate.id) ?? []).some(
+                (data.inboxes.get(candidate.id) ?? []).some(
                   (item) =>
                     item.mode === "task" && !item.status && (!selectedRunID || item.messageID === selectedRunID),
                 )),
@@ -630,6 +631,12 @@ export namespace ExecutionService {
               updated = true
             }
           }
+          for (const [sessionID, items] of cache.bufferedInboxes) {
+            if (value.sessions.some((session) => session.id === sessionID) && value.inboxes.get(sessionID) !== items) {
+              value.inboxes.set(sessionID, items)
+              updated = true
+            }
+          }
           for (const event of [...cache.buffered.values()].sort((a, b) => a.revision - b.revision))
             apply(value, event.owner, event.revision, event.record)
           if (value.refreshChildren) {
@@ -667,6 +674,7 @@ export namespace ExecutionService {
           cache.bufferedMessages.clear()
           cache.bufferedUsage.clear()
           cache.bufferedSessions.clear()
+          cache.bufferedInboxes.clear()
         }
       })
     cache.pending.set(sessionID, loading)
@@ -770,9 +778,9 @@ export namespace ExecutionService {
     entry.nodes.sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
     entry.revision = ++state().sequence
     entry.touched = Date.now()
-    entry.summary = await summarize(entry)
+    entry.summary = summarize(entry)
     for (const [runID, selection] of entry.selections) {
-      selection.summary = await summarize(entry, runID)
+      selection.summary = summarize(entry, runID)
     }
     return entry
   }
@@ -859,10 +867,14 @@ export namespace ExecutionService {
         schedule(event.properties.owner.sessionID)
       }),
       Bus.subscribeGlobal(SessionInbox.Event.Updated, (event) => {
-        for (const entry of cache.entries.values()) {
-          if (!entry.sessions.some((session) => session.id === event.properties.sessionID)) continue
-          schedule(entry.root.id)
+        const { sessionID, items } = event.properties
+        if (cache.pending.size) {
+          cache.bufferVersion++
+          cache.bufferedInboxes.set(sessionID, items)
         }
+        for (const entry of cache.entries.values())
+          if (entry.sessions.some((session) => session.id === sessionID)) entry.inboxes.set(sessionID, items)
+        schedule(sessionID)
       }),
       Bus.subscribeGlobal(Usage.Updated, (event) => {
         if (event.properties.owner.kind !== "session") return
@@ -934,7 +946,7 @@ export namespace ExecutionService {
     if (!runID) return summarize(value)
     if (!value.summary.rounds.some((round) => round.id === runID))
       throw new Storage.NotFoundError({ message: "Execution round was not found" })
-    const summary = await summarize(value, runID)
+    const summary = summarize(value, runID)
     value.selections.delete(runID)
     value.selections.set(runID, { summary, touched: Date.now() })
     if (value.selections.size > 4) value.selections.delete(value.selections.keys().next().value!)
