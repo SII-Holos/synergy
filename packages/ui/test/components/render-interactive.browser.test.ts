@@ -344,3 +344,32 @@ test("human review remains pending past the state-save timeout", async () => {
     await page.clock.resume()
   }
 })
+
+test("restoring semantic state redraws controls without writing the same state again", async () => {
+  await page.reload()
+  await page.waitForFunction(() => !!(window as unknown as { __renderTest: unknown }).__renderTest)
+  await setup(
+    lab.replace(
+      "String(36+48/values.workers);",
+      "String(36+48/values.workers); api.setState({modelContent:{workers:values.workers}}).catch(()=>{});",
+    ),
+  )
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 250)))
+  const before = await page.evaluate(() => {
+    const host = (
+      window as unknown as { __renderTest: { stats(): { writes: number }; remote(content: unknown): void } }
+    ).__renderTest
+    const writes = host.stats().writes
+    host.remote({
+      modelContent: { workers: 8 },
+      uiContent: { renderViewVersion: 1, view: { controls: { "*:workers": 8 }, variant: "a" } },
+    })
+    return writes
+  })
+  await inline().locator("#total").filter({ hasText: "42" }).waitFor()
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 250)))
+  const writes = await page.evaluate(
+    () => (window as unknown as { __renderTest: { stats(): { writes: number } } }).__renderTest.stats().writes,
+  )
+  expect(writes).toBe(before)
+})

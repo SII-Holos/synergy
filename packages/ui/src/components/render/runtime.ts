@@ -16,6 +16,7 @@ export function renderRuntime(
   let context = config.context
   let state = config.state
   let revision = config.revision
+  let savedContent = JSON.stringify(config.state)
   let epoch = 0
   let view: ViewState = { controls: {} }
   let authoredUI: RenderArtifact.Content["uiContent"]
@@ -133,15 +134,19 @@ export function renderRuntime(
   let saves = Promise.resolve()
   function persist() {
     const content = packed()
-    if (new TextEncoder().encode(JSON.stringify(content)).byteLength > 16 * 1024)
-      return Promise.reject(new Error(labels.tooLarge))
+    const encoded = JSON.stringify(content)
+    if (new TextEncoder().encode(encoded).byteLength > 16 * 1024) return Promise.reject(new Error(labels.tooLarge))
     const current = epoch
     saves = saves
       .catch(() => {})
       .then(async () => {
         if (epoch !== current) throw new Error(labels.conflict)
+        if (encoded === savedContent) return
         const value = (await request("state", { revision, content })) as { revision?: number } | undefined
-        if (typeof value?.revision === "number") revision = Math.max(revision, value.revision)
+        if (value?.revision === undefined || value.revision >= revision) {
+          savedContent = encoded
+          if (typeof value?.revision === "number") revision = value.revision
+        }
       })
     return saves
   }
@@ -240,8 +245,9 @@ export function renderRuntime(
         Object.assign(labels, message.labels)
         applyTheme(message.context)
       }
-      if (message.type === "state" && message.state.revision >= revision) {
+      if (message.type === "state" && message.state.revision > revision) {
         revision = message.state.revision
+        savedContent = JSON.stringify(message.state.content)
         if (!message.state.mutationID?.startsWith(`${config.nonce}:`)) {
           epoch++
           unpack(message.state.content)

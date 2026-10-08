@@ -8,7 +8,7 @@ Inline visual results need executable content and durable interaction state with
 
 ## Decision
 
-Media owns the versioned render protocol, immutable source Assets and revision-checked state operations. The portable wire schema lives in Util because Media and UI both consume it. Source Assets are attached to the producing tool Part, so the existing rollout attachment transfer retains evidence through fork and export. Mutable state occupies the independently persisted tool Part metadata, separate from immutable source bytes. Scope, completed-call ownership and effective-history checks precede every state operation.
+Media owns the versioned render protocol, immutable source Assets and revision-checked state operations. The portable wire schema lives in Util because Media and UI both consume it. Source Assets are attached to the producing tool Part, so the existing rollout attachment transfer retains evidence through fork and export. Mutable state occupies the independently persisted tool Part metadata, separate from immutable source bytes. Canonical restoration must not re-save identical content through authored control callbacks; the frame deduplicates content before revisioned writes. Scope, completed-call ownership and effective-history checks precede every state operation.
 
 State writes use the existing SQL transaction and Part publication path. Repeated mutation IDs are idempotent; conflicting revisions return current state. Writes never invoke a model. Per-model context contributions refresh bounded semantic state while root-scoped contributors retain their cache behavior. The latest four relevant states fit within a 32 KiB context budget; UI-only state and source HTML are excluded.
 
