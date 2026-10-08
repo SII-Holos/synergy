@@ -18,3 +18,9 @@ test("render identity cannot be granted by MIME or malformed metadata", () => {
   )
   expect(RenderArtifact.FollowUp.safeParse({ requestID: "one", text: " ", tool: "bash" }).success).toBe(false)
 })
+
+test("structured-clone cycles are rejected without throwing out of validation", () => {
+  const cycle: Record<string, unknown> = {}
+  cycle.self = cycle
+  expect(RenderArtifact.Content.safeParse({ modelContent: cycle }).success).toBe(false)
+})

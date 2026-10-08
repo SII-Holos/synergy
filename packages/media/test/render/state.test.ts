@@ -4,6 +4,8 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
+import { SessionExport } from "@ericsanchezok/synergy-harness/session/session-export"
+import { SessionImport } from "@ericsanchezok/synergy-harness/session/session-import"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
 import { Render } from "../../src/render"
@@ -143,5 +145,31 @@ test("cross-Scope, rollback, malformed and stale owner requests cannot update a 
       ).rejects.toThrow()
       await SessionHistory.rollback({ sessionID: target.sessionID, cutMessageID: target.messageID })
       await expect(Render.read(target)).rejects.toThrow("outside the effective Session history")
+    }),
+  ))
+
+test("full export and import retain immutable source identity and independently writable state", () =>
+  runtime.run(() =>
+    fixture(async (target) => {
+      const original = await Render.read(target)
+      await Render.write(target, { revision: 0, mutationID: "export", content: { modelContent: { workers: 8 } } })
+      const report = await SessionExport.generate({ sessionID: target.sessionID, mode: "full" })
+      const imported = await SessionImport.fromReport(report)
+      try {
+        const match = await Render.find(imported.rootSessionID, original.descriptor.source)
+        expect(match).not.toBeNull()
+        expect((await Render.read(match!.target)).source).toEqual(original.source)
+        expect((await Render.read(match!.target)).state.content.modelContent).toEqual({ workers: 8 })
+        await Render.write(match!.target, {
+          revision: 1,
+          mutationID: "import",
+          content: { modelContent: { workers: 4 } },
+        })
+        expect((await Render.read(target)).state.content.modelContent).toEqual({ workers: 8 })
+        await Session.remove(target.sessionID)
+        expect((await Render.read(match!.target)).state.content.modelContent).toEqual({ workers: 4 })
+      } finally {
+        await Session.remove(imported.rootSessionID)
+      }
     }),
   ))

@@ -6,6 +6,7 @@ export namespace RenderArtifact {
   export const MIME = "application/vnd.synergy.visual+json"
   export const SOURCE_BYTES = 1024 * 1024
   export const STATE_BYTES = 16 * 1024
+  export const IMAGE_URL_LIMIT = 350 * 1024
   export const Library = z.enum(["d3", "chart", "mermaid"])
   export const ID = z.string().uuid()
   export const Source = z
@@ -39,10 +40,13 @@ export namespace RenderArtifact {
       uiContent: JsonValue.optional(),
     })
     .strict()
-    .refine(
-      (value) => new TextEncoder().encode(JSON.stringify(value)).byteLength <= STATE_BYTES,
-      "State exceeds 16 KiB",
-    )
+    .refine((value) => {
+      try {
+        return new TextEncoder().encode(JSON.stringify(value)).byteLength <= STATE_BYTES
+      } catch {
+        return false
+      }
+    }, "State exceeds 16 KiB")
     .meta({ ref: "RenderContent" })
   export type Content = z.infer<typeof Content>
   export const State = z
@@ -80,6 +84,11 @@ export namespace RenderArtifact {
     .object({
       requestID: z.string().min(1).max(100),
       text: z.string().trim().min(1).max(8000),
+      image: z
+        .string()
+        .max(IMAGE_URL_LIMIT)
+        .regex(/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/)
+        .optional(),
     })
     .strict()
   export type FollowUp = z.infer<typeof FollowUp>

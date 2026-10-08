@@ -6,6 +6,7 @@ import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
 import { FrameMessage, type HostContext, type RuntimeConfig } from "./render/protocol"
 import { renderRuntime } from "./render/runtime"
 import { installRenderControls } from "./render/controls"
+import { captureRenderElement } from "./render/capture"
 import { loadRenderLibraries } from "./render/libraries"
 import { localizeRenderLabels, renderLabels } from "./render/labels"
 import { Button } from "./button"
@@ -320,7 +321,7 @@ export function renderHtmlDocument(html: string, themeCss: string, runtime?: Run
     const bootstrap = root.ownerDocument.createElement("script")
     bootstrap.dataset.synergyRenderBootstrap = ""
     const safeJSON = JSON.stringify(runtime).replaceAll("<", "\\u003c")
-    bootstrap.textContent = `(${renderRuntime.toString()})(${safeJSON}, (${installRenderControls.toString()}));`
+    bootstrap.textContent = `(${renderRuntime.toString()})(${safeJSON}, (${installRenderControls.toString()}), (${captureRenderElement.toString()}));`
     scripts.push(bootstrap)
     for (const code of libraries) {
       const script = root.ownerDocument.createElement("script")
@@ -386,6 +387,8 @@ export function RenderHtml(props: {
   const flushes = new Map<string, { resolve(): void; reject(error: Error): void; timer: number }>()
   const nonce = createMemo(() => {
     attempt()
+    props.html
+    props.source?.id
     return generateSecureUUID()
   })
   const [libraries] = createResource(() => {
@@ -431,7 +434,7 @@ export function RenderHtml(props: {
     if (channel !== port) return
     let parsed: ReturnType<typeof FrameMessage.safeParse>
     try {
-      if (new TextEncoder().encode(JSON.stringify(data)).byteLength > 18 * 1024) return
+      if (new TextEncoder().encode(JSON.stringify(data)).byteLength > RenderArtifact.IMAGE_URL_LIMIT + 36 * 1024) return
       parsed = FrameMessage.safeParse(data)
     } catch {
       return
@@ -479,7 +482,8 @@ export function RenderHtml(props: {
         respond(true, state)
       } else {
         if (!props.onFollowUp) throw new Error(_(renderLabels.unavailable))
-        respond(true, await props.onFollowUp(message))
+        const { type: messageType, ...request } = message
+        respond(true, await props.onFollowUp(request))
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)

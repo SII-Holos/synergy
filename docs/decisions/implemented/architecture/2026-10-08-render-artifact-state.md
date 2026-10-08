@@ -18,6 +18,8 @@ The shared UI mounts completed content in an opaque, credentialless iframe with 
 
 Follow-up requests open a protected host dialog and enter the normal durable Inbox only after confirmation. Confirmation retains a stable message identity for retries and is cancelled when its connection, Scope or session changes. Frame state uses revision-checked saves; expansion flushes pending state before opening the viewer. Source links resolve through their producing call rather than granting a bridge based on MIME.
 
+The same flush operation protects viewer close and HTML export. State observation uses canonical Part updates and revalidates on reconnect or history changes. Annotation capture is optional evidence: a bounded PNG is previewed with the confirmed input, while structural feedback survives canvas tainting and unsupported capture. Animation frame callbacks suspend when a view is inactive; host-owned transitions use the shared motion settings.
+
 ## Alternatives considered
 
 **A separate visual database and event stream.** This would require duplicate fork, delete, replay, rollback and import ownership logic. The current Part and Asset boundaries already supply these operations.

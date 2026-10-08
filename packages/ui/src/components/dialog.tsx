@@ -17,6 +17,7 @@ export interface DialogProps extends ParentProps {
   initialFocus?: () => HTMLElement | undefined
   footer?: JSXElement
   onEscapeKeyDown?: (event: KeyboardEvent) => void
+  onCloseRequest?: () => void
   dismissible?: boolean
   size?: DialogSize
   placement?: DialogPlacement
@@ -43,12 +44,20 @@ export function Dialog(props: DialogProps) {
               if (e.defaultPrevented) return
               if (props.dismissible === false) e.preventDefault()
               props.onEscapeKeyDown?.(e)
+              if (!e.defaultPrevented && props.onCloseRequest) {
+                e.preventDefault()
+                props.onCloseRequest()
+              }
             }}
             onPointerDownOutside={(e) => {
               if (props.dismissible === false) e.preventDefault()
+              else if (props.onCloseRequest) {
+                e.preventDefault()
+                props.onCloseRequest()
+              }
             }}
             onInteractOutside={(e) => {
-              if (props.dismissible === false) e.preventDefault()
+              if (props.dismissible === false || props.onCloseRequest) e.preventDefault()
             }}
             classList={{
               ...(props.classList ?? {}),
@@ -74,6 +83,12 @@ export function Dialog(props: DialogProps) {
                   <Match when={props.action}>{props.action}</Match>
                   <Match when={true}>
                     <Kobalte.CloseButton
+                      onClick={(event) => {
+                        if (props.onCloseRequest) {
+                          event.preventDefault()
+                          props.onCloseRequest()
+                        }
+                      }}
                       aria-label={_(dialogCloseDescriptor)}
                       data-slot="dialog-close-button"
                       data-component="icon-button"

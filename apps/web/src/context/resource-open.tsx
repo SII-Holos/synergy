@@ -643,11 +643,27 @@ export function ResourceOpenProvider(props: ParentProps) {
           const { RenderTool } = await import("@ericsanchezok/synergy-ui/render-tool")
           if (signal.aborted || ownerKey() !== captured) return { status: "cancelled" }
           const { target, descriptor } = reference.data
-          showResourceDialog(() => (
+          let flush: (() => Promise<void>) | undefined
+          const id = showResourceDialog(() => (
             <div data-component="render-viewer">
-              <Dialog title={descriptor.title} size="content">
+              <Dialog
+                title={descriptor.title}
+                size="content"
+                onCloseRequest={async () => {
+                  try {
+                    await flush?.()
+                    dialog.close(id)
+                  } catch {
+                    return
+                  }
+                }}
+              >
                 <RenderTool
                   expanded
+                  onFlush={(value) => {
+                    flush = value
+                  }}
+                  onClose={() => dialog.close(id)}
                   tool="render"
                   status="completed"
                   input={{ artifactTitle: descriptor.title }}

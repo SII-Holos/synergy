@@ -8618,6 +8618,10 @@ msgid "app.reference.workspaceChanged"
 msgstr "原工作区已被移除，或其绑定已更改。"
 
 #. js-lingui-explicit-id
+msgid "app.render.capturePreview"
+msgstr "选中的可视化区域"
+
+#. js-lingui-explicit-id
 msgid "app.render.confirm"
 msgstr "发送关于此可视化的请求"
 
@@ -25063,6 +25067,10 @@ msgstr "此可视化视图已不再处于活动状态。"
 #. js-lingui-explicit-id
 msgid "tool.render.conflict"
 msgstr "可视化状态已在另一个视图中改变。请检查恢复后的值再修改。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.discard"
+msgstr "不保存并关闭"
 
 #. js-lingui-explicit-id
 msgid "tool.render.download"

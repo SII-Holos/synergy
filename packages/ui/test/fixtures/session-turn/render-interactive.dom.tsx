@@ -23,6 +23,7 @@ let state = RenderArtifact.emptyState()
 let reads = 0,
   writes = 0
 const requests: string[] = []
+const images: Array<string | undefined> = []
 const descriptor = () => {
   const { html, ...rest } = source
   return { ...rest, source: `asset://${String(count).padStart(16, "0")}.bin` }
@@ -46,7 +47,9 @@ const host: RenderHost = {
     return state
   },
   async followUp(target, visual, input) {
+    RenderArtifact.FollowUp.parse(input)
     requests.push(input.text)
+    images.push(input.image)
     return "cancelled"
   },
 }
@@ -61,7 +64,7 @@ Object.assign(window, {
       return source.id
     },
     stats() {
-      return { reads, writes, requests, state }
+      return { reads, writes, requests, images, state }
     },
     remote(content: RenderArtifact.Content) {
       state = { revision: state.revision + 1, updatedAt: Date.now(), content }

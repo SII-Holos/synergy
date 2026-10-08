@@ -8618,6 +8618,10 @@ msgid "app.reference.workspaceChanged"
 msgstr "The source workspace was removed or its binding changed."
 
 #. js-lingui-explicit-id
+msgid "app.render.capturePreview"
+msgstr "Selected visual region"
+
+#. js-lingui-explicit-id
 msgid "app.render.confirm"
 msgstr "Send a request about this visual"
 
@@ -25063,6 +25067,10 @@ msgstr "This visual view is no longer active."
 #. js-lingui-explicit-id
 msgid "tool.render.conflict"
 msgstr "Visual state changed in another view. Review the restored values before editing."
+
+#. js-lingui-explicit-id
+msgid "tool.render.discard"
+msgstr "Close without saving"
 
 #. js-lingui-explicit-id
 msgid "tool.render.download"

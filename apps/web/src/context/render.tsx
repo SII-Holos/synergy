@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { createEffect, createSignal, onCleanup, untrack, type ParentProps } from "solid-js"
+import { createEffect, createRoot, createSignal, onCleanup, Show, untrack, type ParentProps } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useLingui } from "@lingui/solid"
 import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
@@ -8,6 +8,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useSDK } from "./sdk"
+import { useSync } from "./sync"
 import { Identifier } from "@/utils/id"
 
 const C = {
@@ -22,9 +23,11 @@ const C = {
   stale: { id: "app.render.stale", message: "The conversation changed. Reopen the visual before sending." },
   failed: { id: "app.render.sendFailed", message: "The visual request could not be sent." },
   busy: { id: "app.render.pending", message: "Review the open visual request first." },
+  preview: { id: "app.render.capturePreview", message: "Selected visual region" },
 }
 export function SessionRenderProvider(props: ParentProps) {
   const sdk = useSDK(),
+    sync = useSync(),
     params = useParams(),
     dialog = useDialog(),
     { _ } = useLingui()
@@ -42,6 +45,50 @@ export function SessionRenderProvider(props: ParentProps) {
   })
   onCleanup(close)
   const host: RenderHost = {
+    observe(target, update, unavailable) {
+      const captured = owner(),
+        client = sdk.client
+      return createRoot((dispose) => {
+        let previous: string | undefined
+        let request: AbortController | undefined
+        createEffect(() => {
+          const current = owner()
+          const part = sync.data.part[target.messageID]?.find((part) => part.id === target.partID)
+          if (current !== captured) {
+            untrack(unavailable)
+            return
+          }
+          if (part?.type === "tool" && part.state.status === "completed") {
+            const state = RenderArtifact.state(part.state.metadata)
+            untrack(() => update(state))
+          }
+        })
+        createEffect(() => {
+          const history = sync.data.session.find((session) => session.id === target.sessionID)?.history?.rollback?.id
+          const generation = JSON.stringify([sync.reconnectVersion, history])
+          if (previous === undefined) {
+            previous = generation
+            return
+          }
+          if (previous === generation) return
+          previous = generation
+          request?.abort()
+          const pending = new AbortController()
+          request = pending
+          client.render.get(target, { signal: pending.signal, throwOnError: true }).then(
+            (result) => {
+              if (!pending.signal.aborted && owner() === captured)
+                update(RenderArtifact.State.parse(result.data?.state))
+            },
+            () => {
+              if (!pending.signal.aborted) unavailable()
+            },
+          )
+        })
+        onCleanup(() => request?.abort())
+        return dispose
+      })
+    },
     async read(target, signal) {
       const result = await sdk.client.render.get(target, { signal, throwOnError: true })
       return RenderArtifact.Snapshot.parse(result.data)
@@ -100,14 +147,28 @@ export function SessionRenderProvider(props: ParentProps) {
                       setBusy(true)
                       setError(undefined)
                       try {
-                        await client.render.get(target, { throwOnError: true, signal: abort.signal })
+                        const current = await client.render.get(target, { throwOnError: true, signal: abort.signal })
+                        if (current.data?.source.id !== source.id) throw new Error(_(C.stale))
                         if (owner() !== captured) throw new Error(_(C.stale))
                         submitted ??= `[Visual ${source.id}]\n${text().trim()}`
                         const accepted = await client.session.input(
                           {
                             sessionID: target.sessionID,
                             messageID: id,
-                            parts: [{ type: "text", text: submitted }],
+                            parts: [
+                              { type: "text", text: submitted },
+                              ...(input.image
+                                ? [
+                                    {
+                                      type: "attachment" as const,
+                                      mime: "image/png",
+                                      url: input.image,
+                                      filename: "visual-feedback.png",
+                                      model: { mode: "content" as const },
+                                    },
+                                  ]
+                                : []),
+                            ],
                             metadata: { visual: { id: source.id, messageID: target.messageID, partID: target.partID } },
                           },
                           { throwOnError: true },
@@ -128,6 +189,7 @@ export function SessionRenderProvider(props: ParentProps) {
               >
                 <div data-component="render-confirm">
                   <p>{source.title}</p>
+                  <Show when={input.image}>{(image) => <img src={image()} alt={_(C.preview)} />}</Show>
                   <textarea
                     aria-label={_(C.text)}
                     value={text()}

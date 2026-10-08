@@ -1,10 +1,15 @@
 import type { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
 import type { HostContext, RenderRuntime, RuntimeConfig, ViewState } from "./protocol"
 import { installRenderControls } from "./controls"
+import { captureRenderElement } from "./capture"
 
 // HTML sandbox and channel messaging: https://html.spec.whatwg.org/multipage/web-messaging.html#channel-messaging
 // This function is serialized into the opaque frame; dependencies are supplied explicitly.
-export function renderRuntime(config: RuntimeConfig, installControls: typeof installRenderControls) {
+export function renderRuntime(
+  config: RuntimeConfig,
+  installControls: typeof installRenderControls,
+  capture: typeof captureRenderElement,
+) {
   document.documentElement.dataset.renderVersion = config.version
   let port: MessagePort | undefined
   let sequence = 0
@@ -25,6 +30,55 @@ export function renderRuntime(config: RuntimeConfig, installControls: typeof ins
     resolveReady = resolve
   })
   const api = new EventTarget() as RenderRuntime
+  const nativeRequestFrame = window.requestAnimationFrame.bind(window)
+  const nativeCancelFrame = window.cancelAnimationFrame.bind(window)
+  const frames = new Map<number, { callback: FrameRequestCallback; scheduled?: number }>()
+  let frameID = 0
+  const pausedAnimations = new Set<Animation>()
+  function schedule(id: number, frame: { callback: FrameRequestCallback; scheduled?: number }) {
+    if (!context.active || frame.scheduled !== undefined) return
+    frame.scheduled = nativeRequestFrame((time) => {
+      frame.scheduled = undefined
+      if (!context.active) return
+      frames.delete(id)
+      frame.callback(time)
+    })
+  }
+  window.requestAnimationFrame = (callback) => {
+    const id = ++frameID,
+      frame = { callback }
+    frames.set(id, frame)
+    schedule(id, frame)
+    return id
+  }
+  window.cancelAnimationFrame = (id) => {
+    const frame = frames.get(id)
+    if (frame?.scheduled !== undefined) nativeCancelFrame(frame.scheduled)
+    frames.delete(id)
+  }
+  function syncAnimation(animation: Animation) {
+    if (context.reducedMotion && animation.playState === "running") {
+      const end = animation.effect?.getComputedTiming().endTime
+      if (typeof end === "number" && Number.isFinite(end) && animation.playbackRate !== 0) animation.finish()
+      else {
+        animation.pause()
+        pausedAnimations.add(animation)
+      }
+      return
+    }
+    if (!context.active && animation.playState === "running") {
+      animation.pause()
+      pausedAnimations.add(animation)
+    } else if (context.active && pausedAnimations.delete(animation) && animation.playState === "paused") {
+      animation.play()
+    }
+  }
+  const animate = Element.prototype.animate
+  Element.prototype.animate = function (...args) {
+    const animation = animate.apply(this, args)
+    syncAnimation(animation)
+    return animation
+  }
   const labels = config.labels
   const report = (error: unknown) => {
     const message = String(error instanceof Error ? error.message : error).slice(0, 2000)
@@ -99,6 +153,13 @@ export function renderRuntime(config: RuntimeConfig, installControls: typeof ins
       document.documentElement.style.setProperty(`--render-${name}`, value)
     document.documentElement.dataset.renderActive = String(next.active)
     document.documentElement.dataset.renderReducedMotion = String(next.reducedMotion)
+    for (const [id, frame] of frames) {
+      if (!next.active && frame.scheduled !== undefined) {
+        nativeCancelFrame(frame.scheduled)
+        frame.scheduled = undefined
+      } else schedule(id, frame)
+    }
+    for (const animation of document.getAnimations()) syncAnimation(animation)
     api.dispatchEvent(new Event("hostcontextchange"))
   }
   function fieldKey(element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, index: number) {
@@ -191,6 +252,9 @@ export function renderRuntime(config: RuntimeConfig, installControls: typeof ins
         )
       }
       if (message.type === "dispose") {
+        for (const id of frames.keys()) window.cancelAnimationFrame(id)
+        pausedAnimations.clear()
+        clearTimeout(viewTimer)
         for (const receipt of pending.values()) {
           clearTimeout(receipt.timer)
           receipt.reject(new Error(labels.closed))
@@ -228,7 +292,7 @@ export function renderRuntime(config: RuntimeConfig, installControls: typeof ins
   }
   document.addEventListener(
     "click",
-    (event) => {
+    async (event) => {
       if (event.composedPath().some((target) => target instanceof Element && target.matches("a[href], area[href]")))
         event.preventDefault()
       if (!feedback || !(event.target instanceof Element)) return
@@ -252,9 +316,12 @@ export function renderRuntime(config: RuntimeConfig, installControls: typeof ins
         width: Math.round(rect.width),
         height: Math.round(rect.height),
         parameters: view.controls,
-        screenshot: "unavailable",
       }
-      api.requestFollowUp(`${labels.feedback}\n${JSON.stringify(details)}\n`).catch(report)
+      const image = await capture(element)
+      request("followup", {
+        text: `${labels.feedback}\n${JSON.stringify({ ...details, screenshot: image ? "attached" : "unavailable" })}\n`,
+        ...(image ? { image } : {}),
+      }).catch(report)
     },
     true,
   )

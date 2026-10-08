@@ -122,7 +122,7 @@ export namespace Render {
         value.state.status === "completed" &&
         RenderArtifact.descriptor(value.state.metadata)?.id === id
       ) {
-        await SessionHistory.requireDisplayMessage(session, value.messageID)
+        await owned({ sessionID, messageID: value.messageID, partID: value.id })
         return
       }
     }

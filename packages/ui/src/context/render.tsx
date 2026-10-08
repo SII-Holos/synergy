@@ -17,6 +17,11 @@ export interface RenderHost {
     signal: AbortSignal,
   ): Promise<{ source: RenderArtifact.Source; state: RenderArtifact.State }>
   write(target: RenderArtifact.Target, input: RenderArtifact.Write): Promise<RenderArtifact.State>
+  observe?(
+    target: RenderArtifact.Target,
+    update: (state: RenderArtifact.State) => void,
+    unavailable: () => void,
+  ): () => void
   followUp(
     target: RenderArtifact.Target,
     source: RenderArtifact.Source,

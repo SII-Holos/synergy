@@ -56,6 +56,7 @@ export type ViewState = {
   forms?: Record<string, string | boolean>
   scroll?: number
   focus?: string
+  calendars?: Record<string, string>
 }
 export type RenderRuntime = EventTarget & {
   ready: Promise<void>

@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import path from "node:path"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { fileURLToPath } from "node:url"
 import { chromium, type Browser, type Page } from "playwright"
 import { domFixture } from "../support/dom-fixtures"
@@ -79,6 +81,7 @@ test("interactive source runs in an opaque frame and preserves parameters throug
   await expanded.locator("body[data-ready=true]").waitFor()
   expect(await expanded.locator("#total").innerText()).toBe("48")
   expect(await expanded.getByRole("textbox", { name: "Notes" }).inputValue()).toBe("Keep this draft")
+  await expanded.getByRole("textbox", { name: "Notes" }).fill("Last edit before closing")
   await expanded.getByRole("slider", { name: "Workers" }).fill("8")
   await expanded.getByRole("slider", { name: "Workers" }).dispatchEvent("change")
   await page.waitForFunction(
@@ -89,6 +92,7 @@ test("interactive source runs in an opaque frame and preserves parameters throug
   await inline().locator("#total").filter({ hasText: "42" }).waitFor()
   await page.locator('[data-component="render-viewer"]').getByRole("button", { name: "Close dialog" }).click()
   expect(await inline().locator("#total").innerText()).toBe("42")
+  expect(await inline().getByRole("textbox", { name: "Notes" }).inputValue()).toBe("Last edit before closing")
   const counts = await page.evaluate(() =>
     (window as unknown as { __renderTest: { stats(): { reads: number; writes: number } } }).__renderTest.stats(),
   )
@@ -114,7 +118,7 @@ test("variants retain DOM values and feedback contains structural source identit
     () => (window as unknown as { __renderTest: { stats(): { requests: string[] } } }).__renderTest.stats().requests,
   )
   expect(requests.at(-1)).toContain('"id":"bar"')
-  expect(requests.at(-1)).toContain('"screenshot":"unavailable"')
+  expect(requests.at(-1)).toContain('"screenshot":"attached"')
   expect(requests.at(-2)).toContain('"after":{"workers":4}')
   await page.getByRole("button", { name: "Finish selecting" }).click()
 })
@@ -166,4 +170,100 @@ test("narrow layouts and live theme changes keep controls within the viewport", 
   await page.emulateMedia({ reducedMotion: "reduce" })
   await inline().locator("html[data-render-reduced-motion=true]").waitFor()
   await page.emulateMedia({ reducedMotion: "no-preference" })
+})
+
+test("Canvas feedback carries a bounded PNG and a blocked capture retains structural feedback", async () => {
+  for (const unavailable of [false, true]) {
+    await setup(
+      `<canvas id="scene" width="160" height="80" aria-label="Canvas scene"></canvas><script>(async()=>{await synergy.render.ready;const canvas=document.getElementById('scene');canvas.getContext('2d').fillRect(8,8,80,40);synergy.render.annotate(canvas,{id:'scene',label:'Canvas scene',hitTest:()=>({id:'bar-1',label:'First bar'})});${unavailable ? "HTMLCanvasElement.prototype.toDataURL=()=>{throw new DOMException('Tainted canvas','SecurityError')}" : ""};document.body.dataset.ready='true'})()</script>`,
+    )
+    await page.getByRole("button", { name: "Select an element for feedback" }).click()
+    const before = await page.evaluate(
+      () =>
+        (window as unknown as { __renderTest: { stats(): { requests: string[] } } }).__renderTest.stats().requests
+          .length,
+    )
+    await inline().locator("#scene").click()
+    await page.waitForFunction(
+      (before) =>
+        (window as unknown as { __renderTest: { stats(): { requests: string[] } } }).__renderTest.stats().requests
+          .length > before,
+      before,
+    )
+    const last = await page.evaluate(() =>
+      (
+        window as unknown as { __renderTest: { stats(): { requests: string[]; images: Array<string | undefined> } } }
+      ).__renderTest.stats(),
+    )
+    expect(last.requests.at(-1)).toContain('"id":"bar-1"')
+    expect(last.requests.at(-1)).toContain(`"screenshot":"${unavailable ? "unavailable" : "attached"}"`)
+    if (unavailable) expect(last.images.at(-1)).toBeUndefined()
+    else expect(last.images.at(-1)?.startsWith("data:image/png;base64,")).toBe(true)
+    await page.getByRole("button", { name: "Finish selecting" }).click()
+  }
+})
+
+test("export flushes unsaved parameters and remains interactive without host actions", async () => {
+  await setup()
+  await inline().getByRole("slider", { name: "Workers" }).fill("8")
+  const downloaded = page.waitForEvent("download")
+  await page.getByRole("button", { name: "Export interactive HTML" }).click()
+  const file = await downloaded
+  const local = await file.path()
+  expect(local).toBeTruthy()
+  const directory = await mkdtemp(path.join(tmpdir(), "render-export-"))
+  await Bun.write(path.join(directory, "visual.html"), Bun.file(local!))
+  const exported = await browser.newPage()
+  try {
+    await exported.goto(`file://${directory}/visual.html`)
+    await exported.locator("body[data-ready=true]").waitFor()
+    expect(await exported.locator("#total").innerText()).toBe("42")
+    await exported.getByRole("slider", { name: "Workers" }).fill("4")
+    expect(await exported.locator("#total").innerText()).toBe("48")
+    expect(await exported.getByRole("button", { name: "Review changes" }).isDisabled()).toBe(true)
+  } finally {
+    await exported.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+}, 30000)
+
+test("calendar rejects normalized invalid dates and restores its selected month", async () => {
+  await setup(
+    `<div id="calendar"></div><output id="invalid"></output><script>(async()=>{const api=synergy.render;await api.ready;try{api.calendar(document.getElementById('calendar'),{events:[{id:'invalid',title:'Invalid',start:'2026-02-31'}]})}catch{document.getElementById('invalid').textContent='rejected'}api.calendar(document.getElementById('calendar'),{events:[{id:'leap',title:'Leap day',start:'2024-02-29'}]});document.body.dataset.ready='true'})()</script>`,
+  )
+  expect(await inline().locator("#invalid").innerText()).toBe("rejected")
+  await inline().getByRole("button", { name: "Next month" }).click()
+  await page.getByRole("button", { name: "Expand visual" }).click()
+  const expanded = page.frameLocator('[data-component="render-viewer"] iframe')
+  await expanded.locator("body[data-ready=true]").waitFor()
+  expect(await expanded.locator("#calendar strong").innerText()).toContain("March")
+  await page.locator('[data-component="render-viewer"]').getByRole("button", { name: "Close dialog" }).click()
+})
+
+test("inactive inline frames pause animation work and resume without remounting", async () => {
+  await setup(
+    `<output id="ticks">0</output><script>(async()=>{await synergy.render.ready;let ticks=0;function tick(){document.getElementById('ticks').textContent=String(++ticks);requestAnimationFrame(tick)}requestAnimationFrame(tick);document.body.dataset.ready='true'})()</script>`,
+  )
+  await page.getByRole("button", { name: "Expand visual" }).click()
+  await inline().locator("html[data-render-active=false]").waitFor()
+  const paused = await inline().locator("#ticks").innerText()
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 100)))
+  expect(await inline().locator("#ticks").innerText()).toBe(paused)
+  await page.locator('[data-component="render-viewer"]').getByRole("button", { name: "Close dialog" }).click()
+  await inline().locator("html[data-render-active=true]").waitFor()
+  await inline()
+    .locator("#ticks")
+    .evaluate(
+      (element, paused) =>
+        new Promise<void>((resolve) => {
+          const observer = new MutationObserver(() => {
+            if (Number(element.textContent) > Number(paused)) {
+              observer.disconnect()
+              resolve()
+            }
+          })
+          observer.observe(element, { childList: true })
+        }),
+      paused,
+    )
 })

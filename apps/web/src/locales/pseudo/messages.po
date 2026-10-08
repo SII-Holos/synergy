@@ -8618,6 +8618,10 @@ msgid "app.reference.workspaceChanged"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.render.capturePreview"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.render.confirm"
 msgstr ""
 
@@ -25062,6 +25066,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "tool.render.conflict"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.discard"
 msgstr ""
 
 #. js-lingui-explicit-id

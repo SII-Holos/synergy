@@ -242,53 +242,84 @@ export function installRenderControls(
     variantRoot = root
     if (document.body) document.body.prepend(root)
     else document.addEventListener("DOMContentLoaded", () => document.body.prepend(root), { once: true })
-    selectVariant(host.getView().variant ?? items[0].id, false)
+    selectVariant(
+      items.some((item) => item.id === host.getView().variant) ? host.getView().variant! : items[0].id,
+      false,
+    )
   }
   api.addEventListener("statechange", () => {
     if (variants.length) selectVariant(host.getView().variant ?? variants[0].id, false)
     else sync()
   })
+  const calendars = new WeakMap<HTMLElement, () => void>()
+  let calendarCount = 0
   api.calendar = (element, options) => {
     if (options.events.length > 500) throw new Error(L.tooMany)
-    const valid = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
+    const valid = (value: string) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith("0000")) return false
+      const date = new Date(`${value}T12:00:00Z`)
+      return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+    }
     if (
       options.events.some(
-        (event) => !valid(event.start) || (event.end && (!valid(event.end) || event.end < event.start)),
+        (event) =>
+          !event.id ||
+          !event.title ||
+          event.title.length > 160 ||
+          !valid(event.start) ||
+          (event.end && (!valid(event.end) || event.end < event.start)),
       )
     )
       throw new Error(L.invalidDate)
+    calendars.get(element)?.()
+    const identity = element.id || element.dataset.renderCalendarID || `calendar-${++calendarCount}`
+    element.dataset.renderCalendarID = identity
     const today = new Date()
     const initial =
       options.events[0]?.start ?? `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`
-    let month = new Date(`${initial.slice(0, 7)}-01T12:00:00`)
+    const fallback = initial.slice(0, 7)
+    let rendered = ""
     function draw() {
+      const stored = host.getView().calendars?.[identity]
+      const selected = stored && valid(`${stored}-01`) ? stored : fallback
+      const locale = api.getHostContext().locale
+      const signature = `${selected}/${locale}`
+      if (signature === rendered) return
+      rendered = signature
+      const month = new Date(`${selected}-01T12:00:00Z`)
       element.replaceChildren()
       element.dataset.renderCalendar = ""
       const toolbar = make("div")
       toolbar.dataset.renderActions = ""
       const title = make(
         "strong",
-        new Intl.DateTimeFormat(api.getHostContext().locale, { month: "long", year: "numeric" }).format(month),
+        new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(month),
       )
-      toolbar.append(
-        button(L.previous, () => {
-          month.setMonth(month.getMonth() - 1)
-          draw()
-        }),
-        title,
-        button(L.next, () => {
-          month.setMonth(month.getMonth() + 1)
-          draw()
-        }),
-      )
+      title.setAttribute("aria-live", "polite")
+      const move = (offset: number) => {
+        month.setUTCMonth(month.getUTCMonth() + offset)
+        const view = host.getView()
+        ;(view.calendars ??= {})[identity] = month.toISOString().slice(0, 7)
+        host.saveView()
+        draw()
+      }
+      const previous = button(L.previous, () => move(-1)),
+        next = button(L.next, () => move(1))
+      previous.disabled = selected === "0001-01"
+      next.disabled = selected === "9999-12"
+      toolbar.append(previous, title, next)
       const grid = make("div")
       grid.dataset.renderCalendarGrid = ""
-      const year = month.getFullYear(),
-        index = month.getMonth()
-      for (let day = 1; day <= new Date(year, index + 1, 0).getDate(); day++) {
+      const year = month.getUTCFullYear(),
+        index = month.getUTCMonth()
+      const end = new Date(month)
+      end.setUTCMonth(index + 1, 0)
+      const weekdays = new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" })
+      for (let day = 0; day < 7; day++) grid.append(make("span", weekdays.format(new Date(Date.UTC(2024, 0, 7 + day)))))
+      for (let day = 1; day <= end.getUTCDate(); day++) {
         const cell = make("div")
-        if (day === 1) cell.style.gridColumnStart = String(new Date(year, index, 1).getDay() + 1)
-        const date = `${year}-${String(index + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+        if (day === 1) cell.style.gridColumnStart = String(month.getUTCDay() + 1)
+        const date = `${String(year).padStart(4, "0")}-${String(index + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
         cell.append(make("span", String(day)))
         for (const event of options.events.filter(
           (event) => event.start <= date && (event.end ?? event.start) >= date,
@@ -302,6 +333,11 @@ export function installRenderControls(
       element.append(toolbar, grid)
     }
     api.addEventListener("hostcontextchange", draw)
+    api.addEventListener("statechange", draw)
+    calendars.set(element, () => {
+      api.removeEventListener("hostcontextchange", draw)
+      api.removeEventListener("statechange", draw)
+    })
     draw()
   }
   api.icon = (name) => {

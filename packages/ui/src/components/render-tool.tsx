@@ -25,9 +25,12 @@ const C = {
   download: { id: "tool.render.download", message: "Export interactive HTML" },
   feedback: { id: "tool.render.selectFeedback", message: "Select an element for feedback" },
   stopFeedback: { id: "tool.render.stopFeedback", message: "Finish selecting" },
+  discard: { id: "tool.render.discard", message: "Close without saving" },
 }
 
-export function RenderTool(props: ToolProps & { expanded?: boolean }) {
+export function RenderTool(
+  props: ToolProps & { expanded?: boolean; onFlush?: (flush: () => Promise<void>) => void; onClose?: () => void },
+) {
   const { _, i18n } = useLingui(),
     dialog = useDialog(),
     host = useRenderHost()
@@ -49,6 +52,8 @@ export function RenderTool(props: ToolProps & { expanded?: boolean }) {
   const [acknowledged, setAcknowledged] = createSignal(RenderArtifact.emptyState())
   const [exporting, setExporting] = createSignal(false)
   const [error, setError] = createSignal<string>()
+  const [unavailable, setUnavailable] = createSignal(false)
+  let closing = false
   let writeEpoch = 0
   let disposed = false
   let writes = Promise.resolve<RenderArtifact.State>(RenderArtifact.emptyState())
@@ -63,10 +68,27 @@ export function RenderTool(props: ToolProps & { expanded?: boolean }) {
     untrack(() => {
       setAcknowledged(RenderArtifact.emptyState())
       setError(undefined)
+      setUnavailable(false)
+      setFeedback(false)
+      writeEpoch++
       if (viewerID) dialog.close(viewerID)
     })
   })
-  const loaded = () => (snapshot.error || snapshot.loading ? undefined : snapshot())
+  createEffect(() => {
+    if (!key()) return
+    const stop = host?.observe?.(
+      target(),
+      (next) => setAcknowledged((current) => (next.revision > current.revision ? next : current)),
+      () => {
+        setUnavailable(true)
+        setError(_(renderLabels.unavailable))
+        if (viewerID) dialog.close(viewerID)
+        props.onClose?.()
+      },
+    )
+    onCleanup(() => stop?.())
+  })
+  const loaded = () => (unavailable() || snapshot.error || snapshot.loading ? undefined : snapshot())
   const state = createMemo(() =>
     [RenderArtifact.state(props.metadata), acknowledged(), loaded()?.state ?? RenderArtifact.emptyState()].reduce(
       (newest, next) => (next.revision > newest.revision ? next : newest),
@@ -123,9 +145,32 @@ export function RenderTool(props: ToolProps & { expanded?: boolean }) {
       onReady={(flush) => {
         if (isExpanded) flushExpanded = flush
         else flushInline = flush
+        if (props.expanded) props.onFlush?.(() => flushView(flush))
       }}
     />
   )
+  async function flushView(flush: (() => Promise<void>) | undefined) {
+    try {
+      await flush?.()
+      await writes
+    } catch (failure) {
+      setError(String(failure))
+      throw failure
+    }
+  }
+  async function closeViewer() {
+    if (closing) return
+    closing = true
+    const id = viewerID
+    try {
+      await flushView(flushExpanded)
+      if (id) dialog.close(id)
+    } catch {
+      return
+    } finally {
+      closing = false
+    }
+  }
   async function expand() {
     if (!html() || viewerID) return
     const captured = key()
@@ -140,9 +185,10 @@ export function RenderTool(props: ToolProps & { expanded?: boolean }) {
     viewerID = dialog.push(
       () => (
         <div data-component="render-viewer">
-          <Dialog title={title()} size="content">
+          <Dialog title={title()} size="content" onCloseRequest={closeViewer}>
             <div data-slot="render-viewer-actions">{actions(false)}</div>
-            {view(true, () => dialog.close(viewerID))}
+            {failure(() => dialog.close(viewerID))}
+            {view(true, closeViewer)}
           </Dialog>
         </div>
       ),
@@ -210,6 +256,31 @@ export function RenderTool(props: ToolProps & { expanded?: boolean }) {
       </Show>
     </div>
   )
+  const failure = (discard?: () => void) => (
+    <Show when={error() || snapshot.error}>
+      {(message) => (
+        <div data-slot="render-error" role="alert">
+          <span>{String(message())}</span>
+          <Button
+            size="small"
+            variant="ghost"
+            onClick={() => {
+              setUnavailable(false)
+              setError(undefined)
+              refetch()
+            }}
+          >
+            {_(renderLabels.retry)}
+          </Button>
+          <Show when={discard}>
+            <Button size="small" variant="ghost" onClick={discard}>
+              {_(C.discard)}
+            </Button>
+          </Show>
+        </div>
+      )}
+    </Show>
+  )
   onCleanup(() => {
     disposed = true
     loading?.abort()
@@ -235,16 +306,7 @@ export function RenderTool(props: ToolProps & { expanded?: boolean }) {
         data-layout={descriptor()?.layout ?? "normal"}
         aria-busy={active() || snapshot.loading}
       >
-        <Show when={error() || snapshot.error}>
-          {(message) => (
-            <div data-slot="render-error" role="alert">
-              <span>{String(message())}</span>
-              <Button size="small" variant="ghost" onClick={() => refetch()}>
-                {_(renderLabels.retry)}
-              </Button>
-            </div>
-          )}
-        </Show>
+        {failure(props.onClose)}
         <Show
           when={html()}
           fallback={
