@@ -1503,7 +1503,14 @@ export function createPromptInputController(props: PromptInputProps) {
 
   const handleAtSelect = (option: AtOption | undefined) => {
     if (!option) return
-    addPart({ type: "file", path: option.path, content: "@" + option.path, start: 0, end: 0 })
+    addPart({
+      type: "file",
+      path: option.path,
+      workspace: option.workspace,
+      content: "@" + option.path,
+      start: 0,
+      end: 0,
+    })
   }
 
   const atKey = (x: AtOption | undefined) => {
@@ -1521,7 +1528,12 @@ export function createPromptInputController(props: PromptInputProps) {
       const results = await projectFiles.search(query)
       return results.map(({ path, workspace }): AtOption => {
         const absolute = workspace.path ? `${workspace.path.replace(/[\\/]$/, "")}/${path}` : path
-        return { type: "file", path: absolute, display: absolute }
+        return {
+          type: "file",
+          path: absolute,
+          display: absolute,
+          workspace: { id: workspace.id, generation: workspace.generation, root: workspace.path },
+        }
       })
     },
     deferInitialLoad: true,

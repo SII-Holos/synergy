@@ -290,3 +290,56 @@ test("a workspace-free attachment cannot import an arbitrary file or escape the 
   }))
 
 afterAll(() => runtime.close())
+
+test("a stale structured file reference cannot read the current workspace under an old identity", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const workspace = ScopeContext.current.workspace!
+        expect(workspace.id).toBeDefined()
+        const filepath = `${tmp.path}/owned.txt`
+        await Bun.write(filepath, "ORIGINAL_REFERENCE_BYTES")
+        const source = {
+          type: "file" as const,
+          path: filepath,
+          text: { value: "@owned.txt", start: 0, end: 10 },
+          workspace: { id: workspace.id!, generation: workspace.generation!, root: workspace.path },
+        }
+        const message = await createUserMessage({
+          sessionID: session.id,
+          model,
+          parts: [
+            {
+              type: "attachment",
+              mime: "text/plain",
+              model: { mode: "none" },
+              url: pathToFileURL(filepath).href,
+              source,
+            },
+          ],
+        })
+        expect(message.info.referenceContext).toMatchObject({ state: "bound", workspace: source.workspace })
+        expect(message.parts.find((part) => part.type === "attachment")).toMatchObject({
+          source: { workspace: source.workspace },
+        })
+        await expect(
+          createUserMessage({
+            sessionID: session.id,
+            model,
+            parts: [
+              {
+                type: "attachment",
+                mime: "text/plain",
+                model: { mode: "none" },
+                url: pathToFileURL(filepath).href,
+                source: { ...source, workspace: { ...source.workspace, generation: source.workspace.generation + 1 } },
+              },
+            ],
+          }),
+        ).rejects.toThrow()
+      },
+    })
+  }))

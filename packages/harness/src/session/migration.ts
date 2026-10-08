@@ -1,3 +1,4 @@
+import { migrateReferenceContexts, upgradeReferenceContext } from "./reference-context"
 import { migrateAttachmentPurposes, upgradeAttachmentPresentation } from "./attachment-migration"
 import { primaryAgentMigration } from "./primary-agent-migration"
 import { Tool } from "../tool/tool"
@@ -1589,6 +1590,27 @@ async function migrateAttachmentDisplay(
 }
 
 export const migrations: Migration[] = [
+  {
+    id: "20261008-resource-reference-context",
+    scope: "session",
+    execution: "session",
+    domain: "session",
+    dependsOn: ["20261007-attachment-resource-summaries"],
+    description: "Retain recorded Workspace ownership for message references",
+    upgradeRecord: upgradeReferenceContext,
+    async upSession(owner, progress) {
+      await migrateReferenceContexts(owner, progress)
+    },
+    async up(progress) {
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID)) {
+          await migrateReferenceContexts({ scopeID, sessionID }, () => {})
+          progress(++done, 0)
+        }
+      progress(done, done)
+    },
+  },
   {
     id: "20261007-media-cancellation-display",
     scope: "session",

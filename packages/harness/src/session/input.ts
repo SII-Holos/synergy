@@ -1,3 +1,5 @@
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import { WorkspaceCatalog } from "../workspace/catalog"
 import { RuntimeContext } from "../lifecycle/context"
 import { ModelSelection } from "./model-selection-schema"
 import { RolloutArtifact } from "./rollout/artifact"
@@ -162,6 +164,7 @@ export async function lastModel(sessionID: string) {
 }
 
 export type CreateUserMessageInput = InvokeInput & {
+  referenceContext?: ResourceReference.Context
   origin?: MessageV2.OriginUser
 }
 
@@ -286,6 +289,7 @@ async function materializeUserMessage(
   const info: MessageV2.Info = {
     id: messageID,
     role: "user",
+    referenceContext: input.referenceContext ?? ResourceReference.capture(ScopeContext.current.workspace),
     sessionID: input.sessionID,
     time: {
       created: Date.now(),
@@ -315,6 +319,33 @@ async function materializeUserMessage(
         if (inputPart.type === "attachment" && inputPart.source?.type !== "resource") {
           if (!URL.canParse(inputPart.url)) throw new Attachment.InvalidUrlError()
           const url = new URL(inputPart.url)
+          if (
+            url.protocol === "file:" &&
+            inputPart.source &&
+            "workspace" in inputPart.source &&
+            inputPart.source.workspace
+          ) {
+            const expected = inputPart.source.workspace
+            const workspace = await WorkspaceCatalog.get(expected.id, ScopeContext.current.scope.id)
+            if (
+              workspace.lifecycle !== "active" ||
+              workspace.binding.state !== "bound" ||
+              workspace.binding.generation !== expected.generation ||
+              workspace.binding.path !== expected.root
+            )
+              throw new WorkspaceCatalog.BindingChanged({
+                workspaceID: expected.id,
+                message: "The referenced workspace binding changed. Select the file again.",
+              })
+            if (
+              ResourceReference.resolvePath(fileURLToPath(url), {
+                state: "bound",
+                workspace: expected,
+                directory: "",
+              }) === undefined
+            )
+              throw new Attachment.InvalidUrlError()
+          }
           if (url.protocol === "asset:" || url.protocol === "file:") {
             const filepath =
               url.protocol === "asset:" ? Asset.resolvePath(url.hostname + url.pathname) : fileURLToPath(url)

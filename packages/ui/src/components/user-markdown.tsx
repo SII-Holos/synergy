@@ -1,7 +1,9 @@
 import { createEffect, createResource, onCleanup } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useMarked } from "../context/marked"
-import { useResourceOpen } from "../context/resource-open"
+import { useReferenceContext, useResourceOpen } from "../context/resource-open"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import { observeMarkdownResources } from "./markdown-resources"
 import { enhanceMarkdown } from "./markdown"
 import { sanitizeHtml } from "./markdown-sanitize"
 import type { UserMarkdownReference } from "./user-markdown-model"
@@ -10,9 +12,12 @@ export function UserMarkdown(props: {
   text: string
   references?: UserMarkdownReference[]
   onOpenReference?: (index: number) => void
+  referenceContext?: ResourceReference.Context
 }) {
   const marked = useMarked()
   const resourceOpen = useResourceOpen()
+  const inheritedContext = useReferenceContext()
+  const context = () => props.referenceContext ?? inheritedContext() ?? { state: "unresolved" as const }
   const { _ } = useLingui()
   let root!: HTMLDivElement
   let pending: AbortController | undefined
@@ -43,6 +48,7 @@ export function UserMarkdown(props: {
     root.innerHTML = value.html
     const dispose = enhanceMarkdown(root, _)
     onCleanup(dispose)
+    if (resourceOpen) onCleanup(observeMarkdownResources(root, resourceOpen, context))
   })
   return (
     <div
@@ -63,7 +69,11 @@ export function UserMarkdown(props: {
         const { userMarkdownImageUrl } = await import("./user-markdown-model")
         if (!root.isConnected || !root.contains(button)) return
         const url = userMarkdownImageUrl(button.dataset.userImage ?? "")
-        if (url) resourceOpen?.open({ kind: "url", url, mime: "image/*", filename: button.textContent ?? undefined })
+        if (url)
+          void resourceOpen?.open(
+            { ...ResourceReference.parse(url), mime: "image/*", filename: button.textContent ?? undefined },
+            { context: context(), prefer: "preview", focusTarget: () => button },
+          )
       }}
     />
   )

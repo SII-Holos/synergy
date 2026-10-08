@@ -8466,6 +8466,27 @@ export type FileSource = {
   text: AttachmentSourceText
   type: "file"
   path: string
+  workspace?: {
+    id: string
+    generation: number
+    root: string
+  }
+  location?:
+    | {
+        kind: "text"
+        line: number
+        column?: number
+        endLine?: number
+        endColumn?: number
+      }
+    | {
+        kind: "heading"
+        id: string
+      }
+    | {
+        kind: "page"
+        page: number
+      }
 }
 
 export type Range = {
@@ -8483,6 +8504,11 @@ export type SymbolSource = {
   text: AttachmentSourceText
   type: "symbol"
   path: string
+  workspace?: {
+    id: string
+    generation: number
+    root: string
+  }
   range: Range
   name: string
   kind: number
@@ -9599,6 +9625,22 @@ export type SessionInboxItem = {
   deliveryKey?: string
   message?: {
     role?: "user" | "assistant"
+    referenceContext?:
+      | {
+          state: "bound"
+          workspace: {
+            id: string
+            generation: number
+            root: string
+          }
+          directory: string
+        }
+      | {
+          state: "none"
+        }
+      | {
+          state: "unresolved"
+        }
     parts: Array<
       | {
           id?: string
@@ -9932,6 +9974,22 @@ export type UserMessage = {
   visible?: boolean
   includeInContext?: boolean
   rootID?: string
+  referenceContext?:
+    | {
+        state: "bound"
+        workspace: {
+          id: string
+          generation: number
+          root: string
+        }
+        directory: string
+      }
+    | {
+        state: "none"
+      }
+    | {
+        state: "unresolved"
+      }
   role: "user"
   isRoot?: boolean
   time: {
@@ -10076,6 +10134,22 @@ export type AssistantMessage = {
   visible?: boolean
   includeInContext?: boolean
   rootID?: string
+  referenceContext?:
+    | {
+        state: "bound"
+        workspace: {
+          id: string
+          generation: number
+          root: string
+        }
+        directory: string
+      }
+    | {
+        state: "none"
+      }
+    | {
+        state: "unresolved"
+      }
   modelSelection?: SessionRequestModelSelection
   role: "assistant"
   time: {

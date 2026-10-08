@@ -1,3 +1,4 @@
+import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import type { AttachmentPart, Part, TextPart } from "@ericsanchezok/synergy-sdk"
 import { sanitizeContextItemsValue, sanitizePromptContextValue, sanitizePromptValue } from "@/context/prompt/sanitize"
 
@@ -18,6 +19,7 @@ type TextPromptPart = {
 type FileAttachmentPart = {
   type: "file"
   path: string
+  workspace?: ResourceReference.Workspace
   content: string
   start: number
   end: number
@@ -64,6 +66,7 @@ type Prompt = Array<
 type ContextItem = {
   type: "file"
   path: string
+  workspace?: ResourceReference.Workspace
   selection?: FileSelection
 }
 
@@ -109,6 +112,7 @@ type Inline = {
   end: number
   value: string
   path: string
+  workspace?: ResourceReference.Workspace
   selection?: {
     startLine: number
     endLine: number
@@ -238,6 +242,7 @@ function restoreLegacyPromptDraft(parts: Part[], opts?: { directory?: string }):
         end,
         value,
         path: toRelative(path),
+        workspace: filePart.source && "workspace" in filePart.source ? filePart.source.workspace : undefined,
         selection: selectionFromFileUrl(filePart.url),
       })
       continue
@@ -312,6 +317,7 @@ function restoreLegacyPromptDraft(parts: Part[], opts?: { directory?: string }):
     const attachment: FileAttachmentPart = {
       type: "file",
       path: item.path,
+      workspace: item.workspace,
       content,
       start: position,
       end: position + content.length,

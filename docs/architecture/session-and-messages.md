@@ -306,6 +306,10 @@ Part summaries expose an optional `reasoningKey` derived from one unambiguous pr
 
 `TurnExecutionState` derives each root's state and stopped execution segments from the existing rollout ledger and root-owned pending approvals. Session-wide status and historical tool errors cannot replace root outcome. A returned background tool and its process retain separate states. Selected process output invalidates its own activity through the existing scoped event connection; root updates replay through the same channel. Batch root-status and single-tool result queries are bounded, lazy generated SDK reads.
 
+### Resource reference origins
+
+New messages capture `referenceContext` at admission: a Workspace ID, binding generation, root and relative directory, or an explicit absent/unresolved state. Queued inputs keep that origin through later materialization. File and symbol attachment sources may carry their own Workspace; file sources may also carry a location. Composer editing, storage and export/import preserve this information. The versioned Session migration infers legacy origins only from matching recorded message paths and snapshot evidence, invalidates derived display indexes and leaves ambiguous history unresolved. Import uses the same conversion. Model byte projection is independent of this display metadata; [Workspace and files](workspace-and-files.md#message-resource-opening) owns opening behavior.
+
 ### Assets and attachments
 
 Attachments are durable parts with separate model and presentation policies. Model policy can provide a summary, extracted content, a provider-managed file, or no model input. Presentation policy can select image/video/audio/thumbnail/file rendering, size, crop, or hidden state. Uploads accept any file type; images and extractable documents are sent to the model directly, while other binaries project as a summary plus their durable local path with a tool-inspection hint so the agent can read them through file tools.

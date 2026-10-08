@@ -1,12 +1,11 @@
+import { classifyResourcePreview } from "../../../src/components/resource-preview"
 import { describe, expect, test } from "bun:test"
 import {
   PDF_PREVIEW_MAX_BYTES,
-  classifyFilePreview,
   mergeDirectoryPage,
   normalizeWorkspacePath,
   pdfPreviewAction,
   pdfPreviewBytes,
-  resolveWorkspaceRelativePath,
   shortestUniqueFileTitle,
 } from "../../../src/components/file-workbench/model"
 
@@ -24,30 +23,52 @@ describe("file workbench paths", () => {
     expect(shortestUniqueFileTitle(paths[1]!, paths)).toBe("index.ts · tests")
     expect(shortestUniqueFileTitle(paths[2]!, paths)).toBe("README.md")
   })
-
-  test("resolves relative Markdown resources inside the workspace only", () => {
-    expect(resolveWorkspaceRelativePath("docs/guide/readme.md", "../assets/logo.png")).toBe("docs/assets/logo.png")
-    expect(resolveWorkspaceRelativePath("README.md", "../../secret.txt")).toBeUndefined()
-    expect(resolveWorkspaceRelativePath("README.md", "javascript:alert(1)")).toBeUndefined()
-  })
 })
 
 describe("file preview classification", () => {
   test("classifies dual, source-only, preview-only and unsupported files", () => {
-    expect(classifyFilePreview("README.md", "text")).toEqual({ kind: "markdown", defaultMode: "preview", dual: true })
-    expect(classifyFilePreview("logo.svg", "text")).toEqual({ kind: "svg", defaultMode: "preview", dual: true })
-    expect(classifyFilePreview("page.html", "text")).toEqual({ kind: "html", defaultMode: "preview", dual: true })
-    expect(classifyFilePreview("page.htm", "text")).toEqual({ kind: "html", defaultMode: "preview", dual: true })
-    expect(classifyFilePreview("src/app.ts", "text")).toEqual({ kind: "source", defaultMode: "source", dual: false })
-    expect(classifyFilePreview("photo.png", "image")).toEqual({ kind: "image", defaultMode: "preview", dual: false })
-    expect(classifyFilePreview("report.pdf", "binary")).toEqual({ kind: "pdf", defaultMode: "preview", dual: false })
-    expect(classifyFilePreview("report", "binary", "application/pdf")).toEqual({
+    expect(classifyResourcePreview("", "README.md", "text")).toMatchObject({
+      kind: "markdown",
+      defaultMode: "preview",
+      dual: true,
+    })
+    expect(classifyResourcePreview("", "logo.svg", "text")).toMatchObject({
+      kind: "svg",
+      defaultMode: "preview",
+      dual: true,
+    })
+    expect(classifyResourcePreview("", "page.html", "text")).toMatchObject({
+      kind: "html",
+      defaultMode: "preview",
+      dual: true,
+    })
+    expect(classifyResourcePreview("", "page.htm", "text")).toMatchObject({
+      kind: "html",
+      defaultMode: "preview",
+      dual: true,
+    })
+    expect(classifyResourcePreview("", "src/app.ts", "text")).toMatchObject({
+      kind: "source",
+      defaultMode: "source",
+      dual: false,
+    })
+    expect(classifyResourcePreview("", "photo.png", "image")).toMatchObject({
+      kind: "image",
+      defaultMode: "preview",
+      dual: false,
+    })
+    expect(classifyResourcePreview("", "report.pdf", "binary")).toMatchObject({
       kind: "pdf",
       defaultMode: "preview",
       dual: false,
     })
-    expect(classifyFilePreview("deck.pptx", "binary")).toEqual({
-      kind: "unsupported",
+    expect(classifyResourcePreview("application/pdf", "report", "binary")).toMatchObject({
+      kind: "pdf",
+      defaultMode: "preview",
+      dual: false,
+    })
+    expect(classifyResourcePreview("", "deck.pptx", "binary")).toMatchObject({
+      kind: "pptx",
       defaultMode: "preview",
       dual: false,
     })

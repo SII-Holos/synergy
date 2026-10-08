@@ -5,6 +5,7 @@ import {
 import { isActivityGroupableTool, isCancelledMediaGeneration } from "@ericsanchezok/synergy-util/activity"
 import { markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { ToolIntent } from "./tool-intent"
 import { ToolActivityEvidence } from "./activity-evidence"
 import { RuntimeContext } from "../lifecycle/context"
@@ -204,6 +205,8 @@ export namespace MessageV2 {
   export const FileSource = AttachmentSourceBase.extend({
     type: z.literal("file"),
     path: z.string(),
+    workspace: ResourceReference.Workspace.optional(),
+    location: ResourceReference.Location.optional(),
   }).meta({
     ref: "FileSource",
   })
@@ -211,6 +214,7 @@ export namespace MessageV2 {
   export const SymbolSource = AttachmentSourceBase.extend({
     type: z.literal("symbol"),
     path: z.string(),
+    workspace: ResourceReference.Workspace.optional(),
     range: SymbolRange,
     name: z.string(),
     kind: z.number().int(),
@@ -510,6 +514,7 @@ export namespace MessageV2 {
     visible: z.boolean().optional(),
     includeInContext: z.boolean().optional(),
     rootID: z.string().optional(),
+    referenceContext: ResourceReference.Context.optional(),
   })
 
   export const User = Base.extend({

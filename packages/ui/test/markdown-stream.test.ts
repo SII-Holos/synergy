@@ -303,7 +303,7 @@ describe("createMarkdownStreamController", () => {
     const root = createRoot()
     const stream = createMarkdownStreamController(root)
 
-    stream.update("![bad](data:image/svg+xml,x)")
+    stream.update("![bad](data:text/html,x)")
     stream.end()
 
     const image = root.querySelector("img")

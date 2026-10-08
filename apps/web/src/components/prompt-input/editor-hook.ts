@@ -1,3 +1,4 @@
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import type { Accessor } from "solid-js"
 import { createEffect, on } from "solid-js"
 import type { SetStoreFunction } from "solid-js/store"
@@ -99,10 +100,16 @@ export function usePromptEditor(input: PromptEditorInput) {
 
     const pushFile = (file: HTMLElement) => {
       const content = file.textContent ?? ""
+      let workspace: ResourceReference.Workspace | undefined
+      try {
+        const result = ResourceReference.Workspace.safeParse(JSON.parse(file.dataset.workspace ?? "null"))
+        if (result.success) workspace = result.data
+      } catch {}
       parts.push({
         type: "file",
         path: file.dataset.path!,
         ...(file.dataset.originScopeId ? { originScopeID: file.dataset.originScopeId } : {}),
+        ...(workspace ? { workspace } : {}),
         content,
         start: position,
         end: position + content.length,

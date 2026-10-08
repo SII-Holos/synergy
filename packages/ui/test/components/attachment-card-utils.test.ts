@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
+  attachmentCopyReference,
+  attachmentDocumentContext,
   attachmentColumns,
   attachmentSourcePath,
   resolveAttachmentOpenTarget,
@@ -7,6 +9,46 @@ import {
   resolveAttachmentThumbnailUrl,
   resolveImagePreviewImage,
 } from "../../src/components/attachment-card-utils"
+
+test("attachment copies retain a usable URL or structured source location", () => {
+  expect(attachmentCopyReference({ mime: "text/plain" })).toBeUndefined()
+  expect(attachmentCopyReference({ mime: "text/plain", assetId: "0123456789abcdef.txt" })).toBe(
+    "asset://0123456789abcdef.txt",
+  )
+  expect(
+    attachmentCopyReference({
+      mime: "text/plain",
+      source: { type: "file", path: "/work/a #.ts", location: { kind: "text", line: 7 } },
+    }),
+  ).toBe("file:///work/a%20%23.ts#L7")
+  expect(
+    attachmentCopyReference(
+      { mime: "application/pdf", url: "asset://0123456789abcdef.pdf" },
+      { kind: "page", page: 3 },
+    ),
+  ).toBe("asset://0123456789abcdef.pdf#page=3")
+})
+
+test("an attached Markdown document resolves relative references from its own parent", () => {
+  const workspace = { id: "wsp_original", generation: 2, root: "/original" }
+  expect(
+    attachmentDocumentContext(
+      {
+        mime: "text/markdown",
+        url: "asset://0123456789abcdef.md",
+        source: { type: "file", path: "/original/docs/guide.md", workspace },
+      },
+      { state: "none" },
+    ),
+  ).toEqual({ state: "bound", workspace, directory: "docs" })
+  expect(
+    attachmentDocumentContext({
+      mime: "text/markdown",
+      url: "asset://0123456789abcdef.md",
+      source: { type: "file", path: "/different/guide.md", workspace },
+    }),
+  ).toEqual({ state: "unresolved" })
+})
 
 describe("attachment presentation resolver", () => {
   test("infers renderers from MIME when no renderer is specified", () => {
@@ -119,7 +161,8 @@ describe("image preview attachment resolver", () => {
         {
           mime: "image/png",
           assetId: "2222222222222222.png",
-          localPath: "/workspace/output/plot.png",
+          localPath: "/managed/2222222222222222.png",
+          source: { type: "file", path: "/workspace/output/plot.png" },
         },
         0,
       ),
@@ -187,7 +230,10 @@ describe("attachment opening policy", () => {
         source: { type: "file", path: "/workspace/source.txt" },
         metadata: { attachment: { sourcePath: "/workspace/metadata.txt" } },
       }),
-    ).toBe("/workspace/local.txt")
+    ).toBe("/workspace/source.txt")
+    expect(
+      attachmentSourcePath({ mime: "image/png", url: "asset://0123456789abcdef.png", localPath: "/managed/asset.png" }),
+    ).toBeUndefined()
     expect(
       attachmentSourcePath({
         mime: "text/plain",
