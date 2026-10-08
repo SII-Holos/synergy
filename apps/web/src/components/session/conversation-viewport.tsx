@@ -67,7 +67,7 @@ export function ConversationViewport(props: {
         data-ready={props.ready !== false}
         aria-hidden={props.ready === false}
         inert={props.ready === false}
-        style={{ visibility: props.ready === false ? "hidden" : undefined }}
+        style={{ opacity: props.ready === false ? 0 : undefined }}
         ref={(el) => {
           boundScrollEl = el
           props.setScrollRef(el)
