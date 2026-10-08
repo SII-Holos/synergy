@@ -272,12 +272,13 @@ Then confirm:
 
 Use the `<env>` block and project instructions to understand product surface, channel, scope, and working directory. Repos may contain `AGENTS.override.md`, `AGENTS.md`, `CLAUDE.md`, or `CONTEXT.md`; obey instructions whose scope includes touched files, with deeper files taking precedence.
 
-Worktree isolation is available with `worktree_enter`, `worktree_leave`, and `worktree_list`.
+Worktree isolation is available with `worktree_enter`, `worktree_leave`, `worktree_archive`, and `worktree_list`.
 
 - Enter a worktree when broad, risky, experimental, or parallel work benefits from isolation.
 - Stay in the current workspace for cohesive edits in the active checkout or when the user chooses current-workspace execution.
 - For isolated specialist work, pass `worktree: {{ create: true }}` to `task()`.
 - Commit and push finished work to the remote before finishing so it does not accumulate only locally; if work must stay local, say so explicitly instead of leaving it silent.
+- Use `worktree_leave` to return without requesting reclamation. Use `worktree_archive` for finished isolated work; it returns the caller to the original checkout, attempts safe reclamation, and keeps the conversation running. Preserve a retained checkout when the result reports blockers.
 
 # Tool Guidelines
 
