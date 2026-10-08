@@ -5,7 +5,7 @@ import { domFixture } from "../support/dom-fixtures"
 // The fixture compiles a real Solid bundle through Vite before exercising the
 // lifecycle, matching the message-part-error-boundary DOM harness. Keep this
 // hook well above the default test timeout so cold caches do not fail it.
-const TRANSITION_MS = 160
+const TRANSITION_MS = 180
 const TRANSITION_SETTLE_MS = TRANSITION_MS + 80
 
 interface ActivityDomHarness {
@@ -157,6 +157,20 @@ describe("AnimatedActivityCount DOM behavior", () => {
     expect(countRoot().hasAttribute("data-animating")).toBe(false)
     expect(countSlot("activity-count-old")).toBeNull()
     expect(countSlot("activity-count-new")?.textContent).toBe("12")
+  })
+
+  test("batch labels retain the numeric node while its value and plural grammar change", async () => {
+    harness.resetCount("batch", 1)
+    await wait(0)
+    const number = document.querySelector('#batch-count-host [data-component="animated-activity-count"]')
+    expect(number).not.toBeNull()
+    expect(document.querySelector("#batch-count-host")?.textContent).toContain("command")
+    harness.setCountValue(2)
+    await wait(0)
+    expect(document.querySelector('#batch-count-host [data-component="animated-activity-count"]')).toBe(number)
+    expect(number?.hasAttribute("data-animating")).toBe(true)
+    await wait(TRANSITION_SETTLE_MS)
+    expect(document.querySelector("#batch-count-host")?.textContent).toBe("Ran 2 commands")
   })
 
   test("decrease and identity reset snap without a transition", async () => {

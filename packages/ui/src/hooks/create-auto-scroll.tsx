@@ -1,5 +1,6 @@
 import { createEffect, createSignal, on, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
+import { createScrollMotion } from "../utils/scroll-motion"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 
 export interface AutoScrollReadingAnchor {
@@ -8,6 +9,7 @@ export interface AutoScrollReadingAnchor {
 }
 
 export interface AutoScrollOptions {
+  motionTarget?: () => HTMLElement | undefined
   working: () => boolean
   onUserInteracted?: () => void
   /** Reports the distance from the bottom for content growth that fires no scroll event. */
@@ -32,6 +34,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let anchoredScrollTop: number | undefined
   let resumeRequested = false
   let previousOffset = 0
+  let interactionVersion = 0
+  let smoothForce = false
+  const motion = createScrollMotion(() => options.motionTarget?.())
 
   const [store, setStore] = createStore({
     contentRef: undefined as HTMLElement | undefined,
@@ -95,9 +100,12 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
     const bottom = scroll.scrollHeight
     const distance = bottom - scroll.clientHeight - scroll.scrollTop
-    if (distance < 2) return
+    if (Math.abs(distance) < 2) return
 
-    scroll.scrollTo({ top: bottom, behavior: "auto" })
+    const animate =
+      !!options.motionTarget && (!force || smoothForce) && !store.contentRef?.querySelector("[data-motion-changing]")
+    motion.move(scroll, bottom, animate)
+    smoothForce = false
   }
 
   const scrollToBottom = (force: boolean) => {
@@ -118,6 +126,8 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const stop = (allowResume = false) => {
+    interactionVersion++
+    motion.interrupt(scroll)
     resumeRequested = allowResume
     followingLatest = false
     forceNextScroll = false
@@ -234,6 +244,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   )
 
   onCleanup(() => {
+    motion.dispose()
     followingLatest = false
     clearReadingAnchor()
     if (settleTimer) clearTimeout(settleTimer)
@@ -254,6 +265,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
         cleanup = undefined
       }
 
+      motion.settle()
       clearReadingAnchor()
       if (settleTimer) clearTimeout(settleTimer)
       settleTimer = undefined
@@ -298,8 +310,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
     handleInteraction,
     preserveReadingAnchor,
     readingAnchorOwner,
+    interactionVersion: () => interactionVersion,
     scrollToBottom: () => scrollToBottom(false),
-    forceScrollToBottom: (input?: { untilInteraction?: boolean }) => {
+    forceScrollToBottom: (input?: { untilInteraction?: boolean; smooth?: boolean }) => {
+      smoothForce = input?.smooth === true
       if (scroll && input?.untilInteraction) followingLatest = true
       scrollToBottom(true)
     },

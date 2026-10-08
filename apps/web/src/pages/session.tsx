@@ -1291,6 +1291,7 @@ function SessionPageContent() {
   }
 
   const autoScroll = createAutoScroll({
+    motionTarget: () => scroller?.querySelector<HTMLElement>("[data-conversation-motion]") ?? undefined,
     working: isWorking,
     captureReadingAnchor(input) {
       const container = scroller
@@ -1372,13 +1373,15 @@ function SessionPageContent() {
   const returnToLatestMessages = async () => {
     const id = params.id
     if (!id) return
+    const intent = autoScroll.interactionVersion()
     try {
       await sync.session.history.returnLatest(id)
-      if (params.id !== id) return
+      if (params.id !== id || autoScroll.interactionVersion() !== intent) return
       setHistoryLocationPinned(false)
       setStore("turnStart", 0)
       afterHistoryLayoutSettles(() => {
-        if (params.id === id) autoScroll.forceScrollToBottom({ untilInteraction: true })
+        if (params.id === id && autoScroll.interactionVersion() === intent)
+          autoScroll.forceScrollToBottom({ untilInteraction: true, smooth: true })
       })
     } catch (error) {
       showToast({

@@ -66,6 +66,10 @@ msgid "activity.batch.searched"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "activity.batch.total"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "activity.history.earlier"
 msgstr ""
 
@@ -16473,10 +16477,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.activity.materializingInput"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.activity.operations"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -34,7 +34,7 @@ import type {
 } from "./session-turn-activity"
 import "./activity-trace.css"
 
-const TRANSITION_MS = 160
+const TRANSITION_MS = 180
 const ActivitySpecializedDetail = lazy(() =>
   import("./activity-specialized-detail").then((module) => ({ default: module.ActivitySpecializedDetail })),
 )
@@ -71,9 +71,14 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches
 }
 
-export function AnimatedActivityCount(props: { value: number; identity: string }) {
+export function AnimatedActivityCount(props: { value: number; identity: string; animate?: boolean }) {
+  const { i18n } = useLingui()
+  const format = (value: number) => i18n().number(value)
+  const reduced = typeof window !== "undefined" ? window.matchMedia?.("(prefers-reduced-motion: reduce)") : undefined
   const [state, setState] = createSignal<ActivityCountTransition>()
   let timer: ReturnType<typeof setTimeout> | undefined
+  let element: HTMLSpanElement | undefined
+  let widthMotion: Animation | undefined
 
   const cancelTimer = () => {
     if (timer === undefined) return
@@ -83,16 +88,25 @@ export function AnimatedActivityCount(props: { value: number; identity: string }
 
   createEffect(
     on(
-      () => [props.identity, props.value] as const,
+      () => [`${props.identity}:${i18n().locale}`, props.value, props.animate] as const,
       ([identity, value]) => {
+        const width = element?.getBoundingClientRect().width
+        widthMotion?.cancel()
         cancelTimer()
         const next = reduceActivityCountTransition(state(), {
           identity,
           value,
-          reducedMotion: prefersReducedMotion(),
+          reducedMotion: props.animate === false || prefersReducedMotion(),
         })
         setState(next)
         if (!next.animating) return
+        const targetWidth = element?.getBoundingClientRect().width
+        if (width && targetWidth && width !== targetWidth && element?.animate) {
+          widthMotion = element.animate([{ width: `${width}px` }, { width: `${targetWidth}px` }], {
+            duration: TRANSITION_MS,
+            easing: "cubic-bezier(0.2, 0, 0, 1)",
+          })
+        }
         const revision = next.revision
         timer = setTimeout(() => {
           setState((current) => (current ? finishActivityCountTransition(current, revision) : current))
@@ -102,19 +116,31 @@ export function AnimatedActivityCount(props: { value: number; identity: string }
     ),
   )
 
-  onCleanup(cancelTimer)
+  const settle = () => {
+    if (!reduced?.matches) return
+    cancelTimer()
+    widthMotion?.cancel()
+    setState((current) => (current ? finishActivityCountTransition(current, current.revision) : current))
+  }
+  reduced?.addEventListener?.("change", settle)
+  onCleanup(() => {
+    cancelTimer()
+    widthMotion?.cancel()
+    reduced?.removeEventListener?.("change", settle)
+  })
 
   return (
     <span
+      ref={element}
       data-component="animated-activity-count"
       data-animating={state()?.animating ? "" : undefined}
-      aria-label={String(props.value)}
+      aria-label={format(props.value)}
     >
       <span data-slot="activity-count-grid" aria-hidden="true">
         <Show when={state()?.animating && state()?.previous !== undefined}>
-          <span data-slot="activity-count-old">{state()?.previous}</span>
+          <span data-slot="activity-count-old">{format(state()!.previous!)}</span>
         </Show>
-        <span data-slot="activity-count-new">{state()?.current ?? props.value}</span>
+        <span data-slot="activity-count-new">{format(state()?.current ?? props.value)}</span>
       </span>
     </span>
   )

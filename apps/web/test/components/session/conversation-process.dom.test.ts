@@ -248,6 +248,11 @@ test("compact activity titles retain successful facts while showing current runt
     })
   })
   await frames()
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('[data-slot="activity-batch-status"]')].some((node) =>
+      node.textContent?.includes("Calling tool"),
+    ),
+  )
   expect(await status.textContent()).toContain("Calling tool")
   expect(await page.evaluate(() => window.__activityTitle?.firstElementChild === window.__activityFacts)).toBe(true)
   const animation = () =>
@@ -2252,6 +2257,10 @@ test("folded process headers follow actual phases and parallel tool count", asyn
   ] as const) {
     await page.evaluate((activity) => window.__conversationProcess.phase(activity), activity)
     await frames()
+    await page.waitForFunction(
+      (label) => document.querySelector('[data-slot="turn-process-trigger"]')?.textContent?.includes(label),
+      label,
+    )
     expect(await trigger.textContent()).toContain(label)
     expect(await trigger.getAttribute("aria-expanded")).toBe("false")
     expect(await page.locator('[data-slot="turn-process-trigger"]').count()).toBe(1)
@@ -2265,6 +2274,9 @@ test("streaming a text-only response keeps the current system status visible", a
   await page.evaluate(() => window.__conversationProcess.respond())
   await frames()
   await page.getByText("Final answer stays mounted.", { exact: true }).waitFor()
+  await page.waitForFunction(() =>
+    document.querySelector('[data-slot="turn-process-trigger"]')?.textContent?.includes("Generating response"),
+  )
   expect(await page.locator('[data-slot="turn-process-trigger"]').textContent()).toContain("Generating response")
   expect(await page.locator('[data-slot="turn-process-trigger"]').count()).toBe(1)
   expect(errors).toEqual([])

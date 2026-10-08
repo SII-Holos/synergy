@@ -588,7 +588,7 @@ function ConversationDisplayRow(
   })
   const batchMotion = createDisclosureMotionRef({
     visible: () => !!row().activity?.open,
-    animate: () => manualDisclosure,
+    animate: () => true,
     appear: () => manualDisclosure,
     resize: true,
     onHidden: () => setActivityMounted(false),
@@ -1010,7 +1010,12 @@ function ConversationDisplayRow(
             >
               <span>
                 {row().activity?.tools ? (
-                  <ActivityBatchLabel batch={row().activity!} total={row().activity!.tools} />
+                  <ActivityBatchLabel
+                    batch={row().activity!}
+                    total={row().activity!.tools}
+                    identity={row().key}
+                    live={row().activity!.active}
+                  />
                 ) : row().activity?.entries.some((entry) => entry.kind === "body" && entry.event) ? (
                   _({ id: "session.process.records", message: "Process history" })
                 ) : (

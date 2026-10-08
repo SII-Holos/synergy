@@ -339,7 +339,11 @@ function SessionConversationView(input: SessionConversationProps) {
           if (element || !releaseOf || scrollRef() === releaseOf) setScrollRef(element)
           props.setScrollRef(element, releaseOf)
         }}
-        onScrollToBottom={props.onClearHash}
+        onScrollToBottom={() => {
+          props.onClearHash?.()
+          if (props.onReturnLatest) props.onReturnLatest()
+          else props.autoScroll.forceScrollToBottom()
+        }}
         onScrollContainer={(el) => {
           if (props.isDesktop() && !props.content) props.onScheduleScrollSpy(el)
         }}

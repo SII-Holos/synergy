@@ -2,7 +2,7 @@ import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presen
 import { attachmentSuppression, markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { useLingui } from "@lingui/solid"
-import { processIsWorking, sessionActivityAnimating, sessionActivityLabel } from "./session-status"
+import { createActivityLabel, processIsWorking, sessionActivityAnimating, sessionActivityLabel } from "./session-status"
 import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
 
 import type {
@@ -1543,7 +1543,7 @@ export function SessionTurn(
       ? _({ id: "ui.compaction.running", message: "Compressing context..." })
       : sessionActivityLabel(status, i18n(), context)
   }
-  const processLabel = () =>
+  const processLabelCandidate = () =>
     working()
       ? activeAction()
       : stopped()
@@ -1564,6 +1564,11 @@ export function SessionTurn(
                     values: { seconds: turnDuration()! },
                   })
                 : _({ id: "session.process.completed", message: "Work completed" })
+
+  const processLabel = createActivityLabel(
+    processLabelCandidate,
+    () => working() && activityAnimated() && !compacting() && !props.submission,
+  )
 
   createEffect(
     on(permissionCount, (count, prev) => {

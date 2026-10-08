@@ -13,6 +13,8 @@ import {
   MinimalActivitySummary,
 } from "../../../src/components/activity-trace.tsx"
 
+import { ActivityBatchLabel } from "../../../src/components/activity-batch.tsx"
+
 const [countValue, setCountValue] = createSignal(9)
 const [countIdentity, setCountIdentity] = createSignal("turn-a")
 const [summaryCompleted, setSummaryCompleted] = createSignal(false)
@@ -343,6 +345,14 @@ render(
         <CodeComponentProvider component={CodeFixture}>
           <div id="count-host">
             <AnimatedActivityCount value={countValue()} identity={countIdentity()} />
+          </div>
+          <div id="batch-count-host">
+            <ActivityBatchLabel
+              identity={countIdentity()}
+              live={true}
+              total={countValue()}
+              batch={{ facts: [{ family: "execute", count: countValue() }] }}
+            />
           </div>
           <MinimalActivitySummary
             item={{
