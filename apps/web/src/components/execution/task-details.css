@@ -109,11 +109,17 @@
 }
 .execution-compact-metrics {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 4px 0 12px;
   container-type: inline-size;
   container-name: task-details;
+}
+.execution-compact-metrics > .execution-performance {
+  flex-basis: 100%;
+  padding-left: 28px;
+  margin-top: -4px;
 }
 .execution-compact-status {
   display: inline-flex;
@@ -256,6 +262,16 @@
 .execution-status-icon[data-state="running"],
 .execution-inbox-row[data-mode="steer"] .execution-row-main > [data-component="icon"] {
   color: var(--icon-interactive-base);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .execution-status-icon[data-state="running"] > [data-component="icon"] {
+    animation: execution-status-spin 1s linear infinite;
+  }
+}
+@keyframes execution-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .execution-compact-feedback {
   display: flex;

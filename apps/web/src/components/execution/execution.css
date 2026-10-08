@@ -162,6 +162,81 @@
 .execution-cost-popover [data-slot="popover-body"] {
   padding: 12px 16px;
 }
+.execution-performance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin: 0;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+.execution-performance > div {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.execution-performance dt {
+  color: var(--text-weak);
+}
+.execution-performance dd {
+  margin: 0;
+  color: var(--text-base);
+  font-variant-numeric: tabular-nums;
+}
+.execution-usage-popover[data-component="popover-content"] {
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  max-height: min(640px, calc(100dvh - 32px), var(--kb-popper-content-available-height, 640px));
+  color: var(--text-base);
+}
+.execution-usage-popover > [data-slot="popover-header"] {
+  flex-shrink: 0;
+}
+.execution-usage-popover > [data-slot="popover-body"] {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 16px 12px;
+}
+.execution-usage-details .execution-usage-rows > div {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+.execution-usage-rows > div[data-nested="true"] dt {
+  padding-left: 12px;
+}
+.execution-usage-details .execution-usage-rows dd {
+  text-align: right;
+}
+.execution-usage-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-weaker-base);
+}
+.execution-usage-section h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.execution-compact-metric:is(button):hover,
+.execution-cost-button:hover {
+  color: var(--text-strong);
+}
+.execution-compact-metric:is(button):focus-visible,
+.execution-cost-button:focus-visible {
+  outline: 2px solid var(--border-interactive-base);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
 .execution-context-bar {
   display: flex;
   height: 4px;

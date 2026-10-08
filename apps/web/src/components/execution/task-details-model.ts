@@ -21,3 +21,9 @@ export function compactTokenText(metric: TaskDetailsTask["tokens"], calls: numbe
   const value = new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(metric.known)
   return (metric.unknown ? "≥ " : "") + value
 }
+
+export function tokenMetricText(metric: TaskDetailsTask["tokens"], locale: string) {
+  if (!metric.known && metric.total == null) return "—"
+  const value = new Intl.NumberFormat(locale).format(metric.known)
+  return (metric.unknown ? "≥ " : "") + value
+}

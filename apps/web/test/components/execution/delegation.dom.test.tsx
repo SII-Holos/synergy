@@ -31,7 +31,9 @@ beforeAll(async () => {
     const child=node("child","child","subtask","Child analysis","root")
     const nested=node("nested","nested","subtask","Nested analysis","child")
     const task=(n,parentID)=>({sessionID:n.sessionID,nodeID:n.id,parentID,title:n.title,status:"completed",elapsedMs:1,elapsedActive:false,tokens:metric(),runs:[n.runID]})
-    const summary={sessionID:"root",revision:1,computedAt:1,status:"completed",elapsedMs:1,elapsedActive:false,accounting:accounting(),own:accounting(),descendants:accounting(),context:null,contextDistribution:null,tasks:[task(child,"root"),task(nested,"child")],rounds:[{id:"root-round",started:1,status:"completed"},{id:"round-2",started:2,status:"completed"}],coverage:{recorded:2,messages:0,gaps:0,partial:false},lanes:[]}
+    const rate={value:null,tokens:0,milliseconds:0,samples:0,excluded:0}
+    const latency={samples:0,excluded:0,totalMs:0,meanMs:null,p50Ms:null,p95Ms:null}
+    const summary={sessionID:"root",revision:1,computedAt:1,status:"completed",elapsedMs:1,elapsedActive:false,accounting:accounting(),own:accounting(),descendants:accounting(),rates:{generation:rate,endToEnd:rate},cache:{ratio:null,observedRatio:null,read:0,input:0,samples:0,excluded:0},latency:{headers:latency,firstByte:latency,ttft:latency,request:latency,generation:latency},outcomes:{completed:0,failed:0,cancelled:0,interrupted:0,running:0,retries:0,logicalRetries:0,transportRetries:0,rootTasks:0},tools:[],context:null,contextDistribution:null,tasks:[task(child,"root"),task(nested,"child")],rounds:[{id:"root-round",started:1,status:"completed"},{id:"round-2",started:2,status:"completed"}],coverage:{recorded:2,messages:0,gaps:0,partial:false},lanes:[]}
     const records={root:[node("root","root","turn","Root task"),child],child:[child,node("read","child","tool","Read architecture"),nested],nested:[nested,node("answer","nested","output","Nested result")]}
     const exportRows=[...new Map(Object.values(records).flat().map(n=>[n.id,n])).values(),...Array.from({length:600},(_,i)=>node("export-"+i,"root","context","Export row "+i))]
     const event=createGlobalEmitter()
