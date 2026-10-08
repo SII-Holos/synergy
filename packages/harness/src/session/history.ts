@@ -30,6 +30,7 @@ const PAGE_HYDRATION_CONCURRENCY = 16
 export namespace SessionHistory {
   export const TimelinePage = SessionHistoryDisplay.TimelinePage
   export const PartPage = SessionHistoryDisplay.PartPage
+  export const PartPages = SessionHistoryDisplay.PartPages
   export const PartContent = SessionHistoryDisplay.PartContent
   export const DisplayConflict = SessionHistoryDisplay.Conflict
   export const summarizePart = SessionHistoryDisplay.summarizePart
@@ -134,6 +135,14 @@ export namespace SessionHistory {
     const session = await SessionManager.requireSession(input.sessionID)
     await requireDisplayMessage(session, input.messageID)
     return SessionHistoryDisplay.partPage(input, session.scope.id)
+  }
+  export async function partPages(input: { sessionID: string; messageIDs: string[]; limit?: number }) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    return SessionHistoryDisplay.partPages(
+      input,
+      (messageID) => requireDisplayMessage(session, messageID),
+      session.scope.id,
+    )
   }
   export async function partContent(input: Parameters<typeof SessionHistoryDisplay.partContent>[0]) {
     const session = await SessionManager.requireSession(input.sessionID)

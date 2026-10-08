@@ -1,3 +1,4 @@
+import { ResourceReferenceProvider } from "../context/resource-open"
 import { getComputerToolPresentation } from "./tool/classifier"
 import {
   Component,
@@ -1394,15 +1395,17 @@ export function Part(props: MessagePartProps) {
           )
         }}
       >
-        <ToolExpansionIdentity partID={props.part.id}>
-          <Dynamic
-            component={component()}
-            part={props.part}
-            message={props.message}
-            hideDetails={props.hideDetails}
-            defaultOpen={props.defaultOpen}
-          />
-        </ToolExpansionIdentity>
+        <ResourceReferenceProvider value={props.message.referenceContext}>
+          <ToolExpansionIdentity partID={props.part.id}>
+            <Dynamic
+              component={component()}
+              part={props.part}
+              message={props.message}
+              hideDetails={props.hideDetails}
+              defaultOpen={props.defaultOpen}
+            />
+          </ToolExpansionIdentity>
+        </ResourceReferenceProvider>
       </ErrorBoundary>
     </Show>
   )

@@ -14003,6 +14003,129 @@
         ]
       }
     },
+    "/session/{sessionID}/part/pages": {
+      "post": {
+        "operationId": "session.partPages",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Get presentation summaries for a batch of messages' Parts",
+        "description": "Refresh-time fan-in for the Web conversation window: one request returns the bounded Part summary page for each of up to 100 messages; under HTTP/1.1-only deployments this avoids stalling the per-message fan-out behind the browser's connection limit.",
+        "responses": {
+          "200": {
+            "description": "Bounded Part summary pages keyed by message ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionPartPages"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "messageIDs": {
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^msg.*"
+                    }
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  }
+                },
+                "required": ["messageIDs"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.partPages({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/message/{messageID}/part/{partID}/content": {
       "get": {
         "operationId": "session.partContent",
@@ -60079,6 +60202,342 @@
             },
             "required": ["ratio", "observedRatio", "read", "input", "samples", "excluded"]
           },
+          "latency": {
+            "type": "object",
+            "properties": {
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              },
+              "firstByte": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              },
+              "ttft": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              },
+              "request": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              },
+              "generation": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["headers", "firstByte", "ttft", "request", "generation"]
+          },
+          "outcomes": {
+            "type": "object",
+            "properties": {
+              "completed": {
+                "type": "number"
+              },
+              "failed": {
+                "type": "number"
+              },
+              "cancelled": {
+                "type": "number"
+              },
+              "interrupted": {
+                "type": "number"
+              },
+              "running": {
+                "type": "number"
+              },
+              "retries": {
+                "type": "number"
+              },
+              "transportRetries": {
+                "type": "number"
+              },
+              "logicalRetries": {
+                "type": "number"
+              },
+              "rootTasks": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "running",
+              "retries",
+              "transportRetries",
+              "logicalRetries",
+              "rootTasks"
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool": {
+                  "type": "string"
+                },
+                "calls": {
+                  "type": "number"
+                },
+                "completed": {
+                  "type": "number"
+                },
+                "failed": {
+                  "type": "number"
+                },
+                "cancelled": {
+                  "type": "number"
+                },
+                "interrupted": {
+                  "type": "number"
+                },
+                "running": {
+                  "type": "number"
+                },
+                "durationMs": {
+                  "type": "number"
+                },
+                "timedSamples": {
+                  "type": "number"
+                },
+                "averageMs": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "tool",
+                "calls",
+                "completed",
+                "failed",
+                "cancelled",
+                "interrupted",
+                "running",
+                "durationMs",
+                "timedSamples",
+                "averageMs"
+              ]
+            }
+          },
           "context": {
             "anyOf": [
               {
@@ -60478,6 +60937,9 @@
           "descendants",
           "rates",
           "cache",
+          "latency",
+          "outcomes",
+          "tools",
           "context",
           "contextDistribution",
           "tasks",
@@ -61169,6 +61631,86 @@
           },
           "path": {
             "type": "string"
+          },
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "generation": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              "root": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "generation", "root"]
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "text"
+                  },
+                  "line": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  },
+                  "column": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  },
+                  "endLine": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  },
+                  "endColumn": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  }
+                },
+                "required": ["kind", "line"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "heading"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "id"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "page"
+                  },
+                  "page": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  }
+                },
+                "required": ["kind", "page"]
+              }
+            ]
           }
         },
         "required": ["text", "type", "path"]
@@ -61215,6 +61757,24 @@
           },
           "path": {
             "type": "string"
+          },
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "generation": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              "root": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "generation", "root"]
           },
           "range": {
             "$ref": "#/components/schemas/Range"
@@ -65116,6 +65676,61 @@
                 "type": "string",
                 "enum": ["user", "assistant"]
               },
+              "referenceContext": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "bound"
+                      },
+                      "workspace": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "generation": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          "root": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["id", "generation", "root"]
+                      },
+                      "directory": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["state", "workspace", "directory"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "none"
+                      }
+                    },
+                    "required": ["state"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "unresolved"
+                      }
+                    },
+                    "required": ["state"]
+                  }
+                ]
+              },
               "parts": {
                 "type": "array",
                 "items": {
@@ -65924,6 +66539,61 @@
           "rootID": {
             "type": "string"
           },
+          "referenceContext": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "bound"
+                  },
+                  "workspace": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "generation": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 2147483647
+                      },
+                      "root": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id", "generation", "root"]
+                  },
+                  "directory": {
+                    "type": "string"
+                  }
+                },
+                "required": ["state", "workspace", "directory"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "none"
+                  }
+                },
+                "required": ["state"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "unresolved"
+                  }
+                },
+                "required": ["state"]
+              }
+            ]
+          },
           "role": {
             "type": "string",
             "const": "user"
@@ -66334,6 +67004,61 @@
           },
           "rootID": {
             "type": "string"
+          },
+          "referenceContext": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "bound"
+                  },
+                  "workspace": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "generation": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 2147483647
+                      },
+                      "root": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id", "generation", "root"]
+                  },
+                  "directory": {
+                    "type": "string"
+                  }
+                },
+                "required": ["state", "workspace", "directory"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "none"
+                  }
+                },
+                "required": ["state"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "unresolved"
+                  }
+                },
+                "required": ["state"]
+              }
+            ]
           },
           "modelSelection": {
             "$ref": "#/components/schemas/SessionRequestModelSelection"
@@ -67620,6 +68345,15 @@
           }
         },
         "required": ["items", "nextCursor", "previousCursor", "hasMore", "hasEarlier"]
+      },
+      "SessionPartPages": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {
+          "$ref": "#/components/schemas/SessionPartPage"
+        }
       },
       "SessionPartContent": {
         "type": "object",

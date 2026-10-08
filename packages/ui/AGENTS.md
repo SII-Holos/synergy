@@ -1,8 +1,8 @@
 # Shared UI Package Rules
 
-These rules apply to reusable Solid components, rendering, styles, themes, icon registries, and plugin UI primitives. Root `AGENTS.md`, `apps/web/AGENTS.md`, and `apps/web/PRODUCT.md` define the consuming product contract.
+Reusable Solid components, rendering, styles, themes, icons and plugin primitives follow Root `AGENTS.md`, `apps/web/AGENTS.md`, and `apps/web/PRODUCT.md`.
 
-Load `develop-frontend` for shared UI changes and `change-plugin-runtime` for plugin registries or contribution primitives.
+Load `develop-frontend`; plugin registries also require `change-plugin-runtime`.
 
 ## Preserve the Shared Boundary
 
@@ -13,6 +13,7 @@ Load `develop-frontend` for shared UI changes and `change-plugin-runtime` for pl
 - Keep keyboard access, labels, focus-visible behavior, WCAG AA contrast, reduced motion, loading/empty/error/disabled states, and narrow layouts in reusable primitives.
 - Non-tool product meaning uses `semantic-icon.tsx`; new base glyphs must exist in both `components/icon.tsx` and `plugin/builtin-icons.ts`. Tool cards, file icons, and plugin-declared icons keep their separate registries.
 - Shared scroll surfaces declare native vertical viewport ownership for Markdown as defined in [frontend data sync](../../docs/architecture/frontend-data-sync.md#markdown-terminal-handoff).
+- Resource controls share `ResourceReference` parsing, the Markdown resource observer and `ResourceOpenController.open`; App owns opening policy.
 - Preserve Markdown sanitization, streaming/terminal rendering bounds, attachment behavior, and theme polarity. Treat SVG and rendered HTML as untrusted input at their owning boundary.
 - The published color contract is owned by `packages/plugin/src/theme`; `src/theme/*` keeps compatibility facades and owns Solid runtime application, the single theme registry, and shell snapshots. Themes provide validated light/dark seeds plus typed overrides. Built-in curated skins pre-register from `src/theme/default-themes.ts`; the default Synergy skin keeps its curated overrides in `themes/synergy.json`, while the other built-in skins stay seeds-only. Plugin themes register into the same registry and may not shadow built-in skin ids. Run `bun run generate:theme` after changing the contract or built-in theme and do not hand-edit generated CSS, schema, Web boot fallback, or Desktop fallback skin.
 - Consumer color utilities must name canonical tokens. Add or change a semantic token at the theme boundary instead of inventing component-local aliases such as `*-soft`, `*-muted`, or unregistered foreground names. Keep status foreground/surface pairs at WCAG AA contrast.

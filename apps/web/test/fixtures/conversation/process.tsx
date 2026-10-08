@@ -623,10 +623,7 @@ const resource = {
     window.__processSelection = target
     return true
   },
-  open: () => false,
-  openAttachment: () => false,
-  resolveWorkspacePath: (v: string) => v,
-  openWorkspaceSource: () => false,
+  open: async () => ({ status: "cancelled" as const }),
 }
 function Scroller(props: ParentProps) {
   const autoScroll = scrolling

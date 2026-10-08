@@ -292,14 +292,11 @@ You are producing plain text that will later be styled by the CLI. Follow these 
 
 **File References**
 
-When referencing files in your response, make sure to include the relevant start line and always follow the below rules:
-  * Use inline code to make file paths clickable.
-  * Each reference should have a standalone path. Even if it's the same file.
-  * Accepted: absolute, workspace‑relative, a/ or b/ diff prefixes, or bare filename/suffix.
-  * Line/column (1‑based, optional): :line[:column] or #Lline[Ccolumn] (column defaults to 1).
-  * Do not use URIs like file://, vscode://, or https://.
-  * Do not provide range of lines.
-  * Examples: src/app.ts, src/app.ts:42, b/server/index.js#L10
+- Use explicit Markdown links: [`app.ts:42`](src/app.ts#L42). Inline code alone is plain text.
+- Each target must be an exact absolute path or workspace-relative path. Do not guess a basename, suffix, or a/ or b/ diff prefix.
+- Locations are 1-based: #L42, #L42C6-L45C9 or :42:6. Use #page=4 for a PDF page and #heading for a document section. Only cite verified locations.
+- Encode spaces and literal #, ? and % characters in paths. Web links remain ordinary URLs.
+- Preserve tool-returned asset:// references for immutable attachments; link to a source file separately when needed.
 
 **Structure**
 

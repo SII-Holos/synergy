@@ -1,7 +1,7 @@
 import "./content-preview.css"
 import { createMemo, Show, type JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import { useResourceOpen } from "../../context/resource-open"
+import { useReferenceContext, useResourceOpen } from "../../context/resource-open"
 import { Button } from "../button"
 import { DiffPreview } from "./diff-preview"
 import { previewToolContent } from "./content-preview-model"
@@ -15,7 +15,8 @@ export function ToolFilePreview(props: { content: string; path?: string; offset?
   const { _ } = useLingui()
   const resource = useResourceOpen()
   const preview = createMemo(() => previewToolContent(props.content, props))
-  const path = () => resource?.resolveWorkspacePath?.(props.path)
+  const context = useReferenceContext()
+  const path = () => props.path
   return (
     <div data-component="tool-content-preview">
       <Show when={preview().truncated}>
@@ -25,7 +26,12 @@ export function ToolFilePreview(props: { content: string; path?: string; offset?
         <code>{preview().text}</code>
       </pre>
       <Show when={path()}>
-        <Button variant="ghost" onClick={() => resource?.openWorkspaceSource?.(path()!)}>
+        <Button
+          variant="ghost"
+          onClick={() =>
+            resource?.open({ kind: "workspace-file", path: path()! }, { context: context() ?? { state: "unresolved" } })
+          }
+        >
           {_(openFileLabel)}
         </Button>
       </Show>

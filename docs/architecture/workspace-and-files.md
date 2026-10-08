@@ -194,6 +194,16 @@ Copy prepares a sibling staging directory, preserves file bytes, permission bits
 
 Successful operations invalidate the file index and publish Workspace-qualified events. Only a confirmed move emits a rename event. A native watcher batch containing a sibling deletion and creation cannot establish that the two entries are the same file. External replacements remain ordinary content invalidations; unrelated files cannot inherit open tabs or drafts through a guessed rename.
 
+## Message resource opening
+
+Explicit Markdown links and structured file references pass through the portable `ResourceReference` parser and the host's asynchronous `resource.open`. File paths, immutable Assets, external URLs and local anchors have distinct typed targets. Plain inline code is not inferred as a file reference. File controls have a file-type icon, preserved label, path tooltip and keyboard activation; ordinary external links retain native browser behavior.
+
+Workspace targets resolve only against their recorded message or structured-reference context: Workspace ID, binding generation, root and relative directory. A file open verifies the captured generation through the generated Workspace SDK, then opens the current file or directory in the File workbench. It does not use basename search, strip arbitrary diff prefixes or select the current Workspace for unresolved history. An explicit Workspace picker resolves only that opening request. A removed or rebound Workspace remains unavailable.
+
+Locations are 1-based and separate from target identity: `#L42`, `#L42C6-L45C9`, `:42:6`, a document heading, or `#page=4`. Repeated navigation updates the existing reader while preserving drafts. Text positions outside the loaded content produce a notice and use the nearest available position; capped text stays read-only. Workspace Markdown resolves relative resources against the source document's directory. Anchors stay scoped to that document, including virtualized blocks.
+
+`apps/web/src/components/resource-preview.ts` owns the one format capability table for files and attachments. Immutable Assets retain their byte identity and use the attachment reader; workspace files retain their editing and filesystem ownership. PDF, Office and media previews reuse existing bounded readers. Reader errors remain local, with retry/download behavior. Open requests are cancelled on a newer request or a changed connection, Scope or session, and Workbench checks the request before committing an asynchronous replacement. Internal failures cannot fall through to browser-relative URLs. See the [resource-opening decision](../decisions/implemented/architecture/2026-10-08-unified-resource-opening.md).
+
 ## File Workbench Ownership and Bounds
 
 `apps/web/src/context/file/index.tsx` is the single frontend data owner for the File workbench. File tabs live in the Side Workspace as resource tabs. The Context panel is a separate session-scoped Side Workspace singleton and does not own files. Web and Desktop use generated `workspace.files.*` SDK calls against the active Scope rather than renderer or Electron-main filesystem reads.

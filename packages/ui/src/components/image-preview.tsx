@@ -1,4 +1,5 @@
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useDialog } from "../context/dialog"
@@ -125,16 +126,25 @@ export function ImagePreview(props: ImagePreviewProps) {
     setRotation((value) => (value + 90) % 360)
   }
 
-  function openExternal() {
+  const externalUrl = () => {
     const image = current()
-    if (!image) return
-    window.open(image.externalUrl ?? image.src, "_blank", "noopener,noreferrer")
+    const target = image && ResourceReference.parse(image.externalUrl ?? image.src)
+    return target?.kind === "url" && /^https?:/i.test(target.url) ? target.url : undefined
   }
 
-  function openSource() {
+  function openExternal() {
+    const url = externalUrl()
+    if (url) window.open(url, "_blank", "noopener,noreferrer")
+  }
+
+  async function openSource() {
     const sourcePath = current()?.sourcePath
-    if (!sourcePath || !resourceOpen?.openWorkspaceSource?.(sourcePath)) return
-    dialog.close()
+    if (!sourcePath || !resourceOpen) return
+    const result = await resourceOpen.open(
+      { kind: "workspace-file", path: sourcePath },
+      { context: current()?.referenceContext ?? { state: "unresolved" } },
+    )
+    if (result.status === "opened") dialog.close()
   }
 
   function onKeyDown(event: KeyboardEvent) {
@@ -295,7 +305,7 @@ export function ImagePreview(props: ImagePreviewProps) {
                     >
                       <Icon name="download" size="small" />
                     </a>
-                    <Show when={resourceOpen?.openWorkspaceSource ? current()?.sourcePath : undefined}>
+                    <Show when={resourceOpen ? current()?.sourcePath : undefined}>
                       <button
                         type="button"
                         data-component="icon-button"
@@ -307,16 +317,18 @@ export function ImagePreview(props: ImagePreviewProps) {
                         <Icon name={getSemanticIcon("workspace.files")} size="small" />
                       </button>
                     </Show>
-                    <button
-                      type="button"
-                      data-component="icon-button"
-                      data-variant="ghost"
-                      aria-label={_(openNewWindowDescriptor)}
-                      title={_(openNewWindowDescriptor)}
-                      onClick={openExternal}
-                    >
-                      <Icon name="arrow-up-right" size="small" />
-                    </button>
+                    <Show when={externalUrl()}>
+                      <button
+                        type="button"
+                        data-component="icon-button"
+                        data-variant="ghost"
+                        aria-label={_(openNewWindowDescriptor)}
+                        title={_(openNewWindowDescriptor)}
+                        onClick={openExternal}
+                      >
+                        <Icon name="arrow-up-right" size="small" />
+                      </button>
+                    </Show>
                   </div>
                   <Show when={canNavigate()}>
                     <button

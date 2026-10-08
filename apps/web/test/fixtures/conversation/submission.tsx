@@ -182,10 +182,7 @@ export function SubmissionFixture(props: { locale(): void }) {
     contentRef() {},
   } as PluginConversationViewport
   const resource = {
-    open: () => false,
-    openAttachment: () => false,
-    resolveWorkspacePath: (value: string) => value,
-    openWorkspaceSource: () => false,
+    open: async () => ({ status: "cancelled" as const }),
   }
   return (
     <DialogProvider>

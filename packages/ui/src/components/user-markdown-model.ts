@@ -7,6 +7,7 @@ import { toHast } from "mdast-util-to-hast"
 import { toHtml } from "hast-util-to-html"
 import { decodeString } from "micromark-util-decode-string"
 import type { Nodes, Text } from "mdast"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 
 export interface UserMarkdownReference {
   start: number
@@ -14,7 +15,23 @@ export interface UserMarkdownReference {
 }
 
 export function userMarkdownImageUrl(value: string) {
-  return /^(https?:\/\/|blob:|data:image\/|asset:\/\/|\/asset\/)/i.test(value) ? value : undefined
+  const target = ResourceReference.parse(value)
+  return ["workspace-file", "asset", "image"].includes(target.kind) ||
+    (target.kind === "url" && /^https?:/i.test(target.url))
+    ? value
+    : undefined
+}
+
+function linkProperties(value: string, title?: string | null) {
+  const target = ResourceReference.parse(value)
+  return {
+    ...(title ? { title } : {}),
+    ...(target.kind === "url"
+      ? { href: target.url, target: "_blank", rel: "noopener noreferrer" }
+      : target.kind === "anchor"
+        ? { href: `#${encodeURIComponent(target.id)}` }
+        : { "data-resource-reference": value, role: "button", tabIndex: 0 }),
+  }
 }
 
 export async function renderUserMarkdown(
@@ -90,6 +107,23 @@ export async function renderUserMarkdown(
   const hast = toHast(tree, {
     handlers: {
       html: (_state, node) => ({ type: "text", value: node.value }),
+      link: (state, node) => ({
+        type: "element",
+        tagName: "a",
+        properties: linkProperties(node.url, node.title),
+        children: state.all(node),
+      }),
+      linkReference: (state, node) => {
+        const definition = state.definitionById.get(node.identifier.toUpperCase())
+        return definition
+          ? {
+              type: "element",
+              tagName: "a",
+              properties: linkProperties(definition.url, definition.title),
+              children: state.all(node),
+            }
+          : { type: "text", value: source.slice(node.position?.start.offset, node.position?.end.offset) }
+      },
       image: (_state, node) => {
         const url = userMarkdownImageUrl(node.url)
         return url

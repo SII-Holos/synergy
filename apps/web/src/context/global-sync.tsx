@@ -26,6 +26,7 @@ import {
 } from "@ericsanchezok/synergy-sdk/client"
 import { sharedRequests } from "@/utils/shared-requests"
 import { createContentBudget, contentBudgetKey } from "./content-budget"
+import { createPartContentStore } from "./part-content-store"
 import { clearConversationContent } from "./conversation-content-state"
 import type { SessionViewportContent } from "./session-viewport-content"
 import { partSummaryPageState, type PartSummaryPageState } from "./part-summary-loader"
@@ -283,6 +284,7 @@ function removePendingRequest<T extends { id: string }>(
 function createGlobalSync() {
   const partArrival = createPartArrivalState()
   const contentBudget = createContentBudget()
+  const partContentStore = createPartContentStore()
   const contentCaches = new Map<string, { cache: ReturnType<typeof createPartMaterializer>; readers: number }>()
   function retainContentCache(scopeKey: string, create: () => ReturnType<typeof createPartMaterializer>) {
     let entry = contentCaches.get(scopeKey)
@@ -2634,6 +2636,7 @@ function createGlobalSync() {
     data: globalStore,
     partArrival,
     contentBudget,
+    partContentStore,
     retainContentCache,
     seedSessionViewportContent(scopeKey: string, content: SessionViewportContent) {
       const state = children[scopeKey]

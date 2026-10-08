@@ -12,6 +12,7 @@ import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { Identifier } from "@/utils/id"
 import { formatNoteContent, formatSessionReference, inlineText } from "./content"
 import { createUploadedAttachmentInputPart } from "./attachment-submit"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 
 export function createSubmissionPartIDs() {
   const ids = new Map<string, string>([["text", Identifier.ascending("part")]])
@@ -34,17 +35,18 @@ export function createSubmissionParts(input: {
   workspace?: string | null
   sessionContent?: ReadonlyMap<string, string>
 }) {
-  const absolute = (path: string) => {
-    if (path.startsWith("/")) return path
-    if (!input.workspace) throw new Error("File references require a session workspace")
-    return `${input.workspace}/${path}`.replace("//", "/")
+  const absolute = (path: string, workspace?: ResourceReference.Workspace) => {
+    if (path.startsWith("/") || /^[a-z]:[\\/]/i.test(path)) return path
+    const root = workspace?.root ?? input.workspace
+    if (!root) throw new Error("File references require a session workspace")
+    return `${root.replace(/[\\/]$/, "")}/${path}`
   }
   const filePart = (attachment: FileAttachmentPart | FileContextItem, index: number) => {
-    const path = absolute(attachment.path)
+    const path = absolute(attachment.path, attachment.workspace)
     const query = attachment.selection
       ? `?start=${attachment.selection.startLine}&end=${attachment.selection.endLine}`
       : ""
-    const url = `file://${path}${query}`
+    const url = `${ResourceReference.fileUrl(path)}${query}`
     return {
       id: input.id(
         "content" in attachment ? `file:${index}:${attachment.path}${query}` : `context:${attachment.path}${query}`,
@@ -54,12 +56,25 @@ export function createSubmissionParts(input: {
       url,
       filename: getFilename(attachment.path),
       model: { mode: "content" as const },
-      ...("content" in attachment
+      ...("content" in attachment || attachment.workspace
         ? {
             source: {
               type: "file" as const,
-              text: { value: attachment.content, start: attachment.start, end: attachment.end },
+              text:
+                "content" in attachment
+                  ? { value: attachment.content, start: attachment.start, end: attachment.end }
+                  : { value: "", start: 0, end: 0 },
               path,
+              ...(attachment.workspace ? { workspace: attachment.workspace } : {}),
+              ...(attachment.selection
+                ? {
+                    location: {
+                      kind: "text" as const,
+                      line: attachment.selection.startLine,
+                      endLine: attachment.selection.endLine,
+                    },
+                  }
+                : {}),
             },
           }
         : {}),

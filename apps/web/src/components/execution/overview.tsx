@@ -8,6 +8,7 @@ import { E, K } from "./i18n"
 import { contextWorkspace as C } from "@/locales/messages"
 import { ActivityExplorer } from "./chart"
 import { executionCostText, executionMoney } from "./cost"
+import { ExecutionPerformance, UsagePopover } from "./usage"
 import "./execution.css"
 
 export function executionDuration(value: number) {
@@ -123,12 +124,10 @@ export function ExecutionOverview(props: {
   })
   const contextHelp = () =>
     distribution().length
-      ? _(E.contextHelp) +
-        " · " +
-        distribution()
+      ? distribution()
           .map((value) => value.label + " " + number(value.tokens))
           .join(" · ")
-      : _(props.summary.context?.stale ? E.contextStale : ratio() == null ? E.contextUnknown : E.contextHelp)
+      : _(props.summary.context?.stale ? E.contextStale : ratio() == null ? E.contextUnknown : E.context)
   const explore = () => {
     if (props.onLocate) dialog.push(() => <ActivityExplorer summary={props.summary} onLocate={props.onLocate!} />)
   }
@@ -161,12 +160,12 @@ export function ExecutionOverview(props: {
           <dd>{props.summary.elapsedMs != null ? executionDuration(elapsed()) : "—"}</dd>
         </div>
         <div>
-          <dt>
-            <Tooltip value={_(E.totalHelp)}>
-              <span>{_(E.tokens)}</span>
-            </Tooltip>
-          </dt>
-          <dd>{metric()}</dd>
+          <dt>{_(E.tokens)}</dt>
+          <dd>
+            <UsagePopover summary={props.summary} class="execution-cost-button">
+              {metric()}
+            </UsagePopover>
+          </dd>
         </div>
         <div>
           <dt>{_(E.cost)}</dt>
@@ -188,14 +187,11 @@ export function ExecutionOverview(props: {
           </dd>
         </div>
         <div>
-          <dt>
-            <Tooltip value={_(E.contextHelp)}>
-              <span>{_(E.context)}</span>
-            </Tooltip>
-          </dt>
+          <dt>{_(E.context)}</dt>
           <dd>{context()}</dd>
         </div>
       </dl>
+      <ExecutionPerformance summary={props.summary} />
       <Tooltip value={contextHelp()}>
         <div
           class="execution-context-bar"

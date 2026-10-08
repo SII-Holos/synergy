@@ -691,8 +691,16 @@ function ConversationDisplayRow(
       .then(() => {
         if (!alive || generation !== loadGeneration) return
         setLoadFailure(undefined)
-        for (const entry of retainedParts.values()) entry.lease.release()
-        retainedParts.clear()
+        // Version is authoritative: the retain effect below already drops leases
+        // whose summary version no longer matches. Releasing every lease here
+        // aborted healthy reads mid-flight — each abort surfaces as a canceled
+        // request and then resends with the very same version (refresh churn).
+        // Only a genuinely failed part still needs its lease recycled.
+        for (const [partID, entry] of retainedParts) {
+          if (!partStates[partID]?.failed) continue
+          entry.lease.release()
+          retainedParts.delete(partID)
+        }
         setRetry((value) => value + 1)
       })
       .catch((error) => {

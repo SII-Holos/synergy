@@ -9,11 +9,16 @@ test("primary prompts provide one shared, task-oriented progress policy", () => 
     const prompt = withPreambleSection(built)
     const section = prompt.match(/(?:^|\n)#+ Progress Updates\n([\s\S]*?)(?=\n#|$)/)?.[1]
     expect(section).toBeDefined()
-    expect(section).toContain("important finding")
+    expect(section).toContain("new information changes the user's expectations or requires their attention")
     expect(section).toContain("change of approach")
-    expect(section).toContain("Do not narrate each tool call")
-    expect(section).toContain("result before stating a conclusion")
-    expect(section).toContain("Prefer continuing with tools")
+    expect(section).toContain("Judge novelty against what you have already told the user")
+    expect(section).toContain("rewording the same issue is not an update")
+    expect(section).toContain("Do not narrate routine tool calls or steps")
+    expect(section).toContain("Wait for results before conclusions")
+    expect(section).toContain(
+      "For substantial work, briefly state your initial direction and share meaningful progress",
+    )
+    expect(section).toContain("Between updates, continue with tools")
     expect(section).not.toContain("begin with one short sentence")
     expect(section).not.toContain("about a minute")
     expect(prompt.match(/#+ Progress Updates/g)).toHaveLength(1)
@@ -26,8 +31,8 @@ test("primary prompts provide one shared, task-oriented progress policy", () => 
 test("custom and empty prompts receive the shared progress policy exactly once", () => {
   for (const base of [undefined, "You inspect local projects."]) {
     const prompt = withPreambleSection(base)
-    expect(prompt).toContain("Do not narrate each tool call")
-    expect(prompt).toContain("A routine result or another model reply alone does not need an update")
+    expect(prompt).toContain("Judge novelty against what you have already told the user")
+    expect(prompt).toContain("rewording the same issue is not an update")
     expect(withPreambleSection(prompt)).toBe(prompt)
     expect(prompt.match(/#+ Progress Updates/g)).toHaveLength(1)
     if (base) expect(prompt).toContain(base)

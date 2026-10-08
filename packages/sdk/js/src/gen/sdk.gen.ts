@@ -762,6 +762,8 @@ import type {
   SessionPartContentResponses,
   SessionPartPageErrors,
   SessionPartPageResponses,
+  SessionPartPagesErrors,
+  SessionPartPagesResponses,
   SessionPromptAsyncErrors,
   SessionPromptAsyncResponses,
   SessionPromptErrors,
@@ -4655,6 +4657,47 @@ export class Session extends HeyApiClient {
       url: "/session/{sessionID}/message/{messageID}/part/page",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Get presentation summaries for a batch of messages' Parts
+   *
+   * Refresh-time fan-in for the Web conversation window: one request returns the bounded Part summary page for each of up to 100 messages; under HTTP/1.1-only deployments this avoids stalling the per-message fan-out behind the browser's connection limit.
+   */
+  public partPages<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      messageIDs?: Array<string>
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "messageIDs" },
+            { in: "body", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionPartPagesResponses, SessionPartPagesErrors, ThrowOnError>({
+      url: "/session/{sessionID}/part/pages",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

@@ -1331,8 +1331,7 @@ for (const { key, change } of [
     })
     expect(await page.evaluate(() => window.__conversationProcess.locate("work", "reading-30"))).toBe(true)
     const reference = page.getByRole("link", { name: "Project reference 30", exact: true })
-    await reference.scrollIntoViewIfNeeded()
-    await reference.evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }))
+    await reference.focus()
     const selected =
       change === "same-version body growth"
         ? await reference.evaluate((element) => {
