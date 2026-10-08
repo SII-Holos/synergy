@@ -96,7 +96,7 @@ test.each(["Next reference", "Composer", "First reference"])(
         ? page.getByRole("textbox", { name: "Composer" })
         : page.getByRole("button", { name: target, exact: true })
     await control.focus()
-    await page.evaluate(() => (window as Window & { finishReference(): void }).finishReference())
+    await page.evaluate(() => (window as unknown as { finishReference(): void }).finishReference())
     await page.waitForFunction(() =>
       document.querySelector(".monaco-editor .view-lines")?.textContent?.includes("sample120"),
     )
