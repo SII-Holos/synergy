@@ -41,7 +41,18 @@ export function registerReactionOnlyJobs() {
       const recorded = parts.some(
         (part) => part.type === "tool" && part.tool === REACTION_ONLY_TOOL && part.state.status === "completed",
       )
-      return recorded ? [{ type: "channel_reaction_only_turn_close" }] : []
+      if (!recorded) return []
+      // A sibling tool call still in flight must finish first: terminalizing
+      // here would leave that result with no model round to consume it. Its
+      // completion re-runs this job, which closes the turn then.
+      const siblingInFlight = parts.some(
+        (part) =>
+          part.type === "tool" &&
+          part.tool !== REACTION_ONLY_TOOL &&
+          part.state.status !== "completed" &&
+          part.state.status !== "error",
+      )
+      return siblingInFlight ? [] : [{ type: "channel_reaction_only_turn_close" }]
     },
     async execute(ctx) {
       const assistant = ctx.lastAssistant

@@ -114,7 +114,20 @@ describe("channel_reaction_only availability gate", () => {
     expect(channelToolVisibility({ toolName: "channel_reaction_only", session: feishuSession() })).toBeUndefined()
   })
 
-  test("stays synchronous so a Promise cannot hide every tool", () => {
+  test("hides channel_reaction_only from boss-role sessions", () => {
+    // Boss-role sessions deliver only through explicit channel_push calls; a
+    // reaction-only terminal would swallow the turn on both delivery paths.
+    const bossSession = { ...feishuSession(), workflow: { kind: "boss", role: "boss" } as const }
+    expect(channelToolVisibility({ toolName: "channel_reaction_only", session: bossSession })).toMatchObject({
+      code: "tool_unavailable",
+      metadata: { requiredEndpoint: "feishu" },
+    })
+    // A non-boss workflow role on the same endpoint keeps the tool visible.
+    const workerSession = { ...feishuSession(), workflow: { kind: "boss", role: "worker" } as const }
+    expect(channelToolVisibility({ toolName: "channel_reaction_only", session: workerSession })).toBeUndefined()
+  })
+
+  test("stays synchronous so a Promise cannot hide every tool",() => {
     // SessionModePolicy.visibility is synchronous and its aggregator does not
     // await: a returned Promise is truthy and would mark every definition from
     // every contribution source unavailable. Keep this guard.

@@ -217,6 +217,28 @@ describe("Feishu addReaction", () => {
     }
   })
 
+  test("treats a non-OK status with code 0 as a transport failure, not a success", async () => {
+    // Feishu's contract is ok <=> code 0. A 5xx carrying {code:0} would
+    // otherwise surface as "delivered" with no reaction applied and suppress
+    // retries; readFeishuReactionResult reports it as a transport failure.
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ code: 0 }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      })) as unknown as typeof fetch
+
+    try {
+      const failure = await providerWithAccount({})
+        .addReaction({ accountId: "acct_test", messageId: "om_message", emoji: "SILENT" })
+        .catch((error: unknown) => error)
+      expect(failure).toBeInstanceOf(FeishuReactionError)
+      expect((failure as FeishuReactionError).status).toBe(502)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   test("reports an unknown account as a failure", async () => {
     const failure = await new FeishuProvider()
       .addReaction({ accountId: "missing", messageId: "om_message", emoji: "SILENT" })

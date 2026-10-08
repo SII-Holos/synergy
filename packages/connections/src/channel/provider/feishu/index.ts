@@ -98,7 +98,7 @@ async function readFeishuReactionResult(response: Response, operation: string): 
   // deleted message, ...), and a success with `code: 0`. A missing body or a
   // missing code carries no business detail, and `code: 0` on a non-OK status
   // is a protocol contradiction; both are reported as transport failures.
-  if (typeof result?.code !== "number" || (response.ok && result.code !== 0)) {
+  if (typeof result?.code !== "number" || response.ok !== (result.code === 0)) {
     throw new FeishuReactionError(`${operation} failed: HTTP ${response.status}`, response.status, result?.code)
   }
 

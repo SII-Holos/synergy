@@ -117,6 +117,47 @@ describe("channel_reaction_only_turn_close", () => {
       }),
     ))
 
+  test("waits for a sibling tool call still in flight before closing the turn", () =>
+    runtime.run(() =>
+      inScope(async (sessionID, rootID) => {
+        const assistant = await assistantMessage(sessionID, rootID)
+        assistant.finish = "tool-calls"
+        await reactionToolPart(sessionID, assistant.id)
+        const siblingID = Identifier.ascending("part")
+        await Session.updatePart({
+          id: siblingID,
+          messageID: assistant.id,
+          sessionID,
+          type: "tool",
+          callID: "call_sibling",
+          tool: "bash",
+          state: { status: "running", input: {}, time: { start: Date.now() } },
+        })
+        const inFlight = await MessageV2.parts({ sessionID, messageID: assistant.id })
+        expect(collected(context({ sessionID, rootID, assistant, parts: inFlight }))).toEqual([])
+
+        // Once the sibling settles, the job fires again and closes the turn.
+        await Session.updatePart({
+          id: siblingID,
+          messageID: assistant.id,
+          sessionID,
+          type: "tool",
+          callID: "call_sibling",
+          tool: "bash",
+          state: {
+            status: "completed",
+            input: {},
+            output: "done",
+            title: "bash",
+            metadata: {},
+            time: { start: Date.now(), end: Date.now() },
+          },
+        })
+        const settled = await MessageV2.parts({ sessionID, messageID: assistant.id })
+        expect(collected(context({ sessionID, rootID, assistant, parts: settled }))).toEqual([{ type: JOB_TYPE }])
+      }),
+    ))
+
   test("does not fire without a completed reaction-only tool part", () =>
     runtime.run(() =>
       inScope(async (sessionID, rootID) => {

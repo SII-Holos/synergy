@@ -4,15 +4,22 @@ import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { SessionModePolicy } from "@ericsanchezok/synergy-harness/session/tool-mode-policy"
 import { isFeishuReactionOnlyAvailable } from "./provider/feishu/reaction-only"
 const REACTION_ONLY_TOOL = "channel_reaction_only"
-type FeishuChannelSession = Pick<Info, "endpoint"> & {
+type FeishuChannelSession = Pick<Info, "endpoint" | "workflow"> & {
   endpoint: { kind: "channel"; channel: { type: string; accountId?: string } }
 }
-function isFeishuChannelSession(session?: Pick<Info, "endpoint">): session is FeishuChannelSession {
+function isFeishuChannelSession(session?: Pick<Info, "endpoint" | "workflow">): session is FeishuChannelSession {
   return session?.endpoint?.kind === "channel" && session.endpoint.channel?.type === "feishu"
+}
+// Boss-role sessions deliver only through explicit channel_push calls: the
+// foreground skips reaction delivery for boss routes and the outbound bridge
+// skips boss sessions, so a reaction-only terminal would silently swallow the
+// turn (no reaction, no content, no follow-up model round).
+function isBossRoleSession(session?: { workflow?: { kind?: unknown; role?: unknown } }): boolean {
+  return session?.workflow?.kind === "boss" && session.workflow?.role === "boss"
 }
 export function channelToolVisibility(input: {
   toolName: string
-  session?: Pick<Info, "endpoint">
+  session?: Pick<Info, "endpoint" | "workflow">
 }): ToolDiagnostic | undefined {
   if (input.toolName === "response_card" && input.session?.endpoint?.kind !== "channel") {
     return {
@@ -35,12 +42,15 @@ export function channelToolVisibility(input: {
     }
   }
 
-  if (input.toolName === REACTION_ONLY_TOOL && !isFeishuChannelSession(input.session)) {
-    return {
-      code: "tool_unavailable",
-      toolName: input.toolName,
-      message: `The "${input.toolName}" tool is only available in Feishu Channel sessions.`,
-      metadata: { requiredEndpoint: "feishu" },
+  if (input.toolName === REACTION_ONLY_TOOL) {
+    const session = input.session
+    if (!isFeishuChannelSession(session) || isBossRoleSession(session)) {
+      return {
+        code: "tool_unavailable",
+        toolName: input.toolName,
+        message: `The "${input.toolName}" tool is only available in Feishu Channel sessions.`,
+        metadata: { requiredEndpoint: "feishu" },
+      }
     }
   }
 }
@@ -66,7 +76,7 @@ export async function channelToolAvailability(input: {
       },
     ],
   ])
-  if (!isFeishuChannelSession(input.session)) return new Map()
+  if (!isFeishuChannelSession(input.session) || isBossRoleSession(input.session)) return new Map()
   try {
     const accountId = input.session.endpoint.channel.accountId
     const channel = (await Config.current()).channel?.feishu

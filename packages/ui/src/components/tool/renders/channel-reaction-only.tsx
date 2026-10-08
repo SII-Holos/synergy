@@ -12,7 +12,9 @@ ToolRegistry.register({
         trigger={{
           icon: "message-square-more",
           title: TOOL_TITLE_DESC.channel_reaction_only,
-          subtitle: props.input.reaction as string | undefined,
+          // The tool records its terminal intent in part metadata; input is
+          // always an empty object because the tool takes no parameters.
+          subtitle: (props.metadata?.intent as { reaction?: string } | undefined)?.reaction,
         }}
       >
         <Show when={props.output}>

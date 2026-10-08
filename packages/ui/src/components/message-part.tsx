@@ -592,7 +592,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "message-square-more",
         title: TOOL_TITLE_DESC["channel_reaction_only"],
-        subtitle: input.reaction,
+        subtitle: metadata?.intent?.reaction,
       }
     case "openai_image_gen":
       return {

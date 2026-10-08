@@ -43,7 +43,8 @@ await import("../../../../src/components/tool/renders/channel-reaction-only")
 describe("registered channel_reaction_only renderer", () => {
   test("uses localized chrome with the chosen reaction as subtitle", () => {
     registeredRender?.({
-      input: { reaction: "SILENT" },
+      input: {},
+      metadata: { intent: { type: "reaction_only", reaction: "SILENT" } },
       output: 'Ending this turn with the "SILENT" reaction and no other delivery.',
       tool: "channel_reaction_only",
     })
@@ -56,7 +57,7 @@ describe("registered channel_reaction_only renderer", () => {
     })
   })
 
-  test("omits the subtitle when the tool used the account default", () => {
+  test("omits the subtitle when the part carries no intent metadata", () => {
     capturedTrigger = undefined
     registeredRender?.({
       input: {},
