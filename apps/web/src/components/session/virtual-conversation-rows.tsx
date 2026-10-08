@@ -20,7 +20,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { ActivityBatchLabel, ActivityBatchStatus } from "@ericsanchezok/synergy-ui/activity-batch"
 import { sessionActivityAnimating, sessionActivityLabel } from "@ericsanchezok/synergy-ui/session-status"
-import { createDisclosureMotionRef, readSelectionRanges } from "@ericsanchezok/synergy-ui/hooks"
+import { createDisclosureMotionRef, readSelectionElements } from "@ericsanchezok/synergy-ui/hooks"
 import "./conversation-rows.css"
 import { Dynamic } from "solid-js/web"
 import { SessionTurn, resolveActivityDisclosure } from "@ericsanchezok/synergy-ui/session-turn"
@@ -378,19 +378,7 @@ export function VirtualConversationRows(
     }
     const focus = event?.type === "focusout" ? (event as FocusEvent).relatedTarget : document.activeElement
     add(focus instanceof Node ? focus : null)
-    for (const range of readSelectionRanges(document)) {
-      add(range.startContainer)
-      add(range.endContainer)
-      const indices = [...ids].map((key) => keys().indexOf(key)).filter((index) => index >= 0)
-      if (indices.length === 2) {
-        const start = Math.min(...indices),
-          end = Math.max(...indices)
-        for (const element of container?.querySelectorAll<HTMLElement>("[data-display-row]") ?? []) {
-          const index = keys().indexOf(element.dataset.displayRow!)
-          if (index >= start && index <= end) ids.add(element.dataset.displayRow!)
-        }
-      }
-    }
+    if (container) for (const element of readSelectionElements(container, "[data-display-row]")) add(element)
     batch(() => {
       setRetained([...ids])
       setInteractionRoots([...roots])
@@ -1205,18 +1193,7 @@ function ConversationActivityBody(
     }
     const focus = event?.type === "focusout" ? (event as FocusEvent).relatedTarget : document.activeElement
     add(focus instanceof Node ? focus : null)
-    for (const range of readSelectionRanges(document)) {
-      add(range.startContainer)
-      add(range.endContainer)
-      if (indices.size === 2) {
-        const start = Math.min(...indices),
-          end = Math.max(...indices)
-        for (const element of viewport?.querySelectorAll<HTMLElement>("[data-display-row]") ?? []) {
-          const index = keys().indexOf(element.dataset.displayRow!)
-          if (index >= start && index <= end) indices.add(index)
-        }
-      }
-    }
+    if (viewport) for (const element of readSelectionElements(viewport, "[data-display-row]")) add(element)
     setRetained([...indices])
   }
   onMount(() => {

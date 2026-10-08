@@ -10,6 +10,7 @@ export function conversationReadingIndex(
   if (!count) return
   let index = Math.min(virtual.findStartIndex(), count - 1)
   const cutoff = virtual.scrollOffset - margin + 100
+  if (virtual.getItemOffset(index) > cutoff) return
   while (index + 1 < count && virtual.getItemOffset(index + 1) <= cutoff) index++
   return index
 }

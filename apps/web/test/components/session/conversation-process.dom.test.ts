@@ -1781,12 +1781,94 @@ test("a process locator opens a closed group and finds an offscreen part in its 
   })
 }, 30000)
 
+test.each(["outer", "process"] as const)(
+  "disjoint selected ranges retain only their own mounted %s rows",
+  async (owner) => {
+    await page.goto(owner === "outer" ? `${url}?scrolling=1&outer-paging=1` : url)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    if (owner === "process") await page.evaluate(() => window.__conversationProcess.grow(1000))
+    const viewport = page.locator(owner === "outer" ? "[data-scroller]" : '[data-component="process-viewport"]').last()
+    await viewport.evaluate((element) => {
+      element.style.height = "16000px"
+      element.style.maxHeight = "16000px"
+      element.scrollTop = 0
+    })
+    await page.waitForFunction((owner) => {
+      const viewport = document.querySelector(
+        owner === "outer" ? "[data-scroller]" : '[data-component="process-viewport"]',
+      )!
+      return (
+        [...viewport.querySelectorAll("[data-display-row]")].filter(
+          (row) => owner === "process" || !row.closest('[data-component="process-viewport"]'),
+        ).length >= 9
+      )
+    }, owner)
+    await viewport.evaluate((element, owner) => {
+      const rows = [...element.querySelectorAll<HTMLElement>("[data-display-row]")]
+        .filter((row) => owner === "process" || !row.closest('[data-component="process-viewport"]'))
+        .slice(0, 9)
+      const ranges = [
+        [0, 2],
+        [4, 6],
+      ].map(([start, end]) => {
+        const range = document.createRange()
+        range.setStart(rows[start], 0)
+        range.setEnd(rows[end], rows[end].childNodes.length)
+        return range
+      })
+      window.__processSelection = rows
+      // Chromium exposes one native range; real DOM Ranges exercise browsers with disjoint selections.
+      Object.defineProperty(document, "getSelection", {
+        configurable: true,
+        value: () => ({
+          rangeCount: ranges.length,
+          getRangeAt: (index: number) => ranges[index],
+        }),
+      })
+      rows[8].querySelector<HTMLElement>("button, a")?.focus({ preventScroll: true })
+      document.dispatchEvent(new Event("selectionchange"))
+    }, owner)
+    await viewport.evaluate((element) => {
+      element.style.height = "280px"
+      element.style.maxHeight = "280px"
+    })
+    await viewport.hover()
+    await page.mouse.wheel(0, 100_000)
+    await page.waitForFunction(() => {
+      const rows = window.__processSelection as HTMLElement[]
+      return !rows[3].isConnected
+    })
+    expect(
+      await page.evaluate(() => {
+        const rows = window.__processSelection as HTMLElement[]
+        return rows.map((row) => row.isConnected)
+      }),
+    ).toEqual([true, true, true, false, true, true, true, false, true])
+    await page.evaluate(() => {
+      Reflect.deleteProperty(document, "getSelection")
+      ;(document.activeElement as HTMLElement)?.blur()
+      document.dispatchEvent(new Event("selectionchange"))
+    })
+  },
+  30_000,
+)
+
 test("local reading survives new actions, history prepend and reopening without moving the outer stream", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => window.__conversationProcess.grow(1000))
-  await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))
+  expect(await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))).toBe(true)
   const viewport = page.locator('[data-component="process-viewport"]').last()
+  const part = page.locator('[data-slot="activity-step"][data-part-id="many-400"]')
+  await part.waitFor()
+  await viewport.evaluate(async (element) => {
+    await Promise.allSettled(
+      element
+        .getAnimations({ subtree: true })
+        .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+        .map((animation) => animation.finished),
+    )
+  })
   await viewport.focus()
   await viewport.press("ArrowUp")
   await viewport.evaluate(async (element) => {
@@ -1800,7 +1882,6 @@ test("local reading survives new actions, history prepend and reopening without 
     }
   })
   await frames()
-  const part = page.locator('[data-slot="activity-step"][data-part-id="many-400"]')
   const before = await part.evaluate((el) => el.getBoundingClientRect().top)
   const outer = await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)
   await page.evaluate(() => window.__conversationProcess.append("live-reading-append"))

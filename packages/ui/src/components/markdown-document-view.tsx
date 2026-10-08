@@ -6,7 +6,7 @@ import { markdownLayoutSignature, type MarkdownStreamLayout } from "./markdown-s
 import type { MarkdownLayoutCache } from "./markdown-render"
 import { markdownReadingPoint } from "./markdown-reading"
 import { markdownScrollViewport } from "./markdown-scroll-viewport"
-import { readSelectionRanges } from "../utils/selection"
+import { readSelectionElements } from "../utils/selection"
 
 export function MarkdownDocumentView(props: {
   root: HTMLDivElement
@@ -51,16 +51,7 @@ export function MarkdownDocumentView(props: {
     }
     const focus = event?.type === "focusout" ? (event as FocusEvent).relatedTarget : document.activeElement
     add(focus instanceof Node ? focus : null)
-    for (const range of readSelectionRanges(document)) {
-      add(range.startContainer)
-      add(range.endContainer)
-      const indices = [...selected]
-      if (indices.length > 1)
-        for (const block of props.root.querySelectorAll<HTMLElement>("[data-markdown-block]")) {
-          const index = Number(block.dataset.markdownBlock)
-          if (index >= Math.min(...indices) && index <= Math.max(...indices)) selected.add(index)
-        }
-    }
+    for (const block of readSelectionElements(props.root, "[data-markdown-block]")) add(block)
     setKept((previous) =>
       previous.length === selected.size && previous.every((index) => selected.has(index)) ? previous : [...selected],
     )

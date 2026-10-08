@@ -27,6 +27,15 @@ test("reading follows accepted row offsets in viewport coordinates, including th
   expect(conversationReadingIndex(virtual, 0, 60)).toBeUndefined()
 })
 
+test("reading above the first message does not select a message prematurely", () => {
+  const virtual = { scrollOffset: 0, findStartIndex: () => 0, getItemOffset: () => 0 }
+  expect(conversationReadingIndex(virtual, 1, 200)).toBeUndefined()
+  virtual.scrollOffset = 99
+  expect(conversationReadingIndex(virtual, 1, 200)).toBeUndefined()
+  virtual.scrollOffset = 100
+  expect(conversationReadingIndex(virtual, 1, 200)).toBe(0)
+})
+
 test("retains accepted measurements independently of the disposed renderer and virtualizer arrays", () => {
   const cache = createConversationLayoutCache()
   const current = layout()

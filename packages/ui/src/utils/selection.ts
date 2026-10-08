@@ -10,3 +10,11 @@ export function readSelectionRanges(document: Document): Range[] {
   }
   return ranges
 }
+
+export function readSelectionElements(root: HTMLElement, selector: string): HTMLElement[] {
+  const ranges = readSelectionRanges(root.ownerDocument)
+  if (!ranges.length) return []
+  return [...root.querySelectorAll<HTMLElement>(selector)].filter((element) =>
+    ranges.some((range) => range.intersectsNode(element)),
+  )
+}

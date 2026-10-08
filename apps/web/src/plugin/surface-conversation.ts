@@ -111,7 +111,7 @@ export function bindPluginConversation(
       forceScrollToBottom: () => read().autoScroll.forceScrollToBottom(),
     },
     onClearHash: () => read().onClearHash(),
-    onScheduleScrollSpy: (container) => read().onScheduleScrollSpy(container),
+    onScheduleScrollSpy: (container, messageID) => read().onScheduleScrollSpy(container, messageID),
     setScrollRef(element, releaseOf) {
       if (!element && releaseOf !== undefined && releaseScrollElement !== releaseOf) return
       if (!element) {

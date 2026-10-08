@@ -628,6 +628,66 @@ const handoffCases: HandoffCase[] = [
   },
 ]
 
+test("disjoint selections retain only their own Markdown blocks", async () => {
+  await page.goto(server.resolvedUrls!.local[0]!)
+  await page.waitForSelector("[data-markdown-block]")
+  await page.evaluate(() => {
+    document.getElementById("scroller")!.style.cssText = "height:900px;overflow:auto;width:720px"
+    ;(window as unknown as { markdownFixture: { setText(text: string): void } }).markdownFixture.setText(
+      Array.from(
+        { length: 600 },
+        (_, index) =>
+          `> [Selected quote ${index}](https://example.com) Reading a retained quote.\n\n[Selected paragraph ${index}](https://example.com) Reading a retained paragraph.\n\n`,
+      ).join(""),
+    )
+  })
+  await page.getByRole("link", { name: "Selected quote 0", exact: true }).waitFor()
+  await page.waitForFunction(() => document.querySelectorAll("[data-markdown-block]").length >= 9)
+  await page.evaluate(() => {
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-markdown-block]")].slice(0, 9)
+    const ranges = [
+      [0, 2],
+      [4, 6],
+    ].map(([start, end]) => {
+      const range = document.createRange()
+      range.setStart(rows[start], 0)
+      range.setEnd(rows[end], rows[end].childNodes.length)
+      return range
+    })
+    Object.assign(window, { selectedMarkdownBlocks: rows })
+    Object.defineProperty(document, "getSelection", {
+      configurable: true,
+      value: () => ({
+        rangeCount: ranges.length,
+        getRangeAt: (index: number) => ranges[index],
+      }),
+    })
+    rows[8].querySelector<HTMLElement>("a")!.focus({ preventScroll: true })
+    document.dispatchEvent(new Event("selectionchange"))
+  })
+  try {
+    await page.locator("#scroller").evaluate((element) => (element.style.height = "280px"))
+    await page.locator("#scroller").hover()
+    await page.mouse.wheel(0, 100_000)
+    await page.waitForFunction(
+      () => !(window as unknown as { selectedMarkdownBlocks: HTMLElement[] }).selectedMarkdownBlocks[3].isConnected,
+    )
+    expect(
+      await page.evaluate(() =>
+        (window as unknown as { selectedMarkdownBlocks: HTMLElement[] }).selectedMarkdownBlocks.map(
+          (row) => row.isConnected,
+        ),
+      ),
+    ).toEqual([true, true, true, false, true, true, true, false, true])
+  } finally {
+    await page.evaluate(() => {
+      Reflect.deleteProperty(document, "getSelection")
+      ;(document.activeElement as HTMLElement)?.blur()
+      document.dispatchEvent(new Event("selectionchange"))
+    })
+  }
+}, 30_000)
+
 test("selection and focus postpone terminal adoption until their owner releases", async () => {
   await page.evaluate(() => {
     document.getSelection()?.removeAllRanges()
