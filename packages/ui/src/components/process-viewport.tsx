@@ -123,6 +123,8 @@ export function ProcessViewport(
     ref?: (element: HTMLDivElement) => void
     onScroll?: () => void
     onReading?: (value: boolean) => void
+    onInteraction?: () => void
+    isLayoutMutation?: (record: MutationRecord) => boolean
     anchor?: (target?: Element) => ReadingAnchor | undefined
     restoreAnchor?: (anchor: ReadingAnchor) => boolean | void
     onBeforeLayoutChange?: (event: Event) => void
@@ -143,6 +145,9 @@ export function ProcessViewport(
   let layoutPending = false
   let releaseFrame: number | undefined
   let measureFrame: number | undefined
+  let captureFrame: number | undefined
+  let capturedOffset = 0
+  let notifiedReading = false
   let resumeRequested = false
   let explicitFollow = false
   let previousOffset = 0
@@ -153,6 +158,27 @@ export function ProcessViewport(
   let disposed = false
   let restoredOffset: number | undefined
   const capture = (target?: Element) => props.anchor?.(target) ?? captureProcessReadingAnchor(viewport, target)
+  const notifyReading = (value: boolean) => {
+    if (notifiedReading === value) return
+    notifiedReading = value
+    props.onReading?.(value)
+  }
+  const cancelCapture = () => {
+    if (captureFrame !== undefined) cancelAnimationFrame(captureFrame)
+    captureFrame = undefined
+  }
+  const refreshAnchor = () => {
+    if (disposed || restoring || disclosureAnchor || layoutPending) return
+    if (captureFrame === undefined) {
+      readingAnchor = capture()
+      captureFrame = requestAnimationFrame(() => {
+        captureFrame = undefined
+      })
+    } else if (viewport.scrollTop !== capturedOffset) {
+      readingAnchor = capture()
+    }
+    capturedOffset = viewport.scrollTop
+  }
   const restore = (anchor: ReadingAnchor) => {
     let measured: boolean | void = true
     if (props.restoreAnchor) measured = props.restoreAnchor(anchor)
@@ -186,7 +212,8 @@ export function ProcessViewport(
       setBelow(remaining > 2)
     })
   }
-  const pause = () => {
+  const pause = (captureReading = true) => {
+    if (restoring || disclosureAnchor || layoutPending) cancelCapture()
     if (restoreFrame !== undefined) cancelAnimationFrame(restoreFrame)
     restoreFrame = undefined
     if (layoutReleaseFrame !== undefined) cancelAnimationFrame(layoutReleaseFrame)
@@ -200,11 +227,13 @@ export function ProcessViewport(
     if (frame !== undefined) cancelAnimationFrame(frame)
     frame = undefined
     setFollowing(false)
-    readingAnchor = capture()
-    props.onReading?.(true)
+    props.onInteraction?.()
+    if (captureReading) refreshAnchor()
+    notifyReading(true)
   }
   const disclose = (event: Event) => {
-    pause()
+    pause(false)
+    cancelCapture()
     props.onBeforeLayoutChange?.(event)
     const generation = ++disclosureGeneration
     disclosureAnchor = capture(event.target instanceof Element ? event.target : undefined)
@@ -228,13 +257,21 @@ export function ProcessViewport(
     })
   }
   const latest = () => {
+    cancelCapture()
+    if (restoreFrame !== undefined) cancelAnimationFrame(restoreFrame)
+    restoreFrame = undefined
+    if (layoutReleaseFrame !== undefined) cancelAnimationFrame(layoutReleaseFrame)
+    layoutReleaseFrame = undefined
+    if (releaseFrame !== undefined) cancelAnimationFrame(releaseFrame)
+    releaseFrame = undefined
+    layoutPending = false
     restoring = false
     resumeRequested = false
     explicitFollow = true
     setFollowing(true)
     disclosureAnchor = undefined
     disclosureGeneration++
-    props.onReading?.(false)
+    notifyReading(false)
     follow(true)
   }
   const revision = createMemo(() => props.revision)
@@ -278,18 +315,21 @@ export function ProcessViewport(
     })
     observer.observe(viewport)
     observer.observe(content)
-    const mutations = new MutationObserver(() => {
-      if (!following()) preserve()
+    const mutations = new MutationObserver((records) => {
+      if (!following() && records.some((record) => props.isLayoutMutation?.(record) ?? true)) preserve()
     })
     mutations.observe(content, { childList: true, characterData: true, subtree: true })
     if (saved) viewport.scrollTop = saved.offset
-    props.controls?.({ pause })
+    props.controls?.({ pause: () => pause() })
     if (saved?.anchor && !saved.following) {
       frame = requestAnimationFrame(() => {
         frame = undefined
         restore(saved.anchor!)
       })
-      props.onReading?.(true)
+    }
+    if (saved && !saved.following) {
+      props.onInteraction?.()
+      notifyReading(true)
     }
     const selection = () => {
       const value = document.getSelection()
@@ -308,12 +348,13 @@ export function ProcessViewport(
         anchor: !following() ? readingAnchor : viewport.clientHeight ? capture() : readingAnchor,
       })
       if (positions.size > 128) positions.delete(positions.keys().next().value!)
-      props.onReading?.(false)
+      notifyReading(false)
     })
     measure()
   })
   onCleanup(() => {
     disposed = true
+    cancelCapture()
     if (frame !== undefined) cancelAnimationFrame(frame)
     if (restoreFrame !== undefined) cancelAnimationFrame(restoreFrame)
     if (layoutReleaseFrame !== undefined) cancelAnimationFrame(layoutReleaseFrame)
@@ -386,7 +427,7 @@ export function ProcessViewport(
           props.onScroll?.()
           const compensated = restoredOffset !== undefined && Math.abs(viewport.scrollTop - restoredOffset) < 1
           restoredOffset = undefined
-          if (!restoring && !disclosureAnchor && !compensated && !layoutPending) readingAnchor = capture()
+          if (!restoring && !disclosureAnchor && !compensated && !layoutPending) refreshAnchor()
           if (
             resumeRequested &&
             !compensated &&
