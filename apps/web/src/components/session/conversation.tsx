@@ -11,7 +11,19 @@ import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
 import type { PluginComponentProps, PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import { Dynamic } from "solid-js/web"
-import { For, Show, batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js"
+import {
+  For,
+  Show,
+  batch,
+  createEffect,
+  createMemo,
+  createSignal,
+  mergeProps,
+  on,
+  onCleanup,
+  onMount,
+  untrack,
+} from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { VirtualConversationRows } from "./virtual-conversation-rows"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -27,28 +39,35 @@ import { S } from "./session-i18n"
 import { PendingTimelineItem } from "./pending-timeline-item"
 import { useExecution } from "@/context/execution"
 
-export function SessionConversation(
-  input: PluginComponentProps<PluginConversationService> & {
-    initialScrollSettled?: () => boolean
-  },
-) {
+type SessionConversationProps = PluginComponentProps<PluginConversationService> & {
+  initialScrollSettled?: () => boolean
+}
+
+export function SessionConversation(input: SessionConversationProps) {
+  const sdk = useSDK()
+  const identity = createMemo(() => JSON.stringify([sdk.url, sdk.scopeKey, input.context.sessionID]))
+  return (
+    <Show when={identity()} keyed>
+      {(_identity) => (
+        <SessionConversationView
+          context={mergeProps(input.context, { sessionID: untrack(() => input.context.sessionID) })}
+          initialScrollSettled={input.initialScrollSettled}
+        />
+      )}
+    </Show>
+  )
+}
+
+function SessionConversationView(input: SessionConversationProps) {
   const transitions = useSessionTransition()
   const props = input.context
   const [contentReady, setContentReady] = createSignal(false)
-  const [admittedSession, setAdmittedSession] = createSignal<string>()
-  createEffect(
-    on(
-      () => props.sessionID,
-      () => setAdmittedSession(undefined),
-    ),
-  )
-  const viewportReady = () => !input.initialScrollSettled || admittedSession() === props.sessionID
+  const [admitted, setAdmitted] = createSignal(!input.initialScrollSettled)
   createEffect(() => {
-    const sessionID = props.sessionID
-    if (!input.initialScrollSettled || admittedSession() === sessionID) return
+    if (!input.initialScrollSettled || admitted()) return
     if (!input.initialScrollSettled() || (props.content && !contentReady())) return
     let frame = requestAnimationFrame(() => {
-      frame = requestAnimationFrame(() => setAdmittedSession(sessionID))
+      frame = requestAnimationFrame(() => setAdmitted(true))
     })
     onCleanup(() => cancelAnimationFrame(frame))
   })
@@ -57,6 +76,9 @@ export function SessionConversation(
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const sdk = useSDK()
+  const animateAdmission = !untrack(
+    () => transitions.get(props.sessionID)?.draft ?? transitions.get(draftTransitionKey(sdk.url, sdk.scopeKey))?.draft,
+  )
   const globalSync = useGlobalSync()
   const [arrivalView, setArrivalView] = createSignal<ReturnType<typeof globalSync.partArrival.open>>()
   createEffect(() => {
@@ -308,7 +330,8 @@ export function SessionConversation(
   return (
     <ConversationMotionProvider takeArrival={takePartArrival} liveRevision={() => arrivalView()?.revision() ?? 0}>
       <ConversationViewport
-        ready={viewportReady()}
+        ready={admitted()}
+        animateAdmission={animateAdmission}
         scrolledUp={props.scrolledUp()}
         onScrolledUpChange={props.onScrolledUpChange}
         autoScroll={props.autoScroll}
@@ -468,6 +491,7 @@ export function SessionConversation(
           }
         >
           <VirtualConversationRows
+            layoutOwner={[sdk.url, sdk.scopeKey, props.sessionID]}
             onReady={setContentReady}
             messageKey={messageKey}
             takePartArrival={takePartArrival}

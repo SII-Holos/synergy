@@ -175,6 +175,7 @@ export function SubmissionFixture(props: { locale(): void }) {
   }
   ;(window as unknown as { fixture: typeof fixture }).fixture = fixture
   const autoScroll: PluginConversationViewport = {
+    readingAnchorOwner: () => undefined,
     forceScrollToBottom() {},
     handleScroll() {},
     handleInteraction() {},
@@ -208,6 +209,7 @@ export function SubmissionFixture(props: { locale(): void }) {
                   contentClass="session-content-column"
                 >
                   <VirtualConversationRows
+                    layoutOwner={["http://localhost", "/project", "session"]}
                     context={context as PluginConversationService}
                     scrollRef={scroll()}
                     messageKey={(id) => state.messageIdentity.key(owner, id)}

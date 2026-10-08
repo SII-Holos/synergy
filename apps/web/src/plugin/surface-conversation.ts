@@ -87,6 +87,7 @@ export function bindPluginConversation(
     scrolledUp: () => read().scrolledUp(),
     onScrolledUpChange: (value) => read().onScrolledUpChange(value),
     autoScroll: {
+      readingAnchorOwner: () => read().autoScroll.readingAnchorOwner(),
       contentRef(element, releaseOf) {
         if (!element && releaseOf !== undefined && releaseContentElement !== releaseOf) return
         if (!element) {

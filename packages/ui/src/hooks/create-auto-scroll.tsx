@@ -1,6 +1,11 @@
-import { createEffect, on, onCleanup } from "solid-js"
+import { createEffect, createSignal, on, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
+
+export interface AutoScrollReadingAnchor {
+  owner: HTMLElement
+  restore(): void
+}
 
 export interface AutoScrollOptions {
   working: () => boolean
@@ -9,7 +14,7 @@ export interface AutoScrollOptions {
   onMeasure?: (distanceFromBottom: number) => void
   /** How long a forced pin keeps re-pinning through late content growth (images, code blocks) before follow releases. Default 1000. */
   settleMs?: number
-  captureReadingAnchor?: (input: { reading: boolean; target?: Element }) => (() => void) | undefined
+  captureReadingAnchor?: (input: { reading: boolean; target?: Element }) => AutoScrollReadingAnchor | undefined
 }
 
 export function createAutoScroll(options: AutoScrollOptions) {
@@ -23,7 +28,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let forceNextScroll = false
   let down = false
   let cleanup: (() => void) | undefined
-  let restoreReadingAnchor: (() => void) | undefined
+  let readingAnchor: AutoScrollReadingAnchor | undefined
   let anchoredScrollTop: number | undefined
   let resumeRequested = false
   let previousOffset = 0
@@ -32,10 +37,21 @@ export function createAutoScroll(options: AutoScrollOptions) {
     contentRef: undefined as HTMLElement | undefined,
     userScrolled: false,
   })
+  const [readingAnchorOwner, setReadingAnchorOwner] = createSignal<HTMLElement>()
 
   const active = () => options.working() || settling || followingLatest
+  const clearReadingAnchor = () => {
+    readingAnchor = undefined
+    setReadingAnchorOwner(undefined)
+    anchoredScrollTop = undefined
+  }
   const preserveReadingAnchor = (target?: Element) => {
-    restoreReadingAnchor = options.captureReadingAnchor?.({ reading: store.userScrolled, target })
+    if (!store.userScrolled) {
+      clearReadingAnchor()
+      return
+    }
+    readingAnchor = options.captureReadingAnchor?.({ reading: store.userScrolled, target })
+    setReadingAnchorOwner(readingAnchor?.owner)
     anchoredScrollTop = scroll?.scrollTop
   }
 
@@ -90,8 +106,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (!force && store.userScrolled) return
     if (force) {
       resumeRequested = false
-      restoreReadingAnchor = undefined
-      anchoredScrollTop = undefined
+      clearReadingAnchor()
     }
 
     // A forced pin lands on whatever layout exists right now; open the settle
@@ -102,8 +117,8 @@ export function createAutoScroll(options: AutoScrollOptions) {
     scrollFrame = requestAnimationFrame(flushScrollToBottom)
   }
 
-  const stop = () => {
-    resumeRequested = false
+  const stop = (allowResume = false) => {
+    resumeRequested = allowResume
     followingLatest = false
     forceNextScroll = false
     if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
@@ -150,7 +165,13 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.defaultPrevented) return
-    if (event.target instanceof Element && event.target.closest("input, textarea, [contenteditable]")) return
+    if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]")) return
+    if (event.key === " ") {
+      if (event.target instanceof Element && event.target.closest("button, summary, [role=button]")) return
+      if (event.shiftKey) stop()
+      else resumeRequested = true
+      return
+    }
     if (["ArrowUp", "PageUp", "Home"].includes(event.key)) stop()
     if (["ArrowDown", "PageDown", "End"].includes(event.key)) resumeRequested = true
   }
@@ -159,18 +180,17 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (!scroll) return
     const compensated = anchoredScrollTop !== undefined && Math.abs(scroll.scrollTop - anchoredScrollTop) < 1
     anchoredScrollTop = undefined
-    if (!compensated) preserveReadingAnchor()
-
     const advancing = scroll.scrollTop > previousOffset
     previousOffset = scroll.scrollTop
     if (!compensated && resumeRequested && advancing && distanceFromBottom() < 10) {
       if (store.userScrolled) setStore("userScrolled", false)
+      followingLatest = true
+      clearReadingAnchor()
       resumeRequested = false
       return
     }
-
-    if (!active()) return
-    if (down) stop()
+    if (!compensated && down) stop(resumeRequested)
+    if (!compensated) preserveReadingAnchor()
   }
 
   const handleInteraction = (event?: Event) => {
@@ -191,9 +211,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
         flushScrollToBottom()
         return
       }
-      const previousTop = scroll?.scrollTop
-      restoreReadingAnchor?.()
-      if (scroll && previousTop !== scroll.scrollTop) anchoredScrollTop = scroll.scrollTop
+      readingAnchor?.restore()
+      if (readingAnchor && !readingAnchor.owner.isConnected) preserveReadingAnchor()
+      if (scroll && readingAnchor) anchoredScrollTop = scroll.scrollTop
       scheduleMeasure()
     },
   )
@@ -215,8 +235,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   onCleanup(() => {
     followingLatest = false
-    restoreReadingAnchor = undefined
-    anchoredScrollTop = undefined
+    clearReadingAnchor()
     if (settleTimer) clearTimeout(settleTimer)
     if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
     if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
@@ -229,25 +248,23 @@ export function createAutoScroll(options: AutoScrollOptions) {
       // swapped-out owner's cleanup runs; an attributed release only
       // clears a binding it still owns.
       if (!el && releaseOf !== undefined && scroll !== releaseOf) return
+      if (scroll === el) return
       if (cleanup) {
         cleanup()
         cleanup = undefined
       }
 
-      if (scroll !== el) {
-        restoreReadingAnchor = undefined
-        anchoredScrollTop = undefined
-        if (settleTimer) clearTimeout(settleTimer)
-        settleTimer = undefined
-        settling = false
-        forcedSettling = false
-        followingLatest = false
-        if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
-        if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
-        scrollFrame = undefined
-        measureFrame = undefined
-        forceNextScroll = false
-      }
+      clearReadingAnchor()
+      if (settleTimer) clearTimeout(settleTimer)
+      settleTimer = undefined
+      settling = false
+      forcedSettling = false
+      followingLatest = false
+      if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+      if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
+      scrollFrame = undefined
+      measureFrame = undefined
+      forceNextScroll = false
       scroll = el
       down = false
       resumeRequested = false
@@ -273,11 +290,14 @@ export function createAutoScroll(options: AutoScrollOptions) {
     },
     contentRef: (el: HTMLElement | undefined, releaseOf?: HTMLElement) => {
       if (!el && releaseOf !== undefined && store.contentRef !== releaseOf) return
+      if (store.contentRef === el) return
+      clearReadingAnchor()
       setStore("contentRef", el)
     },
     handleScroll,
     handleInteraction,
     preserveReadingAnchor,
+    readingAnchorOwner,
     scrollToBottom: () => scrollToBottom(false),
     forceScrollToBottom: (input?: { untilInteraction?: boolean }) => {
       if (scroll && input?.untilInteraction) followingLatest = true

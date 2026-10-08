@@ -1,0 +1,144 @@
+diff --git a/web/dist/dev.cjs b/web/dist/dev.cjs
+index 643d75dc2121182eec86d94e24db0aba116e14d0..87464cb926cbc69544ae6a82d47afff193972cfa 100644
+--- a/web/dist/dev.cjs
++++ b/web/dist/dev.cjs
+@@ -134,6 +134,31 @@ const DOMElements = /*#__PURE__*/new Set(["html", "base", "head", "link", "meta"
+ const memo = fn => solidJs.createMemo(() => fn());
+
+ function reconcileArrays(parentNode, a, b) {
++  // Provenance: https://github.com/ryansolid/dom-expressions/blob/27a88bea8ffa97400bbcc66d380e40daed9e1cf1/packages/dom-expressions/src/reconcile.js
++  // Local adaptation: ordered shared nodes never detach, preserving native focus and selection.
++  const positions = new Map();
++  for (let index = 0; index < b.length; index++) positions.set(b[index], index);
++  let previous = -1, ordered = true;
++  for (const node of a) {
++    const index = positions.get(node);
++    if (index === undefined) continue;
++    if (index < previous) {
++      ordered = false;
++      break;
++    }
++    previous = index;
++  }
++  if (ordered) {
++    const retained = new Set(a);
++    let anchor = a[a.length - 1].nextSibling;
++    for (const node of a) if (!positions.has(node)) node.remove();
++    for (let index = b.length - 1; index >= 0; index--) {
++      const node = b[index];
++      if (!retained.has(node)) parentNode.insertBefore(node, anchor);
++      anchor = node;
++    }
++    return;
++  }
+   let bLength = b.length,
+     aEnd = a.length,
+     bEnd = bLength,
+diff --git a/web/dist/dev.js b/web/dist/dev.js
+index f0c31f4747180be4797e84a6f7c4d61cafdd2531..5b9e877289116d7e16054a55d686ab972b421c02 100644
+--- a/web/dist/dev.js
++++ b/web/dist/dev.js
+@@ -133,6 +133,31 @@ const DOMElements = /*#__PURE__*/new Set(["html", "base", "head", "link", "meta"
+ const memo = fn => createMemo(() => fn());
+
+ function reconcileArrays(parentNode, a, b) {
++  // Provenance: https://github.com/ryansolid/dom-expressions/blob/27a88bea8ffa97400bbcc66d380e40daed9e1cf1/packages/dom-expressions/src/reconcile.js
++  // Local adaptation: ordered shared nodes never detach, preserving native focus and selection.
++  const positions = new Map();
++  for (let index = 0; index < b.length; index++) positions.set(b[index], index);
++  let previous = -1, ordered = true;
++  for (const node of a) {
++    const index = positions.get(node);
++    if (index === undefined) continue;
++    if (index < previous) {
++      ordered = false;
++      break;
++    }
++    previous = index;
++  }
++  if (ordered) {
++    const retained = new Set(a);
++    let anchor = a[a.length - 1].nextSibling;
++    for (const node of a) if (!positions.has(node)) node.remove();
++    for (let index = b.length - 1; index >= 0; index--) {
++      const node = b[index];
++      if (!retained.has(node)) parentNode.insertBefore(node, anchor);
++      anchor = node;
++    }
++    return;
++  }
+   let bLength = b.length,
+     aEnd = a.length,
+     bEnd = bLength,
+diff --git a/web/dist/web.cjs b/web/dist/web.cjs
+index c27a23b06f5b36892a70b5129b8c5e88c4e46deb..3219d08d1d2db6b15bfb78607b0dade3329a1953 100644
+--- a/web/dist/web.cjs
++++ b/web/dist/web.cjs
+@@ -134,6 +134,31 @@ const DOMElements = /*#__PURE__*/new Set(["html", "base", "head", "link", "meta"
+ const memo = fn => solidJs.createMemo(() => fn());
+
+ function reconcileArrays(parentNode, a, b) {
++  // Provenance: https://github.com/ryansolid/dom-expressions/blob/27a88bea8ffa97400bbcc66d380e40daed9e1cf1/packages/dom-expressions/src/reconcile.js
++  // Local adaptation: ordered shared nodes never detach, preserving native focus and selection.
++  const positions = new Map();
++  for (let index = 0; index < b.length; index++) positions.set(b[index], index);
++  let previous = -1, ordered = true;
++  for (const node of a) {
++    const index = positions.get(node);
++    if (index === undefined) continue;
++    if (index < previous) {
++      ordered = false;
++      break;
++    }
++    previous = index;
++  }
++  if (ordered) {
++    const retained = new Set(a);
++    let anchor = a[a.length - 1].nextSibling;
++    for (const node of a) if (!positions.has(node)) node.remove();
++    for (let index = b.length - 1; index >= 0; index--) {
++      const node = b[index];
++      if (!retained.has(node)) parentNode.insertBefore(node, anchor);
++      anchor = node;
++    }
++    return;
++  }
+   let bLength = b.length,
+     aEnd = a.length,
+     bEnd = bLength,
+diff --git a/web/dist/web.js b/web/dist/web.js
+index 92e54bdd17e5b502e7eb20477f00b50452281dbf..307f21fa12f15871ed8852631d44dcb65e0bf840 100644
+--- a/web/dist/web.js
++++ b/web/dist/web.js
+@@ -133,6 +133,31 @@ const DOMElements = /*#__PURE__*/new Set(["html", "base", "head", "link", "meta"
+ const memo = fn => createMemo(() => fn());
+
+ function reconcileArrays(parentNode, a, b) {
++  // Provenance: https://github.com/ryansolid/dom-expressions/blob/27a88bea8ffa97400bbcc66d380e40daed9e1cf1/packages/dom-expressions/src/reconcile.js
++  // Local adaptation: ordered shared nodes never detach, preserving native focus and selection.
++  const positions = new Map();
++  for (let index = 0; index < b.length; index++) positions.set(b[index], index);
++  let previous = -1, ordered = true;
++  for (const node of a) {
++    const index = positions.get(node);
++    if (index === undefined) continue;
++    if (index < previous) {
++      ordered = false;
++      break;
++    }
++    previous = index;
++  }
++  if (ordered) {
++    const retained = new Set(a);
++    let anchor = a[a.length - 1].nextSibling;
++    for (const node of a) if (!positions.has(node)) node.remove();
++    for (let index = b.length - 1; index >= 0; index--) {
++      const node = b[index];
++      if (!retained.has(node)) parentNode.insertBefore(node, anchor);
++      anchor = node;
++    }
++    return;
++  }
+   let bLength = b.length,
+     aEnd = a.length,
+     bEnd = bLength,

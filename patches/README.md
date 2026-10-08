@@ -1,5 +1,13 @@
 # Dependency patches
 
+## Solid ordered row retention
+
+Provenance: [Solid 1.9.15 DOM renderer](https://unpkg.com/solid-js@1.9.15/web/dist/web.js) and its upstream [DOM array reconciliation](https://github.com/ryansolid/dom-expressions/blob/27a88bea8ffa97400bbcc66d380e40daed9e1cf1/packages/dom-expressions/src/reconcile.js).
+
+Local adaptation: [the pinned patch](solid-js@1.9.15.patch) checks shared nodes' relative order in linear time. When that order is unchanged, it removes obsolete nodes and inserts only newly admitted nodes around the shared nodes. Shared rows never detach, preserving native focus and text selection when virtual paging changes its overscan direction or adds a disjoint range. Actual node permutations use the original reconciler. Development/production ESM and CommonJS entrypoints share the correction; SSR entrypoints and licenses remain unchanged.
+
+[DOM regressions](../packages/ui/test/solid-ordered-rows.test.ts) cover focus, selection, ordered admission/removal and all five-row permutations through all four published entrypoints. [Conversation browser regressions](../apps/web/test/components/session/conversation-process.dom.test.ts) exercise real native paging, retained link focus and subsequent body growth or history backfill. Keep the patch until an upgraded dependency passes these cases without it, then remove it. Verify a fresh frozen-lockfile install before accepting an upgrade.
+
 ## Virtua Solid resize delivery
 
 Provenance: [Virtua 0.42.3 resize observer](https://github.com/inokawa/virtua/blob/0.42.3/src/core/resizer.ts) and [upstream resize delivery issue](https://github.com/inokawa/virtua/issues/470).

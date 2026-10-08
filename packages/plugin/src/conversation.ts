@@ -9,7 +9,7 @@ import type {
 
 export interface PluginConversationContent {
   summaries(messageID: string): readonly SessionPartSummary[]
-  page(messageID: string): { hasMore: boolean; hasEarlier?: boolean } | undefined
+  page(messageID: string): { hasMore: boolean; hasEarlier?: boolean; stale?: boolean } | undefined
   load(messageID: string, more?: boolean, force?: boolean): Promise<void>
   retain(part: SessionPartSummary): { ready: Promise<void>; release(): void }
   text?(messageID: string): Promise<string>
@@ -26,6 +26,7 @@ export interface PluginTurnProjection {
 }
 
 export interface PluginConversationViewport {
+  readingAnchorOwner: Accessor<HTMLElement | undefined>
   contentRef(element: HTMLElement | undefined, releaseOf?: HTMLElement): void
   handleScroll(): void
   handleInteraction(event: Event): void

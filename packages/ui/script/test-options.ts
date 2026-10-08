@@ -5,6 +5,7 @@ export const testOptions = {
   isolated: [
     "test/markdown-resources.test.ts",
     "test/markdown-sanitize.test.ts",
+    "test/solid-ordered-rows.test.ts",
     "test/components/iframe-focus.browser.test.ts",
     "test/components/review-viewer.dom.test.ts",
     "test/components/message-readers.render.test.ts",
@@ -15,6 +16,7 @@ export const testOptions = {
     "test/components/message-part-error-boundary.test.ts",
     "test/components/activity-trace.dom.test.ts",
     "test/components/activity-process.dom.test.ts",
+    "test/components/process-viewport.dom.test.ts",
     "test/components/diff-patch.dom.test.ts",
     "test/components/activity-trace-layout.browser.test.ts",
     "test/components/activity-trace-narrow.browser.test.ts",
@@ -50,6 +52,7 @@ export const testOptions = {
     "test/components/provider-icon.test.ts",
   ],
   browserOnly: [
+    "test/solid-ordered-rows.test.ts",
     "test/components/message-readers.render.test.ts",
     "test/components/render-html.test.ts",
     "test/hooks/create-auto-scroll.test.ts",
