@@ -17,6 +17,7 @@ import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import "./process-viewport.css"
 import { useConversationLiveRevision } from "./conversation-motion"
+import { readSelectionRanges } from "../utils/selection"
 
 const Contained = createContext<{ disclose(event: Event): () => void }>()
 export const useProcessViewport = () => !!useContext(Contained)
@@ -332,7 +333,7 @@ export function ProcessViewport(
       if (!following() && records.some((record) => props.isLayoutMutation?.(record) ?? true)) preserve()
     })
     mutations.observe(content, { childList: true, characterData: true, subtree: true })
-    if (saved) viewport.scrollTop = saved.offset
+    if (saved?.offset) viewport.scrollTop = saved.offset
     props.controls?.({ pause: () => pause() })
     if (saved?.anchor && !saved.following) {
       frame = requestAnimationFrame(() => {
@@ -345,8 +346,11 @@ export function ProcessViewport(
       notifyReading(true)
     }
     const selection = () => {
-      const value = document.getSelection()
-      if (value && !value.isCollapsed && (viewport.contains(value.anchorNode) || viewport.contains(value.focusNode)))
+      if (
+        readSelectionRanges(document).some(
+          (range) => viewport.contains(range.startContainer) || viewport.contains(range.endContainer),
+        )
+      )
         pause()
     }
     document.addEventListener("selectionchange", selection)
