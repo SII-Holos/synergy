@@ -4,8 +4,6 @@ Failures, causes and guardrails.
 
 ## When to write one
 
-Criteria:
-
 - **Subtle** — the mechanism requires careful investigation.
 - **Systemic** — a gap in tests, tooling, or conventions let the bug escape.
 - **Costly to rediscover** — rediscovery would repeat substantial debugging.
@@ -29,6 +27,8 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 - **Lessons** — the durable takeaways.
 
 ## Index
+
+- [0059: Disclosure](0059-cold-process-disclosure-jank.md)
 
 - [0058: Markdown settlement](0058-markdown-terminal-estimates-lost-reading.md)
 - [0057: Conversation lifetime](0057-conversation-rendering-lifetime-and-scope-retention.md)
