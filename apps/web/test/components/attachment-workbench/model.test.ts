@@ -1,3 +1,4 @@
+import { classifyResourcePreview } from "../../../src/components/resource-preview"
 import { describe, expect, test } from "bun:test"
 import type { AttachmentPart, Part } from "@ericsanchezok/synergy-sdk"
 import {
@@ -8,7 +9,6 @@ import {
   attachmentWorkbenchPanelInit,
   attachmentResourceId,
   attachmentResourceState,
-  classifyAttachmentPreview,
   createAttachmentPreviewReader,
   fetchAttachmentBytes,
   findAttachmentByLocator,
@@ -67,7 +67,7 @@ describe("bounded attachment reads", () => {
     await expect(pending).rejects.toMatchObject({ name: "AbortError" })
   })
   test("images have a direct reading capability without a fabricated session identity", () => {
-    expect(classifyAttachmentPreview("image/png", "sample.png").kind).toBe("image")
+    expect(classifyResourcePreview("image/png", "sample.png").kind).toBe("image")
     expect(attachmentWorkbenchPanelInit({ filename: "sample.png" })).toBeUndefined()
   })
   test("rejects declared and streamed payloads above the preview limit", async () => {
@@ -194,25 +194,25 @@ describe("attachment workspace resolution", () => {
 
 describe("attachment preview classification", () => {
   test("classifies previewable formats and preserves explicit source/preview modes", () => {
-    expect(classifyAttachmentPreview("application/pdf", "report.pdf")).toEqual({
+    expect(classifyResourcePreview("application/pdf", "report.pdf")).toEqual({
       kind: "pdf",
       defaultMode: "preview",
       dual: false,
       maxBytes: ATTACHMENT_PDF_MAX_BYTES,
     })
-    expect(classifyAttachmentPreview("text/markdown", "README.md")).toEqual({
+    expect(classifyResourcePreview("text/markdown", "README.md")).toEqual({
       kind: "markdown",
       defaultMode: "preview",
       dual: true,
       maxBytes: ATTACHMENT_TEXT_MAX_BYTES,
     })
-    expect(classifyAttachmentPreview("text/html", "report.html")).toEqual({
+    expect(classifyResourcePreview("text/html", "report.html")).toEqual({
       kind: "html",
       defaultMode: "preview",
       dual: true,
       maxBytes: ATTACHMENT_TEXT_MAX_BYTES,
     })
-    expect(classifyAttachmentPreview("application/json", "result.json")).toEqual({
+    expect(classifyResourcePreview("application/json", "result.json")).toEqual({
       kind: "source",
       defaultMode: "source",
       dual: false,
@@ -221,16 +221,14 @@ describe("attachment preview classification", () => {
   })
 
   test("uses native media players and download-only metadata for unsupported binaries", () => {
-    expect(classifyAttachmentPreview("video/mp4", "clip.mp4").kind).toBe("video")
-    expect(classifyAttachmentPreview("audio/mpeg", "clip.mp3").kind).toBe("audio")
+    expect(classifyResourcePreview("video/mp4", "clip.mp4").kind).toBe("video")
+    expect(classifyResourcePreview("audio/mpeg", "clip.mp3").kind).toBe("audio")
     expect(
-      classifyAttachmentPreview(
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "report.docx",
-      ).kind,
+      classifyResourcePreview("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "report.docx")
+        .kind,
     ).toBe("docx")
-    expect(classifyAttachmentPreview("application/zip", "bundle.zip").kind).toBe("unsupported")
-    expect(classifyAttachmentPreview("application/msword", "old.doc").kind).toBe("unsupported")
+    expect(classifyResourcePreview("application/zip", "bundle.zip").kind).toBe("unsupported")
+    expect(classifyResourcePreview("application/msword", "old.doc").kind).toBe("unsupported")
   })
 })
 

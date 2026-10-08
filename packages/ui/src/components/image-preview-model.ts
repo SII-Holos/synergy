@@ -1,3 +1,4 @@
+import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { formatAttachmentSize } from "./attachment-card-utils"
 
 export interface ImagePreviewImage {
@@ -9,6 +10,7 @@ export interface ImagePreviewImage {
   alt?: string
   downloadUrl?: string
   externalUrl?: string
+  referenceContext?: ResourceReference.Context
   sourcePath?: string
 }
 

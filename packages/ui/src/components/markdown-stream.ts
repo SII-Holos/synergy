@@ -1,4 +1,4 @@
-import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import * as smd from "streaming-markdown"
 import { createMarkdownStreamMotion } from "./markdown-stream-motion"
 import { createMarkdownStreamSource, type MarkdownStreamLayout } from "./markdown-stream-source"
@@ -56,11 +56,21 @@ function createSafeRenderer(
     },
     set_attr(data, type, value) {
       if (type === smd.HREF || type === smd.SRC) {
-        const reference = AssetReference.parse(value)
-        if (reference) {
-          data.nodes[data.index]?.setAttribute("data-resource-reference", reference.url)
+        const reference = ResourceReference.parse(value)
+        if (type === smd.SRC) {
+          data.nodes[data.index]?.setAttribute("data-resource-reference", value)
+          if (reference.kind !== "url" || !/^https?:/i.test(reference.url)) return
+        }
+        if (reference.kind !== "url" && reference.kind !== "anchor") {
+          const element = data.nodes[data.index]
+          element?.setAttribute("data-resource-reference", value)
+          if (type === smd.HREF) {
+            element?.setAttribute("role", "button")
+            element?.setAttribute("tabindex", "0")
+          }
           return
         }
+        if (reference.kind === "url") value = reference.url
         if (!isSafeUrl(value)) return
       }
       smd.default_set_attr(data, type, value)

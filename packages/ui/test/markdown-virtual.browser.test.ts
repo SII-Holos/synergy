@@ -44,12 +44,8 @@ beforeAll(async () => {
     const copies: string[] = []
     const opened: string[] = []
     const resources = {
-      resolveAttachmentReference(reference, filename) {
-        const file = attachmentFromReference(reference, filename)
-        return file ? { file, serverUrl: location.origin } : undefined
-      },
-      open: () => false,
-      openAttachment: file => { opened.push(file.url); return true },
+      resolveUrl(reference) { return reference.kind === "asset" ? location.origin + "/asset/" + reference.url.slice(8) : reference.kind === "workspace-file" && reference.path === "/image.svg" ? location.origin + reference.path : undefined },
+      open: async resource => { if (resource.kind === "asset") opened.push(resource.url); return {status: "opened"} },
     }
     configureClipboard({writer: value=>{ copies.push(value);return true }})
     const i18n = setupI18n({locale:"en",messages:{en:{}}})
@@ -249,7 +245,7 @@ test("virtual Markdown remounts managed links with the same resource opener", as
     )
   })
   await page.waitForSelector("[data-markdown-block]")
-  const link = page.getByRole("link", { name: "Report.pdf", exact: true })
+  const link = page.getByRole("button", { name: "Report.pdf", exact: true })
   const reachEnd = async () => {
     for (let frame = 0; frame < 20; frame++) {
       await page.locator("#scroller").evaluate(async (element) => {
@@ -272,7 +268,7 @@ test("virtual Markdown remounts managed links with the same resource opener", as
   })
   await link.waitFor({ state: "detached" })
   await reachEnd()
-  expect(await link.getAttribute("href")).toContain("/asset/3333333333333333.pdf")
+  expect(await link.getAttribute("href")).toBeNull()
   expect(await page.locator("[data-markdown-block]").count()).toBeLessThan(20)
   expect(errors).toEqual([])
 }, 20000)

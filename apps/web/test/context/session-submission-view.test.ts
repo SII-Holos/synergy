@@ -15,6 +15,23 @@ import {
 import { createMessageDisplayIdentity } from "../../src/context/message-display-identity"
 import { isSessionSubmissionContentReady } from "../../src/components/session/session-transition-handoff"
 
+test("file submissions retain their own workspace and encode reserved filename characters", () => {
+  const workspace = { id: "wsp_original", generation: 2, root: "/original" }
+  const parts = createSubmissionParts({
+    id: createSubmissionPartIDs(),
+    prompt: [{ type: "file", path: "文档/a #?%.ts", workspace, content: "@file", start: 0, end: 5 }],
+    workspace: "/different",
+    context: [],
+    attachments: [],
+    notes: [],
+    sessions: [],
+  })
+  expect(parts.find((part) => part.type === "attachment")).toMatchObject({
+    url: "file:///original/%E6%96%87%E6%A1%A3/a%20%23%3F%25.ts",
+    source: { workspace, path: "/original/文档/a #?%.ts" },
+  })
+})
+
 test("complete cached submission bodies cannot release the lease before scope recovery settles", () => {
   const message = {
     ...createOptimisticUserMessage({

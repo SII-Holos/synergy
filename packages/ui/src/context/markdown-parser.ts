@@ -1,4 +1,4 @@
-import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { Marked, type Renderer, type RendererObject } from "marked"
 import markedKatex from "marked-katex-extension"
 import markedShiki from "marked-shiki"
@@ -64,17 +64,21 @@ export function createMarkdownParser() {
             return stripGeneratedKatexMarker(text)
           },
           image({ href, title, text }) {
-            const reference = AssetReference.parse(href)
-            if (!reference) return false
+            const reference = ResourceReference.parse(href)
             const titleAttr = title ? ` title="${escapeHtmlAttribute(title)}"` : ""
-            return `<img data-resource-reference="${reference.url}" alt="${escapeHtmlAttribute(text)}"${titleAttr}>`
+            const src =
+              reference.kind === "url" && /^https?:/i.test(reference.url)
+                ? ` src="${escapeHtmlAttribute(reference.url)}"`
+                : ""
+            return `<img data-resource-reference="${escapeHtmlAttribute(href)}"${src} alt="${escapeHtmlAttribute(text)}"${titleAttr}>`
           },
           link({ href, title, tokens }) {
             const titleAttr = title ? ` title="${escapeHtmlAttribute(title)}"` : ""
-            const reference = AssetReference.parse(href)
-            const target = reference
-              ? `data-resource-reference="${reference.url}"`
-              : `href="${escapeHtmlAttribute(href)}"`
+            const reference = ResourceReference.parse(href)
+            const target =
+              reference.kind === "url" || reference.kind === "anchor"
+                ? `href="${escapeHtmlAttribute(reference.kind === "url" ? reference.url : href)}"`
+                : `data-resource-reference="${escapeHtmlAttribute(href)}" role="button" tabindex="0"`
             return `<a ${target}${titleAttr} target="_blank" rel="noopener noreferrer">${this.parser.parseInline(tokens)}</a>`
           },
         },

@@ -1,12 +1,21 @@
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import { catalogFileWorkspace } from "./file/workspace"
+import { buildWorkspaceFileBrowserUrl } from "@/utils/workspace-file-url"
+import { fileWriteErrorMessage } from "./file/errors"
+import { usePlatform } from "./platform"
+import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
+import { List } from "@ericsanchezok/synergy-ui/list"
 import { usePluginHost } from "@/plugin/host"
 import { useParams } from "@solidjs/router"
 import { toolReviewSource } from "./tool-review-target"
 import { createEffect, createSignal, lazy, Suspense, onCleanup, onMount, type ParentProps } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import { showToast, toaster } from "@ericsanchezok/synergy-ui/toast"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import {
   ResourceOpenProvider as BaseResourceOpenProvider,
   type OpenableResource,
+  type ResourceOpenResult,
   type ResourceOpenOptions,
   type ToolReviewTarget,
   type ToolActivityTarget,
@@ -15,6 +24,7 @@ import {
 import { ImagePreview, type ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import {
   attachmentFromReference,
+  attachmentReferenceContext,
   attachmentSourcePath,
   isImageAttachment,
   resolveAttachmentOpenTarget,
@@ -24,7 +34,7 @@ import {
 } from "@ericsanchezok/synergy-ui/attachment-card"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { createSessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
-import { useFile } from "@/context/file"
+import { useFile, useProjectFiles } from "@/context/file"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { attachmentWorkbenchPanelInit } from "@/components/attachment-workbench/model"
@@ -52,18 +62,9 @@ function stripQueryAndHash(input: string) {
   return input
 }
 
-function fileUrlPath(input: string | undefined) {
-  if (!input?.startsWith("file://")) return undefined
-  const raw = stripQueryAndHash(input.slice("file://".length))
-  try {
-    return decodeURIComponent(raw)
-  } catch {
-    return raw
-  }
-}
-
 function attachmentPath(file: AttachmentFile) {
-  return attachmentSourcePath(file) ?? fileUrlPath(file.url)
+  const target = file.url ? ResourceReference.parse(file.url) : undefined
+  return attachmentSourcePath(file) ?? (target?.kind === "workspace-file" ? target.path : undefined)
 }
 
 function filenameFor(resource: { filename?: string; url?: string; path?: string }) {
@@ -101,7 +102,12 @@ function previewImageForUrl(input: { url: string; mime?: string; filename?: stri
 
 export function ResourceOpenProvider(props: ParentProps) {
   const dialog = useDialog()
+  const showResourceDialog: typeof dialog.show = (content, onClose) =>
+    dialog.show(() => <BaseResourceOpenProvider value={controller}>{content()}</BaseResourceOpenProvider>, onClose)
   const file = useFile()
+  const projectFiles = useProjectFiles()
+  const platform = usePlatform()
+  let resourceRequest: AbortController | undefined
   const sdk = useSDK()
   const sync = useSync()
   const canonicalView = createSessionDataView(sync.data)
@@ -119,12 +125,15 @@ export function ResourceOpenProvider(props: ParentProps) {
   createEffect(() => {
     ownerKey()
     pending?.abort()
+    resourceRequest?.abort()
     setResourceSelection(undefined)
   })
-  onCleanup(() => pending?.abort())
+  onCleanup(() => {
+    pending?.abort()
+    resourceRequest?.abort()
+  })
   const { _ } = useLingui()
-  const attachmentOpenings = new Set<string>()
-  const [openedAttachment, setOpenedAttachment] = createSignal<{
+  const [openedResource, setOpenedResource] = createSignal<{
     session: string
     tabID: string
     origin?: () => HTMLElement | undefined
@@ -133,68 +142,56 @@ export function ResourceOpenProvider(props: ParentProps) {
   let draftDialog: string | undefined
   onCleanup(() => {
     disposed = true
-    attachmentOpenings.clear()
     if (draftDialog) dialog.close(draftDialog)
   })
   createEffect(() => {
-    const opened = openedAttachment()
+    const opened = openedResource()
     if (!opened) return
     if (!workbench.isCurrent(opened.session)) {
-      setOpenedAttachment(undefined)
+      setOpenedResource(undefined)
       return
     }
     const side = workbench.surface("side")
     if (side.opened() && side.tabs().some((tab) => tab.id === opened.tabID)) return
-    setOpenedAttachment(undefined)
+    setOpenedResource(undefined)
     queueMicrotask(() => {
       const origin = opened.origin?.()
       if (origin?.isConnected) origin.focus({ preventScroll: true })
     })
   })
 
-  const openAttachmentPanel = (
+  const openAttachmentPanel = async (
     attachment: AttachmentFile,
     init: NonNullable<ReturnType<typeof attachmentWorkbenchPanelInit>>,
     options?: ResourceOpenOptions,
   ) => {
     const session = workbench.sessionKey()
-    const server = sdk.url
-    const scope = sdk.scopeKey
+    const owner = ownerKey()
     const origin = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
-    const current = () => !disposed && workbench.isCurrent(session) && sdk.url === server && sdk.scopeKey === scope
-    const key = JSON.stringify([server, scope, session, init.resourceId])
-    const attempt = async () => {
-      if (!current() || attachmentOpenings.has(key)) return
-      attachmentOpenings.add(key)
-      try {
-        const tab = workbench.getPanel("attachment")
-          ? await workbench.openPanel("attachment", { reuseExisting: true, init })
-          : undefined
-        if (!current()) return
-        if (!tab) throw new Error("Attachment panel unavailable")
-        setOpenedAttachment({ session, tabID: tab.id, origin: options?.focusTarget ?? (() => origin) })
-      } catch {
-        if (!current()) return
-        const toastID = showToast({
-          type: "error",
-          persistent: true,
-          title: _({ id: "app.attachment.openFailed", message: "Couldn’t open attachment" }),
-          description: attachment.filename,
-          actions: [
-            {
-              label: _({ id: "app.workspace.panel.retry", message: "Retry" }),
-              onClick: () => {
-                toaster.dismiss(toastID)
-                void attempt()
-              },
-            },
-          ],
-        })
-      } finally {
-        attachmentOpenings.delete(key)
-      }
-    }
-    void attempt()
+    const side = workbench.surface("side")
+    const selectionRevision = side.selectionRevision()
+    if (options?.signal?.aborted) return false
+    const tab = await workbench.openPanel("attachment", {
+      canCommit: () =>
+        !disposed &&
+        !options?.signal?.aborted &&
+        ownerKey() === owner &&
+        side.selectionRevision() === selectionRevision,
+      reuseExisting: !options?.newTab,
+      forceNew: options?.newTab,
+      init: {
+        ...init,
+        state: {
+          ...(init.state as object),
+          referenceContext: options?.context,
+          location: options?.location,
+          navigation: Date.now(),
+        },
+      },
+    })
+    if (disposed || options?.signal?.aborted || ownerKey() !== owner || !workbench.isCurrent(session)) return false
+    if (!tab) return false
+    setOpenedResource({ session, tabID: tab.id, origin: options?.focusTarget ?? (() => origin) })
     return true
   }
 
@@ -353,46 +350,162 @@ export function ResourceOpenProvider(props: ParentProps) {
     return true
   }
 
-  const openWorkspaceFile = (path: string) => {
-    const normalized = path ? file.normalize(path) : undefined
-    if (!normalized) return false
-    void file.openWorkspaceFile(normalized)
-    return true
+  const workspaceTarget = (path: string, context = ResourceReference.capture(file.workspace)) => {
+    if (context.state !== "bound")
+      throw new Error(
+        _({
+          id: "app.reference.noWorkspace",
+          message: "The source workspace is unavailable. Choose a workspace to open this reference.",
+        }),
+      )
+    const normalized = ResourceReference.resolvePath(path, context)
+    if (normalized === undefined)
+      throw new Error(
+        _({ id: "app.reference.outsideWorkspace", message: "This path is outside the reference’s workspace." }),
+      )
+    const record = sync.data.workspaces.find((item) => item.id === context.workspace.id)
+    const workspace = record
+      ? catalogFileWorkspace(record)
+      : file.workspace?.id === context.workspace.id
+        ? file.workspace
+        : undefined
+    if (!workspace || workspace.generation !== context.workspace.generation)
+      throw new Error(
+        _({
+          id: "app.reference.workspaceChanged",
+          message: "The source workspace was removed or its binding changed.",
+        }),
+      )
+    return { path: normalized, workspace }
   }
 
-  const resolveWorkspacePath = (path: string | undefined) => (path ? file.normalize(path) : undefined)
+  const chooseWorkspace = (signal: AbortSignal) =>
+    new Promise<ResourceReference.Context | undefined>((resolve) => {
+      if (signal.aborted) return resolve(undefined)
+      const id = showResourceDialog(
+        () => (
+          <Dialog
+            title={_({ id: "app.reference.chooseWorkspace", message: "Choose the reference’s workspace" })}
+            size="list"
+          >
+            <List
+              items={sync.data.workspaces
+                .filter((record) => record.scopeID === sdk.scopeID)
+                .flatMap((record) => {
+                  const value = catalogFileWorkspace(record)
+                  return value ? [value] : []
+                })}
+              key={(item) => item.id}
+              search={{
+                placeholder: _({ id: "app.reference.searchWorkspace", message: "Search workspaces" }),
+                autofocus: true,
+              }}
+              filterKeys={["path", "name", "id"]}
+              onSelect={(workspace) => {
+                resolve(workspace ? ResourceReference.capture(workspace) : undefined)
+                dialog.close(id)
+              }}
+            >
+              {(workspace) => (
+                <span>{workspace.path || (typeof workspace.name === "string" ? workspace.name : workspace.id)}</span>
+              )}
+            </List>
+          </Dialog>
+        ),
+        () => {
+          signal.removeEventListener("abort", cancel)
+          resolve(undefined)
+        },
+      )
+      const cancel = () => dialog.close(id)
+      signal.addEventListener("abort", cancel, { once: true })
+    })
 
-  const openWorkspaceSource = (path: string) => {
-    return openWorkspaceFile(path)
-  }
-
-  const resolveAttachmentReference = (reference: string, filename?: string) => {
-    const attachment = attachmentFromReference(reference, filename)
-    return attachment ? { file: attachment, serverUrl: sdk.url } : undefined
-  }
-
-  const openUrl = (input: { url: string; mime?: string; filename?: string }): boolean => {
-    if (!input.url) return false
-    if (input.url.startsWith("asset://")) {
-      const resource = resolveAttachmentReference(input.url, input.filename)
-      return resource ? openAttachment(resource.file, { serverUrl: resource.serverUrl }) : false
+  const openWorkspaceFile = async (path: string, options: ResourceOpenOptions = {}, mime?: string) => {
+    if (options.context && options.context.state !== "bound") {
+      const context = await chooseWorkspace(options.signal ?? new AbortController().signal)
+      if (!context) return false
+      options = { ...options, context }
     }
+    const target = workspaceTarget(path, options.context)
+    const owner = ownerKey()
+    const side = workbench.surface("side")
+    const revision = side.selectionRevision()
+    const current = () => !disposed && !options.signal?.aborted && ownerKey() === owner
+    const response = await sdk.client.workspace.files.stat(
+      {
+        path: target.path,
+        workspaceID: target.workspace.id,
+        workspaceGeneration: target.workspace.generation,
+      },
+      { signal: options.signal, throwOnError: true },
+    )
+    if (!current() || side.selectionRevision() !== revision) return false
+    if (options.prefer === "preview" && mime?.startsWith("image/")) {
+      const src = resolveUrl({ kind: "workspace-file", path }, options.context)
+      if (!src) return false
+      const image = {
+        id: src,
+        src,
+        filename: filenameFor({ path }),
+        mime,
+        sourcePath: path,
+        referenceContext: options.context,
+        downloadUrl: src,
+      }
+      showResourceDialog(
+        () => <ImagePreview images={[image]} />,
+        () => options.focusTarget?.()?.focus({ preventScroll: true }),
+      )
+      return true
+    }
+    const tab = await projectFiles.open(target.workspace, target.path, {
+      newTab: options.newTab,
+      location: options.location,
+      directory: response.data?.type === "directory",
+      signal: options.signal,
+    })
+    if (current() && tab)
+      setOpenedResource({ session: workbench.sessionKey(), tabID: tab.id, origin: options.focusTarget })
+    return current() && !!tab
+  }
+
+  const resolveUrl = (reference: ResourceReference.Target, context?: ResourceReference.Context) => {
+    if (reference.kind === "asset") {
+      const attachment = attachmentFromReference(reference.url)
+      return attachment ? resolveAttachmentUrl(sdk.url, attachment) : undefined
+    }
+    if (reference.kind === "url") return reference.url
+    if (reference.kind !== "workspace-file") return
+    try {
+      const target = workspaceTarget(reference.path, context)
+      return buildWorkspaceFileBrowserUrl(sdk.url, target.path, {
+        scopeID: sdk.scopeID,
+        workspaceID: target.workspace.id,
+        workspaceGeneration: target.workspace.generation,
+      })
+    } catch {
+      return
+    }
+  }
+
+  const openUrl = async (input: { url: string; mime?: string; filename?: string }): Promise<boolean> => {
     if (input.mime?.startsWith("image/")) {
       const image = previewImageForUrl(input)
-      if (image) {
-        dialog.show(() => <ImagePreview images={[image]} />)
-        return true
-      }
-      return false
+      if (!image) return false
+      showResourceDialog(() => <ImagePreview images={[image]} />)
+      return true
     }
-    window.open(input.url, "_blank", "noopener,noreferrer")
+    if (ResourceReference.parse(input.url).kind !== "url") return false
+    platform.openLink(input.url)
     return true
   }
 
-  const openAttachment = (
+  const openAttachment = async (
     attachment: AttachmentFile,
     options?: ResourceOpenOptions & { serverUrl?: string },
-  ): boolean => {
+  ): Promise<boolean> => {
+    options = { ...options, context: attachmentReferenceContext(attachment, options?.context) }
     const captured = () => {
       const draft =
         transitions.get(attachment.sessionID ?? "")?.draft ??
@@ -419,7 +532,7 @@ export function ResourceOpenProvider(props: ParentProps) {
         scope = sdk.scopeKey,
         intent = draft.intent
       let dialogID: string | undefined
-      dialogID = dialog.show(
+      dialogID = showResourceDialog(
         () => (
           <Suspense>
             <DraftAttachmentPreview
@@ -448,16 +561,27 @@ export function ResourceOpenProvider(props: ParentProps) {
       return openAttachmentPanel(attachment, attachmentPanelInit, options)
     }
     const path = attachmentPath(attachment)
-    if (options?.prefer === "workspace" && path) return openWorkspaceFile(path)
+    if (options?.prefer === "workspace" && path) return openWorkspaceFile(path, options)
 
     const url = resolveAttachmentUrl(options?.serverUrl ?? sdk.url, attachment)
     const target = resolveAttachmentOpenTarget(attachment)
     if (target === "image-preview" && isImageAttachment(attachment) && url && options?.prefer !== "workspace") {
       const image = resolveImagePreviewImage(options?.serverUrl ?? sdk.url, attachment, 0)
       if (!image) return false
-      image.sourcePath = resolveWorkspacePath(attachmentSourcePath(attachment))
-      dialog.show(
-        () => <ImagePreview images={[image]} />,
+      image.sourcePath = attachmentSourcePath(attachment)
+      image.referenceContext = options?.context
+      showResourceDialog(
+        () => (
+          <ImagePreview
+            images={
+              options?.imagePreview?.images.map((item) => ({
+                ...item,
+                referenceContext: item.referenceContext ?? options?.context,
+              })) ?? [image]
+            }
+            initialIndex={options?.imagePreview?.index}
+          />
+        ),
         () => {
           if (options?.focusTarget) queueMicrotask(() => options.focusTarget?.()?.focus({ preventScroll: true }))
         },
@@ -469,56 +593,99 @@ export function ResourceOpenProvider(props: ParentProps) {
       return openAttachmentPanel(attachment, attachmentPanelInit, options)
     }
 
-    if (path) return openWorkspaceFile(path)
+    if (path) return openWorkspaceFile(path, options)
     if (url) return openUrl({ url, mime: attachment.mime, filename: attachment.filename })
     return false
   }
 
-  const open = (resource: OpenableResource, options?: ResourceOpenOptions) => {
-    if (resource.kind === "attachment") {
-      return openAttachment(resource.file, { ...options, serverUrl: resource.serverUrl })
+  const open = async (resource: OpenableResource, supplied: ResourceOpenOptions = {}): Promise<ResourceOpenResult> => {
+    if (resource.kind === "url" && !/^(data:image\/|blob:)/i.test(resource.url))
+      resource = { ...ResourceReference.parse(resource.url), mime: resource.mime, filename: resource.filename }
+    resourceRequest?.abort()
+    const request = new AbortController()
+    resourceRequest = request
+    const signal = supplied.signal ? AbortSignal.any([supplied.signal, request.signal]) : request.signal
+    const options = {
+      ...supplied,
+      signal,
+      location: supplied.location ?? ("location" in resource ? resource.location : undefined),
     }
-    if (resource.kind === "workspace-file") {
-      return openWorkspaceFile(resource.path)
+    try {
+      if (signal.aborted) return { status: "cancelled" }
+      if (options.location && !ResourceReference.Location.safeParse(options.location).success)
+        throw new Error(
+          _({ id: "app.reference.invalid", message: "This reference has an invalid path, protocol or location." }),
+        )
+      let opened = false
+      if (resource.kind === "attachment")
+        opened = await openAttachment(resource.file, { ...options, serverUrl: resource.serverUrl })
+      else if (resource.kind === "asset") {
+        const attachment = attachmentFromReference(resource.url, resource.filename)
+        if (attachment) opened = await openAttachment(attachment, options)
+      } else if (resource.kind === "workspace-file")
+        opened = await openWorkspaceFile(resource.path, options, resource.mime)
+      else if (resource.kind === "url") opened = await openUrl(resource)
+      else if (resource.kind === "unavailable")
+        throw new Error(
+          _({ id: "app.reference.invalid", message: "This reference has an invalid path, protocol or location." }),
+        )
+      if (signal.aborted) return { status: "cancelled" }
+      if (!opened) return { status: "cancelled" }
+      return { status: resource.kind === "url" && !resource.mime?.startsWith("image/") ? "dispatched" : "opened" }
+    } catch (error) {
+      if (signal.aborted) return { status: "cancelled" }
+      const reason =
+        fileWriteErrorMessage(error) ??
+        (error instanceof Error
+          ? error.message
+          : _({ id: "app.reference.unavailable", message: "The resource is unavailable." }))
+      showToast({
+        type: "error",
+        title: _({ id: "app.reference.openFailed", message: "Couldn’t open reference" }),
+        description: reason,
+        actions: [
+          {
+            label: _({ id: "app.workspace.panel.retry", message: "Retry" }),
+            onClick: () => {
+              void open(resource, supplied)
+            },
+          },
+          {
+            label: _({ id: "app.reference.copy", message: "Copy reference" }),
+            onClick: () => {
+              void copyTextToClipboard(
+                ResourceReference.format(
+                  resource.kind === "attachment" ? ResourceReference.parse(resource.file.url ?? "") : resource,
+                  options.location,
+                ),
+              )
+            },
+          },
+        ],
+      })
+      return { status: "unavailable", reason }
     }
-    if (resource.kind === "url") {
-      const path = fileUrlPath(resource.url)
-      if (path) return openWorkspaceFile(path)
-      return openUrl(resource)
-    }
-    return false
   }
 
   onMount(() => {
     onCleanup(
       plugins.resources.register((resource) => {
-        const attachment = resolveAttachmentReference(resource.uri)
-        if (attachment) return openAttachment(attachment.file)
-        const path = fileUrlPath(resource.uri)
-        if (path) return openWorkspaceFile(path)
-        if (resource.kind === "file") return openWorkspaceFile(resource.uri)
-        if (/^(https?:|data:|blob:)/i.test(resource.uri)) return openUrl({ url: resource.uri })
-        return openWorkspaceFile(resource.uri)
+        const reference = ResourceReference.parse(resource.uri)
+        if (reference.kind === "unavailable") return false
+        void open(reference)
+        return true
       }),
     )
   })
 
-  return (
-    <BaseResourceOpenProvider
-      value={{
-        open,
-        openAttachment,
-        resolveAttachmentReference,
-        resolveWorkspacePath,
-        openWorkspaceSource,
-        openToolReview,
-        openToolActivity,
-        isToolActivitySelected,
-        openActivityDetail,
-        isActivityDetailSelected,
-      }}
-    >
-      {props.children}
-    </BaseResourceOpenProvider>
-  )
+  const controller = {
+    open,
+    resolveUrl,
+    openToolReview,
+    openToolActivity,
+    isToolActivitySelected,
+    openActivityDetail,
+    isActivityDetailSelected,
+  }
+  return <BaseResourceOpenProvider value={controller}>{props.children}</BaseResourceOpenProvider>
 }

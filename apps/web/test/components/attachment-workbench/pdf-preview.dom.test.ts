@@ -82,7 +82,7 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "main.ts"),
       `
-        import { createComponent } from "solid-js"
+        import { createComponent, createSignal } from "solid-js"
         import { render } from "solid-js/web"
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
@@ -98,11 +98,20 @@ beforeAll(async () => {
           const isBad = new URLSearchParams(location.search).get("case") === "bad"
           const response = await fetch(isBad ? "/fixture-bad.pdf" : "/fixture.pdf")
           const bytes = new Uint8Array(await response.arrayBuffer())
+          const [data, setData] = createSignal(bytes)
+          const [pageLocation, setLocation] = createSignal()
+          const [navigation, setNavigation] = createSignal(0)
+          Object.assign(window, { pdfFixture: {
+            navigate(page) { setLocation({ kind: "page", page }); setNavigation(value => value + 1) },
+            replace() { setData(bytes.slice()) },
+          } })
           render(
             () =>
               createComponent(I18nProvider, {
                 i18n,
-                children: () => createComponent(AttachmentPdfPreview, { bytes }),
+                children: () => createComponent(AttachmentPdfPreview, {
+                  get bytes() { return data() }, get location() { return pageLocation() }, get navigation() { return navigation() },
+                }),
               }),
             document.querySelector("#root"),
           )
@@ -150,6 +159,38 @@ afterAll(async () => {
 })
 
 describe("AttachmentPdfPreview viewer integration", () => {
+  test("repeats page navigation, reports out-of-range pages, and reloads replacement bytes", async () => {
+    const navigationPage = await browser.newPage({ viewport: { width: 800, height: 600 } })
+    try {
+      await navigationPage.goto(url)
+      const label = navigationPage.locator(".attachment-pdf-toolbar > span:not(.attachment-pdf-toolbar-spacer)")
+      await navigationPage.waitForFunction(() =>
+        document.querySelector(".attachment-pdf-toolbar")?.textContent?.includes("1 / 2"),
+      )
+      for (const target of [2, 1, 2, 999]) {
+        await navigationPage.evaluate(
+          (page) => (window as unknown as { pdfFixture: { navigate(page: number): void } }).pdfFixture.navigate(page),
+          target,
+        )
+        await navigationPage.waitForFunction(
+          (page) =>
+            document.querySelector(".attachment-pdf-toolbar")?.textContent?.includes(`${Math.min(page, 2)} / 2`),
+          target,
+        )
+        expect(await label.textContent()).toBe(`${Math.min(target, 2)} / 2`)
+      }
+      expect(await navigationPage.getByRole("status").textContent()).toContain("outside this document")
+      await navigationPage.evaluate(() =>
+        (window as unknown as { pdfFixture: { replace(): void } }).pdfFixture.replace(),
+      )
+      await navigationPage.waitForFunction(() =>
+        document.querySelector(".attachment-pdf-toolbar")?.textContent?.includes("2 / 2"),
+      )
+      expect(await navigationPage.locator(".pdfViewer .page").count()).toBe(2)
+    } finally {
+      await navigationPage.close()
+    }
+  }, 30000)
   test("renders a continuous scroll document with selectable text and a working fit-width toggle", async () => {
     const pageErrors: string[] = []
     page.on("pageerror", (error) => pageErrors.push(String(error)))

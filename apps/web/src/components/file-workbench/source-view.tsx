@@ -1,5 +1,6 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js"
 import { useLingui } from "@lingui/solid"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { resolveThemeColor, useTheme, type ResolvedTheme } from "@ericsanchezok/synergy-ui/theme"
 import { useFile } from "@/context/file"
@@ -116,12 +117,51 @@ export function FileSourceView(props: {
   let host!: HTMLDivElement
   let monacoInstance: Monaco | undefined
   let editor: import("monaco-editor").editor.IStandaloneCodeEditor | undefined
+  const [ready, setReady] = createSignal(false)
   let disposed = false
   let handleFontChange: ((event: Event) => void) | undefined
   let baseline = props.content
   let applying = false
   let modelListener: import("monaco-editor").IDisposable | undefined
   const [dirty, setDirty] = createSignal(false)
+
+  createEffect(() => {
+    const request = file.navigation(props.path)
+    if (!ready() || !request || request.location.kind !== "text" || !editor) return
+    const location = request.location
+    const model = editor.getModel()
+    if (!model) return
+    const requested = {
+      startLineNumber: location.line,
+      startColumn: location.column ?? 1,
+      endLineNumber: location.endLine ?? location.line,
+      endColumn:
+        location.endColumn ?? model.getLineMaxColumn(Math.min(model.getLineCount(), location.endLine ?? location.line)),
+    }
+    const range = model.validateRange(requested)
+    if (
+      range.startLineNumber !== requested.startLineNumber ||
+      range.endLineNumber !== requested.endLineNumber ||
+      (location.column !== undefined && range.startColumn !== location.column) ||
+      (location.endColumn !== undefined && range.endColumn !== location.endColumn)
+    ) {
+      showToast({
+        type: "info",
+        title: lingui._({
+          id: "app.reference.locationUnavailable",
+          message: "The requested position is outside the available content. Showing the nearest position.",
+        }),
+      })
+    }
+    editor.setSelection(range)
+    editor.revealRangeInCenter(range)
+    if (
+      document.activeElement === document.body ||
+      host.contains(document.activeElement) ||
+      document.activeElement?.closest("[data-resource-reference]")
+    )
+      editor.focus()
+  })
 
   onMount(() => {
     handleFontChange = (event: Event) => {
@@ -163,7 +203,7 @@ export function FileSourceView(props: {
         glyphMargin: false,
         renderLineHighlight: "line",
         scrollBeyondLastLine: false,
-        smoothScrolling: true,
+        smoothScrolling: false,
         wordWrap: "off",
         quickSuggestions: false,
         suggest: { showWords: false },
@@ -187,6 +227,7 @@ export function FileSourceView(props: {
           endColumn: cached.model.getLineMaxColumn(selected.end),
         })
       }
+      setReady(true)
       editor.onDidScrollChange((event) => {
         file.view.setSourceScroll(props.path, event.scrollTop, event.scrollLeft)
       })

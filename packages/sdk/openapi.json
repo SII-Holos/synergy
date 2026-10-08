@@ -61118,6 +61118,86 @@
           },
           "path": {
             "type": "string"
+          },
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "generation": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              "root": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "generation", "root"]
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "text"
+                  },
+                  "line": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  },
+                  "column": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  },
+                  "endLine": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  },
+                  "endColumn": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  }
+                },
+                "required": ["kind", "line"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "heading"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "id"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "page"
+                  },
+                  "page": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  }
+                },
+                "required": ["kind", "page"]
+              }
+            ]
           }
         },
         "required": ["text", "type", "path"]
@@ -61164,6 +61244,24 @@
           },
           "path": {
             "type": "string"
+          },
+          "workspace": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "generation": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              "root": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "generation", "root"]
           },
           "range": {
             "$ref": "#/components/schemas/Range"
@@ -65065,6 +65163,61 @@
                 "type": "string",
                 "enum": ["user", "assistant"]
               },
+              "referenceContext": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "bound"
+                      },
+                      "workspace": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "generation": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 2147483647
+                          },
+                          "root": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["id", "generation", "root"]
+                      },
+                      "directory": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["state", "workspace", "directory"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "none"
+                      }
+                    },
+                    "required": ["state"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "unresolved"
+                      }
+                    },
+                    "required": ["state"]
+                  }
+                ]
+              },
               "parts": {
                 "type": "array",
                 "items": {
@@ -65873,6 +66026,61 @@
           "rootID": {
             "type": "string"
           },
+          "referenceContext": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "bound"
+                  },
+                  "workspace": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "generation": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 2147483647
+                      },
+                      "root": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id", "generation", "root"]
+                  },
+                  "directory": {
+                    "type": "string"
+                  }
+                },
+                "required": ["state", "workspace", "directory"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "none"
+                  }
+                },
+                "required": ["state"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "unresolved"
+                  }
+                },
+                "required": ["state"]
+              }
+            ]
+          },
           "role": {
             "type": "string",
             "const": "user"
@@ -66283,6 +66491,61 @@
           },
           "rootID": {
             "type": "string"
+          },
+          "referenceContext": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "bound"
+                  },
+                  "workspace": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "generation": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 2147483647
+                      },
+                      "root": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id", "generation", "root"]
+                  },
+                  "directory": {
+                    "type": "string"
+                  }
+                },
+                "required": ["state", "workspace", "directory"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "none"
+                  }
+                },
+                "required": ["state"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "unresolved"
+                  }
+                },
+                "required": ["state"]
+              }
+            ]
           },
           "modelSelection": {
             "$ref": "#/components/schemas/SessionRequestModelSelection"

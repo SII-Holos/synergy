@@ -12,11 +12,9 @@ import {
 } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
-import { useDialog } from "../context/dialog"
-import { useResourceOpen } from "../context/resource-open"
+import { useReferenceContext, useResourceOpen } from "../context/resource-open"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
-import { ImagePreview } from "./image-preview"
 import { getSemanticIcon } from "./semantic-icon"
 import { AttachmentRows } from "./attachment-rows"
 import {
@@ -35,6 +33,8 @@ import {
 import type { ImagePreviewImage } from "./image-preview-model"
 export type { AttachmentFile } from "./attachment-card-utils"
 export {
+  attachmentDocumentContext,
+  attachmentReferenceContext,
   attachmentFromReference,
   attachmentColumnCount,
   attachmentColumns,
@@ -69,8 +69,8 @@ export function AttachmentCard(props: {
   onOpen?: (file: AttachmentFile) => void
 }) {
   const { _ } = useLingui()
-  const dialog = useDialog()
   const resourceOpen = useResourceOpen()
+  const referenceContext = useReferenceContext()
   const [imageFailed, setImageFailed] = createSignal(false)
   const url = createMemo(() => resolveAttachmentUrl(props.serverUrl, props.file))
   const thumbnailUrl = createMemo(() => resolveAttachmentThumbnailUrl(props.serverUrl, props.file))
@@ -162,24 +162,16 @@ export function AttachmentCard(props: {
       props.onOpen(props.file)
       return
     }
-    if (
-      props.compact === "user" &&
-      resourceOpen?.openAttachment(props.file, { serverUrl: props.serverUrl, prefer: "workspace" })
-    )
-      return
-    const preview = props.imagePreview
-    if (preview) {
-      const images = preview.images.map((image) => ({
-        ...image,
-        sourcePath: resourceOpen?.resolveWorkspacePath?.(image.sourcePath),
-      }))
-      dialog.show(() => <ImagePreview images={images} initialIndex={preview.index} />)
-      return
+    if (resourceOpen) {
+      void resourceOpen.open(
+        { kind: "attachment", file: props.file, serverUrl: props.serverUrl },
+        {
+          prefer: props.compact === "user" ? "workspace" : "preview",
+          context: referenceContext() ?? { state: "unresolved" },
+          imagePreview: props.imagePreview,
+        },
+      )
     }
-    if (resourceOpen?.openAttachment(props.file, { serverUrl: props.serverUrl })) return
-    const href = url()
-    if (!href) return
-    window.open(href, "_blank", "noopener,noreferrer")
   }
 
   const size = () => presentation().size

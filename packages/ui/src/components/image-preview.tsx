@@ -131,10 +131,14 @@ export function ImagePreview(props: ImagePreviewProps) {
     window.open(image.externalUrl ?? image.src, "_blank", "noopener,noreferrer")
   }
 
-  function openSource() {
+  async function openSource() {
     const sourcePath = current()?.sourcePath
-    if (!sourcePath || !resourceOpen?.openWorkspaceSource?.(sourcePath)) return
-    dialog.close()
+    if (!sourcePath || !resourceOpen) return
+    const result = await resourceOpen.open(
+      { kind: "workspace-file", path: sourcePath },
+      { context: current()?.referenceContext ?? { state: "unresolved" } },
+    )
+    if (result.status === "opened") dialog.close()
   }
 
   function onKeyDown(event: KeyboardEvent) {
@@ -295,7 +299,7 @@ export function ImagePreview(props: ImagePreviewProps) {
                     >
                       <Icon name="download" size="small" />
                     </a>
-                    <Show when={resourceOpen?.openWorkspaceSource ? current()?.sourcePath : undefined}>
+                    <Show when={resourceOpen ? current()?.sourcePath : undefined}>
                       <button
                         type="button"
                         data-component="icon-button"

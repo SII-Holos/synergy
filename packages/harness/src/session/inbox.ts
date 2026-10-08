@@ -1,3 +1,4 @@
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import z from "zod"
 import { ModelSelection } from "./model-selection-schema"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -88,6 +89,7 @@ export namespace SessionInbox {
       message: z
         .object({
           role: z.enum(["user", "assistant"]).default("user"),
+          referenceContext: ResourceReference.Context.optional(),
           parts: z.array(PayloadPart),
           agent: z.string().optional(),
           model: z
@@ -507,6 +509,7 @@ export namespace SessionInbox {
       deliveryKey: input.deliveryKey,
       mode,
       message: {
+        referenceContext: ResourceReference.capture(ScopeContext.current.workspace),
         parts: input.message.parts as any,
         role: input.message.role,
         agent: input.message.agent,
@@ -661,6 +664,7 @@ export namespace SessionInbox {
       mode,
       message: {
         role: "user",
+        referenceContext: ResourceReference.capture((taskSession ?? (await readSession(input.sessionID))).workspace),
         parts: input.parts as any,
         agent: input.agent,
         model: input.model,
@@ -1091,6 +1095,7 @@ export namespace SessionInbox {
         return createUserMessage(
           {
             ...item.input,
+            referenceContext: item.message?.referenceContext ?? { state: "unresolved" },
             sessionID: item.sessionID,
             messageID,
             noReply: item.mode === "task" ? item.input.noReply : true,
@@ -1143,6 +1148,7 @@ export namespace SessionInbox {
       const info: MessageV2.User = {
         id: messageID,
         role: "user",
+        referenceContext: payload.referenceContext ?? { state: "unresolved" },
         sessionID: item.sessionID,
         time: { created: Date.now() },
         agent: runtime.agent.name,
@@ -1174,6 +1180,7 @@ export namespace SessionInbox {
     const info: MessageV2.Assistant = {
       id: messageID,
       role: "assistant",
+      referenceContext: payload.referenceContext ?? { state: "unresolved" },
       sessionID: item.sessionID,
       parentID: rootID ?? messageID,
       rootID: rootID ?? messageID,

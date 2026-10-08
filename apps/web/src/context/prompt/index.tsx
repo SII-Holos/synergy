@@ -1,3 +1,4 @@
+import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { batch, createEffect, createMemo, createRoot, onCleanup } from "solid-js"
@@ -29,6 +30,7 @@ export interface TextPart extends PartBase {
 export interface FileAttachmentPart extends PartBase {
   type: "file"
   path: string
+  workspace?: ResourceReference.Workspace
   originScopeID?: string
   selection?: FileSelection
 }
@@ -78,6 +80,7 @@ export type Prompt = ContentPart[]
 export type FileContextItem = {
   type: "file"
   path: string
+  workspace?: ResourceReference.Workspace
   originScopeID?: string
   selection?: FileSelection
 }

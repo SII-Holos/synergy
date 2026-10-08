@@ -1,3 +1,4 @@
+import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import {
   createContext,
   createEffect,
@@ -50,6 +51,13 @@ import {
   isWorkspaceFileTooLargeError,
   removePathTree,
 } from "./errors"
+
+export type FileOpenOptions = {
+  newTab?: boolean
+  location?: ResourceReference.Location
+  directory?: boolean
+  signal?: AbortSignal
+}
 
 export type FileSelection = {
   startLine: number
@@ -256,7 +264,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
   const pdfInflight = new Map<string, Promise<void>>()
   const directoryInflight = new Map<string, Promise<void>>()
   const controllers = new Set<AbortController>()
-  const openInflight = new Map<string, Promise<unknown>>()
+  const openInflight = new Map<string, Promise<WorkbenchPanelTab | undefined>>()
   let documentRunning = 0
   let directoryRunning = 0
   const documentWaiters: VoidFunction[] = []
@@ -739,28 +747,50 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     if (path && store.documents[path]) setStore("documents", path, "draft", undefined)
   }
 
-  const openWorkspaceFile = (input: string, options?: { newTab?: boolean }) => {
-    const path = normalize(input)
-    if (disposed || !workspace || !path) return Promise.resolve(undefined)
-    const openKey = JSON.stringify([path, options?.newTab === true])
+  const [navigation, setNavigation] =
+    createStore<Record<string, { id: number; location: ResourceReference.Location } | undefined>>()
+  let navigationID = 0
+  const openWorkspaceFile = (input: string, options?: FileOpenOptions) => {
+    const path = options?.directory ? "" : normalize(input)
+    if (disposed || !workspace || path === undefined || options?.signal?.aborted) return Promise.resolve(undefined)
+    const openKey = JSON.stringify([path, options?.newTab === true, options?.signal ? ++navigationID : 0])
     const existing = openInflight.get(openKey)
     if (existing) return existing
+    setNavigation(path, undefined)
+    const side = workbench.surface("side")
+    const selectionRevision = side.selectionRevision()
     const promise = workbench
       .openPanel("file", {
+        ...(options?.signal
+          ? { canCommit: () => !disposed && !options.signal?.aborted && side.selectionRevision() === selectionRevision }
+          : {}),
         replaceEmpty: true,
         replaceCurrent: !options?.newTab,
         forceNew: options?.newTab,
         init: {
           resourceId: workspaceFileResource(workspace, path),
-          title: getFilename(path),
+          title: getFilename(options?.directory ? input.replace(/\/$/, "") || workspace.path : path),
           source: "workspace",
           state: { workspace },
         },
       })
-      .then((tab) => {
-        if (disposed || !tab) return tab
-        void load(path)
+      .then(async (tab) => {
+        if (disposed || !tab || options?.signal?.aborted) return undefined
+        if (options?.directory) {
+          view().setExplorerOpen(true)
+          await reveal(input)
+          setExpanded(input, true)
+          return tab
+        }
+        await load(path)
+        if (disposed || options?.signal?.aborted) return undefined
+        if (options?.location) {
+          view().setMode(path, options.location.kind === "text" ? "source" : "preview")
+          setNavigation(path, { id: ++navigationID, location: options.location })
+        }
         if (view().explorerOpen()) void reveal(path)
+        const error = store.documents[path]?.error
+        if (error) throw new Error(error)
         return tab
       })
       .finally(() => openInflight.delete(openKey))
@@ -1115,6 +1145,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     activePath,
     openPaths,
     openWorkspaceFile,
+    navigation: (path: string) => navigation[path],
     get: (input: string) => {
       const path = normalize(input)
       return path ? store.documents[path] : undefined
@@ -1372,7 +1403,7 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
         }
       },
       setTaskWorkspace,
-      open: (workspace: FileWorkspace, path: string, options?: { newTab?: boolean }) =>
+      open: (workspace: FileWorkspace, path: string, options?: FileOpenOptions) =>
         getEntry(workspace).value.openWorkspaceFile(path, options),
       async search(query: string, signal?: AbortSignal) {
         return (
