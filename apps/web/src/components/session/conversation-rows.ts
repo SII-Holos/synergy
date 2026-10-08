@@ -65,7 +65,7 @@ export type ConversationRow = {
 )
 
 // Provenance: docs/postmortem/0059-cold-process-disclosure-jank.md
-// Local adaptation: Pending bodies reserve compact summary lines until accepted content can be measured.
+// Local adaptation: Pending process bodies reserve compact summary lines until accepted content can be measured.
 export const estimateConversationRowSize = (row: ConversationRow) =>
   28 * (row.kind === "body" ? Math.max(1, row.parts.length) : 1)
 

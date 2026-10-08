@@ -667,6 +667,94 @@ test("cold process disclosure keeps a bounded reading window while tool bodies a
   expect(await page.locator('[data-part-id="cold-prose"]').count()).toBe(1)
 })
 
+test("cold user attachments keep their folded geometry outside process preparation", async () => {
+  await contentPage("cold-user")
+  const user = page.locator('[data-display-row][data-row-kind="body"][data-message-role="user"]')
+  await user.waitFor()
+  expect(await user.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(500)
+  await page.evaluate(() => {
+    for (let index = 0; index < 32; index++) window.__conversationProcess.contentFinish(`file-${index}`)
+  })
+  await page.getByText("Document 0.txt", { exact: true }).waitFor()
+  await frames()
+  expect(await user.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(500)
+  expect(await page.getByText("Final answer stays mounted.", { exact: true }).count()).toBe(1)
+})
+
+test.each(["initial", "reversed"])(
+  "virtual eviction before manual entrance settles cannot replay it (%s)",
+  async (mode) => {
+    const reverse = mode === "reversed"
+    await page.goto(url)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    await page.evaluate(() => {
+      window.__conversationProcess.stream()
+      window.__conversationProcess.complete()
+      window.__conversationProcess.prependTurns(80)
+      window.__conversationProcess.reading(true)
+      const scroller = document.querySelector<HTMLElement>("[data-scroller]")!
+      scroller.scrollTop = scroller.scrollHeight
+    })
+    const parent = page.locator('[data-slot="turn-process-trigger"]').last()
+    await parent.waitFor()
+    if ((await parent.getAttribute("aria-expanded")) === "true") await parent.click()
+    await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
+    const result = await page.evaluate(async (reverse) => {
+      const entrances: string[] = []
+      const animate = Element.prototype.animate
+      const settle = async () => {
+        for (let frame = 0; frame < 20; frame++) await new Promise(requestAnimationFrame)
+      }
+      Element.prototype.animate = function (frames, options) {
+        if (this.matches('[data-display-row][data-turn-root="root"]')) {
+          entrances.push((this as HTMLElement).dataset.displayRow!)
+          return animate.call(this, frames, { ...(typeof options === "object" ? options : {}), duration: 5000 })
+        }
+        return animate.call(this, frames, options)
+      }
+      try {
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+        document.querySelector<HTMLButtonElement>('[data-turn-root="root"] [data-slot="turn-process-trigger"]')!.click()
+        await settle()
+        if (reverse) {
+          const parent = document.querySelector<HTMLButtonElement>(
+            '[data-turn-root="root"] [data-slot="turn-process-trigger"]',
+          )!
+          parent.click()
+          parent.click()
+          await settle()
+        }
+        const initial = [...entrances]
+        const bodies = [
+          ...document.querySelectorAll(
+            '[data-turn-root="root"][data-process-body], [data-turn-root="root"][data-row-kind="activity"]',
+          ),
+        ]
+        const scroller = document.querySelector<HTMLElement>("[data-scroller]")!
+        scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: -10000, bubbles: true }))
+        scroller.scrollTop = 0
+        await settle()
+        const evicted = bodies.some((element) => !element.isConnected)
+        scroller.scrollTop = scroller.scrollHeight
+        await settle()
+        return {
+          initial,
+          entrances,
+          evicted,
+          remounted: document.querySelectorAll('[data-turn-root="root"][data-row-kind="activity"]').length,
+        }
+      } finally {
+        Element.prototype.animate = animate
+      }
+    }, reverse)
+    expect(result.initial).toHaveLength(reverse ? 9 : 3)
+    expect(new Set(result.initial).size).toBe(3)
+    expect(result.evicted).toBe(true)
+    expect(result.remounted).toBe(2)
+    expect(result.entrances).toEqual(result.initial)
+  },
+)
+
 test("manual disclosure animates only its connected mount and releases it on collapse", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()

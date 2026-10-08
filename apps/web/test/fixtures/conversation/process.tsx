@@ -166,11 +166,34 @@ if (scenario === "cold-process") {
   setStatus("completed")
   for (const item of data.part.more) faults.set(item.id, "pending")
 }
+if (scenario === "cold-user") {
+  setData(
+    "part",
+    "root",
+    Array.from(
+      { length: 32 },
+      (_, index): Part => ({
+        id: `file-${index}`,
+        sessionID: "session",
+        messageID: "root",
+        type: "attachment",
+        mime: "text/plain",
+        filename: `Document ${index}.txt`,
+        url: `https://example.com/document-${index}.txt`,
+      }),
+    ),
+  )
+  setData("part", "final", [part("final", "answer", "text", "Final answer stays mounted.")])
+  setData("message", "session", [root, { ...final, time: { created: 2, completed: 10 } }])
+  setStatus("completed")
+  for (const item of data.part.root) faults.set(item.id, "pending")
+}
 const canonicalParts =
-  scenario === "late-reconnect" || scenario === "cold-process"
+  scenario === "late-reconnect" || scenario === "cold-process" || scenario === "cold-user"
     ? new Map(Object.entries(data.part).map(([id, parts]) => [id, [...parts]]))
     : undefined
 if (scenario === "cold-process") setData("part", "more", [])
+if (scenario === "cold-user") setData("part", "root", [])
 const scrolling = new URL(location.href).searchParams.has("scrolling")
 let summaryReads = 0
 const summaries = createMemo(() =>
