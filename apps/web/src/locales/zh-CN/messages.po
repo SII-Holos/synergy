@@ -12166,10 +12166,6 @@ msgid "execution.context"
 msgstr "上下文占用"
 
 #. js-lingui-explicit-id
-msgid "execution.contextHelp"
-msgstr "最近一次主任务请求的上下文占用，与累计用量分别统计。推理用量已包含在输出中。"
-
-#. js-lingui-explicit-id
 msgid "execution.contextStale"
 msgstr "此请求之后，上下文已发生变化。"
 
@@ -12634,10 +12630,6 @@ msgid "execution.toolOutput"
 msgstr "工具输出"
 
 #. js-lingui-explicit-id
-msgid "execution.totalHelp"
-msgstr "整个任务及其子任务的累计输入和输出，包含已记录的重试用量。"
-
-#. js-lingui-explicit-id
 msgid "execution.trajectory"
 msgstr "执行轨迹"
 
@@ -12660,6 +12652,78 @@ msgstr "未知"
 #. js-lingui-explicit-id
 msgid "execution.unknownBilling"
 msgstr "未记录计费方式"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.cacheHit"
+msgstr "缓存命中"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.cacheRead"
+msgstr "缓存读取"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.cacheWrite"
+msgstr "缓存写入"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.details"
+msgstr "Token 用量明细"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.firstContent"
+msgstr "平均首个内容耗时"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.generationRate"
+msgstr "平均生成"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.observedCacheHit"
+msgstr "缓存命中（已测）"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.reasoning"
+msgstr "推理（计入输出）"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requestDuration"
+msgstr "平均请求耗时"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requestMetrics"
+msgstr "请求与工具"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requestRate"
+msgstr "平均请求吞吐"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requests"
+msgstr "模型请求"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.retryCount"
+msgstr "重试次数"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.seconds"
+msgstr "{value} 秒"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.tokenRate"
+msgstr "{value} tok/s"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.toolCalls"
+msgstr "工具调用"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.toolDuration"
+msgstr "累计工具耗时"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.uncached"
+msgstr "未缓存输入"
 
 #. js-lingui-explicit-id
 msgid "execution.used"

@@ -8113,6 +8113,71 @@ export type ExecutionSummary = {
     samples: number
     excluded: number
   }
+  latency: {
+    headers: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    firstByte: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    ttft: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    request: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    generation: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+  }
+  outcomes: {
+    completed: number
+    failed: number
+    cancelled: number
+    interrupted: number
+    running: number
+    retries: number
+    transportRetries: number
+    logicalRetries: number
+    rootTasks: number
+  }
+  tools: Array<{
+    tool: string
+    calls: number
+    completed: number
+    failed: number
+    cancelled: number
+    interrupted: number
+    running: number
+    durationMs: number
+    timedSamples: number
+    averageMs: number | null
+  }>
   context: {
     attemptID: string
     callID: string

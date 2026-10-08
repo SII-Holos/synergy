@@ -60028,6 +60028,342 @@
             },
             "required": ["ratio", "observedRatio", "read", "input", "samples", "excluded"]
           },
+          "latency": {
+            "type": "object",
+            "properties": {
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              },
+              "firstByte": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              },
+              "ttft": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              },
+              "request": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              },
+              "generation": {
+                "type": "object",
+                "properties": {
+                  "samples": {
+                    "type": "number"
+                  },
+                  "excluded": {
+                    "type": "number"
+                  },
+                  "totalMs": {
+                    "type": "number"
+                  },
+                  "meanMs": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p50Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "p95Ms": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["samples", "excluded", "totalMs", "meanMs", "p50Ms", "p95Ms"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["headers", "firstByte", "ttft", "request", "generation"]
+          },
+          "outcomes": {
+            "type": "object",
+            "properties": {
+              "completed": {
+                "type": "number"
+              },
+              "failed": {
+                "type": "number"
+              },
+              "cancelled": {
+                "type": "number"
+              },
+              "interrupted": {
+                "type": "number"
+              },
+              "running": {
+                "type": "number"
+              },
+              "retries": {
+                "type": "number"
+              },
+              "transportRetries": {
+                "type": "number"
+              },
+              "logicalRetries": {
+                "type": "number"
+              },
+              "rootTasks": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "running",
+              "retries",
+              "transportRetries",
+              "logicalRetries",
+              "rootTasks"
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool": {
+                  "type": "string"
+                },
+                "calls": {
+                  "type": "number"
+                },
+                "completed": {
+                  "type": "number"
+                },
+                "failed": {
+                  "type": "number"
+                },
+                "cancelled": {
+                  "type": "number"
+                },
+                "interrupted": {
+                  "type": "number"
+                },
+                "running": {
+                  "type": "number"
+                },
+                "durationMs": {
+                  "type": "number"
+                },
+                "timedSamples": {
+                  "type": "number"
+                },
+                "averageMs": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "tool",
+                "calls",
+                "completed",
+                "failed",
+                "cancelled",
+                "interrupted",
+                "running",
+                "durationMs",
+                "timedSamples",
+                "averageMs"
+              ]
+            }
+          },
           "context": {
             "anyOf": [
               {
@@ -60427,6 +60763,9 @@
           "descendants",
           "rates",
           "cache",
+          "latency",
+          "outcomes",
+          "tools",
           "context",
           "contextDistribution",
           "tasks",

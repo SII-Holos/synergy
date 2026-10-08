@@ -12166,10 +12166,6 @@ msgid "execution.context"
 msgstr "Context"
 
 #. js-lingui-explicit-id
-msgid "execution.contextHelp"
-msgstr "Latest main-task request; separate from cumulative usage. Reasoning tokens are included in output."
-
-#. js-lingui-explicit-id
 msgid "execution.contextStale"
 msgstr "Context has changed since this request."
 
@@ -12634,10 +12630,6 @@ msgid "execution.toolOutput"
 msgstr "Tool output"
 
 #. js-lingui-explicit-id
-msgid "execution.totalHelp"
-msgstr "Cumulative input and output across this task and its subtasks, including observed retries."
-
-#. js-lingui-explicit-id
 msgid "execution.trajectory"
 msgstr "Execution trajectory"
 
@@ -12660,6 +12652,78 @@ msgstr "Unknown"
 #. js-lingui-explicit-id
 msgid "execution.unknownBilling"
 msgstr "Billing mode not recorded"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.cacheHit"
+msgstr "Cache hit"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.cacheRead"
+msgstr "Cache read"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.cacheWrite"
+msgstr "Cache write"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.details"
+msgstr "Token usage details"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.firstContent"
+msgstr "Average first content"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.generationRate"
+msgstr "Avg generation"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.observedCacheHit"
+msgstr "Cache hit (measured)"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.reasoning"
+msgstr "Reasoning (included in output)"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requestDuration"
+msgstr "Average request time"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requestMetrics"
+msgstr "Requests and tools"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requestRate"
+msgstr "Avg request throughput"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.requests"
+msgstr "Provider requests"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.retryCount"
+msgstr "Retries"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.seconds"
+msgstr "{value} s"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.tokenRate"
+msgstr "{value} tok/s"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.toolCalls"
+msgstr "Tool calls"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.toolDuration"
+msgstr "Cumulative tool time"
+
+#. js-lingui-explicit-id
+msgid "execution.usage.uncached"
+msgstr "Uncached input"
 
 #. js-lingui-explicit-id
 msgid "execution.used"

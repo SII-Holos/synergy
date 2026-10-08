@@ -230,6 +230,8 @@ Rewind and redo must converge through the server's effective message window, inc
 
 ## Execution details
 
+Preserve canonical rate and cache coverage through concise metric labels and qualifiers; keep formula explanations and sampling guidance in ownership documentation rather than metric tooltips or introductory prose. Test missing measurements separately from known zero, observed cache samples separately from complete totals, and reasoning as a subset of output. Reuse the same usage disclosure in compact and full summaries; exercise nested overlays through live updates, narrow resizing, Escape and focus return. Running status motion must stop immediately when reduced motion or a terminal state is selected.
+
 1. Read execution summaries and trajectories through the generated session execution SDK methods; retain Harness accounting and lifecycle as the source of truth. Verify root Scope, round and descendant ownership in Workbench queries.
 2. Keep full trajectories and raw bodies behind the task-details interaction. Default to task process, preserve the `context` panel identity, and let a narrow inspector replace global controls. Use stable IDs, a shared 500-node branch/list budget, at most 120 rendered rows and an 8MiB content cache. Buffer updates through snapshot loading and recover revision gaps around the reading identity.
 3. Exercise parent-idle/child-running state, completed-child retention, cancellation followed by another round, observed retry usage, missing historical evidence and cross-Scope access before changing execution presentation.
