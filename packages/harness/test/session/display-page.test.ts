@@ -159,6 +159,68 @@ test("header projection keeps compact change metadata and resolves full original
     })
   }))
 
+test("batched part pages bound a message window with the same semantics as single pages", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Batch part pages" })
+        const messages: { id: string; partIDs: string[] }[] = []
+        for (let index = 0; index < 3; index++) {
+          const messageID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: messageID,
+            sessionID: session.id,
+            role: "user",
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+            time: { created: index + 1 },
+            isRoot: true,
+            visible: true,
+          })
+          const partIDs = Array.from({ length: index + 2 }, () => Identifier.ascending("part"))
+          await Storage.transaction((tx) =>
+            tx.writeMany(
+              partIDs.map((partID, part) => ({
+                key: StoragePath.messagePart(
+                  Identifier.asScopeID(session.scope.id),
+                  Identifier.asSessionID(session.id),
+                  messageID,
+                  Identifier.asPartID(partID),
+                ),
+                value: {
+                  id: partID,
+                  messageID,
+                  sessionID: session.id,
+                  type: "text" as const,
+                  text: `m${index} p${part}`,
+                },
+              })),
+            ),
+          )
+          messages.push({ id: messageID, partIDs })
+        }
+        const result = await SessionHistory.partPages({
+          sessionID: session.id,
+          messageIDs: messages.map((message) => message.id),
+          limit: 100,
+        })
+        expect(Object.keys(result)).toEqual(messages.map((message) => message.id))
+        messages.forEach((message) => {
+          expect(result[message.id].items.map((part) => part.id)).toEqual(message.partIDs)
+          expect(result[message.id].hasMore).toBe(false)
+          expect(result[message.id].hasEarlier).toBe(false)
+          expect(result[message.id].nextCursor).toBeNull()
+        })
+        await expect(
+          SessionHistory.partPages({ sessionID: session.id, messageIDs: [messages[0].id, "msg_missing"] }),
+        ).rejects.toThrow()
+        await Session.remove(session.id)
+      },
+    })
+  }))
+
 test("historical Part projection resumes across pages and excludes deleted content", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir({ git: true })

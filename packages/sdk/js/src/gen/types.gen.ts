@@ -10527,6 +10527,10 @@ export type SessionPartPage = {
   hasEarlier: boolean
 }
 
+export type SessionPartPages = {
+  [key: string]: SessionPartPage
+}
+
 export type SessionPartContent = {
   part: Part
   version: string
@@ -20853,6 +20857,54 @@ export type SessionPartPageResponses = {
 }
 
 export type SessionPartPageResponse = SessionPartPageResponses[keyof SessionPartPageResponses]
+
+export type SessionPartPagesData = {
+  body?: {
+    messageIDs: Array<string>
+    limit?: number
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/part/pages"
+}
+
+export type SessionPartPagesErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionPartPagesError = SessionPartPagesErrors[keyof SessionPartPagesErrors]
+
+export type SessionPartPagesResponses = {
+  /**
+   * Bounded Part summary pages keyed by message ID
+   */
+  200: SessionPartPages
+}
+
+export type SessionPartPagesResponse = SessionPartPagesResponses[keyof SessionPartPagesResponses]
 
 export type SessionPartContentData = {
   body?: never
