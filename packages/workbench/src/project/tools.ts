@@ -1,6 +1,7 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { SessionControlTool } from "./tools/session-control"
+import { WorktreeArchiveTool } from "./tools/worktree-archive"
 import { WorktreeEnterTool } from "./tools/worktree-enter"
 import { WorktreeLeaveTool } from "./tools/worktree-leave"
 import { WorktreeListTool } from "./tools/worktree-list"
@@ -22,6 +23,7 @@ export function registerProjectTools(): void {
     SessionControlTool,
     WorktreeEnterTool,
     WorktreeLeaveTool,
+    WorktreeArchiveTool,
     WorktreeListTool,
   ])
 }

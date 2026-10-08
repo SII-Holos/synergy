@@ -24,6 +24,7 @@
     "./project/tools/session-control": "./src/project/tools/session-control.ts",
     "./project/tools/worktree-enter": "./src/project/tools/worktree-enter.ts",
     "./project/tools/worktree-leave": "./src/project/tools/worktree-leave.ts",
+    "./project/tools/worktree-archive": "./src/project/tools/worktree-archive.ts",
     "./project/tools/worktree-list": "./src/project/tools/worktree-list.ts",
     "./performance/timeline": "./src/performance/timeline.ts",
     "./config-schema": "./src/config-schema.ts",

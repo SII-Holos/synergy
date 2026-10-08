@@ -29,6 +29,20 @@ function access(capabilities: string[]) {
   }
 }
 
+test("published viewport reading owners retain the conversation capability and lifetime gates", () => {
+  const owner = access(["session.read"])
+  const element = {} as HTMLElement
+  const source = fixture<PluginConversationService>({
+    autoScroll: fixture<PluginConversationService["autoScroll"]>({ readingAnchorOwner: () => element }),
+  })
+  const conversation = bindPluginConversation(source, owner.service)
+  expect(conversation.autoScroll.readingAnchorOwner()).toBe(element)
+  const denied = bindPluginConversation(source, access([]).service)
+  expect(() => denied.autoScroll.readingAnchorOwner()).toThrow("session.read")
+  owner.lifetime.dispose()
+  expect(() => conversation.autoScroll.readingAnchorOwner()).toThrow("disposed")
+})
+
 test("conversation content leases and the message locator belong to the presentation lifetime", async () => {
   const owner = access(["session.read"])
   const pending = Promise.withResolvers<void>()

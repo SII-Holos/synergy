@@ -1,5 +1,5 @@
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
-import { Marked } from "marked"
+import { Marked, type Renderer, type RendererObject } from "marked"
 import markedKatex from "marked-katex-extension"
 import markedShiki from "marked-shiki"
 import type { BundledLanguage, Highlighter } from "shiki"
@@ -53,39 +53,45 @@ export function createMarkdownParser() {
     )
     return task
   }
-  const parser = new Marked().use(
-    {
-      hooks: {
-        preprocess: prepareMarkdownMath,
+  const create = () =>
+    new Marked().use(
+      {
+        hooks: {
+          preprocess: prepareMarkdownMath,
+        },
+        renderer: {
+          html({ text }) {
+            return stripGeneratedKatexMarker(text)
+          },
+          image({ href, title, text }) {
+            const reference = AssetReference.parse(href)
+            if (!reference) return false
+            const titleAttr = title ? ` title="${escapeHtmlAttribute(title)}"` : ""
+            return `<img data-resource-reference="${reference.url}" alt="${escapeHtmlAttribute(text)}"${titleAttr}>`
+          },
+          link({ href, title, tokens }) {
+            const titleAttr = title ? ` title="${escapeHtmlAttribute(title)}"` : ""
+            const reference = AssetReference.parse(href)
+            const target = reference
+              ? `data-resource-reference="${reference.url}"`
+              : `href="${escapeHtmlAttribute(href)}"`
+            return `<a ${target}${titleAttr} target="_blank" rel="noopener noreferrer">${this.parser.parseInline(tokens)}</a>`
+          },
+        },
       },
-      renderer: {
-        html({ text }) {
-          return stripGeneratedKatexMarker(text)
-        },
-        image({ href, title, text }) {
-          const reference = AssetReference.parse(href)
-          if (!reference) return false
-          const titleAttr = title ? ` title="${escapeHtmlAttribute(title)}"` : ""
-          return `<img data-resource-reference="${reference.url}" alt="${escapeHtmlAttribute(text)}"${titleAttr}>`
-        },
-        link({ href, title, tokens }) {
-          const titleAttr = title ? ` title="${escapeHtmlAttribute(title)}"` : ""
-          const reference = AssetReference.parse(href)
-          const target = reference
-            ? `data-resource-reference="${reference.url}"`
-            : `href="${escapeHtmlAttribute(href)}"`
-          return `<a ${target}${titleAttr} target="_blank" rel="noopener noreferrer">${this.parser.parseInline(tokens)}</a>`
-        },
-      },
+      markedLatex(mathOptions),
+      markGeneratedKatex(markedKatex(mathOptions)),
+      markedShiki({
+        container: '<div data-slot="markdown-code-block" data-language="%l">%s</div>',
+        highlight,
+      }),
+    )
+  return Object.assign(create(), {
+    forDocument(configure: (owner: Renderer) => RendererObject) {
+      const parser = create()
+      parser.use({ renderer: configure(parser.defaults.renderer!) })
+      return parser
     },
-    markedLatex(mathOptions),
-    markGeneratedKatex(markedKatex(mathOptions)),
-    markedShiki({
-      container: '<div data-slot="markdown-code-block" data-language="%l">%s</div>',
-      highlight,
-    }),
-  )
-  return Object.assign(parser, {
     dispose() {
       highlighter?.dispose()
       highlighter = undefined

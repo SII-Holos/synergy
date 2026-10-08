@@ -281,7 +281,11 @@ describe("git worktree integration", () => {
               expect((await leave.json()).name).toBe("WorktreeSessionBusyError")
             } finally {
               await SessionManager.release(lease!)
-              await Worktree.remove({ sessionID: "none", target: created.id, force: true }).catch(() => undefined)
+              await Worktree.remove({
+                sessionID: Identifier.ascending("session"),
+                target: created.id,
+                force: true,
+              }).catch(() => undefined)
               await Session.remove(session.id)
             }
           })(),
@@ -352,7 +356,7 @@ describe("git worktree integration", () => {
             const managed = listed.find((item) => item.id === created.id)
             expect(managed?.resolvedBaseCommit).toBe(baseCommit)
 
-            await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+            await Worktree.remove({ sessionID: Identifier.ascending("session"), target: created.id, force: true })
           })(),
       })
     }))
@@ -383,7 +387,7 @@ describe("git worktree integration", () => {
             const managed = listed.find((item) => item.id === created.id)
             expect(managed?.owner).toEqual(owner)
 
-            await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+            await Worktree.remove({ sessionID: Identifier.ascending("session"), target: created.id, force: true })
           })(),
       })
     }))
@@ -830,7 +834,7 @@ describe("worktree lock invariant", () => {
 
             // Cleanup: unlock the pre-existing lock so the worktree can be removed
             await $`git worktree unlock ${created.path}`.quiet().cwd(scope.local!.worktree)
-            await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+            await Worktree.remove({ sessionID: Identifier.ascending("session"), target: created.id, force: true })
           })(),
       })
     }))
@@ -873,7 +877,7 @@ describe("worktree lock invariant", () => {
 
             // Cleanup: unlock pre-existing, then remove worktree
             await $`git worktree unlock ${created.path}`.quiet().cwd(scope.local!.worktree)
-            await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+            await Worktree.remove({ sessionID: Identifier.ascending("session"), target: created.id, force: true })
           })(),
       })
     }))
@@ -914,7 +918,7 @@ describe("worktree lock invariant", () => {
 
             // Cleanup
             await $`git worktree unlock ${created.path}`.quiet().cwd(scope.local!.worktree)
-            await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+            await Worktree.remove({ sessionID: Identifier.ascending("session"), target: created.id, force: true })
           })(),
       })
     }))
@@ -953,7 +957,7 @@ describe("worktree lock invariant", () => {
 
             // Cleanup
             await $`git worktree unlock ${created.path}`.quiet().cwd(scope.local!.worktree)
-            await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+            await Worktree.remove({ sessionID: Identifier.ascending("session"), target: created.id, force: true })
           })(),
       })
     }))
@@ -973,7 +977,7 @@ describe("worktree lock invariant", () => {
             expect(result.acquired).toBe(true)
 
             await Worktree.unlock(created.path)
-            await Worktree.remove({ sessionID: "none", target: created.id, force: true })
+            await Worktree.remove({ sessionID: Identifier.ascending("session"), target: created.id, force: true })
           })(),
       })
     }))

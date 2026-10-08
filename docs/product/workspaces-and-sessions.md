@@ -49,6 +49,14 @@ Settings lists worktrees for Git projects, including their branch, binding, life
 
 The Web workspace browses, previews, and searches files through Scope-contained APIs. Agents use governed file tools; the anchored coding harness can require a current file tag and proof that the edited lines were actually displayed. Formatting, LSP diagnostics, file events, snapshots, and runtime reload checks run around file changes without creating a second write boundary. See [Workspace and file operations](../architecture/workspace-and-files.md).
 
+### Finishing isolated work
+
+With Workbench tools available, an Agent can use `worktree_archive` when isolated work is finished. Omitting `target` selects its current managed worktree; if there is no current worktree, the result is `noop`. An explicit target accepts a managed worktree name, ID, branch or path, so an Agent can also request cleanup of another idle checkout. Main and externally owned worktrees cannot be archived this way.
+
+Permission is checked before changing the Workspace or requesting reclamation. If permission is denied, the result is `denied` and nothing changes. When the calling Session uses the target, an approved archive returns it to its original checkout without archiving the conversation or stopping the running task. The conversation and history remain available. Use `worktree_leave` instead when the intention is only to leave the checkout.
+
+An `archived` result means reclamation was requested, not necessarily that the checkout was removed. Check `cleanup.performed` and the reported reason: dirty or ignored files, local-only or unverifiable commits, locks and active resources keep the checkout. Cleanup has no force option; retained candidates are retried by maintenance even below the worktree limit. The caller stays in its restored checkout if cleanup is blocked. A retained, available checkout can be re-entered with `worktree_enter`; an unknown removal outcome keeps execution blocked until safe reconciliation, so do not assume that checkout can be re-entered. Confirmed deletion keeps the branch and conversation but provides no automatic snapshot restore. See [safe worktree archive](../architecture/workspace-and-files.md#safe-worktree-archive) for reference migration and deletion safeguards.
+
 ## Sessions
 
 A session is the durable unit users navigate, resume, archive, fork, export, and inspect. It stores:

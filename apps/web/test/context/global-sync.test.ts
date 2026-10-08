@@ -33,6 +33,52 @@ function toolPart(overrides: Record<string, unknown> = {}): Part {
 }
 
 describe("resolveWorkspaceTransition", () => {
+  test("completed archive publishes the restored checkout even when safe cleanup keeps the worktree", () => {
+    const result = resolveWorkspaceTransition(
+      toolPart({
+        tool: "worktree_archive",
+        state: {
+          status: "completed",
+          input: {},
+          output: "Checkout retained",
+          title: "worktree_archive",
+          metadata: {
+            action: "archived",
+            restored: { type: "main", path: "/tmp/original-checkout" },
+            cleanup: { performed: false, reason: "dirty" },
+          },
+          time: { start: 1, end: 2 },
+        },
+      }),
+    )
+    expect(result).toEqual({
+      kind: "leave",
+      workspace: { type: "main", path: "/tmp/original-checkout", scopeID: "" },
+    })
+  })
+
+  test.each([
+    { action: "archived", cleanup: { performed: true } },
+    { action: "denied", restored: { type: "main", path: "/tmp/original-checkout" } },
+    { action: "noop", restored: { type: "main", path: "/tmp/original-checkout" } },
+  ])("archive without caller departure does not change its selected workspace (%j)", (metadata) => {
+    expect(
+      resolveWorkspaceTransition(
+        toolPart({
+          tool: "worktree_archive",
+          state: {
+            status: "completed",
+            input: {},
+            output: "",
+            title: "worktree_archive",
+            metadata,
+            time: { start: 1, end: 2 },
+          },
+        }),
+      ),
+    ).toEqual({ kind: "none" })
+  })
+
   test("returns none for non-tool parts", () => {
     const part: Part = {
       id: "part_1",

@@ -10,7 +10,9 @@ export function createMarkdownCache(budget = 16 * 1024 * 1024) {
       (entry.document?.blocks.reduce((bytes, block) => bytes + block.html.length, 0) ?? 0) +
       Object.values(entry.document?.codes ?? {}).reduce((bytes, code) => bytes + code.length, 0)) *
       2 +
-    (entry.layout ? (entry.document?.blocks.length ?? 0) * 16 : 0)
+    (entry.document?.reading?.marker.length ?? 0) * 2 +
+    (entry.document?.reading?.runs.reduce((bytes, run) => bytes + 16 + (run.spans?.length ?? 0) * 32, 0) ?? 0) +
+    (entry.layout ? entry.layout.font.length * 2 + 8 + (entry.document?.blocks.length ?? 0) * 16 : 0)
   const remove = (key: string) => {
     const entry = entries.get(key)
     if (!entry) return

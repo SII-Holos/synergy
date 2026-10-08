@@ -14,6 +14,7 @@ import {
 import { ComponentProps, createEffect, createResource, createSignal, onCleanup, onMount, splitProps } from "solid-js"
 import { render } from "solid-js/web"
 import { MarkdownDocumentView } from "./markdown-document-view"
+import { createMarkdownFallbackDocument } from "../context/markdown-document"
 import { copyTextToClipboard, type CopyState } from "./clipboard"
 import { sanitizeHtml } from "./markdown-sanitize"
 import { createMarkdownStreamController, type MarkdownStreamController } from "./markdown-stream"
@@ -246,12 +247,7 @@ export function Markdown(
         if (markdown.length > 32 * 1024) {
           const rendered: Entry = {
             ...entry,
-            document: {
-              blocks: Array.from({ length: Math.ceil(markdown.length / 8192) }, (_, index) => ({
-                html: markdownFallbackHtml(markdown.slice(index * 8192, (index + 1) * 8192)),
-              })),
-              codes: {},
-            },
+            document: createMarkdownFallbackDocument(markdown),
           }
           if (key && rendered.hash) touch(key, rendered)
           return rendered
@@ -311,28 +307,37 @@ export function Markdown(
     )
       return
     if (document.activeElement !== document.body && container.contains(document.activeElement)) return
+    stream?.end()
+    const streamLayout = rendered.document ? stream?.layout(rendered.document) : undefined
     endStream()
     disposeDocument?.()
     disposeDocument = undefined
     appliedHash = rendered.hash
     if (rendered.document) {
       terminalTransition.reset()
-      container.replaceChildren()
-      const key = local.cacheKey ?? rendered.hash
-      disposeDocument = render(
-        () => (
-          <MarkdownDocumentView
-            root={container}
-            document={rendered.document!}
-            cache={rendered.layout}
-            cacheUpdated={(layout) => {
-              if (cache.get(key)?.hash === rendered.hash) touch(key, { ...rendered, layout })
-            }}
-            enhance={(root, source) => enhanceMarkdown(root, _, source)}
-          />
-        ),
-        container,
-      )
+      const minimum = container.style.minHeight
+      if (streamLayout) container.style.minHeight = streamLayout.sizes.reduce((sum, size) => sum + size, 0) + "px"
+      try {
+        container.replaceChildren()
+        const key = local.cacheKey ?? rendered.hash
+        disposeDocument = render(
+          () => (
+            <MarkdownDocumentView
+              root={container}
+              document={rendered.document!}
+              cache={rendered.layout}
+              initialLayout={streamLayout}
+              cacheUpdated={(layout) => {
+                if (cache.get(key)?.hash === rendered.hash) touch(key, { ...rendered, layout })
+              }}
+              enhance={(root, source) => enhanceMarkdown(root, _, source)}
+            />
+          ),
+          container,
+        )
+      } finally {
+        container.style.minHeight = minimum
+      }
       return
     }
     terminalTransition.apply({

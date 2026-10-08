@@ -3,6 +3,15 @@ import { TOOL_LABEL_DESC, TOOL_TITLE_DESC } from "../../../src/components/tool-t
 import { classifyTool } from "../../../src/components/tool/classifier"
 
 describe("tool classifier localization", () => {
+  test("classifies worktree archive as localized workspace configuration", () => {
+    const classified = classifyTool("worktree_archive", { target: "feature" })
+
+    expect(classified.category).toBe("config")
+    expect(classified.titleDescriptor?.id).toBe("tool.title.archive-worktree")
+    expect(classified.title).toBe("Archive isolated workspace")
+    expect(classified.subtitle).toBe("feature")
+  })
+
   test("returns a localized count descriptor instead of an English badge", () => {
     const classified = classifyTool("session_list", {}, { count: 2 })
 

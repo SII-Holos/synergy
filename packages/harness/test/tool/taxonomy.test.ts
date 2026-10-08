@@ -2,6 +2,14 @@ import { describe, expect, test } from "bun:test"
 import { ToolTaxonomy } from "../../src/tool/taxonomy"
 
 describe("tool taxonomy", () => {
+  test("classifies worktree archive as stateful workspace configuration", () => {
+    expect(ToolTaxonomy.classify("worktree_archive")).toEqual({
+      kind: "platform.config",
+      domain: "platform",
+      traits: { stateful: true },
+    })
+  })
+
   test("classifies render as a visual communication tool", () => {
     const entry = ToolTaxonomy.classify("render")
 

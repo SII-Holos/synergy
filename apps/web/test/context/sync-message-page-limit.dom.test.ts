@@ -28,6 +28,7 @@ export const calls={messagePage:[],permissionList:[]};
 export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:create(),release(){}}),
   data:{scope:[]},
   retainScopeState:()=>({state,release:()=>{}}),
+  peekScopeState:()=>state,
   scopeReconnectVersion:()=>0,
   capturePartSnapshotRequest:()=>({}),
   captureResourceRequest:()=>({}),

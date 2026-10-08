@@ -8,7 +8,13 @@ import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
 import type { Message, Part, Session, SessionPartSummary } from "@ericsanchezok/synergy-sdk/client"
 import { createPartMaterializer } from "./part-materializer"
-import { createPartSummaryLoader, planPartSummaryPage } from "./part-summary-loader"
+import {
+  createPartSummaryLoader,
+  planPartSummaryPage,
+  readPartSummaryRanges,
+  PartSummarySupersededError,
+  partSummaryPageState,
+} from "./part-summary-loader"
 import { contentBudgetKey } from "./content-budget"
 import { clearConversationContent } from "./conversation-content-state"
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
@@ -48,37 +54,62 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     onCleanup(scope.release)
     const [store, setStore] = scope.state
     const contentLifetime = new AbortController()
+    const isRequestOwnerCurrent = (sessionID: string, request: SyncResourceRequest) =>
+      !contentLifetime.signal.aborted &&
+      globalSync.peekScopeState(sdk.scopeKey)?.[0] === store &&
+      globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "message").generation === request.generation
     const partPages = createPartSummaryLoader({
       page: (messageID) => store.partPage[messageID],
       summaries: (messageID) => store.partSummary[messageID] ?? [],
-      read: async (request, cursor, signal) => {
+      read: async (request, cursor, signal, refresh) => {
+        if (globalSync.peekScopeState(sdk.scopeKey)?.[0] !== store) throw new PartSummarySupersededError()
         const freshness = globalSync.capturePartSnapshotRequest(sdk.scopeKey, request.sessionID)
-        const response = await sdk.client.session.partPage(
-          {
-            sessionID: request.sessionID,
-            messageID: request.messageID,
-            cursor,
-            partID: request.partID,
-            older: request.older,
-            limit: 100,
-          },
-          { signal, throwOnError: true },
-        )
-        if (!response.data) throw new Error("Missing conversation summary")
+        const read = async (query: { cursor?: string; partID?: string; older?: boolean; limit: number }) => {
+          const response = await sdk.client.session.partPage(
+            { sessionID: request.sessionID, messageID: request.messageID, ...query },
+            { signal, throwOnError: true },
+          )
+          if (!response.data) throw new Error("Missing conversation summary")
+          return response.data
+        }
+        const page = refresh
+          ? await readPartSummaryRanges({ page: refresh.page, accepted: refresh.versions, signal, read })
+          : await read({ cursor, partID: request.partID, older: request.older, limit: 100 }).then((page) => ({
+              ...page,
+              ranges: partSummaryPageState(page).ranges,
+            }))
         return {
-          page: response.data,
-          action: globalSync.partSnapshotAction(sdk.scopeKey, request.sessionID, request.messageID, freshness),
+          page,
+          action:
+            globalSync.peekScopeState(sdk.scopeKey)?.[0] !== store
+              ? "retry"
+              : globalSync.partSnapshotAction(sdk.scopeKey, request.sessionID, request.messageID, freshness),
         }
       },
-      apply: (request, page, action) => {
+      apply: (request, page, action, refresh) => {
         const planned = planPartSummaryPage(
           store.partSummary[request.messageID] ?? [],
           store.partPage[request.messageID],
           page,
           request,
           action,
+          refresh,
         )
         batch(() => {
+          for (const partID of planned.removedIDs) {
+            materializer.invalidate(request.messageID, partID)
+            globalSync.contentBudget.remove(contentBudgetKey(sdk.scopeKey, request.messageID, partID))
+          }
+          if (planned.removedIDs.length) {
+            const removed = new Set(planned.removedIDs)
+            setStore("part", request.messageID, (parts) => (parts ?? []).filter((part) => !removed.has(part.id)))
+            setStore(
+              "partVersion",
+              produce((versions) => {
+                for (const partID of removed) delete versions[partID]
+              }),
+            )
+          }
           setStore("partSummary", request.messageID, reconcile(planned.items, { key: "id" }))
           setStore("partPage", request.messageID, reconcile(planned.page))
         })
@@ -220,10 +251,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     }
 
     const loadSession = async (sessionID: string, options?: RefreshOptions) => {
+      contentLifetime.signal.throwIfAborted()
       if (!options?.force && getSession(sessionID) !== undefined) return
-
-      await retry(() => sdk.client.session.get({ sessionID })).then((session) => {
-        if (!session.data) return
+      const request = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "message")
+      await retry(() => sdk.client.session.get({ sessionID }, { signal: contentLifetime.signal, throwOnError: true }), {
+        signal: contentLifetime.signal,
+      }).then((session) => {
+        if (!session.data || !isRequestOwnerCurrent(sessionID, request)) return
         upsertSession(session.data)
       })
     }
@@ -729,13 +763,19 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           })
         },
         async diff(sessionID: string) {
+          contentLifetime.signal.throwIfAborted()
           if (store.session_diff[sessionID] !== undefined) return
 
           const pending = inflightDiff.get(sessionID)
           if (pending) return pending
 
-          const promise = retry(() => sdk.client.session.diff({ sessionID }))
+          const request = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "message")
+          const promise = retry(
+            () => sdk.client.session.diff({ sessionID }, { signal: contentLifetime.signal, throwOnError: true }),
+            { signal: contentLifetime.signal },
+          )
             .then((diff) => {
+              if (!isRequestOwnerCurrent(sessionID, request)) return
               setStore("session_diff", sessionID, reconcile(diff.data ?? [], { key: "file" }))
             })
             .finally(() => {

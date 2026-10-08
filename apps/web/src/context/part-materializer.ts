@@ -228,6 +228,16 @@ export function createPartMaterializer(input: {
         if (entry.summary.messageID === messageID && (!partID || entry.summary.id === partID)) remove(key, entry)
       }
     },
+    revalidate(messageID: string) {
+      for (const entry of entries.values()) {
+        if (entry.summary.messageID !== messageID) continue
+        entry.load?.controller.abort()
+        entry.load = undefined
+        entry.failure = undefined
+        entry.attempts = 0
+        entry.ready = Promise.resolve()
+      }
+    },
     dispose() {
       disposed = true
       for (const [key, entry] of entries) remove(key, entry)

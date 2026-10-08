@@ -643,6 +643,7 @@ export namespace Session {
     await Storage.transaction(async () => {
       if (result.parentID && !(await SessionManager.getSession(result.parentID)))
         throw new Storage.NotFoundError({ message: "Parent Session no longer exists" })
+      if (result.workspaceID != null) await WorkspaceCatalog.assertActive(result.workspaceID, scope.id)
       const environment = await Environment.select({
         scopeID: scope.id,
         ownerID: result.id,
@@ -898,61 +899,73 @@ export namespace Session {
       requireIdle?: boolean
       preserveActivityAt?: boolean
       reference?: { workspaceID: string; workspaceGeneration: number }
+      signal?: AbortSignal
     },
   ): Promise<Info> {
-    return SessionWorkspaceRuntime.withBinding(sessionID, async () => {
-      const session = await SessionManager.requireSession(sessionID)
-      const owns = WorkspaceAccess.owns(sessionID)
-      if (!owns) SessionManager.assertIdle(sessionID)
-      const reference =
-        options?.reference ??
-        (workspace?.id ? { workspaceID: workspace.id, workspaceGeneration: workspace.generation } : undefined)
-      const resolve = async () => {
-        if (!reference) return WorkspaceBinding.adopt(workspace, session.scope.id)
-        const record = await WorkspaceCatalog.get(reference.workspaceID, session.scope.id)
-        if (record.binding.state !== "bound" || record.lifecycle !== "active")
-          throw new WorkspaceCatalog.Unavailable({
-            workspaceID: record.id,
-            message: "Workspace has no storage authority",
-          })
-        if (reference.workspaceGeneration !== undefined && reference.workspaceGeneration !== record.binding.generation)
-          throw new WorkspaceCatalog.BindingChanged({ workspaceID: record.id, message: "Workspace binding changed" })
-        return record.backend?.provider === "objects"
-          ? null
-          : WorkspaceBinding.validate(record.id, session.scope.id, reference.workspaceGeneration)
-      }
-      workspace = await resolve()
-      const workspaceID = reference?.workspaceID ?? workspace?.id ?? null
-      const commit = async () => {
-        await resolve()
-        if (options?.requireIdle || !owns) SessionManager.assertIdle(sessionID)
-        if (workspace && owns) {
-          const { WorkspaceRuntime } = await import("../workspace/runtime")
-          await ScopeContext.provide({
-            scope: session.scope,
-            workspace,
-            fn: () => WorkspaceRuntime.ensure(session.scope, workspace!),
-          })
+    const signal = options?.signal ?? WorkspaceAccess.signal()
+    return SessionWorkspaceRuntime.withBinding(
+      sessionID,
+      async () => {
+        const session = await SessionManager.requireSession(sessionID)
+        const owns = WorkspaceAccess.owns(sessionID)
+        if (!owns) SessionManager.assertIdle(sessionID)
+        const reference =
+          options?.reference ??
+          (workspace?.id ? { workspaceID: workspace.id, workspaceGeneration: workspace.generation } : undefined)
+        const resolve = async () => {
+          if (!reference) return WorkspaceBinding.adopt(workspace, session.scope.id)
+          const record = await WorkspaceCatalog.get(reference.workspaceID, session.scope.id)
+          if (record.binding.state !== "bound" || record.lifecycle !== "active")
+            throw new WorkspaceCatalog.Unavailable({
+              workspaceID: record.id,
+              message: "Workspace has no storage authority",
+            })
+          if (
+            reference.workspaceGeneration !== undefined &&
+            reference.workspaceGeneration !== record.binding.generation
+          )
+            throw new WorkspaceCatalog.BindingChanged({ workspaceID: record.id, message: "Workspace binding changed" })
+          return record.backend?.provider === "objects"
+            ? null
+            : WorkspaceBinding.validate(record.id, session.scope.id, reference.workspaceGeneration)
         }
-        await SessionWorkspaceRuntime.beforeTransition(session, workspace, workspaceID)
-        return updateInternal(
-          sessionID,
-          (draft) => {
-            if (options?.requireIdle || !owns) SessionManager.assertIdle(sessionID)
-            if (workspace) {
-              Workspace.parse(workspace)
-              if (workspace.scopeID !== draft.scope.id) throw new Error("Workspace belongs to a different Scope")
-            }
-            draft.workspace = workspace
-            draft.workspaceID = workspaceID
-          },
-          { ...options, workspaceChange: true },
-        )
-      }
-      return owns
-        ? WorkspaceAccess.transition(sessionID, workspace, commit)
-        : WorkspaceAccess.task({ workspace }, commit)
-    })
+        workspace = await resolve()
+        const workspaceID = reference?.workspaceID ?? workspace?.id ?? null
+        const commit = async () => {
+          signal?.throwIfAborted()
+          await resolve()
+          if (options?.requireIdle || !owns) SessionManager.assertIdle(sessionID)
+          if (workspace && owns) {
+            const { WorkspaceRuntime } = await import("../workspace/runtime")
+            await ScopeContext.provide({
+              scope: session.scope,
+              workspace,
+              fn: () => WorkspaceRuntime.ensure(session.scope, workspace!),
+            })
+          }
+          await SessionWorkspaceRuntime.beforeTransition(session, workspace, workspaceID)
+          signal?.throwIfAborted()
+          return updateInternal(
+            sessionID,
+            (draft) => {
+              signal?.throwIfAborted()
+              if (options?.requireIdle || !owns) SessionManager.assertIdle(sessionID)
+              if (workspace) {
+                Workspace.parse(workspace)
+                if (workspace.scopeID !== draft.scope.id) throw new Error("Workspace belongs to a different Scope")
+              }
+              draft.workspace = workspace
+              draft.workspaceID = workspaceID
+            },
+            { ...options, workspaceChange: true },
+          )
+        }
+        return owns
+          ? WorkspaceAccess.transition(sessionID, workspace, commit, options?.signal)
+          : WorkspaceAccess.task({ workspace, signal }, commit)
+      },
+      signal,
+    )
   }
 
   export const EnvironmentSelection = z
@@ -1310,6 +1323,8 @@ export namespace Session {
         result.workspace = await WorkspaceBinding.adopt(result.workspace, scope.id)
         result.workspaceID = result.workspace?.id ?? null
       }
+      if (result.workspaceID != null && (options?.workspaceChange || result.workspaceID !== before.workspaceID))
+        await WorkspaceCatalog.assertActive(result.workspaceID, scope.id)
       if (!options?.preserveActivityAt) result.time.updated = Date.now()
       await Storage.write(StoragePath.sessionInfo(scopeID, sessionID), SessionRecords.serialize(result))
 

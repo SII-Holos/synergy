@@ -14,6 +14,8 @@ The native conversation keeps its viewport mounted but transparent, accessibilit
 
 A Shell surface reuses its successfully loaded component only while its entry and loader identities match. Each Session still owns a fresh presentation lifetime and bound services; stale loads cannot populate the component cache.
 
+Viewport readiness owns opacity independently of the optional admission animation. Pending content becomes transparent immediately; only revealing admitted content may fade in. Reduced motion settles that entrance, and first-submission continuity can omit it without disabling the visibility gate.
+
 ## Alternatives considered
 
 **Only retain message identities.** Identity reconciliation remains necessary, but it cannot prevent storage admission from hiding the conversation or prevent an asynchronous fallback from replacing it.

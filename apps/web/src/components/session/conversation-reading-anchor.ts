@@ -1,4 +1,5 @@
 export function captureConversationReadingAnchor(container: HTMLElement, isCurrent: () => boolean, target?: Element) {
+  if (!isCurrent() || !container.isConnected || (target && !container.contains(target))) return
   const viewportTop = container.getBoundingClientRect().top
   const visible = (node: HTMLElement) => {
     const rect = node.getBoundingClientRect()
@@ -10,7 +11,7 @@ export function captureConversationReadingAnchor(container: HTMLElement, isCurre
     target?.closest<HTMLElement>("[data-scroll-anchor]") ??
     Array.from((message ?? container).querySelectorAll<HTMLElement>("[data-scroll-anchor]")).find(visible) ??
     message
-  if (!row) return
+  if (!row || !container.contains(row)) return
   const rowBounds = row.getBoundingClientRect()
   const block =
     !target &&
@@ -26,13 +27,21 @@ export function captureConversationReadingAnchor(container: HTMLElement, isCurre
       offset: node.getBoundingClientRect().top - viewportTop,
     }),
   )
-  return () => {
-    if (!isCurrent() || !container.isConnected) return
-    const anchor = fallbacks.find(
-      ({ node }) => node.isConnected && node.getBoundingClientRect().height > 0 && !node.closest("[hidden]"),
-    )
-    if (!anchor) return
-    const displacement = anchor.node.getBoundingClientRect().top - container.getBoundingClientRect().top - anchor.offset
-    if (Math.abs(displacement) > 0.5) container.scrollTop += displacement
+  return {
+    owner: row,
+    restore() {
+      if (!isCurrent() || !container.isConnected) return
+      for (let index = fallbacks.length - 1; index >= 0; index--) {
+        const node = fallbacks[index]!.node
+        if (!node.isConnected || !container.contains(node)) fallbacks.splice(index, 1)
+      }
+      const anchor = fallbacks.find(
+        ({ node }) => node.isConnected && node.getBoundingClientRect().height > 0 && !node.closest("[hidden]"),
+      )
+      if (!anchor) return
+      const displacement =
+        anchor.node.getBoundingClientRect().top - container.getBoundingClientRect().top - anchor.offset
+      if (Math.abs(displacement) > 0.5) container.scrollTop += displacement
+    },
   }
 }

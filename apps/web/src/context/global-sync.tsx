@@ -28,6 +28,7 @@ import { sharedRequests } from "@/utils/shared-requests"
 import { createContentBudget, contentBudgetKey } from "./content-budget"
 import { clearConversationContent } from "./conversation-content-state"
 import type { SessionViewportContent } from "./session-viewport-content"
+import { partSummaryPageState, type PartSummaryPageState } from "./part-summary-loader"
 import { createPartArrivalState } from "./part-arrival"
 import type { createPartMaterializer } from "./part-materializer"
 import { mergeModelDirectory, type ProviderSnapshot } from "./model-directory"
@@ -179,10 +180,7 @@ type State = {
     [messageID: string]: Part[]
   }
   partSummary: Record<string, SessionPartSummary[]>
-  partPage: Record<
-    string,
-    { nextCursor: string | null; previousCursor: string | null; hasMore: boolean; hasEarlier: boolean }
-  >
+  partPage: Record<string, PartSummaryPageState>
   partVersion: Record<string, string>
 }
 
@@ -390,15 +388,15 @@ function createGlobalSync() {
       const [store, setStore] = state
       for (const [sessionID, messages] of Object.entries(store.message)) {
         partSnapshotFreshness.releaseSession(scopeKey, sessionID)
-        for (const message of messages) invalidateMessageContent(scopeKey, message.id)
+        for (const message of messages) contentCaches.get(scopeKey)?.cache.revalidate(message.id)
       }
       setStore(
         produce((draft) => {
-          for (const [sessionID, messages] of Object.entries(draft.message))
-            for (const message of messages)
-              clearConversationContent(draft, message.id, {
-                preserveSummaries: draft.messageWindow[sessionID]?.mode === "history",
-              })
+          for (const messages of Object.values(draft.message))
+            for (const message of messages) {
+              const page = draft.partPage[message.id]
+              if (page) page.stale = true
+            }
         }),
       )
     }
@@ -811,6 +809,7 @@ function createGlobalSync() {
   function releaseScopeState(scopeKey: string) {
     scopeLifetimes.get(scopeKey)?.abort()
     scopeLifetimes.delete(scopeKey)
+    contentBudget.clearPrefix(`${scopeKey}\0`)
     contextProjectionRevision.releaseScope(scopeKey)
     if (children[scopeKey]) {
       for (const sessionID of Object.keys(children[scopeKey][0].message)) {
@@ -2641,8 +2640,11 @@ function createGlobalSync() {
       if (!state) return
       const [store, setStore] = state
       batch(() => {
+        const seededMessages = new Set<string>()
         for (const [messageID, page] of Object.entries(content.pages)) {
-          const { items, ...metadata } = page
+          if (store.partPage[messageID]) continue
+          seededMessages.add(messageID)
+          const { items } = page
           setStore(
             "partSummary",
             messageID,
@@ -2651,9 +2653,10 @@ function createGlobalSync() {
               { key: "id" },
             ),
           )
-          setStore("partPage", messageID, reconcile(metadata))
+          setStore("partPage", messageID, reconcile(partSummaryPageState(page)))
         }
         for (const { part, version } of content.bodies) {
+          if (!seededMessages.has(part.messageID)) continue
           const summary = store.partSummary[part.messageID]?.find((item) => item.id === part.id)
           if (summary?.content.version !== version) continue
           const parts = store.part[part.messageID] ?? []

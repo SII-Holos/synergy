@@ -44,6 +44,13 @@ describe("permissionCapability", () => {
     expect(permissionCapability("secrets")).toBe("secrets")
   })
 
+  test("worktree archive shares the file-write permission of enter and leave", () => {
+    for (const permission of ["worktree_enter", "worktree_leave", "worktree_archive"]) {
+      expect(permissionCapability(permission)).toBe("file_write")
+      expect(permissionCategoryForKey(permissionCapability(permission))).toBe("files")
+    }
+  })
+
   test("passes unknown permissions through unchanged", () => {
     expect(permissionCapability("custom_plugin_action")).toBe("custom_plugin_action")
   })

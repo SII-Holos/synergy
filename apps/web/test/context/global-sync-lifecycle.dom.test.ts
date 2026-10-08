@@ -4,6 +4,7 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { build } from "vite"
 import solidPlugin from "vite-plugin-solid"
+import type { SessionViewportContent } from "../../src/context/session-viewport-content"
 
 test("Scope leases protect overlapping pages and reject evicted bootstrap results", async () => {
   const directory = await mkdtemp(path.join(import.meta.dir, ".scope-lifecycle-"))
@@ -62,6 +63,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     import { createRoot, createComputed } from "solid-js"
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
+    import { createPartMaterializer } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/context/part-materializer.ts"))}
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
     import { requests, modelRequests, replays, lists, emit, inboxRequests, inboxArrived, optionalRequests, connect } from ${JSON.stringify(stub)}
     export function mount(root) {
@@ -71,6 +73,12 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
       return {started,dispose,requests,modelRequests,emit,replays,lists,inboxRequests,inboxArrived,optionalRequests,connect,api:()=>api,
         seedInbox(key) {api.ensureScopeState(key)[1]("inbox","fixture-session",[{id:"pending"}])},
+        seedWindow(key) {api.ensureScopeState(key)[1]("message","session",[{id:"message",sessionID:"session",role:"user",time:{created:1}}])},
+        retainBody(key,summary) {return api.retainContentCache(key,()=>createPartMaterializer({
+          memory:api.contentBudget,memoryKey:item=>key+"\\0"+item.messageID+"\\0"+item.id,
+          read:async item=>({part:api.peekScopeState(key)[0].part[item.messageID].find(part=>part.id===item.id),version:item.content.version}),
+          apply(){},evict:item=>api.peekScopeState(key)?.[1]("part",item.messageID,parts=>parts.filter(part=>part.id!==item.id))
+        }))},
         complete(index,version) {const request=requests[index];request.resolve({data:{scopeID:request.key,provider:{all:[]},agent:[],config:{version}}})},
         waitComplete(state) {return new Promise(resolve=>createRoot(dispose=>createComputed(()=>{if(state[0].status==='complete'){dispose();resolve()}})))},
       }
@@ -123,6 +131,9 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         config: { version?: string }
         session: unknown[]
         latestContextMessage: Record<string, unknown>
+        part: Record<string, SessionViewportContent["bodies"][number]["part"][]>
+        partSummary: Record<string, SessionViewportContent["pages"][string]["items"]>
+        partPage: Record<string, unknown>
       },
       unknown,
     ]
@@ -134,6 +145,8 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       loadModelCatalog(key: string): Promise<void>
       beginContextProjection(key: string, sessionID: string): number
       setLatestContextMessage(key: string, sessionID: string, message: null, revision: number): void
+      seedSessionViewportContent(key: string, content: SessionViewportContent): void
+      contentBudget: { readonly bytes: number }
       failure: unknown
       reconnectVersion(): number
       scopeReconnectVersion(key: string): number
@@ -153,6 +166,14 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         emit(key: string, seq: number): void
         connect(): void
         seedInbox(key: string): void
+        seedWindow(key: string): void
+        retainBody(
+          key: string,
+          summary: SessionViewportContent["pages"][string]["items"][number],
+        ): {
+          cache: ReturnType<typeof import("../../src/context/part-materializer").createPartMaterializer>
+          release(): void
+        }
         inboxRequests: string[]
         inboxArrived: Promise<void>
         replays: Array<(value: unknown) => void>
@@ -252,6 +273,50 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       api.setLatestContextMessage("shared", "never-loaded", null, pendingRevision)
       expect(latest.state[0].latestContextMessage["never-loaded"]).toBeUndefined()
       latest.release()
+      const preparedContent = (text: string): SessionViewportContent => ({
+        pages: {
+          message: {
+            items: [
+              {
+                id: "part",
+                sessionID: "session",
+                messageID: "message",
+                type: "text",
+                preview: text,
+                content: { version: "one", bytes: text.length },
+              },
+            ],
+            hasMore: false,
+            hasEarlier: false,
+            nextCursor: null,
+            previousCursor: null,
+          },
+        },
+        bodies: [
+          {
+            part: { id: "part", sessionID: "session", messageID: "message", type: "text", text },
+            version: "one",
+          },
+        ],
+      })
+      const contentScope = api.retainScopeState("background.content")
+      const contentNeighbor = api.retainScopeState("background.content.neighbor")
+      const firstContent = preparedContent("released Scope body")
+      const neighborContent = preparedContent("retained Scope body")
+      const firstBytes = firstContent.pages.message.items[0].content.bytes * 2
+      const neighborBytes = neighborContent.pages.message.items[0].content.bytes * 2
+      api.seedSessionViewportContent("background.content", firstContent)
+      api.seedSessionViewportContent("background.content.neighbor", neighborContent)
+      expect(api.contentBudget.bytes).toBe(firstBytes + neighborBytes)
+      contentScope.release()
+      await evictInactive()
+      expect(api.peekScopeState("background.content")).toBeUndefined()
+      expect(api.peekScopeState("background.content.neighbor")).toBe(contentNeighbor.state)
+      expect(api.contentBudget.bytes).toBe(neighborBytes)
+      contentNeighbor.release()
+      await evictInactive()
+      expect(api.peekScopeState("background.content.neighbor")).toBeUndefined()
+      expect(api.contentBudget.bytes).toBe(0)
       for (const operation of ["ensureModels", "loadModelCatalog"] as const) {
         const key = `background.models.${operation}`
         const lease = api.retainScopeState(key)
@@ -291,6 +356,23 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         neighbor.release()
       }
       const home = api.retainScopeState("home")
+      h.seedWindow("home")
+      const visibleContent = preparedContent("Accepted content stays visible during reconnect")
+      api.seedSessionViewportContent("home", visibleContent)
+      const summary = home.state[0].partSummary.message[0]
+      const body = home.state[0].part.message[0]
+      const cache = h.retainBody("home", summary)
+      const reader = cache.cache.retain(summary)
+      await reader.ready
+      const retainedBytes = api.contentBudget.bytes
+      const unrelatedPreparation = preparedContent("Default warming must not replace an accepted history window")
+      unrelatedPreparation.pages.message.items[0].id = "unrelated-part"
+      unrelatedPreparation.bodies[0].part.id = "unrelated-part"
+      api.seedSessionViewportContent("home", unrelatedPreparation)
+      expect(home.state[0].partSummary.message[0]).toBe(summary)
+      expect(home.state[0].part.message[0]).toBe(body)
+      expect(home.state[0].partSummary.message).toHaveLength(1)
+      expect(api.contentBudget.bytes).toBe(retainedBytes)
       h.emit("home", 1)
       const before = h.replays.length
       h.connect()
@@ -307,6 +389,12 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         await new Promise((resolve) => setTimeout(resolve, 0))
       }
       expect(api.scopeReconnectVersion("home")).toBe(api.reconnectVersion())
+      expect(home.state[0].partSummary.message[0]).toBe(summary)
+      expect(home.state[0].part.message[0]).toBe(body)
+      expect(home.state[0].partPage.message).toMatchObject({ stale: true, hasMore: false, hasEarlier: false })
+      expect(api.contentBudget.bytes).toBe(retainedBytes)
+      reader.release()
+      cache.release()
       home.release()
     } finally {
       h.dispose()

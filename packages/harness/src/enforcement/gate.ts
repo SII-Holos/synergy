@@ -630,7 +630,7 @@ export namespace EnforcementGate {
         caps.push({ class: "file_read", nonBypassable: false })
         return { capabilities: caps }
       }
-      if (toolName === "worktree_enter" || toolName === "worktree_leave") {
+      if (toolName === "worktree_enter" || toolName === "worktree_leave" || toolName === "worktree_archive") {
         caps.push({ class: "file_write", nonBypassable: false })
         return { capabilities: caps }
       }

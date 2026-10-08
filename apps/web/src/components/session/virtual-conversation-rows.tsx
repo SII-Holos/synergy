@@ -1,7 +1,7 @@
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import type { AssistantMessage, UserMessage, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack, type JSX } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -33,15 +33,14 @@ import { CompactionCard } from "@ericsanchezok/synergy-ui/compaction-card"
 import { useData } from "@ericsanchezok/synergy-ui/context/data"
 import { requestErrorMessage } from "../../utils/error"
 import { PartContentSyncError } from "../../context/part-materializer"
+import { createConversationLayoutBinding, createConversationLayoutCache } from "./conversation-layout"
 
 // Provenance: https://github.com/inokawa/virtua/blob/0.42.3/src/solid/Virtualizer.tsx
 // Local adaptation: Part identities, retained interaction rows and prepend offsets share the existing scroll element.
-const layouts = new WeakMap<
-  PluginConversationService,
-  Map<string, { keys: string[]; cache: VirtualizerHandle["cache"]; bytes: number }>
->()
+const layouts = createConversationLayoutCache()
 
 type ProcessControls = {
+  layoutOwner: readonly [server: string, scope: string, sessionID: string]
   liveRevision?: () => number
   takePartArrival?: (partID: string) => boolean
   messageKey?: (messageID: string) => string
@@ -64,6 +63,9 @@ export function VirtualConversationRows(
 ) {
   const props = input.context
   const content = props.content!
+  const owner = input.layoutOwner
+  const layoutIdentity = () =>
+    JSON.stringify([...owner, "conversation", props.activityDisplay(), props.compactReasoning()])
   const pending = new Set<symbol>()
   const [pendingCount, setPendingCount] = createSignal(0)
   const onRowReady = (owner: symbol, ready: boolean | undefined) => {
@@ -97,12 +99,14 @@ export function VirtualConversationRows(
     for (const id of userPresentations.keys()) if (!ids.has(id)) userPresentations.delete(id)
   })
   const [handle, setHandle] = createSignal<VirtualizerHandle>()
+  const [mounted, setMounted] = createSignal(false)
   const [located, setLocated] = createSignal<{ messageID: string; partID?: string }>()
   const [margin, setMargin] = createSignal(0)
   const [retained, setRetained] = createSignal<string[]>([])
   const [interactionBlocks, setInteractionBlocks] = createSignal<string[]>([])
   const [readingBlocks, setReadingBlocks] = createSignal<string[]>([])
   const [readingOwner, setReadingOwner] = createSignal<string>()
+  const [outerReadingOwner, setOuterReadingOwner] = createSignal<string>()
   const [interactionRoots, setInteractionRoots] = createSignal<string[]>([])
   const [expanded, setExpanded] = createSignal<ReadonlyMap<string, boolean>>(new Map())
   const activityView = {
@@ -193,27 +197,22 @@ export function VirtualConversationRows(
     }),
   )
   const finishExit = (key: string) => setRows((previous) => previous.filter((row) => row.key !== key || !row.exiting))
-  const keys = createMemo(() => rows().map((row) => row.key))
-  const layout = layouts.get(props)?.get(props.sessionID)
-  const initialCache =
-    layout && layout.keys.length === keys().length && layout.keys.every((key, index) => key === keys()[index])
-      ? layout.cache
-      : undefined
-  onCleanup(() => {
-    const virtual = handle()
-    if (!virtual) return
-    const cache = virtual.cache
-    const current = keys()
-    const entries = layouts.get(props) ?? new Map()
-    layouts.set(props, entries)
-    entries.delete(props.sessionID)
-    entries.set(props.sessionID, { keys: current, cache, bytes: JSON.stringify([current, cache]).length * 2 })
-    let bytes = [...entries.values()].reduce((total, entry) => total + entry.bytes, 0)
-    for (const [key, entry] of entries) {
-      if (bytes <= 4 * 1024 * 1024) break
-      entries.delete(key)
-      bytes -= entry.bytes
+  const rowLayout = createMemo<{ keys: string[]; shift: boolean }>((previous) => {
+    const keys = rows().map((row) => row.key)
+    if (previous && keys.length === previous.keys.length && keys.every((key, index) => key === previous.keys[index]))
+      return previous.shift ? { keys: previous.keys, shift: false } : previous
+    const added = previous ? keys.length - previous.keys.length : 0
+    return {
+      keys,
+      shift: added > 0 && !!previous && previous.keys.every((key, index) => keys[added + index] === key),
     }
+  })
+  const keys = () => rowLayout().keys
+  const layout = createConversationLayoutBinding(layouts, {
+    identity: () => untrack(layoutIdentity),
+    keys: () => untrack(keys),
+    width: () => container?.clientWidth ?? 0,
+    changed: setHandle,
   })
   const byKey = createMemo(() => new Map(rows().map((row) => [row.key, row])))
   const ownsLocation = (row: ConversationRow, location: { messageID: string; partID?: string }) =>
@@ -235,6 +234,7 @@ export function VirtualConversationRows(
         ...retained().map((key) => keys().indexOf(key)),
         locatedIndex(),
         keys().indexOf(readingOwner() ?? ""),
+        keys().indexOf(outerReadingOwner() ?? ""),
       ]),
     ].filter((index) => index >= 0),
   )
@@ -247,12 +247,16 @@ export function VirtualConversationRows(
       if (expansions.size > 4096) expansions.delete(expansions.keys().next().value!)
     },
   }
-  let previous: string[] = []
-  let anchor: { key: string; offset: number } | undefined
-  let anchorFrame: number | undefined
   let locationFrame: number | undefined
   let locationGeneration = 0
   let disposed = false
+  createEffect(() => {
+    const anchor = props.autoScroll?.readingAnchorOwner()
+    const row =
+      anchor?.closest('[data-component="process-window"]')?.parentElement?.closest<HTMLElement>("[data-display-row]") ??
+      anchor?.closest<HTMLElement>("[data-display-row]")
+    setOuterReadingOwner(row && container?.contains(row) ? row.dataset.displayRow : undefined)
+  })
   const releaseLocation = (event?: Event) => {
     if (!(event?.target instanceof Element && event.target.closest('[data-component="process-viewport"]')))
       setReadingOwner(undefined)
@@ -300,36 +304,9 @@ export function VirtualConversationRows(
       { defer: true },
     ),
   )
-  const captureAnchor = () => {
-    const virtual = handle()
-    if (!virtual) return
-    const index = virtual.findStartIndex()
-    const key = keys()[index]
-    if (key) anchor = { key, offset: virtual.scrollOffset - virtual.getItemOffset(index) }
-  }
-  createEffect(() => {
-    const next = keys()
-    const virtual = untrack(handle)
-    const scroller = input.scrollRef
-    const leading = previous[0]?.endsWith(":earlier") ? previous[1] : previous[0]
-    const prepended = leading !== undefined && next.indexOf(leading) > previous.indexOf(leading)
-    if (virtual && prepended && scroller && props.scrolledUp() && !untrack(located)) {
-      const saved = anchor
-      const target = saved ? next.indexOf(saved.key) : -1
-      if (saved && target >= 0 && target !== previous.indexOf(saved.key)) {
-        if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
-        anchorFrame = requestAnimationFrame(() => {
-          anchorFrame = undefined
-          scroller.scrollTop = virtual.getItemOffset(target) + saved.offset
-        })
-      }
-    }
-    previous = next
-  })
   onCleanup(() => {
     disposed = true
     releaseLocation()
-    if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
   })
   const pinInteraction = () => {
     const ids = new Set<string>()
@@ -367,11 +344,13 @@ export function VirtualConversationRows(
     setInteractionBlocks([...blocks])
   }
   onMount(() => {
+    setMounted(true)
     let measureFrame: number | undefined
     let viewportLimit: number | undefined
     const measure = () => {
       const scroll = input.scrollRef
       if (scroll && container) {
+        layout.resize(container.clientWidth)
         const limit = scroll.clientHeight * 0.45
         const margin = container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
         if (limit !== viewportLimit) {
@@ -393,7 +372,6 @@ export function VirtualConversationRows(
     if (container?.parentElement) observer.observe(container.parentElement)
     if (input.scrollRef) observer.observe(input.scrollRef)
     measure()
-    captureAnchor()
     document.addEventListener("focusin", pinInteraction)
     document.addEventListener("focusout", pinInteraction)
     document.addEventListener("selectionchange", pinInteraction)
@@ -425,8 +403,6 @@ export function VirtualConversationRows(
       let index = rows().findIndex(owns)
       if (index < 0) return false
       setLocated(location)
-      if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
-      anchorFrame = undefined
       try {
         await content.load(messageID)
       } catch (error) {
@@ -471,22 +447,23 @@ export function VirtualConversationRows(
   return (
     <ConversationMotionProvider takeArrival={input.takePartArrival} liveRevision={input.liveRevision}>
       <div ref={container} data-component="virtual-conversation-rows" class="w-full min-w-0 max-w-full">
-        <Show when={input.scrollRef}>
+        <Show when={mounted() && input.scrollRef}>
           <ToolExpansionProvider value={expansionState}>
             <Virtualizer
-              ref={setHandle}
+              ref={layout.ref}
               data={keys()}
+              shift={rowLayout().shift}
               scrollRef={input.scrollRef}
               startMargin={margin()}
               overscan={4}
               keepMounted={kept()}
-              onScroll={captureAnchor}
-              cache={initialCache}
+              cache={layout.restore()}
             >
               {(key) => {
                 const row = createMemo<ConversationRow>((previous) => byKey().get(key) ?? previous!, byKey().get(key)!)
                 return (
                   <ConversationDisplayRow
+                    layoutOwner={owner}
                     context={props}
                     userPresentation={userPresentation}
                     located={located()}
@@ -501,10 +478,13 @@ export function VirtualConversationRows(
                     onRowReady={onRowReady}
                     onReading={(key, reading) => {
                       setReadingOwner((previous) => (reading ? key : previous === key ? undefined : previous))
-                      setReadingBlocks((previous) =>
-                        reading ? [...new Set([...previous, key])] : previous.filter((value) => value !== key),
-                      )
+                      setReadingBlocks((previous) => {
+                        const included = previous.includes(key)
+                        if (reading === included) return previous
+                        return reading ? [...previous, key] : previous.filter((value) => value !== key)
+                      })
                     }}
+                    onReadingInteraction={setReadingOwner}
                   />
                 )
               }}
@@ -523,6 +503,7 @@ function ConversationDisplayRow(
     onExit: (key: string) => void
     activityView: NonNullable<PluginConversationService["activityView"]>
     onReading?: (key: string, reading: boolean) => void
+    onReadingInteraction?: (key: string) => void
     userPresentation?: (messageID: string) => UserMessagePresentation
     located?: { messageID: string; partID?: string }
   },
@@ -605,7 +586,8 @@ function ConversationDisplayRow(
     )
       retryFocus = focused
     const current = row()
-    if (current.kind === "body" && !loadFailure()) {
+    const refresh = !!content.page(current.message.id)?.stale
+    if (current.kind === "body" && !loadFailure() && !refresh) {
       for (const part of current.parts) {
         if (!partStates[part.id]?.failed || partStates[part.id]?.pending) continue
         retainedParts.get(part.id)?.lease.release()
@@ -618,7 +600,9 @@ function ConversationDisplayRow(
     const generation = ++loadGeneration
     setLoading(true)
     try {
-      if (current.kind === "load" && current.older && content.loadEarlier) await content.loadEarlier(current.message.id)
+      if (refresh) await content.load(current.message.id)
+      else if (current.kind === "load" && current.older && content.loadEarlier)
+        await content.loadEarlier(current.message.id)
       else await content.load(current.message.id, current.kind === "load" && current.more, current.kind === "body")
       if (alive && generation === loadGeneration) setLoadFailure(undefined)
     } catch (error) {
@@ -631,6 +615,19 @@ function ConversationDisplayRow(
     props.onFirstTurnMounted()
     if (row().kind === "load") void load()
   })
+  const staleLoadMessage = createMemo(() => {
+    const current = row()
+    return current.kind === "load" && content.page(current.message.id)?.stale ? current.message.id : undefined
+  })
+  createEffect(
+    on(
+      staleLoadMessage,
+      (messageID) => {
+        if (messageID) void load()
+      },
+      { defer: true },
+    ),
+  )
   const retainedParts = new Map<string, { version: string; lease: ReturnType<typeof content.retain> }>()
   let alive = true
   onCleanup(() => {
@@ -642,7 +639,8 @@ function ConversationDisplayRow(
   createEffect(() => {
     const current = row()
     if (current.kind !== "body" || current.event) return
-    if (content.page(current.message.id)) return
+    const page = content.page(current.message.id)
+    if (page && !page.stale) return
     const generation = ++loadGeneration
     void content
       .load(current.message.id)
@@ -932,6 +930,7 @@ function ConversationDisplayRow(
                   _({ id: "session.reasoning.title", message: "Reasoning" })
                 )}
                 <ConversationActivityStatus
+                  layoutOwner={input.layoutOwner}
                   context={props}
                   row={row}
                   submissionFor={input.submissionFor}
@@ -944,10 +943,12 @@ function ConversationDisplayRow(
             <Show when={activityMounted()}>
               <div ref={batchMotion} id={`${row().key}:content`} data-slot="activity-batch-content">
                 <ConversationActivityBody
+                  layoutOwner={input.layoutOwner}
                   context={props}
                   row={row}
                   activityView={input.activityView}
                   onReading={input.onReading}
+                  onReadingInteraction={input.onReadingInteraction}
                   submissionFor={input.submissionFor}
                   executionFor={input.executionFor}
                   connected={input.connected}
@@ -999,23 +1000,43 @@ function ConversationActivityBody(
     row: () => ConversationRow
     activityView: NonNullable<PluginConversationService["activityView"]>
     onReading?: (key: string, value: boolean) => void
+    onReadingInteraction?: (key: string) => void
   },
 ) {
   const [scroll, setScroll] = createSignal<HTMLDivElement>()
   const [handle, setHandle] = createSignal<VirtualizerHandle>()
   const [retained, setRetained] = createSignal<number[]>([])
-  const data = useData()
   const entries = () => input.row().activity?.entries ?? []
   const keys = createMemo(() => entries().map((entry) => entry.key))
+  let virtualRoot: HTMLDivElement | undefined
+  const VirtualRoot = (props: JSX.HTMLAttributes<HTMLDivElement>) => (
+    <div
+      {...props}
+      data-slot="process-virtualizer"
+      ref={(element) => {
+        virtualRoot = element
+        if (typeof props.ref === "function") props.ref(element)
+      }}
+    />
+  )
   const byKey = createMemo(() => new Map(entries().map((entry) => [entry.key, entry])))
   let viewport: HTMLDivElement | undefined
   let pause: (() => void) | undefined
-  const layoutKey = `${input.context.sessionID}:${input.row().key}`
-  const layout = layouts.get(input.context)?.get(layoutKey)
-  const initialCache =
-    layout && layout.keys.length === keys().length && layout.keys.every((key, index) => key === keys()[index])
-      ? layout.cache
-      : undefined
+  const owner = input.layoutOwner
+  const layoutIdentity = () =>
+    JSON.stringify([
+      ...owner,
+      "activity",
+      input.row().key,
+      input.context.activityDisplay(),
+      input.context.compactReasoning(),
+    ])
+  const layout = createConversationLayoutBinding(layouts, {
+    identity: () => untrack(layoutIdentity),
+    keys: () => untrack(keys),
+    width: () => viewport?.clientWidth ?? 0,
+    changed: setHandle,
+  })
   let anchor: ProcessReadingAnchor | undefined
   let anchorFrame: number | undefined
   const captureAnchor = (target?: Element) => {
@@ -1078,20 +1099,6 @@ function ConversationActivityBody(
   })
   onCleanup(() => {
     if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
-    const virtual = handle()
-    if (!virtual) return
-    const cache = virtual.cache,
-      current = keys()
-    const entries = layouts.get(input.context) ?? new Map()
-    layouts.set(input.context, entries)
-    entries.delete(layoutKey)
-    entries.set(layoutKey, { keys: current, cache, bytes: JSON.stringify([current, cache]).length * 2 })
-    let bytes = [...entries.values()].reduce((total, entry) => total + entry.bytes, 0)
-    for (const [key, entry] of entries) {
-      if (bytes <= 4 * 1024 * 1024) break
-      entries.delete(key)
-      bytes -= entry.bytes
-    }
   })
   const pin = () => {
     const indices = new Set<number>()
@@ -1120,6 +1127,7 @@ function ConversationActivityBody(
     setRetained([...indices])
   }
   onMount(() => {
+    setScroll(viewport)
     const container = viewport?.closest('[data-component="virtual-conversation-rows"]')
     const locate = (event: Event) => {
       const target = (event as CustomEvent<{ key: string; messageID: string; partID?: string }>).detail
@@ -1147,7 +1155,14 @@ function ConversationActivityBody(
   })
   return (
     <ProcessViewport
-      identity={`${data.serverUrl}:${data.directory}:${layoutKey}`}
+      identity={JSON.stringify([...owner, input.row().key])}
+      isLayoutMutation={(record) => record.type !== "childList" || record.target !== virtualRoot}
+      onInteraction={() => {
+        if (anchorFrame !== undefined) cancelAnimationFrame(anchorFrame)
+        anchorFrame = undefined
+        input.context.autoScroll?.handleInteraction(new Event("process-reading"))
+        input.onReadingInteraction?.(input.row().key)
+      }}
       controls={(value) => {
         pause = value.pause
       }}
@@ -1156,6 +1171,7 @@ function ConversationActivityBody(
         return anchor
       }}
       restoreAnchor={restoreAnchor}
+      onWidthChange={layout.resize}
       onBeforeLayoutChange={(event) => input.context.autoScroll?.handleInteraction(event)}
       active={input.row().activity?.active ?? false}
       following={!input.context.scrolledUp()}
@@ -1165,27 +1181,28 @@ function ConversationActivityBody(
         )
         .join(";")}
       onReading={(value) => {
-        if (value) input.context.autoScroll?.handleInteraction(new Event("process-reading"))
+        if (value) input.onReadingInteraction?.(input.row().key)
         input.onReading?.(input.row().key, value)
       }}
       ref={(element) => {
         viewport = element
-        setScroll(element)
       }}
     >
       <Show when={scroll()}>
         <Virtualizer
-          ref={setHandle}
+          as={VirtualRoot}
+          ref={layout.ref}
           data={keys()}
           scrollRef={scroll()}
           overscan={2}
           keepMounted={retained()}
-          cache={initialCache}
+          cache={layout.restore()}
         >
           {(key) => {
             const row = createMemo<ConversationRow>((previous) => byKey().get(key) ?? previous!, byKey().get(key)!)
             return (
               <ConversationDisplayRow
+                layoutOwner={owner}
                 context={input.context}
                 row={row}
                 activityView={input.activityView}
