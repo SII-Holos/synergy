@@ -42,7 +42,7 @@ export const RenderTool = Tool.define("render", {
     const descriptor: RenderArtifact.Descriptor = { ...identity, source: `asset://${asset}` }
     return {
       title: source.title,
-      output: `Saved visual ${source.id}: ${source.title}. Source: ${descriptor.source}. Rendering is verified by the client, not this tool.`,
+      output: `Saved visual ${source.id}: ${source.title}. JSON source: ${descriptor.source}. The host displays the visual card. Do not embed this JSON source as an image. Frontend rendering has not been verified.`,
       metadata: { visual: descriptor },
       attachments: [
         {

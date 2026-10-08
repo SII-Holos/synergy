@@ -12,7 +12,7 @@ The per-model context contributor refreshes semantic state from stored Parts. It
 
 ## Presentation and recovery
 
-App supplies `RenderProvider` with SDK reads, revisioned writes, canonical state observation and confirmed follow-ups. Shared UI owns the controller, iframe runtime, controls and expanded viewer. Source references resolve to their producing call through Media; MIME or a filename cannot authorize a bridge. Historical unversioned HTML enters this same presentation with static execution policy.
+App supplies `RenderProvider` with SDK reads, revisioned writes, canonical state observation and confirmed follow-ups. Shared UI owns the controller, iframe runtime, controls and expanded viewer. Source references resolve to their producing call through Media; MIME or a filename cannot authorize a bridge. Source Assets are JSON links; if authored as images, decode failure preserves an accessible managed-resource link. Historical unversioned HTML enters this same presentation with static execution policy.
 
 Canonical Part updates refresh mounted views without REST requests per event. Reconnect and history changes revalidate the owned source. A changed connection, Scope or session cancels confirmation and revokes the old view. Inline and expanded presentations share state; opening, closing and exporting flush pending changes. Save failures remain visible and require an explicit discard to close the viewer without saving.
 
