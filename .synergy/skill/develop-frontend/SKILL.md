@@ -208,6 +208,8 @@ For directory pickers, follow the navigation and selection rules in [PRODUCT.md]
 
 Derive activity steps and counts from canonical tool parts. Display preferences must not schedule background inference or make session completion depend on presentation work; historical derived summary metadata does not control grouping.
 
+For reply completion, verify the footer and copy actions while a real detached call remains unsettled, then finish that call and verify retained accounting and stable footer duration. Consume the foreground state defined in [Sessions and messages](../../../docs/architecture/session-and-messages.md#message-parts); do not manufacture completion from text arrival or close the Run early. Cover refresh, navigation, delayed accounting snapshots, active children, steering, approvals, rollback and resumed segments. Measure terminal message completion, the first painted footer and final ledger settlement separately.
+
 1. Reuse shared workbench, dialog, form, toolbar, and surface primitives before creating local variants.
 2. Preserve polarity: dark content/selection surfaces step brighter inward; light surfaces step darker inward.
 3. Use semantic color/type/spacing tokens. Reserve state colors for real state rather than decoration.

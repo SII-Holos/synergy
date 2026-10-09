@@ -61595,6 +61595,10 @@
           "endedAt": {
             "type": "number"
           },
+          "elapsedMs": {
+            "type": "number",
+            "minimum": 0
+          },
           "segmentID": {
             "type": "string"
           },

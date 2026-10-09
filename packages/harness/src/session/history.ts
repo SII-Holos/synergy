@@ -10,6 +10,7 @@ import { fn } from "../util/fn"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
+import { SessionProgress } from "./progress"
 import { SessionMessageCache } from "./message-cache"
 import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
 import { SessionManager } from "./manager"
@@ -144,6 +145,35 @@ export namespace SessionHistory {
     const session = await SessionManager.requireSession(input.sessionID)
     await requireDisplayMessage(session, input.messageID)
     return SessionHistoryDisplay.messageDetails(input, session.scope.id)
+  }
+
+  export async function turnCompletion(sessionID: string, rootID: string, endedAt?: number) {
+    const session = await SessionManager.requireSession(sessionID)
+    const root = await requireDisplayMessage(session, rootID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    if (!root) return
+    return Storage.snapshot(async () => {
+      const visibility = await displayVisibility(session)
+      const end =
+        endedAt == null
+          ? undefined
+          : MessageV2.messageOrderMarker({ ...root.info, id: "\uffff", time: { created: endedAt } })
+      const orderTo = end && (!visibility.cut || end < visibility.cut) ? end : visibility.cut
+      for await (const info of MessageV2.readNewestInfos({
+        scopeID: asScopeID(session.scope.id),
+        sessionID: asSessionID(sessionID),
+        before: orderTo,
+      })) {
+        if (MessageV2.messageOrderMarker(info) < root.order) return
+        if (visibility.hidden.has(info.id)) continue
+        if (info.id !== rootID && info.rootID !== rootID) continue
+        if (info.role !== "assistant" || !SessionProgress.isTerminalAssistant(info) || info.time.completed == null)
+          return
+        return { completedAt: info.time.completed, failed: !!info.error }
+      }
+    })
   }
 
   export const SearchPage = z

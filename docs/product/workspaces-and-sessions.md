@@ -89,6 +89,8 @@ Desktop mirrors this state with platform-native indicators. macOS shows a numeri
 
 One root user message defines one task. Every assistant message generated for that task points back to the same root. This stable grouping is independent of visual rendering or model inclusion.
 
+The reply's completion footer and copy action become available after foreground work ends. Library experience generation and other auxiliary work can continue in the background. The compact footer measures time through reply completion; execution details retain the full recorded duration and usage, including auxiliary work.
+
 Messages describe four separate questions:
 
 - `rootID` / `isRoot` — which task owns this message?
