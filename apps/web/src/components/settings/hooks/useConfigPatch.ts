@@ -53,6 +53,10 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
     patch.compactReasoning = general.compactReasoning
   }
 
+  if (general.welcomeGames !== (cfg.welcomeGames ?? UI_DEFAULTS.welcomeGames)) {
+    patch.welcomeGames = general.welcomeGames
+  }
+
   const username = general.username.trim()
   if (username !== (cfg.username ?? UI_DEFAULTS.username)) patch.username = username || undefined
 

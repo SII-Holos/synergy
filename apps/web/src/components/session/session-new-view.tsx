@@ -1,4 +1,5 @@
 import { useLocale } from "@/context/locale"
+import { useSync } from "@/context/sync"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import { Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -16,6 +17,7 @@ export function NewSessionGreeting(props: {
 }) {
   const { i18n } = useLocale()
   const welcome = useWelcome()
+  const sync = useSync()
   const dialog = useDialog()
   const brand = () => (
     <div class="session-greeting-heading">
@@ -39,7 +41,7 @@ export function NewSessionGreeting(props: {
   )
   return (
     <Show
-      when={props.interactive && welcome?.experience()}
+      when={props.interactive && (sync.data.config.welcomeGames ?? true) && welcome?.experience()}
       keyed
       fallback={
         <div class="session-greeting">

@@ -20425,6 +20425,14 @@ msgid "settings.general.updates.web.description"
 msgstr "服务器有更新的 Web 资源时，刷新此浏览器。"
 
 #. js-lingui-explicit-id
+msgid "settings.general.welcomeGames.description"
+msgstr "在新任务的问候页显示可玩的小游戏。关闭后仅显示纯文本问候。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.welcomeGames.title"
+msgstr "新任务小游戏"
+
+#. js-lingui-explicit-id
 msgid "settings.general.workspace.description"
 msgstr "使用项目文件，或为每个新的 Git 任务创建工作树。项目可以覆盖此默认设置。"
 
