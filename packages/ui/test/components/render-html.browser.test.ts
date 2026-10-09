@@ -362,20 +362,23 @@ test("keeps large visuals bounded and opens an accessible viewer with focus retu
   expect(await page.locator('[data-component="render-html"] iframe').count()).toBe(1)
 })
 
-test("blocks malformed-document resource loads and HTML/SVG/MathML navigation in both presentations", async () => {
-  const requests: string[] = []
-  const denied = /render-invalid\.example|render-denied/
-  await page.route(denied, async (route) => {
-    requests.push(route.request().url())
-    await route.abort()
-  })
-  const content = `<meta http-equiv="refresh" content="0;url=/render-denied/refresh"><script>parent.document.body.dataset.compromised = 'true'</script><img src="https://render-invalid.example/image"><style>@import url("https://render-invalid.example/style"); #safe { color: var(--render-text-strong); }</style><form action="/render-denied/form"><button>Submit</button></form><a id="html-link" href="/render-denied/link" tabindex="0" target="_self" ping="https://render-invalid.example/ping">Leave visual</a><svg width="240" height="70"><defs><rect id="shape" width="20" height="20" /></defs><use href="#shape" /><a href="https://render-invalid.example/svg"><text x="25" y="20">SVG link</text></a><a xlink:href="/render-denied/svg"><text x="25" y="40">SVG legacy</text><set attributeName="href" to="/render-denied/smil" /></a></svg><math href="https://render-invalid.example/math"><mi id="math-link" href="/render-denied/math" tabindex="0">x</mi><mo xlink:href="/render-denied/math-legacy">+</mo><mn>1</mn></math><details><summary>More</summary><p>Preserved native detail</p></details><p id="safe">Safe result</p>`
-  try {
-    for (const html of [
-      content,
-      `<!-- <head> -->${content}`,
-      `<html><img src="https://render-invalid.example/early"><head><style>p { font-weight: 500; }</style></head><body>${content}</body></html>`,
-    ]) {
+test.each(["fragment", "commented head", "misordered head"] as const)(
+  "blocks resource loads and HTML/SVG/MathML navigation in both presentations (%s)",
+  async (kind) => {
+    const requests: string[] = []
+    const denied = /render-invalid\.example|render-denied/
+    await page.route(denied, async (route) => {
+      requests.push(route.request().url())
+      await route.abort()
+    })
+    const content = `<meta http-equiv="refresh" content="0;url=/render-denied/refresh"><script>parent.document.body.dataset.compromised = 'true'</script><img src="https://render-invalid.example/image"><style>@import url("https://render-invalid.example/style"); #safe { color: var(--render-text-strong); }</style><form action="/render-denied/form"><button>Submit</button></form><a id="html-link" href="/render-denied/link" tabindex="0" target="_self" ping="https://render-invalid.example/ping">Leave visual</a><svg width="240" height="70"><defs><rect id="shape" width="20" height="20" /></defs><use href="#shape" /><a href="https://render-invalid.example/svg"><text x="25" y="20">SVG link</text></a><a xlink:href="/render-denied/svg"><text x="25" y="40">SVG legacy</text><set attributeName="href" to="/render-denied/smil" /></a></svg><math href="https://render-invalid.example/math"><mi id="math-link" href="/render-denied/math" tabindex="0">x</mi><mo xlink:href="/render-denied/math-legacy">+</mo><mn>1</mn></math><details><summary>More</summary><p>Preserved native detail</p></details><p id="safe">Safe result</p>`
+    try {
+      const html =
+        kind === "fragment"
+          ? content
+          : kind === "commented head"
+            ? `<!-- <head> -->${content}`
+            : `<html><img src="https://render-invalid.example/early"><head><style>p { font-weight: 500; }</style></head><body>${content}</body></html>`
       await visual(html)
       for (const expanded of [false, true]) {
         if (expanded) {
@@ -405,13 +408,14 @@ test("blocks malformed-document resource loads and HTML/SVG/MathML navigation in
           await page.getByRole("dialog").waitFor({ state: "hidden" })
         }
       }
+      expect(await page.locator("body").getAttribute("data-compromised")).toBeNull()
+      expect(requests).toEqual([])
+    } finally {
+      await page.unroute(denied)
     }
-    expect(await page.locator("body").getAttribute("data-compromised")).toBeNull()
-    expect(requests).toEqual([])
-  } finally {
-    await page.unroute(denied)
-  }
-}, 20000)
+  },
+  20000,
+)
 
 test("narrow viewport and reduced motion keep the visual and viewer controls reachable", async () => {
   await page.setViewportSize({ width: 320, height: 600 })
