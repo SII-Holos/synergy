@@ -15,6 +15,8 @@ import {
   PartSummarySupersededError,
   partSummaryPageState,
 } from "./part-summary-loader"
+import { createPartPageBatchReader, isPlainPartPageQuery } from "./part-page-batch"
+import type { SessionPartPage } from "@ericsanchezok/synergy-sdk/client"
 import { contentBudgetKey } from "./content-budget"
 import { clearConversationContent } from "./conversation-content-state"
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
@@ -58,13 +60,30 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       !contentLifetime.signal.aborted &&
       globalSync.peekScopeState(sdk.scopeKey)?.[0] === store &&
       globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "message").generation === request.generation
+    const readPartPageBatch = createPartPageBatchReader({
+      read: async (sessionID, messageIDs, batchSignal) => {
+        const result = await sdk.client.session.partPages(
+          { sessionID, messageIDs, limit: 100 },
+          { signal: batchSignal, throwOnError: true },
+        )
+        if (!result.data) throw new Error("Missing conversation summaries")
+        return result.data
+      },
+    })
     const partPages = createPartSummaryLoader({
       page: (messageID) => store.partPage[messageID],
       summaries: (messageID) => store.partSummary[messageID] ?? [],
       read: async (request, cursor, signal, refresh) => {
         if (globalSync.peekScopeState(sdk.scopeKey)?.[0] !== store) throw new PartSummarySupersededError()
         const freshness = globalSync.capturePartSnapshotRequest(sdk.scopeKey, request.sessionID)
-        const read = async (query: { cursor?: string; partID?: string; older?: boolean; limit: number }) => {
+        const read = async (query: {
+          cursor?: string
+          partID?: string
+          older?: boolean
+          limit: number
+        }): Promise<SessionPartPage> => {
+          if (query.limit === 100 && isPlainPartPageQuery(query))
+            return readPartPageBatch(request.sessionID, request.messageID, signal)
           const response = await sdk.client.session.partPage(
             { sessionID: request.sessionID, messageID: request.messageID, ...query },
             { signal, throwOnError: true },
@@ -115,25 +134,31 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         })
       },
     })
-    const retainedContent = globalSync.retainContentCache(sdk.scopeKey, () =>
+    const retainedContent = globalSync.retainContentCache(sdk.scopeKey, (contentSignal) =>
       createPartMaterializer({
         memory: globalSync.contentBudget,
         memoryKey: (summary) => contentBudgetKey(sdk.scopeKey, summary.messageID, summary.id),
-        read: async (summary, signal) => {
+        read: async (summary) => {
           const cached = store.part[summary.messageID]?.find((part) => part.id === summary.id)
           if (cached && store.partVersion[summary.id] === summary.content.version)
             return { part: cached, version: summary.content.version }
-          const response = await sdk.client.session.partContent(
-            {
-              sessionID: summary.sessionID,
-              messageID: summary.messageID,
-              partID: summary.id,
-              version: summary.content.version,
+          return globalSync.partContentStore.read(
+            { url: sdk.url, scopeKey: sdk.scopeKey, partID: summary.id, version: summary.content.version },
+            async (signal) => {
+              const response = await sdk.client.session.partContent(
+                {
+                  sessionID: summary.sessionID,
+                  messageID: summary.messageID,
+                  partID: summary.id,
+                  version: summary.content.version,
+                },
+                { signal, throwOnError: true },
+              )
+              if (!response.data) throw new Error("Missing conversation content")
+              return response.data
             },
-            { signal, throwOnError: true },
+            contentSignal,
           )
-          if (!response.data) throw new Error("Missing conversation content")
-          return response.data
         },
         refresh: async (summary, signal) => {
           const current = store.partSummary[summary.messageID]?.find((part) => part.id === summary.id)
@@ -347,14 +372,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             ? await readSessionViewportContent({
                 messages: [...response.data.referencedRoots, ...response.data.items].map((entry) => entry.info),
                 signal,
-                page: async (messageID) => {
-                  const result = await sdk.client.session.partPage(
-                    { sessionID, messageID, limit: 100 },
-                    { signal, throwOnError: true },
-                  )
-                  if (!result.data) throw new Error("Missing conversation summary")
-                  return result.data
-                },
+                page: (messageID) => readPartPageBatch(sessionID, messageID, signal),
                 body: async (summary) => {
                   const result = await sdk.client.session.partContent(
                     { sessionID, messageID: summary.messageID, partID: summary.id, version: summary.content.version },

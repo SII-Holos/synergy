@@ -26,6 +26,7 @@ import {
 } from "@ericsanchezok/synergy-sdk/client"
 import { sharedRequests } from "@/utils/shared-requests"
 import { createContentBudget, contentBudgetKey } from "./content-budget"
+import { createPartContentStore } from "./part-content-store"
 import { clearConversationContent } from "./conversation-content-state"
 import type { SessionViewportContent } from "./session-viewport-content"
 import { partSummaryPageState, type PartSummaryPageState } from "./part-summary-loader"
@@ -283,11 +284,19 @@ function removePendingRequest<T extends { id: string }>(
 function createGlobalSync() {
   const partArrival = createPartArrivalState()
   const contentBudget = createContentBudget()
-  const contentCaches = new Map<string, { cache: ReturnType<typeof createPartMaterializer>; readers: number }>()
-  function retainContentCache(scopeKey: string, create: () => ReturnType<typeof createPartMaterializer>) {
+  const partContentStore = createPartContentStore()
+  const contentCaches = new Map<
+    string,
+    { cache: ReturnType<typeof createPartMaterializer>; readers: number; controller: AbortController }
+  >()
+  function retainContentCache(
+    scopeKey: string,
+    create: (signal: AbortSignal) => ReturnType<typeof createPartMaterializer>,
+  ) {
     let entry = contentCaches.get(scopeKey)
     if (!entry) {
-      entry = { cache: create(), readers: 0 }
+      const controller = new AbortController()
+      entry = { cache: create(controller.signal), readers: 0, controller }
       contentCaches.set(scopeKey, entry)
     }
     entry.readers++
@@ -299,6 +308,7 @@ function createGlobalSync() {
         if (released) return
         released = true
         if (--retained.readers === 0) {
+          retained.controller.abort()
           retained.cache.dispose()
           contentCaches.delete(scopeKey)
         }
@@ -306,7 +316,10 @@ function createGlobalSync() {
     }
   }
   onCleanup(() => {
-    for (const entry of contentCaches.values()) entry.cache.dispose()
+    for (const entry of contentCaches.values()) {
+      entry.controller.abort()
+      entry.cache.dispose()
+    }
     contentCaches.clear()
     contentBudget.dispose()
   })
@@ -2634,6 +2647,7 @@ function createGlobalSync() {
     data: globalStore,
     partArrival,
     contentBudget,
+    partContentStore,
     retainContentCache,
     seedSessionViewportContent(scopeKey: string, content: SessionViewportContent) {
       const state = children[scopeKey]

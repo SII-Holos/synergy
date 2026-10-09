@@ -68,12 +68,13 @@ test("conversation content leases and the message locator belong to the presenta
   const pending = Promise.withResolvers<void>()
   const released = mock(() => {})
   const locatorReleased = mock(() => {})
+  let isCurrent = true
   const source = fixture<PluginConversationService>({
     content: {
       summaries: () => [],
       page: () => undefined,
       load: () => pending.promise,
-      retain: () => ({ ready: pending.promise, release: released }),
+      retain: () => ({ ready: pending.promise, isCurrent: () => isCurrent, release: released }),
     },
     registerMessageLocator: () => locatorReleased,
   })
@@ -86,8 +87,12 @@ test("conversation content leases and the message locator belong to the presenta
     preview: "",
     content: { version: "one", bytes: 1 },
   })
+  expect(lease.isCurrent?.()).toBe(true)
+  isCurrent = false
+  expect(lease.isCurrent?.()).toBe(false)
   const locate = conversation.registerMessageLocator!(async () => true)
   owner.lifetime.dispose()
+  expect(() => lease.isCurrent?.()).toThrow("disposed")
   pending.resolve()
   await expect(lease.ready).rejects.toThrow("disposed")
   expect(released).toHaveBeenCalledTimes(1)

@@ -66,6 +66,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     import { createPartMaterializer } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/context/part-materializer.ts"))}
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
     import { requests, modelRequests, replays, lists, emit, inboxRequests, inboxArrived, optionalRequests, connect } from ${JSON.stringify(stub)}
+    const bodyLifetimes=[]
     export function mount(root) {
       let api, ready
       const started = new Promise(resolve=>ready=resolve)
@@ -74,11 +75,15 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       return {started,dispose,requests,modelRequests,emit,replays,lists,inboxRequests,inboxArrived,optionalRequests,connect,api:()=>api,
         seedInbox(key) {api.ensureScopeState(key)[1]("inbox","fixture-session",[{id:"pending"}])},
         seedWindow(key) {api.ensureScopeState(key)[1]("message","session",[{id:"message",sessionID:"session",role:"user",time:{created:1}}])},
-        retainBody(key,summary) {return api.retainContentCache(key,()=>createPartMaterializer({
-          memory:api.contentBudget,memoryKey:item=>key+"\\0"+item.messageID+"\\0"+item.id,
-          read:async item=>({part:api.peekScopeState(key)[0].part[item.messageID].find(part=>part.id===item.id),version:item.content.version}),
-          apply(){},evict:item=>api.peekScopeState(key)?.[1]("part",item.messageID,parts=>parts.filter(part=>part.id!==item.id))
-        }))},
+        bodyLifetimes,
+        retainBody(key,summary) {return api.retainContentCache(key,(signal)=>{
+          bodyLifetimes.push(signal);
+          return createPartMaterializer({
+            memory:api.contentBudget,memoryKey:item=>key+"\\0"+item.messageID+"\\0"+item.id,
+            read:async item=>({part:api.peekScopeState(key)[0].part[item.messageID].find(part=>part.id===item.id),version:item.content.version}),
+            apply(){},evict:item=>api.peekScopeState(key)?.[1]("part",item.messageID,parts=>parts.filter(part=>part.id!==item.id))
+          })
+        })},
         complete(index,version) {const request=requests[index];request.resolve({data:{scopeID:request.key,provider:{all:[]},agent:[],config:{version}}})},
         waitComplete(state) {return new Promise(resolve=>createRoot(dispose=>createComputed(()=>{if(state[0].status==='complete'){dispose();resolve()}})))},
       }
@@ -167,6 +172,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         connect(): void
         seedInbox(key: string): void
         seedWindow(key: string): void
+        bodyLifetimes: AbortSignal[]
         retainBody(
           key: string,
           summary: SessionViewportContent["pages"][string]["items"][number],
@@ -362,6 +368,10 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       const summary = home.state[0].partSummary.message[0]
       const body = home.state[0].part.message[0]
       const cache = h.retainBody("home", summary)
+      const peerCache = h.retainBody("home", summary)
+      expect(peerCache.cache).toBe(cache.cache)
+      expect(h.bodyLifetimes).toHaveLength(1)
+      expect(h.bodyLifetimes[0]?.aborted).toBe(false)
       const reader = cache.cache.retain(summary)
       await reader.ready
       const retainedBytes = api.contentBudget.bytes
@@ -395,6 +405,9 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       expect(api.contentBudget.bytes).toBe(retainedBytes)
       reader.release()
       cache.release()
+      expect(h.bodyLifetimes[0].aborted).toBe(false)
+      peerCache.release()
+      expect(h.bodyLifetimes[0].aborted).toBe(true)
       home.release()
     } finally {
       h.dispose()

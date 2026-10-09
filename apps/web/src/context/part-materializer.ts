@@ -198,12 +198,14 @@ export function createPartMaterializer(input: {
       entries.delete(key)
       entries.set(key, entry)
       const retained = entry
+      const ready = retained.ready
       if (!retained.consumers) retained.unsubscribe = input.subscribe?.(summary)
       retained.consumers++
       const releaseMemory = input.memory?.retain(memoryKey(summary))
       let released = false
       return {
-        ready: retained.ready,
+        ready,
+        isCurrent: () => !released && !disposed && entries.get(key) === retained && retained.ready === ready,
         release() {
           if (released) return
           released = true
