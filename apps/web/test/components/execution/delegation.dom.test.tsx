@@ -207,6 +207,48 @@ test("records inherit the dashboard scope without rendering a second overview", 
   )
 })
 
+test("wide inspection bounds the process column and keeps detail values left aligned", async () => {
+  await page.setViewportSize({ width: 1000, height: 946 })
+  await page.goto(server.resolvedUrls!.local[0]! + "?model=1")
+  const inspector = page.getByRole("region", { name: "Inspect event", exact: true })
+  await inspector.getByText("Test model", { exact: true }).waitFor()
+  const process = (await page.locator(".execution-trajectory-pane").boundingBox())!
+  const detail = (await inspector.boundingBox())!
+  expect(process.width).toBeGreaterThanOrEqual(280)
+  expect(process.width).toBeLessThanOrEqual(320)
+  expect(detail.x).toBeGreaterThan(process.x + process.width)
+  expect(detail.width).toBeGreaterThan(process.width)
+  expect(
+    await inspector
+      .locator(".execution-detail-rows dd")
+      .first()
+      .evaluate((element) => getComputedStyle(element).textAlign),
+  ).toBe("left")
+})
+
+test("narrow inspection replaces the process controls with readable evidence", async () => {
+  for (const width of [375, 426]) {
+    await page.setViewportSize({ width, height: 946 })
+    await page.goto(server.resolvedUrls!.local[0]!)
+    await page.getByRole("button", { name: "Child analysis", exact: true }).click()
+    await page.locator('[data-node-id="read"] .execution-node-button').click()
+    const body = page.getByRole("region", { name: "Error details", exact: true }).locator("code")
+    await body.waitFor()
+    expect(await page.locator(".execution-trajectory-pane").isVisible()).toBe(false)
+    expect(await page.getByRole("textbox", { name: "Search all recorded events" }).isVisible()).toBe(false)
+    const reading = await body.evaluate((element) => ({
+      top: element.getBoundingClientRect().top,
+      fontSize: getComputedStyle(element).fontSize,
+      overflow: document.documentElement.scrollWidth > innerWidth,
+    }))
+    expect(reading.top).toBeLessThanOrEqual(946 / 3)
+    expect(reading.fontSize).toBe("14px")
+    expect(reading.overflow).toBe(false)
+    await page.getByRole("button", { name: "Back to trajectory", exact: true }).click()
+    expect(await page.getByRole("textbox", { name: "Search all recorded events" }).isVisible()).toBe(true)
+  }
+})
+
 test("model inspection keeps summary, request, response and timing in one scrolling document", async () => {
   await page.setViewportSize({ width: 560, height: 600 })
   await page.goto(server.resolvedUrls!.local[0]! + "?model=1")
@@ -471,7 +513,7 @@ test("a failed tool displays its saved error as the default result without inven
   expect(
     (await page.getByText("File not found: architecture.md", { exact: true }).boundingBox())!.y,
   ).toBeLessThanOrEqual(page.viewportSize()!.height / 3)
-  expect(await page.locator(".execution-global").isVisible()).toBe(false)
+  expect(await page.locator(".execution-trajectory-pane").isVisible()).toBe(false)
 }, 15_000)
 
 test("failed tool rows display their tool name instead of serialized parameters", async () => {
@@ -515,7 +557,7 @@ test("ten thousand persistent events keep rendering bounded and restore history 
   expect(Math.abs((await button.boundingBox())!.y - visible.top)).toBeLessThan(2)
   await button.press("Enter")
   await page.getByRole("button", { name: "Back to trajectory" }).waitFor()
-  expect(await page.locator(".execution-global").isVisible()).toBe(false)
+  expect(await page.locator(".execution-trajectory-pane").isVisible()).toBe(false)
   expect((await page.locator(".execution-inspector-body").boundingBox())!.y).toBeLessThanOrEqual(
     page.viewportSize()!.height / 3,
   )

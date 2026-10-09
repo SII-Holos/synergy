@@ -89,7 +89,9 @@ for (const width of [320, 375, 560, 800, 1280, 1989]) {
         return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width }
       }
       const scroller = document.querySelector(".context-dashboard")!
+      const style = getComputedStyle(scroller)
       return {
+        availableWidth: scroller.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
         composition: box(".context-composition"),
         content: box(".context-browser"),
         timing: box(".context-timing"),
@@ -103,7 +105,7 @@ for (const width of [320, 375, 560, 800, 1280, 1989]) {
     })
     expect(result.overflow).toBe(false)
     expect(result.clippedLabels).toBe(0)
-    if (width >= 800) {
+    if (result.availableWidth >= 760) {
       expect(result.content.x).toBeGreaterThan(result.composition.right)
       expect(result.content.y).toBeLessThan(340)
       expect(result.history.width).toBeLessThanOrEqual(790)
@@ -115,6 +117,31 @@ for (const width of [320, 375, 560, 800, 1280, 1989]) {
     }
   })
 }
+test("context columns follow the content breakpoint after padding and scrollbar space", async () => {
+  await page.setViewportSize({ width: 960, height: 800 })
+  await page.goto(server.resolvedUrls!.local[0]!)
+  const inset = await page.locator(".context-dashboard").evaluate((element) => {
+    const style = getComputedStyle(element)
+    return innerWidth - element.clientWidth + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+  })
+  for (const available of [759, 760, 759, 760]) {
+    await page.setViewportSize({ width: available + inset, height: 800 })
+    const geometry = await page.evaluate(() => {
+      const composition = document.querySelector(".context-composition")!.getBoundingClientRect()
+      const content = document.querySelector(".context-browser")!.getBoundingClientRect()
+      const scroller = document.querySelector(".context-dashboard")!
+      const style = getComputedStyle(scroller)
+      return {
+        available: scroller.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+        sideBySide: content.x > composition.right,
+        overflow: scroller.scrollWidth > scroller.clientWidth,
+      }
+    })
+    expect(geometry.available).toBe(available)
+    expect(geometry.sideBySide).toBe(available >= 760)
+    expect(geometry.overflow).toBe(false)
+  }
+})
 test("changing layout retains the reader node, typed search and keyboard focus", async () => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto(server.resolvedUrls!.local[0]!)
