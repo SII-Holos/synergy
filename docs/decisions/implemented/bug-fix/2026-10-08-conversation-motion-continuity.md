@@ -36,6 +36,8 @@ Session-view reading memory stores a message, optional Part and paragraph, viewp
 
 The in-transcript return-to-latest button owns its activation event. Its pointer or keyboard click must not bubble into the viewport's reading-interruption handler and cancel the same pending navigation. Later reading input still invalidates the captured intent. Production history acceptance exercises pointer, Enter and Space activation after locating an older message, under delayed reads and CPU throttling, before reconnect recovery.
 
+An explicit location inside a process installs its target identity and offset as the reading anchor before the inner virtualizer moves. Pausing at the old position and waiting for a native scroll event leaves a gap in which body hydration can restore the old anchor and evict the newly located Part. The shared viewport accepts the location's anchor atomically with pausing; subsequent native reading replaces it normally. Regression coverage combines a location and body mutation in the same browser task, before native scroll delivery, and verifies that the requested content stays aligned.
+
 ## Alternatives considered
 
 **Delay all group changes.** A timeout conceals the preparation boundary, delays legitimate prose collection and depends on provider speed.

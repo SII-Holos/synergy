@@ -128,7 +128,7 @@ export function ProcessViewport(
     restoreAnchor?: (anchor: ReadingAnchor) => boolean | void
     onWidthChange?: (width: number) => void
     onBeforeLayoutChange?: (event: Event) => void
-    controls?: (value: { pause(): void }) => void
+    controls?: (value: { pause(anchor?: ReadingAnchor): void }) => void
   }>,
 ) {
   const { _ } = useLingui()
@@ -344,7 +344,14 @@ export function ProcessViewport(
     })
     mutations.observe(content, { childList: true, characterData: true, subtree: true })
     if (saved?.offset) viewport.scrollTop = saved.offset
-    props.controls?.({ pause: () => pause() })
+    props.controls?.({
+      pause: (anchor) => {
+        pause(!anchor)
+        if (!anchor) return
+        cancelCapture()
+        readingAnchor = anchor
+      },
+    })
     if (saved?.anchor && !saved.following) {
       frame = requestAnimationFrame(() => {
         frame = undefined

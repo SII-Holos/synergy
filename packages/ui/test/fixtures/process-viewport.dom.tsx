@@ -25,7 +25,7 @@ export type FixtureHarness = {
   burst(): void
   growCharacterData(position: "above" | "below"): void
   growChildList(position: "above" | "below"): void
-  pause(): void
+  pause(anchor?: ProcessReadingAnchor): void
   appendTool(): void
   parentFollowing(value: boolean): void
   active(value: boolean): void
@@ -40,7 +40,7 @@ const restores: ProcessReadingAnchor[] = []
 const beforeLayouts: { target: string | null; height: number }[] = []
 let viewport!: HTMLDivElement
 let virtualRoot!: HTMLDivElement
-let pause!: () => void
+let pause!: (anchor?: ProcessReadingAnchor) => void
 const rows = Array.from({ length: 28 }, (_, index) => index)
 const [parentFollowing, setParentFollowing] = createSignal(true)
 const [active, setActive] = createSignal(true)
@@ -77,7 +77,7 @@ const harness: FixtureHarness = {
   growCharacterData,
   growChildList,
   burst,
-  pause: () => pause(),
+  pause: (anchor) => pause(anchor),
   parentFollowing: setParentFollowing,
   active: setActive,
   appendTool() {

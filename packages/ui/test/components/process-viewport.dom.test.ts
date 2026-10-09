@@ -118,6 +118,29 @@ afterAll(async () => {
   if (failures.length) throw new AggregateError(failures, "ProcessViewport fixture cleanup failed")
 })
 
+test("an explicit location owns its reading anchor before native scroll delivery and body hydration", async () => {
+  const result = await page.evaluate(async () => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    const viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+    const target = document.querySelector<HTMLElement>('[data-part-id="part-4"]')!
+    harness.pause({ key: "row-4", partID: "part-4", offset: 0 })
+    viewport.scrollTop += target.getBoundingClientRect().top - viewport.getBoundingClientRect().top
+    const destination = viewport.scrollTop
+    harness.growCharacterData("below")
+    await harness.frames(8)
+    return {
+      destination,
+      top: viewport.scrollTop,
+      offset: target.getBoundingClientRect().top - viewport.getBoundingClientRect().top,
+      restored: harness.restores.map((anchor) => anchor.partID),
+    }
+  })
+  expect(Math.abs(result.top - result.destination)).toBeLessThan(1)
+  expect(Math.abs(result.offset)).toBeLessThan(1)
+  expect(result.restored.length).toBeGreaterThan(0)
+  expect(result.restored.every((id) => id === "part-4")).toBe(true)
+})
+
 test("repeated wheel pauses notify reading only when following changes, including after returning to latest", async () => {
   const result = await page.evaluate(async () => {
     const harness = (window as unknown as FixtureWindow).processViewportFixture

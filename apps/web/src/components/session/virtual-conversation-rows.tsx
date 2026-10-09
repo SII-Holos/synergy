@@ -1131,7 +1131,7 @@ function ConversationActivityBody(
   )
   const byKey = createMemo(() => new Map(entries().map((entry) => [entry.key, entry])))
   let viewport: HTMLDivElement | undefined
-  let pause: (() => void) | undefined
+  let pause: ((anchor?: ProcessReadingAnchor) => void) | undefined
   const owner = input.layoutOwner
   const layoutIdentity = () =>
     JSON.stringify([
@@ -1237,7 +1237,7 @@ function ConversationActivityBody(
           (!target.partID || (entry.kind === "body" && entry.parts.some((part) => part.id === target.partID))),
       )
       if (index >= 0) {
-        pause?.()
+        pause?.({ key: entries()[index].key, partID: target.partID, offset: 0 })
         handle()?.scrollToIndex(index, { align: "start" })
       }
     }

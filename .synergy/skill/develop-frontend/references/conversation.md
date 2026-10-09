@@ -77,6 +77,8 @@ Expanded logical process groups own a bounded scroll region and an inner virtual
 
 History location must follow message and Part identity through delayed preceding summary replacement and body measurement; a captured virtual index can acquire a different owner. Observe virtual content height as well as its parent and viewport, including a fixed-height parent under CPU throttling. Retain the target through hydration, respect scroll padding, and release corrections on explicit wheel, touch, pointer and keyboard input. Verify the target remains visible after the search dialog closes, then verify the user can scroll away. Superseding navigation and owner disposal invalidate pending work.
 
+An explicit process location must replace the old reading anchor before moving the inner virtualizer. Test a location and body hydration in the same browser task, before the native scroll event arrives; pausing at the previous position can otherwise restore that stale anchor and evict the requested Part. Keep ordinary pause capture and later native reading ownership intact.
+
 Cold latest navigation and return-to-latest establish viewport-owned follow intent rather than extending a component settling timeout. Delay body reads beyond that timeout and verify the latest reply remains visible, then exercise reading input and viewport replacement. Cancel queued jumps when reading begins; a pending forced frame cannot restore following after the user navigates away.
 
 ## Execution details
