@@ -73,6 +73,11 @@ export const migrations: Migration[] = [
       dataScopeIDs.delete(HOME_SCOPE_ID)
       dataScopeIDs.delete(RECLAIMED_SCOPE_ID)
 
+      if (dataScopeIDs.size === 0) {
+        progress(1, 1)
+        return
+      }
+
       // 2. Collect active project scopeIDs: non-archived + worktree exists
       const activeProjectIDs = new Set<string>()
       for (const rawID of await Storage.scan(StoragePath.scopeRoot())) {
@@ -193,6 +198,32 @@ export const migrations: Migration[] = [
     id: "20260624-scope-global-to-home",
     description: "Rename legacy global scope data to the home scope",
     async up(progress) {
+      // The namespace's immediate roots prove the absence of every record
+      // consumed below. Filesystem snapshots and the optional library have
+      // separate authority and must still be migrated without these records.
+      const roots = new Set(await Storage.scan([]))
+      const inputs = [
+        "sessions",
+        "sessions_page_index",
+        "session_nav_v2",
+        "session_index",
+        "endpoint_session",
+        "notes",
+        "agenda",
+        "blueprint_loops",
+        "permissions",
+        "stats",
+        "library",
+      ]
+      if (!inputs.some((root) => roots.has(root))) {
+        await moveDir(
+          path.join(Global.Path.snapshot, LEGACY_GLOBAL_SCOPE_ID),
+          path.join(Global.Path.snapshot, HOME_SCOPE_ID),
+        )
+        await renameLibraryScope()
+        progress(1, 1)
+        return
+      }
       const fromSID = Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID)
       const toSID = Identifier.asScopeID(HOME_SCOPE_ID)
       const steps = 12

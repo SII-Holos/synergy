@@ -14,6 +14,8 @@ Prepared same-process calls use request-local SDK instances, preserving Invocati
 
 Session title generation is admitted after the first model step. A detached job still consumes the executor's bounded capacity; starting a title before the conversation can make a single-slot Runtime wait for an auxiliary provider response before sending its main request. Deferring the title preserves capacity limits and existing detached cancellation, recovery, and rename protection without reserving another model slot.
 
+The Agent embedding entry imports the public Local Runtime client and Host adapters directly. It does not evaluate the unselected native composition merely to access those adapters. Explicitly selecting that composition retains its normal registration and worker behavior. A subprocess import test rejects an eager load of the unselected registrar.
+
 ## Alternatives considered
 
 **Always use a worker process.** This preserves process isolation but duplicates it for applications that already own one process per identity.

@@ -14,6 +14,8 @@ Historical import activity and existing cohorts prevent an empty-input completio
 
 Navigation transforms include both Session records and navigation records in their input declaration. Building an absent, empty index is a no-op; an existing stale index is still replaced. Schema-only and superseded Session transforms keep their migration IDs and can share empty completion. PostgreSQL and SQLite run the same owner-body and atomic-completion tests.
 
+The legacy Scope rename first enumerates immediate record roots. When every consumed root is absent, it avoids empty authority mutations but still moves filesystem snapshots and invokes the optional library owner. Home-only references and cached statistics remain inputs, and a discovery failure cannot prove absence. Orphan reclamation does not inspect project directories when no candidate Scope remains.
+
 ## Alternatives considered
 
 **Assume a new SQL namespace is current.** A newly opened namespace may still have historical imports or external files. Blanket completion would omit required work.
