@@ -9,6 +9,10 @@ import { Storage } from "../storage/storage"
 import { PermissionNext } from "../permission/next"
 import { ProcessRegistry } from "../process/registry"
 import { SecretMask } from "../secrets/mask"
+import { SessionHistory } from "./history"
+import { SessionInbox } from "./inbox"
+import { SessionWorkflowService } from "./workflow"
+import { RolloutLifecycle } from "./rollout/lifecycle"
 
 export namespace SessionActivity {
   export const Result = z
@@ -42,6 +46,28 @@ export namespace SessionActivity {
     const result: TurnExecutionState.Info[] = []
     const approvals = await PermissionNext.list()
     const pendingRoots = new Set<string>()
+    let pending: Promise<{ all: boolean; roots: Set<string> }> | undefined
+    const pendingWork = () =>
+      (pending ??= (async () => {
+        const [workflow, inbox, children] = await Promise.all([
+          Session.get(sessionID).then(SessionWorkflowService.hasPendingExecution),
+          SessionInbox.list(sessionID),
+          Session.children(sessionID),
+        ])
+        const lineages = await Promise.all(
+          children
+            .filter(
+              (child) =>
+                child.cortex &&
+                (child.cortex.status === "queued" || child.cortex.status === "running" || !child.cortex.settledAt),
+            )
+            .map(RolloutLifecycle.parent),
+        )
+        return {
+          all: workflow || inbox.some((item) => item.mode === "steer"),
+          roots: new Set(lineages.flatMap((lineage) => (lineage?.runID ? [lineage.runID] : []))),
+        }
+      })())
     for (const approval of approvals) {
       if (approval.sessionID !== sessionID || !approval.tool) continue
       const message = await MessageV2.get({
@@ -57,9 +83,18 @@ export namespace SessionActivity {
     for (const rootID of roots) {
       try {
         const run = await RolloutLedger.getRun(selected, rootID)
-        result.push(
-          TurnExecutionState.project(run, await RolloutLedger.segments(selected, rootID), pendingRoots.has(rootID)),
-        )
+        const segments = await RolloutLedger.segments(selected, rootID)
+        const last = segments.toSorted((a, b) => a.started - b.started || a.id.localeCompare(b.id)).at(-1)
+        const candidate =
+          !pendingRoots.has(rootID) &&
+          !segments.some((segment) => segment.status === "running") &&
+          (last?.status === "completed" || last?.status === "failed")
+        const waiting = candidate && run.status === "running" ? await pendingWork() : undefined
+        const reply =
+          candidate && !waiting?.all && !waiting?.roots.has(rootID)
+            ? await SessionHistory.turnCompletion(sessionID, rootID, run.ended)
+            : undefined
+        result.push(TurnExecutionState.project(run, segments, pendingRoots.has(rootID), reply))
       } catch (error) {
         if (!(error instanceof Storage.NotFoundError)) throw error
       }

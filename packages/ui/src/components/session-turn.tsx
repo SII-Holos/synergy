@@ -2,7 +2,7 @@ import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presen
 import { attachmentSuppression, markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { useLingui } from "@lingui/solid"
-import { sessionActivityAnimating, sessionActivityLabel } from "./session-status"
+import { createActivityLabel, processIsWorking, sessionActivityAnimating, sessionActivityLabel } from "./session-status"
 import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
 
 import type {
@@ -1181,16 +1181,18 @@ export function SessionTurn(
   })
 
   const working = createMemo(() =>
-    props.submission
-      ? !props.submission.failed
-      : (props.segment?.process?.working ??
-        (props.executionState
-          ? ["preparing", "running", "approval"].includes(props.executionState.status)
-          : resolveTurnWorking({
-              isLastUserMessage: isLastUserMessage(),
-              messages: turnMessages(),
-              sessionStatus: view.statusFor(props.sessionID),
-            }))),
+    processIsWorking({
+      current: isLastUserMessage(),
+      sessionStatus: view.statusFor(props.sessionID),
+      submission: props.submission,
+      executionStatus: props.executionState?.status,
+      projected: props.segment?.process?.working,
+      fallback: resolveTurnWorking({
+        isLastUserMessage: isLastUserMessage(),
+        messages: turnMessages(),
+        sessionStatus: view.statusFor(props.sessionID),
+      }),
+    }),
   )
 
   const isToolRenderBoundary = (tool: string) => {
@@ -1421,7 +1423,11 @@ export function SessionTurn(
       : view.statusFor(props.sessionID),
   )
   const showCurrentActivity = createMemo(() => shouldShowCurrentActivity({ working: working(), hasError: !!error() }))
-  const showExecutionCompletion = createMemo(() => !working() && !!props.executionSummary)
+  const foregroundOutcome = () => {
+    const status = props.executionState?.status
+    return status === "completed" || status === "failed" ? status : undefined
+  }
+  const showExecutionCompletion = createMemo(() => !working() && (!!props.executionSummary || !!foregroundOutcome()))
 
   const autoScroll = createAutoScroll({
     working,
@@ -1486,6 +1492,13 @@ export function SessionTurn(
     const status = sessionStatus()
     return isLastUserMessage() && status?.type === "paused" ? status : undefined
   }
+  const executionSummary = (): TurnExecutionSummary | undefined => {
+    const summary = props.executionSummary
+    const outcome = foregroundOutcome()
+    if (outcome) return summary?.status === outcome ? summary : { status: outcome, elapsedMs: null }
+    if (!paused() || summary?.status !== "running") return summary
+    return { ...summary, status: paused()?.reason === "failed" ? "failed" : "interrupted" }
+  }
   const hasProcess = createMemo(
     () =>
       (props.segment?.process?.hasContent ?? (turnReasoning().length > 0 || timelineItems().some(isProcessItem))) ||
@@ -1501,15 +1514,16 @@ export function SessionTurn(
     else setExplicitProcessOpen(true)
   }
   const stopped = () =>
-    props.executionState
+    paused()?.reason === "aborted" ||
+    (props.executionState
       ? props.executionState.status === "stopped"
       : lastAssistantMessage()?.error?.name === "MessageAbortedError" ||
-        (paused()?.type === "paused" && paused()?.reason === "aborted")
+        (paused()?.type === "paused" && paused()?.reason === "aborted"))
   const turnDuration = () => {
-    const execution = props.executionState
-    const start = execution?.startedAt ?? assistantMessages()[0]?.time.created
-    const end = execution?.endedAt ?? lastAssistantMessage()?.time.completed
-    return start !== undefined && end !== undefined ? Math.max(0, Math.round((end - start) / 1000)) : undefined
+    const summary = props.executionSummary
+    if (summary?.elapsedMs == null) return undefined
+    const seconds = Math.max(0, Math.floor(summary.elapsedMs / 1000))
+    return summary.elapsedLowerBound ? `≥ ${seconds}` : seconds
   }
   const compacting = createMemo(() =>
     assistantMessages().some(
@@ -1540,7 +1554,7 @@ export function SessionTurn(
       ? _({ id: "ui.compaction.running", message: "Compressing context..." })
       : sessionActivityLabel(status, i18n(), context)
   }
-  const processLabel = () =>
+  const processLabelCandidate = () =>
     working()
       ? activeAction()
       : stopped()
@@ -1549,6 +1563,7 @@ export function SessionTurn(
           ? _({ id: "session.process.interrupted", message: "Interrupted" })
           : props.submission?.failed ||
               props.executionState?.status === "failed" ||
+              paused()?.reason === "failed" ||
               (!props.executionState && (error() || (paused()?.type === "paused" && paused()?.reason === "failed")))
             ? _({ id: "session.process.failed", message: "Execution failed" })
             : paused() || !lastAssistantMessage()?.time.completed
@@ -1560,6 +1575,11 @@ export function SessionTurn(
                     values: { seconds: turnDuration()! },
                   })
                 : _({ id: "session.process.completed", message: "Work completed" })
+
+  const processLabel = createActivityLabel(
+    processLabelCandidate,
+    () => working() && activityAnimated() && !compacting() && !props.submission,
+  )
 
   createEffect(
     on(permissionCount, (count, prev) => {
@@ -1843,10 +1863,7 @@ export function SessionTurn(
                         </For>
                         <Show when={showFooter() && showExecutionCompletion()}>
                           <div data-slot="session-turn-timeline-item" data-kind="execution-completion">
-                            <ExecutionCompletion
-                              summary={props.executionSummary}
-                              onDetails={props.onExecutionDetails}
-                            />
+                            <ExecutionCompletion summary={executionSummary()} onDetails={props.onExecutionDetails} />
                           </div>
                         </Show>
                         <Show

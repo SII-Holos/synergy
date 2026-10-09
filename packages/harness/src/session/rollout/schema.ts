@@ -66,6 +66,10 @@ export namespace RolloutSchema {
         .optional(),
       source: z.object({ owner: Owner, runID: Segment }).strict().optional(),
       cancelRequestedAt: z.number().optional(),
+      admissionOnly: z.boolean().optional(),
+      timingVersion: z.literal(1).optional(),
+      detectedAt: z.number().optional(),
+      execution: z.object({ status: Status, at: z.number() }).strict().optional(),
       parent: z.object({ owner: Owner, runID: Segment.nullable(), messageID: Segment }).strict().optional(),
     })
     .strict()
@@ -80,10 +84,30 @@ export namespace RolloutSchema {
       runID: Segment,
       started: z.number(),
       ended: z.number().optional(),
+      detectedAt: z.number().optional(),
       status: Status,
     })
     .strict()
   export type ExecutionSegment = z.infer<typeof ExecutionSegment>
+
+  export const ExecutionInterval = z
+    .object({
+      version: z.literal(1),
+      id: z.uuid(),
+      owner: Owner,
+      runID: Segment,
+      segmentID: z.uuid(),
+      branchID: z.string(),
+      clockID: z.string(),
+      started: z.number().finite().nonnegative(),
+      ended: z.number().finite().nonnegative().optional(),
+      status: z.enum(["active", "waiting", "closed", "interrupted"]),
+      coverage: z.enum(["complete", "partial"]),
+      detectedAt: z.number().optional(),
+    })
+    .strict()
+    .meta({ ref: "RolloutExecutionInterval" })
+  export type ExecutionInterval = z.infer<typeof ExecutionInterval>
 
   export const ToolExecutionRecord = z
     .object({

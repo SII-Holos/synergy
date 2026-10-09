@@ -30,47 +30,53 @@ test("generation rate requires observed output coverage and aggregates numerator
   expect(combined).toMatchObject({ value: 200, tokens: 200, milliseconds: 1000, samples: 2, excluded: 0 })
 })
 
-test("transport measures nonempty content before coalescing and archive acknowledgements", async () => {
-  const events: RolloutTransport.Event[] = []
-  const payloads = [
-    { choices: [{ delta: { content: "" } }] },
-    { choices: [{ delta: { reasoning_content: "think" } }] },
-    { choices: [{ delta: { tool_calls: [{ function: { arguments: "{}" } }] } }] },
-    { usage: { completion_tokens: 10 } },
-  ]
-  let index = 0
-  const source = new ReadableStream<Uint8Array>(
-    {
-      async pull(controller) {
-        if (index === payloads.length) return controller.close()
-        await Bun.sleep(5)
-        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(payloads[index++])}\n\n`))
+test.each(["text/event-stream", "application/json", undefined])(
+  "transport detects content before coalescing with media type %s",
+  async (mediaType) => {
+    const events: RolloutTransport.Event[] = []
+    const payloads = [
+      { choices: [{ delta: { content: "" } }] },
+      { choices: [{ delta: { reasoning_content: "think" } }] },
+      { choices: [{ delta: { tool_calls: [{ function: { arguments: "{}" } }] } }] },
+      { usage: { completion_tokens: 10 } },
+    ]
+    let index = 0
+    const source = new ReadableStream<Uint8Array>(
+      {
+        async pull(controller) {
+          if (index === payloads.length) return controller.close()
+          await Bun.sleep(5)
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(payloads[index++])}\n\n`))
+        },
       },
-    },
-    { highWaterMark: 0 },
-  )
-  await RolloutTransport.provide(
-    async (event) => {
-      events.push(event)
-      if (event.type === "chunk" || event.type === "body-end") await Bun.sleep(80)
-    },
-    async () =>
-      (
-        await RolloutTransport.fetch(
-          async () =>
-            new Response(source, {
-              headers: { "content-type": "text/event-stream" },
-            }),
-          "https://fixture.test",
-        )
-      ).text(),
-  )
-  const end = events.findLast((event) => event.type === "attempt-end")
-  expect(end?.timing).toMatchObject({ contentEvents: 2, reasoningObserved: true, streaming: true })
-  expect(end?.timing?.generationMs).toBeLessThan(70)
-  expect(end?.timing?.requestMs).toBeLessThan(100)
-  expect(end?.timing?.ttftMs).toBeGreaterThan(0)
-})
+      { highWaterMark: 0 },
+    )
+    await RolloutTransport.provide(
+      async (event) => {
+        events.push(event)
+        if (event.type === "chunk" || event.type === "body-end") await Bun.sleep(80)
+      },
+      async () =>
+        (
+          await RolloutTransport.fetch(
+            async () =>
+              new Response(source, {
+                headers: mediaType ? { "content-type": mediaType } : {},
+              }),
+            "https://fixture.test",
+          )
+        ).text(),
+    )
+    const end = events.findLast((event) => event.type === "attempt-end")
+    expect(end?.timing).toMatchObject({ contentEvents: 2, reasoningObserved: true, streaming: true })
+    expect(end?.timing?.generationMs).toBeLessThan(70)
+    expect(end?.timing?.requestMs).toBeLessThan(100)
+    expect(end?.timing?.ttftMs).toBeGreaterThan(0)
+    const headers = events.find((event) => event.type === "response")?.timing
+    expect(end?.timing?.headersAt).toBe(headers?.headersAt)
+    expect(end?.timing?.headersMs).toBe(headers?.headersMs)
+  },
+)
 
 test("slow sent/header acknowledgement does not inflate first-content time", async () => {
   const events: RolloutTransport.Event[] = []

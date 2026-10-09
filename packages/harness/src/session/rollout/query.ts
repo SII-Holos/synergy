@@ -5,6 +5,7 @@ import { RolloutAccounting } from "./accounting"
 import { RolloutSchema } from "./schema"
 import { RolloutRecovery } from "./recovery"
 import { RolloutLedger } from "./ledger"
+import { RolloutExecution } from "./execution"
 import { Storage } from "../../storage/storage"
 import { Experiment } from "../../config/experiment"
 
@@ -16,6 +17,8 @@ export namespace RolloutQuery {
       snapshots: z.array(RolloutSnapshot.Info),
       accounting: RolloutAccounting.Summary,
       elapsedMs: z.number().nonnegative(),
+      elapsedActive: z.boolean(),
+      elapsedLowerBound: z.boolean(),
     })
     .strict()
     .meta({ ref: "RolloutResult" })
@@ -49,12 +52,20 @@ export namespace RolloutQuery {
         }
       }
     }
+    const timing = RolloutExecution.summarize({
+      roots: [run],
+      runs: snapshots.flatMap((snapshot) => snapshot.runs),
+      intervals: snapshots.flatMap((snapshot) => snapshot.intervals),
+      segments: snapshots.flatMap((snapshot) => snapshot.segments),
+    })
     return Result.parse({
       version: 1,
       run,
       snapshots,
       accounting: RolloutAccounting.merge(snapshots.map(RolloutAccounting.summarize)),
-      elapsedMs: Math.max(0, (run.ended ?? Date.now()) - run.started),
+      elapsedMs: timing.elapsedMs ?? 0,
+      elapsedActive: timing.elapsedActive,
+      elapsedLowerBound: timing.elapsedLowerBound,
     })
   }
   export async function find(runID: string) {
@@ -82,7 +93,13 @@ export namespace RolloutQuery {
       version: 1 as const,
       changedConfiguration: changed,
       initialContext: "Review each run input and session history before interpreting differences" as const,
-      runs: [left, right].map(({ run, accounting, elapsedMs }) => ({ run, accounting, elapsedMs })),
+      runs: [left, right].map(({ run, accounting, elapsedMs, elapsedActive, elapsedLowerBound }) => ({
+        run,
+        accounting,
+        elapsedMs,
+        elapsedActive,
+        elapsedLowerBound,
+      })),
     }
   }
 }

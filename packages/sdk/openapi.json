@@ -8844,6 +8844,311 @@
         ]
       }
     },
+    "/session/{sessionID}/execution/context/history": {
+      "get": {
+        "operationId": "session.executionContextHistory",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "runID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 30,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "summary": "Read context request history",
+        "responses": {
+          "200": {
+            "description": "Read context request history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionContextHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid execution query"
+          },
+          "404": {
+            "description": "Execution evidence was not found in the selected Scope and session"
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.executionContextHistory({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/execution/context/snapshots/{callID}": {
+      "get": {
+        "operationId": "session.executionContextSnapshot",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "callID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "runID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Read one context request snapshot",
+        "responses": {
+          "200": {
+            "description": "Read one context request snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionContextSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid execution query"
+          },
+          "404": {
+            "description": "Execution evidence was not found in the selected Scope and session"
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.executionContextSnapshot({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/execution/context/snapshots/{callID}/items": {
+      "get": {
+        "operationId": "session.executionContextItems",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "callID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "runID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 30,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "systemInstructions",
+                "toolDefinitions",
+                "userMessages",
+                "injectedContext",
+                "skills",
+                "assistantMessages",
+                "toolResults",
+                "attachments"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        ],
+        "summary": "Read a bounded context source index",
+        "responses": {
+          "200": {
+            "description": "Read a bounded context source index",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionContextItems"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid execution query"
+          },
+          "404": {
+            "description": "Execution evidence was not found in the selected Scope and session"
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.executionContextItems({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/execution/trajectory": {
       "get": {
         "operationId": "session.executionTrajectory",
@@ -33606,6 +33911,305 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.voice.preview({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/render/source/{sessionID}/{assetID}": {
+      "get": {
+        "operationId": "render.find",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses_[\\w]+$"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "assetID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{16}\\.bin$"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Locate an owned visual source",
+        "responses": {
+          "200": {
+            "description": "Producing call, if available in this transcript",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "target": {
+                          "$ref": "#/components/schemas/RenderTarget"
+                        },
+                        "descriptor": {
+                          "$ref": "#/components/schemas/RenderDescriptor"
+                        }
+                      },
+                      "required": ["target", "descriptor"]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.render.find({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/render/{sessionID}/{messageID}/{partID}": {
+      "get": {
+        "operationId": "render.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RenderTarget"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "messageID",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "partID",
+            "required": true
+          }
+        ],
+        "summary": "Read an owned visual",
+        "responses": {
+          "200": {
+            "description": "Immutable source and current state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenderSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.render.get({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "render.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/RenderTarget"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "messageID",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "partID",
+            "required": true
+          }
+        ],
+        "summary": "Save visual state without invoking a model",
+        "responses": {
+          "200": {
+            "description": "Committed state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenderState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Revision conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenderConflict"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenderStateWrite"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.render.update({\n  ...\n})"
           }
         ]
       }
@@ -59528,7 +60132,17 @@
           },
           "status": {
             "type": "string",
-            "enum": ["running", "completed", "failed", "cancelled", "interrupted", "unknown"]
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "unknown",
+              "queued",
+              "paused",
+              "waiting"
+            ]
           },
           "elapsedMs": {
             "anyOf": [
@@ -59541,6 +60155,9 @@
             ]
           },
           "elapsedActive": {
+            "type": "boolean"
+          },
+          "elapsedLowerBound": {
             "type": "boolean"
           },
           "tokens": {
@@ -59609,6 +60226,7 @@
           "status",
           "elapsedMs",
           "elapsedActive",
+          "elapsedLowerBound",
           "tokens",
           "runs"
         ]
@@ -59867,9 +60485,25 @@
           "computedAt": {
             "type": "number"
           },
+          "clockID": {
+            "type": "string"
+          },
+          "sampledAt": {
+            "type": "number"
+          },
           "status": {
             "type": "string",
-            "enum": ["running", "completed", "failed", "cancelled", "interrupted", "unknown"]
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "unknown",
+              "queued",
+              "paused",
+              "waiting"
+            ]
           },
           "elapsedMs": {
             "anyOf": [
@@ -59882,6 +60516,9 @@
             ]
           },
           "elapsedActive": {
+            "type": "boolean"
+          },
+          "elapsedLowerBound": {
             "type": "boolean"
           },
           "accounting": {
@@ -60437,7 +61074,7 @@
                 "properties": {
                   "version": {
                     "type": "number",
-                    "const": 1
+                    "const": 2
                   },
                   "modelID": {
                     "type": "string"
@@ -60461,94 +61098,48 @@
                     "maximum": 9007199254740991
                   },
                   "categories": {
-                    "type": "object",
-                    "properties": {
-                      "conversation": {
-                        "type": "object",
-                        "properties": {
-                          "estimatedTokens": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "attributedTokens": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "items": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          }
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "category": {
+                          "type": "string",
+                          "enum": [
+                            "systemInstructions",
+                            "toolDefinitions",
+                            "userMessages",
+                            "injectedContext",
+                            "skills",
+                            "assistantMessages",
+                            "toolResults",
+                            "attachments",
+                            "legacyConversation",
+                            "legacyTools",
+                            "legacyInstructions"
+                          ]
                         },
-                        "required": ["estimatedTokens", "attributedTokens"]
+                        "precision": {
+                          "type": "string",
+                          "enum": ["source", "role", "legacy"]
+                        },
+                        "estimatedTokens": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "attributedTokens": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
                       },
-                      "toolActivity": {
-                        "type": "object",
-                        "properties": {
-                          "estimatedTokens": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "attributedTokens": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "items": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          }
-                        },
-                        "required": ["estimatedTokens", "attributedTokens"]
-                      },
-                      "filesReferences": {
-                        "type": "object",
-                        "properties": {
-                          "estimatedTokens": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "attributedTokens": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "items": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          }
-                        },
-                        "required": ["estimatedTokens", "attributedTokens"]
-                      },
-                      "instructions": {
-                        "type": "object",
-                        "properties": {
-                          "estimatedTokens": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "attributedTokens": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "items": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          }
-                        },
-                        "required": ["estimatedTokens", "attributedTokens"]
-                      }
-                    },
-                    "required": ["conversation", "toolActivity", "filesReferences", "instructions"]
+                      "required": ["category", "precision", "estimatedTokens", "attributedTokens"]
+                    }
                   },
                   "overhead": {
                     "type": "object",
@@ -60655,7 +61246,17 @@
                 },
                 "status": {
                   "type": "string",
-                  "enum": ["running", "completed", "failed", "cancelled", "interrupted", "unknown"]
+                  "enum": [
+                    "running",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    "interrupted",
+                    "unknown",
+                    "queued",
+                    "paused",
+                    "waiting"
+                  ]
                 },
                 "elapsedMs": {
                   "anyOf": [
@@ -60666,9 +61267,15 @@
                       "type": "null"
                     }
                   ]
+                },
+                "elapsedActive": {
+                  "type": "boolean"
+                },
+                "elapsedLowerBound": {
+                  "type": "boolean"
                 }
               },
-              "required": ["id", "title", "started", "status", "elapsedMs"]
+              "required": ["id", "title", "started", "status", "elapsedMs", "elapsedActive", "elapsedLowerBound"]
             }
           },
           "coverage": {
@@ -60762,9 +61369,12 @@
           "sessionID",
           "revision",
           "computedAt",
+          "clockID",
+          "sampledAt",
           "status",
           "elapsedMs",
           "elapsedActive",
+          "elapsedLowerBound",
           "accounting",
           "cost",
           "own",
@@ -60784,6 +61394,446 @@
           "humanInputs",
           "taskInstructions"
         ]
+      },
+      "ExecutionContextSnapshot": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "nodeID": {
+            "type": "string"
+          },
+          "runID": {
+            "type": "string"
+          },
+          "started": {
+            "type": "number"
+          },
+          "requestNumber": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "roundNumber": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
+          },
+          "modelID": {
+            "type": "string"
+          },
+          "providerID": {
+            "type": "string"
+          },
+          "inputTokens": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contextLimit": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outputTokens": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cacheHit": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "elapsedMs": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retries": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "number",
+                    "const": 2
+                  },
+                  "modelID": {
+                    "type": "string"
+                  },
+                  "providerID": {
+                    "type": "string"
+                  },
+                  "totalInput": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "contextLimit": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "usableInputLimit": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "categories": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "category": {
+                          "type": "string",
+                          "enum": [
+                            "systemInstructions",
+                            "toolDefinitions",
+                            "userMessages",
+                            "injectedContext",
+                            "skills",
+                            "assistantMessages",
+                            "toolResults",
+                            "attachments",
+                            "legacyConversation",
+                            "legacyTools",
+                            "legacyInstructions"
+                          ]
+                        },
+                        "precision": {
+                          "type": "string",
+                          "enum": ["source", "role", "legacy"]
+                        },
+                        "estimatedTokens": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "attributedTokens": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["category", "precision", "estimatedTokens", "attributedTokens"]
+                    }
+                  },
+                  "overhead": {
+                    "type": "object",
+                    "properties": {
+                      "attributedTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": ["attributedTokens"]
+                  },
+                  "estimator": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "model-tokenizer"
+                          },
+                          "encoding": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "bounded-utf8"
+                          },
+                          "sampledCharacters": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "truncated": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["kind", "sampledCharacters", "truncated"]
+                      }
+                    ]
+                  },
+                  "reconciliation": {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "type": "string",
+                        "enum": ["residual", "scaled-down"]
+                      },
+                      "factor": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "required": ["mode", "factor"]
+                  },
+                  "capturedAt": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "version",
+                  "modelID",
+                  "providerID",
+                  "totalInput",
+                  "categories",
+                  "overhead",
+                  "estimator",
+                  "reconciliation",
+                  "capturedAt"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "compactedBefore": {
+            "type": "boolean"
+          },
+          "requestAvailable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sessionID",
+          "callID",
+          "nodeID",
+          "runID",
+          "started",
+          "requestNumber",
+          "roundNumber",
+          "status",
+          "modelID",
+          "providerID",
+          "inputTokens",
+          "contextLimit",
+          "outputTokens",
+          "cacheHit",
+          "elapsedMs",
+          "retries",
+          "usage",
+          "compactedBefore",
+          "requestAvailable"
+        ]
+      },
+      "ExecutionContextHistory": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionContextSnapshot"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["sessionID", "revision", "total", "items", "nextCursor"]
+      },
+      "ExecutionContextItem": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "systemInstructions",
+              "toolDefinitions",
+              "userMessages",
+              "injectedContext",
+              "skills",
+              "assistantMessages",
+              "toolResults",
+              "attachments"
+            ]
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "selector": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "range": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "end": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["start", "end"]
+          },
+          "source": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          },
+          "partID": {
+            "type": "string"
+          },
+          "characters": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "precision": {
+            "type": "string",
+            "enum": ["source", "role"]
+          },
+          "id": {
+            "type": "string"
+          },
+          "offset": {
+            "type": "number",
+            "minimum": 0
+          },
+          "bytes": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": ["category", "path", "source", "characters", "precision", "id", "offset", "bytes"]
+      },
+      "ExecutionContextItems": {
+        "type": "object",
+        "properties": {
+          "callID": {
+            "type": "string"
+          },
+          "nodeID": {
+            "type": "string"
+          },
+          "contentVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["available", "legacy", "unavailable"]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionContextItem"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": ["callID", "nodeID", "contentVersion", "status", "items", "total", "nextCursor", "truncated"]
       },
       "ExecutionTrajectoryPage": {
         "type": "object",
@@ -60876,6 +61926,59 @@
         "properties": {
           "node": {
             "$ref": "#/components/schemas/ExecutionTrajectoryNode"
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "running",
+                  "completed",
+                  "failed",
+                  "cancelled",
+                  "interrupted",
+                  "unknown",
+                  "queued",
+                  "paused",
+                  "waiting"
+                ]
+              },
+              "elapsedMs": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "elapsedActive": {
+                "type": "boolean"
+              },
+              "elapsedLowerBound": {
+                "type": "boolean"
+              },
+              "clockID": {
+                "type": "string"
+              },
+              "sampledAt": {
+                "type": "number"
+              },
+              "revision": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "status",
+              "elapsedMs",
+              "elapsedActive",
+              "elapsedLowerBound",
+              "clockID",
+              "sampledAt",
+              "revision"
+            ]
           },
           "record": {
             "anyOf": [
@@ -62832,6 +63935,30 @@
           "cancelRequestedAt": {
             "type": "number"
           },
+          "admissionOnly": {
+            "type": "boolean"
+          },
+          "timingVersion": {
+            "type": "number",
+            "const": 1
+          },
+          "detectedAt": {
+            "type": "number"
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
+              },
+              "at": {
+                "type": "number"
+              }
+            },
+            "required": ["status", "at"],
+            "additionalProperties": false
+          },
           "parent": {
             "type": "object",
             "properties": {
@@ -62898,6 +64025,109 @@
           }
         },
         "required": ["version", "id", "owner", "started", "status", "recording"],
+        "additionalProperties": false
+      },
+      "RolloutExecutionInterval": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "session"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "sessionID"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "operation"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "operationID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "operationID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "runID": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "segmentID": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "branchID": {
+            "type": "string"
+          },
+          "clockID": {
+            "type": "string"
+          },
+          "started": {
+            "type": "number",
+            "minimum": 0
+          },
+          "ended": {
+            "type": "number",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "waiting", "closed", "interrupted"]
+          },
+          "coverage": {
+            "type": "string",
+            "enum": ["complete", "partial"]
+          },
+          "detectedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "version",
+          "id",
+          "owner",
+          "runID",
+          "segmentID",
+          "branchID",
+          "clockID",
+          "started",
+          "status",
+          "coverage"
+        ],
         "additionalProperties": false
       },
       "RolloutCallRecord": {
@@ -64876,6 +66106,9 @@
                 "ended": {
                   "type": "number"
                 },
+                "detectedAt": {
+                  "type": "number"
+                },
                 "status": {
                   "type": "string",
                   "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
@@ -64883,6 +66116,13 @@
               },
               "required": ["version", "id", "owner", "runID", "started", "status"],
               "additionalProperties": false
+            }
+          },
+          "intervals": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RolloutExecutionInterval"
             }
           },
           "calls": {
@@ -65049,9 +66289,15 @@
           "elapsedMs": {
             "type": "number",
             "minimum": 0
+          },
+          "elapsedActive": {
+            "type": "boolean"
+          },
+          "elapsedLowerBound": {
+            "type": "boolean"
           }
         },
-        "required": ["version", "run", "snapshots", "accounting", "elapsedMs"],
+        "required": ["version", "run", "snapshots", "accounting", "elapsedMs", "elapsedActive", "elapsedLowerBound"],
         "additionalProperties": false
       },
       "SessionChildCursor": {
@@ -65843,6 +67089,7 @@
               "retrying",
               "completed",
               "cancelled",
+              "removed",
               "failed"
             ]
           },
@@ -67099,7 +68346,7 @@
             "properties": {
               "version": {
                 "type": "number",
-                "const": 1
+                "const": 2
               },
               "modelID": {
                 "type": "string"
@@ -67123,94 +68370,48 @@
                 "maximum": 9007199254740991
               },
               "categories": {
-                "type": "object",
-                "properties": {
-                  "conversation": {
-                    "type": "object",
-                    "properties": {
-                      "estimatedTokens": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "attributedTokens": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "items": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      }
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "category": {
+                      "type": "string",
+                      "enum": [
+                        "systemInstructions",
+                        "toolDefinitions",
+                        "userMessages",
+                        "injectedContext",
+                        "skills",
+                        "assistantMessages",
+                        "toolResults",
+                        "attachments",
+                        "legacyConversation",
+                        "legacyTools",
+                        "legacyInstructions"
+                      ]
                     },
-                    "required": ["estimatedTokens", "attributedTokens"]
+                    "precision": {
+                      "type": "string",
+                      "enum": ["source", "role", "legacy"]
+                    },
+                    "estimatedTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "attributedTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
                   },
-                  "toolActivity": {
-                    "type": "object",
-                    "properties": {
-                      "estimatedTokens": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "attributedTokens": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "items": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      }
-                    },
-                    "required": ["estimatedTokens", "attributedTokens"]
-                  },
-                  "filesReferences": {
-                    "type": "object",
-                    "properties": {
-                      "estimatedTokens": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "attributedTokens": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "items": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      }
-                    },
-                    "required": ["estimatedTokens", "attributedTokens"]
-                  },
-                  "instructions": {
-                    "type": "object",
-                    "properties": {
-                      "estimatedTokens": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "attributedTokens": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "items": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      }
-                    },
-                    "required": ["estimatedTokens", "attributedTokens"]
-                  }
-                },
-                "required": ["conversation", "toolActivity", "filesReferences", "instructions"]
+                  "required": ["category", "precision", "estimatedTokens", "attributedTokens"]
+                }
               },
               "overhead": {
                 "type": "object",
@@ -76791,6 +77992,213 @@
         "required": ["text"],
         "additionalProperties": false
       },
+      "RenderTarget": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses_[\\w]+$"
+          },
+          "messageID": {
+            "type": "string",
+            "pattern": "^msg_[\\w]+$"
+          },
+          "partID": {
+            "type": "string",
+            "pattern": "^prt_[\\w]+$"
+          }
+        },
+        "required": ["sessionID", "messageID", "partID"],
+        "additionalProperties": false
+      },
+      "RenderDescriptor": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "const": "synergy.visual"
+          },
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["static", "interactive"]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "layout": {
+            "type": "string",
+            "enum": ["normal", "wide"]
+          },
+          "libraries": {
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["d3", "chart", "mermaid"]
+            }
+          },
+          "replaces": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "source": {
+            "type": "string",
+            "pattern": "^asset:\\/\\/[a-f0-9]{16}\\.bin$"
+          }
+        },
+        "required": ["format", "version", "id", "mode", "title", "layout", "libraries", "source"],
+        "additionalProperties": false
+      },
+      "RenderSource": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "const": "synergy.visual"
+          },
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["static", "interactive"]
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "layout": {
+            "type": "string",
+            "enum": ["normal", "wide"]
+          },
+          "libraries": {
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["d3", "chart", "mermaid"]
+            }
+          },
+          "html": {
+            "type": "string",
+            "minLength": 1
+          },
+          "replaces": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": ["format", "version", "id", "mode", "title", "layout", "libraries", "html"],
+        "additionalProperties": false
+      },
+      "RenderContent": {
+        "type": "object",
+        "properties": {
+          "modelContent": {},
+          "uiContent": {}
+        },
+        "additionalProperties": false
+      },
+      "RenderState": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "updatedAt": {
+            "type": "number",
+            "minimum": 0
+          },
+          "mutationID": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "content": {
+            "$ref": "#/components/schemas/RenderContent"
+          }
+        },
+        "required": ["revision", "updatedAt", "content"],
+        "additionalProperties": false
+      },
+      "RenderSnapshot": {
+        "type": "object",
+        "properties": {
+          "descriptor": {
+            "$ref": "#/components/schemas/RenderDescriptor"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RenderSource"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RenderState"
+          }
+        },
+        "required": ["descriptor", "source", "state"]
+      },
+      "RenderConflict": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "RenderConflict"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "state": {
+                "$ref": "#/components/schemas/RenderState"
+              }
+            },
+            "required": ["message", "state"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "RenderStateWrite": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "mutationID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "content": {
+            "$ref": "#/components/schemas/RenderContent"
+          }
+        },
+        "required": ["revision", "mutationID", "content"],
+        "additionalProperties": false
+      },
       "ModelRoleUsage": {
         "type": "object",
         "properties": {
@@ -77565,45 +78973,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.permission.asked": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "permission.asked"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/PermissionRequest"
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.permission.replied": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "permission.replied"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "requestID": {
-                "type": "string"
-              },
-              "reply": {
-                "type": "string",
-                "enum": ["once", "session", "always", "reject"]
-              }
-            },
-            "required": ["sessionID", "requestID", "reply"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.usage.updated": {
         "type": "object",
         "properties": {
@@ -77773,6 +79142,9 @@
                   "ended": {
                     "type": "number"
                   },
+                  "detectedAt": {
+                    "type": "number"
+                  },
                   "status": {
                     "type": "string",
                     "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
@@ -77780,6 +79152,19 @@
                 },
                 "required": ["version", "id", "owner", "runID", "started", "status"],
                 "additionalProperties": false
+              }
+            },
+            "required": ["kind", "value"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "interval"
+              },
+              "value": {
+                "$ref": "#/components/schemas/RolloutExecutionInterval"
               }
             },
             "required": ["kind", "value"]
@@ -78003,6 +79388,45 @@
               }
             },
             "required": ["owner", "revision", "record"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.permission.asked": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "permission.asked"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/PermissionRequest"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.permission.replied": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "permission.replied"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "requestID": {
+                "type": "string"
+              },
+              "reply": {
+                "type": "string",
+                "enum": ["once", "session", "always", "reject"]
+              }
+            },
+            "required": ["sessionID", "requestID", "reply"]
           }
         },
         "required": ["type", "properties"]
@@ -79241,6 +80665,12 @@
                   "$ref": "#/components/schemas/ExecutionSummary"
                 }
               },
+              "contextUpserts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExecutionContextSnapshot"
+                }
+              },
               "previousRevision": {
                 "type": "integer",
                 "minimum": 0,
@@ -79743,16 +81173,16 @@
             "$ref": "#/components/schemas/Event.config.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.permission.asked"
-          },
-          {
-            "$ref": "#/components/schemas/Event.permission.replied"
-          },
-          {
             "$ref": "#/components/schemas/Event.usage.updated"
           },
           {
             "$ref": "#/components/schemas/Event.rollout.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.permission.asked"
+          },
+          {
+            "$ref": "#/components/schemas/Event.permission.replied"
           },
           {
             "$ref": "#/components/schemas/Event.session.execution.updated"
@@ -80011,6 +81441,15 @@
         "schema": {
           "$ref": "#/components/schemas/PerfIssueStatus"
         }
+      },
+      "RenderTarget": {
+        "in": "path",
+        "name": "sessionID",
+        "schema": {
+          "type": "string",
+          "pattern": "^ses_[\\w]+$"
+        },
+        "required": true
       }
     }
   }

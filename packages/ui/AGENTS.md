@@ -8,8 +8,8 @@ Load `develop-frontend`; plugin registries also require `change-plugin-runtime`.
 
 - Keep components product-agnostic and dependency-light. Do not import app contexts, routes, or runtime-private modules into this package.
 - Prefer composition and typed props over package-global product state. Preserve controlled/uncontrolled behavior, stable callbacks, cleanup, and Solid fine-grained reactivity.
-- Shared product components consume the App-owned Lingui `I18nProvider` through `@lingui/core` and `@lingui/solid` peer dependencies. The UI package does not create a second locale context, own catalogs, inspect browser language, or persist locale state. Tests mount the shared i18n test provider.
-- Synergy-owned copy uses non-macro runtime descriptors with explicit semantic IDs and translates reactively at consumption. Keep user, LLM, plugin-author, brand, path, identifier, code, terminal, and raw diagnostic content verbatim. Do not import App locale contexts into this package; format with the active Lingui locale or a typed locale argument.
+- Consume the App-owned Lingui `I18nProvider` through peer dependencies. Do not own catalogs, detect browser language, persist locale, or import App locale contexts. Tests mount the shared i18n provider.
+- Product copy uses non-macro descriptors, explicit semantic IDs and reactive translation. Preserve user, LLM, plugin-author, brand, path, identifier, code, terminal and diagnostic text verbatim. Format with the active Lingui locale or a typed locale.
 - Keep keyboard access, labels, focus-visible behavior, WCAG AA contrast, reduced motion, loading/empty/error/disabled states, and narrow layouts in reusable primitives.
 - Non-tool product meaning uses `semantic-icon.tsx`; new base glyphs must exist in both `components/icon.tsx` and `plugin/builtin-icons.ts`. Tool cards, file icons, and plugin-declared icons keep their separate registries.
 - Shared scroll surfaces declare native vertical viewport ownership for Markdown as defined in [frontend data sync](../../docs/architecture/frontend-data-sync.md#markdown-terminal-handoff).
@@ -20,6 +20,7 @@ Load `develop-frontend`; plugin registries also require `change-plugin-runtime`.
 - Follow [Frontend themes and color](../../docs/reference/frontend-theming.md) for the complete consumer contract and theme-authoring workflow. New distributable selectable themes belong in structured plugin contributions; the other built-in skins stay seeds-only in `default-themes.ts`, and `themes/synergy.json` owns the built-in default's curated overrides.
 - Public exports are package contracts. Add exports deliberately and keep App-only components in `apps/web`.
 - `DataProvider.view` accepts a host-owned read-only session projection; `data` remains the canonical store. Local submission overlays belong to the App and must retain message and Part identities through canonical admission.
+- `RenderProvider` follows [visual ownership](../../docs/architecture/visual-results.md): UI owns sandboxed presentation; App owns Scope, state operations and confirmed Inbox inputs.
 
 ## Verify
 

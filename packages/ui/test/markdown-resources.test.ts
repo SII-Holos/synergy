@@ -54,6 +54,25 @@ function fixture() {
 }
 
 describe("Markdown managed resources", () => {
+  test("keeps a non-image asset usable when authored as a Markdown image", async () => {
+    const f = fixture()
+    try {
+      f.root.innerHTML = sanitizeHtml(await parser.parse("![Timing lab](asset://0123456789abcdef.bin)"))
+      await flush()
+      f.root.querySelector("img")!.dispatchEvent(new dom.window.Event("error"))
+      await flush()
+      expect(f.root.querySelector("img")).toBeNull()
+      const link = f.root.querySelector('a[role="button"]')!
+      expect(link.textContent).toBe("Timing lab")
+      link.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+      expect(f.references.at(-1)).toMatchObject({
+        resource: { kind: "asset", url: "asset://0123456789abcdef.bin", filename: "Timing lab" },
+      })
+      expect(f.references.at(-1)).not.toMatchObject({ resource: { mime: "image/*" } })
+    } finally {
+      f.dispose()
+    }
+  })
   test.each(["stream", "settled"])("preserves inline image previews in %s Markdown", async (mode) => {
     const f = fixture()
     const urls = ["data:image/png;base64,AAAA", "blob:https://ui.example/image"]

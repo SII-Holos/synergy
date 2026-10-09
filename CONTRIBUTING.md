@@ -57,7 +57,8 @@ See the [development reference](docs/reference/development.md) for source modes,
 2. **Run the quality preflight.** Before opening your PR, run at minimum:
 
    ```bash
-   bun run quality:quick
+   bun run verify plan
+   bun run verify local --test <relevant-test-file>
    ```
 
    This checks formatting, linting, type-checking, monorepo dependency consistency, localization, package-guide and test-layout contracts, and package publishing validation. For a full check including all tests:

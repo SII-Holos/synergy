@@ -29,6 +29,7 @@ import {
 import { executeUnit } from "./ci/run"
 import { policyIdentity, shadowEvidence } from "./ci/rollout"
 import { collectTimings, validateTimings } from "./ci/timing"
+import { planningTimings } from "./ci/timing-source"
 
 const HELP = `Usage: bun script/ci.ts <plan|run|verify|prepare|restore|build-key|distribution-key|prepare-distributions> [options]
 plan --base SHA --head SHA --sha SHA --mode full|shadow|affected|diagnostic --only task[,task] --package workspace --file package/test/file.test.ts
@@ -155,7 +156,8 @@ async function main() {
     const sha = revision(values.sha ?? "HEAD")
     const head = revision(values.head ?? sha)
     const base = revision(values.base ?? `${head}^`)
-    const tasks = await catalog()
+    const timing = await planningTimings(ROOT)
+    const tasks = await catalog(ROOT, timing.snapshot)
     const only = new Set(values.only?.split(",").filter(Boolean) ?? [])
     if (values.package) {
       const matches = tasks.filter(
@@ -197,9 +199,9 @@ async function main() {
     if (mode === "diagnostic" && !only.size) throw new Error("Select a diagnostic task, package, or file")
     const inputs = await planInputs(ROOT, base, head, tasks)
     const plan = createPlan({
-      timings: await Bun.file(path.join(ROOT, "script/ci/timings.json"))
-        .text()
-        .then((source) => new Bun.CryptoHasher("sha256").update(source).digest("hex")),
+      timings: new Bun.CryptoHasher("sha256").update(JSON.stringify(timing.snapshot)).digest("hex"),
+      timingSnapshot: timing.snapshot,
+      timingSource: timing.source,
       base,
       head,
       sha,
@@ -253,7 +255,7 @@ async function main() {
     if (process.env.GITHUB_STEP_SUMMARY)
       await appendFile(
         process.env.GITHUB_STEP_SUMMARY,
-        `### CI plan: ${mode}\n\nSelected ${plan.selected.length}; affected proposal ${plan.proposed.length}.\n\n| Task | Reason |\n|---|---|\n${plan.tasks.map((task) => `| ${task.id} | ${plan.reasons[task.id]} |`).join("\n")}\n`,
+        `### CI plan: ${mode}\n\nSelected ${plan.selected.length}; affected proposal ${plan.proposed.length}.\n\n${plan.fullTriggers?.length ? `Full selection triggers:\n${plan.fullTriggers.map((trigger) => `- ${trigger.file}: ${trigger.reason}`).join("\n")}\n\n` : ""}| Task | Reason |\n|---|---|\n${plan.tasks.map((task) => `| ${task.id} | ${plan.reasons[task.id]} |`).join("\n")}\n`,
       )
     console.log(
       JSON.stringify({
@@ -395,9 +397,11 @@ async function main() {
   if (operation !== "verify") throw new Error(`Unknown CI operation: ${operation}`)
   const resultsRoot = values.results ?? path.join(ROOT, OUTPUT, "results")
   const history = await readResults(resultsRoot)
-  const executions = process.env.GITHUB_RUN_ID ? await workflowExecutions(plan) : undefined
-  const results = latestResults(plan, history, executions)
   const needs = JSON.parse(values.jobs ?? process.env.CI_NEEDS ?? "{}") as Record<string, { result: string }>
+  const executions = process.env.GITHUB_RUN_ID
+    ? await workflowExecutions(plan, { needs, attempt: process.env.GITHUB_RUN_ATTEMPT })
+    : undefined
+  const results = latestResults(plan, history, executions)
   const expected = new Set([
     "plan",
     ...plan.units.map((unit) =>
@@ -416,8 +420,12 @@ async function main() {
   ])
   const jobs = [...expected].map((id) => needs[id]?.result ?? "missing")
   const errors = verifyResults(plan, history, jobs, executions)
-  if (!errors.length) errors.push(...(await verifyScenarios(resultsRoot, plan, results)))
-  const coverage = errors.length ? undefined : await verifyCoverage(ROOT, resultsRoot, plan, results)
+  try {
+    errors.push(...(await verifyScenarios(resultsRoot, plan, results)))
+  } catch (error) {
+    errors.push(String(error))
+  }
+  const coverage = await verifyCoverage(ROOT, resultsRoot, plan, results, { diagnostic: true })
   errors.push(...(coverage?.errors ?? []))
   const evidence = shadowEvidence(plan, results, errors.length === 0, await policyDigest())
   await Bun.write(path.join(ROOT, OUTPUT, "admission/shadow.json"), JSON.stringify(evidence, null, 2))
@@ -446,7 +454,7 @@ async function main() {
     )
   if (errors.length) throw new Error(errors.join("\n"))
   const timings = await collectTimings(
-    validateTimings(await Bun.file(path.join(ROOT, "script/ci/timings.json")).json()),
+    plan.timingSnapshot ?? validateTimings(await Bun.file(path.join(ROOT, "script/ci/timings.json")).json()),
     ROOT,
     resultsRoot,
     plan,

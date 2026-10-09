@@ -15,55 +15,59 @@ msgstr "拒绝"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.browser"
-msgstr "执行了 {count} 次浏览器操作"
+msgstr "执行了 <number/> 次浏览器操作"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.coordinate"
-msgstr "完成了 {count} 次协调操作"
+msgstr "完成了 <number/> 次协调操作"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.delegate"
-msgstr "委派了 {count} 个任务"
+msgstr "委派了 <number/> 个任务"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.execute"
-msgstr "运行了 {count} 个命令"
+msgstr "运行了 <number/> 个命令"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.external"
-msgstr "执行了 {count} 次外部操作"
+msgstr "执行了 <number/> 次外部操作"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.generic"
-msgstr "完成了 {count} 次操作"
+msgstr "完成了 <number/> 次操作"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.inspect"
-msgstr "检查了 {count} 项内容"
+msgstr "检查了 <number/> 项内容"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.modify"
-msgstr "完成了 {count} 次文件修改"
+msgstr "完成了 <number/> 次文件修改"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.produce"
-msgstr "生成了 {count} 项成果"
+msgstr "生成了 <number/> 项成果"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.readFiles"
-msgstr "读取了 {count} 个文件"
+msgstr "读取了 <number/> 个文件"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.readOperations"
-msgstr "读取文件 {count} 次"
+msgstr "读取文件 <number/> 次"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.research"
-msgstr "查阅了 {count} 个来源"
+msgstr "查阅了 <number/> 个来源"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.searched"
-msgstr "搜索了 {count} 次"
+msgstr "搜索了 <number/> 次"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.total"
+msgstr "<number/> 项操作"
 
 #. js-lingui-explicit-id
 msgid "activity.history.earlier"
@@ -2089,230 +2093,6 @@ msgid "app.common.confirm"
 msgstr "确认"
 
 #. js-lingui-explicit-id
-msgid "app.context.action.copied"
-msgstr "已复制"
-
-#. js-lingui-explicit-id
-msgid "app.context.action.copy"
-msgstr "复制"
-
-#. js-lingui-explicit-id
-msgid "app.context.action.copyFailed"
-msgstr "复制失败"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.estimatedTokens"
-msgstr "约 {tokens}"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.estimateNote"
-msgstr "各分类用量采用有界 UTF-8 估算，并按提供商报告的精确输入总量进行校准。"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.exactInputShare"
-msgstr "占实际输入的 {percent}"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.itemCount"
-msgstr "{count, plural, one {# 项} other {# 项}}"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.title"
-msgstr "上下文占用分布"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.unavailable"
-msgstr "下次回复后可查看占用明细"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.conversation"
-msgstr "会话"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.conversation.description"
-msgstr "用户与助手的消息，包括推理内容"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.filesReferences"
-msgstr "文件和引用"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.filesReferences.description"
-msgstr "附件、文件摘要和提供商文件引用"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.instructions"
-msgstr "指令"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.instructions.description"
-msgstr "智能体、项目、工作流、记忆和系统运行指引"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.overhead"
-msgstr "系统开销"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.overhead.description"
-msgstr "提供商格式开销、无法细分的文件用量和估算差异"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.toolActivity"
-msgstr "工具活动"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.toolActivity.description"
-msgstr "工具定义、调用记录、结果和错误"
-
-#. js-lingui-explicit-id
-msgid "app.context.compact.action"
-msgstr "整理上下文"
-
-#. js-lingui-explicit-id
-msgid "app.context.compact.hint"
-msgstr "整理对话内容以释放上下文空间。"
-
-#. js-lingui-explicit-id
-msgid "app.context.dataAccess.description"
-msgstr "查看保存后的标准化消息和当前生效的系统指令。"
-
-#. js-lingui-explicit-id
-msgid "app.context.dataAccess.rawMessages"
-msgstr "查看原始消息"
-
-#. js-lingui-explicit-id
-msgid "app.context.dataAccess.title"
-msgstr "数据访问"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.cacheReadWrite"
-msgstr "缓存读取 / 写入"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.contextUsage"
-msgstr "上下文占用"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.contextWindow"
-msgstr "上下文上限"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.latestCallCost"
-msgstr "最近一次请求费用"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.latestCallTotal"
-msgstr "最近一次请求总量"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.latestOutputReasoning"
-msgstr "最近输出 / 推理"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.loadedMessagesCost"
-msgstr "已加载消息用量"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.model"
-msgstr "模型"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.provider"
-msgstr "提供商"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.remainingInput"
-msgstr "剩余空间"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.usage"
-msgstr "上下文详情"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.assistantMessages"
-msgstr "助手消息数"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.attributedTotal"
-msgstr "分配后总量"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.estimatedAttributed"
-msgstr "{category}：估算 / 分配后"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.estimatorEncoding"
-msgstr "分词编码"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.estimatorKind"
-msgstr "估算方式"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.lastActivity"
-msgstr "最近活动时间"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.messages"
-msgstr "消息总数"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.rawEstimatedTotal"
-msgstr "初始估算总量"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.reconciliationFactor"
-msgstr "校准倍率"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.reconciliationMode"
-msgstr "校准方式"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.sessionCreated"
-msgstr "会话创建时间"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.sessionID"
-msgstr "会话 ID"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.sessionTitle"
-msgstr "会话标题"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.title"
-msgstr "用量估算详情"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.userMessages"
-msgstr "用户消息数"
-
-#. js-lingui-explicit-id
-msgid "app.context.instructions.copy"
-msgstr "复制系统指令"
-
-#. js-lingui-explicit-id
-msgid "app.context.instructions.copyFailed"
-msgstr "无法复制系统指令。"
-
-#. js-lingui-explicit-id
-msgid "app.context.instructions.empty"
-msgstr "没有可用的系统指令。"
-
-#. js-lingui-explicit-id
-msgid "app.context.instructions.latestUserOverride"
-msgstr "当前生效的用户系统指令"
-
-#. js-lingui-explicit-id
-msgid "app.context.model.label"
-msgstr "模型 {model}"
-
-#. js-lingui-explicit-id
-msgid "app.context.session.untitled"
-msgstr "未命名会话"
-
-#. js-lingui-explicit-id
 msgid "app.context.status.compacted"
 msgstr "上下文已整理；下次回复后可查看用量"
 
@@ -2335,22 +2115,6 @@ msgstr "上下文空间充足"
 #. js-lingui-explicit-id
 msgid "app.context.status.warning"
 msgstr "上下文空间即将不足"
-
-#. js-lingui-explicit-id
-msgid "app.context.usage.limitUnknown"
-msgstr "上下文上限未知"
-
-#. js-lingui-explicit-id
-msgid "app.context.usage.percentUsed"
-msgstr "已用 {percent}"
-
-#. js-lingui-explicit-id
-msgid "app.context.usage.tokensRemaining"
-msgstr "剩余 {tokens}"
-
-#. js-lingui-explicit-id
-msgid "app.context.usage.usedInput"
-msgstr "已用上下文"
 
 #. Confirm
 msgid "app.dialog.confirm.actionFailed"
@@ -8618,6 +8382,42 @@ msgid "app.reference.workspaceChanged"
 msgstr "原工作区已被移除，或其绑定已更改。"
 
 #. js-lingui-explicit-id
+msgid "app.render.capturePreview"
+msgstr "选中的可视化区域"
+
+#. js-lingui-explicit-id
+msgid "app.render.confirm"
+msgstr "发送关于此可视化的请求"
+
+#. js-lingui-explicit-id
+msgid "app.render.confirmDescription"
+msgstr "请先检查可视化生成的请求，再发送到当前会话。输入框中的草稿会保留。"
+
+#. js-lingui-explicit-id
+msgid "app.render.pending"
+msgstr "请先处理已打开的可视化请求。"
+
+#. js-lingui-explicit-id
+msgid "app.render.requestText"
+msgstr "请求"
+
+#. js-lingui-explicit-id
+msgid "app.render.send"
+msgstr "发送请求"
+
+#. js-lingui-explicit-id
+msgid "app.render.sendFailed"
+msgstr "无法发送可视化请求。"
+
+#. js-lingui-explicit-id
+msgid "app.render.sending"
+msgstr "正在发送…"
+
+#. js-lingui-explicit-id
+msgid "app.render.stale"
+msgstr "会话已切换。请重新打开可视化后再发送。"
+
+#. js-lingui-explicit-id
 msgid "app.review.toolUnavailable"
 msgstr "此工具结果已不可用。"
 
@@ -11737,6 +11537,314 @@ msgstr "卸载 {name}？它将从此 Synergy 安装中移除。"
 msgid "confirm.uninstallPlugin.title"
 msgstr "卸载插件？"
 
+#. js-lingui-explicit-id
+msgid "context.category.assistant"
+msgstr "助手消息"
+
+#. js-lingui-explicit-id
+msgid "context.category.attachments"
+msgstr "附件与引用"
+
+#. js-lingui-explicit-id
+msgid "context.category.injected"
+msgstr "自动注入"
+
+#. js-lingui-explicit-id
+msgid "context.category.legacyConversation"
+msgstr "对话 · 历史聚合"
+
+#. js-lingui-explicit-id
+msgid "context.category.legacyInstructions"
+msgstr "指令 · 历史聚合"
+
+#. js-lingui-explicit-id
+msgid "context.category.legacyTools"
+msgstr "工具 · 历史聚合"
+
+#. js-lingui-explicit-id
+msgid "context.category.other"
+msgstr "其他／未归因"
+
+#. js-lingui-explicit-id
+msgid "context.category.results"
+msgstr "工具结果"
+
+#. js-lingui-explicit-id
+msgid "context.category.skills"
+msgstr "技能内容"
+
+#. js-lingui-explicit-id
+msgid "context.category.system"
+msgstr "系统指令"
+
+#. js-lingui-explicit-id
+msgid "context.category.tools"
+msgstr "工具定义"
+
+#. js-lingui-explicit-id
+msgid "context.category.user"
+msgstr "用户消息"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.accumulated"
+msgstr "累计用量"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.answerTokens"
+msgstr "回答输出"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.back"
+msgstr "返回概览"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.byRequest"
+msgstr "按请求"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.byRound"
+msgstr "按轮次"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.capacity"
+msgstr "上下文容量"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.characters"
+msgstr "{count} 字符"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.compaction"
+msgstr "此请求前已压缩上下文"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.comparedPrevious"
+msgstr "估算较上一次请求的变化"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.composition"
+msgstr "输入构成"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.content"
+msgstr "上下文浏览器"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.contentLimit"
+msgstr "已达到预览上限，可在执行记录中阅读或下载完整请求。"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.current"
+msgstr "当前上下文"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.delta"
+msgstr "增量"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.earlier"
+msgstr "加载更早请求"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.error"
+msgstr "上下文加载失败，请重试。"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.estimated"
+msgstr "分类为估算归因，总量以供应商为准。"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.events"
+msgstr "上下文事件"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.failedTools"
+msgstr "{count} 次工具失败"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.generation"
+msgstr "生成（含思考）"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.growth"
+msgstr "上下文趋势"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.hideContent"
+msgstr "收起"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.historical"
+msgstr "请求 {number} 的上下文"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.indexTruncated"
+msgstr "部分来源超出索引预算，可在执行记录中查看完整请求。"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.input"
+msgstr "输入总量"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.items"
+msgstr "{count} 条"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.latest"
+msgstr "最近一次请求"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.loading"
+msgstr "正在加载上下文…"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.mainRequests"
+msgstr "{count} 次主任务请求"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.modelWait"
+msgstr "等待首 Token"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.moreContent"
+msgstr "继续阅读"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.moreItems"
+msgstr "加载更多条目"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.noEvents"
+msgstr "已加载的历史中没有压缩记录。"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.noItems"
+msgstr "没有匹配的来源。"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.noRequests"
+msgstr "首次模型请求后显示上下文。"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.reasoning"
+msgstr "推理输出"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.records"
+msgstr "查看执行记录"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.remaining"
+msgstr "剩余 {tokens}"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.request"
+msgstr "请求 {number}"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestChange"
+msgstr "变化 {tokens}"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestCount"
+msgstr "{count} 次请求"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestDetails"
+msgstr "请求详情"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestIdentity"
+msgstr "第 {round} 轮 · 请求 {request}"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestInput"
+msgstr "输入 {tokens}"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestPicker"
+msgstr "选择请求"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.retryCount"
+msgstr "{count} 次重试"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.round"
+msgstr "轮次 {number} · 最后请求"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.roundPrompt"
+msgstr "本轮任务"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.sourceChange"
+msgstr "估算较上一次请求 {tokens} Token · {items} 条"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.sourceSearch"
+msgstr "搜索来源"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.sourceUnavailable"
+msgstr "此请求的来源索引不可用。可以在执行记录中查看已保留的请求。"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.taskActivity"
+msgstr "任务活动"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.taskScope"
+msgstr "整个任务"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.timedCalls"
+msgstr "{count} 次已计时"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.timing"
+msgstr "耗时统计"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.timingBasis"
+msgstr "已记录累计耗时 · 并行可重叠"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.timingTotal"
+msgstr "记录耗时"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.tokenStats"
+msgstr "Token 统计"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.tokenUnit"
+msgstr "Token"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.toolCount"
+msgstr "{count} 次工具调用"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.toolExecution"
+msgstr "工具执行"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.total"
+msgstr "全量"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.unavailable"
+msgstr "此请求未记录上下文分类。"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.usageDetails"
+msgstr "查看明细"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.viewContent"
+msgstr "查看"
+
 #. it a timeout would misstate what happens; only `tool_timeout` aborts.
 msgid "countdown.backgrounded"
 msgstr "已转后台"
@@ -12098,14 +12206,6 @@ msgid "environment.dialog.title"
 msgstr "选择 Environment"
 
 #. js-lingui-explicit-id
-msgid "execution.activity"
-msgstr "活动概览"
-
-#. js-lingui-explicit-id
-msgid "execution.activityOrder"
-msgstr "活动顺序"
-
-#. js-lingui-explicit-id
 msgid "execution.actor"
 msgstr "执行者"
 
@@ -12132,6 +12232,10 @@ msgstr "全部类型"
 #. js-lingui-explicit-id
 msgid "execution.anomalies"
 msgstr "异常与重试"
+
+#. js-lingui-explicit-id
+msgid "execution.auxiliaryRequest"
+msgstr "辅助模型调用 · 已记录的执行信息"
 
 #. js-lingui-explicit-id
 msgid "execution.back"
@@ -12166,16 +12270,16 @@ msgid "execution.cancelTask"
 msgstr "取消子任务"
 
 #. js-lingui-explicit-id
-msgid "execution.chartEvents"
-msgstr "{count} 个事件 · {start}–{end}"
-
-#. js-lingui-explicit-id
-msgid "execution.chartExpand"
-msgstr "展开活动图"
-
-#. js-lingui-explicit-id
 msgid "execution.children"
 msgstr "子任务"
+
+#. js-lingui-explicit-id
+msgid "execution.chooseRecord"
+msgstr "选择一条执行记录"
+
+#. js-lingui-explicit-id
+msgid "execution.chooseRecordHelp"
+msgstr "查看模型请求、工具结果或异常。可在左侧搜索和筛选。"
 
 #. js-lingui-explicit-id
 msgid "execution.clear"
@@ -12212,6 +12316,10 @@ msgstr "此请求之后，上下文已发生变化。"
 #. js-lingui-explicit-id
 msgid "execution.contextUnknown"
 msgstr "未记录上下文用量或可用上限。"
+
+#. js-lingui-explicit-id
+msgid "execution.conversationRequest"
+msgstr "模型请求 · 已记录的执行信息"
 
 #. js-lingui-explicit-id
 msgid "execution.copied"
@@ -12330,14 +12438,6 @@ msgid "execution.history"
 msgstr "归一化消息"
 
 #. js-lingui-explicit-id
-msgid "execution.humanInputs"
-msgstr "{count} 次用户输入"
-
-#. js-lingui-explicit-id
-msgid "execution.idle"
-msgstr "{duration} 内无已记录活动"
-
-#. js-lingui-explicit-id
 msgid "execution.inboxHistory"
 msgstr "收件箱历史"
 
@@ -12438,8 +12538,8 @@ msgid "execution.missingCost"
 msgstr "{count} 次请求缺少费用记录"
 
 #. js-lingui-explicit-id
-msgid "execution.missingTimes"
-msgstr "部分事件未记录时间"
+msgid "execution.model"
+msgstr "模型"
 
 #. js-lingui-explicit-id
 msgid "execution.more"
@@ -12514,6 +12614,10 @@ msgid "execution.partialHelp"
 msgstr "部分执行证据缺失，仅显示已有记录。"
 
 #. js-lingui-explicit-id
+msgid "execution.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
 msgid "execution.previous"
 msgstr "较早记录"
 
@@ -12524,6 +12628,10 @@ msgstr "保存的费率"
 #. js-lingui-explicit-id
 msgid "execution.processView"
 msgstr "任务过程"
+
+#. js-lingui-explicit-id
+msgid "execution.provider"
+msgstr "服务商"
 
 #. js-lingui-explicit-id
 msgid "execution.purpose"
@@ -12546,16 +12654,16 @@ msgid "execution.rawStructure"
 msgstr "查看保存的字段"
 
 #. js-lingui-explicit-id
-msgid "execution.realTime"
-msgstr "真实时间"
-
-#. js-lingui-explicit-id
 msgid "execution.recorded"
 msgstr "执行证据"
 
 #. js-lingui-explicit-id
 msgid "execution.recordedDefinition"
 msgstr "使用执行时随模型请求保存的工具定义。"
+
+#. js-lingui-explicit-id
+msgid "execution.recordsTitle"
+msgstr "执行记录"
 
 #. js-lingui-explicit-id
 msgid "execution.recordsView"
@@ -12636,10 +12744,6 @@ msgstr "状态"
 #. js-lingui-explicit-id
 msgid "execution.subscription"
 msgstr "订阅等价估算"
-
-#. js-lingui-explicit-id
-msgid "execution.taskInstructions"
-msgstr "{count} 条子任务指令"
 
 #. js-lingui-explicit-id
 msgid "execution.tasks"
@@ -12776,6 +12880,10 @@ msgstr "此内容版本已不可用，请读取最新版本。"
 #. js-lingui-explicit-id
 msgid "execution.view"
 msgstr "视图"
+
+#. js-lingui-explicit-id
+msgid "execution.waiting"
+msgstr "等待输入"
 
 #. js-lingui-explicit-id
 msgid "execution.workspace.copyPath"
@@ -16432,10 +16540,6 @@ msgid "session.activity.materializingInput"
 msgstr "正在准备执行"
 
 #. js-lingui-explicit-id
-msgid "session.activity.operations"
-msgstr "执行了 {count} 项操作"
-
-#. js-lingui-explicit-id
 msgid "session.activity.parallelTools"
 msgstr "正在调用工具 · {count} 项"
 
@@ -17707,10 +17811,6 @@ msgstr "收起推理"
 #. js-lingui-explicit-id
 msgid "session.process.interrupted"
 msgstr "已中断"
-
-#. js-lingui-explicit-id
-msgid "session.process.latest"
-msgstr "回到最新操作"
 
 #. js-lingui-explicit-id
 msgid "session.process.loadFailed"
@@ -25025,12 +25125,132 @@ msgid "tool.misc.warnings"
 msgstr "警告"
 
 #. js-lingui-explicit-id
+msgid "tool.render.busy"
+msgstr "请等待当前可视化操作完成。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.changes"
+msgstr "应用以下可视化修改："
+
+#. js-lingui-explicit-id
+msgid "tool.render.closed"
+msgstr "此可视化视图已不再处于活动状态。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.conflict"
+msgstr "可视化状态已在另一个视图中改变。请检查恢复后的值再修改。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.discard"
+msgstr "不保存并关闭"
+
+#. js-lingui-explicit-id
+msgid "tool.render.download"
+msgstr "导出交互式 HTML"
+
+#. js-lingui-explicit-id
 msgid "tool.render.expand"
 msgstr "放大视图"
 
 #. js-lingui-explicit-id
+msgid "tool.render.feedback"
+msgstr "关于此可视化的反馈："
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidControls"
+msgstr "可视化控件定义无效。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidDate"
+msgstr "日历日期无效。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidIcon"
+msgstr "未知的可视化图标。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidRequest"
+msgstr "可视化请求无效。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidVariants"
+msgstr "可视化方案定义无效。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.navigation"
+msgstr "可视化已跳转到其他页面。重试可恢复已保存的源文件。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.next"
+msgstr "下个月"
+
+#. js-lingui-explicit-id
+msgid "tool.render.offline"
+msgstr "导出的可视化无法调用智能体。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.original"
+msgstr "按住查看原始值"
+
+#. js-lingui-explicit-id
+msgid "tool.render.parameters"
+msgstr "参数"
+
+#. js-lingui-explicit-id
 msgid "tool.render.preparing"
 msgstr "正在准备视图"
+
+#. js-lingui-explicit-id
+msgid "tool.render.previous"
+msgstr "上个月"
+
+#. js-lingui-explicit-id
+msgid "tool.render.reset"
+msgstr "重置"
+
+#. js-lingui-explicit-id
+msgid "tool.render.resourceFailed"
+msgstr "可视化资源加载失败。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "tool.render.review"
+msgstr "检查修改"
+
+#. js-lingui-explicit-id
+msgid "tool.render.selectFeedback"
+msgstr "选择元素并反馈"
+
+#. js-lingui-explicit-id
+msgid "tool.render.static"
+msgstr "此可视化为只读内容。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.stopFeedback"
+msgstr "结束选择"
+
+#. js-lingui-explicit-id
+msgid "tool.render.timeout"
+msgstr "可视化未响应。重试可恢复已保存的状态。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.tooLarge"
+msgstr "可视化状态超过 16 KiB。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.tooMany"
+msgstr "可视化控件或对象数量过多。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.unavailable"
+msgstr "此视图暂不支持可视化操作。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.variants"
+msgstr "方案"
 
 #. js-lingui-explicit-id
 msgid "tool.render.visual"
@@ -26001,12 +26221,24 @@ msgid "ui.execution.interrupted"
 msgstr "已中断"
 
 #. js-lingui-explicit-id
+msgid "ui.execution.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.queued"
+msgstr "排队中"
+
+#. js-lingui-explicit-id
 msgid "ui.execution.running"
 msgstr "运行中"
 
 #. js-lingui-explicit-id
 msgid "ui.execution.unknown"
-msgstr "未记录状态"
+msgstr "未知"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.waiting"
+msgstr "等待输入"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.close"

@@ -1,7 +1,22 @@
 import { describe, expect, test } from "bun:test"
 import { setupI18n as coreSetupI18n } from "@lingui/core"
 import type { Part as PartType } from "@ericsanchezok/synergy-sdk/client"
-import { computeStatusFromPart, computeLatestStatusFromParts } from "../src/components/session-status"
+import { computeStatusFromPart, computeLatestStatusFromParts, processIsWorking } from "../src/components/session-status"
+
+test("canonical pause overrides stale current execution and projection but not a new submission", () => {
+  const input = {
+    current: true,
+    sessionStatus: { type: "paused" as const, reason: "aborted" as const, since: 1 },
+    executionStatus: "running",
+    projected: true,
+    fallback: true,
+  }
+  expect(processIsWorking(input)).toBe(false)
+  expect(processIsWorking({ ...input, current: false })).toBe(true)
+  expect(processIsWorking({ ...input, submission: { failed: false } })).toBe(true)
+  expect(processIsWorking({ ...input, sessionStatus: { type: "busy" } })).toBe(true)
+  expect(processIsWorking({ ...input, submission: { failed: true } })).toBe(false)
+})
 
 function reasoningPart(text: string): PartType {
   return {
