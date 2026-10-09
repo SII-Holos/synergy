@@ -5,7 +5,7 @@ import { collectTests } from "../../packages/testing/script/batches"
 import { type Task, type WorkspaceInput } from "./plan"
 import { workspaces } from "../workspace-manifest"
 import { partitionSuite, suiteSeconds } from "./suites"
-import { estimateTask, timingProfile, validateTimings } from "./timing"
+import { estimateTask, timingProfile, validateTimings, type Timings } from "./timing"
 import type { SourceSnapshot } from "./revision"
 export { changedFiles } from "./selection"
 
@@ -67,7 +67,7 @@ export async function workspaceInputs(snapshot: SourceSnapshot): Promise<Workspa
   }))
 }
 
-export async function catalog(root = ROOT): Promise<Task[]> {
+export async function catalog(root = ROOT, timingInput?: Timings): Promise<Task[]> {
   const manifest = await loadManifest(root)
   const packages = workspaces(root)
   const coverage = new Set(Object.keys(manifest.packages))
@@ -404,7 +404,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
   tasks.find((task) => task.id === "root-tests")!.files = (await collectTests("test/script", root))
     .filter((file) => !specialized.has(file))
     .sort()
-  const times = validateTimings(await Bun.file(path.join(import.meta.dir, "timings.json")).json())
+  const times = timingInput ?? validateTimings(await Bun.file(path.join(import.meta.dir, "timings.json")).json())
   const counts: Record<string, number> = {
     "packages/harness": 4,
     "apps/web": 4,

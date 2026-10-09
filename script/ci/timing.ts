@@ -100,6 +100,13 @@ function median(values: number[]) {
   const sorted = values.toSorted((a, b) => a - b)
   return (sorted[Math.floor((sorted.length - 1) / 2)]! + sorted[Math.floor(sorted.length / 2)]!) / 2
 }
+
+function recentEstimate(series: TimingSeries) {
+  const samples = series.samples
+    .toSorted((a, b) => a.completed.localeCompare(b.completed) || a.id.localeCompare(b.id))
+    .slice(-5)
+  return Math.max(samples.at(-1)!.seconds, median(samples.map((sample) => sample.seconds)))
+}
 export function recordTiming(
   timings: Timings,
   profile: string,
@@ -116,18 +123,16 @@ export function recordTiming(
 }
 export function estimateTask(timings: Timings, profile: string, id: string) {
   const series = timings.profiles[profile]?.[`task:${id}`]
-  return series ? median(series.samples.map((sample) => sample.seconds)) : undefined
+  return series ? recentEstimate(series) : undefined
 }
 export function estimateBatch(timings: Timings, profile: string, owner: string, files: string[], kind: Kind) {
   const entries = timings.profiles[profile] ?? {}
   const known = entries[batchKey(owner, files)]
-  if (known) return median(known.samples.map((sample) => sample.seconds))
+  if (known) return recentEstimate(known)
   const comparable = Object.values(entries).filter((entry) => entry.kind === kind)
   const local = comparable.filter((entry) => entry.owner === owner)
   const candidates = (local.length ? local : comparable)
-    .map(
-      (entry) => median(entry.samples.map((sample) => sample.seconds)) / (kind === "shared" ? entry.files!.length : 1),
-    )
+    .map((entry) => recentEstimate(entry) / (kind === "shared" ? entry.files!.length : 1))
     .sort((a, b) => a - b)
   const fallback = kind === "browser" ? 30 : kind === "isolated" ? 10 : 2
   return (candidates[Math.ceil((candidates.length - 1) * 0.75)] ?? fallback) * (kind === "shared" ? files.length : 1)

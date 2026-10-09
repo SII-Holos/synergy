@@ -84,7 +84,7 @@ test("batch identity follows its files rather than its assigned partition", () =
   expect(batchKey("apps/web", ["a"])).not.toBe(batchKey("apps/web", ["b"]))
 })
 
-test("timings retain the latest ten distinct observations and use a median", () => {
+test("timings retain ten observations and react immediately to the latest slower batch", () => {
   const value = empty()
   for (let index = 0; index < 12; index++)
     recordTiming(value, profile, batchKey("apps/web", ["a"]), {
@@ -100,8 +100,8 @@ test("timings retain the latest ten distinct observations and use a median", () 
     sample: { id: "11", completed: new Date(11000).toISOString(), seconds: 12 },
   })
   expect(value.profiles[profile]![batchKey("apps/web", ["a"])]!.samples).toHaveLength(10)
-  expect(estimateBatch(value, profile, "apps/web", ["a"], "browser")).toBe(7.5)
-  expect(estimateBatch(value, profile, "apps/web", ["new"], "browser")).toBe(7.5)
+  expect(estimateBatch(value, profile, "apps/web", ["a"], "browser")).toBe(12)
+  expect(estimateBatch(value, profile, "apps/web", ["new"], "browser")).toBe(12)
   expect(estimateBatch(value, timingProfile("linux", "x64", "different"), "apps/web", ["a"], "browser")).toBe(30)
 })
 

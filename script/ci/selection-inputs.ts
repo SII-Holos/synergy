@@ -1,4 +1,5 @@
 import path from "node:path"
+import { isDeepStrictEqual } from "node:util"
 import ts from "typescript"
 import type { SourceSnapshot } from "./revision"
 import { coverageChanges } from "./coverage-selection"
@@ -155,6 +156,29 @@ export async function selectionInputs(
   headWorkspaces: WorkspaceInput[],
 ): Promise<SelectionChanges> {
   const result: SelectionChanges = { leafTests: [] }
+  const descriptive = new Set([
+    "description",
+    "keywords",
+    "homepage",
+    "bugs",
+    "author",
+    "contributors",
+    "funding",
+    "repository",
+    "license",
+  ])
+  const metadataOnly = changed.filter((file) => {
+    const owner = baseWorkspaces.find((entry) => file === `${entry.directory}/package.json`)
+    if (!owner || !headWorkspaces.some((entry) => entry.name === owner.name && entry.directory === owner.directory))
+      return false
+    const before = parse(base.read(file))
+    const after = parse(head.read(file))
+    if (!record(before) || !record(after) || before.name !== owner.name || after.name !== owner.name) return false
+    const executable = (value: Record<string, unknown>) =>
+      Object.fromEntries(Object.entries(value).filter(([key]) => !descriptive.has(key)))
+    return isDeepStrictEqual(executable(before), executable(after))
+  })
+  if (metadataOnly.length) result.metadataOnly = metadataOnly.sort()
   if (changed.includes("script/coverage-exempt.json")) {
     const file = "script/coverage-exempt.json"
     result.coverage = coverageChanges(parse(base.read(file)), parse(head.read(file)), baseWorkspaces, headWorkspaces)

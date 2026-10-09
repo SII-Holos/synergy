@@ -30,7 +30,7 @@ Linux 基础准备、core 分发、full 分发和 benchmark 准备各有独立�
 
 执行池上限为 Linux 12（含一个直接启动的 contracts worker）、Docker 8，Windows、PostgreSQL、macOS 各 1。同平台 Windows job 保持串行；原生覆盖率由两个独立 Home 的进程执行，报告目录互不覆盖。普通 Linux 包分片分散到不同 runner，同一 runner 最多两个独立进程，分配时估算两个执行槽的完成时间并先运行长任务；contracts 首先执行 policy，contracts 与本地诊断仍串行。Docker 场景分配到最多八个 job，每个 job 最多并行两个独立 Home、进程和容器的任务，共享只读准备；每个任务独立产生报告，重跑以 job 为单位。公开仓库所在 GitHub Free 组织同时最多 20 个 job，准备任务和其他 PR 共享容量；排队计入实际反馈时间。Linux/macOS 的 Bun 下载、Python 下载和 Rust 编译使用覆盖锁文件、平台、实际工具链及输入的缓存；Windows 跳过实测慢于直接安装的 Bun 缓存解压，Desktop 只安装自身 workspace 依赖；跨 job 构建恢复验证完整清单、摘要和模式。core/full 分发缓存键还包含 tested SHA 和已校验基础构建的完整清单摘要；缓存命中先核对平台、工具链、文件字节与权限，再为当前计划发布产物。基础准备将 native 与 SDK/plugin 模块保存为单独的输入寻址中间产物，最终 Web 和分发仍绑定 tested SHA。Prettier 复用内容校验缓存；外部 native harness 仅缓存经过清单验证的不可变对象和索引。安装测试通过 `SYNERGY_TEST_INSTALL_CACHE` 显式共享下载，并按当前全部 tgz 的内容摘要隔离；每次安装仍创建全新的安装目录和 Home，同版本变更字节也必须重新验证。缓存保存依赖与构建，不保存测试成功结论或运行 Home。测试子进程移除协调器的 GitHub token 与父级文件选择；需要特殊凭据的夹具必须显式提供。共享 UI 编译在独立进程内完成，按输入摘要锁定编译与发布，避免 Vite 改变调用方环境和并行进程覆盖有效产物。准备等待由 workflow job 超时约束；生产者失败立即报错，完成后一分钟仍缺失产物则要求全量重跑。每日运行或手动 `build_cache=disabled` 跳过跨 run 构建、中间产物和外部 native 对象缓存，依赖下载缓存可复用。
 
-`All checks passed` 始终执行，核对计划摘要、测试 SHA、run、模式、全部选中任务、job 结果、报告摘要和逐文件执行清单。安装和矩阵的 JUnit 场景必须恰好执行一次且成功。结果版本 2 记录 `unit`、`planAttempt`、`executionAttempt`；报告按产物目录隔离。GitHub“仅重跑失败 job”沿用原计划和成功产物，汇总根据 API 的最近一次实际 unit 执行选择证据。GitHub 会给未执行的兄弟 job 复制新的 attempt 编号；已完成且开始、结束均早于记录创建时间的复制记录不算新执行，也不重复计入计算时间。最新失败、缺失、重复、损坏、旧 SHA、错误 run 或计划不能通过。产物过期须全量重跑。新提交重新计算当前 PR 影响范围，不能沿用上一个 SHA 的通过结论。覆盖率只合并所选最新完整成功报告，阈值与 exemption 不变。
+`All checks passed` 始终执行，核对计划摘要、测试 SHA、run、模式、全部选中任务、job 结果、报告摘要和逐文件执行清单。安装和矩阵的 JUnit 场景必须恰好执行一次且成功。结果版本 2 记录 `unit`、`planAttempt`、`executionAttempt`；报告按产物目录隔离。GitHub“仅重跑失败 job”沿用原计划和成功产物，汇总根据 API 的最近一次实际 unit 执行选择证据。GitHub 会给未执行的兄弟 job 复制新的 attempt 编号；已完成且开始、结束均早于记录创建时间的复制记录不算新执行，也不重复计入计算时间。最新失败、缺失、重复、损坏、旧 SHA、错误 run 或计划不能通过。产物过期须全量重跑。新提交重新计算当前 PR 影响范围，不能沿用上一个 SHA 的通过结论。覆盖率只合并所选最新完整成功报告，阈值与 exemption 不变。即使其他作业失败，汇总仍诊断证据完整的包；缺少所选 suite 或原生覆盖率生产者的包标记 incomplete，不能通过准入。当前 attempt 的矩阵 DAG 已成功而 Jobs API 仍为 in_progress 时，以该 DAG 的终态消除元数据延迟；显式失败、未开始、旧 attempt 和缺失作业不适用。
 
 选中的 core/full 分发消费者必须让基础准备生成并发布 Linux sandbox helper，即使计划没有选中安装产物或 sandbox 测试。独立的 Web 分发验收同样依赖该原生包；普通 Web suite 不因此额外准备 sandbox。准备条件来自选中任务的分发 profile 和显式 prerequisites，不能只按测试 kind 判断。
 
@@ -54,9 +54,9 @@ GitHub 的 `CI diagnostics` 工作流提供相同选择器，执行矩阵最多�
 
 ## 测量与验收
 
-`script/ci/timings.json` 按 OS、架构和 Bun 版本保存最近十次成功样本的中位数；suite 使用所属包与完整批次文件清单作为身份，不依赖可变的分区编号。新批次采用同包同类批次的 P75，缺样本时再采用同类或固定保守值。计划绑定所用快照摘要；失败、取消和缺少实际运行环境的结果不进入候选权重。成功汇总将候选 `timings.json` 放入 `ci-summary-*`，经审查后用 `bun script/ci/timing.ts --input <candidate> --output script/ci/timings.json` 更新；多个 `--input` 可去重合并，CI 不自动提交权重。
+`script/ci/timings.json` 按 OS、架构和 Bun 版本保留最近十次成功样本；估计值取最新样本与最近五次中位数的较大值，及时响应长尾回归。suite 使用所属包与完整批次文件清单作为身份，不依赖可变的分区编号。新批次采用同包同类批次的 P75，缺样本时再采用同类或固定保守值。计划绑定所用快照摘要；失败、取消和缺少实际运行环境的结果不进入候选权重。成功汇总将候选 `timings.json` 放入 `ci-summary-*`，后续计划优先读取同仓库最近七天成功 dev CI 的当前 attempt 汇总，校验来源、事件、产物大小与结构，并把完整快照和来源绑定计划摘要；不可用时回退仓库权重。仓库基线经审查后用 `bun script/ci/timing.ts --input <candidate> --output script/ci/timings.json` 更新；多个 `--input` 可去重合并，CI 不自动提交权重。
 
-带 attempt 后缀的 `ci-plan-*`、`ci-results-*`、`ci-summary-*`、`ci-admission-*` 保留计划、任务证据、计时和准入样本。构建产物保留 1 天，测试报告保留 3 天，计划与汇总保留 7 天；完整诊断仅失败时上传。每个 job 的队列和运行时间来自 GitHub 当前 attempt API；汇总采集器自身尚未结束，因此同次运行的 metrics 标记 `partial`，不能作为最终性能验收。完成后运行 `bun script/ci/metrics.ts --repo SII-Holos/synergy --run <id> --attempt <n> --cache <cold|hit|miss> --load <isolated|concurrent-pr|unknown> --output <file>`，以最终 GitHub job 时间重新统计；采集器排除重跑 attempt 继承的旧 job、重复记录和未启动任务的计算时间；仅有 GitHub 合成的 started_at 且没有 runner 或 step 执行证据时，只计等待。根据仓库运行时间线确认是否存在重叠 PR 后填写负载标签，未知负载不能算作单 PR 对照。分别报告冷缓存、缓存命中、缓存未命中和并发 PR 的样本。
+带 attempt 后缀的 `ci-plan-*`、`ci-results-*`、`ci-summary-*`、`ci-admission-*` 保留计划、任务证据、计时和准入样本。构建产物保留 1 天，测试报告保留 3 天，计划与汇总保留 7 天；完整诊断仅失败时上传。每个 job 的队列和运行时间来自 GitHub 当前 attempt API；汇总采集器自身尚未结束，因此同次运行的 metrics 标记 `partial`，不能作为最终性能验收。`CI final metrics` 在 workflow_run 完成后只从可信默认分支执行采集器，使用只读权限获取最终时间与首次失败时间，保留独立的最终指标产物；该工作流随正常发布进入默认分支后启用。需要立即采集或补充缓存、负载标签时运行 `bun script/ci/metrics.ts --repo SII-Holos/synergy --run <id> --attempt <n> --cache <cold|hit|miss> --load <isolated|concurrent-pr|unknown> --output <file>`，以最终 GitHub job 时间重新统计；采集器排除重跑 attempt 继承的旧 job、重复记录和未启动任务的计算时间；仅有 GitHub 合成的 started_at 且没有 runner 或 step 执行证据时，只计等待。根据仓库运行时间线确认是否存在重叠 PR 后填写负载标签，未知负载不能算作单 PR 对照。分别报告冷缓存、缓存命中、缓存未命中和并发 PR 的样本。
 
 全量 CI 的约 10 分钟反馈目标包含准备、测试、上传、最终检查和队列；分别完成一轮冷构建缓存与一轮热缓存，以最终 GitHub 时间和完整报告判断。验收对照需确认组织容量可用；多个 PR 占满容量的排队另列并计入用户实际等待。记录累计 runner 分钟与非确定性失败；拆分后的估计耗时、局部绿灯或影子模式的选测估算不能证明全量耗时。增长的取舍遵循 [维护验证成本](#维护验证成本)。
 
@@ -71,3 +71,5 @@ GitHub 的 `CI diagnostics` 工作流提供相同选择器，执行矩阵最多�
 Task Home 成功路径合入 `jit-chat-completions-fixture-one`，验证两次真实工具调用的首末 Home 与 JIT 证据；空 provider 停止保留独立任务和原生重试策略，pytest 收集检查继续要求全部场景恰好执行一次。构建产物的临时仓库夹具显式设置自身 Web 模式，避免继承全量 CI 的准备配置。
 
 规划 job 仅安装 testing workspace 需要的依赖，不恢复整仓下载缓存。四组短协议/JIT 控制和 Task Home 控制使用两次真实工具调用验证首末阶段；完整文件修改循环继续由业务压缩控制和显式 120 轮诊断承担。
+
+计划及本地 `verify plan` 报告列出 `fullTriggers` 的具体文件与原因。只有既有 workspace package.json 的描述性字段变化可缩小为所属包及消费者完整 suite；依赖、版本、导出、脚本和未知字段保持全量。生成的 OpenAPI 契约显式归属 SDK 与 Server，保留二者及消费者验证。Skill 的 references Markdown 按文档选择，执行脚本仍属共享输入。

@@ -18,6 +18,7 @@ test("cancelled queue records with synthetic start timestamps consume no runner 
   expect(value.runnerSeconds).toBe(0)
   expect(value.jobs[0]!.queueSeconds).toBe(900)
   expect(value.endToEndSeconds).toBe(900)
+  expect(value.firstFailureSeconds).toBeNull()
 })
 
 test("queue and compute accounting ignore inherited attempts, duplicates and unstarted jobs", () => {
