@@ -406,9 +406,12 @@ async function runMigrationsInternal(
         }
         if (hasCohort) await Storage.write(cohortKey, { domain, id: migration.id, residentComplete: true })
         else {
-          logData[migration.id] = Date.now()
-          await saveLogForDomain(domain, logData)
-          await Storage.remove(cohortKey)
+          const completedAt = Date.now()
+          await Storage.transaction(async () => {
+            await mergeDomainLog(domain, { [migration.id]: completedAt })
+            await Storage.remove(cohortKey)
+          })
+          logData[migration.id] = completedAt
         }
         if (hasCohort) summary.deferred = (summary.deferred ?? 0) + 1
         else summary.completed++
