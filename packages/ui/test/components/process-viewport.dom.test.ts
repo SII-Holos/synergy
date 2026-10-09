@@ -461,6 +461,55 @@ test("a detached default local anchor survives live body growth without a revisi
   expect(result.latest).toBe(false)
 })
 
+test("accepted compensation retains the reading anchor through consecutive growth before scrollend", async () => {
+  await load("local")
+  const viewport = page.locator('[data-component="process-viewport"]')
+  const before = await viewport.evaluate((element) => {
+    element.addEventListener("scrollend", (event) => event.stopImmediatePropagation(), { capture: true })
+    return element.scrollTop
+  })
+  await viewport.hover()
+  await page.mouse.wheel(0, -20)
+  await page.waitForFunction(
+    (before) => document.querySelector<HTMLElement>('[data-component="process-viewport"]')!.scrollTop < before,
+    before,
+  )
+  const result = await page.evaluate(async () => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    const viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+    const paragraph = document.getElementById("reading-paragraph")!
+    await harness.frames()
+    const offset = paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top
+    const height = viewport.scrollHeight
+    let firstHeight = height
+    let grewAgain = false
+    viewport.addEventListener(
+      "scroll",
+      () => {
+        firstHeight = viewport.scrollHeight
+        grewAgain = true
+        harness.growChildList("above")
+      },
+      { once: true },
+    )
+    harness.growCharacterData("above")
+    await harness.frames()
+    return {
+      grewAgain,
+      height,
+      firstHeight,
+      finalHeight: viewport.scrollHeight,
+      displacement: paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top - offset,
+      sameParagraph: document.getElementById("reading-paragraph") === paragraph,
+    }
+  })
+  expect(result.grewAgain).toBe(true)
+  expect(result.firstHeight).toBeGreaterThan(result.height)
+  expect(result.finalHeight).toBeGreaterThan(result.firstHeight)
+  expect(Math.abs(result.displacement)).toBeLessThanOrEqual(1)
+  expect(result.sameParagraph).toBe(true)
+})
+
 test("consumer root identity excludes direct child mount and unmount but preserves nested body mutations", async () => {
   const result = await page.evaluate(async () => {
     const harness = (window as unknown as FixtureWindow).processViewportFixture
