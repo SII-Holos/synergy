@@ -15,6 +15,7 @@ type Fixture = {
   latest(): void
   revisit(): { before: number; after: number; sameNode: boolean; restored: boolean }
   foreignAnchor(): boolean
+  offscreenAnchor(): { before?: string; after?: string }
   facts(): {
     offset: number
     scroll: number
@@ -66,6 +67,16 @@ beforeAll(async () => {
         return {before,after:marker.getBoundingClientRect().top-viewport.getBoundingClientRect().top,sameNode:old===marker,restored}
       },
       foreignAnchor(){const foreign=document.createElement("article");foreign.dataset.scrollAnchor="foreign";document.body.append(foreign);const anchor=captureConversationReadingAnchor(viewport,()=>true,foreign);foreign.remove();return anchor===undefined},
+      offscreenAnchor(){
+        const container=document.createElement('div');container.style.cssText='height:100px;overflow:auto';
+        const spacer=document.createElement('div');spacer.style.height='300px';
+        const stale=document.createElement('article');stale.dataset.messageId='stale';stale.dataset.scrollAnchor='stale';stale.textContent='Old virtual row';
+        container.append(spacer,stale);document.body.append(container);
+        const before=captureConversationReadingAnchor(container,()=>true)?.owner.dataset.scrollAnchor;
+        const current=document.createElement('article');current.dataset.messageId='current';current.dataset.scrollAnchor='current';current.textContent='New visible row';container.prepend(current);
+        const after=captureConversationReadingAnchor(container,()=>true)?.owner.dataset.scrollAnchor;
+        container.remove();return {before,after};
+      },
       facts(){return {offset:marker.getBoundingClientRect().top-viewport.getBoundingClientRect().top,scroll:viewport.scrollTop,folded:fold.getBoundingClientRect().height,imageHeight:img.naturalHeight,distance:viewport.scrollHeight-viewport.clientHeight-viewport.scrollTop,userScrolled:auto.userScrolled()}}
     }
     const src=()=>"data:image/svg+xml,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="'+image()+'"></svg>')
@@ -155,6 +166,14 @@ test("a foreign interaction target cannot own the current conversation viewport"
   await page.getByText("Current reading paragraph", { exact: true }).waitFor()
   expect(await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.foreignAnchor())).toBe(true)
   expect(errors).toEqual([])
+})
+
+test("an offscreen retained row cannot own reading while a new virtual window is mounting", async () => {
+  await page.goto(base)
+  await page.getByText("Current reading paragraph", { exact: true }).waitFor()
+  const result = await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.offscreenAnchor())
+  expect(result.before).toBeUndefined()
+  expect(result.after).toBe("current")
 })
 
 test("layout events from a released conversation cannot move the current viewport", async () => {

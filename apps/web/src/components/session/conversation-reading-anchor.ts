@@ -70,10 +70,11 @@ export function restoreConversationReadingPosition(
 
 export function captureConversationReadingAnchor(container: HTMLElement, isCurrent: () => boolean, target?: Element) {
   if (!isCurrent() || !container.isConnected || (target && !container.contains(target))) return
-  const viewportTop = container.getBoundingClientRect().top
+  const viewport = container.getBoundingClientRect()
+  const viewportTop = viewport.top
   const visible = (node: HTMLElement) => {
     const rect = node.getBoundingClientRect()
-    return rect.height > 0 && rect.bottom > viewportTop && !node.closest("[hidden]")
+    return rect.height > 0 && rect.bottom > viewportTop && rect.top < viewport.bottom && !node.closest("[hidden]")
   }
   const message = Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]")).find(visible)
   const row =
@@ -81,7 +82,7 @@ export function captureConversationReadingAnchor(container: HTMLElement, isCurre
     target?.closest<HTMLElement>("[data-scroll-anchor]") ??
     Array.from((message ?? container).querySelectorAll<HTMLElement>("[data-scroll-anchor]")).find(visible) ??
     message
-  if (!row || !container.contains(row)) return
+  if (!row || !container.contains(row) || !visible(row)) return
   const rowBounds = row.getBoundingClientRect()
   const block =
     !target &&

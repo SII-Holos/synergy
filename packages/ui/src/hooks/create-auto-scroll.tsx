@@ -244,7 +244,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
         return
       }
       readingAnchor?.restore()
-      if (readingAnchor && !readingAnchor.owner.isConnected) preserveReadingAnchor()
+      if (!readingAnchor || !readingAnchor.owner.isConnected) preserveReadingAnchor()
       if (scroll && readingAnchor) {
         anchoredScrollTop = scroll.scrollTop
         if (movementOffset !== undefined) movementOffset = scroll.scrollTop
