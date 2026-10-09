@@ -6,6 +6,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Turn } from "@ericsanchezok/synergy-harness/session/turn"
+import { RolloutExecution, RolloutSnapshot } from "@ericsanchezok/synergy-harness/rollout"
 import { registerCommandSessionRuntime } from "@ericsanchezok/synergy-local-runtime/command/session-runtime"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -183,6 +184,13 @@ describe("command kind architecture", () => {
 
           const modelMessages = MessageV2.toModelMessage(messages) as Array<{ role: string; content: string }>
           expect(JSON.stringify(modelMessages)).not.toContain("/worktree list")
+          const snapshot = await RolloutSnapshot.read({ kind: "session", scopeID: scope.id, sessionID: session.id })
+          expect(snapshot.intervals.length).toBeGreaterThan(0)
+          expect(RolloutExecution.measure(snapshot.intervals)).toMatchObject({
+            elapsedActive: false,
+            elapsedLowerBound: false,
+          })
+          expect(RolloutExecution.measure(snapshot.intervals).elapsedMs).toBeGreaterThan(0)
         },
       })
     }))

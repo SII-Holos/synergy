@@ -355,6 +355,49 @@ describe("createAutoScroll", () => {
       harness.restore()
     }
   })
+  test("newly visible content acquires reading ownership after an empty virtual window", async () => {
+    const harness = createScrollHarness()
+    let dispose = () => {}
+    try {
+      const element = harness.makeScroller()
+      let mounted = false
+      let contentOffset = 100
+      let autoScroll!: ReturnType<typeof createAutoScroll>
+      createRoot((cleanup) => {
+        dispose = cleanup
+        autoScroll = createAutoScroll({
+          working: () => false,
+          captureReadingAnchor: () => {
+            if (!mounted) return
+            const offset = contentOffset - element.scrollTop
+            return {
+              owner: element,
+              restore: () => {
+                element.scrollTop = contentOffset - offset
+              },
+            }
+          },
+        })
+        autoScroll.scrollRef(element)
+        autoScroll.contentRef(element)
+      })
+      await harness.tick()
+      element.scrollTop = 20
+      autoScroll.handleInteraction()
+      mounted = true
+      element.scrollHeight += 100
+      harness.lastObserver()!.fire(element)
+      expect(element.scrollTop).toBe(20)
+      contentOffset += 80
+      element.scrollHeight += 80
+      harness.lastObserver()!.fire(element)
+      expect(element.scrollTop).toBe(100)
+    } finally {
+      dispose()
+      harness.restore()
+    }
+  })
+
   test("accepted native scroll publishes its reading owner without replacing it on layout compensation", async () => {
     const harness = createScrollHarness()
     let dispose = () => {}
@@ -404,6 +447,62 @@ describe("createAutoScroll", () => {
       harness.restore()
     }
   })
+
+  test.each([false, true])(
+    "native movement before scroll delivery survives resize (prior compensation: %s)",
+    async (compensate) => {
+      const harness = createScrollHarness()
+      let dispose = () => {}
+      try {
+        const element = harness.makeScroller()
+        let contentOffset = 100
+        let autoScroll!: ReturnType<typeof createAutoScroll>
+        createRoot((cleanup) => {
+          dispose = cleanup
+          autoScroll = createAutoScroll({
+            working: () => false,
+            captureReadingAnchor: () => {
+              const offset = contentOffset - element.scrollTop
+              return {
+                owner: element,
+                restore: () => {
+                  element.scrollTop = contentOffset - offset
+                },
+              }
+            },
+          })
+          autoScroll.scrollRef(element)
+          autoScroll.contentRef(element)
+        })
+        await harness.tick()
+        element.scrollTop = 100
+        autoScroll.handleInteraction()
+        const wheel = new Event("wheel")
+        Object.defineProperty(wheel, "deltaY", { value: -100 })
+        element.dispatchEvent(wheel)
+        if (compensate) {
+          contentOffset += 30
+          element.scrollHeight += 30
+          harness.lastObserver()!.fire(element)
+          expect(element.scrollTop).toBe(130)
+          autoScroll.handleScroll()
+        }
+        const readingTop = compensate ? 30 : 0
+        element.scrollTop = readingTop
+        element.scrollHeight += 100
+        harness.lastObserver()!.fire(element)
+        expect(element.scrollTop).toBe(readingTop)
+        autoScroll.handleScroll()
+        contentOffset += 80
+        element.scrollHeight += 80
+        harness.lastObserver()!.fire(element)
+        expect(element.scrollTop).toBe(readingTop + 80)
+      } finally {
+        dispose()
+        harness.restore()
+      }
+    },
+  )
 
   test("a resize accepts an already compensated reading offset without adopting a newly visible owner", async () => {
     const harness = createScrollHarness()

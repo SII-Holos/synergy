@@ -2,7 +2,7 @@ import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presen
 import { attachmentSuppression, markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { useLingui } from "@lingui/solid"
-import { sessionActivityAnimating, sessionActivityLabel } from "./session-status"
+import { createActivityLabel, processIsWorking, sessionActivityAnimating, sessionActivityLabel } from "./session-status"
 import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
 
 import type {
@@ -1123,13 +1123,20 @@ function projectActivityMessage(
 }
 
 function sessionTurnWorking(props: SessionTurnProps, view: SessionDataView) {
-  if (props.submission) return !props.submission.failed
-  if (props.segment?.process) return props.segment.process.working
-  if (props.executionState) return ["preparing", "running", "approval"].includes(props.executionState.status)
-  return resolveTurnWorking({
-    isLastUserMessage: props.messageID === props.lastUserMessageID,
-    messages: props.messages,
-    sessionStatus: view.statusFor(props.sessionID),
+  if (props.segment?.process && !props.submission) return props.segment.process.working
+  const current = props.messageID === props.lastUserMessageID
+  const sessionStatus = view.statusFor(props.sessionID)
+  return processIsWorking({
+    current,
+    sessionStatus,
+    submission: props.submission,
+    projected: props.segment?.process?.working,
+    executionStatus: props.executionState?.status,
+    fallback: resolveTurnWorking({
+      isLastUserMessage: current,
+      messages: props.messages,
+      sessionStatus,
+    }),
   })
 }
 
@@ -1566,7 +1573,11 @@ function SessionTurnContent(props: SessionTurnProps) {
       : view.statusFor(props.sessionID),
   )
   const showCurrentActivity = createMemo(() => shouldShowCurrentActivity({ working: working(), hasError: !!error() }))
-  const showExecutionCompletion = createMemo(() => !working() && !!props.executionSummary)
+  const foregroundOutcome = () => {
+    const status = props.executionState?.status
+    return status === "completed" || status === "failed" ? status : undefined
+  }
+  const showExecutionCompletion = createMemo(() => !working() && (!!props.executionSummary || !!foregroundOutcome()))
 
   const autoScroll = useConversationFlow()
     ? undefined
@@ -1633,6 +1644,13 @@ function SessionTurnContent(props: SessionTurnProps) {
     const status = sessionStatus()
     return isLastUserMessage() && status?.type === "paused" ? status : undefined
   }
+  const executionSummary = (): TurnExecutionSummary | undefined => {
+    const summary = props.executionSummary
+    const outcome = foregroundOutcome()
+    if (outcome) return summary?.status === outcome ? summary : { status: outcome, elapsedMs: null }
+    if (!paused() || summary?.status !== "running") return summary
+    return { ...summary, status: paused()?.reason === "failed" ? "failed" : "interrupted" }
+  }
   const hasProcess = createMemo(
     () =>
       (props.segment?.process?.hasContent ?? (turnReasoning().length > 0 || timelineItems().some(isProcessItem))) ||
@@ -1648,15 +1666,16 @@ function SessionTurnContent(props: SessionTurnProps) {
     else setExplicitProcessOpen(true)
   }
   const stopped = () =>
-    props.executionState
+    paused()?.reason === "aborted" ||
+    (props.executionState
       ? props.executionState.status === "stopped"
       : lastAssistantMessage()?.error?.name === "MessageAbortedError" ||
-        (paused()?.type === "paused" && paused()?.reason === "aborted")
+        (paused()?.type === "paused" && paused()?.reason === "aborted"))
   const turnDuration = () => {
-    const execution = props.executionState
-    const start = execution?.startedAt ?? assistantMessages()[0]?.time.created
-    const end = execution?.endedAt ?? lastAssistantMessage()?.time.completed
-    return start !== undefined && end !== undefined ? Math.max(0, Math.round((end - start) / 1000)) : undefined
+    const summary = props.executionSummary
+    if (summary?.elapsedMs == null) return undefined
+    const seconds = Math.max(0, Math.floor(summary.elapsedMs / 1000))
+    return summary.elapsedLowerBound ? `≥ ${seconds}` : seconds
   }
   const compacting = createMemo(() =>
     assistantMessages().some(
@@ -1687,7 +1706,7 @@ function SessionTurnContent(props: SessionTurnProps) {
       ? _({ id: "ui.compaction.running", message: "Compressing context..." })
       : sessionActivityLabel(status, i18n(), context)
   }
-  const processLabel = () =>
+  const processLabelCandidate = () =>
     working()
       ? activeAction()
       : stopped()
@@ -1696,6 +1715,7 @@ function SessionTurnContent(props: SessionTurnProps) {
           ? _({ id: "session.process.interrupted", message: "Interrupted" })
           : props.submission?.failed ||
               props.executionState?.status === "failed" ||
+              paused()?.reason === "failed" ||
               (!props.executionState && (error() || (paused()?.type === "paused" && paused()?.reason === "failed")))
             ? _({ id: "session.process.failed", message: "Execution failed" })
             : paused() || !lastAssistantMessage()?.time.completed
@@ -1707,6 +1727,11 @@ function SessionTurnContent(props: SessionTurnProps) {
                     values: { seconds: turnDuration()! },
                   })
                 : _({ id: "session.process.completed", message: "Work completed" })
+
+  const processLabel = createActivityLabel(
+    processLabelCandidate,
+    () => working() && activityAnimated() && !compacting() && !props.submission,
+  )
 
   createEffect(
     on(permissionCount, (count, prev) => {
@@ -1990,10 +2015,7 @@ function SessionTurnContent(props: SessionTurnProps) {
                         </For>
                         <Show when={showFooter() && showExecutionCompletion()}>
                           <div data-slot="session-turn-timeline-item" data-kind="execution-completion">
-                            <ExecutionCompletion
-                              summary={props.executionSummary}
-                              onDetails={props.onExecutionDetails}
-                            />
+                            <ExecutionCompletion summary={executionSummary()} onDetails={props.onExecutionDetails} />
                           </div>
                         </Show>
                         <Show

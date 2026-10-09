@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { readFileSync } from "node:fs"
+import { readFileSync, statSync } from "node:fs"
 import path from "node:path"
 import { parseArgs } from "node:util"
 import type { Plan } from "./plan"
@@ -92,13 +92,35 @@ export function batchKey(owner: string, files: string[]) {
 }
 export function batchKind(files: string[], root: string): Kind {
   if (files.length > 1) return "shared"
-  return /["'](?:@playwright\/test|playwright(?:-core)?)["']/.test(readFileSync(path.join(root, files[0]!), "utf8"))
-    ? "browser"
-    : "isolated"
+  const pending = [path.join(root, files[0]!)]
+  const visited = new Set<string>()
+  const testRoot = path.join(root, "test") + path.sep
+  for (const file of pending) {
+    if (visited.has(file)) continue
+    visited.add(file)
+    const source = readFileSync(file, "utf8")
+    if (/["'](?:@playwright\/test|playwright(?:-core)?)["']/.test(source)) return "browser"
+    for (const match of source.matchAll(/(?:from\s*|import\s*)["'](\.[^"']+)["']/g)) {
+      const target = path.resolve(path.dirname(file), match[1]!)
+      if (!target.startsWith(testRoot)) continue
+      const resolved = ["", ".ts", ".tsx", ".js", ".mjs", "/index.ts", "/index.tsx", "/index.js"]
+        .map((extension) => target + extension)
+        .find((candidate) => statSync(candidate, { throwIfNoEntry: false })?.isFile())
+      if (resolved) pending.push(resolved)
+    }
+  }
+  return "isolated"
 }
 function median(values: number[]) {
   const sorted = values.toSorted((a, b) => a - b)
   return (sorted[Math.floor((sorted.length - 1) / 2)]! + sorted[Math.floor(sorted.length / 2)]!) / 2
+}
+
+function recentEstimate(series: TimingSeries) {
+  const samples = series.samples
+    .toSorted((a, b) => a.completed.localeCompare(b.completed) || a.id.localeCompare(b.id))
+    .slice(-5)
+  return Math.max(samples.at(-1)!.seconds, median(samples.map((sample) => sample.seconds)))
 }
 export function recordTiming(
   timings: Timings,
@@ -116,18 +138,16 @@ export function recordTiming(
 }
 export function estimateTask(timings: Timings, profile: string, id: string) {
   const series = timings.profiles[profile]?.[`task:${id}`]
-  return series ? median(series.samples.map((sample) => sample.seconds)) : undefined
+  return series ? recentEstimate(series) : undefined
 }
 export function estimateBatch(timings: Timings, profile: string, owner: string, files: string[], kind: Kind) {
   const entries = timings.profiles[profile] ?? {}
   const known = entries[batchKey(owner, files)]
-  if (known) return median(known.samples.map((sample) => sample.seconds))
+  if (known) return recentEstimate(known)
   const comparable = Object.values(entries).filter((entry) => entry.kind === kind)
   const local = comparable.filter((entry) => entry.owner === owner)
   const candidates = (local.length ? local : comparable)
-    .map(
-      (entry) => median(entry.samples.map((sample) => sample.seconds)) / (kind === "shared" ? entry.files!.length : 1),
-    )
+    .map((entry) => recentEstimate(entry) / (kind === "shared" ? entry.files!.length : 1))
     .sort((a, b) => a - b)
   const fallback = kind === "browser" ? 30 : kind === "isolated" ? 10 : 2
   return (candidates[Math.ceil((candidates.length - 1) * 0.75)] ?? fallback) * (kind === "shared" ? files.length : 1)

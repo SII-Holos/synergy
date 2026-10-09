@@ -23,7 +23,7 @@ Same-version body hydration exposed a separate ordering failure. A virtual row c
 
 ## Guardrails added
 
-- [Process DOM tests](../../apps/web/test/components/session/conversation-process.dom.test.ts) sample disclosure frames, actual width, reading position, live arrivals, historical remount, narrow columns and reduced motion. CPU-throttled hydration above and below a grouped fragment verifies that later compensation cannot replace its anchor.
+- [Process DOM tests](../../apps/web/test/components/session/conversation-process-disclosure.dom.test.ts) sample disclosure frames, actual width, reading position, live arrivals, historical remount, narrow columns and reduced motion. CPU-throttled hydration above and below a grouped fragment verifies that later compensation cannot replace its anchor.
 - [Scroll tests](../../packages/ui/test/hooks/create-auto-scroll.test.ts) separate manual reading from resize and compensated scroll, and fence viewport replacement.
 - [Arrival tests](../../apps/web/test/context/part-arrival.test.ts) reject baseline, replay, discovery, duplicate, expired and foreign receipts with bounded storage.
 - [Session tests](../../packages/harness/test/session/reasoning-display-migration.test.ts) invalidate owner-local prepared indexes and imports while preserving canonical encrypted evidence.

@@ -57,7 +57,7 @@ If task changes already exist in a shared checkout, do not stash, reset, clean, 
 Commit, stage, push, or create a PR only when the user requests that action.
 
 1. Review `git diff`, `git diff --stat`, and untracked files.
-2. Run the narrow tests plus `bun run quality:quick` in proportion to the change.
+2. Iterate with the narrow behavior tests; before publication run `bun run verify local --test <repository-relative-test>` with the relevant tests. Use `verify coverage --package` for coverage-policy, instrumentation or substantial coverage removal. Static receipts let pre-push reuse unchanged successful deterministic checks; CI never consumes those receipts.
 3. Stage explicit task paths. Never stage secrets, local config, logs, traces, diagnostics, runtime data, or unrelated user work.
 4. Re-read `git diff --cached`.
 5. Write a concise conventional commit using an imperative summary. Allowed types follow repository convention: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `perf:`, and `chore:`.
@@ -107,6 +107,8 @@ gh issue comment <number> --body-file /synergy/note/<note-id>
 ```
 
 Do not interpolate Note contents into a shell command or pass them to an option that executes the file as code.
+
+Commit coherent verified units when authorized, and finish generation and self-review before pushing the next candidate. Inspect `verify plan` and its `fullTriggers` before publication. After a CI failure, inspect all completed diagnostics and gather causal corrections before another push; avoid a separate full CI cycle for each related symptom. Retry infrastructure failures at the same SHA; a product correction requires new SHA-bound evidence. Do not rerun passing checks without changed inputs or an unresolved concern.
 
 A required check can also fail for reasons that belong to the runner rather than the change: the local artifact build needs `docker`, and a hosted job can fail before it compiles anything. Distinguish the two before treating a red gate as evidence about the code, but do not merge past it either — re-run until green. A check that cannot be made green is a blocker to report to the user, not a condition to waive.
 

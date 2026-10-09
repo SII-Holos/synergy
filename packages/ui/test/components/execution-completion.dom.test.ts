@@ -34,8 +34,15 @@ test("a completed message retains a running subtask status supplied by the appli
 })
 
 test("historical messages expose details without inventing elapsed time", () => {
-  fixture.setSummary({ status: "unknown", elapsedMs: 0 })
-  expect(document.body.textContent).toContain("Status not recorded")
+  fixture.setSummary({ status: "unknown", elapsedMs: null })
+  expect(document.body.textContent).toContain("Unknown")
   expect(document.body.textContent).not.toContain("00:00")
   expect(document.querySelector("button")?.textContent).toBe("Details")
+})
+
+test("a partial duration keeps its known time including a zero lower bound", () => {
+  fixture.setSummary({ status: "completed", elapsedMs: 205000, elapsedLowerBound: true })
+  expect(document.body.textContent).toContain("≥ 03:25")
+  fixture.setSummary({ status: "unknown", elapsedMs: 0, elapsedLowerBound: true })
+  expect(document.body.textContent).toContain("≥ 00:00")
 })

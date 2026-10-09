@@ -16,7 +16,11 @@ import {
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { ActivityBatchLabel, ActivityBatchStatus, ActivityBatchTrigger } from "@ericsanchezok/synergy-ui/activity-batch"
-import { sessionActivityAnimating, sessionActivityLabel } from "@ericsanchezok/synergy-ui/session-status"
+import {
+  processIsWorking,
+  sessionActivityAnimating,
+  sessionActivityLabel,
+} from "@ericsanchezok/synergy-ui/session-status"
 import { createDisclosureMotionRef, readSelectionElements } from "@ericsanchezok/synergy-ui/hooks"
 import "./conversation-rows.css"
 import { Dynamic } from "solid-js/web"
@@ -75,6 +79,9 @@ export function VirtualConversationRows(
 ) {
   const props = input.context
   const content = props.content!
+  const { view } = useData()
+  const paused = (rootID: string) =>
+    rootID === props.lastUserMessage()?.id && view.statusFor(props.sessionID)?.type === "paused"
   const owner = input.layoutOwner
   const layoutIdentity = () =>
     JSON.stringify([...owner, "conversation", props.activityDisplay(), props.compactReasoning()])
@@ -140,14 +147,16 @@ export function VirtualConversationRows(
         .turnMessagesFor(root)
         .findLast((message) => message.role === "assistant")
       const submission = input.submissionFor?.(root.id)
-      const working = submission
-        ? !submission.failed
-        : state
-          ? ["preparing", "running", "approval"].includes(state.status) ||
-            (state.status === "completed" && !!last?.working && final?.time.completed == null)
-          : root.id === props.lastUserMessage()?.id && props.isWorking()
+      const working = processIsWorking({
+        current: root.id === props.lastUserMessage()?.id,
+        sessionStatus: view.statusFor(props.sessionID),
+        submission,
+        projected: state?.status === "completed" && last?.working && final?.time.completed == null ? true : undefined,
+        executionStatus: state?.status,
+        fallback: root.id === props.lastUserMessage()?.id && props.isWorking(),
+      })
       const reading = props.scrolledUp() || interactionRoots().includes(root.id)
-      const held = reading && (!!last?.held || (!!last?.working && !working))
+      const held = paused(root.id) || (reading && (!!last?.held || (!!last?.working && !working)))
       if (last && working === last.working && held === last.held) next.set(root.id, last)
       else {
         changed = true
@@ -169,7 +178,7 @@ export function VirtualConversationRows(
         (props.activityDisplay() === "full" ||
           ((interactionBlocks().includes(block.key) || props.scrolledUp()) &&
             !!previous?.find((row) => row.key === block.key)?.activity?.open) ||
-          (props.activityDisplay() !== "minimal" && block.active)),
+          (props.activityDisplay() !== "minimal" && (block.active || paused(block.entries[0].root.id)))),
       process: (root) => {
         const state = processState().get(root.id)!
         return {
@@ -347,6 +356,11 @@ export function VirtualConversationRows(
     layoutMotion.interrupt()
     releaseLocation()
   }
+  createEffect(() => {
+    const scroll = input.scrollRef
+    scroll?.addEventListener("conversation-reading-restored", releaseLocation)
+    onCleanup(() => scroll?.removeEventListener("conversation-reading-restored", releaseLocation))
+  })
   const locationElement = (row: ConversationRow, partID?: string) => {
     const owner = [...(container?.querySelectorAll<HTMLElement>("[data-display-row]") ?? [])].find(
       (element) => element.dataset.displayRow === row.key,
@@ -354,7 +368,7 @@ export function VirtualConversationRows(
     if (!partID || !owner) return owner
     return (
       [...owner.querySelectorAll<HTMLElement>("[data-part-id]")].findLast(
-        (element) => element.dataset.partId === partID,
+        (element) => element.dataset.partId === partID && element.getBoundingClientRect().height > 0,
       ) ?? owner
     )
   }
@@ -425,7 +439,14 @@ export function VirtualConversationRows(
         const measuredWidth = container.clientWidth
         layout.resize(measuredWidth)
         setWidth(measuredWidth)
-        const margin = container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
+        let parent: HTMLElement | null = container
+        let margin = 0
+        while (parent && parent !== scroll) {
+          margin += parent.offsetTop
+          parent = parent.offsetParent as HTMLElement | null
+        }
+        if (parent !== scroll)
+          margin = container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
         setMargin(margin)
       }
       scheduleLocation()
@@ -554,6 +575,7 @@ export function VirtualConversationRows(
                       onLayoutRelease={layoutMotion.release}
                       onMotionReleased={releaseMotion}
                       onBeforeProcessDisclosure={(rootID, opening, event) => {
+                        releaseLocation()
                         props.autoScroll?.handleInteraction(event)
                         if (
                           event.currentTarget instanceof HTMLElement &&
@@ -993,7 +1015,9 @@ function ConversationDisplayRow(
                     onRestoreChanges={input.onRestoreChanges}
                     onForkMessage={props.onForkMessage}
                     executionSummary={
-                      row().kind === "footer" && execution.available() ? execution.round(row().root.id) : undefined
+                      (row().kind === "footer" || row().kind === "process") && execution.available()
+                        ? execution.round(row().root.id)
+                        : undefined
                     }
                     onExecutionDetails={
                       row().kind === "footer" && execution.available()
@@ -1025,7 +1049,12 @@ function ConversationDisplayRow(
               }}
             >
               {row().activity?.tools ? (
-                <ActivityBatchLabel batch={row().activity!} total={row().activity!.tools} />
+                <ActivityBatchLabel
+                  batch={row().activity!}
+                  total={row().activity!.tools}
+                  identity={row().key}
+                  live={row().activity!.active}
+                />
               ) : row().activity?.entries.some((entry) => entry.kind === "body" && entry.event) ? (
                 _({ id: "session.process.records", message: "Process history" })
               ) : (

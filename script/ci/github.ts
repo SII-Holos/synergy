@@ -1,5 +1,5 @@
 import path from "node:path"
-import type { Plan } from "./plan"
+import { executionQueue, type Plan } from "./plan"
 import type { UnitExecution } from "./evidence"
 
 // Provenance: https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs
@@ -106,7 +106,39 @@ async function allJobs(get: ReturnType<typeof client>["get"]) {
   }
 }
 
-export async function workflowExecutions(plan: Plan, options: { timeoutMs?: number; pollMs?: number } = {}) {
+export function reconcileExecutions(
+  plan: Plan,
+  executions: UnitExecution[],
+  needs: Record<string, { result: string }>,
+  attempt: string,
+): UnitExecution[] {
+  return executions.map((execution) => {
+    const unit = plan.units.find((unit) => unit.id === execution.unit)
+    const queue =
+      execution.unit === "benchmark-prepare"
+        ? "benchmark-prepare"
+        : unit &&
+          executionQueue(
+            unit,
+            plan.tasks.filter((task) => plan.selected.includes(task.id)),
+          )
+    // The final job's dependency result includes post-job completion; the Jobs API can lag behind that DAG.
+    if (
+      queue &&
+      needs[queue]?.result === "success" &&
+      execution.attempt === attempt &&
+      execution.status === "in_progress" &&
+      execution.conclusion === null
+    )
+      return { ...execution, status: "completed", conclusion: "success" }
+    return execution
+  })
+}
+
+export async function workflowExecutions(
+  plan: Plan,
+  options: { timeoutMs?: number; pollMs?: number; needs?: Record<string, { result: string }>; attempt?: string } = {},
+) {
   const api = client(plan)
   const expected = [
     ...plan.units.map((unit) => unit.id),
@@ -114,7 +146,12 @@ export async function workflowExecutions(plan: Plan, options: { timeoutMs?: numb
   ]
   const deadline = Date.now() + (options.timeoutMs ?? 60_000)
   for (;;) {
-    const executions = latestExecutions(plan, await allJobs(api.get))
+    const executions = reconcileExecutions(
+      plan,
+      latestExecutions(plan, await allJobs(api.get)),
+      options.needs ?? {},
+      options.attempt ?? plan.attempt,
+    )
     if (
       expected.every((unit) =>
         executions.some((execution) => execution.unit === unit && execution.status === "completed"),

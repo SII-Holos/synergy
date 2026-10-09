@@ -61,7 +61,7 @@ export type ConversationRow = {
   | { kind: "activity"; activity: ConversationActivity }
   | { kind: "process" }
   | { kind: "footer" }
-  | { kind: "load"; more: boolean; older?: boolean }
+  | { kind: "load"; more: boolean; older?: boolean; continuation?: boolean }
 )
 
 // Provenance: docs/postmortem/0059-cold-process-disclosure-jank.md
@@ -293,7 +293,21 @@ export function buildConversationRows(input: {
           })
       }
       if (!page || page.hasMore)
-        rows.push({ key: `${messageKey(message.id)}:load`, root, message, kind: "load", more: !!page })
+        rows.push({
+          key: `${messageKey(message.id)}:load`,
+          root,
+          message,
+          kind: "load",
+          more: !!page,
+          continuation:
+            !page &&
+            !event &&
+            !!process?.working &&
+            message.role === "assistant" &&
+            message.id === lastAssistant?.id &&
+            message.time?.completed == null &&
+            parts.length === 0,
+        })
     }
     if (process && !header)
       rows.push({ key: `${messageKey(root.id)}:process`, root, message: root, kind: "process", process })
@@ -352,7 +366,11 @@ function groupActivities(
       }
       row.activity = block
     } else if (row.kind !== "process") {
-      if (block && (row.kind === "load" || (row.kind === "body" && (row.processBody || row.message.role === "user"))))
+      if (
+        block &&
+        ((row.kind === "load" && !row.continuation) ||
+          (row.kind === "body" && (row.processBody || row.message.role === "user")))
+      )
         block.active = false
       block = undefined
     }

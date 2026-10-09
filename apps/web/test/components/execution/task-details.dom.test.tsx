@@ -48,7 +48,7 @@ beforeAll(async () => {
       return {data:{sessionID:q.sessionID,items:items.slice(start,start+q.limit),count:Math.min(q.limit,items.length-start),total:items.length,offset:start,limit:q.limit,hasMore:start+q.limit<items.length,hasActiveAgenda:true}}
     },inboxRemoved:async(q,options)=>{(window.removedRequests??=[]).push(options.signal);window.removedReads=(window.removedReads||0)+1;if(window.removedDelay)await new Promise(r=>setTimeout(r,window.removedDelay));return {data:removed}},inboxGuide:async(q)=>{window.guided=q.itemID},inboxRetry:async(q)=>{window.retried=q.itemID},inboxRemove:async(q)=>{const item=data.inbox.root.find(i=>i.id===q.itemID);removed.push(item);setData("inbox","root",data.inbox.root.filter(i=>i.id!==q.itemID));return {data:item}},inboxRestore:async(q)=>{const i=removed.findIndex(i=>i.id===q.itemID);setData("inbox","root",[...data.inbox.root,removed.splice(i,1)[0]]);return {data:true}}},cortex:{cancel:async(q)=>{window.cancelledTask=q.taskID;return {data:true}}}}}
     const [executionState,setExecutionState]=createStore({summary,error:undefined})
-    export const useExecution=()=>({state:executionState,available:()=>!location.search.includes("minimal"),refresh:async()=>{window.refreshed=true},open:async(runID,nodeID)=>{window.openedNode=nodeID||"all"}})
+    export const useExecution=()=>({advance:()=>0,connected:()=>true,state:executionState,available:()=>!location.search.includes("minimal"),refresh:async()=>{window.refreshed=true},open:async(runID,nodeID)=>{window.openedNode=nodeID||"all"}})
     export const useParams=()=>({id:"root"})
     export const useSDK=()=>sdk
     export const useSync=()=>({data,session:{get:()=>session,refresh:async()=>{}}})
@@ -267,7 +267,7 @@ test("row actions reveal on focus, keep title width stable and use canonical tas
   expect((await title.boundingBox())!.width).toBeCloseTo(width, 1)
   await cancel.click()
   expect(await page.evaluate(() => Reflect.get(window, "cancelledTask"))).toBe("ctx_0")
-  expect(await row.getAttribute("data-state")).toBe("queued")
+  expect(await row.getAttribute("data-state")).toBe("running")
   expect(errors).toEqual([])
 })
 
@@ -493,4 +493,17 @@ test("touch controls remain visible and each action has a 44px hit area", async 
   } finally {
     await context.close()
   }
+})
+
+test("execution time displays its lower bound without a tooltip and hides empty history", async () => {
+  await page.evaluate(() =>
+    Reflect.get(window, "updateUsage")({ elapsedMs: 0, elapsedActive: false, elapsedLowerBound: true }),
+  )
+  const time = page.locator(".execution-compact-metric").filter({ hasText: "≥ 00:00" })
+  expect(await time.count()).toBe(1)
+  expect(await time.getAttribute("aria-label")).toContain("Execution time")
+  await time.hover()
+  expect(await page.getByRole("tooltip").count()).toBe(0)
+  await page.evaluate(() => Reflect.get(window, "updateUsage")({ elapsedMs: null }))
+  expect(await page.locator(".execution-compact-metric").filter({ hasText: "00:00" }).count()).toBe(0)
 })

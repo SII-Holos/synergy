@@ -104,6 +104,7 @@ test(
             await createUserMessage({
               sessionID: session.id,
               agent: "selection-agent",
+              summary: { title: "Model selection integration" },
               parts: [{ type: "text", text: "Read the fixture twice, then finish." }],
             })
             const loop = SessionInvoke.loop.force(session.id)

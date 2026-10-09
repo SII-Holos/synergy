@@ -198,6 +198,23 @@ export namespace UsageLedger {
     const { revision, sourceRevision, ...rest } = value
     return JSON.stringify(rest)
   }
+  function losesUsage(previous: RolloutUsage.Info | undefined, next: RolloutUsage.Info | undefined) {
+    if (!previous) return false
+    if (!next) return true
+    return (
+      Object.entries(previous.input).some(
+        ([key, value]) => value !== null && next.input[key as keyof typeof next.input] === null,
+      ) ||
+      Object.entries(previous.output).some(
+        ([key, value]) => value !== null && next.output[key as keyof typeof next.output] === null,
+      ) ||
+      Object.entries(previous.cacheWrites).some(([key, value]) => value !== null && next.cacheWrites[key] == null) ||
+      previous.units.some(
+        (unit) => unit.quantity !== null && next.units.find((item) => item.unit === unit.unit)?.quantity == null,
+      ) ||
+      (!!previous.reported && !next.reported)
+    )
+  }
   const published = Storage.state(() => new Map<string, number>())
   async function put(input: UsageSchema.Record, notify = true) {
     if (!Storage.inTransaction()) throw new Error("Usage facts require the source transaction")
@@ -208,9 +225,27 @@ export namespace UsageLedger {
     )
       return
     const previous = await optional<UsageSchema.Record>(key(input))
+    if (
+      previous?.kind === "attempt" &&
+      input.kind === "attempt" &&
+      previous.status !== "running" &&
+      previous.sourceRevision === input.sourceRevision
+    ) {
+      if (losesUsage(previous.usage, input.usage)) input.usage = previous.usage
+      input.usageFinal ||= previous.usageFinal
+      if (
+        previous.estimate &&
+        input.estimate?.total == null &&
+        (previous.estimate.total !== null || previous.estimate.known > (input.estimate?.known ?? 0))
+      )
+        input.estimate = previous.estimate
+      input.responseModel ??= previous.responseModel
+    }
     if (previous?.kind === "call" && input.kind === "call")
       input = { ...input, hasAttempts: input.hasAttempts || previous.hasAttempts }
-    if (previous && (previous.sourceRevision > input.sourceRevision || content(previous) === content(input))) return
+    if (previous && previous.sourceRevision > input.sourceRevision) return
+    const next = UsageSchema.Record.parse(input)
+    if (previous && content(previous) === content(next)) return
     const now = Date.now()
     if (
       notify &&
@@ -221,8 +256,7 @@ export namespace UsageLedger {
       now - (published().get(input.id) ?? 0) < 1000
     )
       return
-    const next = UsageSchema.Record.parse({ ...input, revision: (await revision()) + 1 })
-    if (previous?.kind === "call" && next.kind === "call") next.hasAttempts ||= previous.hasAttempts
+    next.revision = (await revision()) + 1
     await Storage.write(key(next), next)
     if (previous && timeKey(previous).join("/") !== timeKey(next).join("/")) await Storage.remove(timeKey(previous))
     await index(next)
@@ -381,69 +415,113 @@ export namespace UsageLedger {
     const value = await optional([...root, "runs", runID, "calls", callID])
     return value ? RolloutSchema.CallRecord.parse(value) : undefined
   }
-  export async function captureBatch(owner: UsageSchema.Owner, limit = 128) {
+  const Replay = z
+    .object({
+      version: z.literal(1),
+      owner: z.string(),
+      revision: z.number().int().nonnegative(),
+      through: z.number().int().nonnegative(),
+    })
+    .strict()
+  async function recoverAttempt(
+    owner: UsageSchema.Owner,
+    sourceRevision: number,
+    attempt: RolloutSchema.AttemptRecord,
+  ) {
+    if (attempt.status === "running") return
+    const record = { owner, runID: attempt.runID, kind: "attempt" as const, entityID: attempt.id }
+    if (
+      (await optional(StoragePath.usageSuppressed(identity(record)))) ||
+      (await hasClearedCall(owner, attempt.runID, [attempt.callID]))
+    )
+      return
+    const previous = await optional<UsageSchema.Record>(key(record))
+    if (previous && previous.sourceRevision > sourceRevision) return
+    if (previous?.kind === "attempt" && previous.sourceRevision === sourceRevision) {
+      attempt.usage = previous.usage ?? attempt.usage
+      attempt.estimate = previous.estimate ?? attempt.estimate
+      attempt.usageFinal = previous.usageFinal
+      attempt.responseModel ??= previous.responseModel
+    }
+    if (attempt.usage?.complete && attempt.usageFinal && attempt.estimate?.total != null) return
+    const call = await readCall(owner, attempt.runID, attempt.callID)
+    if (!call) throw new Error("Historical usage attempt is missing its call")
+    if ((!attempt.usage?.complete || !attempt.usageFinal) && attempt.response) {
+      const capture = RolloutUsageCapture.create(
+        call.model.sdk,
+        attempt.response.mediaType,
+        call.model.providerID,
+        call.kind,
+      )
+      try {
+        for await (const bytes of RolloutArtifact.read(owner, attempt.response)) capture.append(bytes)
+        const usage = capture.finish()
+        if (capture.hasUsage() && !losesUsage(attempt.usage, usage)) {
+          attempt.usage = usage
+          attempt.usageFinal =
+            capture.hasFinalUsage() ||
+            (attempt.response.status === "complete" && (attempt.status === "completed" || !capture.streaming))
+          attempt.responseModel ??= capture.responseModel()
+        }
+      } catch (error) {
+        if (!(error instanceof Storage.NotFoundError)) throw error
+      }
+    }
+    if (attempt.estimate?.total == null)
+      attempt.estimate = ProviderPricing.estimate(
+        attempt.pricingEvidence ? attempt.pricingEvidence.pricing : call.model.pricing,
+        attempt.usage,
+        call.model.billingMode ?? "unknown",
+        attempt.ended,
+      )
+  }
+  export function captureBatch(owner: UsageSchema.Owner, limit = 128) {
+    return capturePage(owner, limit, false)
+  }
+  export function replayBatch(owner: UsageSchema.Owner, limit = 128) {
+    return capturePage(owner, limit, true)
+  }
+  async function capturePage(owner: UsageSchema.Owner, limit: number, replay: boolean) {
     using lock = await Lock.write(`usage-capture:${owner.scopeID}:${ownerKey(owner)}`)
     const { RolloutJournal } = await import("../session/rollout/journal")
     const head = await RolloutJournal.head(owner)
-    const checkpointKey = StoragePath.usageOwnerCheckpoint(owner.scopeID, ownerKey(owner))
-    const checkpoint = await optional<{ revision: number }>(checkpointKey)
+    const checkpointKey = replay
+      ? StoragePath.usageReplay()
+      : StoragePath.usageOwnerCheckpoint(owner.scopeID, ownerKey(owner))
+    const identity = JSON.stringify([owner.scopeID, ownerKey(owner)])
+    const saved = replay ? await optional(checkpointKey) : undefined
+    const cursor = saved ? Replay.parse(saved) : undefined
+    const checkpoint = replay
+      ? cursor?.owner === identity
+        ? cursor
+        : undefined
+      : await optional<{ revision: number }>(checkpointKey)
+    const target = replay && cursor?.owner === identity ? cursor.through : head.committed
     const after = checkpoint?.revision ?? 0
-    if (after >= head.committed) return { processed: 0, complete: true }
-    const through = Math.min(head.committed, after + limit)
+    if (after >= target) return { processed: 0, complete: true }
+    const through = Math.min(target, after + limit)
     const events: (typeof RolloutJournal.Event._output)[] = []
     for await (const event of RolloutJournal.events(owner, through, after)) {
       if (event.kind === "record" && event.key[2] === "attempts") {
         const attempt = RolloutSchema.AttemptRecord.parse(event.value)
-        if (
-          attempt.status !== "running" &&
-          (!attempt.usage ||
-            (attempt.usage.input.total === null &&
-              attempt.usage.output.total === null &&
-              !attempt.usage.reported &&
-              !attempt.usage.units.length)) &&
-          attempt.response
-        ) {
-          const call = await readCall(owner, attempt.runID, attempt.callID)
-          if (!call) throw new Error("Historical usage attempt is missing its call")
-          const capture = RolloutUsageCapture.create(
-            call.model.sdk,
-            attempt.response.mediaType,
-            call.model.providerID,
-            call.kind,
-          )
-          try {
-            for await (const bytes of RolloutArtifact.read(owner, attempt.response)) capture.append(bytes)
-          } catch (error) {
-            if (!(error instanceof Storage.NotFoundError)) throw error
-            events.push(event)
-            continue
-          }
-          const usage = capture.finish()
-          if (capture.hasUsage()) {
-            attempt.usage = usage
-            attempt.usageFinal =
-              capture.hasFinalUsage() || (attempt.status === "completed" && attempt.response.status === "complete")
-            attempt.estimate ??= ProviderPricing.estimate(
-              attempt.pricingEvidence ? attempt.pricingEvidence.pricing : call.model.pricing,
-              usage,
-              call.model.billingMode ?? "unknown",
-              attempt.ended,
-            )
-            event.value = JSON.parse(JSON.stringify(attempt))
-          }
-        }
+        await recoverAttempt(owner, event.seq, attempt)
+        event.value = JSON.parse(JSON.stringify(attempt))
       }
       events.push(event)
     }
     await Storage.transaction(async () => {
       for (const event of events) {
-        if (event.kind === "record") await capture(owner, event.seq, event.key, event.value, false)
+        if (event.kind === "record") await capture(owner, event.seq, event.key, event.value, replay)
         else await captureGap(owner, event.seq, event.time)
       }
-      const current = await optional<{ revision: number }>(checkpointKey)
-      await Storage.write(checkpointKey, { revision: Math.max(through, current?.revision ?? 0) })
+      if (replay)
+        await Storage.write(checkpointKey, { version: 1, owner: identity, revision: through, through: target })
+      else {
+        const current = await optional<{ revision: number }>(checkpointKey)
+        await Storage.write(checkpointKey, { revision: Math.max(through, current?.revision ?? 0) })
+      }
     })
-    return { processed: events.length, complete: through === head.committed }
+    return { processed: events.length, complete: through === target }
   }
   export async function captureOwner(owner: UsageSchema.Owner) {
     let processed = 0

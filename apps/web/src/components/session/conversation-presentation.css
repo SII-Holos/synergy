@@ -1,0 +1,23 @@
+[data-conversation-retained] {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+[data-conversation-retained] * {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+[data-conversation-switching] {
+  position: absolute;
+  inset-block-start: 64px;
+  inset-inline-end: 24px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--background-stronger);
+  color: var(--text-weak);
+  font-size: 12px;
+  pointer-events: none;
+}

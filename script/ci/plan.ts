@@ -96,6 +96,9 @@ export interface Plan {
   units: Unit[]
   digest: string
   timings?: string
+  timingSnapshot?: import("./timing").Timings
+  timingSource?: string
+  fullTriggers?: import("./selection").FullTrigger[]
 }
 
 export const LIMITS: Record<Pool, number> = { linux: 12, docker: 8, postgres: 1, windows: 1, macos: 1 }
@@ -278,6 +281,8 @@ export function createPlan(input: {
   tasks: Task[]
   only?: string[]
   timings?: string
+  timingSnapshot?: import("./timing").Timings
+  timingSource?: string
   selectionChanges?: SelectionChanges
 }): Plan {
   const ids = new Set(input.tasks.map((task) => task.id))
@@ -344,10 +349,12 @@ export function createPlan(input: {
     run: input.run,
     attempt: input.attempt ?? "1",
     ...(input.timings ? { timings: input.timings } : {}),
+    ...(input.timingSnapshot ? { timingSnapshot: input.timingSnapshot, timingSource: input.timingSource } : {}),
     mode: input.mode,
     changed: [...new Set(input.changed)].sort(),
     selected: [...selected].sort(),
     proposed: [...proposed].sort(),
+    ...(impact.fullTriggers.length ? { fullTriggers: impact.fullTriggers } : {}),
     reasons: Object.fromEntries(
       tasks.map((task) => [
         task.id,

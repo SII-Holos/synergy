@@ -38,7 +38,12 @@ export function ExecutionPerformance(props: { summary: ExecutionSummary }) {
   )
 }
 
-export function UsagePopover(props: { summary: ExecutionSummary; class?: string; children: JSX.Element }) {
+export function UsagePopover(props: {
+  summary: ExecutionSummary
+  label?: string
+  class?: string
+  children: JSX.Element
+}) {
   const { _ } = useLingui()
   return (
     <Popover
@@ -46,7 +51,7 @@ export function UsagePopover(props: { summary: ExecutionSummary; class?: string;
       class="execution-usage-popover"
       placement="bottom-end"
       triggerAs={(trigger) => (
-        <button {...trigger} type="button" class={props.class} aria-label={_(E.usageDetails)}>
+        <button {...trigger} type="button" class={props.class} aria-label={props.label ?? _(E.usageDetails)}>
           {props.children}
         </button>
       )}

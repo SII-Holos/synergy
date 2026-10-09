@@ -121,24 +121,16 @@ describe("ContextUsage provenance and measurement", () => {
       })
       if (!draft) throw new Error("Expected context usage draft")
 
-      expect(draft.categories.conversation).toEqual({
-        estimatedTokens:
-          boundedUtf8Tokens("pasted code") + boundedUtf8Tokens("assistant reply") + boundedUtf8Tokens("reasoning"),
-        items: 3,
-      })
-      expect(draft.categories.instructions).toEqual({
-        estimatedTokens:
-          boundedUtf8Tokens("base instructions") +
-          boundedUtf8Tokens("runtime guidance") +
-          boundedUtf8Tokens("max-step guard"),
-        items: 3,
-      })
-      expect(draft.categories.filesReferences).toEqual({
-        estimatedTokens: boundedUtf8Tokens("file contents"),
+      expect(draft.categories.userMessages).toEqual({
+        estimatedTokens: boundedUtf8Tokens("pasted code"),
         items: 1,
       })
-      expect(draft.categories.toolActivity.items).toBe(3)
-      expect(draft.categories.toolActivity.estimatedTokens).toBeGreaterThan(boundedUtf8Tokens("file read result"))
+      expect(draft.categories.assistantMessages.items).toBe(3)
+      expect(draft.categories.systemInstructions.items).toBe(2)
+      expect(draft.categories.injectedContext.items).toBe(1)
+      expect(draft.categories.attachments.estimatedTokens).toBe(boundedUtf8Tokens("file contents"))
+      expect(draft.categories.toolDefinitions.items).toBe(1)
+      expect(draft.categories.toolResults.estimatedTokens).toBe(boundedUtf8Tokens("file read result"))
       expect(draft.estimator).toEqual({
         kind: "bounded-utf8",
         sampledCharacters: expect.any(Number),
@@ -153,12 +145,25 @@ describe("ContextUsage provenance and measurement", () => {
       const source = ContextUsage.buildProvenance({
         history: {
           categories: {
-            conversation: [{ text: "kept conversation" }, { text: "removed conversation" }],
-            toolActivity: [],
-            filesReferences: [],
-            instructions: [{ text: "kept instruction" }],
+            assistantMessages: [],
+            injectedContext: [],
+            skills: [],
+            toolDefinitions: [],
+            userMessages: [{ text: "kept userMessages" }, { text: "removed userMessages" }],
+            toolResults: [],
+            attachments: [],
+            systemInstructions: [{ text: "kept instruction" }],
           },
-          items: { conversation: 2, toolActivity: 0, filesReferences: 0, instructions: 1 },
+          items: {
+            assistantMessages: 0,
+            injectedContext: 0,
+            skills: 0,
+            toolDefinitions: 0,
+            userMessages: 2,
+            toolResults: 0,
+            attachments: 0,
+            systemInstructions: 1,
+          },
         },
         toolDefinitions: [],
       })
@@ -166,9 +171,9 @@ describe("ContextUsage provenance and measurement", () => {
         {
           role: "user",
           content: [
-            { type: "text", text: "kept conversation" },
+            { type: "text", text: "kept userMessages" },
             { type: "text", text: "kept instruction" },
-            { type: "text", text: "inserted conversation" },
+            { type: "text", text: "inserted userMessages" },
           ],
         },
         { role: "system", content: "inserted instruction" },
@@ -187,18 +192,16 @@ describe("ContextUsage provenance and measurement", () => {
 
       const remapped = ContextUsage.remapProvenance(messages, source)
 
-      expect(remapped.categories.conversation.map((contribution) => contribution.text)).toEqual([
-        "kept conversation",
-        "inserted conversation",
+      expect(remapped.categories.userMessages.map((contribution) => contribution.text)).toEqual([
+        "kept userMessages",
+        "inserted userMessages",
       ])
-      expect(remapped.categories.instructions.map((contribution) => contribution.text)).toEqual([
+      expect(remapped.categories.systemInstructions.map((contribution) => contribution.text)).toEqual([
         "kept instruction",
         "inserted instruction",
       ])
-      expect(remapped.categories.toolActivity.map((contribution) => contribution.text)).toEqual([
-        "inserted tool output",
-      ])
-      expect(JSON.stringify(remapped)).not.toContain("removed conversation")
+      expect(remapped.categories.toolResults.map((contribution) => contribution.text)).toEqual(["inserted tool output"])
+      expect(JSON.stringify(remapped)).not.toContain("removed userMessages")
     }))
 
   test("honors context and attachment model policy", () =>
@@ -238,8 +241,8 @@ describe("ContextUsage provenance and measurement", () => {
       })
       if (!draft) throw new Error("Expected context usage draft")
 
-      expect(draft.categories.conversation).toEqual({ estimatedTokens: 0, items: 0 })
-      expect(draft.categories.filesReferences).toEqual({
+      expect(draft.categories.userMessages).toEqual({ estimatedTokens: 0, items: 0 })
+      expect(draft.categories.attachments).toEqual({
         estimatedTokens: boundedUtf8Tokens("[Attachment: summary text]"),
         items: 2,
       })
@@ -262,10 +265,14 @@ describe("ContextUsage provenance and measurement", () => {
       if (!draft) throw new Error("Expected context usage draft")
 
       expect(draft.categories).toEqual({
-        conversation: { estimatedTokens: 0, items: 0 },
-        toolActivity: { estimatedTokens: 0, items: 0 },
-        filesReferences: { estimatedTokens: 0, items: 0 },
-        instructions: { estimatedTokens: 0, items: 0 },
+        assistantMessages: { estimatedTokens: 0, items: 0 },
+        injectedContext: { estimatedTokens: 0, items: 0 },
+        skills: { estimatedTokens: 0, items: 0 },
+        toolDefinitions: { estimatedTokens: 0, items: 0 },
+        userMessages: { estimatedTokens: 0, items: 0 },
+        toolResults: { estimatedTokens: 0, items: 0 },
+        attachments: { estimatedTokens: 0, items: 0 },
+        systemInstructions: { estimatedTokens: 0, items: 0 },
       })
     }))
 
@@ -278,15 +285,15 @@ describe("ContextUsage provenance and measurement", () => {
         providerID: "test",
         instructions: ["system instructions"],
         provenance: ContextUsage.buildProvenance({
-          history: MessageV2.projectModelMessages([userMessage([part({ type: "text", text: "conversation" })])])
+          history: MessageV2.projectModelMessages([userMessage([part({ type: "text", text: "userMessages" })])])
             .provenance,
           toolDefinitions: [],
         }),
       })
 
       expect(draft?.estimator.kind).toBe("bounded-utf8")
-      expect(draft?.categories.conversation.estimatedTokens).toBeGreaterThan(0)
-      expect(draft?.categories.instructions.estimatedTokens).toBeGreaterThan(0)
+      expect(draft?.categories.userMessages.estimatedTokens).toBeGreaterThan(0)
+      expect(draft?.categories.systemInstructions.estimatedTokens).toBeGreaterThan(0)
     }))
 
   test("keeps pathological multilingual estimation off the main event loop", () =>
@@ -310,12 +317,25 @@ describe("ContextUsage provenance and measurement", () => {
         provenance: ContextUsage.buildProvenance({
           history: {
             categories: {
-              conversation: [],
-              toolActivity: [{ text: "答".repeat(11_000) }],
-              filesReferences: [],
-              instructions: [],
+              assistantMessages: [],
+              injectedContext: [],
+              skills: [],
+              toolDefinitions: [],
+              userMessages: [],
+              toolResults: [{ text: "答".repeat(11_000) }],
+              attachments: [],
+              systemInstructions: [],
             },
-            items: { conversation: 0, toolActivity: 1, filesReferences: 0, instructions: 0 },
+            items: {
+              assistantMessages: 0,
+              injectedContext: 0,
+              skills: 0,
+              toolDefinitions: 0,
+              userMessages: 0,
+              toolResults: 1,
+              attachments: 0,
+              systemInstructions: 0,
+            },
           },
           toolDefinitions: [],
         }),
@@ -324,7 +344,7 @@ describe("ContextUsage provenance and measurement", () => {
 
       expect(mainLoopAdvanced).toBe(true)
       expect(tokenizerCalled).toBe(false)
-      expect(draft?.categories.toolActivity.estimatedTokens).toBeGreaterThan(0)
+      expect(draft?.categories.toolResults.estimatedTokens).toBeGreaterThan(0)
       expect(draft?.estimator).toEqual({
         kind: "bounded-utf8",
         sampledCharacters: 256,
@@ -344,16 +364,29 @@ describe("ContextUsage provenance and measurement", () => {
         instructions: [],
         provenance: {
           categories: {
-            conversation: contributions,
-            toolActivity: [],
-            filesReferences: [],
-            instructions: [],
+            assistantMessages: [],
+            injectedContext: [],
+            skills: [],
+            toolDefinitions: [],
+            userMessages: contributions,
+            toolResults: [],
+            attachments: [],
+            systemInstructions: [],
           },
-          items: { conversation: contributions.length, toolActivity: 0, filesReferences: 0, instructions: 0 },
+          items: {
+            assistantMessages: 0,
+            injectedContext: 0,
+            skills: 0,
+            toolDefinitions: 0,
+            userMessages: contributions.length,
+            toolResults: 0,
+            attachments: 0,
+            systemInstructions: 0,
+          },
         },
       })
 
-      expect(draft?.categories.conversation.estimatedTokens).toBe(
+      expect(draft?.categories.userMessages.estimatedTokens).toBe(
         contributions.reduce((sum, contribution) => sum + boundedUtf8Tokens(contribution.text), 0),
       )
       expect(draft?.estimator).toEqual({
@@ -373,19 +406,32 @@ describe("ContextUsage provenance and measurement", () => {
         instructions: [],
         provenance: {
           categories: {
-            conversation: contributions,
-            toolActivity: [],
-            filesReferences: [],
-            instructions: [],
+            assistantMessages: [],
+            injectedContext: [],
+            skills: [],
+            toolDefinitions: [],
+            userMessages: contributions,
+            toolResults: [],
+            attachments: [],
+            systemInstructions: [],
           },
-          items: { conversation: contributions.length, toolActivity: 0, filesReferences: 0, instructions: 0 },
+          items: {
+            assistantMessages: 0,
+            injectedContext: 0,
+            skills: 0,
+            toolDefinitions: 0,
+            userMessages: contributions.length,
+            toolResults: 0,
+            attachments: 0,
+            systemInstructions: 0,
+          },
         },
       })
 
-      expect(draft?.categories.conversation.estimatedTokens).toBe(
+      expect(draft?.categories.userMessages.estimatedTokens).toBe(
         contributions.reduce((sum, contribution) => sum + boundedUtf8Tokens(contribution.text), 0),
       )
-      expect(draft?.categories.conversation.items).toBe(contributions.length)
+      expect(draft?.categories.userMessages.items).toBe(contributions.length)
     }))
 
   test("samples mixed UTF-8 content across unsampled contributions", () =>
@@ -400,16 +446,29 @@ describe("ContextUsage provenance and measurement", () => {
         instructions: [],
         provenance: {
           categories: {
-            conversation: contributions,
-            toolActivity: [],
-            filesReferences: [],
-            instructions: [],
+            assistantMessages: [],
+            injectedContext: [],
+            skills: [],
+            toolDefinitions: [],
+            userMessages: contributions,
+            toolResults: [],
+            attachments: [],
+            systemInstructions: [],
           },
-          items: { conversation: contributions.length, toolActivity: 0, filesReferences: 0, instructions: 0 },
+          items: {
+            assistantMessages: 0,
+            injectedContext: 0,
+            skills: 0,
+            toolDefinitions: 0,
+            userMessages: contributions.length,
+            toolResults: 0,
+            attachments: 0,
+            systemInstructions: 0,
+          },
         },
       })
 
-      expect(draft?.categories.conversation.estimatedTokens).toBe(
+      expect(draft?.categories.userMessages.estimatedTokens).toBe(
         contributions.reduce((sum, contribution) => sum + boundedUtf8Tokens(contribution.text), 0),
       )
     }))
@@ -423,7 +482,7 @@ describe("ContextUsage provenance and measurement", () => {
         providerID: "test",
         instructions: ["instructions"],
         provenance: ContextUsage.buildProvenance({
-          history: MessageV2.projectModelMessages([userMessage([part({ type: "text", text: "conversation" })])])
+          history: MessageV2.projectModelMessages([userMessage([part({ type: "text", text: "userMessages" })])])
             .provenance,
           toolDefinitions: [],
         }),
@@ -439,10 +498,14 @@ describe("ContextUsageEstimator isolation", () => {
       const oversized = "x".repeat(ContextUsageEstimator.LIMITS.sampleCharactersPerContribution + 1)
       const request: ContextUsageEstimator.Request = {
         categories: {
-          conversation: [{ sample: oversized, sourceCharacters: oversized.length }],
-          toolActivity: [],
-          filesReferences: [],
-          instructions: [],
+          assistantMessages: [],
+          injectedContext: [],
+          skills: [],
+          toolDefinitions: [],
+          userMessages: [{ sample: oversized, sourceCharacters: oversized.length }],
+          toolResults: [],
+          attachments: [],
+          systemInstructions: [],
         },
         sampledCharacters: oversized.length,
         truncated: false,
@@ -455,10 +518,14 @@ describe("ContextUsageEstimator isolation", () => {
     runtime.run(async () => {
       const request: ContextUsageEstimator.Request = {
         categories: {
-          conversation: [{ sample: "conversation", sourceCharacters: 12 }],
-          toolActivity: [],
-          filesReferences: [],
-          instructions: [],
+          assistantMessages: [],
+          injectedContext: [],
+          skills: [],
+          toolDefinitions: [],
+          userMessages: [{ sample: "conversation", sourceCharacters: 12 }],
+          toolResults: [],
+          attachments: [],
+          systemInstructions: [],
         },
         sampledCharacters: 12,
         truncated: false,
@@ -480,10 +547,14 @@ describe("ContextUsage reconciliation", () => {
     contextLimit: 1000,
     usableInputLimit: 900,
     categories: {
-      conversation: { estimatedTokens: 4, items: 1 },
-      toolActivity: { estimatedTokens: 3, items: 1 },
-      filesReferences: { estimatedTokens: 2, items: 1 },
-      instructions: { estimatedTokens: 1, items: 1 },
+      assistantMessages: { estimatedTokens: 0, items: 0 },
+      injectedContext: { estimatedTokens: 0, items: 0 },
+      skills: { estimatedTokens: 0, items: 0 },
+      toolDefinitions: { estimatedTokens: 0, items: 0 },
+      userMessages: { estimatedTokens: 4, items: 1 },
+      toolResults: { estimatedTokens: 3, items: 1 },
+      attachments: { estimatedTokens: 2, items: 1 },
+      systemInstructions: { estimatedTokens: 1, items: 1 },
     },
     estimator: { kind: "model-tokenizer", encoding: "o200k_base" },
   }
@@ -503,10 +574,10 @@ describe("ContextUsage reconciliation", () => {
     runtime.run(() => {
       const snapshot = ContextUsage.reconcile(draft, 7, 123)
 
-      expect(snapshot.categories.conversation.attributedTokens).toBe(3)
-      expect(snapshot.categories.toolActivity.attributedTokens).toBe(2)
-      expect(snapshot.categories.filesReferences.attributedTokens).toBe(1)
-      expect(snapshot.categories.instructions.attributedTokens).toBe(1)
+      expect(snapshot.categories.find((entry) => entry.category === "userMessages")!.attributedTokens).toBe(3)
+      expect(snapshot.categories.find((entry) => entry.category === "toolResults")!.attributedTokens).toBe(2)
+      expect(snapshot.categories.find((entry) => entry.category === "attachments")!.attributedTokens).toBe(1)
+      expect(snapshot.categories.find((entry) => entry.category === "systemInstructions")!.attributedTokens).toBe(1)
       expect(snapshot.overhead.attributedTokens).toBe(0)
       expect(snapshot.reconciliation).toEqual({ mode: "scaled-down", factor: 0.7 })
       expect(ContextUsage.attributedTotal(snapshot)).toBe(7)
@@ -515,9 +586,9 @@ describe("ContextUsage reconciliation", () => {
   test("normalizes all persisted token values to non-negative integers", () =>
     runtime.run(() => {
       const malformed = structuredClone(draft)
-      malformed.categories.conversation.estimatedTokens = Number.NaN
-      malformed.categories.toolActivity.estimatedTokens = -10
-      malformed.categories.filesReferences.estimatedTokens = 1.9
+      malformed.categories.userMessages.estimatedTokens = Number.NaN
+      malformed.categories.toolResults.estimatedTokens = -10
+      malformed.categories.attachments.estimatedTokens = 1.9
 
       const snapshot = ContextUsage.reconcile(malformed, 4.8, 123.9)
       expect(ContextUsage.Schema.parse(snapshot)).toEqual(snapshot)
@@ -528,3 +599,78 @@ describe("ContextUsage reconciliation", () => {
 })
 
 afterRuntimeTests(() => runtime.close())
+
+test("source indices preserve message identity, skills and injected fragments through prompt transforms", () =>
+  runtime.run(async () => {
+    const projected = MessageV2.projectModelMessages([
+      userMessage([part({ type: "text", text: "user text", origin: "user" })]),
+      assistantMessage([
+        part({
+          type: "tool",
+          tool: "skill",
+          callID: "skill-call",
+          state: {
+            status: "completed",
+            input: { name: "example" },
+            output: "skill body",
+            title: "Example",
+            metadata: { name: "example" },
+            time: { start: 1, end: 2 },
+          },
+        }),
+      ]),
+    ])
+    const provenance = ContextUsage.buildProvenance({
+      history: ContextUsage.remapProvenance(projected.messages, projected.provenance),
+      toolDefinitions: [],
+      injections: [{ text: "memory block", source: "library" }],
+    })
+    const sources = ContextUsage.sourceIndex({
+      messages: projected.messages,
+      system: ["base rules\n\nmemory block\n\ntrailing rules"],
+      provenance,
+    })
+    expect(sources.find((source) => source.category === "skills")).toMatchObject({
+      source: "Example",
+      messageID: "msg_user",
+      precision: "source",
+    })
+    expect(sources.filter((source) => source.category === "injectedContext")).toMatchObject([
+      { source: "library", range: { start: 12, end: 24 }, characters: 12 },
+    ])
+    const draft = await ContextUsage.measureDraft({
+      modelID: "test",
+      providerID: "test",
+      instructions: ["base rules\n\nmemory block\n\ntrailing rules"],
+      provenance,
+    })
+    expect(draft?.categories.injectedContext.estimatedTokens).toBe(3)
+    expect(
+      sources.filter((source) => source.path[0] === "system").reduce((sum, source) => sum + source.characters, 0),
+    ).toBe(40)
+    expect(JSON.stringify(sources)).not.toContain("memory block")
+  }))
+
+test("native attachments retain source identity without counting encoded bytes as text", () =>
+  runtime.run(() => {
+    const attachment = part({
+      type: "attachment",
+      mime: "image/png",
+      filename: "fixture.png",
+      url: "data:image/png;base64,aW1hZ2U=",
+      model: { mode: "provider-file", summary: "fixture.png" },
+    })
+    const projected = MessageV2.projectModelMessages([userMessage([attachment])])
+    const sources = ContextUsage.sourceIndex({
+      messages: projected.messages,
+      system: [],
+      provenance: projected.provenance,
+    })
+    expect(sources.find((entry) => entry.category === "attachments")).toMatchObject({
+      source: "fixture.png",
+      messageID: "msg_user",
+      partID: attachment.id,
+      characters: 0,
+      precision: "source",
+    })
+  }))

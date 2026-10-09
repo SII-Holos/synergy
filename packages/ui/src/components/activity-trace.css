@@ -364,9 +364,9 @@
 
 [data-component="animated-activity-count"] {
   display: inline-grid;
-  width: 6ch;
+  min-width: 1ch;
   overflow: hidden;
-  color: var(--text-base);
+  color: inherit;
   font-variant-numeric: tabular-nums;
   text-align: end;
   vertical-align: baseline;
@@ -385,11 +385,13 @@
   }
 
   &[data-animating] [data-slot="activity-count-old"] {
-    animation: activity-count-out 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: activity-count-out var(--motion-duration-base, 180ms)
+      var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1)) both;
   }
 
   &[data-animating] [data-slot="activity-count-new"] {
-    animation: activity-count-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: activity-count-in var(--motion-duration-base, 180ms)
+      var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1)) both;
   }
 }
 
@@ -400,14 +402,14 @@
   }
   to {
     opacity: 0;
-    transform: translateY(-0.45em);
+    transform: translateY(-4px);
   }
 }
 
 @keyframes activity-count-in {
   from {
     opacity: 0;
-    transform: translateY(0.45em);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;

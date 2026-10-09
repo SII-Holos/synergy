@@ -59,7 +59,12 @@ export namespace RolloutLedger {
     if (run.configuration) return run.configuration
     const provenance = await record(() => RolloutProvenance.capture())
     await record(() =>
-      RolloutJournal.write(owner, [...root(owner, runID), "info"], { ...run, configuration, provenance }),
+      RolloutJournal.write(owner, [...root(owner, runID), "info"], {
+        ...run,
+        configuration,
+        provenance,
+        ...(!run.input ? { admissionOnly: true } : {}),
+      }),
     )
     return configuration
   }
@@ -81,7 +86,7 @@ export namespace RolloutLedger {
   export async function requestCancel(owner: Owner, runID: string) {
     using lock = await Lock.write(lockKey(owner, runID))
     const run = await getRun(owner, runID)
-    if (run.status !== "running" || run.cancelRequestedAt) return run
+    if ((run.status !== "running" && run.status !== "interrupted") || run.cancelRequestedAt) return run
     const updated = { ...run, cancelRequestedAt: Date.now() }
     await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], updated))
     return updated
@@ -144,15 +149,15 @@ export namespace RolloutLedger {
       status: "running",
       recording: "partial",
       cancelRequestedAt: undefined,
+      execution: undefined,
     })
     await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], resumed))
     await SessionActivityEvent.execution(owner, runID)
     return resumed
   }
 
-  /** Terminalize a queued task whose run shell never landed (its enqueue was
-   *  best-effort): persist a durable cancelled record so materialization
-   *  admission observes the cancellation instead of executing cancelled work.
+  /** Persist cancellation before a queued input has execution evidence, so
+   *  materialization cannot accept it after the cancellation acknowledgement.
    *  A run that appeared meanwhile only gets its cancel request marked; the
    *  live owner settles it through the normal cancel path. */
   export async function cancelUnopenedRun(owner: Owner, runID: string, started: number) {
@@ -169,12 +174,14 @@ export namespace RolloutLedger {
     }
     const cancelled = RolloutSchema.RunRecord.parse({
       version: 1,
+      timingVersion: 1,
       id: runID,
       owner,
       started,
       status: "cancelled",
       recording: "partial",
       cancelRequestedAt: Date.now(),
+      admissionOnly: true,
     })
     await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], cancelled))
     return cancelled
@@ -203,6 +210,11 @@ export namespace RolloutLedger {
       )
     }
     const run = await requireRunning(input.owner, input.runID)
+    if (run.execution || run.admissionOnly) {
+      run.execution = undefined
+      run.admissionOnly = undefined
+      await record(() => RolloutJournal.write(input.owner, [...root(input.owner, input.runID), "info"], run))
+    }
     if (!run.input) {
       const artifact = await RolloutArtifact.writeText(input.owner, JSON.stringify(input.input), "application/json")
       await record(() =>
@@ -235,16 +247,31 @@ export namespace RolloutLedger {
     return Promise.all(ids.map(async (id) => RolloutSchema.ExecutionSegment.parse(await Storage.read([...base, id]))))
   }
 
-  export async function finishSegment(segment: RolloutSchema.ExecutionSegment, status: Terminal) {
+  export async function finishSegment(
+    segment: RolloutSchema.ExecutionSegment,
+    status: Terminal,
+    options?: { detectedAt: number },
+  ) {
     using lock = await Lock.write(lockKey(segment.owner, segment.runID))
     const key = [...root(segment.owner, segment.runID), "segments", segment.id]
-    return record(async () => {
+    const result = await record(async () => {
       const current = RolloutSchema.ExecutionSegment.parse(await Storage.read(key))
-      if (current.status !== "running") return current
-      const completed = RolloutSchema.ExecutionSegment.parse({ ...current, status, ended: Date.now() })
+      if (current.status !== "running") return { segment: current, changed: false }
+      const completed = RolloutSchema.ExecutionSegment.parse({
+        ...current,
+        status,
+        ...(options ? { detectedAt: options.detectedAt } : { ended: Date.now() }),
+      })
       await RolloutJournal.write(segment.owner, key, completed)
-      return completed
+      const run = await getRun(segment.owner, segment.runID)
+      await RolloutJournal.write(segment.owner, [...root(segment.owner, segment.runID), "info"], {
+        ...run,
+        execution: options ? run.execution : { status, at: completed.ended },
+      })
+      return { segment: completed, changed: true }
     })
+    if (result.changed) await SessionActivityEvent.execution(segment.owner, segment.runID)
+    return result.segment
   }
 
   export async function getCall(owner: Owner, runID: string, callID: string) {
@@ -323,6 +350,7 @@ export namespace RolloutLedger {
       }
       run = {
         version: 1,
+        timingVersion: 1,
         id: runID,
         owner: owner,
         started: Date.now(),
@@ -501,7 +529,7 @@ export namespace RolloutLedger {
     })
   }
 
-  export async function finishRun(owner: Owner, runID: string, status: Terminal) {
+  export async function finishRun(owner: Owner, runID: string, status: Terminal, options?: { detectedAt: number }) {
     const instanceState = runtimeState()
 
     using lock = await Lock.write(lockKey(owner, runID))
@@ -510,7 +538,11 @@ export namespace RolloutLedger {
     if (recordingFailed && status === "completed") {
       throw new RolloutRecordingError({ message: "Cannot complete a rollout whose recording failed" })
     }
-    if (current.status !== "running") return current
+    if (
+      current.status !== "running" &&
+      !(current.status === "interrupted" && status === "cancelled" && current.cancelRequestedAt)
+    )
+      return current
     const active = await segments(owner, runID)
     if (active.some((segment) => segment.status === "running")) throw new Error("Rollout still has active segments")
     const records = await calls(owner, runID)
@@ -521,7 +553,10 @@ export namespace RolloutLedger {
     const completed: RolloutSchema.RunRecord = {
       ...current,
       status: current.cancelRequestedAt ? "cancelled" : status,
-      ended: Date.now(),
+      ...(current.cancelRequestedAt && current.execution?.status === "interrupted"
+        ? { execution: { status: "cancelled" as const, at: Date.now() } }
+        : {}),
+      ...(options ? { detectedAt: options.detectedAt } : { ended: Date.now() }),
       recording: recordingFailed
         ? "failed"
         : (!current.parent || current.parent.runID !== null) &&

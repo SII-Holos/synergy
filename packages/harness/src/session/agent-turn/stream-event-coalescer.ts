@@ -20,6 +20,61 @@ interface PendingDelta<T> extends DeltaInfo {
 export class AgentStreamEventCoalescer<T extends { type: string }> {
   private pending: PendingDelta<T> | undefined
 
+  async *batches(source: AsyncIterable<T>): AsyncGenerator<T[]> {
+    const iterator = source[Symbol.asyncIterator]()
+    let next: Promise<IteratorResult<T>> | undefined
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let ended = false
+    let failed = false
+    try {
+      while (true) {
+        next ??= iterator.next()
+        const pending = this.pending
+        const delay =
+          pending && pending.type !== "tool-input-delta"
+            ? Math.max(0, pending.startedAt + TEXT_DELTA_WINDOW_MS - Date.now())
+            : undefined
+        const result =
+          delay === undefined
+            ? await next
+            : await Promise.race([
+                next,
+                new Promise<undefined>((resolve) => {
+                  timer = setTimeout(() => resolve(undefined), delay)
+                }),
+              ])
+        clearTimeout(timer)
+        timer = undefined
+        if (!result) {
+          yield this.flush()
+          continue
+        }
+        next = undefined
+        if (result.done) {
+          ended = true
+          break
+        }
+        const events = this.push(result.value)
+        if (events.length) yield events
+      }
+      const events = this.flush()
+      if (events.length) yield events
+    } catch (error) {
+      failed = true
+      throw error
+    } finally {
+      clearTimeout(timer)
+      this.pending = undefined
+      if (!ended) {
+        try {
+          await iterator.return?.()
+        } catch (error) {
+          if (!failed) throw error
+        }
+      }
+    }
+  }
+
   push(event: T, now = Date.now()): T[] {
     const delta = deltaInfo(event)
     if (!delta) return [...this.flush(), event]

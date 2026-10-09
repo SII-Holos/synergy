@@ -13,6 +13,34 @@ const input = () => ({
   signal: new AbortController().signal,
 })
 
+test("per-model context refresh does not repeat root-scoped providers", () =>
+  runtime.run(async () => {
+    let roots = 0,
+      models = 0
+    const unregisterRoot = SessionContextContributions.register("root-refresh-test", {
+      async contribute() {
+        roots++
+        return { context: "root", injection: {} }
+      },
+    })
+    const unregisterModel = SessionContextContributions.register("model-refresh-test", {
+      refresh: "model",
+      async contribute() {
+        models++
+        return { context: `model-${models}`, injection: {} }
+      },
+    })
+    try {
+      expect((await SessionContextContributions.collect(input(), "root"))?.context).toBe("root")
+      expect((await SessionContextContributions.collect(input(), "model"))?.context).toBe("model-1")
+      expect((await SessionContextContributions.collect(input(), "model"))?.context).toBe("model-2")
+      expect(roots).toBe(1)
+    } finally {
+      unregisterRoot()
+      unregisterModel()
+    }
+  }))
+
 test("absent context contributors perform no work", () =>
   runtime.run(async () => {
     expect(await SessionContextContributions.collect(input())).toBeUndefined()
