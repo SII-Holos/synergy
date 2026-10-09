@@ -389,7 +389,10 @@ function SessionConversationView(input: SessionConversationProps) {
                 size="large"
                 class="text-12-medium"
                 disabled={props.historyLoading()}
-                onClick={props.onReturnLatest}
+                onClick={(event: MouseEvent) => {
+                  event.stopPropagation()
+                  props.onReturnLatest()
+                }}
               >
                 {props.historyPendingLatest() ? _(S.convNewMessagesReturnLatest) : _(S.convReturnLatest)}
               </Button>

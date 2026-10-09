@@ -34,6 +34,8 @@ Composer available-space measurement identifies the current session top bar's bo
 
 Session-view reading memory stores a message, optional Part and paragraph, viewport offset and follow intent in a bounded runtime-only map. It shares the layout owner's server boundary and pruning lifecycle, with a maximum of fifty entries. Returning readers locate accepted content before restoring the paragraph; shared message IDs on pagination demand rows cannot substitute for a body. Admission waits for the requested block when hydration has not rendered it yet, then falls back through the message and nearby root when necessary. A validated local submission explicitly requests latest following; canonical handoff and historical arrival do not repeat that request. Layout measurements use canonical offsets rather than animated coordinates.
 
+The in-transcript return-to-latest button owns its activation event. Its pointer or keyboard click must not bubble into the viewport's reading-interruption handler and cancel the same pending navigation. Later reading input still invalidates the captured intent. Production history acceptance exercises pointer, Enter and Space activation after locating an older message, under delayed reads and CPU throttling, before reconnect recovery.
+
 ## Alternatives considered
 
 **Delay all group changes.** A timeout conceals the preparation boundary, delays legitimate prose collection and depends on provider speed.
