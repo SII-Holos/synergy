@@ -184,7 +184,8 @@ bun dev send "your message"
 Default local preflight:
 
 ```bash
-bun run quality:quick
+bun run verify plan
+bun run verify local --test test/script/dev-entrypoints.test.ts
 ```
 
 For Bun embedding, use `openAgentRuntime({ home, components })` from `packages/agent-runtime` and select optional component factories explicitly. For lower-level hosts, `packages/harness` exposes the execution and lifecycle APIs, and `packages/local-runtime` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command, with commands supplied by the selected components; the complete product composes optional capabilities in `packages/presets`. Hosts can compose independent Runtime instances in one process with explicit home, environment and storage ownership. Home sessions work without a local workspace. Node.js uses the managed HTTP SDK or attaches to an existing runtime. See [Embedding](docs/reference/embedding.md), [Installable packages](docs/reference/installable-packages.md), [Runtime and Scope](docs/architecture/runtime-and-scope.md) and the [package map](docs/reference/packages.md).
