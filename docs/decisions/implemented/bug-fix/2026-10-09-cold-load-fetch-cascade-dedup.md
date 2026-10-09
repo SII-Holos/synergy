@@ -20,7 +20,7 @@ Focused changes stop the cascade at its ignition and amplification points while 
 
 The loading callers use the canonical version-keyed `PartContentStore.read` owner supplied by the batch/cache dependency, as described in [the sibling feature record](../feature/2026-10-09-visible-first-session-loading.md). This record does not introduce a separate content cache API.
 
-The [cold-load refresh ownership follow-up](2026-10-10-cold-load-refresh-ownership.md) preserves transition triggers in queued callbacks and declares the route effect's session-ID dependency without changing this record's replay, freshness or content-cache decisions.
+The [cold-load refresh ownership follow-up](2026-10-10-cold-load-refresh-ownership.md) preserves transition triggers in queued callbacks, declares the route effect's session-ID dependency, and derives targeted repair identities from real timeline headers while retaining failed warm pages as stale. Replay and content-cache decisions remain unchanged.
 
 ## Alternatives considered
 
@@ -36,5 +36,5 @@ The [cold-load refresh ownership follow-up](2026-10-10-cold-load-refresh-ownersh
 - Replay gating is window-scoped, not event-scoped: any replay event for an already-loaded session invalidates exactly as before, so reconnect-replay consistency for loaded sessions is unchanged.
 - The repair scheduler's exempt path is exercised only by the window-establishment gate; budget-exhaustion protection against pathological event streams is preserved and still tested.
 - Version-equal revalidation applies to every resource in the freshness domain (message/inbox/todo/dag): a redundant identical-version snapshot anywhere in the system no longer restarts readers, which also removes the duplicate `session.get` seen on the shared resource domain.
-- A per-message mark no longer restarts the window: cold load keeps one 260 KB `timeline/page` (plus at most one batched `part/pages` refetch for marked messages), so waves 2/3 of the post-fix HAR are classified not only by plan re-computation but by loading semantics at the apply layer. Behavior coverage: new `sync-partial-apply.dom.test.ts` pins single-flight window + one targeted batched refetch + no per-message GET storm (3 assertions), and `session-part-snapshot-freshness` tests gain a generation-vs-mark distinction case.
+- A per-message mark does not restart the window: unaffected timeline headers and viewport data apply while only marked message summaries are repaired. The real timeline-item and transport-failure controls are described in the [refresh ownership follow-up](2026-10-10-cold-load-refresh-ownership.md). Generation drift still rejects the window.
 - The focused sync join/transition/partial-apply, replay gating, repair scheduler, viewport content and display preparation suites retain their behavior assertions. Shared cache/materializer coverage belongs to the batch/cache dependency. Verification evidence and remaining platform or timing limits are reported separately from these implementation decisions.

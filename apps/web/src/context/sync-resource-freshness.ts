@@ -119,7 +119,7 @@ export class SyncResourceFreshness {
   }
 
   acceptSnapshot(input: SyncResourceKey, version: SyncVersion | undefined): boolean {
-    return this.accepted(input, version).next
+    return this.accepted(input, version)
   }
 
   /**
@@ -132,21 +132,21 @@ export class SyncResourceFreshness {
    * full freshness semantics (bump + invalidation) so no stale overwrite can
    * slip past the window's own snapshots.
    */
-  private revalidate(input: SyncResourceKey, version: SyncVersion): { next: boolean; refresh: boolean } {
-    if (!this.prepareSnapshotScope(input.scopeKey, version)) return { next: false, refresh: false }
+  private revalidate(input: SyncResourceKey, version: SyncVersion): boolean {
+    if (!this.prepareSnapshotScope(input.scopeKey, version)) return false
     const current = this.current(input)
-    if (current?.epoch === version.epoch && version.seq < current.seq) return { next: false, refresh: false }
-    if (current?.epoch === version.epoch && version.seq === current.seq) return { next: true, refresh: true }
+    if (current?.epoch === version.epoch && version.seq < current.seq) return false
+    if (current?.epoch === version.epoch && version.seq === current.seq) return true
     this.resources.set(resourceKey(input), version)
     this.bumpRevision(input)
-    return { next: true, refresh: false }
+    return true
   }
 
-  private accepted(input: SyncResourceKey, version: SyncVersion | undefined): { next: boolean; refresh: boolean } {
+  private accepted(input: SyncResourceKey, version: SyncVersion | undefined): boolean {
     if (isValidVersion(version)) return this.revalidate(input, version)
     this.resources.delete(resourceKey(input))
     this.bumpRevision(input)
-    return { next: true, refresh: false }
+    return true
   }
 
   resetScope(scopeKey: string, epoch: string, seq = 0): boolean {

@@ -433,22 +433,20 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         })
         const actionOf = (messageID: string) =>
           globalSync.partSnapshotAction(sdk.scopeKey, sessionID, messageID, result.partSnapshotRequest)
-        const partActions = new Map(Object.keys(plan.parts).map((messageID) => [messageID, actionOf(messageID)]))
+        const keptMessageIDs = new Set(plan.window.messages.map((message) => message.id))
+        const snapshotMessageIDs = new Set(
+          [...page.referencedRoots, ...page.items]
+            .map((item) => item.info.id)
+            .filter((messageID) => keptMessageIDs.has(messageID)),
+        )
+        const partActions = new Map([...snapshotMessageIDs].map((messageID) => [messageID, actionOf(messageID)]))
         const retryMessageIDs = new Set(
           [...partActions.entries()].flatMap(([messageID, action]) => (action === "retry" ? [messageID] : [])),
         )
-        // A generation drift means the store no longer matches the request's
-        // structural epoch — the window is unusable, supersede as before.
-        if (
-          retryMessageIDs.size &&
-          globalSync.partSnapshotGenerationDrifted(sdk.scopeKey, sessionID, result.partSnapshotRequest)
-        )
+        // Structural generation drift rejects the entire window, even without inline Parts.
+        if (globalSync.partSnapshotGenerationDrifted(sdk.scopeKey, sessionID, result.partSnapshotRequest))
           return "superseded"
-        // A per-message mark (authoritative checkpoint landing mid-load)
-        // only invalidates that message's snapshot. Applying the rest of the
-        // window keeps 260KB of fetched work instead of restarting the whole
-        // timeline page with backoff; the marked messages are refetched
-        // below, targeted, so their store state converges from the live mark.
+        // Message-only marks preserve accepted content and repair through the existing page owner.
         for (const messageID of retryMessageIDs) partActions.set(messageID, "preserve")
         const viewport = planSessionViewportContent(
           result.viewport,
@@ -461,6 +459,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             for (const messageID of plan.droppedIds) materializer.invalidate(messageID)
             setStore(
               produce((draft) => {
+                for (const messageID of retryMessageIDs) {
+                  const page = draft.partPage[messageID]
+                  if (page) page.stale = true
+                }
                 for (const messageID of plan.droppedIds) {
                   clearConversationContent(draft, messageID)
                 }
@@ -482,16 +484,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               if (partActions.get(messageID) === "preserve") continue
               setStore("part", messageID, reconcile(internParts(parts), { key: "id" }))
             }
+            // Register the repair owner before stale-state effects can start an ordinary refresh.
+            for (const messageID of retryMessageIDs)
+              void loadPartSummaries(sessionID, messageID, false, true).catch(() => {})
           })
           globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
           refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
-        }
-        // Converge the marked messages: re-capture freshness after their
-        // marks and force-refetch each first page (merged into one batch
-        // POST by the plain-view page reader).
-        const refetchMarked = () => {
-          for (const messageID of retryMessageIDs)
-            void loadPartSummaries(sessionID, messageID, false, true).catch(() => {})
         }
 
         if (result.request) {
@@ -506,14 +504,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           if (accepted && input?.reconnectVersion !== undefined) {
             markSessionSynced(sessionID, input.reconnectVersion)
           }
-          if (accepted) refetchMarked()
           return accepted ? "applied" : "superseded"
         }
         // A history prepend changes the window outside latest-page ordering;
         // invalidate any concurrent latest request before applying it.
         globalSync.invalidateResource(sdk.scopeKey, sessionID, "message")
         apply()
-        refetchMarked()
         return "applied"
       },
       errorMessage: (error) => requestErrorMessage(error, "Couldn’t load conversation"),
