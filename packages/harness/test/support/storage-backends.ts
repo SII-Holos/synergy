@@ -1,6 +1,7 @@
 import type { StoreOptions } from "../../src/storage/sql-contract"
 
 export const POSTGRES_TEST_FILES = [
+  "test/snapshot/persistence.test.ts",
   "test/asset/persistence.test.ts",
   "test/secrets/encrypted-store.test.ts",
   "test/tool/search-guard-durable.test.ts",
