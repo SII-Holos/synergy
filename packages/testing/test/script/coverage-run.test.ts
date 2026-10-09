@@ -56,6 +56,7 @@ describe("coverage batch splitting", () => {
       "packages/connections/test/channel/clarus-assignment.test.ts",
       "packages/connections/test/channel/clarus-invite-accept.test.ts",
       "packages/connections/test/channel/feishu-provider.test.ts",
+      "packages/connections/test/channel/foreground-reaction-only.test.ts",
       "packages/connections/test/channel/host.test.ts",
       "packages/connections/test/channel/managed-project-ownership.test.ts",
       "packages/connections/test/channel/provider/github/api-transport.test.ts",
