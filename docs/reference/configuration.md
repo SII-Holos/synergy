@@ -45,6 +45,7 @@ File: `00-general.jsonc` · Merge: merge
 | `keybinds` | Keybinds.optional (optional) | Custom keybind configurations |
 | `toast` | object (optional) | Toast notification preferences |
 | `compactReasoning` | boolean (optional) | Show a compact reasoning preview in the execution process (default: false) |
+| `welcomeGames` | boolean (optional) | Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting. |
 | `locale` | "system" \| "en" \| "zh-CN" (optional) | UI locale (system = follow OS, default: system) |
 | `activityDisplay` | "full" \| "balanced" \| "minimal" (optional) | Execution process detail: full = expanded process, balanced = current stage with completed process collapsed, minimal = compact progress. All modes use the same process view (default: balanced) |
 | `defaultSessionWorkspace` | "main" \| "worktree" (optional) | Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout. |
