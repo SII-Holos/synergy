@@ -18,6 +18,8 @@ Plans retain structured full-selection triggers. Descriptive workspace metadata,
 
 Development Skills keep the everyday feedback loop and verification choices in their entry points. Domain-specific regressions live in linked references, whose relative links are validated recursively. Frontend and Git procedures no longer prescribe a duplicate complete local matrix before every push.
 
+The Oryn integration adopts the upstream [once-per-version review policy](https://github.com/yzxoi/oryn-mini/pull/16) through an immutable runtime pin. Published evidence for an unchanged version prevents duplicate scheduled reviews; source changes remain eligible, and receipt writers remain serialized.
+
 ## Alternatives considered
 
 **Run the full CI matrix locally.** This duplicates expensive platform and browser execution and makes every iteration wait for the broadest scope.

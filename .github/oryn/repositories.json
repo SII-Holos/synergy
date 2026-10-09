@@ -26,7 +26,14 @@
         "bun /opt/oryn-validation/validate.ts checks",
         "bun /opt/oryn-validation/validate.ts tests"
       ],
-      "protectedLabels": ["security", "type: security", "do-not-bot", "oryn:hold", "oryn:kind: 🛡️ security"]
+      "protectedLabels": [
+        "security",
+        "type: security",
+        "do-not-bot",
+        "oryn:hold",
+        "oryn:kind: \ud83d\udee1\ufe0f security"
+      ],
+      "reviewPolicy": "once_per_version"
     }
   ]
 }
