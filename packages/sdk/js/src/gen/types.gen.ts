@@ -3688,6 +3688,10 @@ export type ScopeUiPreferences = {
    */
   compactReasoning?: boolean
   /**
+   * Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting.
+   */
+  welcomeGames?: boolean
+  /**
    * UI locale (system = follow OS, default: system)
    */
   locale?: "system" | "en" | "zh-CN"
@@ -7135,6 +7139,10 @@ export type Config = {
    */
   compactReasoning?: boolean
   quick_switcher?: QuickSwitcherConfig
+  /**
+   * Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting.
+   */
+  welcomeGames?: boolean
   layout?: LayoutConfig
   /**
    * Toast notification preferences
