@@ -15,10 +15,9 @@ const REACTION_ONLY_TOOL = "channel_reaction_only"
 /**
  * Close a turn the moment it records a reaction-only intent. The tool's
  * contract is "call once, then the turn is over", and the delivery paths
- * (foreground handler and outbound bridge) resolve the intent from the
- * persisted tool part — a follow-up model step cannot change the outcome, so
- * running one only burns a full LLM round when a model ignores the tool
- * instruction.
+ * (foreground handler and outbound bridge) resolve that terminal assistant's
+ * persisted tool part. Closing it avoids an unnecessary model round; a later
+ * steer or continuation can still produce its own terminal delivery.
  *
  * The job terminalizes the intent-bearing assistant instead of just breaking
  * the loop: rewriting `finish` to "stop" (the same terminalization compaction
@@ -35,6 +34,7 @@ export function registerReactionOnlyJobs() {
     phase: "post",
     blocking: true,
     collect(ctx) {
+      if (ctx.abort.aborted) return []
       const assistant = ctx.lastAssistant
       if (!assistant || SessionProgress.isTerminalAssistant(assistant)) return []
       const parts = ctx.messages.findLast((message) => message.info.id === assistant.id)?.parts ?? []
@@ -56,7 +56,8 @@ export function registerReactionOnlyJobs() {
     },
     async execute(ctx) {
       const assistant = ctx.lastAssistant
-      if (!assistant) return "pass"
+      if (!assistant || ctx.abort.aborted || assistant.error || SessionProgress.isTerminalAssistant(assistant))
+        return "pass"
       assistant.finish = "stop"
       await Session.updateMessage(assistant)
       log.info("reaction-only intent recorded; turn closed without another model round", {

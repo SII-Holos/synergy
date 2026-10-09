@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Delivery ownership and uncertain-attempt handling are refined by [reaction-only delivery ownership](../bug-fix/2026-10-10-reaction-only-delivery-ownership.md); the feature, visibility, and provider decisions below remain applicable.
+
 ## Problem
 
 Feishu Channel already supported adding status reactions (`Typing`, `DONE`, `ERROR`) to the inbound message as task progress feedback, but it had no way to express "this message is handled, and a reaction is the whole answer". Every completed turn still delivered some message — text, a Markdown card, an attachment, or a pushed reply — so the model could not choose to acknowledge without producing new chat content. Adding that capability required a typed, per-turn terminal choice that stays exclusive (never delivered alongside anything else), leaves existing behavior byte-for-byte unchanged when not chosen, never degrades to a text reply on failure, and stays invisible to other channels.
