@@ -187,6 +187,7 @@ export function ProcessViewport(
     if (props.restoreAnchor) measured = props.restoreAnchor(anchor)
     else restoreProcessReadingAnchor(viewport, anchor)
     restoredOffset = viewport.scrollTop
+    if (measured !== false) capturedOffset = restoredOffset
     return measured !== false
   }
   const preserve = () => {
@@ -196,6 +197,11 @@ export function ProcessViewport(
     layoutPending = true
     restoreFrame = requestAnimationFrame(() => {
       restoreFrame = undefined
+      if (movementPending && viewport.scrollTop !== capturedOffset) {
+        cancelPreserve()
+        refreshAnchor()
+        return
+      }
       const anchor = disclosureAnchor ?? readingAnchor
       if (anchor && !following() && !restore(anchor)) {
         preserve()
@@ -466,7 +472,6 @@ export function ProcessViewport(
           restoredOffset = undefined
           if (movementPending && !compensated && viewport.scrollTop !== capturedOffset) {
             cancelPreserve()
-            movementPending = false
           }
           if (!restoring && !disclosureAnchor && !compensated && !layoutPending) refreshAnchor()
           if (
@@ -478,6 +483,9 @@ export function ProcessViewport(
           )
             latest()
           previousOffset = viewport.scrollTop
+        }}
+        on:scrollend={() => {
+          movementPending = false
         }}
       >
         <div ref={content} data-slot="process-viewport-content">
