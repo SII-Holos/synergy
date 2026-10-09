@@ -1,7 +1,7 @@
 import { S3Client } from "bun"
 import OSS from "ali-oss"
 import { Readable } from "node:stream"
-import type { BlobStore } from "@ericsanchezok/synergy-harness/workspace/content"
+import type { ReclaimableBlobStore } from "@ericsanchezok/synergy-harness/storage/blobs"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 
 export interface ObjectStorageOptions {
@@ -56,7 +56,7 @@ async function* readStream(stream: ReadableStream<Uint8Array>) {
 }
 
 // Provenance: https://bun.sh/docs/runtime/s3 — the bundled SigV4 client owns signing and credential encoding.
-export function s3BlobStore(options: ObjectStorageOptions): BlobStore {
+export function s3BlobStore(options: ObjectStorageOptions): ReclaimableBlobStore {
   const key = prepare(options)
   const client = async () =>
     new S3Client({
@@ -70,6 +70,9 @@ export function s3BlobStore(options: ObjectStorageOptions): BlobStore {
       WorkspaceTree.verify(hash, bytes, WorkspaceTree.manifestBytes)
       await (await client()).write(key(hash), bytes, { type: "application/octet-stream" })
     },
+    async delete(hash) {
+      await (await client()).delete(key(hash))
+    },
     async get(hash, maximumBytes) {
       const stream = (await client()).file(key(hash)).stream()
       return WorkspaceTree.verify(hash, await bounded(readStream(stream), maximumBytes), maximumBytes)
@@ -79,7 +82,7 @@ export function s3BlobStore(options: ObjectStorageOptions): BlobStore {
 
 // Provenance: https://www.alibabacloud.com/help/en/oss/developer-reference/guidelines-for-upgrading-v1-signatures-to-v4-signatures
 // OSS uses its own V4 signing scope; its official SDK implements that protocol rather than an S3 compatibility assumption.
-export function ossBlobStore(options: ObjectStorageOptions & { cname?: boolean }): BlobStore {
+export function ossBlobStore(options: ObjectStorageOptions & { cname?: boolean }): ReclaimableBlobStore {
   const key = prepare(options)
   const client = async () => {
     const credentials = await options.credentials()
@@ -100,6 +103,9 @@ export function ossBlobStore(options: ObjectStorageOptions & { cname?: boolean }
     async put(hash, bytes) {
       WorkspaceTree.verify(hash, bytes, WorkspaceTree.manifestBytes)
       await (await client()).put(key(hash), Buffer.from(bytes), { mime: "application/octet-stream" })
+    },
+    async delete(hash) {
+      await (await client()).delete(key(hash))
     },
     async get(hash, maximumBytes) {
       const response = await (await client()).getStream(key(hash))

@@ -63,6 +63,8 @@
     "./session/execution-source": "./src/session/execution-source.ts",
     "./bus/bus-event": "./src/bus/bus-event.ts",
     "./provider/github": "./src/provider/github.ts",
+    "./storage/blobs": "./src/storage/blobs.ts",
+    "./storage/object-artifacts": "./src/storage/object-artifacts.ts",
     "./storage/storage": "./src/storage/storage.ts",
     "./storage/event-sinks": "./src/storage/event-sinks.ts",
     "./id/id": "./src/id/id.ts",

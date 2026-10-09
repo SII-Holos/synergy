@@ -5,12 +5,14 @@ import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { StorageQueue } from "./queue"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { ArtifactPack } from "./artifact-pack"
+import { ObjectArtifacts, type ObjectArtifactOptions } from "./object-artifacts"
 import type { ArtifactLocation } from "./artifact-location"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import {
   NotFoundError as MissingRecord,
   StorageBusyError as BusyStorage,
   StorageClosedError,
+  StorageCommitUnknownError,
   StorageConflictError,
   StorageUnavailableError as UnavailableStorage,
 } from "./errors"
@@ -35,13 +37,14 @@ export namespace Storage {
   export interface Handle {
     store: TransactionalStore
     artifactDirectory: string
+    artifactObjects?: ObjectArtifactOptions
   }
   interface Context extends Handle {
     owner?: RuntimeContext.Instance
     migrationAccess?: boolean
     transaction?: StoreTransaction
     effects?: Array<() => Promise<unknown> | void>
-    settled?: Array<() => void>
+    settled?: Array<(outcome: "committed" | "aborted" | "unknown") => void>
     pending?: Promise<unknown>[]
     eventCapture?: Promise<void>
   }
@@ -106,7 +109,8 @@ export namespace Storage {
       return body(parent.transaction)
     }
     let effects: Array<() => Promise<unknown> | void> = []
-    const settled: Array<() => void> = []
+    const settled: NonNullable<Context["settled"]> = []
+    let outcome: "committed" | "aborted" | "unknown" = "aborted"
     try {
       const result = await parent.store.transaction(async (tx) => {
         if (!parent.migrationAccess) tx.restrictToPublishedOwners()
@@ -127,6 +131,7 @@ export namespace Storage {
           ),
         )
       }, options)
+      outcome = "committed"
       for (const effect of effects) {
         try {
           await effect()
@@ -142,8 +147,11 @@ export namespace Storage {
         }
       }
       return result
+    } catch (error) {
+      if (error instanceof StorageCommitUnknownError) outcome = "unknown"
+      throw error
     } finally {
-      for (const release of settled) release()
+      for (const release of settled) release(outcome)
     }
   }
 
@@ -264,7 +272,11 @@ export namespace Storage {
   }
 
   const runtimePacks = RuntimeContext.state(
-    () => new WeakMap<TransactionalStore, { pack: ArtifactPack; gate: StorageQueue; prepared: Map<string, number> }>(),
+    () =>
+      new WeakMap<
+        TransactionalStore,
+        { pack: ArtifactPack; objects?: ObjectArtifacts; gate: StorageQueue; prepared: Map<string, number> }
+      >(),
   )
   function artifactPack(key: string[]) {
     if (!key.length || key.some((part) => !part || part === "." || part === ".." || /[\\/\0]/.test(part)))
@@ -275,6 +287,7 @@ export namespace Storage {
     if (!pack) {
       pack = {
         pack: new ArtifactPack(path.join(handle.artifactDirectory, "agent-artifacts")),
+        objects: handle.artifactObjects ? new ObjectArtifacts(handle.store, handle.artifactObjects) : undefined,
         gate: new StorageQueue("artifact.gate"),
         prepared: new Map(),
       }
@@ -294,6 +307,7 @@ export namespace Storage {
       location: ArtifactLocation
       released: boolean
       publishing: boolean
+      outcome: "committed" | "aborted" | "unknown"
     }
   >()
 
@@ -309,9 +323,10 @@ export namespace Storage {
         throw error
       })
       const existing = previous?.sha256 === hash && previous.size === bytes.byteLength
-      if (existing) await state.pack.verify(previous)
+      if (existing && !state.objects) await state.pack.verify(previous)
       const owner = JSON.stringify(key.slice(0, ["sessions", "operations"].includes(key[0]) ? 3 : 1))
-      const location = existing ? previous : await state.pack.append(bytes, owner)
+      const object = await state.objects?.prepare(bytes)
+      const location = object?.location ?? (existing ? previous : await state.pack.append(bytes, owner))
       const held = {
         store: current().store,
         runtime: RuntimeContext.current(),
@@ -319,6 +334,7 @@ export namespace Storage {
         location,
         released: false,
         publishing: false,
+        outcome: "aborted" as "committed" | "aborted" | "unknown",
       }
       state.prepared.set(location.pack, (state.prepared.get(location.pack) ?? 0) + 1)
       const token: PreparedBinary = {
@@ -326,16 +342,23 @@ export namespace Storage {
         [Symbol.dispose]() {
           if (held.released || held.publishing) return
           held.released = true
+          if (object) state.objects!.release(object, held.outcome)
           const count = (state.prepared.get(location.pack) ?? 1) - 1
           if (count) state.prepared.set(location.pack, count)
           else state.prepared.delete(location.pack)
         },
       }
       preparedBinaries.set(token, held)
+      if (object) preparedObjects.set(token, { backend: state.objects!, object })
       ObservabilityResources.addWrite(content.byteLength)
       return token
     })
   }
+
+  const preparedObjects = new WeakMap<
+    PreparedBinary,
+    { backend: ObjectArtifacts; object: Awaited<ReturnType<ObjectArtifacts["prepare"]>> }
+  >()
 
   export async function publishPreparedBinary(token: PreparedBinary) {
     const prepared = preparedBinaries.get(token)
@@ -351,11 +374,14 @@ export namespace Storage {
       throw new StorageConflictError("Prepared artifact belongs to a different or released storage owner")
     if (!handle.settled) throw new StorageConflictError("Prepared artifacts require an owned write transaction")
     prepared.publishing = true
-    handle.settled.push(() => {
+    handle.settled.push((outcome) => {
       prepared.publishing = false
+      prepared.outcome = outcome
       token[Symbol.dispose]()
     })
     await handle.transaction.writeArtifacts([{ key: prepared.key, location: prepared.location }])
+    const object = preparedObjects.get(token)
+    if (object) await object.backend.publish(handle.transaction, object.object)
   }
 
   export async function writeBinary(key: string[], content: Uint8Array) {
@@ -370,7 +396,7 @@ export namespace Storage {
       const location = handle.transaction
         ? await handle.transaction.artifact(key)
         : await snapshot((tx) => tx.artifact(key))
-      const content = await state.pack.read(location, options?.maxBytes)
+      const content = await (state.objects ?? state.pack).read(location, options?.maxBytes)
       ObservabilityResources.addRead(content.byteLength)
       return content
     }
@@ -381,6 +407,10 @@ export namespace Storage {
     handle: Handle,
     options: { accept?: (key: string[]) => boolean; progress?: (count: number) => void } = {},
   ) {
+    if (handle.artifactObjects) {
+      const objects = new ObjectArtifacts(handle.store, handle.artifactObjects)
+      return objects.validate(options)
+    }
     const pack = new ArtifactPack(path.join(handle.artifactDirectory, "agent-artifacts"))
     let count = 0
     await withFileLock(
@@ -403,6 +433,7 @@ export namespace Storage {
   ) {
     if (current().transaction) throw new StorageConflictError("Artifact collection requires a committed transaction")
     const state = artifactPack(["storage"])
+    if (state.objects) return state.gate.run(() => state.objects!.collect(state.prepared.keys(), options.progress))
     const store = current().store
     const busy = "Artifact files are pinned by another maintenance operation"
     try {
@@ -462,6 +493,15 @@ export namespace Storage {
       if (error instanceof Error && error.message === busy) return 0
       throw error
     }
+  }
+
+  /** Maintenance only, after the owning Host proves this exact previous writer stopped. */
+  export async function retireArtifactWriter(writerID: string) {
+    if (current().transaction)
+      throw new StorageConflictError("Artifact writer retirement requires a committed transaction")
+    const state = artifactPack(["storage"])
+    if (!state.objects) throw new StorageConflictError("This Handle does not use object artifacts")
+    await state.gate.run(() => state.objects!.retireWriter(writerID))
   }
 
   // One measurement source for the whole store: this surface and the store
