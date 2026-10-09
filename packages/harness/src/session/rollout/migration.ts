@@ -41,6 +41,7 @@ export namespace RolloutMigration {
   }
   export const pricingMigration: Migration = {
     id: "20261001-rollout-attempt-price-evidence",
+    emptyInput: [["sessions"], ["operations"]],
     scope: "session",
     dependsOn: ["20260907-session-rollout-evidence"],
     description: "Preserve the historical request price snapshot without recalculating recorded estimates",
@@ -220,6 +221,7 @@ export namespace RolloutMigration {
       await session({ kind: "session", ...owner })
     },
     id: "20260907-session-rollout-evidence",
+    emptyInput: [["sessions"], StoragePath.statsRoot()],
     description: "Preserve legacy accounting and retained tool evidence with explicit historical gaps",
     dependsOn: ["20260828-session-nav-timestamps"],
     async up(progress) {

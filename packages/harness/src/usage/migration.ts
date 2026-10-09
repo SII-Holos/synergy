@@ -12,6 +12,7 @@ export namespace UsageMigration {
   export const id = "20260928-independent-usage-ledger-v1"
   export const lineageMigration: Migration = {
     id: "20261003-usage-parent-index-v1",
+    emptyInput: [["usage_link"]],
     scope: "derived",
     execution: "startup",
     description: "Index retained usage lineage by parent owner and run",

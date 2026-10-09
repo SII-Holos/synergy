@@ -116,6 +116,7 @@ export namespace RolloutExecutionMigration {
 
   export const migration: Migration = {
     id: "20261008-rollout-execution-time",
+    emptyInput: [["sessions"], ["operations"]],
     scope: "session",
     dependsOn: ["20261001-rollout-attempt-price-evidence"],
     description:

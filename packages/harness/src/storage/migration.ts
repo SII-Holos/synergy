@@ -34,6 +34,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260929-retire-synergy-link",
+    emptyInput: [["synergy_link"], StoragePath.permissionRules()],
     scope: "global",
     execution: "startup",
     description: "Remove retired Link targets and their obsolete permission rules",
