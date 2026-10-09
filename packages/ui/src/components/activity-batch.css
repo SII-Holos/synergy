@@ -275,6 +275,7 @@
 @media (prefers-reduced-motion: reduce) {
   [data-slot="activity-live-indicator"],
   [data-component="activity-batch"] *,
+  [data-component="conversation-activity"] *,
   [data-component="process-reasoning"] *,
   [data-slot="turn-process-trigger"] * {
     animation: none !important;
