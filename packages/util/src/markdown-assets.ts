@@ -1,5 +1,5 @@
 import { Marked } from "marked"
-import { AssetReference } from "./asset-reference"
+import { ResourceReference } from "./resource-reference"
 
 const markdown = new Marked()
 
@@ -9,7 +9,9 @@ export function markdownAssetReferences(text: string): string[] {
   const references = new Set<string>()
   markdown.walkTokens(markdown.lexer(source), (token) => {
     if (references.size >= 32 || (token.type !== "image" && token.type !== "link")) return
-    if (token.href.length <= 256 && AssetReference.parse(token.href)) references.add(token.href)
+    if (token.href.length > 256) return
+    const reference = ResourceReference.parse(token.href)
+    if (reference.kind === "asset") references.add(reference.url)
   })
   return [...references]
 }

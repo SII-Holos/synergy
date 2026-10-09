@@ -1,3 +1,5 @@
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+
 export const SANITIZED_DEFAULT_PROMPT = [{ type: "text", content: "", start: 0, end: 0 }]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -47,6 +49,9 @@ export function sanitizeContextItemsValue(value: unknown): Record<string, unknow
     items.push({
       type: "file",
       path,
+      ...(ResourceReference.Workspace.safeParse(item.workspace).success
+        ? { workspace: ResourceReference.Workspace.parse(item.workspace) }
+        : {}),
       ...(typeof item.originScopeID === "string" ? { originScopeID: item.originScopeID } : {}),
       selection: selection
         ? {
@@ -90,6 +95,9 @@ function sanitizePromptPart(part: unknown): Record<string, unknown> | undefined 
     return {
       type,
       path,
+      ...(ResourceReference.Workspace.safeParse(part.workspace).success
+        ? { workspace: ResourceReference.Workspace.parse(part.workspace) }
+        : {}),
       ...(typeof part.originScopeID === "string" ? { originScopeID: part.originScopeID } : {}),
       content,
       start: numberValue(part.start),

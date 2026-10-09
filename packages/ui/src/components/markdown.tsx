@@ -1,4 +1,5 @@
-import { useResourceOpen } from "../context/resource-open"
+import { useReferenceContext, useResourceOpen } from "../context/resource-open"
+import { revealMarkdownHeading } from "./markdown-navigation"
 import { observeMarkdownResources } from "./markdown-resources"
 import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
@@ -20,6 +21,7 @@ import { sanitizeHtml } from "./markdown-sanitize"
 import { createMarkdownStreamController, type MarkdownStreamController } from "./markdown-stream"
 import { createMarkdownTerminalTransitionController } from "./markdown-terminal-transition"
 import { createMarkdownCache } from "./markdown-cache"
+import { readSelectionRanges } from "../utils/selection"
 
 type Entry = MarkdownRenderEntry
 
@@ -187,20 +189,37 @@ export function Markdown(
     cacheKey?: string
     class?: string
     classList?: Record<string, boolean>
+    navigation?: {
+      id: number
+      location: import("@ericsanchezok/synergy-util/resource-reference").ResourceReference.Location
+    }
+    referenceContext?: import("@ericsanchezok/synergy-util/resource-reference").ResourceReference.Context
   },
 ) {
   let container!: HTMLDivElement
 
-  const [local, others] = splitProps(props, ["text", "streaming", "cacheKey", "class", "classList"])
+  const [local, others] = splitProps(props, [
+    "text",
+    "streaming",
+    "cacheKey",
+    "class",
+    "classList",
+    "referenceContext",
+    "navigation",
+  ])
   const marked = useMarked()
   const resources = useResourceOpen()
+  const referenceContext = useReferenceContext()
   const { _ } = useLingui()
   let renderController: AbortController | undefined
   let disposeDocument: (() => void) | undefined
   let appliedHash: string | undefined
   const [interaction, setInteraction] = createSignal(0)
+  createEffect(() => {
+    const context = local.referenceContext ?? referenceContext() ?? { state: "unresolved" as const }
+    if (resources) onCleanup(observeMarkdownResources(container, resources, () => context))
+  })
   onMount(() => {
-    if (resources) onCleanup(observeMarkdownResources(container, resources))
     const update = () => setInteraction((value) => value + 1)
     document.addEventListener("selectionchange", update)
     document.addEventListener("focusout", update)
@@ -299,11 +318,10 @@ export function Markdown(
     interaction()
     if (rendered?.hash === appliedHash) return
     if (!rendered || !isCurrentMarkdownRender(rendered, local.text)) return
-    const selection = document.getSelection()
     if (
-      selection &&
-      !selection.isCollapsed &&
-      (container.contains(selection.anchorNode) || container.contains(selection.focusNode))
+      readSelectionRanges(document).some(
+        (range) => container.contains(range.startContainer) || container.contains(range.endContainer),
+      )
     )
       return
     if (document.activeElement !== document.body && container.contains(document.activeElement)) return
@@ -345,6 +363,16 @@ export function Markdown(
       container,
       html: rendered.html,
       enhance: (root) => enhanceMarkdown(root as HTMLDivElement, _),
+    })
+  })
+
+  createEffect(() => {
+    html()
+    const request = local.navigation
+    if (request?.location.kind !== "heading") return
+    const id = request.location.id
+    queueMicrotask(() => {
+      if (container.isConnected) revealMarkdownHeading(container, id)
     })
   })
 

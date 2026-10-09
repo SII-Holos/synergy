@@ -15,6 +15,7 @@ export namespace RolloutSnapshot {
       gaps: z.array(z.number().int().positive()),
       runs: z.array(RolloutSchema.RunRecord),
       segments: z.array(RolloutSchema.ExecutionSegment),
+      intervals: z.array(RolloutSchema.ExecutionInterval).default([]),
       calls: z.array(RolloutSchema.CallRecord),
       attempts: z.array(RolloutSchema.AttemptRecord),
       tools: z.array(RolloutSchema.ToolExecutionRecord),
@@ -89,6 +90,7 @@ export namespace RolloutSnapshot {
       gaps: seed?.gaps.slice() ?? [],
       runs: [],
       segments: [],
+      intervals: [],
       calls: [],
       attempts: [],
       tools: [],
@@ -102,7 +104,7 @@ export namespace RolloutSnapshot {
           value,
         })
       for (const run of seed.runs) add(["runs", run.id, "info"], run)
-      for (const kind of ["segments", "calls", "tools", "processes"] as const)
+      for (const kind of ["segments", "intervals", "calls", "tools", "processes"] as const)
         for (const item of seed[kind]) add(["runs", item.runID, kind, item.id], item)
       for (const item of seed.attempts) add(["runs", item.runID, "attempts", item.callID, item.id], item)
     }
@@ -129,6 +131,10 @@ export namespace RolloutSnapshot {
         const run = RolloutSchema.RunRecord.parse(value)
         check(run, key)
         snapshot.runs.push(run)
+      } else if (key.length === 4 && key[2] === "intervals") {
+        const interval = RolloutSchema.ExecutionInterval.parse(value)
+        check(interval, key)
+        snapshot.intervals.push(interval)
       } else if (key.length === 4 && key[2] === "segments") {
         const segment = RolloutSchema.ExecutionSegment.parse(value)
         check(segment, key)

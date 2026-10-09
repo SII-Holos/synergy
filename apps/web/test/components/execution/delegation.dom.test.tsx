@@ -25,26 +25,36 @@ beforeAll(async () => {
     path.join(directory, "services.ts"),
     `
     import {createGlobalEmitter} from "@solid-primitives/event-bus"
+    import {createSignal} from "solid-js"
     const metric=()=>({known:0,unknown:0,total:0})
     const accounting=()=>({version:1,calls:0,importedCalls:0,localCalls:0,attempts:0,unobservedCalls:0,journalGaps:0,legacy:{cost:0,messages:0},tokens:Object.fromEntries(["input","uncached","cacheRead","cacheWrite","output","reasoning","total"].map(k=>[k,metric()])),apiEstimate:metric(),subscriptionEquivalent:metric(),unclassifiedEquivalent:metric(),reported:{currencies:{},unreported:0},units:{},cacheWrites:{}})
     const node=(id,sessionID,kind,title,parentID=null)=>({id,sessionID,runID:sessionID+"-round",kind,title,parentID,preview:title,started:1,ended:2,status:"completed",revision:1,source:"recorded"})
     const child=node("child","child","subtask","Child analysis","root")
     const nested=node("nested","nested","subtask","Nested analysis","child")
-    const task=(n,parentID)=>({sessionID:n.sessionID,nodeID:n.id,parentID,title:n.title,status:"completed",elapsedMs:1,elapsedActive:false,tokens:metric(),runs:[n.runID]})
-    const summary={sessionID:"root",revision:1,computedAt:1,status:"completed",elapsedMs:1,elapsedActive:false,accounting:accounting(),own:accounting(),descendants:accounting(),context:null,contextDistribution:null,tasks:[task(child,"root"),task(nested,"child")],rounds:[{id:"root-round",started:1,status:"completed"},{id:"round-2",started:2,status:"completed"}],coverage:{recorded:2,messages:0,gaps:0,partial:false},lanes:[]}
+    const task=(n,parentID)=>({sessionID:n.sessionID,nodeID:n.id,parentID,title:n.title,status:"completed",elapsedMs:17000,elapsedActive:false,elapsedLowerBound:true,tokens:metric(),runs:[n.runID]})
+    const rate={value:null,tokens:0,milliseconds:0,samples:0,excluded:0}
+    const latency={samples:0,excluded:0,totalMs:0,meanMs:null,p50Ms:null,p95Ms:null}
+    const summary={sessionID:"root",revision:1,computedAt:1,status:"completed",elapsedMs:1,elapsedActive:false,accounting:accounting(),own:accounting(),descendants:accounting(),rates:{generation:rate,endToEnd:rate},cache:{ratio:null,observedRatio:null,read:0,input:0,samples:0,excluded:0},latency:{headers:latency,firstByte:latency,ttft:latency,request:latency,generation:latency},outcomes:{completed:0,failed:0,cancelled:0,interrupted:0,running:0,retries:0,logicalRetries:0,transportRetries:0,rootTasks:0},tools:[{tool:"read",calls:2,failed:1,timedSamples:2,durationMs:100}],context:null,contextDistribution:null,tasks:[task(child,"root"),task(nested,"child")],rounds:[{id:"root-round",started:1,status:"completed",elapsedMs:3000,elapsedActive:false,elapsedLowerBound:false},{id:"round-2",started:2,status:"completed"}],coverage:{recorded:2,messages:0,gaps:0,partial:false},lanes:[]}
     const records={root:[node("root","root","turn","Root task"),child],child:[child,node("read","child","tool","Read architecture"),nested],nested:[nested,node("answer","nested","output","Nested result")]}
     const exportRows=[...new Map(Object.values(records).flat().map(n=>[n.id,n])).values(),...Array.from({length:600},(_,i)=>node("export-"+i,"root","context","Export row "+i))]
     const event=createGlobalEmitter()
     const long=()=>location.search.includes("long=1")
     const longRows=Array.from({length:10_000},(_,i)=>({...node("long-"+i,"root","tool","Long tool "+i),started:i+1,ended:i+2}))
-    const fixtureNode=(id)=>[...exportRows,...longRows].find(n=>n.id===id)
+    const model={...node("model","root","model","Test model"),modelID:"test-model",evidenceKind:"call",tokens:{known:1250,total:1250,unknown:0}}
+    const fixtureNode=(id)=>id==="model"?model:[...exportRows,...longRows].find(n=>n.id===id)
     export const updateFixture=()=>{
       const changed={...longRows[9950],preview:"Updated tool 9950",revision:2}
       const added={...node("long-new","root","tool","New tool"),started:10001,revision:2}
       event.emit("execution.updated",{type:"execution.updated",properties:{sessionID:"root",revision:2,previousRevision:1,summary:{...summary,revision:2},roundSummaries:[],upserts:[changed,added],processUpserts:[changed,added],removed:[]}})
     }
-    const sdk={event,client:{session:{executionTrajectory:async(q)=>{
+    const sdk={event,connected:()=>true,client:{session:{executionTrajectory:async(q,options)=>{
       (window.trajectoryRequests ??= []).push(q)
+      if(location.search.includes("membership=1")){
+        const items=[model].filter(n=>!q.query || n.title.includes(q.query))
+        if(window.holdTrajectory)await new Promise((resolve,reject)=>(window.pendingTrajectories ??= []).push({resolve,reject,signal:options.signal}))
+        return {data:{sessionID:q.sessionID,revision:1,total:items.length,items,nextCursor:null,previousCursor:null}}
+      }
+      if(location.search.includes("failed=1"))return {data:{sessionID:q.sessionID,revision:1,total:1,items:[{...node("failed-tool","root","tool","skill"),tool:"skill",status:"failed",preview:'{"name":"context-review"}'}],nextCursor:null,previousCursor:null}}
       if(long()){
         const all=longRows.filter(n=>!q.query || n.title.includes(q.query))
         const anchor=all.findIndex(n=>n.id===q.anchor)
@@ -54,11 +64,13 @@ beforeAll(async () => {
       }
       if(q.limit===500){const start=q.cursor==="page-2"?500:0;return {data:{sessionID:q.sessionID,revision:1,total:exportRows.length,items:exportRows.slice(start,start+500),nextCursor:start===0?"page-2":null,previousCursor:null}}}
       return {data:{sessionID:q.sessionID,revision:1,total:records[q.sessionID].length,items:records[q.sessionID],nextCursor:null,previousCursor:null}}
-    },executionSummary:async()=>({data:summary}),executionNode:async(q)=>({data:{node:q.nodeID==="read"?{...fixtureNode(q.nodeID),status:"failed"}:fixtureNode(q.nodeID),record:q.nodeID==="read"?{error:"File not found: architecture.md"}:null,sources:[],definitions:null,related:[]}})}}}
+    },executionSummary:async()=>{if(window.holdSummary)await new Promise(resolve=>{window.releaseSummary=resolve});return {data:summary}},executionNode:async(q)=>({data:{node:q.nodeID==="read"?{...fixtureNode(q.nodeID),status:"failed"}:fixtureNode(q.nodeID),record:q.nodeID==="read"?{error:"File not found: architecture.md"}:null,sources:q.nodeID==="model" && !location.search.includes("missing=1")?[{field:"request",artifact:{bytes:100}},{field:"response",artifact:{bytes:100}}]:[],definitions:null,related:[]}}),executionContent:async(q,options)=>{(window.contentRequests ??= []).push(q);if(location.search.includes("pending=1"))await new Promise(resolve=>(window.pendingEvidence ??= []).push({signal:options.signal,resolve}));return {data:{available:true,status:"complete",contentVersion:"v1",mediaType:"application/json",text:'{"test": true}',offset:0,bytes:14,totalBytes:14,nextOffset:null}}}}}}
     export const useParams=()=>({id:"root"})
     export const useSDK=()=>sdk
-    export const useExecution=()=>({state:{summary},connectionVersion:()=>0})
-    export const useWorkbenchPanels=()=>({updateTab:()=>{}})
+    const snapshots=[1,2].map(n=>({sessionID:"root",callID:"call-"+n,nodeID:"model",runID:"root-round",requestNumber:n,roundNumber:1,started:n,modelID:"test-model",providerID:"test-provider",status:"completed",inputTokens:n*100,outputTokens:10,cacheHit:0.5,elapsedMs:1000,retries:0,usage:null,compactedBefore:false,requestAvailable:true,contextLimit:10000}))
+    export const useExecution=()=>({available:()=>true,advance:()=>0,connected:()=>true,state:{summary},connectionVersion:()=>0,createContextHistory:(options)=>{window.contextActive=options.active;return {state:{items:snapshots,total:2,latest:snapshots[1],loading:false,error:false},snapshot:()=>snapshots.find(n=>n.callID===options.selected())??snapshots[1],load:async()=>{}}}})
+    export const [fixtureTab,setFixtureTab]=createSignal({id:"context",state:{}})
+    export const useWorkbenchPanels=()=>({surface:()=>({opened:()=>true,active:()=>"context"}),updateTab:(id,patch)=>{window.recordedTab=patch.state;(window.stateWrites??=[]).push(patch.state);if(window.stateWrites.length>30)throw new Error("Execution state did not settle");setFixtureTab({id,...patch})}})
     export const useNavigateToSession=()=>()=>{}
   `,
   )
@@ -66,16 +78,18 @@ beforeAll(async () => {
     path.join(directory, "main.tsx"),
     `
     import {render} from "solid-js/web"
+    import {Show} from "solid-js"
     import {setupI18n} from "@lingui/core"
     import {I18nProvider} from "@lingui/solid"
     import {DialogProvider} from "@ericsanchezok/synergy-ui/context/dialog"
-    import {ExecutionWorkbenchContent} from ${JSON.stringify(`${source}/components/execution/panel.tsx`)}
-    import {updateFixture} from ${JSON.stringify(`${directory}/services.ts`)}
+    import {ExecutionPanelBody} from ${JSON.stringify(`${source}/components/execution/panel.tsx`)}
+    import {ContextWorkbenchContent} from ${JSON.stringify(`${source}/components/execution/context-dashboard.tsx`)}
+    import {updateFixture,fixtureTab} from ${JSON.stringify(`${directory}/services.ts`)}
     window.updateFixture=updateFixture
     import "@ericsanchezok/synergy-ui/styles"
     Object.defineProperty(navigator,"clipboard",{value:{writeText:async(text)=>{window.copiedEvidence=text}}})
-    const i18n=setupI18n({locale:"en",messages:{en:{"execution.copyBlock":["Copy ",["label"]],"execution.round":["Round ",["number"]]}}})
-    render(()=><I18nProvider i18n={i18n}><DialogProvider><main style="height:780px;width:420px;max-width:100%"><ExecutionWorkbenchContent tab={{id:"context",state:{}}}/></main></DialogProvider></I18nProvider>,document.getElementById("root"))
+    const i18n=setupI18n({locale:"en",messages:{en:{"execution.copyBlock":["Copy ",["label"]],"execution.round":["Round ",["number"]],"context.dashboard.request":["Request ",["number"]]}}})
+    render(()=><I18nProvider i18n={i18n}><DialogProvider><main style="height:100dvh;width:100%;max-width:100%;padding:8px;box-sizing:border-box"><Show when={location.search.includes("dashboard=1")} fallback={<ExecutionPanelBody tab={{id:"context",state:location.search.includes("model=1")?{nodeID:"model"}:{}}} runID={location.search.includes("scoped=1")?"root-round":""} scopeLabel="Entire task" onStateChange={(state)=>{window.recordsState=state}} onBack={()=>{window.returnedToOverview=true}}/>}><ContextWorkbenchContent tab={fixtureTab()}/></Show></main></DialogProvider></I18nProvider>,document.getElementById("root"))
   `,
   )
   const services = path.join(directory, "services.ts")
@@ -124,7 +138,7 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 480, height: 900 } })
   await page.emulateMedia({ reducedMotion: "reduce" })
-  page.on("pageerror", (error) => errors.push(error.message))
+  page.on("pageerror", (error) => errors.push(error.stack ?? error.message))
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text())
   })
@@ -148,85 +162,264 @@ afterAll(async () => {
 for (const viewport of [
   { width: 1114, height: 988 },
   { width: 375, height: 667 },
+  { width: 320, height: 600 },
   { width: 768, height: 500 },
   { width: 557, height: 494 },
 ]) {
-  test(
-    "expanded task details and their close control fit the compiled dialog at " + viewport.width + "px",
-    async () => {
-      await page.setViewportSize(viewport)
-      await page.goto(server.resolvedUrls!.local[0]!)
-      const trigger = page.getByRole("button", { name: "Expand task details", exact: true })
-      await trigger.click()
-      const modal = page.getByRole("dialog", { name: "Task details", exact: true })
-      await modal.waitFor()
-      await modal.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
-      const bounds = await modal.evaluate((element) => {
-        const box = element.getBoundingClientRect()
-        const container = element.parentElement!.getBoundingClientRect()
-        const close = element.querySelector('[data-slot="dialog-close-button"]')!.getBoundingClientRect()
-        const body = element.querySelector('[data-slot="dialog-body"]')!
-        return {
-          left: box.left,
-          right: box.right,
-          top: box.top,
-          bottom: box.bottom,
-          width: box.width,
-          containerWidth: container.width,
-          closeRight: close.right,
-          bodyWidth: body.clientWidth,
-          bodyScrollWidth: body.scrollWidth,
-        }
-      })
-      expect(bounds.left).toBeGreaterThanOrEqual(8)
-      expect(bounds.right).toBeLessThanOrEqual(viewport.width - 8)
-      expect(bounds.top).toBeGreaterThanOrEqual(8)
-      expect(bounds.bottom).toBeLessThanOrEqual(viewport.height - 8)
-      expect(bounds.width).toBeCloseTo(bounds.containerWidth, 0)
-      expect(bounds.closeRight).toBeLessThanOrEqual(viewport.width - 8)
-      expect(bounds.bodyScrollWidth).toBeLessThanOrEqual(bounds.bodyWidth + 1)
-      await modal.getByRole("button", { name: "Close dialog", exact: true }).click()
-      await modal.waitFor({ state: "hidden" })
-      await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Expand task details")
-    },
-  )
+  test("execution records fit their workspace at " + viewport.width + "px", async () => {
+    await page.setViewportSize(viewport)
+    await page.goto(server.resolvedUrls!.local[0]!)
+    const panel = page.locator(".execution-panel")
+    await panel.waitFor()
+    const bounds = await panel.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return {
+        left: box.left,
+        right: box.right,
+        top: box.top,
+        bottom: box.bottom,
+        width: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+      }
+    })
+    expect(bounds.left).toBeGreaterThanOrEqual(8)
+    expect(bounds.right).toBeLessThanOrEqual(viewport.width - 8)
+    expect(bounds.top).toBeGreaterThanOrEqual(8)
+    expect(bounds.bottom).toBeLessThanOrEqual(viewport.height - 8)
+    expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.width + 1)
+    expect(await panel.getByRole("button", { name: "Expand task details", exact: true }).count()).toBe(0)
+  })
 }
 
-test("round and filter choices show selection and retain keyboard focus within expanded task details", async () => {
+test("records inherit the dashboard scope without rendering a second overview", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?scoped=1")
+  await page.locator(".execution-node").first().waitFor()
+  expect(await page.locator(".execution-overview").count()).toBe(0)
+  expect(await page.getByRole("button", { name: /^Rounds:/ }).count()).toBe(0)
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { trajectoryRequests: { runID?: string }[] }).trajectoryRequests.at(-1)?.runID,
+    ),
+  ).toBe("root-round")
+  await page.getByRole("button", { name: "Back to overview", exact: true }).click()
+  expect(await page.evaluate(() => (window as unknown as { returnedToOverview: boolean }).returnedToOverview)).toBe(
+    true,
+  )
+})
+
+test("wide inspection bounds the process column and keeps detail values left aligned", async () => {
+  await page.setViewportSize({ width: 1000, height: 946 })
+  await page.goto(server.resolvedUrls!.local[0]! + "?model=1")
+  const inspector = page.getByRole("region", { name: "Inspect event", exact: true })
+  await inspector.getByText("Test model", { exact: true }).waitFor()
+  const process = (await page.locator(".execution-trajectory-pane").boundingBox())!
+  const detail = (await inspector.boundingBox())!
+  expect(process.width).toBeGreaterThanOrEqual(280)
+  expect(process.width).toBeLessThanOrEqual(320)
+  expect(detail.x).toBeGreaterThan(process.x + process.width)
+  expect(detail.width).toBeGreaterThan(process.width)
+  expect(
+    await inspector
+      .locator(".execution-detail-rows dd")
+      .first()
+      .evaluate((element) => getComputedStyle(element).textAlign),
+  ).toBe("left")
+})
+
+test("narrow inspection replaces the process controls with readable evidence", async () => {
+  for (const width of [375, 426]) {
+    await page.setViewportSize({ width, height: 946 })
+    await page.goto(server.resolvedUrls!.local[0]!)
+    await page.getByRole("button", { name: "Child analysis", exact: true }).click()
+    await page.locator('[data-node-id="read"] .execution-node-button').click()
+    const body = page.getByRole("region", { name: "Error details", exact: true }).locator("code")
+    await body.waitFor()
+    expect(await page.locator(".execution-trajectory-pane").isVisible()).toBe(false)
+    expect(await page.getByRole("textbox", { name: "Search all recorded events" }).isVisible()).toBe(false)
+    const reading = await body.evaluate((element) => ({
+      top: element.getBoundingClientRect().top,
+      fontSize: getComputedStyle(element).fontSize,
+      overflow: document.documentElement.scrollWidth > innerWidth,
+    }))
+    expect(reading.top).toBeLessThanOrEqual(946 / 3)
+    expect(reading.fontSize).toBe("14px")
+    expect(reading.overflow).toBe(false)
+    await page.getByRole("button", { name: "Back to trajectory", exact: true }).click()
+    expect(await page.getByRole("textbox", { name: "Search all recorded events" }).isVisible()).toBe(true)
+  }
+})
+
+test("model inspection keeps summary, request, response and timing in one scrolling document", async () => {
+  await page.setViewportSize({ width: 560, height: 600 })
+  await page.goto(server.resolvedUrls!.local[0]! + "?model=1")
+  await page.getByRole("region", { name: "Inspect event", exact: true }).waitFor()
+  await page.getByText("Test model", { exact: true }).waitFor()
+  expect(await page.getByRole("navigation", { name: "View", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Saved request", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Provider response", exact: true }).count()).toBe(0)
+  const request = page.getByRole("region", { name: "Saved request", exact: true })
+  const response = page.getByRole("region", { name: "Provider response", exact: true })
+  const timing = page.getByRole("region", { name: "Timing", exact: true })
+  await request.locator("code").waitFor()
+  await response.locator("code").waitFor()
+  const body = page.locator(".execution-inspector-body")
+  const order = await body.evaluate((element) =>
+    [...element.children].map((child) => child.getAttribute("aria-label") ?? child.className),
+  )
+  expect(order).toEqual(["execution-request-summary", "Saved request", "Provider response", "Timing"])
+  const reads = await page.evaluate(
+    () => (window as unknown as { contentRequests: { field: string; limit: number }[] }).contentRequests,
+  )
+  expect(reads.map((read) => read.field).sort()).toEqual(["request", "response"])
+  expect(reads.every((read) => read.limit <= 65_536)).toBe(true)
+  await timing.scrollIntoViewIfNeeded()
+  expect(await body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  expect(await timing.isVisible()).toBe(true)
+  expect(await request.count()).toBe(1)
+  expect(await response.count()).toBe(1)
+  expect(errors).toEqual([])
+}, 15_000)
+
+test("pending request and response reads leave metadata readable and abort together on navigation", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?model=1&pending=1")
+  await page.getByText("Test model", { exact: true }).waitFor()
+  await page.waitForFunction(() => (window as unknown as { pendingEvidence?: unknown[] }).pendingEvidence?.length === 2)
+  expect(await page.locator(".execution-request-summary").isVisible()).toBe(true)
+  expect(await page.getByRole("region", { name: "Timing", exact: true }).count()).toBe(1)
+  await page.getByRole("button", { name: "Back to trajectory", exact: true }).click()
+  const cancelled = await page.evaluate(() => {
+    const pending = (window as unknown as { pendingEvidence: { signal: AbortSignal; resolve: () => void }[] })
+      .pendingEvidence
+    const aborted = pending.every((read) => read.signal.aborted)
+    pending.forEach((read) => read.resolve())
+    return aborted
+  })
+  expect(cancelled).toBe(true)
+  expect(await page.getByRole("region", { name: "Inspect event", exact: true }).count()).toBe(0)
+  expect(await page.locator(".execution-reader").count()).toBe(0)
+  expect(errors).toEqual([])
+}, 15_000)
+
+test("model inspection without recorded bodies retains summary and timing without dead controls", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?model=1&missing=1")
+  await page.getByText("Test model", { exact: true }).waitFor()
+  expect(await page.locator(".execution-request-summary").isVisible()).toBe(true)
+  expect(await page.getByRole("region", { name: "Timing", exact: true }).count()).toBe(1)
+  expect(await page.getByRole("navigation", { name: "View", exact: true }).count()).toBe(0)
+  expect(await page.locator(".execution-reader").count()).toBe(0)
+  expect(
+    await page.evaluate(() => (window as unknown as { contentRequests?: unknown[] }).contentRequests ?? []),
+  ).toEqual([])
+  expect(errors).toEqual([])
+}, 15_000)
+
+test("changing record order never flashes an outside-filter warning while the page is pending", async () => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto(server.resolvedUrls!.local[0]! + "?model=1&membership=1")
+  await page.locator('.execution-node[data-node-id="model"]').waitFor()
+  await page.getByRole("button", { name: "All records", exact: true }).click()
+  await page.locator('.execution-node[data-node-id="model"]').waitFor()
+  await page.evaluate(() => {
+    ;(window as unknown as { holdTrajectory: boolean }).holdTrajectory = true
+  })
+  const inspector = page.getByRole("region", { name: "Inspect event", exact: true })
+  for (const name of ["Rounds", "Calls", "Time"]) {
+    await page.getByRole("button", { name, exact: true }).click()
+    await page.waitForFunction(
+      () => (window as unknown as { pendingTrajectories?: unknown[] }).pendingTrajectories?.length === 1,
+    )
+    expect(await inspector.innerText()).not.toContain("Outside current filters")
+    expect(await inspector.locator(".execution-request-summary").isVisible()).toBe(true)
+    await page.evaluate(() => {
+      ;(window as unknown as { pendingTrajectories: { resolve: () => void }[] }).pendingTrajectories.shift()!.resolve()
+    })
+    await page.locator('.execution-node[data-node-id="model"]').waitFor()
+    expect(await inspector.innerText()).not.toContain("Outside current filters")
+  }
+  expect(await page.evaluate(() => (window as unknown as { contentRequests: unknown[] }).contentRequests.length)).toBe(
+    2,
+  )
+  expect(errors).toEqual([])
+}, 15_000)
+
+test("a confirmed outside-filter warning survives loading failures and clears only after a matching result", async () => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto(server.resolvedUrls!.local[0]! + "?model=1&membership=1")
+  await page.locator('.execution-node[data-node-id="model"]').waitFor()
+  await page.getByRole("button", { name: "All records", exact: true }).click()
+  await page.locator('.execution-node[data-node-id="model"]').waitFor()
+  await page.evaluate(() => {
+    ;(window as unknown as { holdTrajectory: boolean }).holdTrajectory = true
+  })
+  await page.locator(".execution-search input").fill("No matching record")
+  await page.waitForFunction(
+    () => (window as unknown as { pendingTrajectories?: unknown[] }).pendingTrajectories?.length === 1,
+  )
+  const inspector = page.getByRole("region", { name: "Inspect event", exact: true })
+  expect(await inspector.innerText()).not.toContain("Outside current filters")
+  await page.evaluate(() => {
+    ;(window as unknown as { pendingTrajectories: { resolve: () => void }[] }).pendingTrajectories.shift()!.resolve()
+  })
+  await inspector.getByText("· Outside current filters", { exact: false }).waitFor()
+  await page.getByRole("button", { name: "Rounds", exact: true }).click()
+  await page.waitForFunction(
+    () => (window as unknown as { pendingTrajectories: unknown[] }).pendingTrajectories.length === 1,
+  )
+  expect(await inspector.innerText()).toContain("Outside current filters")
+  await page.evaluate(() => {
+    ;(window as unknown as { pendingTrajectories: { reject: (error: Error) => void }[] }).pendingTrajectories
+      .shift()!
+      .reject(new Error("Page unavailable"))
+  })
+  await page.getByRole("alert").waitFor()
+  expect(await inspector.innerText()).toContain("Outside current filters")
+  await page.evaluate(() => {
+    ;(window as unknown as { holdTrajectory: boolean }).holdTrajectory = false
+  })
+  await page.locator(".execution-search input").fill("")
+  await page.locator('.execution-node[data-node-id="model"]').waitFor()
+  expect(await inspector.innerText()).not.toContain("Outside current filters")
+  expect(errors).toEqual([])
+}, 15_000)
+
+test("a superseded filter result cannot change the selected inspector's confirmed membership", async () => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto(server.resolvedUrls!.local[0]! + "?model=1&membership=1")
+  await page.locator('.execution-node[data-node-id="model"]').waitFor()
+  await page.evaluate(() => {
+    ;(window as unknown as { holdTrajectory: boolean }).holdTrajectory = true
+  })
+  const search = page.locator(".execution-search input")
+  await search.fill("No matching record")
+  await page.waitForFunction(
+    () => (window as unknown as { pendingTrajectories?: unknown[] }).pendingTrajectories?.length === 1,
+  )
+  await search.fill("Test model")
+  await page.waitForFunction(
+    () => (window as unknown as { pendingTrajectories: unknown[] }).pendingTrajectories.length === 2,
+  )
+  expect(
+    await page.evaluate(() => {
+      const pending = (window as unknown as { pendingTrajectories: { signal: AbortSignal; resolve: () => void }[] })
+        .pendingTrajectories
+      pending[1].resolve()
+      return pending[0].signal.aborted
+    }),
+  ).toBe(true)
+  await page.locator('.execution-node[data-node-id="model"]').waitFor()
+  await page.evaluate(async () => {
+    ;(window as unknown as { pendingTrajectories: { resolve: () => void }[] }).pendingTrajectories[0].resolve()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  })
+  expect(await page.locator(".execution-inspector-title").innerText()).not.toContain("Outside current filters")
+  expect(await page.locator('.execution-node[data-node-id="model"]').count()).toBe(1)
+  expect(errors).toEqual([])
+}, 15_000)
+
+test("filter choices show selection and retain keyboard focus within execution records", async () => {
   await page.setViewportSize({ width: 1114, height: 988 })
   await page.goto(server.resolvedUrls!.local[0]!)
-  await page.getByRole("button", { name: "Expand task details", exact: true }).click()
-  const modal = page.getByRole("dialog", { name: "Task details", exact: true })
-  await modal.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
-  const trigger = modal.getByRole("button", { name: /^Rounds:/ })
-  expect(await trigger.count()).toBe(1)
-  await trigger.press("Enter")
-  const all = page.getByRole("option", { name: "All rounds", exact: true })
-  await all.waitFor()
-  await all.evaluate((element) =>
-    Promise.all(
-      element
-        .closest(".menu-field-surface")!
-        .getAnimations()
-        .map((animation) => animation.finished),
-    ),
-  )
-  expect(await all.getAttribute("aria-selected")).toBe("true")
-  expect(await all.locator('[data-slot="menu-field-indicator"] svg').count()).toBe(1)
-  expect(await all.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(36)
-  await all.press("ArrowDown")
-  await page.keyboard.press("Enter")
-  await page.waitForFunction(
-    () =>
-      (window as unknown as { trajectoryRequests: { runID?: string }[] }).trajectoryRequests.at(-1)?.runID ===
-      "root-round",
-  )
-  expect(await trigger.textContent()).toContain("Round 1")
-  await trigger.press("Enter")
-  await page.getByRole("listbox").press("Escape")
-  await page.getByRole("listbox").waitFor({ state: "hidden" })
-  expect(await modal.isVisible()).toBe(true)
-  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label")?.startsWith("Rounds:"))
+  const modal = page.locator(".execution-panel")
   await modal.getByRole("button", { name: "Filters", exact: true }).click()
   const filters = page.getByRole("dialog", { name: "Filters", exact: true })
   const tools = filters.getByRole("checkbox", { name: "Tool execution", exact: true })
@@ -267,31 +460,9 @@ test("round and filter choices show selection and retain keyboard focus within e
   await filters.waitFor({ state: "hidden" })
   expect(await modal.isVisible()).toBe(true)
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Filters")
-  await modal.getByRole("button", { name: "Close dialog", exact: true }).click()
   await page.setViewportSize({ width: 480, height: 900 })
   await page.goto(server.resolvedUrls!.local[0]!)
 })
-
-for (const width of [1114, 375]) {
-  test("activity exploration fits at " + width + "px and returns to expanded task details", async () => {
-    await page.setViewportSize({ width, height: 667 })
-    await page.getByRole("button", { name: "Expand task details", exact: true }).click()
-    const task = page.getByRole("dialog", { name: "Task details", exact: true })
-    await task.getByRole("button", { name: "Explore activity", exact: true }).click()
-    const activity = page.getByRole("dialog", { name: "Activity", exact: true })
-    await activity.waitFor()
-    await activity.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
-    const box = await activity.boundingBox()
-    expect(box!.x).toBeGreaterThanOrEqual(8)
-    expect(box!.x + box!.width).toBeLessThanOrEqual(width - 8)
-    const scroll = activity.locator(".execution-chart-scroll")
-    expect(await scroll.evaluate((element) => getComputedStyle(element).overflowX)).toBe("auto")
-    await activity.getByRole("button", { name: "Close dialog", exact: true }).click()
-    await activity.waitFor({ state: "hidden" })
-    expect(await task.isVisible()).toBe(true)
-    await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Explore activity")
-  })
-}
 
 test("completed child trajectories expand descendants without recursively offering their own delegation", async () => {
   const child = page.locator(".execution-node-line").getByRole("button", { name: "Child analysis", exact: true })
@@ -339,9 +510,19 @@ test("a failed tool displays its saved error as the default result without inven
   )
   expect(await page.locator(".execution-tabs").getByRole("button").count()).toBe(2)
   expect(await page.getByText("File not found: architecture.md", { exact: true }).isVisible()).toBe(true)
-  expect((await page.getByText("File not found: architecture.md", { exact: true }).boundingBox())!.y).toBeLessThan(160)
-  expect(await page.locator(".execution-global").isVisible()).toBe(false)
+  expect(
+    (await page.getByText("File not found: architecture.md", { exact: true }).boundingBox())!.y,
+  ).toBeLessThanOrEqual(page.viewportSize()!.height / 3)
+  expect(await page.locator(".execution-trajectory-pane").isVisible()).toBe(false)
 }, 15_000)
+
+test("failed tool rows display their tool name instead of serialized parameters", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?failed=1")
+  const row = page.locator('[data-node-id="failed-tool"]')
+  await row.waitFor()
+  expect(await row.locator("strong").textContent()).toBe("skill")
+  expect(await row.innerText()).not.toContain('{"name"')
+})
 
 test("ten thousand persistent events keep rendering bounded and restore history and keyboard focus", async () => {
   await page.goto(server.resolvedUrls!.local[0]! + "?long=1")
@@ -376,8 +557,10 @@ test("ten thousand persistent events keep rendering bounded and restore history 
   expect(Math.abs((await button.boundingBox())!.y - visible.top)).toBeLessThan(2)
   await button.press("Enter")
   await page.getByRole("button", { name: "Back to trajectory" }).waitFor()
-  expect(await page.locator(".execution-global").isVisible()).toBe(false)
-  expect((await page.locator(".execution-inspector-body").boundingBox())!.y).toBeLessThan(160)
+  expect(await page.locator(".execution-trajectory-pane").isVisible()).toBe(false)
+  expect((await page.locator(".execution-inspector-body").boundingBox())!.y).toBeLessThanOrEqual(
+    page.viewportSize()!.height / 3,
+  )
   await page.getByRole("button", { name: "Back to trajectory" }).press("Escape")
   await page.waitForTimeout(100)
   expect(await button.evaluate((element) => document.activeElement === element)).toBe(true)
@@ -388,3 +571,84 @@ test("ten thousand persistent events keep rendering bounded and restore history 
   expect(await page.locator(".execution-node").count()).toBe(1)
   expect(errors).toEqual([])
 }, 30_000)
+
+test("task and round rows use recorded intervals instead of their transcript envelope", async () => {
+  expect(await page.locator('[data-node-id="child"] .execution-node-meta').textContent()).toContain("≥ 00:17")
+  expect(await page.locator('[data-node-id="root"] .execution-node-meta').textContent()).toContain("00:03")
+})
+
+test("dashboard request inspection returns to the same scope, selection, focus and reading position", async () => {
+  await page.setViewportSize({ width: 560, height: 800 })
+  await page.goto(server.resolvedUrls!.local[0]! + "?dashboard=1")
+  await page.getByRole("button", { name: "Request 1 · 100", exact: true }).click()
+  const open = page.getByRole("button", { name: "Request details", exact: true })
+  await open.scrollIntoViewIfNeeded()
+  const scroll = await page.locator(".context-dashboard").evaluate((element) => element.scrollTop)
+  await open.click()
+  await page.locator(".execution-request-summary").waitFor()
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("Back to trajectory")
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { recordedTab: { contextDashboard: { records: boolean } } }).recordedTab.contextDashboard
+          .records,
+    ),
+  ).toBe(true)
+  expect(await page.locator(".execution-overview").count()).toBe(0)
+  expect(await page.evaluate(() => (window as unknown as { contextActive: () => boolean }).contextActive())).toBe(true)
+  await page.getByRole("button", { name: "Back to overview", exact: true }).click()
+  await open.waitFor()
+  expect(errors).toEqual([])
+  expect(await page.getByRole("button", { name: "Request 1 · 100", exact: true }).getAttribute("aria-pressed")).toBe(
+    "true",
+  )
+  expect(await page.locator(".context-dashboard").evaluate((element) => element.scrollTop)).toBe(scroll)
+  await page.waitForFunction(() => document.activeElement?.textContent?.trim() === "Request details")
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { recordedTab: { contextDashboard: { records: boolean; runID: string } } }).recordedTab
+          .contextDashboard,
+    ),
+  ).toMatchObject({ records: false, runID: "" })
+  expect(errors).toEqual([])
+}, 15_000)
+
+test("returning to a round keeps its metric cards while the background summary refresh is pending", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?dashboard=1")
+  await page.getByRole("button", { name: /^Rounds:/ }).click()
+  await page.getByRole("option").nth(1).click()
+  await page.getByRole("region", { name: "Token statistics", exact: true }).waitFor()
+  await page.evaluate(() => {
+    ;(window as unknown as { usageCard: Element | null }).usageCard = document.querySelector(".context-usage-stats")
+  })
+  await page.getByRole("button", { name: "Request details", exact: true }).click()
+  await page.locator(".execution-request-summary").waitFor()
+  await page.evaluate(() => {
+    ;(window as unknown as { holdSummary: boolean }).holdSummary = true
+  })
+  await page.getByRole("button", { name: "Back to overview", exact: true }).click()
+  expect(await page.getByRole("region", { name: "Token statistics", exact: true }).count()).toBe(1)
+  expect(
+    await page.evaluate(
+      () => document.querySelector(".context-usage-stats") === (window as unknown as { usageCard: Element }).usageCard,
+    ),
+  ).toBe(true)
+  await page.evaluate(() => {
+    ;(window as unknown as { releaseSummary?: () => void }).releaseSummary?.()
+  })
+  expect(errors).toEqual([])
+}, 15_000)
+
+test("the failure count opens failed tools across the same task and its descendants", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?dashboard=1")
+  await page.locator(".context-activity-counts button[data-state=failed]").click()
+  await page.locator(".execution-node").first().waitFor()
+  expect(
+    await page.evaluate(() => (window as unknown as { trajectoryRequests: unknown[] }).trajectoryRequests.at(-1)),
+  ).toMatchObject({ kinds: "tool", statuses: "failed", actor: "all" })
+  expect(await page.locator(".execution-inspector").count()).toBe(0)
+  await page.getByRole("button", { name: "Back to overview", exact: true }).click()
+  expect(await page.getByRole("region", { name: "Task activity", exact: true }).isVisible()).toBe(true)
+  expect(errors).toEqual([])
+})

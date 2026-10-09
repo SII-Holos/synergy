@@ -41,6 +41,7 @@ import { useExecution } from "@/context/execution"
 
 type SessionConversationProps = PluginComponentProps<PluginConversationService> & {
   initialScrollSettled?: () => boolean
+  onAdmitted?: (sessionID: string) => void
 }
 
 export function SessionConversation(input: SessionConversationProps) {
@@ -52,6 +53,7 @@ export function SessionConversation(input: SessionConversationProps) {
         <SessionConversationView
           context={mergeProps(input.context, { sessionID: untrack(() => input.context.sessionID) })}
           initialScrollSettled={input.initialScrollSettled}
+          onAdmitted={input.onAdmitted}
         />
       )}
     </Show>
@@ -67,7 +69,10 @@ function SessionConversationView(input: SessionConversationProps) {
     if (!input.initialScrollSettled || admitted()) return
     if (!input.initialScrollSettled() || (props.content && !contentReady())) return
     let frame = requestAnimationFrame(() => {
-      frame = requestAnimationFrame(() => setAdmitted(true))
+      frame = requestAnimationFrame(() => {
+        input.onAdmitted?.(props.sessionID)
+        setAdmitted(true)
+      })
     })
     onCleanup(() => cancelAnimationFrame(frame))
   })
@@ -331,7 +336,7 @@ function SessionConversationView(input: SessionConversationProps) {
     <ConversationMotionProvider takeArrival={takePartArrival} liveRevision={() => arrivalView()?.revision() ?? 0}>
       <ConversationViewport
         ready={admitted()}
-        animateAdmission={animateAdmission}
+        animateAdmission={animateAdmission && !input.onAdmitted}
         scrolledUp={props.scrolledUp()}
         onScrolledUpChange={props.onScrolledUpChange}
         autoScroll={props.autoScroll}
@@ -339,9 +344,13 @@ function SessionConversationView(input: SessionConversationProps) {
           if (element || !releaseOf || scrollRef() === releaseOf) setScrollRef(element)
           props.setScrollRef(element, releaseOf)
         }}
-        onScrollToBottom={props.onClearHash}
+        onScrollToBottom={() => {
+          props.onClearHash?.()
+          if (props.onReturnLatest) props.onReturnLatest()
+          else props.autoScroll.forceScrollToBottom()
+        }}
         onScrollContainer={(el) => {
-          if (props.isDesktop()) props.onScheduleScrollSpy(el)
+          if (props.isDesktop() && !props.content) props.onScheduleScrollSpy(el)
         }}
         contentClass="session-conversation-content session-content-column flex flex-col items-start justify-start gap-5"
         contentClassList={{
@@ -380,7 +389,10 @@ function SessionConversationView(input: SessionConversationProps) {
                 size="large"
                 class="text-12-medium"
                 disabled={props.historyLoading()}
-                onClick={props.onReturnLatest}
+                onClick={(event: MouseEvent) => {
+                  event.stopPropagation()
+                  props.onReturnLatest()
+                }}
               >
                 {props.historyPendingLatest() ? _(S.convNewMessagesReturnLatest) : _(S.convReturnLatest)}
               </Button>
@@ -493,6 +505,10 @@ function SessionConversationView(input: SessionConversationProps) {
           <VirtualConversationRows
             layoutOwner={[sdk.url, sdk.scopeKey, props.sessionID]}
             onReady={setContentReady}
+            onReadingMessage={(messageID) => {
+              const element = scrollRef()
+              if (element && props.isDesktop()) props.onScheduleScrollSpy(element, messageID)
+            }}
             messageKey={messageKey}
             takePartArrival={takePartArrival}
             liveRevision={() => arrivalView()?.revision() ?? 0}

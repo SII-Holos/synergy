@@ -5,6 +5,7 @@ import {
 import { isActivityGroupableTool, isCancelledMediaGeneration } from "@ericsanchezok/synergy-util/activity"
 import { markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { ToolIntent } from "./tool-intent"
 import { ToolActivityEvidence } from "./activity-evidence"
 import { RuntimeContext } from "../lifecycle/context"
@@ -37,7 +38,12 @@ import { Attachment } from "../attachment"
 import { Asset } from "../asset/asset"
 import { Log } from "../util/log"
 import { SessionBounds } from "./bounds"
-import { ContextUsageSchema } from "./context-usage-schema"
+import {
+  ContextUsageSchema,
+  ContextSourceSchema,
+  ContextCategoryKeys,
+  type ContextCategoryKey,
+} from "./context-usage-schema"
 
 function networkErrorMetadata(error: Error, endpointHost?: string) {
   const metadata: Record<string, string> = {
@@ -54,6 +60,8 @@ function networkErrorMetadata(error: Error, endpointHost?: string) {
   return metadata
 }
 export namespace MessageV2 {
+  export const ContextSource = ContextSourceSchema
+
   const log = Log.create({ service: "message-v2" })
 
   type SessionLookup = {
@@ -204,6 +212,8 @@ export namespace MessageV2 {
   export const FileSource = AttachmentSourceBase.extend({
     type: z.literal("file"),
     path: z.string(),
+    workspace: ResourceReference.Workspace.optional(),
+    location: ResourceReference.Location.optional(),
   }).meta({
     ref: "FileSource",
   })
@@ -211,6 +221,7 @@ export namespace MessageV2 {
   export const SymbolSource = AttachmentSourceBase.extend({
     type: z.literal("symbol"),
     path: z.string(),
+    workspace: ResourceReference.Workspace.optional(),
     range: SymbolRange,
     name: z.string(),
     kind: z.number().int(),
@@ -510,6 +521,7 @@ export namespace MessageV2 {
     visible: z.boolean().optional(),
     includeInContext: z.boolean().optional(),
     rootID: z.string().optional(),
+    referenceContext: ResourceReference.Context.optional(),
   })
 
   export const User = Base.extend({
@@ -1156,37 +1168,28 @@ export namespace MessageV2 {
 
   export interface ModelMessageContribution {
     text: string
+    nativeURL?: string
+    source?: string
+    messageID?: string
+    partID?: string
+    path?: string[]
+    selector?: string[]
+    range?: { start: number; end: number }
+    precision?: "source" | "role"
   }
 
   export interface ModelMessageProvenance {
-    categories: {
-      conversation: ModelMessageContribution[]
-      toolActivity: ModelMessageContribution[]
-      filesReferences: ModelMessageContribution[]
-      instructions: ModelMessageContribution[]
-    }
-    items: {
-      conversation: number
-      toolActivity: number
-      filesReferences: number
-      instructions: number
-    }
+    categories: Record<ContextCategoryKey, ModelMessageContribution[]>
+    items: Record<ContextCategoryKey, number>
+    injections?: { text: string; source: string }[]
   }
 
-  function createModelMessageProvenance(): ModelMessageProvenance {
+  export function createModelMessageProvenance(): ModelMessageProvenance {
     return {
-      categories: {
-        conversation: [],
-        toolActivity: [],
-        filesReferences: [],
-        instructions: [],
-      },
-      items: {
-        conversation: 0,
-        toolActivity: 0,
-        filesReferences: 0,
-        instructions: 0,
-      },
+      categories: Object.fromEntries(
+        ContextCategoryKeys.map((key) => [key, [] as ModelMessageContribution[]]),
+      ) as ModelMessageProvenance["categories"],
+      items: Object.fromEntries(ContextCategoryKeys.map((key) => [key, 0])) as ModelMessageProvenance["items"],
     }
   }
 
@@ -1194,9 +1197,17 @@ export namespace MessageV2 {
     provenance: ModelMessageProvenance,
     category: keyof ModelMessageProvenance["categories"],
     text: string | undefined,
+    part?: Part,
+    source?: string,
   ) {
     if (!text) return
-    provenance.categories[category].push({ text })
+    provenance.categories[category].push({
+      text,
+      source,
+      messageID: part?.messageID,
+      partID: part?.id,
+      precision: "source",
+    })
     provenance.items[category]++
   }
 
@@ -1208,7 +1219,7 @@ export namespace MessageV2 {
   ) {
     const mode = attachmentModelMode(part)
     if (mode === "none") return
-    provenance.items.filesReferences++
+    provenance.items.attachments++
     const reference =
       part.url.startsWith("asset://") && Asset.isValidId(part.url.slice("asset://".length)) ? part.url : undefined
 
@@ -1216,7 +1227,13 @@ export namespace MessageV2 {
       const content = part.model?.mode === "content" ? part.model.text : undefined
       const text = content?.trim() ? content : `[Attachment content: ${attachmentSummary(part)}]`
       parts.push({ type: "text", text })
-      provenance.categories.filesReferences.push({ text })
+      provenance.categories.attachments.push({
+        text,
+        source: attachmentName(part),
+        messageID: part.messageID,
+        partID: part.id,
+        precision: "source",
+      })
       return
     }
 
@@ -1236,7 +1253,13 @@ export namespace MessageV2 {
         .join(". ")
       const text = `[Attachment: ${description}]`
       parts.push({ type: "text", text })
-      provenance.categories.filesReferences.push({ text })
+      provenance.categories.attachments.push({
+        text,
+        source: attachmentName(part),
+        messageID: part.messageID,
+        partID: part.id,
+        precision: "source",
+      })
       return
     }
 
@@ -1244,11 +1267,23 @@ export namespace MessageV2 {
     if (reference) {
       const text = `[Attachment: ${attachmentSummary(part)}. Reference: ${reference}${options.includeLocalPath && localPath ? `. Local path: ${localPath}` : ""}]`
       parts.push({ type: "text", text })
-      provenance.categories.filesReferences.push({ text })
+      provenance.categories.attachments.push({
+        text,
+        source: attachmentName(part),
+        messageID: part.messageID,
+        partID: part.id,
+        precision: "source",
+      })
     } else if (options.includeLocalPath && localPath) {
       const text = `[The user attached a file: ${attachmentName(part)} (${part.mime}). Local path: ${localPath}]`
       parts.push({ type: "text", text })
-      provenance.categories.filesReferences.push({ text })
+      provenance.categories.attachments.push({
+        text,
+        source: attachmentName(part),
+        messageID: part.messageID,
+        partID: part.id,
+        precision: "source",
+      })
     }
 
     const keptHashes = options.keptHashes
@@ -1257,11 +1292,25 @@ export namespace MessageV2 {
       if (!keptHashes.has(hash)) {
         const text = `[Image: ${attachmentName(part)} — previously shared]`
         parts.push({ type: "text", text })
-        provenance.categories.filesReferences.push({ text })
+        provenance.categories.attachments.push({
+          text,
+          source: attachmentName(part),
+          messageID: part.messageID,
+          partID: part.id,
+          precision: "source",
+        })
         return
       }
     }
 
+    provenance.categories.attachments.push({
+      text: "",
+      nativeURL: part.url,
+      source: attachmentName(part),
+      messageID: part.messageID,
+      partID: part.id,
+      precision: "source",
+    })
     parts.push({
       type: "file",
       url: part.url,
@@ -1351,7 +1400,12 @@ export namespace MessageV2 {
               type: "text",
               text: part.text,
             })
-            addModelMessageContribution(provenance, isSystemPart(part) ? "instructions" : "conversation", part.text)
+            addModelMessageContribution(
+              provenance,
+              isSystemPart(part) ? "injectedContext" : "userMessages",
+              part.text,
+              part,
+            )
           }
           if (part.type === "attachment") {
             appendAttachmentModelParts(userMessage.parts, part, provenance, { keptHashes, includeLocalPath: true })
@@ -1409,7 +1463,7 @@ export namespace MessageV2 {
               text: part.text,
               providerMetadata: modelProviderMetadata(part.metadata, sanitization),
             })
-            addModelMessageContribution(provenance, "conversation", part.text)
+            addModelMessageContribution(provenance, "assistantMessages", part.text, part)
           }
           if (part.type === "step-start")
             assistantMessage.parts.push({
@@ -1435,7 +1489,7 @@ export namespace MessageV2 {
                     role: "user",
                     parts: attachmentParts,
                   })
-                  addModelMessageContribution(provenance, "toolActivity", attachmentIntroduction)
+                  addModelMessageContribution(provenance, "toolResults", attachmentIntroduction, part, part.tool)
                 }
               }
               const input = sanitizePromptPayload(
@@ -1453,8 +1507,14 @@ export namespace MessageV2 {
                 output,
                 callProviderMetadata: modelProviderMetadata(part.metadata, sanitization),
               })
-              addModelMessageContribution(provenance, "toolActivity", JSON.stringify(input))
-              addModelMessageContribution(provenance, "toolActivity", output)
+              addModelMessageContribution(provenance, "assistantMessages", JSON.stringify(input), part, part.tool)
+              addModelMessageContribution(
+                provenance,
+                part.tool === "skill" ? "skills" : "toolResults",
+                output,
+                part,
+                part.state.title || part.tool,
+              )
             }
             if (part.state.status === "error") {
               const input = sanitizePromptPayload(
@@ -1469,8 +1529,8 @@ export namespace MessageV2 {
                 errorText: part.state.error,
                 callProviderMetadata: modelProviderMetadata(part.metadata, sanitization),
               })
-              addModelMessageContribution(provenance, "toolActivity", JSON.stringify(input))
-              addModelMessageContribution(provenance, "toolActivity", part.state.error)
+              addModelMessageContribution(provenance, "assistantMessages", JSON.stringify(input), part, part.tool)
+              addModelMessageContribution(provenance, "toolResults", part.state.error, part, part.tool)
             }
           }
           if (part.type === "reasoning") {
@@ -1484,7 +1544,7 @@ export namespace MessageV2 {
                 encryptedReasoningIds.has(part.metadata?.openai?.itemId),
               ),
             })
-            addModelMessageContribution(provenance, "conversation", part.text)
+            addModelMessageContribution(provenance, "assistantMessages", part.text, part)
           }
         }
         if (assistantMessage.parts.length > 0) {

@@ -88,12 +88,15 @@ beforeAll(async () => {
       select(){workbench.surface("side").setActive("other");workbench.surface("side").open()},evidence(value){evidence=value},notes(value){notes=value}
     }
     export const attachWorkbench=value=>{workbench=value}
+    export const useGlobalSDK=()=>({capabilities:{has:()=>false}})
     export const useSDK=()=>({get url(){return server()},get scopeKey(){return scope()},get scopeID(){return scope()},client:{
       note:{async listMeta({archived}){reads.push("notes");return {data:notes.filter(group=>!!group.archived===(archived==="true"))}}},
       session:{async toolActivity(){reads.push("evidence");return {data:{part:evidence}}}}
     }})
     export const useParams=()=>({get id(){return session()},get dir(){return scope()+server()}})
     export const useFile=()=>({normalize:value=>value})
+    export const useProjectFiles=()=>({open:async()=>undefined})
+    export const usePlatform=()=>({platform:"web",openLink(){}})
     export const useSync=()=>({data:{session:[],message:{},part:{}}})
     export const useSessionTransition=()=>({get:()=>undefined}),draftTransitionKey=(server,scope)=>JSON.stringify([server,scope])
     export const usePluginHost=()=>({resources:{register:()=>()=>{}}})
@@ -135,8 +138,10 @@ beforeAll(async () => {
     plugins: [solid()],
     resolve: {
       alias: [
+        { find: "./global-sdk", replacement: bridge },
         { find: "lucide-solid", replacement: resolveUI.resolve("lucide-solid") },
         { find: "./browser-catalog", replacement: bridge },
+        { find: "./platform", replacement: bridge },
         ...[
           "@/context/sdk",
           "@/context/file",

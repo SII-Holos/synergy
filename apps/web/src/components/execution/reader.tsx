@@ -30,11 +30,16 @@ function lines(text: string, offset: number) {
   }
   return result
 }
-function save(blob: Blob, field: string, json: boolean) {
+function format(mediaType = "") {
+  if (mediaType.split(";")[0].trim() === "application/x-ndjson") return "jsonl"
+  return mediaType.includes("json") ? "json" : "text"
+}
+function save(blob: Blob, field: string) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement("a")
   link.href = url
-  link.download = "execution-" + field + (json ? ".json" : ".txt")
+  const extension = format(blob.type)
+  link.download = "execution-" + field + "." + (extension === "text" ? "txt" : extension)
   link.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
@@ -275,15 +280,15 @@ export function EvidenceReader(props: {
       } else if (source.status === "complete") throw new Error("Execution content checksum was not recorded")
       controller.signal.throwIfAborted()
       if (!copy) {
-        save(blob, props.field, source.mediaType.includes("json"))
+        save(blob, props.field)
         return
       }
       const text = await blob.text()
-      if (source.mediaType.includes("json")) JSON.parse(text)
+      if (format(source.mediaType) === "json") JSON.parse(text)
       controller.signal.throwIfAborted()
       if ((await copyTextToClipboard(text, { notifyFailure: false })).ok) setFeedback("copied")
       else {
-        save(blob, props.field, source.mediaType.includes("json"))
+        save(blob, props.field)
         setFeedback("copyFailed")
       }
     } catch {
@@ -332,7 +337,7 @@ export function EvidenceReader(props: {
   const text = () => {
     stamp()
     const value = pages.pages()[0]?.text ?? ""
-    if (!small() || !meta()?.mediaType.includes("json")) return value
+    if (!small() || format(meta()?.mediaType) !== "json") return value
     try {
       return JSON.stringify(JSON.parse(value), null, 2)
     } catch {
@@ -354,7 +359,7 @@ export function EvidenceReader(props: {
     <section class="execution-evidence-block execution-reader" aria-label={label()}>
       <header class="execution-evidence-header">
         <h3>{label()}</h3>
-        <span>{meta()?.mediaType.includes("json") ? "JSON" : "text"}</span>
+        <span>{format(meta()?.mediaType) === "text" ? "text" : format(meta()?.mediaType).toUpperCase()}</span>
         <Popover
           open={menu()}
           onOpenChange={setMenu}
@@ -408,8 +413,8 @@ export function EvidenceReader(props: {
         <button
           type="button"
           class="execution-icon-button"
-          aria-label={_(meta()?.mediaType.includes("json") ? E.copyFull : E.copyText)}
-          title={_(meta()?.mediaType.includes("json") ? E.copyFull : E.copyText)}
+          aria-label={_(format(meta()?.mediaType) === "json" ? E.copyFull : E.copyText)}
+          title={_(format(meta()?.mediaType) === "json" ? E.copyFull : E.copyText)}
           disabled={!meta() || meta()?.status !== "complete" || progress() !== undefined}
           onClick={() => void complete(true)}
         >

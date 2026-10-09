@@ -46,7 +46,7 @@ beforeAll(async () => {
     export const useParams = () => ({ id: "session" })
     export const useDialog = () => ({ push() {}, close() {} })
     export const useLocale = () => ({ i18n: { _: value => value.message } })
-    export const useWorkbenchPanels = () => ({ surface: () => ({ tabs: () => state.tabs, activeTab: () => state.active }),
+    export const useWorkbenchPanels = () => ({ surface: () => ({ tabs: () => state.tabs, activeTab: () => state.active, selectionRevision: () => 0 }),
       async openPanel(panelId, { init }) { const tab = { id: String(state.tabs.length), panelId, ...init }; setState("tabs", list => [...list, tab]); setState("active", tab); return tab },
       updateTab() {} })
     export const Persist = { workspace: (owner, key) => ({ storage: "fixture:" + owner, key }), scopeKey: (...args) => args.join(":"), scoped: () => ({}) }

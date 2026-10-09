@@ -1,3 +1,4 @@
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import z from "zod"
 import { ModelSelection } from "./model-selection-schema"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -88,6 +89,7 @@ export namespace SessionInbox {
       message: z
         .object({
           role: z.enum(["user", "assistant"]).default("user"),
+          referenceContext: ResourceReference.Context.optional(),
           parts: z.array(PayloadPart),
           agent: z.string().optional(),
           model: z
@@ -198,6 +200,7 @@ export namespace SessionInbox {
   }
 
   export type StoredItem = Item & {
+    revision: number
     input?: InvokeInput
     admission?: "idle_no_reply"
   }
@@ -235,9 +238,12 @@ export namespace SessionInbox {
   /** Canonicalize a stored item read from disk: older items may only carry the
    *  retired kind/state/deliveryTarget fields, so derive mode from them once. */
   function normalizeStored(item: StoredItem): StoredItem {
-    if (item.mode) return item
     const legacy = item as unknown as { kind?: string; state?: string; deliveryTarget?: string }
-    return { ...item, mode: modeFromLegacy(legacy.kind, legacy.state, legacy.deliveryTarget) }
+    return {
+      ...item,
+      revision: item.revision ?? 0,
+      mode: item.mode ?? modeFromLegacy(legacy.kind, legacy.state, legacy.deliveryTarget),
+    }
   }
 
   function sortItems<T extends { orderKey: string; id: string }>(items: T[]): T[] {
@@ -259,6 +265,8 @@ export namespace SessionInbox {
 
   async function writeItem(item: StoredItem, preserveCreated = false): Promise<StoredItem> {
     return Storage.transaction(async () => {
+      item = normalizeStored(item)
+      item = { ...item, revision: item.revision + 1 }
       {
         if (!preserveCreated) {
           const { SessionManager } = await import("./manager")
@@ -489,7 +497,10 @@ export namespace SessionInbox {
     return `inb_${hash}`
   }
 
-  function deliveryItem(input: z.infer<typeof Deliver.Input>, ids: { itemID: string; messageID: string }): StoredItem {
+  async function deliveryItem(
+    input: z.infer<typeof Deliver.Input>,
+    ids: { itemID: string; messageID: string },
+  ): Promise<StoredItem> {
     const summarized = summarizeParts(input.message.parts)
     const mode = input.mode
     const origin =
@@ -503,10 +514,12 @@ export namespace SessionInbox {
         : { type: "agent", label: "Agent" }
     return {
       id: ids.itemID,
+      revision: 0,
       sessionID: input.sessionID,
       deliveryKey: input.deliveryKey,
       mode,
       message: {
+        referenceContext: ResourceReference.capture((await Session.get(input.sessionID)).workspace),
         parts: input.message.parts as any,
         role: input.message.role,
         agent: input.message.agent,
@@ -542,15 +555,17 @@ export namespace SessionInbox {
       itemID: Identifier.ascending("inbox"),
       messageID: Identifier.ascending("message"),
     }
-    const item = deliveryItem(input, ids)
-    if (input.message.role === "assistant") {
-      await materializeItem(item, await latestRootID(input.sessionID))
-      return { ...ids, created: true }
-    }
-
-    await writeItem(item)
+    const item = await deliveryItem(input, ids)
+    await persistDelivery(item)
     return { ...ids, created: true }
   })
+
+  async function persistDelivery(item: StoredItem) {
+    return Storage.transaction(async () => {
+      const stored = await writeItem(item)
+      if (stored.message?.role === "assistant") await materializeItem(stored, await latestRootID(stored.sessionID))
+    })
+  }
 
   async function findExistingDelivery(sessionID: string, deliveryKey: string) {
     const itemID = stableDeliveryItemID(sessionID, deliveryKey)
@@ -590,7 +605,7 @@ export namespace SessionInbox {
     const ids = { itemID, messageID: Identifier.ascending("message") }
     const message = await input.prepareMessage(ids.messageID)
     await persistItem(
-      deliveryItem(
+      await deliveryItem(
         {
           sessionID: input.sessionID,
           deliveryKey: input.deliveryKey,
@@ -613,13 +628,7 @@ export namespace SessionInbox {
         mode: input.mode,
         prepareMessage: async () => input.message,
       },
-      async (item) => {
-        if (input.message.role === "assistant") {
-          await materializeItem(item, await latestRootID(input.sessionID))
-          return
-        }
-        await writeItem(item)
-      },
+      persistDelivery,
     )
   }
 
@@ -657,10 +666,12 @@ export namespace SessionInbox {
     } else if (input.experiment) throw new Error("Experiment configuration requires a root task")
     const item: StoredItem = {
       id: itemID,
+      revision: 0,
       sessionID: input.sessionID,
       mode,
       message: {
         role: "user",
+        referenceContext: ResourceReference.capture((await Session.get(input.sessionID)).workspace),
         parts: input.parts as any,
         agent: input.agent,
         model: input.model,
@@ -686,19 +697,25 @@ export namespace SessionInbox {
       input: queuedInput,
       admission: options?.admission,
     }
-    const admitted = await Storage.transaction(async () => {
+    const stored = await Storage.transaction(async () => {
       const session = taskSession ?? (await readSession(input.sessionID))
       const root = StoragePath.sessionRoot(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(session.id))
-      const [existing, receipt] = await Storage.readMany<StoredItem | { messageID: string }>([
+      const [existing, receipt, removed] = await Storage.readMany<StoredItem | { messageID: string } | RemovedItem>([
         StoragePath.sessionInboxItem(
           Identifier.asScopeID(session.scope.id),
           Identifier.asSessionID(session.id),
           itemID,
         ),
         [...root, "inbox-materialized", itemID],
+        StoragePath.sessionInboxRemovedItem(
+          Identifier.asScopeID(session.scope.id),
+          Identifier.asSessionID(session.id),
+          itemID,
+        ),
       ])
-      if (existing && "id" in existing) return { stored: normalizeStored(existing), created: false }
-      if (receipt) return { stored: item, created: false }
+      if (existing && "id" in existing) return normalizeStored(existing)
+      if (receipt) return item
+      if (removed && "item" in removed) return removed.item
       if (taskSession) {
         const { RolloutLedger } = await import("./rollout/ledger")
         const { RolloutLifecycle } = await import("./rollout/lifecycle")
@@ -706,26 +723,12 @@ export namespace SessionInbox {
           if (error instanceof Storage.NotFoundError) return
           throw error
         })
-        if (run && ["cancelled", "completed", "failed"].includes(run.status)) return { stored: item, created: false }
+        if (run && ["cancelled", "completed", "failed"].includes(run.status)) return item
       }
       const stored = await writeItem(item)
       await Session.recordActivity(input.sessionID)
-      return { stored, created: true }
+      return stored
     })
-    const stored = admitted.stored
-    if (!admitted.created) return publicItem(stored)
-    if (taskSession) {
-      // Open a lightweight run shell (no configuration or provenance) so
-      // status polls and cancellation observe a durable record immediately;
-      // heavy admission work attaches at materialization, off this path. The
-      // shell is best-effort — materialization opens the run lazily when the
-      // shell write failed.
-      const { RolloutLifecycle } = await import("./rollout/lifecycle")
-      const { RolloutLedger } = await import("./rollout/ledger")
-      await RolloutLedger.beginRun(RolloutLifecycle.owner(taskSession), messageID).catch((error) => {
-        log.warn("failed to open queued task run shell", { sessionID: input.sessionID, messageID, error })
-      })
-    }
     return publicItem(stored)
   }
 
@@ -756,6 +759,7 @@ export namespace SessionInbox {
     const mode = mailMode(input.mail)
     return {
       id: ids.itemID,
+      revision: 0,
       sessionID: input.sessionID,
       deliveryKey,
       mode,
@@ -1050,6 +1054,22 @@ export namespace SessionInbox {
         const session = await readSession(item.sessionID)
         const scopeID = Identifier.asScopeID(session.scope.id)
         const sid = Identifier.asSessionID(item.sessionID)
+        const [current, receipt] = await Storage.readMany<StoredItem | { messageID: string }>([
+          StoragePath.sessionInboxItem(scopeID, sid, item.id),
+          [...StoragePath.sessionRoot(scopeID, sid), "inbox-materialized", item.id],
+        ])
+        if (receipt && receipt.messageID === item.messageID) return
+        const stored = current && "id" in current ? normalizeStored(current) : undefined
+        if (!stored || stored.revision !== item.revision || stored.mode !== item.mode)
+          throw new DOMException("Input changed during preparation", "AbortError")
+        const { RolloutLedger } = await import("./rollout/ledger")
+        const { RolloutLifecycle } = await import("./rollout/lifecycle")
+        const run = await RolloutLedger.getRun(RolloutLifecycle.owner(session), item.messageID).catch((error) => {
+          if (error instanceof Storage.NotFoundError) return
+          throw error
+        })
+        if (run?.cancelRequestedAt || run?.status === "cancelled")
+          throw new DOMException("Input was cancelled", "AbortError")
         await Storage.write([...StoragePath.sessionRoot(scopeID, sid), "inbox-materialized", item.id], {
           itemID: item.id,
           messageID: item.messageID,
@@ -1091,6 +1111,7 @@ export namespace SessionInbox {
         return createUserMessage(
           {
             ...item.input,
+            referenceContext: item.message?.referenceContext ?? { state: "unresolved" },
             sessionID: item.sessionID,
             messageID,
             noReply: item.mode === "task" ? item.input.noReply : true,
@@ -1143,6 +1164,7 @@ export namespace SessionInbox {
       const info: MessageV2.User = {
         id: messageID,
         role: "user",
+        referenceContext: payload.referenceContext ?? { state: "unresolved" },
         sessionID: item.sessionID,
         time: { created: Date.now() },
         agent: runtime.agent.name,
@@ -1174,6 +1196,7 @@ export namespace SessionInbox {
     const info: MessageV2.Assistant = {
       id: messageID,
       role: "assistant",
+      referenceContext: payload.referenceContext ?? { state: "unresolved" },
       sessionID: item.sessionID,
       parentID: rootID ?? messageID,
       rootID: rootID ?? messageID,

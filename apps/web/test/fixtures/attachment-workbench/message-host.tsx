@@ -7,7 +7,7 @@ import type { Message } from "@ericsanchezok/synergy-sdk"
 
 const [data, setData] = createStore<{ message: Record<string, Message[]> }>({ message: {} })
 export const setCanonicalMessages = (sessionID: string, messages: Message[]) => setData("message", sessionID, messages)
-export const useSync = () => ({ data })
+export const useSync = () => ({ data: { ...data, workspaces: [] } })
 
 const surfaces = new Map<string, ReturnType<typeof createSurface>>()
 function createSurface() {
@@ -49,13 +49,22 @@ export const useLayout = () => ({
 export const useLocale = () => ({ i18n: useLingui().i18n() })
 export const useConfirm = () => ({ ask: async () => true })
 export const usePluginHost = () => ({ resources: { register: () => () => {} } })
+export const useGlobalSDK = () => ({ capabilities: { has: () => false } })
 export const useSDK = () => ({
   url: location.origin,
   scopeKey: "fixture",
   client: createSynergyClient({ baseUrl: location.origin }),
 })
 export const usePlatform = () => ({ fetch, openLink: () => {} })
+export const openedFiles: string[] = []
+export const useProjectFiles = () => ({
+  open: async (_workspace: unknown, path: string) => {
+    openedFiles.push(path)
+    return { id: `file:${path}` }
+  },
+})
 export const useFile = () => ({
+  workspace: { id: "wsp_fixture", generation: 1, scopeID: "fixture", type: "local", path: "/fixture" },
   normalize: (value?: string) => (value?.startsWith("docs/") ? value : undefined),
   openWorkspaceFile: async () => {},
 })

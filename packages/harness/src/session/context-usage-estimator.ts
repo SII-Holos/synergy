@@ -1,13 +1,14 @@
+import { ContextCategoryKeys } from "./context-usage-schema"
 import { RuntimeContext } from "../lifecycle/context"
 import { Worker } from "node:worker_threads"
 
 export namespace ContextUsageEstimator {
-  const CATEGORY_KEYS = ["conversation", "toolActivity", "filesReferences", "instructions"] as const
+  const CATEGORY_KEYS = ContextCategoryKeys
   export const LIMITS = {
     activeWorkers: 2,
     workerTimeoutMs: 1_000,
-    contributionsPerCategory: 64,
-    sampleCharactersPerCategory: 2_048,
+    contributionsPerCategory: 32,
+    sampleCharactersPerCategory: 1_024,
     sampleCharactersPerContribution: 256,
     sourceCharactersPerContribution: 64 * 1024 * 1024,
   } as const

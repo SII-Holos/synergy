@@ -3,7 +3,7 @@ import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
 import type { AttachmentPart, Part as PartType, TextPart, UserMessage } from "@ericsanchezok/synergy-sdk"
 import { useData } from "../context"
-import { useResourceOpen } from "../context/resource-open"
+import { ResourceReferenceProvider, useReferenceContext, useResourceOpen } from "../context/resource-open"
 import { AttachmentGallery, type AttachmentFile } from "./attachment-card"
 import { createCopyController } from "./clipboard"
 import { Icon } from "./icon"
@@ -86,21 +86,23 @@ export function UserMessageDisplay(props: {
 }) {
   const data = useData()
   return (
-    <UserMessageContent
-      text={visibleUserMessageText(props.parts)}
-      files={props.parts.filter((part): part is AttachmentPart => part.type === "attachment")}
-      notices={props.parts
-        .filter((part): part is TextPart => part.type === "text")
-        .map(parseSearchReflectionNotice)
-        .filter((notice): notice is SearchReflectionNoticeData => !!notice)}
-      serverUrl={data.serverUrl}
-      created={props.message.time?.created}
-      variant={props.variant}
-      loadCopyText={props.loadCopyText}
-      showMetadata={props.showMetadata}
-      hasText={props.hasText}
-      presentation={props.presentation}
-    />
+    <ResourceReferenceProvider value={props.message.referenceContext}>
+      <UserMessageContent
+        text={visibleUserMessageText(props.parts)}
+        files={props.parts.filter((part): part is AttachmentPart => part.type === "attachment")}
+        notices={props.parts
+          .filter((part): part is TextPart => part.type === "text")
+          .map(parseSearchReflectionNotice)
+          .filter((notice): notice is SearchReflectionNoticeData => !!notice)}
+        serverUrl={data.serverUrl}
+        created={props.message.time?.created}
+        variant={props.variant}
+        loadCopyText={props.loadCopyText}
+        showMetadata={props.showMetadata}
+        hasText={props.hasText}
+        presentation={props.presentation}
+      />
+    </ResourceReferenceProvider>
   )
 }
 
@@ -126,6 +128,7 @@ export function UserMessageContent(props: {
   const setSourceView = (value: boolean) => presentation().setSourceView(value)
   const [renderedHeight, setRenderedHeight] = createSignal(0)
   const resourceOpen = useResourceOpen()
+  const referenceContext = useReferenceContext()
   const [messageBody, setMessageBody] = createSignal<HTMLDivElement>()
   createEffect(() => {
     const element = messageBody()
@@ -155,7 +158,7 @@ export function UserMessageContent(props: {
   const attachments = createMemo(() =>
     files().filter((f) => {
       if (isNoteAttachment(f) || isSessionAttachment(f)) return false
-      if (f.source?.text?.start !== undefined) return false
+      if (f.source?.text && f.source.text.end > f.source.text.start) return false
       return true
     }),
   )
@@ -165,7 +168,7 @@ export function UserMessageContent(props: {
   const inlineFiles = createMemo(() =>
     files().filter((f) => {
       if (isNoteAttachment(f) || isSessionAttachment(f)) return false
-      return f.source?.text?.start !== undefined
+      return !!f.source?.text && f.source.text.end > f.source.text.start
     }),
   )
 
@@ -218,8 +221,26 @@ export function UserMessageContent(props: {
                         path: fileReferencePath(file),
                         mime: file.mime,
                         filename: file.filename,
+                        location:
+                          file.source?.type === "file"
+                            ? file.source.location
+                            : file.source?.type === "symbol"
+                              ? {
+                                  kind: "text",
+                                  line: file.source.range.start.line + 1,
+                                  column: file.source.range.start.character + 1,
+                                  endLine: file.source.range.end.line + 1,
+                                  endColumn: file.source.range.end.character + 1,
+                                }
+                              : undefined,
                       },
-                      { prefer: "workspace" },
+                      {
+                        prefer: "workspace",
+                        context:
+                          file.source && "workspace" in file.source && file.source.workspace
+                            ? { state: "bound", workspace: file.source.workspace, directory: "" }
+                            : (referenceContext() ?? { state: "unresolved" }),
+                      },
                     )
                 }}
               />
@@ -311,6 +332,7 @@ function fileReferencePath(file: UserMessageFile) {
 
 function HighlightedText(props: { text: string; references: UserMessageFile[] }) {
   const resourceOpen = useResourceOpen()
+  const referenceContext = useReferenceContext()
   const segments = createMemo(() => {
     const text = props.text
 
@@ -374,7 +396,13 @@ function HighlightedText(props: { text: string; references: UserMessageFile[] })
                     mime: file.mime,
                     filename: file.filename,
                   },
-                  { prefer: "workspace" },
+                  {
+                    prefer: "workspace",
+                    context:
+                      file.source && "workspace" in file.source && file.source.workspace
+                        ? { state: "bound", workspace: file.source.workspace, directory: "" }
+                        : (referenceContext() ?? { state: "unresolved" }),
+                  },
                 )
               }
             >

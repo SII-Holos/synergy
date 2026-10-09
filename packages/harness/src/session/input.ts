@@ -1,3 +1,5 @@
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import { WorkspaceCatalog } from "../workspace/catalog"
 import { RuntimeContext } from "../lifecycle/context"
 import { ModelSelection } from "./model-selection-schema"
 import { RolloutArtifact } from "./rollout/artifact"
@@ -162,6 +164,7 @@ export async function lastModel(sessionID: string) {
 }
 
 export type CreateUserMessageInput = InvokeInput & {
+  referenceContext?: ResourceReference.Context
   origin?: MessageV2.OriginUser
 }
 
@@ -180,12 +183,16 @@ export async function createUserMessage(
   const messageID = input.messageID ?? Identifier.ascending("message")
   const runID = rootIDOverride ?? messageID
   try {
-    const configuration = await RolloutLifecycle.configuration(session, runID, input.experiment, input.model)
-    return await Experiment.provide(configuration, () =>
+    const configuration = await RolloutLifecycle.configuration(session, runID, input.experiment, input.model, {
+      prepareOnly: true,
+    })
+    const message = await Experiment.provide(configuration, () =>
       RolloutContext.provide({ owner: RolloutLifecycle.owner(session), runID }, () =>
         materializeUserMessage({ ...input, messageID }, rootIDOverride, commitOptions),
       ),
     )
+    await RolloutLedger.configureRun(RolloutLifecycle.owner(session), runID, configuration)
+    return message
   } catch (error) {
     if (
       error instanceof StorageBusyError ||
@@ -193,10 +200,7 @@ export async function createUserMessage(
       (error instanceof DOMException && error.name !== "AbortError")
     )
       throw error
-    // Terminalize the run so the failure is visible and retryable (rearm
-    // reopens it); a cancelled run settles as cancelled via its marker. The
-    // enqueue shell is best-effort, so a run that never landed stays absent
-    // without masking the materialization error.
+    // Only settle evidence created after canonical admission; preparation failures leave no run.
     await RolloutLedger.finishRun(RolloutLifecycle.owner(session), runID, "failed").catch((finishError) => {
       if (!(finishError instanceof Storage.NotFoundError))
         log.warn("failed to terminalize run after materialization error", {
@@ -286,6 +290,7 @@ async function materializeUserMessage(
   const info: MessageV2.Info = {
     id: messageID,
     role: "user",
+    referenceContext: input.referenceContext ?? ResourceReference.capture(ScopeContext.current.workspace),
     sessionID: input.sessionID,
     time: {
       created: Date.now(),
@@ -315,6 +320,33 @@ async function materializeUserMessage(
         if (inputPart.type === "attachment" && inputPart.source?.type !== "resource") {
           if (!URL.canParse(inputPart.url)) throw new Attachment.InvalidUrlError()
           const url = new URL(inputPart.url)
+          if (
+            url.protocol === "file:" &&
+            inputPart.source &&
+            "workspace" in inputPart.source &&
+            inputPart.source.workspace
+          ) {
+            const expected = inputPart.source.workspace
+            const workspace = await WorkspaceCatalog.get(expected.id, ScopeContext.current.scope.id)
+            if (
+              workspace.lifecycle !== "active" ||
+              workspace.binding.state !== "bound" ||
+              workspace.binding.generation !== expected.generation ||
+              workspace.binding.path !== expected.root
+            )
+              throw new WorkspaceCatalog.BindingChanged({
+                workspaceID: expected.id,
+                message: "The referenced workspace binding changed. Select the file again.",
+              })
+            if (
+              ResourceReference.resolvePath(fileURLToPath(url), {
+                state: "bound",
+                workspace: expected,
+                directory: "",
+              }) === undefined
+            )
+              throw new Attachment.InvalidUrlError()
+          }
           if (url.protocol === "asset:" || url.protocol === "file:") {
             const filepath =
               url.protocol === "asset:" ? Asset.resolvePath(url.hostname + url.pathname) : fileURLToPath(url)

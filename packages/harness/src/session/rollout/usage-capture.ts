@@ -3,6 +3,7 @@ import { RolloutUsage } from "./usage"
 
 export namespace RolloutUsageCapture {
   export const MAX_EVENT_CHARS = 1024 * 1024
+  const sseFields = ["data:", "event:", "id:", "retry:", ":"]
   type Json = z.infer<ReturnType<typeof z.json>>
   function object(value: unknown): Record<string, unknown> {
     return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -27,7 +28,10 @@ export namespace RolloutUsageCapture {
               ["@ai-sdk/groq", "@ai-sdk/xai", "@ai-sdk/deepseek"].includes(sdk)
             ? "openai"
             : "unknown"
-    const sse = mediaType.includes("text/event-stream")
+    const declaredSSE = mediaType.split(";", 1)[0].trim().toLowerCase() === "text/event-stream"
+    let format: "sse" | "json" | "unknown" | undefined
+    let probe = ""
+    let skipLF = false
     const decoder = new TextDecoder()
     let buffer = ""
     let data = ""
@@ -89,7 +93,7 @@ export namespace RolloutUsageCapture {
         parts.some((part) => nonempty(part.text) || Object.keys(object(part.functionCall)).length > 0) ||
         (["response.output_text.delta", "response.function_call_arguments.delta"].includes(String(event.type)) &&
           nonempty(event.delta))
-      if (content && sse) onContent?.(reasoning)
+      if (content && format === "sse") onContent?.(reasoning)
       const tier = event.service_tier ?? object(event.response).service_tier
       if (typeof tier === "string") serviceTier = tier
       const candidate =
@@ -100,7 +104,6 @@ export namespace RolloutUsageCapture {
       raw = { ...raw, ...usage.data }
     }
     function line(value: string) {
-      if (value.endsWith("\r")) value = value.slice(0, -1)
       if (!value) {
         if (!discarded) accept(data)
         data = ""
@@ -117,7 +120,22 @@ export namespace RolloutUsageCapture {
       data += (data ? "\n" : "") + next
     }
     function consume(text: string) {
-      if (!sse) {
+      if (format === undefined) {
+        let offset = 0
+        while (offset < text.length && format === undefined) {
+          const char = text[offset++]
+          if (!probe && /\s/.test(char)) continue
+          probe += char
+          if (probe === "{" || probe === "[") format = "json"
+          else if (declaredSSE || sseFields.includes(probe)) format = "sse"
+          else if (!sseFields.some((field) => field.startsWith(probe))) format = "unknown"
+        }
+        if (format === undefined) return
+        text = probe + text.slice(offset)
+        probe = ""
+      }
+      if (format === "unknown") return
+      if (format === "json") {
         if (discarded) return
         if (buffer.length + text.length > MAX_EVENT_CHARS) {
           buffer = ""
@@ -128,8 +146,15 @@ export namespace RolloutUsageCapture {
         return
       }
       let offset = 0
+      const endings = /[\r\n]/g
       while (offset < text.length) {
-        const newline = text.indexOf("\n", offset)
+        if (skipLF) {
+          if (text[offset] === "\n") offset++
+          skipLF = false
+          if (offset === text.length) break
+        }
+        endings.lastIndex = offset
+        const newline = endings.exec(text)?.index ?? -1
         const end = newline < 0 ? text.length : newline
         if (!droppingLine) {
           if (buffer.length + end - offset > MAX_EVENT_CHARS) {
@@ -143,6 +168,7 @@ export namespace RolloutUsageCapture {
         if (!droppingLine) line(buffer)
         droppingLine = false
         buffer = ""
+        skipLF = text[newline] === "\r"
         offset = newline + 1
       }
     }
@@ -156,7 +182,9 @@ export namespace RolloutUsageCapture {
       hasFinalUsage() {
         return raw !== null && final
       },
-      streaming: sse,
+      get streaming() {
+        return format === "sse"
+      },
       current() {
         return raw
           ? { ...RolloutUsage.normalize(protocol, raw, kind, providerID), ...(serviceTier ? { serviceTier } : {}) }
@@ -169,10 +197,10 @@ export namespace RolloutUsageCapture {
       finish() {
         if (result) return result
         consume(decoder.decode())
-        if (sse) {
+        if (format === "sse") {
           if (buffer) line(buffer)
           if (!discarded) accept(data)
-        } else if (!discarded) accept(buffer)
+        } else if (format === "json" && !discarded) accept(buffer)
         result = { ...RolloutUsage.normalize(protocol, raw, kind, providerID), ...(serviceTier ? { serviceTier } : {}) }
         buffer = ""
         data = ""

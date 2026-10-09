@@ -27,9 +27,12 @@ beforeAll(async () => {
     import {useLingui} from "@lingui/solid"
     const token={known:1200,unknown:1,total:null}
     const zero={known:0,unknown:0,total:0}
-    const accounting={calls:1,tokens:{input:token,output:zero,total:token},cost:{},billing:{},failures:0}
+    const measured=(known)=>({known,unknown:0,total:known})
+    const accounting={calls:2,attempts:3,tokens:{input:measured(1000),uncached:measured(100),cacheRead:measured(800),cacheWrite:measured(100),output:measured(200),reasoning:measured(50),total:token},cost:{},billing:{},failures:0}
     const task=(i)=>({sessionID:"child-"+i,nodeID:"node-"+i,parentID:"root",title:"Delegated task "+i,status:"running",elapsedMs:1000,elapsedActive:true,tokens:token,runs:["run-"+i],cortex:{taskID:"ctx_"+i,agent:"forge",status:i===0?"queued":"running"}})
-    const summary={sessionID:"root",revision:1,computedAt:Date.now(),status:"completed",elapsedMs:31000,elapsedActive:false,accounting,own:accounting,descendants:accounting,cost:{state:"recorded",reported:[],estimates:[],missing:0,equivalent:null},context:null,contextDistribution:null,tasks:[...Array.from({length:7},(_,i)=>task(i)),{...task(7),cortex:undefined,title:"Chronicler",interaction:{mode:"unattended",source:"chronicler"}}],coverage:{recorded:1,messages:0,gaps:1,partial:true},lanes:[],rounds:[]}
+    const rate={value:25,tokens:200,milliseconds:8000,samples:2,excluded:1,reasons:{timing_unknown:1}}
+    const latency={samples:2,excluded:1,totalMs:1200,meanMs:600,p50Ms:500,p95Ms:700}
+    const summary={sessionID:"root",revision:1,computedAt:Date.now(),status:"completed",elapsedMs:31000,elapsedActive:false,accounting,own:accounting,descendants:accounting,rates:{generation:rate,endToEnd:{...rate,value:20}},cache:{ratio:null,observedRatio:0.8,read:800,input:1000,samples:2,excluded:1},latency:{headers:latency,firstByte:latency,ttft:latency,request:latency,generation:latency},outcomes:{completed:2,failed:1,cancelled:0,interrupted:0,running:0,retries:1,transportRetries:1,logicalRetries:0,rootTasks:1},tools:[{tool:"read",calls:3,completed:2,failed:0,cancelled:0,interrupted:1,running:0,durationMs:1500,timedSamples:2,averageMs:750}],cost:{state:"recorded",reported:[],estimates:[],missing:0,equivalent:null},context:null,contextDistribution:null,tasks:[...Array.from({length:7},(_,i)=>task(i)),{...task(7),cortex:undefined,title:"Chronicler",interaction:{mode:"unattended",source:"chronicler"}}],coverage:{recorded:1,messages:0,gaps:1,partial:true},lanes:[],rounds:[]}
     const inbox=Array.from({length:7},(_,i)=>({id:"inbox-"+i,sessionID:"root",mode:i===2?"context":i===1?"steer":"task",status:i===3?"failed":"pending",orderKey:String(i),source:{type:"user",label:"User"},summary:{title:"Inbox message "+i,preview:"Inbox message "+i},detail:{text:"Full inbox message "+i},time:{created:1}}))
     const [data,setData]=createStore({inbox:{root:inbox},message:{root:[]},part:{},workspaces:[]})
     const session={id:"root",scope:{id:"project",type:"project",name:"synergy",local:{directory:"/project",vcs:"git"}},workspace:{id:"workspace",type:"git_worktree",path:"/project/.worktrees/task-details",bindingState:"bound"}}
@@ -45,7 +48,7 @@ beforeAll(async () => {
       return {data:{sessionID:q.sessionID,items:items.slice(start,start+q.limit),count:Math.min(q.limit,items.length-start),total:items.length,offset:start,limit:q.limit,hasMore:start+q.limit<items.length,hasActiveAgenda:true}}
     },inboxRemoved:async(q,options)=>{(window.removedRequests??=[]).push(options.signal);window.removedReads=(window.removedReads||0)+1;if(window.removedDelay)await new Promise(r=>setTimeout(r,window.removedDelay));return {data:removed}},inboxGuide:async(q)=>{window.guided=q.itemID},inboxRetry:async(q)=>{window.retried=q.itemID},inboxRemove:async(q)=>{const item=data.inbox.root.find(i=>i.id===q.itemID);removed.push(item);setData("inbox","root",data.inbox.root.filter(i=>i.id!==q.itemID));return {data:item}},inboxRestore:async(q)=>{const i=removed.findIndex(i=>i.id===q.itemID);setData("inbox","root",[...data.inbox.root,removed.splice(i,1)[0]]);return {data:true}}},cortex:{cancel:async(q)=>{window.cancelledTask=q.taskID;return {data:true}}}}}
     const [executionState,setExecutionState]=createStore({summary,error:undefined})
-    export const useExecution=()=>({state:executionState,available:()=>!location.search.includes("minimal"),refresh:async()=>{window.refreshed=true},open:async(runID,nodeID)=>{window.openedNode=nodeID||"all"}})
+    export const useExecution=()=>({advance:()=>0,connected:()=>true,state:executionState,available:()=>!location.search.includes("minimal"),refresh:async()=>{window.refreshed=true},open:async(runID,nodeID)=>{window.openedNode=nodeID||"all"}})
     export const useParams=()=>({id:"root"})
     export const useSDK=()=>sdk
     export const useSync=()=>({data,session:{get:()=>session,refresh:async()=>{}}})
@@ -55,6 +58,7 @@ beforeAll(async () => {
     export const useWorkbenchPanels=()=>({openPanel:async()=>{}})
     window.refreshAgenda=()=>event.emit("agenda.item.updated",{properties:{item:{origin:{sessionID:"root"}}}})
     window.failExecution=()=>setExecutionState({summary:undefined,error:"unavailable"})
+    window.updateUsage=(patch)=>Object.entries(patch).forEach(([key,value])=>setExecutionState("summary",key,value))
     window.replaceClient=()=>sdk.client={...sdk.client}
   `,
   )
@@ -68,10 +72,13 @@ beforeAll(async () => {
     import {DialogProvider} from "@ericsanchezok/synergy-ui/context/dialog"
     import {MarkedProvider} from "@ericsanchezok/synergy-ui/context/marked"
     import {Toast} from "@ericsanchezok/synergy-ui/toast"
+    import {messages as en} from ${JSON.stringify(`${source}/locales/en/messages.po?lingui`)}
+    import {messages as zh} from ${JSON.stringify(`${source}/locales/zh-CN/messages.po?lingui`)}
     import {SessionTaskDetails} from ${JSON.stringify(`${source}/components/execution/session-task-details.tsx`)}
     import "@ericsanchezok/synergy-ui/styles"
     Object.defineProperty(navigator,"clipboard",{value:{writeText:async(text)=>{window.copiedPath=text}}})
-    const i18n=setupI18n({locale:"en",messages:{en:{}}})
+    const i18n=setupI18n({locale:"en",messages:{en,"zh-CN":zh}})
+    window.selectLocale=(locale)=>i18n.activate(locale)
     render(()=><I18nProvider i18n={i18n}><MarkedProvider><Suspense fallback={<p>App loading</p>}><DialogProvider><main style="display:flex;justify-content:flex-end;padding:16px"><SessionTaskDetails hasCanonicalRoot/><Toast.Region/></main></DialogProvider></Suspense></MarkedProvider></I18nProvider>,document.getElementById("root"))
   `,
   )
@@ -108,7 +115,7 @@ beforeAll(async () => {
     [
       process.execPath,
       "-e",
-      `import {build} from ${JSON.stringify(Bun.resolveSync("vite", import.meta.dir))}; import solidPlugin from ${JSON.stringify(Bun.resolveSync("vite-plugin-solid", import.meta.dir))}; await build({...${JSON.stringify(options)},plugins:[solidPlugin()]}); process.exit(0)`,
+      `import {build} from ${JSON.stringify(Bun.resolveSync("vite", import.meta.dir))}; import solidPlugin from ${JSON.stringify(Bun.resolveSync("vite-plugin-solid", import.meta.dir))}; import {lingui} from ${JSON.stringify(Bun.resolveSync("@lingui/vite-plugin", import.meta.dir))}; await build({...${JSON.stringify(options)},plugins:[solidPlugin(),...lingui()]}); process.exit(0)`,
     ],
     { env: { ...process.env, NODE_ENV: "test" }, stdout: "inherit", stderr: "inherit" },
   )
@@ -134,6 +141,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   errors.length = 0
+  await page.emulateMedia({ reducedMotion: "reduce" })
   await page.setViewportSize({ width: 480, height: 900 })
   await page.goto(server.resolvedUrls!.local[0]!)
   if (errors.length) throw new Error(errors.join("\n"))
@@ -145,6 +153,87 @@ afterAll(async () => {
   await browser?.close()
   if (server) await new Promise<void>((resolve) => server.httpServer.close(() => resolve()))
   if (directory) await rm(directory, { recursive: true, force: true })
+})
+
+test("running icons rotate and stop for reduced motion and terminal state", async () => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await page.evaluate(() => Reflect.get(window, "updateUsage")({ status: "running" }))
+  const icon = page.locator('.execution-compact-status .execution-status-icon [data-component="icon"]')
+  const transforms = await icon.evaluate(async (element) => {
+    const first = getComputedStyle(element).transform
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    return [first, getComputedStyle(element).transform]
+  })
+  expect(transforms[0]).not.toBe(transforms[1])
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  expect(await icon.evaluate((element) => element.getAnimations().length)).toBe(0)
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await page.evaluate(() => Reflect.get(window, "updateUsage")({ status: "completed" }))
+  expect(await icon.evaluate((element) => element.getAnimations().length)).toBe(0)
+})
+
+test("usage exposes token subsets, measured performance and nested keyboard dismissal", async () => {
+  const performance = page.locator(".execution-performance")
+  expect(await performance.textContent()).toContain("25 tok/s")
+  expect(await performance.textContent()).toContain("80%")
+  expect(await performance.textContent()).toContain("measured")
+  const trigger = page.getByRole("button", { name: "Token usage details", exact: true })
+  await trigger.focus()
+  await page.keyboard.press("Enter")
+  const detail = page.locator(".execution-usage-popover")
+  await detail.waitFor()
+  const row = (label: string) => detail.locator("dl > div").filter({ has: page.getByText(label, { exact: true }) })
+  expect(await row("Input").locator("dd").textContent()).toBe("1,000")
+  expect(await row("Cache read").locator("dd").textContent()).toBe("800")
+  expect(await row("Reasoning (included in output)").locator("dd").textContent()).toBe("50")
+  expect(await row("Total tokens").locator("dd").textContent()).toBe("≥ 1,200")
+  expect(await row("Average first content").locator("dd").textContent()).toContain("0.6 s")
+  expect(await row("Retries").locator("dd").textContent()).toBe("1")
+  expect(await row("Tool calls").locator("dd").textContent()).toBe("3")
+  await page.setViewportSize({ width: 375, height: 667 })
+  await page.waitForFunction(() => {
+    const bounds = document.querySelector(".execution-usage-popover")!.getBoundingClientRect()
+    return bounds.x >= 0 && bounds.right <= innerWidth
+  })
+  const bounds = await detail.boundingBox()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(375)
+  await page.keyboard.press("Escape")
+  await detail.waitFor({ state: "hidden" })
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Token usage details")
+  expect(await trigger.evaluate((element) => element === document.activeElement)).toBe(true)
+  expect(await page.locator(".execution-popover").isVisible()).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("missing measurements stay unavailable while valid zero remains visible during live updates", async () => {
+  await page.evaluate(() =>
+    Reflect.get(
+      window,
+      "updateUsage",
+    )({
+      rates: { generation: { value: null, samples: 0, excluded: 3 } },
+      cache: { ratio: null, observedRatio: null, samples: 0, excluded: 3 },
+    }),
+  )
+  expect(await page.locator(".execution-performance").count()).toBe(0)
+  await page.evaluate(() =>
+    Reflect.get(
+      window,
+      "updateUsage",
+    )({
+      rates: { generation: { value: 0, samples: 1, excluded: 0 } },
+      cache: { ratio: 0, observedRatio: 0, samples: 1, excluded: 0 },
+    }),
+  )
+  expect(await page.locator(".execution-performance").textContent()).toContain("0 tok/s")
+  expect(await page.locator(".execution-performance").textContent()).toContain("0%")
+  expect(await page.locator(".execution-performance").textContent()).not.toContain("measured")
+  await page.evaluate(() => Reflect.get(window, "selectLocale")("zh-CN"))
+  expect(await page.locator(".execution-performance").textContent()).toContain("平均生成")
+  expect(await page.locator(".execution-performance").textContent()).toContain("缓存命中")
+  await page.getByRole("button", { name: "Token 用量明细", exact: true }).click()
+  expect(await page.locator(".execution-usage-popover").textContent()).toContain("推理（计入输出）")
 })
 
 test("flat sections show inbox immediately and auxiliary tasks stay in the full trajectory", async () => {
@@ -178,7 +267,7 @@ test("row actions reveal on focus, keep title width stable and use canonical tas
   expect((await title.boundingBox())!.width).toBeCloseTo(width, 1)
   await cancel.click()
   expect(await page.evaluate(() => Reflect.get(window, "cancelledTask"))).toBe("ctx_0")
-  expect(await row.getAttribute("data-state")).toBe("queued")
+  expect(await row.getAttribute("data-state")).toBe("running")
   expect(errors).toEqual([])
 })
 
@@ -404,4 +493,17 @@ test("touch controls remain visible and each action has a 44px hit area", async 
   } finally {
     await context.close()
   }
+})
+
+test("execution time displays its lower bound without a tooltip and hides empty history", async () => {
+  await page.evaluate(() =>
+    Reflect.get(window, "updateUsage")({ elapsedMs: 0, elapsedActive: false, elapsedLowerBound: true }),
+  )
+  const time = page.locator(".execution-compact-metric").filter({ hasText: "≥ 00:00" })
+  expect(await time.count()).toBe(1)
+  expect(await time.getAttribute("aria-label")).toContain("Execution time")
+  await time.hover()
+  expect(await page.getByRole("tooltip").count()).toBe(0)
+  await page.evaluate(() => Reflect.get(window, "updateUsage")({ elapsedMs: null }))
+  expect(await page.locator(".execution-compact-metric").filter({ hasText: "00:00" }).count()).toBe(0)
 })

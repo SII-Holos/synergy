@@ -27,6 +27,55 @@ const task = (extra: Partial<Task>): Task => ({
   ...extra,
 })
 
+describe("bounded selection and full triggers", () => {
+  test("metadata retains complete owner and consumer suites; configuration remains full", () => {
+    const file = "packages/core/package.json"
+    const impact = selectAffected([file], workspaces, workspaces, [], { metadataOnly: [file] })
+    expect(impact.full).toBe(false)
+    expect(impact.packages).toEqual(["packages/consumer", "packages/core"])
+    expect(selectAffected([file], workspaces, workspaces).fullTriggers).toEqual([
+      { file, reason: "workspace-configuration" },
+    ])
+    expect(
+      selectAffected([file, "script/ci/run.ts"], workspaces, workspaces, [], { metadataOnly: [file] }).fullTriggers,
+    ).toEqual([{ file: "script/ci/run.ts", reason: "shared-input" }])
+  })
+
+  test("the generated API contract retains SDK, server and consumer acceptance", () => {
+    const owners = [
+      { directory: "packages/sdk/js", name: "sdk", dependencies: [], testDependencies: [] },
+      { directory: "packages/server", name: "server", dependencies: [], testDependencies: [] },
+      { directory: "apps/web", name: "web", dependencies: ["sdk"], testDependencies: [] },
+    ]
+    const file = "packages/sdk/openapi.json"
+    const impact = selectAffected([file], owners, owners)
+    expect(impact.full).toBe(false)
+    expect(impact.packages).toEqual(["apps/web", "packages/sdk/js", "packages/server"])
+    const inputs = { complete: true, files: [], packages: [] }
+    expect(
+      taskSelected(
+        task({ kind: "web", owners: ["packages/sdk/js"], inputs: [] }),
+        new Set(impact.packages),
+        [file],
+        false,
+        inputs,
+        inputs,
+      ),
+    ).toBe(true)
+    expect(selectAffected([file], owners, owners.slice(1)).full).toBe(true)
+  })
+
+  test("skill Markdown references are docs, but executables and unknown paths stay full", () => {
+    expect(
+      selectAffected([".synergy/skill/testing-guide/references/fixtures.md"], workspaces, workspaces).documentationOnly,
+    ).toBe(true)
+    expect(selectAffected([".synergy/skill/testing-guide/references/run.ts"], workspaces, workspaces).full).toBe(true)
+    expect(selectAffected(["unexpected.config"], workspaces, workspaces).fullTriggers).toEqual([
+      { file: "unexpected.config", reason: "unknown-owner" },
+    ])
+  })
+})
+
 describe("coverage manifest impact", () => {
   test("an existing package's exact exemptions retain its complete suite and consumers", () => {
     const base = manifest()

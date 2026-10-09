@@ -1,4 +1,5 @@
 import { Workspace } from "./workspace-schema"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { WorkspaceBinding } from "../workspace/binding"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { Environment } from "../environment"
@@ -1683,6 +1684,12 @@ export namespace Session {
       const canonical = MessageV2.canonicalMessage(msg)
       const session = await SessionManager.requireSession(msg.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
+      if (!canonical.referenceContext) {
+        const [existing] = await Storage.readMany<MessageV2.Info>([
+          StoragePath.messageInfo(scopeID, asSessionID(canonical.sessionID), Identifier.asMessageID(canonical.id)),
+        ])
+        canonical.referenceContext = existing?.referenceContext ?? ResourceReference.capture(session.workspace)
+      }
       // Invalidate the search index BEFORE the content write so a crash between
       // the write and the post-write mark can never leave a clean-but-stale
       // record trusted; the post-write mark below refreshes the marker for any
@@ -1882,13 +1889,25 @@ export namespace Session {
       part = { ...part, workBrief: await SecretMask.apply(part.workBrief) }
     }
     const scopeID = asScopeID(ownerScopeID ?? (await SessionManager.resolveScopeID(part.sessionID)))
+    const captureAttachmentContext = async (attachment: MessageV2.AttachmentPart) => {
+      const source = attachment.source
+      if (!source || source.type === "resource" || source.workspace) return attachment
+      const [message] = await Storage.readMany<MessageV2.Info>([
+        StoragePath.messageInfo(scopeID, asSessionID(part.sessionID), asMessageID(part.messageID)),
+      ])
+      const context = message?.referenceContext
+      return context?.state === "bound" && ResourceReference.resolvePath(source.path, context) !== undefined
+        ? { ...attachment, source: { ...source, workspace: context.workspace } }
+        : attachment
+    }
     try {
       const owner = { kind: "session" as const, scopeID, sessionID: part.sessionID }
-      if (part.type === "attachment") part = await RolloutAttachment.capture(owner, part)
+      if (part.type === "attachment")
+        part = await RolloutAttachment.capture(owner, await captureAttachmentContext(part))
       if (part.type === "tool" && part.state.status === "completed" && part.state.attachments) {
         const attachments = []
         for (const attachment of part.state.attachments)
-          attachments.push(await RolloutAttachment.capture(owner, attachment))
+          attachments.push(await RolloutAttachment.capture(owner, await captureAttachmentContext(attachment)))
         part = { ...part, state: { ...part.state, attachments } }
       }
       if (part.type === "tool" && part.state.status === "completed" && !part.state.outputArtifact) {

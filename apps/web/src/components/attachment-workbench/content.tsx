@@ -1,7 +1,12 @@
 import { createMemo, createResource, createSignal, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { Part } from "@ericsanchezok/synergy-sdk"
-import { attachmentFromReference, attachmentSourcePath } from "@ericsanchezok/synergy-ui/attachment-card"
+import {
+  attachmentFromReference,
+  attachmentReferenceContext,
+  attachmentSourcePath,
+} from "@ericsanchezok/synergy-ui/attachment-card"
+import { useResourceOpen } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -15,14 +20,13 @@ import { attachmentResourceState, findAttachmentByLocator } from "./model"
 import { AttachmentPreview } from "./preview"
 import "./styles.css"
 
-export function AttachmentWorkbenchContent(
-  props: WorkbenchPanelContentProps & { sourceFileAction?: (path: string) => (() => void) | undefined },
-) {
+export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
   const lingui = useLingui()
   const data = useData()
   const platform = usePlatform()
   const sdk = useSDK()
   const workbench = useWorkbenchPanels()
+  const resources = useResourceOpen()
   const [browserOpenNonce, setBrowserOpenNonce] = createSignal(0)
   const openInBrowserPanel = (href: string) => {
     setBrowserOpenNonce((value) => value + 1)
@@ -60,7 +64,14 @@ export function AttachmentWorkbenchContent(
   })
   const sourceFileAction = createMemo(() => {
     const path = attachmentSourcePath(attachment() ?? { mime: "" })
-    return path ? props.sourceFileAction?.(path) : undefined
+    return path && resources
+      ? () => {
+          void resources.open(
+            { kind: "workspace-file", path },
+            { context: attachmentReferenceContext(attachment()!, resource()?.referenceContext), prefer: "workspace" },
+          )
+        }
+      : undefined
   })
   return (
     <Show
@@ -84,6 +95,9 @@ export function AttachmentWorkbenchContent(
           file={current()}
           serverUrl={sdk.url}
           fetcher={platform.fetch}
+          referenceContext={resource()?.referenceContext}
+          location={resource()?.location}
+          navigation={resource()?.navigation}
           onOpenSource={sourceFileAction()}
           onOpenBrowser={openInBrowserPanel}
           onOpenExternal={platform.openLink}

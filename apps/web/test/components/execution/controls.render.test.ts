@@ -4,7 +4,11 @@ import { transformAsync } from "@babel/core"
 import { setupI18n } from "@lingui/core"
 import { createComponent, createSignal, onCleanup, Suspense, type JSX } from "solid-js"
 import { render } from "solid-js/web"
-import type { ExecutionSummary } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  ExecutionContextItems,
+  ExecutionContextSnapshot,
+  ExecutionSummary,
+} from "@ericsanchezok/synergy-sdk/client"
 
 await plugin({
   name: "execution-controls-render",
@@ -70,6 +74,12 @@ const pending: Array<{
 type Notice = { properties: { sessionID: string; revision: number; summary: ExecutionSummary } }
 const listeners = new Set<(notice: Notice) => void>()
 const opened: Array<{ id: string; options: unknown }> = []
+const savedTabs: Array<{ state: Record<string, unknown> }> = []
+const sourceReads: Array<{
+  callID: string
+  signal?: AbortSignal
+  resolve: (data: ExecutionContextItems) => void
+}> = []
 mock.module("@solidjs/router", () => ({
   useParams: () => ({
     get id() {
@@ -81,8 +91,13 @@ mock.module("../../../src/context/global-sdk", () => ({
   useGlobalSDK: () => ({ capabilities: { has: (capability: string) => capability !== "workflows" && enabled() } }),
 }))
 mock.module("../../../src/context/workbench", () => ({
-  useWorkbenchPanels: () => ({ openPanel: (id: string, options: unknown) => opened.push({ id, options }) }),
+  useWorkbenchPanels: () => ({
+    openPanel: (id: string, options: unknown) => opened.push({ id, options }),
+    surface: () => ({ opened: () => true, active: () => "context" }),
+    updateTab: (_id: string, patch: { state: Record<string, unknown> }) => savedTabs.push(patch),
+  }),
 }))
+mock.module("../../../src/composables/use-navigate-to-session", () => ({ useNavigateToSession: () => () => {} }))
 mock.module("../../../src/context/sdk", () => ({
   useSDK: () => ({
     connected,
@@ -101,6 +116,19 @@ mock.module("../../../src/context/sdk", () => ({
       },
       session: {
         inboxRemoved: async () => ({ data: [] }),
+        executionContextHistory: async () => ({
+          data: {
+            sessionID: "root",
+            revision: 1,
+            total: 2,
+            items: [contextSnapshot(2), contextSnapshot(1)],
+            nextCursor: null,
+          },
+        }),
+        executionContextItems: (input: { callID: string }, options: { signal?: AbortSignal }) =>
+          new Promise<{ data: ExecutionContextItems }>((resolve) => {
+            sourceReads.push({ callID: input.callID, signal: options.signal, resolve: (data) => resolve({ data }) })
+          }),
         executionSummary: (input: { sessionID: string }, options: { signal?: AbortSignal }) =>
           new Promise<{ data: ExecutionSummary }>((resolve, reject) => {
             pending.push({ ...input, signal: options.signal, resolve: (data) => resolve({ data }), reject })
@@ -115,6 +143,51 @@ const { TaskDetailsPopover } = await import("../../../src/components/execution/p
 const { SessionTaskDetails } = await import("../../../src/components/execution/session-task-details")
 const { EvidenceBlock } = await import("../../../src/components/execution/block")
 const { configureClipboard } = await import("@ericsanchezok/synergy-ui/clipboard")
+const { ContextWorkbenchContent } = await import("../../../src/components/execution/context-dashboard")
+const { ContextActivity } = await import("../../../src/components/execution/context-activity")
+const { CostBreakdown } = await import("../../../src/components/execution/cost-breakdown")
+
+function contextSnapshot(number: number): ExecutionContextSnapshot {
+  return {
+    sessionID: "root",
+    callID: `call-${number}`,
+    nodeID: `model-${number}`,
+    runID: "round-1",
+    started: number,
+    requestNumber: number,
+    roundNumber: 1,
+    status: "completed",
+    modelID: "model",
+    providerID: "provider",
+    inputTokens: number * 100,
+    contextLimit: 1000,
+    outputTokens: 20,
+    cacheHit: 0.5,
+    elapsedMs: 1000,
+    retries: 0,
+    compactedBefore: false,
+    requestAvailable: true,
+    usage: {
+      version: 2,
+      modelID: "model",
+      providerID: "provider",
+      totalInput: number * 100,
+      capturedAt: number,
+      categories: [
+        {
+          category: "userMessages",
+          precision: "source",
+          estimatedTokens: number * 100,
+          attributedTokens: number * 100,
+          items: number,
+        },
+      ],
+      overhead: { attributedTokens: 0 },
+      estimator: { kind: "bounded-utf8", sampledCharacters: 20, truncated: false },
+      reconciliation: { mode: "residual", factor: 1 },
+    },
+  }
+}
 
 function summary(revision = 1, id = "root"): ExecutionSummary {
   const metric = () => ({ known: 0, unknown: 0, total: 0 })
@@ -144,13 +217,17 @@ function summary(revision = 1, id = "root"): ExecutionSummary {
     cacheWrites: {},
   }
   const rate = () => ({ value: null, tokens: 0, milliseconds: 0, samples: 0, excluded: 0 })
+  const latency = { samples: 0, excluded: 0, totalMs: 0, meanMs: null, p50Ms: null, p95Ms: null }
   return {
     sessionID: id,
     revision,
+    clockID: "test",
+    sampledAt: 0,
     computedAt: 1000,
     status: "completed",
     elapsedMs: 8000,
     elapsedActive: false,
+    elapsedLowerBound: false,
     accounting,
     own: accounting,
     descendants: accounting,
@@ -165,6 +242,19 @@ function summary(revision = 1, id = "root"): ExecutionSummary {
     },
     rates: { generation: rate(), endToEnd: rate() },
     cache: { ratio: null, observedRatio: null, read: 0, input: 0, samples: 0, excluded: 0 },
+    latency: { headers: latency, firstByte: latency, ttft: latency, request: latency, generation: latency },
+    outcomes: {
+      completed: 1,
+      failed: 0,
+      cancelled: 0,
+      interrupted: 0,
+      running: 0,
+      retries: 0,
+      logicalRetries: 0,
+      transportRetries: 0,
+      rootTasks: 1,
+    },
+    tools: [],
     context: null,
     contextDistribution: null,
     tasks: [
@@ -176,11 +266,22 @@ function summary(revision = 1, id = "root"): ExecutionSummary {
         status: "completed",
         elapsedMs: 3000,
         elapsedActive: false,
+        elapsedLowerBound: false,
         tokens: { known: 500, unknown: 0, total: 500 },
         runs: ["child-round"],
       },
     ],
-    rounds: [{ id: "round-1", title: "Task", started: 1000, status: "completed", elapsedMs: 8000 }],
+    rounds: [
+      {
+        id: "round-1",
+        title: "Task",
+        started: 1000,
+        status: "completed",
+        elapsedMs: 8000,
+        elapsedActive: false,
+        elapsedLowerBound: false,
+      },
+    ],
     coverage: { recorded: 1, messages: 0, gaps: 0, partial: false },
     lanes: [],
     activityTotal: 0,
@@ -228,6 +329,96 @@ afterEach(() => {
   setConnected(true)
   setResource(initialResource)
   resources.length = 0
+  savedTabs.length = 0
+  sourceReads.length = 0
+})
+
+test("dashboard selection links the source browser while retaining latest context and accumulated metrics", async () => {
+  const host = mount(() =>
+    createComponent(ContextWorkbenchContent, {
+      pluginId: "builtin",
+      panelId: "context",
+      tab: { id: "context", panelId: "context", state: {} },
+    }),
+  )
+  const value = summary()
+  value.accounting.tokens = {
+    input: { known: 800, total: 800, unknown: 0 },
+    uncached: { known: 200, total: 200, unknown: 0 },
+    cacheRead: { known: 600, total: 600, unknown: 0 },
+    cacheWrite: { known: 0, total: 0, unknown: 0 },
+    output: { known: 200, total: 200, unknown: 0 },
+    reasoning: { known: 50, total: 50, unknown: 0 },
+    total: { known: 1000, total: 1000, unknown: 0 },
+  }
+  value.latency.ttft = { ...value.latency.ttft, totalMs: 1000, samples: 1 }
+  value.latency.generation = { ...value.latency.generation, totalMs: 2000, samples: 1 }
+  pending[0]!.resolve(value)
+  await flush()
+  expect(
+    host.querySelectorAll(".context-usage-stats, .context-timing, .context-browser, .context-activity"),
+  ).toHaveLength(4)
+  expect(host.querySelector(".context-usage-legend")?.textContent).toContain("Output excluding reasoning150")
+  expect(host.querySelector(".context-usage-legend")?.textContent).toContain("Reasoning50")
+  const arcs = host.querySelectorAll<SVGCircleElement>(".context-timing .context-ring circle[pathLength]")
+  arcs[0]!.dispatchEvent(new MouseEvent("mouseenter"))
+  expect(arcs[0]!.getAttribute("stroke-width")).toBe("16")
+  expect(arcs[1]!.getAttribute("opacity")).toBe("0.3")
+  arcs[0]!.dispatchEvent(new MouseEvent("mouseleave"))
+  expect(arcs[1]!.getAttribute("opacity")).toBe("1")
+  const phases = host.querySelectorAll<HTMLElement>(".context-timing-strip > span")
+  expect(parseFloat(phases[0]!.style.width)).toBeCloseTo(100 / 3)
+  expect(parseFloat(phases[1]!.style.width)).toBeCloseTo(200 / 3)
+  const current = host.querySelector(".context-composition")!.textContent
+  const metrics = host.querySelector(".context-usage-stats")!.textContent
+  const bars = host.querySelectorAll<HTMLButtonElement>(".context-history-bar")
+  bars[0]!.click()
+  expect(host.querySelector(".context-source-caption")?.textContent).toContain("Context for request 1")
+  expect(host.querySelector(".context-composition")!.textContent).toBe(current)
+  expect(host.querySelector(".context-usage-stats")!.textContent).toBe(metrics)
+  bars[1]!.dispatchEvent(new MouseEvent("mouseenter"))
+  expect(host.querySelector(".context-source-caption")?.textContent).toContain("Context for request 2")
+  host.querySelector(".context-chart-bars")!.dispatchEvent(new MouseEvent("mouseleave"))
+  expect(host.querySelector(".context-source-caption")?.textContent).toContain("Context for request 1")
+  expect(savedTabs.at(-1)?.state.contextDashboard).toMatchObject({ selected: "call-1" })
+  expect(sourceReads).toHaveLength(0)
+  host.querySelector<HTMLButtonElement>('[data-context-category="userMessages"]')!.click()
+  expect(sourceReads).toHaveLength(1)
+  expect(sourceReads[0]?.callID).toBe("call-1")
+  bars[1]!.click()
+  expect(sourceReads[0]?.signal?.aborted).toBe(true)
+  expect(sourceReads[1]?.callID).toBe("call-2")
+})
+
+test("task activity opens only the chosen diagnostic scope and disables absent retries", () => {
+  const value = summary()
+  const targets: unknown[] = []
+  const host = mount(() =>
+    createComponent(ContextActivity, { summary: value, onRecords: (target) => targets.push(target) }),
+  )
+  const retries = [...host.querySelectorAll<HTMLButtonElement>("button")].find(
+    (button) => button.textContent === "0 retries",
+  )!
+  expect(retries.disabled).toBe(true)
+  host.querySelector<HTMLButtonElement>(".context-activity-counts button")!.click()
+  host.querySelector<HTMLButtonElement>(".context-round-row")!.click()
+  expect(targets).toEqual([{ kinds: ["tool"], actor: "all" }, { runID: "round-1" }])
+  expect(
+    [...host.querySelectorAll("button")].filter((button) => button.textContent === "View execution records"),
+  ).toHaveLength(1)
+})
+
+test("cost details retain reported currencies and distinguish estimated ranges from missing prices", () => {
+  const cost = summary().cost
+  cost.reported = [{ currency: "EUR", amount: 2 }]
+  cost.estimates[0] = { ...cost.estimates[0]!, known: 0.01, maximum: 0.03, unknown: 1 }
+  cost.missing = 1
+  const host = mount(() => createComponent(CostBreakdown, { cost }))
+  const values = [...host.querySelectorAll("dd")].map((element) => element.textContent)
+  expect(values[0]).toBe("EUR 2.00")
+  expect(values[1]).toBe("US$0.01–US$0.03")
+  expect(values[2]).toContain("1")
+  expect(host.querySelectorAll(".execution-cost-breakdown > div")).toHaveLength(3)
 })
 
 test("snapshots cannot overwrite newer events, and reconnect cancels the previous request", async () => {

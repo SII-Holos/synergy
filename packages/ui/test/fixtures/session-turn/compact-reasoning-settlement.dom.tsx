@@ -3,6 +3,7 @@ import { I18nProvider } from "@lingui/solid"
 import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { createSignal, batch } from "solid-js"
+import type { TurnExecutionSummary } from "../../../src/components/execution-completion"
 import { DataProvider } from "../../../src/context/data.tsx"
 import { DialogProvider } from "../../../src/context/dialog.tsx"
 import { DiffComponentProvider } from "../../../src/context/diff.tsx"
@@ -76,13 +77,11 @@ const runtime = {
 }
 
 const resourceController = {
-  open: () => false,
-  openAttachment: () => false,
-  resolveWorkspacePath: (value) => value,
-  openWorkspaceSource: () => false,
+  open: async () => ({ status: "cancelled" as const }),
 }
 const EmptyDiff = () => null
 const [following, setFollowing] = createSignal(true)
+const [executionSummary, setExecutionSummary] = createSignal<TurnExecutionSummary>()
 const [expanded, setExpanded] = createStore({})
 const activityView = { getExpanded: (key) => expanded[key], setExpanded: (key, value) => setExpanded(key, value) }
 const SlotProbe = (props) => <span data-test-slot={props.slot} />
@@ -109,6 +108,7 @@ render(
                   activityDisplay="balanced"
                   compactReasoning={true}
                   following={following()}
+                  executionSummary={executionSummary()}
                   activityView={activityView}
                 />
               </DataProvider>
@@ -122,6 +122,7 @@ render(
 )
 
 globalThis.__settlementHarness = {
+  setExecutionSummary,
   setFollowing,
   recoverAfterError: () =>
     batch(() => {
@@ -147,6 +148,7 @@ globalThis.__settlementHarness = {
     batch(() => {
       setExpanded(reconcile({}))
       setFollowing(true)
+      setExecutionSummary(undefined)
       setState("message", sessionID, 1, "time", { created: 1 })
       setState("message", sessionID, 1, "error", undefined)
       setState("message", sessionID, 1, "finish", undefined)

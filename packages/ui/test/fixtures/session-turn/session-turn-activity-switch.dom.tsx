@@ -107,8 +107,9 @@ const data = {
 // Session runtime state lives outside the Scope store; the view resolves
 // it from this accessor bag.
 const NO_REQUESTS = []
+const [sessionPaused, setSessionPaused] = createSignal(false)
 const runtime = {
-  statusFor: () => ({ type: "idle" }),
+  statusFor: () => (sessionPaused() ? { type: "paused", reason: "aborted" } : { type: "idle" }),
   permissionsFor: () => NO_REQUESTS,
   questionsFor: () => NO_REQUESTS,
 }
@@ -118,10 +119,7 @@ const resourceController = {
     openedTools.push(target)
     return true
   },
-  open: () => false,
-  openAttachment: () => false,
-  resolveWorkspacePath: (value) => value,
-  openWorkspaceSource: () => false,
+  open: async () => ({ status: "cancelled" as const }),
 }
 const EmptyDiff = () => null
 const [mode, setMode] = createSignal("minimal")
@@ -149,6 +147,7 @@ render(
                   lastUserMessageID={rootID}
                   activityDisplay={mode()}
                   executionState={executionState()}
+                  executionSummary={sessionPaused() ? { status: "running", elapsedMs: 3000 } : undefined}
                 >
                   <span id="activity-switch-sentinel" hidden>
                     stable
@@ -165,6 +164,7 @@ render(
 )
 
 globalThis.__activitySwitchHarness = {
+  setSessionPaused,
   setMode,
   openedTools,
   setExecutionStatus: (status) =>

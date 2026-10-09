@@ -1,3 +1,4 @@
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { fileWorkspaceLabel } from "@/context/file/workspace"
 import DOMPurify from "dompurify"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
@@ -20,7 +21,8 @@ import { fileWriteErrorMessage, isFileWriteConflictError, isFileWriteDeniedError
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { FileExplorer } from "./explorer"
 import { WorkspaceNavigator, type WorkspaceNavigatorController } from "../workspace/workspace-navigator"
-import { classifyFilePreview, resolveWorkspaceRelativePath } from "./model"
+import { classifyResourcePreview } from "../resource-preview"
+import { AttachmentPreview } from "../attachment-workbench/preview"
 import { buildWorkspaceFileBrowserUrl, buildWorkspaceFilePreviewUrl } from "@/utils/workspace-file-url"
 import { AttachmentPdfPreview } from "@/components/attachment-workbench/pdf-preview"
 import { FileSourceView, type FileSourceViewApi } from "./source-view"
@@ -38,72 +40,18 @@ function selectionLabel(range: { start: number; end: number }) {
 
 function MarkdownPreview(props: { path: string; content: string }) {
   const file = useFile()
-  let root!: HTMLDivElement
-  let observer: MutationObserver | undefined
-  const processed = new WeakSet<Element>()
-  let imageCount = 0
-  let imageBytes = 0
-  let disposed = false
-
-  const processImages = () => {
-    for (const image of root.querySelectorAll<HTMLImageElement>("img[src]")) {
-      if (processed.has(image)) continue
-      processed.add(image)
-      const src = image.getAttribute("src") ?? ""
-      if (/^(?:data:|blob:|https?:)/i.test(src)) continue
-      const path = resolveWorkspaceRelativePath(props.path, src)
-      if (!path || imageCount >= 20) {
-        image.removeAttribute("src")
-        continue
-      }
-      imageCount += 1
-      void file.load(path).then(() => {
-        if (disposed) return
-        const content = file.get(path)?.content
-        if (content?.kind !== "image") {
-          image.removeAttribute("src")
-          return
-        }
-        if (imageBytes + content.totalBytes > 32 * 1024 * 1024) {
-          image.removeAttribute("src")
-          return
-        }
-        imageBytes += content.totalBytes
-        image.src = `data:${content.mimeType};base64,${content.content}`
-      })
-    }
+  const context = () => {
+    const value = ResourceReference.capture(file.workspace)
+    return value.state === "bound" ? { ...value, directory: props.path.split("/").slice(0, -1).join("/") } : value
   }
-
-  onMount(() => {
-    observer = new MutationObserver(processImages)
-    observer.observe(root, { childList: true, subtree: true })
-    processImages()
-  })
-  onCleanup(() => {
-    disposed = true
-    observer?.disconnect()
-  })
-
   return (
-    <div
-      ref={root}
-      class="file-markdown-preview"
-      onClick={(event) => {
-        const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[href]")
-        if (!anchor) return
-        const href = anchor.getAttribute("href") ?? ""
-        if (href.startsWith("#")) return
-        if (/^https?:/i.test(href)) {
-          anchor.target = "_blank"
-          anchor.rel = "noopener noreferrer"
-          return
-        }
-        event.preventDefault()
-        const path = resolveWorkspaceRelativePath(props.path, href)
-        if (path) void file.openWorkspaceFile(path)
-      }}
-    >
-      <Markdown text={props.content} cacheKey={`file-preview:${file.resourceKey}:${props.path}`} />
+    <div class="file-markdown-preview">
+      <Markdown
+        text={props.content}
+        navigation={file.navigation(props.path)}
+        referenceContext={context()}
+        cacheKey={`file-preview:${file.resourceKey}:${props.path}`}
+      />
     </div>
   )
 }
@@ -287,6 +235,7 @@ function FilePdfPreview(props: {
   lingui: ReturnType<typeof useLingui>
   onRetry: () => void
 }) {
+  const file = useFile()
   return (
     <Show
       when={props.state?.bytes}
@@ -341,7 +290,13 @@ function FilePdfPreview(props: {
         </Show>
       }
     >
-      {(bytes) => <AttachmentPdfPreview bytes={bytes()} />}
+      {(bytes) => (
+        <AttachmentPdfPreview
+          bytes={bytes()}
+          location={file.navigation(props.path)?.location}
+          navigation={file.navigation(props.path)?.id}
+        />
+      )}
     </Show>
   )
 }
@@ -403,7 +358,11 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   const pdfContent = createMemo(() => file.pdf.get(path()))
   const capability = createMemo(() => {
     const value = content()
-    return classifyFilePreview(path(), file.draft.get(path()) ? "text" : (value?.kind ?? "binary"), value?.mimeType)
+    return classifyResourcePreview(
+      value?.mimeType ?? "",
+      path(),
+      file.draft.get(path()) ? "text" : (value?.kind ?? "binary"),
+    )
   })
   const mode = createMemo(() => {
     if (file.draft.get(path())) return "source"
@@ -652,6 +611,15 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
                         prompt.context.add({
                           type: "file",
                           path: path(),
+                          ...(file.workspace
+                            ? {
+                                workspace: {
+                                  id: file.workspace.id,
+                                  generation: file.workspace.generation,
+                                  root: file.workspace.path,
+                                },
+                              }
+                            : {}),
                           selection: {
                             startLine: Math.min(range().start, range().end),
                             endLine: Math.max(range().start, range().end),
@@ -813,6 +781,18 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
                 totalBytes={documentState()?.node?.size ?? documentState()?.version?.size}
                 lingui={lingui}
                 onRetry={() => void file.pdf.load(path(), { force: true })}
+              />
+            </Match>
+            <Match when={["docx", "xlsx", "pptx", "audio", "video"].includes(capability().kind)}>
+              <AttachmentPreview
+                file={{
+                  filename: path(),
+                  mime: content()?.mimeType ?? "application/octet-stream",
+                  size: documentState()?.node?.size,
+                }}
+                serverUrl={sdk.url}
+                sourceUrl={buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, ...file.reference() })}
+                fetcher={platform.fetch}
               />
             </Match>
             <Match when={binaryContent()}>
