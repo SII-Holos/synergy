@@ -1375,13 +1375,14 @@ export namespace Provider {
     model: Model,
     resolvedOptions?: Record<string, any>,
     resolvedTimeouts?: TimeoutConfig.ProviderTimeouts,
+    requestProvider?: Info,
   ) {
     try {
       using _ = log.time("getSDK", {
         providerID: model.providerID,
       })
       const s = await state()
-      const provider = s.providers[model.providerID]
+      const provider = requestProvider ?? s.providers[model.providerID]
       const options: Record<string, any> = {
         ...(resolvedOptions ?? (await resolveModelOptions(model, provider, s.runtimeProfileStates[model.providerID]))),
       }
@@ -1409,7 +1410,7 @@ export namespace Provider {
         }),
       )
       const SDK_CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours — prevent stale HTTP client state in long-running processes
-      const existing = s.sdk.get(key)
+      const existing = requestProvider ? undefined : s.sdk.get(key)
       if (existing) {
         if (Date.now() - existing.createdAt < SDK_CACHE_TTL_MS) return existing.instance as SDK
         s.sdk.delete(key) // Expired — force SDK recreation with fresh HTTP client
@@ -1440,7 +1441,7 @@ export namespace Provider {
           : model.api.npm
       const factory = await ProviderSdkSource.load(bundledKey)
       const loaded = factory({ name: model.providerID, ...options })
-      s.sdk.set(key, { instance: loaded, createdAt: Date.now() })
+      if (!requestProvider) s.sdk.set(key, { instance: loaded, createdAt: Date.now() })
       return loaded as SDK
     } catch (e) {
       throw new InitError({ providerID: model.providerID }, { cause: e })
@@ -1471,11 +1472,23 @@ export namespace Provider {
     return info
   }
 
-  export async function getLanguage(model: Model): Promise<LanguageModelV2> {
+  export async function getLanguage(model: Model, plan?: WorkerPlan): Promise<LanguageModelV2> {
     const s = await state()
-    const provider = s.providers[model.providerID]
-    const options = await resolveModelOptions(model, provider, s.runtimeProfileStates[model.providerID])
-    const timeouts = await requestTimeouts(model, options)
+    const provider = plan
+      ? { ...s.providers[model.providerID], key: plan.key, options: plan.options }
+      : s.providers[model.providerID]
+    const options = await resolveModelOptions(
+      model,
+      provider,
+      plan ? undefined : s.runtimeProfileStates[model.providerID],
+    )
+    const timeouts = plan
+      ? {
+          providerTtfbMs: plan.timeouts.ttfbMs,
+          providerIdleMs: plan.timeouts.idleMs,
+          providerWallMs: plan.timeouts.wallMs,
+        }
+      : await requestTimeouts(model, options)
     const key = Bun.hash
       .xxHash32(
         JSON.stringify({
@@ -1489,14 +1502,14 @@ export namespace Provider {
       )
       .toString()
     const MODEL_CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours — keep in sync with SDK_CACHE_TTL_MS
-    const cached = s.models.get(key)
+    const cached = plan ? undefined : s.models.get(key)
     if (cached) {
       if (Date.now() - cached.createdAt < MODEL_CACHE_TTL_MS) return cached.instance
       s.models.delete(key) // Expired — force recreation
       log.info("model cache entry expired, recreating", { key })
     }
 
-    const sdk = await getSDK(model, options, timeouts)
+    const sdk = await getSDK(model, options, timeouts, plan ? provider : undefined)
 
     try {
       const language = s.modelLoaders[model.providerID]
@@ -1504,7 +1517,7 @@ export namespace Provider {
         : model.api.npm === "@ai-sdk/openai"
           ? (sdk as any).responses(model.api.id)
           : sdk.languageModel(model.api.id)
-      s.models.set(key, { instance: language, createdAt: Date.now() })
+      if (!plan) s.models.set(key, { instance: language, createdAt: Date.now() })
       return language
     } catch (e) {
       if (e instanceof NoSuchModelError)

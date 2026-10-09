@@ -5,6 +5,7 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./execution/model-execution": "./src/execution/model-execution.ts",
     "./session/rollout/events": "./src/session/rollout/events.ts",
     "./tool/policy-source": "./src/tool/policy-source.ts",
     "./config/source": "./src/config/source.ts",
