@@ -16,6 +16,8 @@ CI collects independent coverage diagnostics even when another task fails, while
 
 Plans retain structured full-selection triggers. Descriptive workspace metadata, generated API contracts and Skill reference Markdown have explicit ownership; unknown executable inputs stay conservative. Plans consume validated recent successful dev timing artifacts with a checked-in fallback, bind the complete timing snapshot, and react to recent slow batches. A read-only completed-workflow collector measures final queue and compute time after the normal release activates it on the default branch.
 
+Development Skills keep the everyday feedback loop and verification choices in their entry points. Domain-specific regressions live in linked references, whose relative links are validated recursively. Frontend and Git procedures no longer prescribe a duplicate complete local matrix before every push.
+
 ## Alternatives considered
 
 **Run the full CI matrix locally.** This duplicates expensive platform and browser execution and makes every iteration wait for the broadest scope.
