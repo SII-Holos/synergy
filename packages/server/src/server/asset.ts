@@ -67,8 +67,8 @@ export const AssetRoute = () =>
         if (!assetPath) {
           return c.json({ message: "Invalid asset ID" }, 400)
         }
-        const file = Bun.file(assetPath)
-        if (!(await file.exists())) {
+        const file = await Asset.read(id)
+        if (!file) {
           return c.json({ message: `Asset not found: ${id}` }, 404)
         }
         c.header("Cache-Control", "public, immutable, max-age=31536000")

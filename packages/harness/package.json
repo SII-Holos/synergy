@@ -109,6 +109,7 @@
     "./migration/types": "./src/migration/types.ts",
     "./cortex/types": "./src/cortex/types.ts",
     "./asset/asset": "./src/asset/asset.ts",
+    "./asset/stored-assets": "./src/asset/stored-assets.ts",
     "./provider/image-capability": "./src/provider/image-capability.ts",
     "./attachment": "./src/attachment/index.ts",
     "./session/error": "./src/session/error.ts",
