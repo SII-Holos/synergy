@@ -339,7 +339,11 @@ test("timeline preparation preserves canonical settlement state after rereading 
         for (const info of [expired, pending]) {
           await Session.updateMessage(info)
           await Storage.write(
-            StoragePath.messageInfo(session.scope.id, session.id, Identifier.asMessageID(info.id)),
+            StoragePath.messageInfo(
+              Identifier.asScopeID(session.scope.id),
+              Identifier.asSessionID(session.id),
+              Identifier.asMessageID(info.id),
+            ),
             info,
           )
         }
@@ -358,7 +362,11 @@ test("timeline preparation preserves canonical settlement state after rereading 
           expect(await state(expired.id)).toEqual({ status: "error", code: "timeout" })
         })
         const stored = await Storage.read<MessageV2.User>(
-          StoragePath.messageInfo(session.scope.id, session.id, Identifier.asMessageID(expired.id)),
+          StoragePath.messageInfo(
+            Identifier.asScopeID(session.scope.id),
+            Identifier.asSessionID(session.id),
+            Identifier.asMessageID(expired.id),
+          ),
         )
         expect(stored.summary?.diffState).toEqual(expired.summary!.diffState)
         await Session.remove(session.id)
