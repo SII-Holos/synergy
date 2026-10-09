@@ -1081,20 +1081,28 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             messages: [...response.data.referencedRoots, ...response.data.items].map((entry) => entry.info),
             signal,
             page: (messageID) => readBatchedPartPages(sessionID, messageID, signal),
-            body: async (summary) => {
-              const result = await globalSdk.client.session.partContent(
-                {
-                  ...scopeRequest(scopeKey),
-                  sessionID,
-                  messageID: summary.messageID,
-                  partID: summary.id,
-                  version: summary.content.version,
+            body: async (summary) =>
+              globalSync.partContentStore.readThrough({
+                url: globalSdk.url,
+                scopeKey,
+                partID: summary.id,
+                version: summary.content.version,
+                bytes: summary.content.bytes,
+                read: async () => {
+                  const result = await globalSdk.client.session.partContent(
+                    {
+                      ...scopeRequest(scopeKey),
+                      sessionID,
+                      messageID: summary.messageID,
+                      partID: summary.id,
+                      version: summary.content.version,
+                    },
+                    { signal, throwOnError: true },
+                  )
+                  if (!result.data) throw new Error("Missing conversation content")
+                  return result.data
                 },
-                { signal, throwOnError: true },
-              )
-              if (!result.data) throw new Error("Missing conversation content")
-              return result.data
-            },
+              }),
           })
           if (prefetchToken.value !== token) return
           const viewport = planSessionViewportContent(content, (messageID) =>
@@ -1139,23 +1147,28 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       })
     }
 
-    function prefetchSession(session: Session, priority: "high" | "low" = "low") {
-      const scopeKey = scopeKeyForSession(session)
+    function prefetchSessionID(scopeKey: string, sessionID: string, priority: "high" | "low" = "low") {
       if (!scopeKey) return
       const [childStore] = globalSync.ensureScopeState(scopeKey)
-      if (childStore.message[session.id] !== undefined) return
+      if (childStore.message[sessionID] !== undefined) return
       const q = queueFor(scopeKey)
-      if (q.inflight.has(session.id)) return
-      if (q.pendingSet.has(session.id)) return
-      if (priority === "high") q.pending.unshift(session.id)
-      if (priority !== "high") q.pending.push(session.id)
-      q.pendingSet.add(session.id)
+      if (q.inflight.has(sessionID)) return
+      if (q.pendingSet.has(sessionID)) return
+      if (priority === "high") q.pending.unshift(sessionID)
+      if (priority !== "high") q.pending.push(sessionID)
+      q.pendingSet.add(sessionID)
       while (q.pending.length > prefetchPendingLimit) {
         const dropped = q.pending.pop()
         if (!dropped) continue
         q.pendingSet.delete(dropped)
       }
       pumpPrefetch(scopeKey)
+    }
+
+    function prefetchSession(session: Session, priority: "high" | "low" = "low") {
+      const scopeKey = scopeKeyForSession(session)
+      if (!scopeKey) return
+      prefetchSessionID(scopeKey, session.id, priority)
     }
 
     function resetPrefetch() {
@@ -1284,6 +1297,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         hasMoreRecent,
         loadMoreNav,
         prefetchSession,
+        prefetchSessionID,
         resetPrefetch,
         archiveSession,
         pinSession,
