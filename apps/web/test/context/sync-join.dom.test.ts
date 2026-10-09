@@ -21,6 +21,7 @@ test("mounted directory route sync joins loads and ignores same-route session in
   const entry = path.join(dir, "main.tsx")
   const stub = path.join(dir, "stub.tsx")
   const sync = path.resolve(import.meta.dir, "../../src/context/sync.tsx")
+  const freshnessPath = path.resolve(import.meta.dir, "../../src/context/session-part-snapshot-freshness.ts")
   const helper = path.resolve(import.meta.dir, "../../../../packages/ui/src/context/helper.tsx")
   const directoryLayout = path.resolve(import.meta.dir, "../../src/pages/directory-layout.tsx")
   const root = document.createElement("div")
@@ -31,6 +32,8 @@ test("mounted directory route sync joins loads and ignores same-route session in
     stub,
     `
 import { createStore } from "solid-js/store"
+import { SessionPartSnapshotFreshness } from ${JSON.stringify(freshnessPath)}
+const freshness = new SessionPartSnapshotFreshness()
 export { createSimpleContext } from ${JSON.stringify(helper)}
 const [params, setParams] = createStore({ dir: 'cHJvYmU=', id: 'ses_1' })
 export const useParams = () => params
@@ -67,7 +70,7 @@ export const useGlobalSync = () => ({
   retainScopeState: () => ({ state, release: () => {} }),
   peekScopeState: () => current,
   scopeReconnectVersion: () => 0,
-  capturePartSnapshotRequest: () => ({}),
+  capturePartSnapshotRequest: (_scope, sessionID) => freshness.capture("probe", sessionID),
   captureResourceRequest: () => ({ generation: 0, revision: 0 }),
   beginContextProjection: () => 0,
   applyResourceResponse: (_s, _m, _r, _req, _h, apply) => { apply(); return true },
@@ -78,7 +81,8 @@ export const useGlobalSync = () => ({
   touchMessageBucket: () => {},
   reconcileCortexFromSession: () => {},
   markActiveSession: () => {},
-  partSnapshotAction: () => "apply",
+  partSnapshotAction: (_scope, sessionID, messageID, request) => freshness.action("probe", sessionID, messageID, request),
+  partSnapshotGenerationDrifted: (_scope, sessionID, request) => freshness.generationDrifted("probe", sessionID, request),
   partContentStore: { read: (_key, load, signal) => load(signal ?? new AbortController().signal) },
   contentBudget: { remove: () => {} },
   data: { scope: [] },

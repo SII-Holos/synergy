@@ -21,10 +21,13 @@ test("history transitions replace branches while reconnect preserves the retaine
     stub = path.join(dir, "stub.tsx")
   const sync = path.resolve(import.meta.dir, "../../src/context/sync.tsx"),
     helper = path.resolve(import.meta.dir, "../../../../packages/ui/src/context/helper.tsx")
+  const freshnessPath = path.resolve(import.meta.dir, "../../src/context/session-part-snapshot-freshness.ts")
   await Bun.write(
     stub,
     `
 import {createStore} from 'solid-js/store';
+import { SessionPartSnapshotFreshness } from ${JSON.stringify(freshnessPath)};
+const freshness = new SessionPartSnapshotFreshness();
 const state=createStore({status:'ready',path:{directory:''},scopeID:'home',session:[],message:{},messageWindow:{},latestContextMessage:{},part:{},partSummary:{},partPage:{},partVersion:{},permission:{},question:{},inbox:{},todo:{},dag:{},session_diff:{},cortex:[]});
 export const calls={messagePage:[],permissionList:[]};
 export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:create(),release(){}}),
@@ -32,10 +35,11 @@ export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:creat
   retainScopeState:()=>({state,release:()=>{}}),
   peekScopeState:()=>state,
   scopeReconnectVersion:()=>generation,
-  capturePartSnapshotRequest:()=>({}),
+  capturePartSnapshotRequest:(_scope,sessionID)=>freshness.capture('probe',sessionID),
   captureResourceRequest:()=>({}),
   beginContextProjection:()=>0,
-  partSnapshotAction:()=>'apply',
+  partSnapshotAction:(_scope,sessionID,messageID,request)=>freshness.action('probe',sessionID,messageID,request),
+  partSnapshotGenerationDrifted:(_scope,sessionID,request)=>freshness.generationDrifted('probe',sessionID,request),
   applyResourceResponse:(_scopeKey,_sessionID,_resource,_request,_headers,apply)=>{apply();return true},
   seedSessionViewportContent:(_scope,content)=>{
     for(const [id,{items,...page}] of Object.entries(content.pages)) {

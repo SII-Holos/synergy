@@ -22,8 +22,11 @@ describe("SyncResourceFreshness", () => {
     const freshness = new SyncResourceFreshness()
 
     expect(freshness.acceptEvent(dag, version(10))).toBe(true)
+    const request = freshness.capture(dag)
     expect(freshness.acceptSnapshot(dag, version(10))).toBe(true)
+    expect(freshness.unchanged(dag, request)).toBe(true)
     expect(freshness.acceptSnapshot(dag, version(12))).toBe(true)
+    expect(freshness.unchanged(dag, request)).toBe(false)
     expect(freshness.current(dag)).toEqual(version(12))
   })
 
