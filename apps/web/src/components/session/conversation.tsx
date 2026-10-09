@@ -36,7 +36,6 @@ import { buildConversationTimelineSnapshot } from "./conversation-timeline"
 import { ConversationViewport } from "./conversation-viewport"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
-import { PendingTimelineItem } from "./pending-timeline-item"
 import { useExecution } from "@/context/execution"
 
 type SessionConversationProps = PluginComponentProps<PluginConversationService> & {
@@ -522,26 +521,6 @@ function SessionConversationView(input: SessionConversationProps) {
           />
         </Show>
         {props.transition?.()}
-        <Show when={props.pendingTimeline?.()?.length}>
-          <div class="w-full flex flex-col items-start gap-2">
-            <For each={(props.pendingTimeline?.() ?? []).map((item) => item.id)}>
-              {(id) => {
-                const item = () => props.pendingTimeline?.()?.find((item) => item.id === id)
-                return (
-                  <Show when={item()}>
-                    <PendingTimelineItem
-                      item={item()!}
-                      rollbackActive={props.rollbackActive === true}
-                      hasCanonicalRoot={props.hasCanonicalRoot()}
-                      onGuide={props.onPendingGuide}
-                      onRemove={props.onPendingRemove}
-                    />
-                  </Show>
-                )
-              }}
-            </For>
-          </div>
-        </Show>
         <MessageSlotOutlet slot="message.footer" sessionId={props.sessionID} />
       </ConversationViewport>
     </ConversationMotionProvider>

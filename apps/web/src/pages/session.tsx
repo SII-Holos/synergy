@@ -17,6 +17,7 @@ import { NewSessionGreeting } from "@/components/session/session-new-view"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 import { SessionInbox } from "@/components/session/session-inbox"
+import { PendingComposerQueue } from "@/components/session/pending-composer-queue"
 import { SubagentSessionFooter } from "@/components/session/subagent-session-footer"
 import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
 import {
@@ -2356,7 +2357,21 @@ function SessionPageContent() {
         </div>
       </ConversationPresentation>
     ),
-    composer: () => <PromptDock context={composerLayout} />,
+    composer: () => (
+      <PromptDock
+        context={composerLayout}
+        pending={
+          <PendingComposerQueue
+            identity={sessionKey()}
+            items={pendingTimeline()}
+            rollbackActive={rollbackActive()}
+            hasCanonicalRoot={rootMessages().length > 0}
+            onGuide={guidePending}
+            onRemove={removePending}
+          />
+        }
+      />
+    ),
     "workbench.side": () => (
       <>
         <Show when={sideWorkspaceMounts().desktop}>
