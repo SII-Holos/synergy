@@ -440,15 +440,28 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           mode: input?.mode,
           replace: !!input?.targetMessageID || !!input?.retainedWindow,
         })
-        const partActions = new Map(
-          Object.keys(plan.parts).map((messageID) => [
-            messageID,
-            globalSync.partSnapshotAction(sdk.scopeKey, sessionID, messageID, result.partSnapshotRequest),
-          ]),
+        const actionOf = (messageID: string) =>
+          globalSync.partSnapshotAction(sdk.scopeKey, sessionID, messageID, result.partSnapshotRequest)
+        const partActions = new Map(Object.keys(plan.parts).map((messageID) => [messageID, actionOf(messageID)]))
+        const retryMessageIDs = new Set(
+          [...partActions.entries()].flatMap(([messageID, action]) => (action === "retry" ? [messageID] : [])),
         )
-        if ([...partActions.values()].some((action) => action === "retry")) return "superseded"
-        const viewport = planSessionViewportContent(result.viewport, (messageID) =>
-          globalSync.partSnapshotAction(sdk.scopeKey, sessionID, messageID, result.partSnapshotRequest),
+        // A generation drift means the store no longer matches the request's
+        // structural epoch — the window is unusable, supersede as before.
+        if (
+          retryMessageIDs.size &&
+          globalSync.partSnapshotGenerationDrifted(sdk.scopeKey, sessionID, result.partSnapshotRequest)
+        )
+          return "superseded"
+        // A per-message mark (authoritative checkpoint landing mid-load)
+        // only invalidates that message's snapshot. Applying the rest of the
+        // window keeps 260KB of fetched work instead of restarting the whole
+        // timeline page with backoff; the marked messages are refetched
+        // below, targeted, so their store state converges from the live mark.
+        for (const messageID of retryMessageIDs) partActions.set(messageID, "preserve")
+        const viewport = planSessionViewportContent(
+          result.viewport,
+          (messageID) => partActions.get(messageID) ?? actionOf(messageID),
         )
         if (!viewport) return "superseded"
         const apply = () => {
@@ -482,6 +495,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
           refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
         }
+        // Converge the marked messages: re-capture freshness after their
+        // marks and force-refetch each first page (merged into one batch
+        // POST by the plain-view page reader).
+        const refetchMarked = () => {
+          for (const messageID of retryMessageIDs)
+            void loadPartSummaries(sessionID, messageID, false, true).catch(() => {})
+        }
 
         if (result.request) {
           const accepted = globalSync.applyResourceResponse(
@@ -495,12 +515,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           if (accepted && input?.reconnectVersion !== undefined) {
             markSessionSynced(sessionID, input.reconnectVersion)
           }
+          if (accepted) refetchMarked()
           return accepted ? "applied" : "superseded"
         }
         // A history prepend changes the window outside latest-page ordering;
         // invalidate any concurrent latest request before applying it.
         globalSync.invalidateResource(sdk.scopeKey, sessionID, "message")
         apply()
+        refetchMarked()
         return "applied"
       },
       errorMessage: (error) => requestErrorMessage(error, "Couldn’t load conversation"),

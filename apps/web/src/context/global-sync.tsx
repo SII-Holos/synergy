@@ -683,6 +683,10 @@ function createGlobalSync() {
     return partSnapshotFreshness.action(scopeKey, sessionID, messageID, request)
   }
 
+  function partSnapshotGenerationDrifted(scopeKey: string, sessionID: string, request: SessionPartSnapshotRequest) {
+    return partSnapshotFreshness.generationDrifted(scopeKey, sessionID, request)
+  }
+
   function scheduleBootstrap(scopeKey: string) {
     if (!scopeKey || !children[scopeKey]) return
     if (bootstrapActive.has(children[scopeKey]) || bootstrapQueued.has(scopeKey)) return
@@ -2737,6 +2741,7 @@ function createGlobalSync() {
     invalidateResource,
     capturePartSnapshotRequest,
     partSnapshotAction,
+    partSnapshotGenerationDrifted,
     get agenda() {
       return globalStore.agenda
     },

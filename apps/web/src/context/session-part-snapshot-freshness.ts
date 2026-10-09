@@ -71,6 +71,11 @@ export class SessionPartSnapshotFreshness {
     return "preserve"
   }
 
+  /** True when the retry came from a generation drift, not a per-message mark. */
+  generationDrifted(scopeKey: string, sessionID: string, request: SessionPartSnapshotRequest) {
+    return this.generation(scopeKey, sessionID) !== request.generation
+  }
+
   releaseScope(scopeKey: string) {
     const prefix = `${scopeKey}\n`
     this.generations.deletePrefix(prefix)
