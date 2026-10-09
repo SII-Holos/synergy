@@ -16,12 +16,13 @@ import solidPlugin from "vite-plugin-solid"
  *   message wave (previously refreshSessionAfterPending replayed a plan
  *   computed while the session was still unstaled).
  */
-test("route kick joins the mount sync and queued triggers re-plan without a second wave", async () => {
+test("mounted directory route sync joins loads and ignores same-route session insertions", async () => {
   const dir = await mkdtemp(path.join(import.meta.dir, ".sync-join-"))
   const entry = path.join(dir, "main.tsx")
   const stub = path.join(dir, "stub.tsx")
   const sync = path.resolve(import.meta.dir, "../../src/context/sync.tsx")
   const helper = path.resolve(import.meta.dir, "../../../../packages/ui/src/context/helper.tsx")
+  const directoryLayout = path.resolve(import.meta.dir, "../../src/pages/directory-layout.tsx")
   const root = document.createElement("div")
   root.id = "root"
   document.body.append(root)
@@ -30,6 +31,21 @@ test("route kick joins the mount sync and queued triggers re-plan without a seco
     stub,
     `
 import { createStore } from "solid-js/store"
+export { createSimpleContext } from ${JSON.stringify(helper)}
+const [params, setParams] = createStore({ dir: 'cHJvYmU=', id: 'ses_1' })
+export const useParams = () => params
+export const setRoute = (id) => setParams('id', id)
+export const insertSession = () => state[1]('session', sessions => [...sessions, { id: 'ses_unrelated', time: { created: 1, updated: 1 } }])
+export const SDKProvider = props => props.children
+export const DataProvider = props => props.children
+export const SessionDecisionProvider = props => props.children
+export const LocalProvider = props => props.children
+export const FileProvider = props => props.children
+export const ExecutionProvider = props => props.children
+export const BrowserCatalogProvider = props => props.children
+export const useSessionDecision = () => ({ respondPermission() {} })
+export const useNavigateToSession = () => () => {}
+export const createSessionDataRuntime = () => ({})
 const state = createStore({
   status: "ready",
   path: { directory: "probe" },
@@ -75,8 +91,8 @@ export const useSDK = () => ({
   client: {
     permission: { list: () => { calls.permission++; return Promise.resolve({ data: [] }) } },
     session: {
-      get: () => { calls.sessionGet++; return gate("sessionGet").then(() => ({
-        data: { id: "ses_1", version: 1, scope: { id: "probe" }, permission: [], title: "t", time: { created: 0, updated: 0 } },
+      get: ({ sessionID }) => { calls.sessionGet++; return gate("sessionGet").then(() => ({
+        data: { id: sessionID, version: 1, scope: { id: "probe" }, permission: [], title: "t", time: { created: 0, updated: 0 } },
         response: { headers: { get: () => undefined } } })) },
       diff: () => Promise.resolve({ data: [] }),
       inbox: () => Promise.resolve({ data: [] }),
@@ -112,13 +128,14 @@ export const releaseAll = () => { releaseGate("timeline"); releaseGate("partPage
     entry,
     `
 import { render } from "solid-js/web"
-import { SyncProvider, useSync } from ${JSON.stringify(sync)}
-import { callsMade, releaseAll } from ${JSON.stringify(stub)}
+import { useSync } from ${JSON.stringify(sync)}
+import DirectoryLayout from ${JSON.stringify(directoryLayout)}
+import { callsMade, releaseAll, insertSession, setRoute } from ${JSON.stringify(stub)}
 let api
 function Child() { api = useSync(); return <div>probe</div> }
-const dispose = render(() => <SyncProvider><Child /></SyncProvider>, document.getElementById("root"))
+const dispose = render(() => <DirectoryLayout><Child /></DirectoryLayout>, document.getElementById("root"))
 const tick = () => new Promise((r) => setTimeout(r, 1))
-globalThis.syncJoinProbe = { api: () => api, dispose, callsMade, releaseAll, tick }
+globalThis.syncJoinProbe = { api: () => api, dispose, callsMade, releaseAll, insertSession, setRoute, tick }
     `,
   )
 
@@ -128,7 +145,12 @@ globalThis.syncJoinProbe = { api: () => api, dispose, callsMade, releaseAll, tic
       logLevel: "silent",
       resolve: {
         alias: [
-          { find: /^@ericsanchezok\/synergy-ui\/context$/, replacement: helper },
+          { find: /^@ericsanchezok\/synergy-ui\/context$/, replacement: stub },
+          { find: /^@solidjs\/router$/, replacement: stub },
+          {
+            find: /^@\/(?:context\/(?:sdk|local|file|execution|global-sync|session-data-view|session-decision)|components\/workspace\/browser\/browser-catalog|composables\/use-navigate-to-session)$/,
+            replacement: stub,
+          },
           { find: "@", replacement: path.resolve(import.meta.dir, "../../src") },
         ],
       },
@@ -166,15 +188,15 @@ globalThis.syncJoinProbe = { api: () => api, dispose, callsMade, releaseAll, tic
           callsMade: () => Record<string, number>
           releaseAll: () => void
           tick: () => Promise<void>
+          insertSession: () => void
+          setRoute: (id: string) => void
         }
       }
     ).syncJoinProbe
     const syncApi = h.api()
 
-    // Kick + mount while the timeline page is still unresolved. Per the HAR
     // Kick + mount while the timeline page is still unresolved. Both calls
     // target the identical generation so the second must join the first.
-    const kickP = syncApi.session.sync("ses_1")
     const mountP = syncApi.session.sync("ses_1")
     await h.tick()
     // A trigger-sync queued during load replays through the chain; it must
@@ -183,13 +205,29 @@ globalThis.syncJoinProbe = { api: () => api, dispose, callsMade, releaseAll, tic
     const triggerP = syncApi.session.sync("ses_1", { trigger: { type: "workspace-transition" } })
     await h.tick()
     h.releaseAll()
-    await Promise.allSettled([kickP, mountP, triggerP])
-    h.dispose()
+    await Promise.all([mountP, triggerP])
+    await h.tick()
 
     expect(h.callsMade().timeline, "timelinePage must be single-flight").toBe(1)
     expect(h.callsMade().partPages, "partPages must be single-flight").toBe(1)
     expect(h.callsMade().sessionGet, "only the trigger's metadata refresh may re-read").toBe(2)
+    const settled = h.callsMade()
+    h.insertSession()
+    await h.tick()
+    expect(h.callsMade(), "same-route session insertion must not refetch permissions or snapshots").toEqual(settled)
+
+    h.setRoute("ses_2")
+    await syncApi.session.sync("ses_2")
+    await h.tick()
+    expect(h.callsMade().permission, "route change must request the new session's permissions").toBe(
+      settled.permission + 2,
+    )
+    expect(h.callsMade().sessionGet).toBe(settled.sessionGet + 1)
+    expect(h.callsMade().timeline).toBe(settled.timeline + 1)
+    expect(h.callsMade().partPages).toBe(settled.partPages + 1)
   } finally {
+    const h = (globalThis as { syncJoinProbe?: { dispose: () => void } }).syncJoinProbe
+    h?.dispose()
     root.remove()
     delete (globalThis as { syncJoinProbe?: unknown }).syncJoinProbe
     await rm(dir, { recursive: true, force: true })

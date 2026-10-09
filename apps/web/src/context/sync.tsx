@@ -815,7 +815,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   target,
                   refreshSessionAfterPending(active.request, () => runBaseSync(options?.trigger)),
                 )
-              : queueSessionSync(inflight, sessionID, target, runBaseSync)
+              : queueSessionSync(inflight, sessionID, target, () => runBaseSync(options?.trigger))
 
           const requests = [baseReq, syncPermissions()]
           if (options?.refreshVolatile) {

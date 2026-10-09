@@ -1,4 +1,4 @@
-import { createEffect, createMemo, Show, type ParentProps } from "solid-js"
+import { createEffect, createMemo, on, Show, type ParentProps } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
@@ -45,10 +45,15 @@ export default function Layout(props: ParentProps) {
               // mount call joins this in-flight run (queueSessionSync
               // satisfied-join) instead of fetching a second wave behind a
               // separate prefetch chain.
-              createEffect(() => {
-                if (!params.id) return
-                void sync.session.sync(params.id).catch(() => undefined)
-              })
+              createEffect(
+                on(
+                  () => params.id,
+                  (id) => {
+                    if (!id) return
+                    void sync.session.sync(id).catch(() => undefined)
+                  },
+                ),
+              )
 
               return (
                 <DataProvider
