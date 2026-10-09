@@ -28,6 +28,7 @@ export namespace Token {
   // ---------------------------------------------------------------------------
 
   const encoderCache = new Map<EncodingName, Tiktoken>()
+  const initializing = new Map<EncodingName, Promise<Tiktoken | undefined>>()
 
   /**
    * Lazily initialize and cache a Tiktoken encoder for the given encoding.
@@ -37,17 +38,27 @@ export namespace Token {
   async function getTokenizer(encoding: EncodingName): Promise<Tiktoken | undefined> {
     const cached = encoderCache.get(encoding)
     if (cached) return cached
-
-    try {
-      // Dynamic import so the ~2MB BPE rank files are loaded only when needed
-      // and only for encodings actually used at runtime.
-      const { getEncoding } = await import("js-tiktoken")
-      const enc = getEncoding(encoding)
-      encoderCache.set(encoding, enc)
-      return enc
-    } catch {
-      return undefined
-    }
+    const pending = initializing.get(encoding)
+    if (pending) return pending
+    const loading = (async () => {
+      try {
+        // The main package loads every rank table. The public lite entry uses
+        // the exact same encoder with just the selected model's rank table.
+        const [{ Tiktoken }, ranks] = await Promise.all([
+          import("js-tiktoken/lite"),
+          encoding === "o200k_base" ? import("js-tiktoken/ranks/o200k_base") : import("js-tiktoken/ranks/cl100k_base"),
+        ])
+        const encoder = new Tiktoken(ranks.default)
+        encoderCache.set(encoding, encoder)
+        return encoder
+      } catch {
+        return undefined
+      } finally {
+        initializing.delete(encoding)
+      }
+    })()
+    initializing.set(encoding, loading)
+    return loading
   }
 
   /**

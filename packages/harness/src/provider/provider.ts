@@ -4,7 +4,6 @@ import { Flag } from "../flag/flag"
 import { parseModelID } from "./model-id"
 import { ProviderPricing } from "./pricing"
 import z from "zod"
-import fuzzysort from "fuzzysort"
 import type { Config } from "../config/config"
 import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
 import { NoSuchModelError, type Provider as SDK } from "ai"
@@ -1456,6 +1455,7 @@ export namespace Provider {
     const s = await state()
     const provider = s.providers[providerID]
     if (!provider) {
+      const { default: fuzzysort } = await import("fuzzysort")
       const availableProviders = Object.keys(s.providers)
       const matches = fuzzysort.go(providerID, availableProviders, { limit: 3, threshold: -10000 })
       const suggestions = matches.map((m) => m.target)
@@ -1464,6 +1464,7 @@ export namespace Provider {
 
     const info = provider.models[modelID]
     if (!info) {
+      const { default: fuzzysort } = await import("fuzzysort")
       const availableModels = Object.keys(provider.models)
       const matches = fuzzysort.go(modelID, availableModels, { limit: 3, threshold: -10000 })
       const suggestions = matches.map((m) => m.target)

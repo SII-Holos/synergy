@@ -12,6 +12,8 @@ Owners can declare `emptyInput` record prefixes only when no body effects exist 
 
 Historical import activity and existing cohorts prevent an empty-input completion. External effects stay outside retryable database callbacks. Commit failure publishes none of the group's completion markers. Configuration, schema, filesystem and snapshot ownership migrations retain their existing execution paths.
 
+Navigation transforms include both Session records and navigation records in their input declaration. Building an absent, empty index is a no-op; an existing stale index is still replaced. Schema-only and superseded Session transforms keep their migration IDs and can share empty completion. PostgreSQL and SQLite run the same owner-body and atomic-completion tests.
+
 ## Alternatives considered
 
 **Assume a new SQL namespace is current.** A newly opened namespace may still have historical imports or external files. Blanket completion would omit required work.

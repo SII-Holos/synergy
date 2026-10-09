@@ -18,6 +18,7 @@ import { SessionCompat } from "../session/compat-import"
 import { StorageRetention } from "../storage/retention"
 import { StorageReclamation } from "../storage/format-reclamation"
 import { ConfigExtensions } from "../config/extensions"
+import { registerConfigMigrations } from "../config/migration"
 import { MigrationRegistry } from "../migration/registry"
 import { ensureMigrations, type MigrationReporter, type RunOptions } from "../migration/index"
 import { ServerProcessLock } from "../util/server-process-lock"
@@ -286,6 +287,7 @@ export namespace RuntimeHandle {
       options.signal?.throwIfAborted()
       registerHarness()
       options.composition.register()
+      registerConfigMigrations()
       ScopeStartup.plan()
       services = options.composition.services?.() ?? {}
       ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
