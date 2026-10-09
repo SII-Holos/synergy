@@ -48,29 +48,38 @@ export namespace WorkspaceBinding {
 
   export async function migrate(workspace: Workspace | null, scopeID: string): Promise<Workspace | null> {
     if (!workspace) return null
-    return RuntimeContext.current().host.workspaceLocation
-      ? adopt(workspace, scopeID)
-      : importHistory(workspace, scopeID)
+    if (!RuntimeContext.current().host.workspaceLocation) return importHistory(workspace, scopeID)
+    if (workspace.scopeID !== scopeID) throw new Error("Workspace belongs to a different Scope")
+    if (workspace.id?.startsWith("wsp_"))
+      return WorkspaceCatalog.projection(await WorkspaceCatalog.get(workspace.id, scopeID))
+    const location = await locateHistory(scopeID, workspace.path)
+    const existing = await WorkspaceCatalog.findByLocation({ scopeID, ...location })
+    if (existing) return WorkspaceCatalog.projection(existing)
+    const { path: _path, scopeID: _scope, type, id: _id, generation: _generation, ...metadata } = workspace
+    return Storage.transaction(async () => {
+      const record =
+        (await WorkspaceCatalog.findByLocation({ scopeID, ...location })) ??
+        (await WorkspaceCatalog.register({ scopeID, type, ...location, metadata }))
+      return WorkspaceCatalog.projection(record)
+    })
+  }
+
+  export async function locateHistory(scopeID: string, directory: string) {
+    if (!path.isAbsolute(directory)) throw new Error("Workspace location must be absolute")
+    const source = WorkspaceLocation.source()
+    const hostID = await source.hostID()
+    const requested = path.resolve(directory)
+    const existing = await WorkspaceCatalog.findByLocation({ scopeID, hostID, path: requested })
+    if (existing) return { hostID, path: requested }
+    const location = await source.identify(requested, true).catch((error: NodeJS.ErrnoException) => {
+      if (["ENOENT", "ENOTDIR", "EACCES", "EPERM", "ELOOP"].includes(error.code ?? "")) return { path: requested }
+      throw error
+    })
+    return { hostID, ...location }
   }
 
   export async function describeDefault(scope: Scope): Promise<Workspace | null> {
-    const workspace = ScopeContext.defaultWorkspace(scope)
-    const source = RuntimeContext.current().host.workspaceLocation
-    if (workspace && source) {
-      const location = {
-        scopeID: scope.id,
-        hostID: await source.hostID(),
-        path: path.resolve(workspace.path),
-      }
-      const existing = await WorkspaceCatalog.findByLocation(location)
-      if (existing) return WorkspaceCatalog.projection(existing)
-      const canonical = await source.identify(location.path, true)
-      if (canonical.path !== location.path) {
-        const aliased = await WorkspaceCatalog.findByLocation({ ...location, path: canonical.path })
-        if (aliased) return WorkspaceCatalog.projection(aliased)
-      }
-    }
-    return migrate(workspace, scope.id)
+    return migrate(ScopeContext.defaultWorkspace(scope), scope.id)
   }
 
   export async function adopt(workspace: Workspace | null, scopeID: string): Promise<Workspace | null> {

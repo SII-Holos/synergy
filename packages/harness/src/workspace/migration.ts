@@ -92,7 +92,7 @@ export const workspaceMigrations: Migration[] = [
           )
             continue
           const actual = await source.identify(binding.path, true).catch((error: NodeJS.ErrnoException) => {
-            if (["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(error.code ?? "")) return undefined
+            if (["ENOENT", "ENOTDIR", "EACCES", "EPERM", "ELOOP"].includes(error.code ?? "")) return undefined
             throw error
           })
           if (
