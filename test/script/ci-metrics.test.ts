@@ -1,6 +1,33 @@
 import { expect, test } from "bun:test"
 import { summarize } from "../../script/ci/metrics"
 
+test("first failure counts completed failures from the measured attempt", () => {
+  const row = {
+    id: 1,
+    name: "linux",
+    status: "completed",
+    conclusion: "failure",
+    created_at: "2026-10-04T00:00:00Z",
+    started_at: "2026-10-04T00:01:00Z",
+    completed_at: "2026-10-04T00:03:00Z",
+    runner_name: "runner",
+    labels: [],
+    run_attempt: 2,
+  }
+  const result = summarize(
+    "2026-10-04T00:00:00Z",
+    [
+      { ...row, id: 2, completed_at: "2026-10-04T00:02:00Z", run_attempt: 1 },
+      row,
+      { ...row, id: 3, completed_at: "2026-10-04T00:04:00Z" },
+    ],
+    Date.parse("2026-10-04T00:05:00Z"),
+    2,
+  )
+  expect(result.firstFailureSeconds).toBe(180)
+  expect(result.endToEndSeconds).toBe(240)
+})
+
 test("cancelled queue records with synthetic start timestamps consume no runner time", () => {
   const value = summarize("2026-10-04T00:00:00Z", [
     {

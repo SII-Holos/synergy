@@ -14,11 +14,13 @@ Local static checks and the pre-push hook share content-addressed success receip
 
 CI collects independent coverage diagnostics even when another task fails, while admission still requires every selected task and complete evidence. Current-attempt successful matrix DAG results may reconcile a lagging in-progress Jobs API record; queued, failed, missing and historical executions cannot inherit success.
 
-Plans retain structured full-selection triggers. Descriptive workspace metadata, generated API contracts and Skill reference Markdown have explicit ownership; unknown executable inputs stay conservative. Plans consume validated recent successful dev timing artifacts with a checked-in fallback, bind the complete timing snapshot, and react to recent slow batches. A read-only completed-workflow collector measures final queue and compute time after the normal release activates it on the default branch.
+Plans retain structured full-selection triggers. Descriptive workspace metadata, generated API contracts and Skill reference Markdown have explicit ownership; unknown executable inputs stay conservative. Plans consume validated recent successful dev timing artifacts with a checked-in fallback, bind the complete timing snapshot, and react to recent slow batches. A read-only completed-workflow collector measures final queue and compute time once it lands on the default branch.
 
 Development Skills keep the everyday feedback loop and verification choices in their entry points. Domain-specific regressions live in linked references, whose relative links are validated recursively. Frontend and Git procedures no longer prescribe a duplicate complete local matrix before every push.
 
 The Oryn integration adopts the upstream [once-per-version review policy](https://github.com/yzxoi/oryn-mini/pull/16) through an immutable runtime pin. Published evidence for an unchanged version prevents duplicate scheduled reviews; source changes remain eligible, and receipt writers remain serialized.
+
+The conversation-process browser suite retains all 73 scenarios across presentation/recovery, disclosure, reading and virtualization batches. They reuse input-addressed static browser fixture compilation while owning separate Homes and a fresh browser context for each test. Both shipped virtualizer entrypoints remain covered. Native paging first releases its setup locator through real input, waits for the observable Latest position and verifies focus before sending the key, instead of assuming a fixed number of frames completes scrolling. Browser timing classification follows local test support imports so extracting a fixture cannot erase its preparation estimate.
 
 ## Alternatives considered
 
