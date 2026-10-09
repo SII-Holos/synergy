@@ -1,6 +1,6 @@
 import path from "node:path"
 import ts from "typescript"
-import type { RevisionSnapshot } from "./revision"
+import type { SourceSnapshot } from "./revision"
 import { coverageChanges } from "./coverage-selection"
 import type { WorkspaceInput } from "./plan"
 import type { SelectionChanges } from "./selection"
@@ -23,7 +23,7 @@ function targets(value: unknown): string[] {
   return record(value) ? Object.values(value).flatMap(targets) : []
 }
 
-function leafTests(snapshot: RevisionSnapshot, candidates: string[], workspaces: WorkspaceInput[]) {
+function leafTests(snapshot: SourceSnapshot, candidates: string[], workspaces: WorkspaceInput[]) {
   const { inventory, sources: source } = snapshot
   const owner = (file: string) => workspaces.find((entry) => file.startsWith(entry.directory + "/"))
   const manifests = new Map(
@@ -148,8 +148,8 @@ function leafTests(snapshot: RevisionSnapshot, candidates: string[], workspaces:
 }
 
 export async function selectionInputs(
-  base: RevisionSnapshot,
-  head: RevisionSnapshot,
+  base: SourceSnapshot,
+  head: SourceSnapshot,
   changed: string[],
   baseWorkspaces: WorkspaceInput[],
   headWorkspaces: WorkspaceInput[],

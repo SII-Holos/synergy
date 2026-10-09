@@ -14,6 +14,7 @@
 
 import path from "node:path"
 import { $ } from "bun"
+import { cachedChecks } from "./verification"
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..")
 
@@ -64,6 +65,10 @@ const MODES: Record<string, { include: string[]; exclude: string[] }> = {
   "ci-static": {
     include: ALL_GATE_IDS,
     exclude: ["secrets:check", "workflow:check"],
+  },
+  "pre-push": {
+    include: ["format:check", "lint", "typecheck", "monorepo:check", "doc:check", "decision:check"],
+    exclude: [],
   },
 }
 
@@ -181,7 +186,13 @@ export async function runGateSet(
 }
 
 export async function runGates(mode: string, root: string = REPO_ROOT): Promise<GateRunResult> {
-  return runGateSet(gatesForMode(mode), root)
+  const gates = gatesForMode(mode)
+  if (["local", "pre-push"].includes(mode) && !process.env.CI) {
+    const result = await cachedChecks(root, gates, (gate) => runGate(gate, root))
+    if (result.reused.length) console.log(`Reused static checks: ${result.reused.join(", ")}`)
+    return result
+  }
+  return runGateSet(gates, root)
 }
 
 if (import.meta.main) {

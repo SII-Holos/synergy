@@ -5,6 +5,12 @@ description: Design, write, run, and diagnose Synergy tests with Bun, temporary 
 
 # Test Synergy Behavior
 
+## Development Feedback Loop
+
+Start with `bun run verify plan` to inspect the working-tree impact, including uncommitted new files. Iterate with the narrow behavior test. Before publication, run `bun run verify local --test <repository-relative-test>` with every relevant test selected explicitly. The owning executor preserves isolation and browser conditions, runs selected tests with fresh coverage, and checks new measurable source before running static gates. Complete package coverage and platform matrices remain pending CI evidence.
+
+Use `bun run verify coverage --package <workspace>` when changing coverage policy, removing substantial test coverage or changing instrumentation. A focused LCOV report cannot establish package thresholds. Finish generation and self-review before this checkpoint. Collect all causal failures from one CI attempt before making the next focused correction; infrastructure retries retain the same SHA.
+
 ## Avoid concurrent artifact mutation
 
 For durable input admission, hold passive materialization at a physical barrier and submit another `noReply` input during that ownership interval. Verify both persisted inputs converge to canonical messages without scheduling a model reply; separately preserve task, steer and pause discovery. A successful acceptance response proves admission, while canonical materialization has its own convergence deadline.
@@ -273,7 +279,6 @@ Core runtime commands run from `packages/harness`:
 
 ```bash
 bun test test/<domain>/<file>.test.ts
-bun run test:changed
 bun test
 bun run test:ci
 bun run test:coverage

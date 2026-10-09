@@ -6,13 +6,13 @@ import { type Task, type WorkspaceInput } from "./plan"
 import { workspaces } from "../workspace-manifest"
 import { partitionSuite, suiteSeconds } from "./suites"
 import { estimateTask, timingProfile, validateTimings } from "./timing"
-import type { RevisionSnapshot } from "./revision"
+import type { SourceSnapshot } from "./revision"
 export { changedFiles } from "./selection"
 
 export const ROOT = path.resolve(import.meta.dir, "../..")
 export const OUTPUT = ".artifacts/ci"
 
-export async function workspaceInputs(snapshot: RevisionSnapshot): Promise<WorkspaceInput[]> {
+export async function workspaceInputs(snapshot: SourceSnapshot): Promise<WorkspaceInput[]> {
   const rootManifest = JSON.parse(snapshot.required("package.json")) as {
     workspaces: { packages: string[] }
   }
