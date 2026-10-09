@@ -580,6 +580,24 @@ test("stale accepted summaries revalidate without removing current content or re
   expect(await page.locator('[data-part-id="progress"] [data-motion-changing]').count()).toBe(0)
 })
 
+test("same-version summary refresh preserves a healthy pending body read", async () => {
+  await contentPage("pending-refresh")
+  const prose = page.getByText("I will check the project first.", { exact: true })
+  await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 1)
+  expect(await prose.count()).toBe(0)
+  await page.evaluate(() => window.__conversationProcess.contentStale())
+  await page.waitForFunction(() => window.__conversationProcess.contentPageLoads() > 0)
+  await page.evaluate(() => window.__conversationProcess.contentPageFinish())
+  await frames()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(1)
+  expect(await page.evaluate(() => window.__conversationProcess.contentAborts("progress"))).toBe(0)
+  await page.evaluate(() => window.__conversationProcess.contentFinish("progress"))
+  await prose.waitFor()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(1)
+  expect(await page.locator("[data-content-error]").count()).toBe(0)
+  expect(errors).toEqual([])
+}, 30000)
+
 test("reconnect renews invalidated body leases even when the summary version stays the same", async () => {
   await contentPage("conflict")
   await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 2)

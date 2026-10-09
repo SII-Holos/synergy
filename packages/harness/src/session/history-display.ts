@@ -491,7 +491,9 @@ export namespace SessionHistoryDisplay {
     })
   }
 
-  export async function partPage(
+  export const PartPages = z.record(z.string(), PartPage).meta({ ref: "SessionPartPages" })
+
+  async function partPageForMessage(
     input: {
       sessionID: string
       messageID: string
@@ -604,6 +606,49 @@ export namespace SessionHistoryDisplay {
       nextCursor: hasMore && ordered.length ? encode(ordered.at(-1)!.key) : null,
       previousCursor: hasEarlier && ordered.length ? encode(ordered[0]!.key) : null,
     }
+  }
+
+  export async function partPage(
+    input: {
+      sessionID: string
+      messageID: string
+      cursor?: string
+      limit?: number
+      partID?: string
+      older?: boolean
+    },
+    scopeID: string,
+  ) {
+    return partPageForMessage(input, scopeID)
+  }
+
+  /**
+   * Refresh-time fan-in for the Web conversation window: each rendered message
+   * page has identical validation/status semantics to `partPage`, shared across
+   * one call so a stale-window refresh issues a single request instead of one
+   * per message (with HTTP/1.1-only deployments the fan-out stalls for seconds
+   * behind the large message page on the browser's connection limit).
+   */
+  export async function partPages(
+    input: {
+      sessionID: string
+      messageIDs: string[]
+      limit?: number
+    },
+    requireDisplayMessage: (messageID: string) => Promise<unknown>,
+    scopeID: string,
+  ) {
+    await Promise.all(input.messageIDs.map(requireDisplayMessage))
+    const entries = await Promise.all(
+      input.messageIDs.map(
+        async (messageID) =>
+          [
+            messageID,
+            await partPageForMessage({ sessionID: input.sessionID, messageID, limit: input.limit }, scopeID),
+          ] as const,
+      ),
+    )
+    return Object.fromEntries(entries)
   }
 
   export async function partContent(
