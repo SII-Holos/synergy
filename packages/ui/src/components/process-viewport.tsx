@@ -7,17 +7,15 @@ import {
   on,
   onCleanup,
   onMount,
-  Show,
   untrack,
   useContext,
   type ParentProps,
 } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import { Icon } from "./icon"
-import { getSemanticIcon } from "./semantic-icon"
 import "./process-viewport.css"
 import { useConversationLiveRevision } from "./conversation-motion"
 import { readSelectionRanges } from "../utils/selection"
+import { createScrollMotion } from "../utils/scroll-motion"
 
 const Contained = createContext<{ disclose(event: Event): () => void }>()
 export const useProcessViewport = () => !!useContext(Contained)
@@ -120,7 +118,7 @@ export function ProcessViewport(
     identity: string
     active: boolean
     revision?: string
-    following?: boolean
+    parentFollowing?: boolean
     ref?: (element: HTMLDivElement) => void
     onScroll?: () => void
     onReading?: (value: boolean) => void
@@ -130,7 +128,7 @@ export function ProcessViewport(
     restoreAnchor?: (anchor: ReadingAnchor) => boolean | void
     onWidthChange?: (width: number) => void
     onBeforeLayoutChange?: (event: Event) => void
-    controls?: (value: { pause(): void }) => void
+    controls?: (value: { pause(anchor?: ReadingAnchor): void }) => void
   }>,
 ) {
   const { _ } = useLingui()
@@ -140,7 +138,9 @@ export function ProcessViewport(
   const [overflow, setOverflow] = createSignal(false)
   const [above, setAbove] = createSignal(false)
   const [below, setBelow] = createSignal(false)
-  let viewport!: HTMLDivElement, content!: HTMLDivElement
+  let viewport!: HTMLDivElement, content!: HTMLDivElement, motionTarget!: HTMLDivElement
+  const motion = createScrollMotion(() => motionTarget)
+  let followReady = false
   let frame: number | undefined
   let restoreFrame: number | undefined
   let layoutReleaseFrame: number | undefined
@@ -223,6 +223,7 @@ export function ProcessViewport(
     layoutPending = false
   }
   const pause = (captureReading = true) => {
+    motion.interrupt(viewport)
     movementPending = false
     if (restoring || disclosureAnchor || layoutPending) cancelCapture()
     cancelPreserve()
@@ -262,14 +263,15 @@ export function ProcessViewport(
       })
     }
   }
-  const commitFollow = (force = false) => {
-    if (following() && viewport && (force || props.following !== false)) viewport.scrollTop = viewport.scrollHeight
+  const commitFollow = () => {
+    if (following() && viewport)
+      motion.move(viewport, viewport.scrollHeight, followReady && !content.querySelector("[data-motion-resizing]"))
   }
-  const follow = (force = false) => {
+  const follow = () => {
     if (frame !== undefined) cancelAnimationFrame(frame)
     frame = requestAnimationFrame(() => {
       frame = undefined
-      commitFollow(force)
+      commitFollow()
     })
   }
   const latest = () => {
@@ -284,8 +286,17 @@ export function ProcessViewport(
     disclosureAnchor = undefined
     disclosureGeneration++
     notifyReading(false)
-    follow(true)
+    follow()
   }
+  createEffect(
+    on(
+      () => props.parentFollowing,
+      (value, previous) => {
+        if (value && previous === false && props.active) latest()
+      },
+      { defer: true },
+    ),
+  )
   const revision = createMemo(() => props.revision)
   createEffect(
     on(
@@ -314,8 +325,7 @@ export function ProcessViewport(
         props.onWidthChange?.(width)
       }
       if (following()) {
-        if (explicitFollow) commitFollow(true)
-        else if (props.active) commitFollow()
+        if (explicitFollow || props.active) commitFollow()
       } else preserve()
       const height = viewport.clientHeight
       const contentHeight = viewport.scrollHeight
@@ -334,7 +344,14 @@ export function ProcessViewport(
     })
     mutations.observe(content, { childList: true, characterData: true, subtree: true })
     if (saved?.offset) viewport.scrollTop = saved.offset
-    props.controls?.({ pause: () => pause() })
+    props.controls?.({
+      pause: (anchor) => {
+        pause(!anchor)
+        if (!anchor) return
+        cancelCapture()
+        readingAnchor = anchor
+      },
+    })
     if (saved?.anchor && !saved.following) {
       frame = requestAnimationFrame(() => {
         frame = undefined
@@ -368,9 +385,11 @@ export function ProcessViewport(
       notifyReading(false)
     })
     measure()
+    followReady = true
   })
   onCleanup(() => {
     disposed = true
+    motion.dispose()
     cancelCapture()
     if (frame !== undefined) cancelAnimationFrame(frame)
     if (restoreFrame !== undefined) cancelAnimationFrame(restoreFrame)
@@ -384,17 +403,6 @@ export function ProcessViewport(
       data-above={above() ? "" : undefined}
       data-below={below() ? "" : undefined}
     >
-      <Show when={!following() && below()}>
-        <button
-          type="button"
-          data-slot="process-latest"
-          onClick={latest}
-          aria-label={_({ id: "session.process.latest", message: "Back to latest action" })}
-          title={_({ id: "session.process.latest", message: "Back to latest action" })}
-        >
-          <Icon name={getSemanticIcon("navigation.latest")} size="small" />
-        </button>
-      </Show>
       <div
         data-component="process-viewport"
         data-scroll-viewport="vertical"
@@ -432,6 +440,14 @@ export function ProcessViewport(
         }}
         onKeyDown={(event) => {
           if ((event.target as Element).closest("input, textarea, [contenteditable='true']")) return
+          if (event.key === " ") {
+            if ((event.target as Element).closest("button, summary, [role='button']")) return
+            if (event.shiftKey) beginMovement()
+            else {
+              if (!following()) beginMovement()
+              resumeRequested = true
+            }
+          }
           if (["ArrowUp", "PageUp", "Home"].includes(event.key)) beginMovement()
           if (["ArrowDown", "PageDown"].includes(event.key)) {
             if (!following()) beginMovement()
@@ -465,7 +481,9 @@ export function ProcessViewport(
         }}
       >
         <div ref={content} data-slot="process-viewport-content">
-          <Contained.Provider value={{ disclose }}>{props.children}</Contained.Provider>
+          <div ref={motionTarget} data-slot="process-viewport-motion">
+            <Contained.Provider value={{ disclose }}>{props.children}</Contained.Provider>
+          </div>
         </div>
       </div>
     </div>

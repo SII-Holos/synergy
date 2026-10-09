@@ -11,6 +11,16 @@ let harness: {
   addCompaction: (state?: "committed" | "running" | "failed") => void
   selection: () => unknown
   reset: () => void
+  setExecutionState: (value: {
+    rootID: string
+    status: string
+    startedAt: number
+    endedAt: number
+    stoppedAt: number[]
+  }) => void
+  setExecutionSummary: (
+    value: { status: string; elapsedMs: number | null; elapsedLowerBound?: boolean } | undefined,
+  ) => void
 }
 
 const waitForUpdate = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -78,6 +88,36 @@ beforeEach(async () => {
 })
 
 const trigger = () => document.querySelector<HTMLButtonElement>('[data-slot="turn-process-trigger"]')!
+test("reply actions complete before the interval summary and retain its authoritative duration", async () => {
+  harness.move(8)
+  harness.setExecutionState({
+    rootID: "user-activity-switch",
+    status: "completed",
+    startedAt: 1,
+    endedAt: 42_001,
+    stoppedAt: [],
+  })
+  await waitForUpdate()
+  const completion = document.querySelector('[data-component="execution-completion"]')!
+  expect(completion).not.toBeNull()
+  expect(completion.textContent).toContain("Completed")
+  expect(completion.textContent).not.toContain("00:42")
+  expect(document.querySelector('[data-slot="assistant-message-copy"]')).not.toBeNull()
+  harness.setExecutionSummary({ status: "running", elapsedMs: 31_000 })
+  await waitForUpdate()
+  expect(document.querySelector('[data-component="execution-completion"]')).toBe(completion)
+  expect(completion.textContent).toContain("Completed")
+  expect(completion.textContent).not.toContain("00:31")
+  harness.setExecutionSummary({ status: "completed", elapsedMs: 32_000, elapsedLowerBound: true })
+  await waitForUpdate()
+  expect(document.querySelector('[data-component="execution-completion"]')).toBe(completion)
+  expect(completion.textContent).toContain("≥ 00:32")
+  harness.setExecutionSummary({ status: "completed", elapsedMs: 32_000, elapsedLowerBound: false })
+  await waitForUpdate()
+  expect(completion.textContent).toContain("00:32")
+  expect(completion.textContent).not.toContain("≥")
+})
+
 test("initial reasoning is inside the narrative before public text and later reasoning stays between tools", async () => {
   harness.move(1)
   await waitForUpdate()

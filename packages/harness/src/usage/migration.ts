@@ -45,6 +45,16 @@ export namespace UsageMigration {
         if (!(await status())) await start()
       },
     },
+    {
+      id: "20261009-usage-response-recovery-v1",
+      scope: "derived",
+      execution: "after-convergence",
+      dependsOn: [id],
+      description: "Schedule bounded raw-response usage recovery independently of live capture checkpoints",
+      async up() {
+        await start(true)
+      },
+    },
   ]
   export function register() {
     MigrationRegistry.register("usage", migrations)
@@ -56,12 +66,12 @@ export namespace UsageMigration {
     })
     return raw ? UsageSchema.Rebuild.parse(raw) : undefined
   }
-  export async function start() {
+  export async function start(restart = false) {
     using lock = await Lock.write("usage-rebuild")
     const previous = await status()
-    if (previous?.status === "running" || previous?.status === "pending") return previous
+    if (!restart && (previous?.status === "running" || previous?.status === "pending")) return previous
     const result: UsageSchema.Rebuild =
-      previous?.status === "failed"
+      !restart && previous?.status === "failed"
         ? { ...previous, status: "pending" }
         : {
             version: 1,
@@ -72,7 +82,10 @@ export namespace UsageMigration {
             updatedAt: Date.now(),
             failures: 0,
           }
-    await Storage.write(StoragePath.usageRebuild(), result)
+    await Storage.transaction(async () => {
+      if (restart || previous?.status !== "failed") await Storage.remove(StoragePath.usageReplay())
+      await Storage.write(StoragePath.usageRebuild(), result)
+    })
     return result
   }
   export async function preserve(owner: UsageSchema.Owner) {
@@ -218,7 +231,7 @@ export namespace UsageMigration {
           const owner: UsageSchema.Owner = isSession
             ? { kind: "session", scopeID: row.key[1], sessionID: row.key[2] }
             : { kind: "operation", scopeID: row.key[1], operationID: row.key[2] }
-          const page = await UsageLedger.captureBatch(owner)
+          const page = await UsageLedger.replayBatch(owner)
           state.records += page.processed
           if (!page.complete) {
             await Storage.write(StoragePath.usageRebuild(), state)

@@ -50,6 +50,7 @@ export function createDisclosureMotion(
     element.hidden = !visible
     element.inert = !visible
     element.removeAttribute("data-motion-changing")
+    element.removeAttribute("data-motion-resizing")
     element.removeAttribute("data-motion-exiting")
     if (!visible) onHidden?.()
     onSettled?.()
@@ -162,6 +163,7 @@ export function createDisclosureMotion(
                     { height: `${target}px`, minHeight: "0px", opacity: next ? 1 : 0 },
                   ]
           element.setAttribute("data-motion-changing", "")
+          element.toggleAttribute("data-motion-resizing", resizing)
           if (!next) element.setAttribute("data-motion-exiting", "")
           const current = element.animate(frames, { duration: milliseconds, easing, fill: "both" })
           animation = current
@@ -181,6 +183,7 @@ export function createDisclosureMotion(
       cancel()
       reduced?.removeEventListener?.("change", changedPreference)
       element.removeAttribute("data-motion-changing")
+      element.removeAttribute("data-motion-resizing")
       element.removeAttribute("data-motion-exiting")
     },
   }

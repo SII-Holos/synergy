@@ -5,10 +5,13 @@ import { domFixture } from "../support/dom-fixtures"
 // The fixture compiles a real Solid bundle through Vite before exercising the
 // lifecycle, matching the message-part-error-boundary DOM harness. Keep this
 // hook well above the default test timeout so cold caches do not fail it.
-const TRANSITION_MS = 160
+const TRANSITION_MS = 180
 const TRANSITION_SETTLE_MS = TRANSITION_MS + 80
 
 interface ActivityDomHarness {
+  setSessionPaused: (paused: boolean) => void
+  setBatchPending: (count: number) => void
+  setBatchLive: (live: boolean) => void
   setApproval: (enabled: boolean) => void
   getPermissionCalls: () => unknown[]
   finishPermission: (failed: boolean) => void
@@ -108,6 +111,35 @@ function closeResult() {
 }
 
 describe("AnimatedActivityCount DOM behavior", () => {
+  test("canonical pause stops stale tool animation and resuming restores the recorded running state", async () => {
+    const selector = '#activity-rail-host [data-slot="activity-step"][data-state="running"]'
+    const step = document.querySelector(selector)!
+    expect(step).not.toBeNull()
+    harness.setSessionPaused(true)
+    await wait(0)
+    expect(step.querySelector('[data-component="spinner"]')).toBeNull()
+    expect(step.textContent).toContain("Paused")
+    expect(step.hasAttribute("data-working")).toBe(false)
+    harness.setSessionPaused(false)
+    await wait(0)
+    expect(document.querySelector(selector)).toBe(step)
+    expect(step.querySelector('[data-component="spinner"]')).not.toBeNull()
+  })
+  test("a visible pending total survives facts catching up across activity phases", async () => {
+    harness.resetCount("pending-total", 24)
+    harness.setBatchLive(false)
+    harness.setBatchPending(1)
+    await wait(20)
+    const total = document.querySelector('#batch-count-host [data-activity-fact="total"]')
+    expect(total).not.toBeNull()
+    harness.setCountValue(25)
+    harness.setBatchPending(0)
+    harness.setBatchLive(true)
+    await wait(20)
+    expect(document.querySelector('#batch-count-host [data-activity-fact="total"]')).toBe(total)
+    expect(total?.textContent).toContain("25")
+    harness.resetCount("after-pending", 9)
+  })
   test("first mount snaps to the initial value without a transition", () => {
     expect(countSlot("activity-count-new")?.textContent).toBe("9")
     expect(countSlot("activity-count-old")).toBeNull()
@@ -118,6 +150,7 @@ describe("AnimatedActivityCount DOM behavior", () => {
   test.each([
     [9, 10],
     [20, 21],
+    [24, 25],
     [99, 100],
   ])("%i to %i keeps exactly one old/new transition then settles", async (before, after) => {
     harness.resetCount(`trans-${after}`, before)
@@ -157,6 +190,35 @@ describe("AnimatedActivityCount DOM behavior", () => {
     expect(countRoot().hasAttribute("data-animating")).toBe(false)
     expect(countSlot("activity-count-old")).toBeNull()
     expect(countSlot("activity-count-new")?.textContent).toBe("12")
+  })
+
+  test("batch labels retain the numeric node while its value and plural grammar change", async () => {
+    harness.resetCount("batch", 1)
+    await wait(0)
+    const number = document.querySelector('#batch-count-host [data-component="animated-activity-count"]')
+    expect(number).not.toBeNull()
+    expect(document.querySelector("#batch-count-host")?.textContent).toContain("command")
+    harness.setCountValue(2)
+    await wait(0)
+    expect(document.querySelector('#batch-count-host [data-component="animated-activity-count"]')).toBe(number)
+    expect(number?.hasAttribute("data-animating")).toBe(true)
+    await wait(TRANSITION_SETTLE_MS)
+    expect(document.querySelector("#batch-count-host")?.textContent).toBe("Ran 2 commands")
+  })
+
+  test("unrelated projection updates cannot restart an unchanged count transition", async () => {
+    harness.resetCount("stable-count-timer", 9)
+    await wait(0)
+    harness.setCountValue(10)
+    await wait(100)
+    harness.setBatchPending(1)
+    await wait(120)
+    const number = document.querySelector(
+      '#batch-count-host [data-activity-fact="execute"] [data-component="animated-activity-count"]',
+    )!
+    expect(number.hasAttribute("data-animating")).toBe(false)
+    expect(number.getAttribute("aria-label")).toBe("10")
+    harness.setBatchPending(0)
   })
 
   test("decrease and identity reset snap without a transition", async () => {

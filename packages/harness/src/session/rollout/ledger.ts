@@ -254,9 +254,9 @@ export namespace RolloutLedger {
   ) {
     using lock = await Lock.write(lockKey(segment.owner, segment.runID))
     const key = [...root(segment.owner, segment.runID), "segments", segment.id]
-    return record(async () => {
+    const result = await record(async () => {
       const current = RolloutSchema.ExecutionSegment.parse(await Storage.read(key))
-      if (current.status !== "running") return current
+      if (current.status !== "running") return { segment: current, changed: false }
       const completed = RolloutSchema.ExecutionSegment.parse({
         ...current,
         status,
@@ -268,8 +268,10 @@ export namespace RolloutLedger {
         ...run,
         execution: options ? run.execution : { status, at: completed.ended },
       })
-      return completed
+      return { segment: completed, changed: true }
     })
+    if (result.changed) await SessionActivityEvent.execution(segment.owner, segment.runID)
+    return result.segment
   }
 
   export async function getCall(owner: Owner, runID: string, callID: string) {

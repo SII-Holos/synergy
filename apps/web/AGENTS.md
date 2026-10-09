@@ -55,14 +55,7 @@ Keep App tests under `test/`, mirroring the relevant `src/` or `script/` domain.
 
 Keep browser conditions, isolation lists and batch timeouts in `script/test-options.ts`; the package runner and CI planner share that executable batch definition.
 
-Run the narrow UI/context test first, then:
-
-```bash
-bun run --cwd apps/web test
-bun run --cwd apps/web typecheck
-bun run --cwd apps/web build
-bun run quality:quick
-```
+Run the narrow UI/context test while iterating, then `bun run verify local --test apps/web/test/<domain>/<file>.test.ts` from the root with relevant tests selected. It uses the canonical executor and static gates. Complete Web/UI inventories and thresholds belong to CI; use `bun run verify coverage --package apps/web` when changing coverage policy, instrumentation or removing substantial coverage. See [develop-frontend](../../.synergy/skill/develop-frontend/SKILL.md#verify) for checks triggered by other risks.
 
 Browser capability or bootstrap changes also run `bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts` and, after the production build, `bun apps/web/script/private-http-smoke.ts` from the repository root.
 

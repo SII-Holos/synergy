@@ -10,6 +10,16 @@ export interface CoverageChanges {
 export interface SelectionChanges {
   coverage?: CoverageChanges
   leafTests?: string[]
+  metadataOnly?: string[]
+}
+
+export interface FullTrigger {
+  file: string
+  reason: "shared-input" | "unknown-owner" | "workspace-configuration"
+}
+
+const generatedOwners: Record<string, string[]> = {
+  "packages/sdk/openapi.json": ["packages/sdk/js", "packages/server"],
 }
 
 export interface SelectionContext extends SelectionChanges {
@@ -32,7 +42,7 @@ export function changedFiles(root: string, base: string, head: string): string[]
 }
 
 export function documentation(file: string): boolean {
-  return /^(README(?:\.[a-zA-Z-]+)?\.md|CONTRIBUTING\.md|LICENSE(?:\.md)?|docs\/.*\.md|\.synergy\/skill\/[^/]+\/(?:SKILL\.md|agents\/openai\.yaml))$/.test(
+  return /^(README(?:\.[a-zA-Z-]+)?\.md|CONTRIBUTING\.md|LICENSE(?:\.md)?|docs\/.*\.md|\.synergy\/skill\/[^/]+\/(?:SKILL\.md|references\/.*\.md|agents\/openai\.yaml))$/.test(
     file,
   )
 }
@@ -48,25 +58,41 @@ export function selectAffected(
   const all = [...base, ...head]
   const names = new Set<string>()
   const testOwners = new Set<string>()
-  let full = false
+  const fullTriggers: FullTrigger[] = []
   for (const file of changed) {
     if (documentation(file) || knownTests.includes(file)) continue
     if (file === "script/coverage-exempt.json" && changes.coverage?.complete) {
       for (const directory of changes.coverage.packages) {
         const owners = all.filter((entry) => entry.directory === directory)
-        if (!owners.length) full = true
+        if (!owners.length) fullTriggers.push({ file, reason: "unknown-owner" })
         for (const entry of owners) names.add(entry.name)
       }
       continue
     }
-    if (/^(?:\.github\/|\.synergy\/|script\/|test\/|patches\/|packages\/testing\/)/.test(file)) full = true
+    const generated = generatedOwners[file]
+    if (
+      generated?.every((directory) =>
+        [base, head].every((entries) => entries.some((entry) => entry.directory === directory)),
+      )
+    ) {
+      for (const entry of all) if (generated.includes(entry.directory)) names.add(entry.name)
+      continue
+    }
+    const shared = /^(?:\.github\/|\.synergy\/|script\/|test\/|patches\/|packages\/testing\/)/.test(file)
+    if (shared) fullTriggers.push({ file, reason: "shared-input" })
     const owners = all.filter((entry) => file.startsWith(entry.directory + "/"))
-    if (!owners.length) full = true
+    if (!owners.length && !shared) fullTriggers.push({ file, reason: "unknown-owner" })
     for (const entry of owners) {
       if (changes.leafTests?.includes(file)) testOwners.add(entry.name)
       else names.add(entry.name)
-      if (/\/(?:package\.json|bunfig\.toml|tsconfig[^/]*\.json)$/.test(file)) full = true
     }
+    if (
+      owners.length &&
+      !shared &&
+      /\/(?:package\.json|bunfig\.toml|tsconfig[^/]*\.json)$/.test(file) &&
+      !changes.metadataOnly?.includes(file)
+    )
+      fullTriggers.push({ file, reason: "workspace-configuration" })
   }
   for (;;) {
     const before = names.size
@@ -75,8 +101,10 @@ export function selectAffected(
     }
     if (before === names.size) break
   }
+  const full = fullTriggers.length > 0
   return {
     full,
+    fullTriggers,
     documentationOnly,
     packages: [
       ...new Set(
@@ -123,6 +151,7 @@ export function taskSelected(
         : [file],
   )
   const runtime = context.runtimePackages ? new Set(context.runtimePackages) : packages
+  if (code.some((file) => generatedOwners[file]?.some((owner) => task.owners.includes(owner)))) return true
   if (task.kind === "benchmark-native") {
     const benchmark = code.filter((file) => file.startsWith("benchmark/"))
     if (benchmark.some((file) => !adapterFiles[file] && !/^benchmark\/configs\/[^/]+\.yaml$/.test(file))) return true

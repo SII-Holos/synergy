@@ -688,6 +688,32 @@ test("unloaded spans cannot claim a continuous execution group", () => {
   expect(rows.filter((row) => row.kind === "activity")).toHaveLength(3)
 })
 
+test("a pending live continuation preserves the preceding batch until its content is known", () => {
+  const fixture = processFixture()
+  const messages = fixture.messagesFor().slice(0, 2)
+  const pending = { ...messages[1], time: { created: 20 } } as Message
+  const input = {
+    ...fixture,
+    process: () => ({ open: true, working: true }),
+    activity: (block: import("../../src/components/session/conversation-rows").ConversationActivity) => block.active,
+  }
+  const before = buildConversationRows({ ...input, messagesFor: () => messages.slice(0, 1) })
+  const waiting = buildConversationRows({
+    ...input,
+    previous: before,
+    messagesFor: () => [messages[0], pending],
+    summaries: (id) => (id === pending.id ? [] : fixture.summaries(id)),
+    page: (id) => (id === pending.id ? undefined : { hasMore: false }),
+  })
+  const batch = (rows: typeof before) => rows.find((row) => row.kind === "activity" && row.activity.tools)?.activity
+  expect(batch(waiting)?.key).toBe(batch(before)?.key)
+  expect(batch(waiting)?.open).toBe(true)
+  expect(batch(waiting)?.active).toBe(true)
+  const resumed = buildConversationRows({ ...input, previous: waiting, messagesFor: () => messages })
+  expect(batch(resumed)?.key).toBe(batch(before)?.key)
+  expect(batch(resumed)?.tools).toBe(2)
+})
+
 test("a running parallel call keeps its earlier batch active and summaries count only confirmed success", () => {
   const input = processFixture()
   const original = input.summaries

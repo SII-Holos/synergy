@@ -2,6 +2,69 @@ import { expect, test } from "bun:test"
 import { RolloutUsageCapture } from "../../src/session/rollout/usage-capture"
 
 const encoder = new TextEncoder()
+const responseUsage = {
+  input_tokens: 100,
+  input_tokens_details: { cached_tokens: 80 },
+  output_tokens: 4,
+  output_tokens_details: { reasoning_tokens: 0 },
+}
+
+test.each(["", "application/octet-stream", "application/json", "Text/Event-Stream; charset=utf-8"])(
+  "detects streamed Responses usage independently of the media type %s",
+  (mediaType) => {
+    for (const newline of ["\n", "\r\n", "\r"]) {
+      const observed: boolean[] = []
+      const capture = RolloutUsageCapture.create("@ai-sdk/openai", mediaType, "openai-codex", "chat", (value) =>
+        observed.push(value),
+      )
+      const events = [
+        ": heartbeat",
+        "event: response.output_text.delta",
+        'data: {"type":"response.output_text.delta","delta":"你好"}',
+        "",
+        `data: ${JSON.stringify({ type: "response.completed", response: { model: "fixture", usage: responseUsage } })}`,
+        "",
+        "",
+      ].join(newline)
+      for (const byte of encoder.encode(events)) capture.append(Uint8Array.of(byte))
+      expect(capture.current()?.input).toEqual({ total: 100, uncached: 20, cacheRead: 80, cacheWrite: 0 })
+      expect(capture.streaming).toBe(true)
+      expect(capture.hasFinalUsage()).toBe(true)
+      expect(capture.responseModel()).toBe("fixture")
+      expect(observed).toEqual([false])
+      expect(capture.finish().output.total).toBe(4)
+    }
+  },
+)
+
+test("JSON mislabeled as SSE and malformed bodies do not invent streaming content", () => {
+  const observed: boolean[] = []
+  const capture = RolloutUsageCapture.create("@ai-sdk/openai", "text/event-stream", undefined, "chat", (value) =>
+    observed.push(value),
+  )
+  capture.append(encoder.encode(JSON.stringify({ usage: responseUsage, text: "data: is ordinary JSON content" })))
+  expect(capture.finish().input.total).toBe(100)
+  expect(capture.streaming).toBe(false)
+  expect(observed).toEqual([])
+  const malformed = RolloutUsageCapture.create("@ai-sdk/openai", "application/octet-stream")
+  malformed.append(encoder.encode('<html>data: {"usage":{"input_tokens":100}}</html>'))
+  expect(malformed.finish().input.total).toBeNull()
+})
+
+test("sniffed SSE recovers after oversized events without treating a partial stream as final", () => {
+  const capture = RolloutUsageCapture.create("@ai-sdk/anthropic", "application/octet-stream")
+  capture.append(
+    encoder.encode(": ping\r\n\r\ndata: " + "x".repeat(RolloutUsageCapture.MAX_EVENT_CHARS + 1) + "\r\n\r\n"),
+  )
+  capture.append(
+    encoder.encode(
+      'data: {"type":"message_start","message":{"usage":{"input_tokens":100,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":1}}}\r\n\r\n',
+    ),
+  )
+  expect(capture.finish().input.total).toBe(100)
+  expect(capture.hasFinalUsage()).toBe(false)
+})
+
 test("OpenRouter account charges are separate from upstream cost and cached writes", () => {
   const capture = RolloutUsageCapture.create("@openrouter/ai-sdk-provider", "application/json", "openrouter")
   capture.append(

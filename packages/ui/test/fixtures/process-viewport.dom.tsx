@@ -1,5 +1,5 @@
 import { I18nProvider } from "@lingui/solid"
-import { For } from "solid-js"
+import { createSignal, For } from "solid-js"
 import { render } from "solid-js/web"
 import {
   captureProcessReadingAnchor,
@@ -9,6 +9,7 @@ import {
   type ProcessReadingAnchor,
 } from "../../src/components/process-viewport"
 import { setupI18n } from "../../src/testing/i18n"
+import { createDisclosureMotion } from "../../src/utils/disclosure-motion"
 
 export type Capture = { target: string | null; height: number; restores: number; anchor?: ProcessReadingAnchor }
 export type FixtureHarness = {
@@ -24,7 +25,10 @@ export type FixtureHarness = {
   burst(): void
   growCharacterData(position: "above" | "below"): void
   growChildList(position: "above" | "below"): void
-  pause(): void
+  pause(anchor?: ProcessReadingAnchor): void
+  appendTool(): void
+  parentFollowing(value: boolean): void
+  active(value: boolean): void
 }
 
 const parameters = new URLSearchParams(location.search)
@@ -36,8 +40,10 @@ const restores: ProcessReadingAnchor[] = []
 const beforeLayouts: { target: string | null; height: number }[] = []
 let viewport!: HTMLDivElement
 let virtualRoot!: HTMLDivElement
-let pause!: () => void
+let pause!: (anchor?: ProcessReadingAnchor) => void
 const rows = Array.from({ length: 28 }, (_, index) => index)
+const [parentFollowing, setParentFollowing] = createSignal(true)
+const [active, setActive] = createSignal(true)
 const body = (position: "above" | "below") => document.querySelector(`[data-body="${position}"]`)!
 const targetID = (target?: Element) => target?.id || null
 const frames = async (count = 6) => {
@@ -71,7 +77,16 @@ const harness: FixtureHarness = {
   growCharacterData,
   growChildList,
   burst,
-  pause: () => pause(),
+  pause: (anchor) => pause(anchor),
+  parentFollowing: setParentFollowing,
+  active: setActive,
+  appendTool() {
+    const added = document.createElement("div")
+    added.style.height = "32px"
+    added.textContent = "New tool"
+    virtualRoot.append(added)
+    createDisclosureMotion(added, true).setVisible(true, true, true)
+  },
   clear() {
     notifications.length = 0
     harness.interactions = 0
@@ -116,7 +131,8 @@ render(
     <I18nProvider i18n={setupI18n()}>
       <ProcessViewport
         identity="process-viewport-fixture"
-        active
+        active={active()}
+        parentFollowing={parentFollowing()}
         ref={(element) => (viewport = element)}
         onReading={(value) => notifications.push(value)}
         onInteraction={() => harness.interactions++}
