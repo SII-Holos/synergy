@@ -10,6 +10,7 @@ export const POSTGRES_TEST_FILES = [
   "test/environment/provider-request-maintenance.test.ts",
   "test/storage/artifact-pack.test.ts",
   "test/storage/object-artifacts.test.ts",
+  "test/storage/local-content.test.ts",
   "test/storage/backend-selection.test.ts",
   "test/storage/event-sinks.test.ts",
   "test/storage/compat-defer.test.ts",

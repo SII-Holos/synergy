@@ -364,6 +364,7 @@
     "./storage/sqlite-engine": "./src/storage/sqlite-engine.ts",
     "./storage/config": "./src/storage/config.ts",
     "./storage/portable": "./src/storage/portable.ts",
+    "./storage/local-content": "./src/storage/local-content.ts",
     "./storage/legacy-import": "./src/storage/legacy-import.ts",
     "./storage/recovery": "./src/storage/recovery.ts",
     "./secrets/detector-source": "./src/secrets/detector-source.ts",
