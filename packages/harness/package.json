@@ -366,6 +366,7 @@
     "./secrets/mask": "./src/secrets/mask.ts",
     "./secrets/resolve": "./src/secrets/resolve.ts",
     "./secrets/vault": "./src/secrets/vault.ts",
+    "./secrets/encrypted-store": "./src/secrets/encrypted-store.ts",
     "./lifecycle/context": "./src/lifecycle/context.ts",
     "./test/migration/fixture": "./test/migration/fixture.ts",
     "./test/support/runtime": "./test/support/runtime.ts",
