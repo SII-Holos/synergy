@@ -16,7 +16,7 @@ export namespace SessionContextContributions {
     injection: Record<string, string>
   }
   export interface Collected extends Result {
-    sources: Array<{ id: string; injection: Record<string, string> }>
+    sources: Array<{ id: string; context: string; injection: Record<string, string> }>
   }
   export interface Provider {
     refresh?: "root" | "model"
@@ -77,7 +77,7 @@ export namespace SessionContextContributions {
     return {
       context: active.map(({ result }) => result.context).join("\n\n"),
       injection: Object.assign({}, ...active.map(({ result }) => result.injection)),
-      sources: active.map(({ id, result }) => ({ id, injection: result.injection })),
+      sources: active.map(({ id, result }) => ({ id, context: result.context, injection: result.injection })),
     }
   }
 

@@ -705,6 +705,12 @@ import type {
   SessionExecutionContentSearchResponses,
   SessionExecutionContentSectionsErrors,
   SessionExecutionContentSectionsResponses,
+  SessionExecutionContextHistoryErrors,
+  SessionExecutionContextHistoryResponses,
+  SessionExecutionContextItemsErrors,
+  SessionExecutionContextItemsResponses,
+  SessionExecutionContextSnapshotErrors,
+  SessionExecutionContextSnapshotResponses,
   SessionExecutionNodeErrors,
   SessionExecutionNodeResponses,
   SessionExecutionSummaryErrors,
@@ -2792,6 +2798,140 @@ export class Session extends HeyApiClient {
       ThrowOnError
     >({
       url: "/session/{sessionID}/execution/summary",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read context request history
+   */
+  public executionContextHistory<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      runID?: string
+      cursor?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "runID" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionContextHistoryResponses,
+      SessionExecutionContextHistoryErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/context/history",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read one context request snapshot
+   */
+  public executionContextSnapshot<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      callID: string
+      directory?: string
+      scopeID?: string
+      runID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "callID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "runID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionContextSnapshotResponses,
+      SessionExecutionContextSnapshotErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/context/snapshots/{callID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a bounded context source index
+   */
+  public executionContextItems<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      callID: string
+      directory?: string
+      scopeID?: string
+      runID?: string
+      cursor?: string
+      limit?: number
+      category?:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+      query?: string
+      version?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "callID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "runID" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "category" },
+            { in: "query", key: "query" },
+            { in: "query", key: "version" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionContextItemsResponses,
+      SessionExecutionContextItemsErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/context/snapshots/{callID}/items",
       ...options,
       ...params,
     })

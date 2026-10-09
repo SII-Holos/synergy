@@ -2093,230 +2093,6 @@ msgid "app.common.confirm"
 msgstr "Confirm"
 
 #. js-lingui-explicit-id
-msgid "app.context.action.copied"
-msgstr "Copied"
-
-#. js-lingui-explicit-id
-msgid "app.context.action.copy"
-msgstr "Copy"
-
-#. js-lingui-explicit-id
-msgid "app.context.action.copyFailed"
-msgstr "Copy failed"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.estimatedTokens"
-msgstr "Estimated {tokens}"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.estimateNote"
-msgstr "Category values use bounded UTF-8 estimates reconciled to the exact provider input total."
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.exactInputShare"
-msgstr "{percent} of exact input"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.itemCount"
-msgstr "{count, plural, one {# item} other {# items}}"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.title"
-msgstr "What’s taking space"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.unavailable"
-msgstr "Breakdown available after the next response"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.conversation"
-msgstr "Conversation"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.conversation.description"
-msgstr "User and assistant text, including reasoning"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.filesReferences"
-msgstr "Files and references"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.filesReferences.description"
-msgstr "Attachments, file summaries, and provider-file references"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.instructions"
-msgstr "Instructions"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.instructions.description"
-msgstr "Agent, project, workflow, memory, and runtime guidance"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.overhead"
-msgstr "Overhead"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.overhead.description"
-msgstr "Provider formatting, opaque file usage, and estimation variance"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.toolActivity"
-msgstr "Tool activity"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.toolActivity.description"
-msgstr "Tool definitions, calls, results, and errors"
-
-#. js-lingui-explicit-id
-msgid "app.context.compact.action"
-msgstr "Compact conversation"
-
-#. js-lingui-explicit-id
-msgid "app.context.compact.hint"
-msgstr "Compact the conversation to recover context space."
-
-#. js-lingui-explicit-id
-msgid "app.context.dataAccess.description"
-msgstr "Inspect normalized persisted messages and the latest user system override."
-
-#. js-lingui-explicit-id
-msgid "app.context.dataAccess.rawMessages"
-msgstr "View raw messages"
-
-#. js-lingui-explicit-id
-msgid "app.context.dataAccess.title"
-msgstr "Data access"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.cacheReadWrite"
-msgstr "Cache read / write"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.contextUsage"
-msgstr "Context usage"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.contextWindow"
-msgstr "Context window"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.latestCallCost"
-msgstr "Latest-call cost"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.latestCallTotal"
-msgstr "Latest-call total"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.latestOutputReasoning"
-msgstr "Latest output / reasoning"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.loadedMessagesCost"
-msgstr "Loaded messages cost"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.model"
-msgstr "Model"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.provider"
-msgstr "Provider"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.remainingInput"
-msgstr "Remaining input"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.usage"
-msgstr "Usage details"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.assistantMessages"
-msgstr "Assistant messages"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.attributedTotal"
-msgstr "Attributed total"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.estimatedAttributed"
-msgstr "{category} estimated / attributed"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.estimatorEncoding"
-msgstr "Estimator encoding"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.estimatorKind"
-msgstr "Estimator kind"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.lastActivity"
-msgstr "Last activity"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.messages"
-msgstr "Messages"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.rawEstimatedTotal"
-msgstr "Raw estimated total"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.reconciliationFactor"
-msgstr "Reconciliation factor"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.reconciliationMode"
-msgstr "Reconciliation mode"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.sessionCreated"
-msgstr "Session created"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.sessionID"
-msgstr "Session ID"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.sessionTitle"
-msgstr "Session title"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.title"
-msgstr "Developer details"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.userMessages"
-msgstr "User messages"
-
-#. js-lingui-explicit-id
-msgid "app.context.instructions.copy"
-msgstr "Copy user system override"
-
-#. js-lingui-explicit-id
-msgid "app.context.instructions.copyFailed"
-msgstr "Unable to copy user system override."
-
-#. js-lingui-explicit-id
-msgid "app.context.instructions.empty"
-msgstr "No user system override is available."
-
-#. js-lingui-explicit-id
-msgid "app.context.instructions.latestUserOverride"
-msgstr "Latest user system override"
-
-#. js-lingui-explicit-id
-msgid "app.context.model.label"
-msgstr "Model {model}"
-
-#. js-lingui-explicit-id
-msgid "app.context.session.untitled"
-msgstr "Untitled session"
-
-#. js-lingui-explicit-id
 msgid "app.context.status.compacted"
 msgstr "Conversation compacted; usage available after the next response"
 
@@ -2339,22 +2115,6 @@ msgstr "Enough room to continue"
 #. js-lingui-explicit-id
 msgid "app.context.status.warning"
 msgstr "This context is getting full"
-
-#. js-lingui-explicit-id
-msgid "app.context.usage.limitUnknown"
-msgstr "Context limit unknown"
-
-#. js-lingui-explicit-id
-msgid "app.context.usage.percentUsed"
-msgstr "{percent} used"
-
-#. js-lingui-explicit-id
-msgid "app.context.usage.tokensRemaining"
-msgstr "{tokens} remaining"
-
-#. js-lingui-explicit-id
-msgid "app.context.usage.usedInput"
-msgstr "Used input"
 
 #. Confirm
 msgid "app.dialog.confirm.actionFailed"
@@ -11777,6 +11537,314 @@ msgstr "Uninstall {name}? It will be removed from this Synergy install."
 msgid "confirm.uninstallPlugin.title"
 msgstr "Uninstall plugin?"
 
+#. js-lingui-explicit-id
+msgid "context.category.assistant"
+msgstr "Assistant messages"
+
+#. js-lingui-explicit-id
+msgid "context.category.attachments"
+msgstr "Attachments and references"
+
+#. js-lingui-explicit-id
+msgid "context.category.injected"
+msgstr "Injected context"
+
+#. js-lingui-explicit-id
+msgid "context.category.legacyConversation"
+msgstr "Conversation · historical aggregate"
+
+#. js-lingui-explicit-id
+msgid "context.category.legacyInstructions"
+msgstr "Instructions · historical aggregate"
+
+#. js-lingui-explicit-id
+msgid "context.category.legacyTools"
+msgstr "Tools · historical aggregate"
+
+#. js-lingui-explicit-id
+msgid "context.category.other"
+msgstr "Other / unattributed"
+
+#. js-lingui-explicit-id
+msgid "context.category.results"
+msgstr "Tool results"
+
+#. js-lingui-explicit-id
+msgid "context.category.skills"
+msgstr "Skill content"
+
+#. js-lingui-explicit-id
+msgid "context.category.system"
+msgstr "System instructions"
+
+#. js-lingui-explicit-id
+msgid "context.category.tools"
+msgstr "Tool definitions"
+
+#. js-lingui-explicit-id
+msgid "context.category.user"
+msgstr "User messages"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.accumulated"
+msgstr "Cumulative usage"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.answerTokens"
+msgstr "Output excluding reasoning"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.back"
+msgstr "Back to overview"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.byRequest"
+msgstr "Requests"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.byRound"
+msgstr "Rounds"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.capacity"
+msgstr "Context window"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.characters"
+msgstr "{count} characters"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.compaction"
+msgstr "Context compacted before this request"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.comparedPrevious"
+msgstr "Estimated change from previous request"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.composition"
+msgstr "Input composition"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.content"
+msgstr "Context contents"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.contentLimit"
+msgstr "Preview limit reached. Open execution records to read or download the full request."
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.current"
+msgstr "Current context"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.delta"
+msgstr "Change"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.earlier"
+msgstr "Load earlier requests"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.error"
+msgstr "Could not load context. Try again."
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.estimated"
+msgstr "Categories are estimates; the total comes from the provider."
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.events"
+msgstr "Context events"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.failedTools"
+msgstr "{count} failed tool calls"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.generation"
+msgstr "Generation, including reasoning"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.growth"
+msgstr "Context history"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.hideContent"
+msgstr "Hide"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.historical"
+msgstr "Context for request {number}"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.indexTruncated"
+msgstr "Some sources exceed the index budget. Open execution records for the complete request."
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.input"
+msgstr "Input tokens"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.items"
+msgstr "{count} items"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.latest"
+msgstr "Latest recorded request"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.loading"
+msgstr "Loading context…"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.mainRequests"
+msgstr "{count} main requests"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.modelWait"
+msgstr "First-token wait"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.moreContent"
+msgstr "Read more"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.moreItems"
+msgstr "Load more items"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.noEvents"
+msgstr "No compaction recorded in the loaded history."
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.noItems"
+msgstr "No matching sources."
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.noRequests"
+msgstr "Context appears after the first model request."
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.reasoning"
+msgstr "Reasoning"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.records"
+msgstr "View execution records"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.remaining"
+msgstr "{tokens} remaining"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.request"
+msgstr "Request {number}"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestChange"
+msgstr "Change {tokens}"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestCount"
+msgstr "{count} requests"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestDetails"
+msgstr "Request details"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestIdentity"
+msgstr "Round {round} · Request {request}"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestInput"
+msgstr "Input {tokens}"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestPicker"
+msgstr "Choose a request"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.retryCount"
+msgstr "{count} retries"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.round"
+msgstr "Round {number} · last request"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.roundPrompt"
+msgstr "Task in this round"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.sourceChange"
+msgstr "Estimated {tokens} tokens · {items} items from previous request"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.sourceSearch"
+msgstr "Search sources"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.sourceUnavailable"
+msgstr "The source index is unavailable. Open execution records to inspect the saved request."
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.taskActivity"
+msgstr "Task activity"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.taskScope"
+msgstr "Entire task"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.timedCalls"
+msgstr "{count} measured"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.timing"
+msgstr "Timing breakdown"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.timingBasis"
+msgstr "Recorded durations · parallel work can overlap"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.timingTotal"
+msgstr "Recorded time"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.tokenStats"
+msgstr "Token statistics"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.tokenUnit"
+msgstr "tokens"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.toolCount"
+msgstr "{count} tool calls"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.toolExecution"
+msgstr "Tool execution"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.total"
+msgstr "Total"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.unavailable"
+msgstr "Context composition was not recorded for this request."
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.usageDetails"
+msgstr "Details"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.viewContent"
+msgstr "View"
+
 #. it a timeout would misstate what happens; only `tool_timeout` aborts.
 msgid "countdown.backgrounded"
 msgstr "backgrounded"
@@ -12138,14 +12206,6 @@ msgid "environment.dialog.title"
 msgstr "Choose Environment"
 
 #. js-lingui-explicit-id
-msgid "execution.activity"
-msgstr "Activity"
-
-#. js-lingui-explicit-id
-msgid "execution.activityOrder"
-msgstr "Activity order"
-
-#. js-lingui-explicit-id
 msgid "execution.actor"
 msgstr "Executor"
 
@@ -12172,6 +12232,10 @@ msgstr "All events"
 #. js-lingui-explicit-id
 msgid "execution.anomalies"
 msgstr "Exceptions and retries"
+
+#. js-lingui-explicit-id
+msgid "execution.auxiliaryRequest"
+msgstr "Supporting model call · recorded execution details"
 
 #. js-lingui-explicit-id
 msgid "execution.back"
@@ -12206,16 +12270,16 @@ msgid "execution.cancelTask"
 msgstr "Cancel subtask"
 
 #. js-lingui-explicit-id
-msgid "execution.chartEvents"
-msgstr "{count} events · {start}–{end}"
-
-#. js-lingui-explicit-id
-msgid "execution.chartExpand"
-msgstr "Explore activity"
-
-#. js-lingui-explicit-id
 msgid "execution.children"
 msgstr "Subtasks"
+
+#. js-lingui-explicit-id
+msgid "execution.chooseRecord"
+msgstr "Select an execution record"
+
+#. js-lingui-explicit-id
+msgid "execution.chooseRecordHelp"
+msgstr "Read a request, tool result or exception. Search and filters apply to the list."
 
 #. js-lingui-explicit-id
 msgid "execution.clear"
@@ -12252,6 +12316,10 @@ msgstr "Context has changed since this request."
 #. js-lingui-explicit-id
 msgid "execution.contextUnknown"
 msgstr "Context limit or usage was not recorded."
+
+#. js-lingui-explicit-id
+msgid "execution.conversationRequest"
+msgstr "Model request · recorded execution details"
 
 #. js-lingui-explicit-id
 msgid "execution.copied"
@@ -12370,14 +12438,6 @@ msgid "execution.history"
 msgstr "Normalized message"
 
 #. js-lingui-explicit-id
-msgid "execution.humanInputs"
-msgstr "{count} user inputs"
-
-#. js-lingui-explicit-id
-msgid "execution.idle"
-msgstr "{duration} without recorded activity"
-
-#. js-lingui-explicit-id
 msgid "execution.inboxHistory"
 msgstr "Inbox history"
 
@@ -12478,8 +12538,8 @@ msgid "execution.missingCost"
 msgstr "{count} requests with missing cost evidence"
 
 #. js-lingui-explicit-id
-msgid "execution.missingTimes"
-msgstr "Some event times were not recorded"
+msgid "execution.model"
+msgstr "Model"
 
 #. js-lingui-explicit-id
 msgid "execution.more"
@@ -12570,6 +12630,10 @@ msgid "execution.processView"
 msgstr "Task process"
 
 #. js-lingui-explicit-id
+msgid "execution.provider"
+msgstr "Provider"
+
+#. js-lingui-explicit-id
 msgid "execution.purpose"
 msgstr "Purpose"
 
@@ -12590,16 +12654,16 @@ msgid "execution.rawStructure"
 msgstr "Read the saved fields"
 
 #. js-lingui-explicit-id
-msgid "execution.realTime"
-msgstr "Elapsed time"
-
-#. js-lingui-explicit-id
 msgid "execution.recorded"
 msgstr "Recorded evidence"
 
 #. js-lingui-explicit-id
 msgid "execution.recordedDefinition"
 msgstr "Definitions saved with the model request at execution time."
+
+#. js-lingui-explicit-id
+msgid "execution.recordsTitle"
+msgstr "Execution records"
 
 #. js-lingui-explicit-id
 msgid "execution.recordsView"
@@ -12680,10 +12744,6 @@ msgstr "Status"
 #. js-lingui-explicit-id
 msgid "execution.subscription"
 msgstr "Subscription equivalent"
-
-#. js-lingui-explicit-id
-msgid "execution.taskInstructions"
-msgstr "{count} task instructions"
 
 #. js-lingui-explicit-id
 msgid "execution.tasks"

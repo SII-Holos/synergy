@@ -305,16 +305,16 @@ test("latest main-request context stays separate from cumulative usage and retai
         ...assistant,
         accounting: { kind: "rollout", callIDs: [primary.id] },
         contextUsage: {
-          version: 1,
+          version: 2,
           modelID: "test",
           providerID: "test",
           totalInput: 20,
-          categories: {
-            conversation: category(8),
-            toolActivity: category(5),
-            filesReferences: category(4),
-            instructions: category(2),
-          },
+          categories: [
+            { category: "userMessages", precision: "source", ...category(8) },
+            { category: "toolResults", precision: "source", ...category(5) },
+            { category: "attachments", precision: "source", ...category(4) },
+            { category: "systemInstructions", precision: "source", ...category(2) },
+          ],
           overhead: { attributedTokens: 1 },
           estimator: { kind: "model-tokenizer" },
           reconciliation: { mode: "residual", factor: 1 },
@@ -336,7 +336,9 @@ test("latest main-request context stays separate from cumulative usage and retai
       expect(summary.accounting.tokens.reasoning.known).toBe(200)
       expect(summary.accounting.tokens.total.known).toBe(1050)
       expect(summary.context?.inputTokens).toBe(20)
-      expect(summary.contextDistribution?.categories.conversation.attributedTokens).toBe(8)
+      expect(
+        summary.contextDistribution?.categories.find((entry) => entry.category === "userMessages")?.attributedTokens,
+      ).toBe(8)
     }),
   ))
 

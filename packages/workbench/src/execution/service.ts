@@ -1,3 +1,4 @@
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { z } from "zod"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -254,10 +255,13 @@ export namespace ExecutionService {
       source: "messages",
     })
   }
-  function rememberContext(contexts: Data["contexts"], info: MessageV2.Info) {
+  function rememberContext(contexts: Data["contexts"], info: MessageV2.Info, changed?: Set<string>) {
     if (info.role !== "assistant" || !info.contextUsage || info.accounting?.kind !== "rollout") return
     const callID = info.accounting.callIDs.at(-1)
-    if (callID) contexts.set(callID, info.contextUsage)
+    if (callID) {
+      contexts.set(callID, info.contextUsage)
+      changed?.add(nodeID(info.sessionID, "call", callID))
+    }
   }
   function selected(data: Data, runID?: string) {
     if (!runID) return data.nodes
@@ -743,7 +747,7 @@ export namespace ExecutionService {
       }
       if (!message) continue
       const info = MessageV2.deriveSemantics([message])[0].info
-      rememberContext(entry.contexts, info)
+      rememberContext(entry.contexts, info, entry.changed)
       for (const part of message.parts) {
         if (part.type === "tool") {
           const node = entry.nodes.find(
@@ -824,6 +828,9 @@ export namespace ExecutionService {
                 previousRevision,
                 summary: next.summary,
                 roundSummaries: [...next.selections.values()].map((selection) => selection.summary),
+                contextUpserts: contextSnapshots(next).filter(
+                  (entry, index) => index < 30 || next.changed.has(entry.nodeID),
+                ),
                 upserts: upserts.map((node) => ({ ...node, revision: next.revision })),
                 processUpserts: processUpserts.map((node) => ({ ...node, revision: next.revision })),
                 processRemoved,
@@ -940,6 +947,178 @@ export namespace ExecutionService {
       cache.dispose = undefined
     }
     return cache.dispose
+  }
+  function contextSnapshots(value: Data, runID?: string): ExecutionSchema.ContextSnapshot[] {
+    const snapshot = value.snapshots.find(
+      (entry) => entry.owner.kind === "session" && entry.owner.sessionID === value.root.id,
+    )
+    if (!snapshot) return []
+    const records = new Map<string, UsageSchema.Record[]>()
+    for (const record of value.usage.values()) {
+      const id = record.kind === "call" ? record.entityID : record.kind === "attempt" ? record.callID : undefined
+      if (!id) continue
+      const group = records.get(id) ?? []
+      group.push(record)
+      records.set(id, group)
+    }
+    let previous = -Infinity
+    const rounds = new Map<string, number>()
+    const compactions = snapshot.calls.filter((call) => call.usageRole === "compaction" && call.status === "completed")
+    return snapshot.calls
+      .filter((call) => call.usageRole === "conversation")
+      .sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
+      .map((call, index) => {
+        if (!rounds.has(call.runID)) rounds.set(call.runID, rounds.size + 1)
+        const candidate = value.contexts.get(call.id)
+        const accounting = Usage.summarize(records.get(call.id) ?? [], {
+          sessionID: value.root.id,
+          includeDescendants: false,
+        })
+        const context = accounting.context
+        const attempt = (records.get(call.id) ?? []).find(
+          (entry) => entry.kind === "attempt" && entry.entityID === context?.attemptID,
+        )
+        const measured = attempt?.kind === "attempt" ? attempt.usage : undefined
+        const usage =
+          candidate &&
+          candidate.providerID === call.model.providerID &&
+          candidate.modelID === call.model.modelID &&
+          (context?.inputTokens == null || candidate.totalInput === context.inputTokens)
+            ? candidate
+            : null
+        const result = {
+          sessionID: value.root.id,
+          callID: call.id,
+          nodeID: nodeID(value.root.id, "call", call.id),
+          runID: call.runID,
+          started: call.started,
+          requestNumber: index + 1,
+          roundNumber: rounds.get(call.runID)!,
+          status: call.status,
+          modelID: call.model.modelID,
+          providerID: call.model.providerID,
+          inputTokens: usage?.totalInput ?? context?.inputTokens ?? null,
+          contextLimit:
+            usage?.usableInputLimit ?? usage?.contextLimit ?? (ModelLimit.usableInput(call.model.limits) || null),
+          outputTokens: measured?.output.total ?? null,
+          cacheHit:
+            measured?.input.total && measured.input.cacheRead != null
+              ? Math.min(1, measured.input.cacheRead / measured.input.total)
+              : null,
+          elapsedMs: call.ended == null ? null : Math.max(0, call.ended - call.started),
+          retries: accounting.outcomes.retries,
+          usage,
+          compactedBefore: compactions.some(
+            (entry) => (entry.ended ?? entry.started) > previous && (entry.ended ?? entry.started) <= call.started,
+          ),
+          requestAvailable: !!call.request,
+        }
+        previous = call.started
+        return result
+      })
+      .filter((entry) => !runID || entry.runID === runID)
+      .reverse()
+  }
+  function contextPosition(cursor: string | undefined, identity: string) {
+    if (!cursor) return undefined
+    const parsed = z
+      .object({ identity: z.string(), id: z.string() })
+      .parse(JSON.parse(Buffer.from(cursor, "base64url").toString()))
+    if (parsed.identity !== identity) throw new RangeError("Context cursor does not match this selection")
+    return parsed.id
+  }
+  const contextCursor = (identity: string, id: string) =>
+    Buffer.from(JSON.stringify({ identity, id })).toString("base64url")
+  export async function contextHistory(sessionID: string, input: z.infer<typeof ExecutionSchema.ContextQuery>) {
+    const value = await data(sessionID)
+    const identity = JSON.stringify([ScopeContext.current.scope.id, sessionID, input.runID ?? null])
+    if (input.runID && !value.summary.rounds.some((round) => round.id === input.runID))
+      throw new Storage.NotFoundError({ message: "Context round was not found" })
+    const entries = contextSnapshots(value, input.runID)
+    const id = contextPosition(input.cursor, identity)
+    const position = id ? entries.findIndex((entry) => entry.callID === id) : -1
+    if (id && position < 0) throw new RangeError("Context cursor request was not found")
+    const items = entries.slice(position + 1, position + 1 + input.limit)
+    return ExecutionSchema.ContextHistory.parse({
+      sessionID,
+      revision: value.revision,
+      total: entries.length,
+      items,
+      nextCursor: position + 1 + items.length < entries.length ? contextCursor(identity, items.at(-1)!.callID) : null,
+    })
+  }
+  export async function contextSnapshot(sessionID: string, callID: string, runID?: string) {
+    const value = await data(sessionID)
+    const entry = contextSnapshots(value, runID).find((entry) => entry.callID === callID)
+    if (!entry) throw new Storage.NotFoundError({ message: "Context request was not found in this session" })
+    return ExecutionSchema.ContextSnapshot.parse(entry)
+  }
+  export async function contextItems(
+    sessionID: string,
+    callID: string,
+    input: z.infer<typeof ExecutionSchema.ContextItemsQuery>,
+    signal?: AbortSignal,
+  ) {
+    const snapshot = await contextSnapshot(sessionID, callID, input.runID)
+    const empty = {
+      callID,
+      nodeID: snapshot.nodeID,
+      contentVersion: null,
+      status: "unavailable",
+      items: [],
+      total: 0,
+      nextCursor: null,
+      truncated: false,
+    }
+    if (!snapshot.requestAvailable) return ExecutionSchema.ContextItems.parse(empty)
+    const source = await contentSource(sessionID, snapshot.nodeID, "request", input.runID, input.version)
+    const manifest = z
+      .array(MessageV2.ContextSource)
+      .safeParse(await ExecutionContent.value(source, ["contextSources"], signal))
+    if (!manifest.success)
+      return ExecutionSchema.ContextItems.parse({ ...empty, contentVersion: source.contentVersion, status: "legacy" })
+    const sections = new Map<string, z.infer<typeof ExecutionContent.Section>>()
+    let next: string | undefined
+    let truncated = false
+    do {
+      const page = await ExecutionContent.sections(source, { field: "request", limit: 500, cursor: next }, signal)
+      for (const section of page.items) sections.set(JSON.stringify(section.path), section)
+      next = page.nextCursor ?? undefined
+      truncated ||= page.truncated
+    } while (next)
+    const entries = manifest.data.flatMap((entry, index) => {
+      const section = sections.get(JSON.stringify(entry.path))
+      if (!section) {
+        truncated = true
+        return []
+      }
+      if (input.category && input.category !== entry.category) return []
+      if (input.query && !entry.source.toLocaleLowerCase().includes(input.query.toLocaleLowerCase())) return []
+      return [{ ...entry, id: String(index), offset: section.offset, bytes: section.bytes }]
+    })
+    const identity = JSON.stringify([
+      ScopeContext.current.scope.id,
+      sessionID,
+      callID,
+      source.contentVersion,
+      input.category,
+      input.query,
+      input.runID,
+    ])
+    const id = contextPosition(input.cursor, identity)
+    const offset = id ? entries.findIndex((entry) => entry.id === id) + 1 : 0
+    if (id && !offset) throw new RangeError("Context item cursor was not found")
+    const items = entries.slice(offset, offset + input.limit)
+    return ExecutionSchema.ContextItems.parse({
+      callID,
+      nodeID: snapshot.nodeID,
+      contentVersion: source.contentVersion,
+      status: "available",
+      items,
+      total: entries.length,
+      nextCursor: offset + items.length < entries.length ? contextCursor(identity, items.at(-1)!.id) : null,
+      truncated,
+    })
   }
   export async function summary(sessionID: string, runID?: string) {
     const value = await data(sessionID)
