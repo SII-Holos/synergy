@@ -15,6 +15,8 @@ When a dedicated CI task activates opt-in tests, declare its mandatory scenario 
 
 Seed large SQLite fixtures inside a transaction so per-row durability flushes do not dominate correctness test deadlines. Preserve the dataset size and the migration, restart, and failure boundaries exercised by the test.
 
+For usage capture changes, vary response media type independently of body framing, including byte-sized UTF-8 chunks, SSE newline forms, oversized events and cancellation. Compare live normalized usage with replay from the retained bytes. Historical recovery fixtures must begin with an advanced live checkpoint and an incomplete estimate, then cover repeated replay, explicit clears, missing artifacts, restart at a page boundary and concurrent requests. Warm the task-summary cache before background repair and verify it observes the repaired facts through normal usage events. Do not reconstruct historical transport timing or substitute current prices for saved evidence.
+
 Compare directory snapshots as sorted paths or sets when asserting unchanged files; filesystem enumeration order is not a product invariant.
 
 For independently loaded UI groups, wait for the observed group itself before asserting its result. Another group's rendered content cannot establish completion; retain checks for failure isolation and retry without imposing response ordering.
