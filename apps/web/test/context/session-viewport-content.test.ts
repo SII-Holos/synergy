@@ -133,3 +133,25 @@ test("limits bodies by count and bytes and rejects superseded snapshots before p
   expect(planSessionViewportContent(content, () => "retry")).toBeUndefined()
   expect(planSessionViewportContent(content, () => "apply")).toEqual(content)
 })
+
+test("cachedPartPageSnapshot replays a complete materialized window and sorts by id", async () => {
+  const { cachedPartPageSnapshot } = await import("../../src/context/session-viewport-content")
+  const items = [part("root", "p2"), part("root", "p1"), part("root", "p3")]
+  const page = cachedPartPageSnapshot(items, { hasEarlier: false })
+  expect(page).toEqual({
+    items: [items[1], items[0], items[2]],
+    nextCursor: null,
+    previousCursor: null,
+    hasMore: false,
+    hasEarlier: false,
+  })
+})
+
+test("cachedPartPageSnapshot refuses incomplete windows so cursor state stays server-owned", async () => {
+  const { cachedPartPageSnapshot } = await import("../../src/context/session-viewport-content")
+  const items = [part("root", "p1")]
+  expect(cachedPartPageSnapshot(undefined, undefined)).toBeUndefined()
+  expect(cachedPartPageSnapshot([], { hasEarlier: false })).toBeUndefined()
+  expect(cachedPartPageSnapshot(items, undefined)).toBeUndefined()
+  expect(cachedPartPageSnapshot(items, { hasEarlier: true })).toBeUndefined()
+})

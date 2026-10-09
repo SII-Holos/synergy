@@ -39,6 +39,7 @@ import type { SyncResourceRequest } from "./sync-resource-freshness"
 import { internMessages, internParts } from "./string-intern"
 import { findSessionByID, findSessionIndex } from "./session-collection"
 import {
+  cachedPartPageSnapshot,
   readSessionViewportContent,
   planSessionViewportContent,
   type SessionViewportContent,
@@ -301,6 +302,18 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       if (reconnectVersion > current) sessionReconnectVersions.set(sessionID, reconnectVersion)
     }
 
+    const computeReloadPlan = (sessionID: string, reconnectVersion: number, trigger?: SessionSyncTrigger) => {
+      const session = getSession(sessionID)
+      return planSessionSyncReload({
+        hasSessionRecord: session !== undefined,
+        hasMessages: hasMessageSnapshot(sessionID),
+        reconnectVersion,
+        lastSyncedReconnectVersion: sessionReconnectVersions.get(sessionID),
+        canUnrollback: session?.history?.rollback?.canUnrollback === true,
+        trigger,
+      })
+    }
+
     type SessionMessagePageResponse = Awaited<ReturnType<(typeof sdk.client.session)["timelinePage"]>>
     type SessionMessagePageLoadResult = {
       response: SessionMessagePageResponse
@@ -381,7 +394,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             ? await readSessionViewportContent({
                 messages: [...response.data.referencedRoots, ...response.data.items].map((entry) => entry.info),
                 signal,
-                page: (messageID) => readPartPageBatch(sessionID, messageID, signal),
+                page: (messageID) => {
+                  const cached = cachedPartPageSnapshot(store.partSummary[messageID], store.partPage[messageID])
+                  return cached ? Promise.resolve(cached) : readPartPageBatch(sessionID, messageID, signal)
+                },
                 body: (summary) =>
                   globalSync.partContentStore.readThrough({
                     url: sdk.url,
@@ -726,29 +742,21 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           // Session metadata alone is not enough: tool parts publish as
           // unsequenced streaming events, so reconnect recovery must re-fetch
           // durable message/part snapshots too (issue #509 / #331).
-          const currentReconnectVersion = globalSync.scopeReconnectVersion(sdk.scopeKey)
-          const session = getSession(sessionID)
-          const plan = planSessionSyncReload({
-            hasSessionRecord: session !== undefined,
-            hasMessages: hasMessageSnapshot(sessionID),
-            reconnectVersion: currentReconnectVersion,
-            lastSyncedReconnectVersion: sessionReconnectVersions.get(sessionID),
-            canUnrollback: session?.history?.rollback?.canUnrollback === true,
-            trigger: options?.trigger,
-          })
+          const reconnectVersion = globalSync.scopeReconnectVersion(sdk.scopeKey)
+          const plan = computeReloadPlan(sessionID, reconnectVersion, options?.trigger)
           const target: SessionSyncTarget = {
-            reconnectVersion: currentReconnectVersion,
+            reconnectVersion,
             forceSession: plan.forceSession,
             forceMessages: plan.forceMessages,
           }
-          const reloadMessages = async () => {
+          const reloadMessages = async (active: ReturnType<typeof computeReloadPlan>) => {
             while (navigation.has(sessionID)) await navigation.get(sessionID)!.promise.catch(() => {})
             contentLifetime.signal.throwIfAborted()
             const messages = store.message[sessionID]
             if (
               store.messageWindow[sessionID]?.mode === "history" &&
               messages?.length &&
-              !plan.needsDerivedHistoryRefresh &&
+              !active.needsDerivedHistoryRefresh &&
               options?.trigger?.type !== "history-transition"
             )
               return loadMessagePage(
@@ -758,22 +766,33 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   limit: 100,
                   retainedWindow: { first: messages[0], last: messages.at(-1)!, count: messages.length },
                 },
-                { force: true, reconnectVersion: currentReconnectVersion },
+                { force: true, reconnectVersion },
               )
-            return loadLatestMessages(sessionID, { force: true, reconnectVersion: currentReconnectVersion })
+            return loadLatestMessages(sessionID, { force: true, reconnectVersion })
           }
-          const runBaseSync = async () => {
+          // The trigger chain defers this run behind the in-flight base load;
+          // by then the window and the sync generation are settled, so the plan
+          // captured at invocation time would re-issue an already-accepted wave
+          // (HAR cold-load wave 3). Re-plan from live store state at execution.
+          const runBaseSync = async (trigger?: SessionSyncTrigger) => {
+            const active = computeReloadPlan(sessionID, reconnectVersion, trigger)
+            if (active.ready) return
             await Promise.all([
-              plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve(),
-              plan.forceMessages ? reloadMessages() : Promise.resolve(),
+              active.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve(),
+              active.forceMessages ? reloadMessages(active) : Promise.resolve(),
             ])
-            if (!plan.forceMessages) markSessionSynced(sessionID, currentReconnectVersion)
+            if (!active.forceMessages) markSessionSynced(sessionID, reconnectVersion)
           }
           const active = plan.ready ? undefined : inflight.get(sessionID)
           const baseReq = plan.ready
             ? Promise.resolve()
             : active && options?.trigger
-              ? trackSessionSync(inflight, sessionID, target, refreshSessionAfterPending(active.request, runBaseSync))
+              ? trackSessionSync(
+                  inflight,
+                  sessionID,
+                  target,
+                  refreshSessionAfterPending(active.request, () => runBaseSync(options?.trigger)),
+                )
               : queueSessionSync(inflight, sessionID, target, runBaseSync)
 
           const requests = [baseReq, syncPermissions()]
