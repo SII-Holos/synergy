@@ -376,11 +376,10 @@ export namespace RuntimeHandle {
         liveSessionIDs: () => SessionManager.liveSessionIDs(),
       })
       if (options.mode === "server") {
-        // First-message latency: warm the execution pools and tokenizer while
-        // transport and resident services initialize, so the first turn or
-        // classification finds a ready worker instead of paying cold start.
+        // Compositions choose whether to reserve classification workers before
+        // a tool needs them. Lazy startup retains the same isolated pool.
         AgentTurn.prewarm()
-        PolicyWorker.prewarm()
+        if (config.execution?.policyWorkerPrewarm !== false) PolicyWorker.prewarm()
         void ScopeContext.provide({
           scope: Scope.home(),
           fn: async () => {

@@ -186,6 +186,7 @@ export function resolveExecutionConfiguration(config: Config.Info, mode: "server
       agentHeartbeatTimeoutMs:
         config.execution?.agentHeartbeatTimeoutMs ?? DEFAULT_AGENT_WORKER_POOL_OPTIONS.heartbeatTimeoutMs,
       policyWorkers: config.execution?.policyWorkers ?? DEFAULT_POLICY_WORKER_POOL_OPTIONS.size,
+      policyWorkerPrewarm: config.execution?.policyWorkerPrewarm ?? true,
       policyQueueMax: config.execution?.policyQueueMax ?? DEFAULT_POLICY_WORKER_POOL_OPTIONS.maxQueued,
       policyQueueMaxMb:
         config.execution?.policyQueueMaxMb ?? (DEFAULT_POLICY_WORKER_POOL_OPTIONS.maxQueuedBytes ?? 0) / (1024 * 1024),

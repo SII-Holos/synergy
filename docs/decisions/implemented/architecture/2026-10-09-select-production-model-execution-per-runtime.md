@@ -16,6 +16,8 @@ Session title generation is admitted after the first model step. A detached job 
 
 The Agent embedding entry imports the public Local Runtime client and Host adapters directly. It does not evaluate the unselected native composition merely to access those adapters. Explicitly selecting that composition retains its normal registration and worker behavior. A subprocess import test rejects an eager load of the unselected registrar.
 
+Server compositions may set `execution.policyWorkerPrewarm` to `false` when most requests do not need isolated classification. The default still prewarms the Policy pool. The first classification creates the same bounded subprocess pool; this selection does not inline the parser, bypass permission checks, or change cancellation, fallback and shutdown behavior. The [startup tests](../../../../packages/agent-runtime/test/policy-startup.test.ts) exercise both choices through a real Runtime and subprocess classification, including rejection after shutdown.
+
 ## Alternatives considered
 
 **Always use a worker process.** This preserves process isolation but duplicates it for applications that already own one process per identity.
