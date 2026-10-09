@@ -110,6 +110,8 @@ Desktop reserves offline maintenance with `/global/maintenance/prepare`. The syn
 
 Explicit `execution: session` migrations prepare derived history on demand, independently of the deferred-import cohort ledger. Startup registers them; history access runs dependency-ordered owner callbacks and stores per-owner completion receipts. Metadata-only access does not prepare full history. Shared snapshot-store ownership inventory remains a startup migration. See [demand-driven history upgrades](../decisions/implemented/bug-fix/2026-10-03-demand-driven-history-upgrades.md).
 
+Record-only migrations may declare `emptyInput` prefixes only when absence of every input guarantees that their body has no effects. Startup checks those prefixes and writes consecutive completion markers in one ownership-fenced transaction. Each ordinary migration ends the batch, so newly introduced records are checked again. Deferred historical input and existing cohorts disable the shortcut; filesystem, snapshot ownership, configuration and schema preparation still use their own migration bodies. On-access registrations may share the same completion transaction without running their per-Session transformations. A failed commit does not publish any completion from the batch.
+
 ## Full tool outputs
 
 Applications can pair `StoredToolOutput.persistence()` with `read_tool_output` to retain complete results in the selected Storage artifact backend. The bounded reader uses namespace-scoped immutable references and exact imported aliases without acquiring an Environment or mounting a Workspace. See [the output persistence decision](../decisions/implemented/architecture/2026-10-09-read-persisted-tool-outputs-without-an-environment.md).

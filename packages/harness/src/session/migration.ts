@@ -1740,6 +1740,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20261003-session-turn-file-checkpoints",
+    emptyInput: [["sessions"]],
     scope: "session",
     dependsOn: ["20260923-session-operation-snapshot-cursor"],
     description: "Preserve recorded file versions as explicit legacy workspace checkpoints",
@@ -1795,6 +1796,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260411-holos-message-metadata-shape",
+    emptyInput: [["sessions"]],
     description: "Normalize legacy Holos message metadata into grouped fields",
     async up(progress) {
       const scopeIDs = await SessionMigrationTarget.scopes()
@@ -1842,6 +1844,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260423-session-page-index-and-last-exchange",
+    emptyInput: [["sessions"]],
     description: "Build session page index per scope and backfill lastExchange on session info",
     async up(progress) {
       const scopeIDs = await SessionMigrationTarget.scopes()
@@ -1944,6 +1947,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260423-session-page-index-parentid",
+    emptyInput: [["sessions"]],
     description: "Add parentID to session page index entries",
     async up(progress) {
       const scopeIDs = await SessionMigrationTarget.scopes()
@@ -2148,6 +2152,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260630-session-attachment-parts",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2159,6 +2164,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260630-session-tool-card-display",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2170,6 +2176,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260701-attachment-presentation-v2",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2181,6 +2188,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260701-bounded-session-data",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2199,6 +2207,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260703-session-worktree-workspace",
+    emptyInput: [["sessions"]],
     description: "Normalize legacy route-directory worktree sessions into session workspace metadata",
     async up(progress) {
       await migrateSessionWorktreeWorkspace(progress)
@@ -2227,6 +2236,7 @@ export const migrations: Migration[] = [
     // the read path computes. A new id ensures it applies even where the old one
     // already ran.
     id: "20260705-message-v2-semantics-derive",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2322,6 +2332,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260707-cortex-task-output-contract",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2333,6 +2344,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260711-cortex-task-identity",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2344,6 +2356,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260715-retired-intent-analyst-dag-assign",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2355,6 +2368,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260716-bounded-diff-aggregate-preview",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2474,6 +2488,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260914-inbox-delivery-receipts",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2539,6 +2554,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260919-settle-orphaned-tool-parts",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2568,6 +2584,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260920-session-pause-latch",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2579,6 +2596,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260920-session-blueprint-waiting-phase",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2658,6 +2676,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260923-session-operation-snapshot-cursor",
+    emptyInput: [["sessions"]],
     scope: "derived",
     description: "Upgrade snapshot summary cursors to preserve individual write operations",
     upSession: migrateOperationSnapshotCursor,
@@ -2674,6 +2693,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260923-session-model-selection",
+    emptyInput: [["sessions"]],
     scope: "session",
     description: "Preserve session models and root thinking choices in durable model selections",
     upSession(owner, progress) {

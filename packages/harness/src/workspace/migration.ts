@@ -12,6 +12,7 @@ import { RuntimeContext } from "../lifecycle/context"
 export const workspaceMigrations: Migration[] = [
   {
     id: "20260927-workspace-storage-backend",
+    emptyInput: [["workspace"]],
     description: "Record directory storage independently of Workspace identity and binding",
     scope: "global",
     execution: "startup",

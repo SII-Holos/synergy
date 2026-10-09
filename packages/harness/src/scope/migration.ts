@@ -27,6 +27,7 @@ export const migrations: Migration[] = [
   {
     scope: "scope",
     id: "20260430-scope-add-type-directory",
+    emptyInput: [StoragePath.scopeRoot()],
     description: "Add type and directory fields to scope records that predate these schema fields",
     async up(progress) {
       const ids = await Storage.scan(StoragePath.scopeRoot())
@@ -258,6 +259,7 @@ export const migrations: Migration[] = [
   {
     scope: "scope",
     id: "20260827-scope-archive-ephemeral-test-artifacts",
+    emptyInput: [StoragePath.scopeRoot()],
     description: "Archive scopes whose worktree is an ephemeral test artifact (synergy-test-*/synergy-orchestrated-*)",
     async up(progress) {
       const { Scope } = await import(".")
@@ -284,6 +286,7 @@ export const migrations: Migration[] = [
   {
     scope: "global",
     id: "20260921-scope-local-binding",
+    emptyInput: [StoragePath.scopeRoot()],
     description: "Separate stable Scope identity from nullable local resources without moving history",
     async up(progress) {
       const ids = await Storage.scan(StoragePath.scopeRoot())

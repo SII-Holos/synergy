@@ -1,0 +1,25 @@
+# Decision Record: Complete empty migration inputs in one transaction
+
+Status: implemented
+
+## Problem
+
+An on-demand Runtime with no historical records still performs a transaction for every registered historical transform. PostgreSQL startup diagnostics identify these repeated completion writes and input probes as a substantial part of initialization. The absence of a Session does not imply that configuration, filesystem or global maintenance work can be skipped.
+
+## Decision
+
+Owners can declare `emptyInput` record prefixes only when no body effects exist without those records. The runner checks all declared prefixes and completes consecutive eligible migrations in one ownership-fenced transaction. It reuses an empty-input observation only inside that transaction, ends the group before an ordinary migration, and preserves dependency order. On-access registrations can share the group because their actual transformations retain per-Session receipts.
+
+Historical import activity and existing cohorts prevent an empty-input completion. External effects stay outside retryable database callbacks. Commit failure publishes none of the group's completion markers. Configuration, schema, filesystem and snapshot ownership migrations retain their existing execution paths.
+
+## Alternatives considered
+
+**Assume a new SQL namespace is current.** A newly opened namespace may still have historical imports or external files. Blanket completion would omit required work.
+
+**Defer every completion write until startup finishes.** A crash could replay previously completed external effects. Grouping only proven no-ops avoids extending that replay boundary.
+
+**Keep one transaction per no-op.** This preserves behavior but spends database round trips on absent inputs. The declarations and transactional proof preserve the same outcome with less startup work.
+
+## Consequences
+
+Owners must keep declarations aligned with every input a migration reads. Tests exercise the actual declared bodies on empty authority, nonempty nested input, changes introduced between groups, historical cohorts, dependency selection, and atomic rollback. This optimization does not change old-data transformations or authorize a Runtime to bypass storage recovery, and measured product startup remains a separate acceptance requirement.

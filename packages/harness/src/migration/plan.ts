@@ -24,6 +24,12 @@ export namespace MigrationPlan {
       if (byKey.has(key)) throw new Error(`Duplicate migration ${key}`)
       if (entry.migration.execution === "session" && !entry.migration.upSession)
         throw new Error(`Session migration ${key} requires an owner callback`)
+      if (
+        entry.migration.emptyInput &&
+        (!entry.migration.emptyInput.length ||
+          entry.migration.emptyInput.some((prefix) => !prefix.length || prefix.some((part) => !part)))
+      )
+        throw new Error(`Migration ${key} requires nonempty input prefixes`)
       byKey.set(key, entry)
     }
     const graph = [...byKey].map(([key, entry]) => ({

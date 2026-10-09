@@ -10,6 +10,8 @@ export interface Migration {
   domain?: string
   scope?: "global" | "scope" | "session" | "derived"
   onAccess?: true
+  /** All inputs are records below these prefixes; when all are empty, up has no effects. */
+  emptyInput?: string[][]
   isApplied?(): Promise<boolean>
   execution?: "startup" | "session" | "after-convergence" | "maintenance"
   upSession?(

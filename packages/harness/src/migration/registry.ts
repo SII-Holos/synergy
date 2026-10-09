@@ -17,6 +17,7 @@ function snapshot(migrations: Migration[]): Migration[] {
   return migrations.map((migration) => ({
     ...migration,
     ...(migration.dependsOn ? { dependsOn: [...migration.dependsOn] } : {}),
+    ...(migration.emptyInput ? { emptyInput: migration.emptyInput.map((prefix) => [...prefix]) } : {}),
   }))
 }
 
