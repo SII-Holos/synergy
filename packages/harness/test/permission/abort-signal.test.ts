@@ -4,6 +4,10 @@ import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { Bus } from "../../src/bus"
+import { RolloutExecution } from "../../src/session/rollout/execution"
+import { RolloutLedger } from "../../src/session/rollout/ledger"
+import { RolloutSnapshot } from "../../src/session/rollout/snapshot"
 const runtime = await testRuntime()
 
 test("ask - rejects with AbortError when AbortSignal is already aborted", () =>
@@ -125,5 +129,60 @@ test("ask - resolves normally on reply when signal is provided but never fires",
       },
     })
   }))
+
+test.each(["once", "reject", "abort"] as const)("permission %s freezes execution and ignores late replies", (reply) =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const owner = { kind: "operation" as const, scopeID: "test", operationID: crypto.randomUUID() }
+        const segment = await RolloutLedger.beginSegment({ owner, runID: "permission", input: {} })
+        const controller = new AbortController()
+        const asked = Promise.withResolvers<string>()
+        const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, (event) => asked.resolve(event.properties.id))
+        const work = RolloutExecution.provide({ owner, runID: segment.runID, signal: controller.signal }, async () => {
+          await RolloutExecution.start(segment)
+          try {
+            await PermissionNext.ask({
+              sessionID: "ses_execution_wait",
+              permission: "bash",
+              patterns: ["ls"],
+              metadata: {},
+              ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
+              signal: controller.signal,
+            })
+          } catch (error) {
+            if (reply === "once") throw error
+          } finally {
+            await RolloutExecution.stop(segment)
+          }
+        })
+        try {
+          const requestID = await asked.promise
+          const before = RolloutExecution.measure((await RolloutSnapshot.read(owner)).intervals)
+          expect(before).toMatchObject({ elapsedActive: false, waiting: true })
+          const sample = RolloutExecution.clock()
+          expect(
+            RolloutExecution.measure((await RolloutSnapshot.read(owner)).intervals, {
+              ...sample,
+              now: sample.now + 60000,
+            }),
+          ).toEqual(before)
+          if (reply === "abort") controller.abort()
+          else await PermissionNext.reply({ requestID, reply })
+          await work
+          const completed = await RolloutSnapshot.read(owner)
+          expect(RolloutExecution.measure(completed.intervals)).toMatchObject({ elapsedActive: false, waiting: false })
+          await PermissionNext.reply({ requestID, reply: "once" })
+          expect(await RolloutSnapshot.read(owner)).toEqual(completed)
+        } finally {
+          unsubscribe()
+          controller.abort()
+        }
+      },
+    })
+  }),
+)
 
 afterRuntimeTests(() => runtime.close())

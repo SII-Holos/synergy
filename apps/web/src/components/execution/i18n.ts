@@ -85,6 +85,8 @@ export const E = {
   },
   status: { id: "execution.status", message: "Status" },
   running: { id: "execution.running", message: "Running" },
+  paused: { id: "execution.paused", message: "Paused" },
+  waiting: { id: "execution.waiting", message: "Waiting for input" },
   queued: { id: "execution.queued", message: "Queued" },
   completed: { id: "execution.completed", message: "Completed" },
   failed: { id: "execution.failed", message: "Failed" },

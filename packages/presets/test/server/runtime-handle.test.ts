@@ -8,6 +8,7 @@ import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-pr
 import { ScopeStartup } from "@ericsanchezok/synergy-harness/scope/startup"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 
 test("one-shot owns its Home, omits autonomous recovery, and awaits idempotent shutdown", async () => {
@@ -67,7 +68,17 @@ test("failed recovery does not announce completion or retain home ownership", as
   const root = ["operations", "test", crypto.randomUUID(), "rollout", "journal"]
   const recovery: Array<number | "completed"> = []
   try {
+    const prepared = await PresetRuntimeHandle.open({
+      host: fixture.host,
+      mode: "oneshot",
+      storage: { kind: "borrowed", handle: { store, artifactDirectory: path.join(fixture.host.root, "data") } },
+    })
+    await prepared.close()
     await store.transaction(async (tx) => {
+      await tx.write(StoragePath.rolloutRecoveryPending(), {
+        version: 1,
+        owners: [{ kind: "operation", scopeID: root[1], operationID: root[2] }],
+      })
       await tx.write([...root, "head"], { allocated: 1, committed: 1 })
       await tx.write([...root, "events", "000000000001"], { version: 1, seq: 2, time: 0, kind: "gap" })
     })

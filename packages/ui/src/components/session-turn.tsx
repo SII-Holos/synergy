@@ -1506,10 +1506,10 @@ export function SessionTurn(
       : lastAssistantMessage()?.error?.name === "MessageAbortedError" ||
         (paused()?.type === "paused" && paused()?.reason === "aborted")
   const turnDuration = () => {
-    const execution = props.executionState
-    const start = execution?.startedAt ?? assistantMessages()[0]?.time.created
-    const end = execution?.endedAt ?? lastAssistantMessage()?.time.completed
-    return start !== undefined && end !== undefined ? Math.max(0, Math.round((end - start) / 1000)) : undefined
+    const summary = props.executionSummary
+    if (summary?.elapsedMs == null) return undefined
+    const seconds = Math.max(0, Math.floor(summary.elapsedMs / 1000))
+    return summary.elapsedLowerBound ? `≥ ${seconds}` : seconds
   }
   const compacting = createMemo(() =>
     assistantMessages().some(

@@ -245,7 +245,9 @@ describe("Feishu attachment durable prompt parts", () => {
           await expect(fs.access(filepath)).rejects.toThrow()
 
           const items = await SessionInbox.list(session.id)
-          const materialized = await SessionInbox.materializeItem(items[0])
+          const materialized = await SessionInbox.materializeItem(
+            await SessionInbox.getStored(items[0].sessionID, items[0].id),
+          )
           expect(materialized?.info.id).toBe(items[0].messageID)
           const attachmentPart = materialized?.parts.find((p) => p.type === "attachment")
           expect(attachmentPart?.type).toBe("attachment")
@@ -397,7 +399,9 @@ describe("Feishu attachment durable prompt parts", () => {
           await expect(fs.access(filepath)).rejects.toThrow()
 
           const items = await SessionInbox.list(session.id)
-          const materialized = await SessionInbox.materializeItem(items[0])
+          const materialized = await SessionInbox.materializeItem(
+            await SessionInbox.getStored(items[0].sessionID, items[0].id),
+          )
           if (!materialized) throw new Error("expected materialized message")
           const attachmentPart = materialized?.parts.find((p) => p.type === "attachment")
           if (attachmentPart?.type !== "attachment") throw new Error("expected materialized attachment")

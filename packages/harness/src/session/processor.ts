@@ -1,5 +1,6 @@
 import { ToolIntent } from "./tool-intent"
 import { readImageInputReceipt, publishImageInputReceipt, type ImageAttachmentSource } from "./rollout/image-receipt"
+import { RolloutExecution } from "./rollout/execution"
 import type { RolloutSchema } from "./rollout/schema"
 import { RolloutLedger } from "./rollout/ledger"
 import { SessionModelSelection } from "./model-selection"
@@ -1809,69 +1810,74 @@ export namespace SessionProcessor {
               }
               const runningTools = new Map<string, string>()
               const queuedTools = new Set(deferredToolCalls.map((call) => call.callID))
-              await Promise.all(
-                deferredToolCalls.map(async (call) => {
-                  if (!streamInput.executionTools) return
-                  let expanded: ToolResolver.AutoExpandedTool | undefined
-                  if (streamInput.autoExpandable?.has(call.toolName)) {
-                    expanded = await resolveAutoExpand(call.toolName)
+              await RolloutExecution.suspend(() =>
+                Promise.all(
+                  deferredToolCalls.map(async (call) => {
+                    if (!streamInput.executionTools) return
+                    let expanded: ToolResolver.AutoExpandedTool | undefined
+                    if (streamInput.autoExpandable?.has(call.toolName)) {
+                      expanded = await resolveAutoExpand(call.toolName)
+                      if (expanded) {
+                        streamInput.executionTools[call.toolName] = expanded.tool
+                        streamInput.executorKinds[call.toolName] = expanded.executor
+                        await markAutoExpanded(call, expanded)
+                      }
+                    }
                     if (expanded) {
-                      streamInput.executionTools[call.toolName] = expanded.tool
-                      streamInput.executorKinds[call.toolName] = expanded.executor
-                      await markAutoExpanded(call, expanded)
-                    }
-                  }
-                  if (expanded) {
-                    const { ToolResolver: DynamicToolResolver } = await import("./tool-resolver")
-                    const invalid = DynamicToolResolver.validateToolInput(
-                      call.toolName,
-                      inputBindings.get(call.toolName)?.nativeSchema ?? expanded.inputSchema,
-                      call.input,
-                    )
-                    if (invalid) {
-                      const part = toolcalls[call.callID]
-                      if (part && part.state.status === "running") {
-                        await settleToolPart(part, streamToolErrorOutcome(part, new Error(invalid)))
-                        delete toolcalls[call.callID]
+                      const { ToolResolver: DynamicToolResolver } = await import("./tool-resolver")
+                      const invalid = DynamicToolResolver.validateToolInput(
+                        call.toolName,
+                        inputBindings.get(call.toolName)?.nativeSchema ?? expanded.inputSchema,
+                        call.input,
+                      )
+                      if (invalid) {
+                        const part = toolcalls[call.callID]
+                        if (part && part.state.status === "running") {
+                          await settleToolPart(part, streamToolErrorOutcome(part, new Error(invalid)))
+                          delete toolcalls[call.callID]
+                        }
+                        return
                       }
-                      return
                     }
-                  }
-                  const task = await ToolScheduler.dispatch({
-                    sessionID: input.sessionID,
-                    generation: input.generation ?? 0,
-                    messageID: input.assistantMessage.id,
-                    callID: call.callID,
-                    toolName: call.toolName,
-                    input: call.input,
-                    tool: streamInput.executionTools[call.toolName],
-                    executor: streamInput.executorKinds[call.toolName],
-                    processor: result,
-                    signal: input.abort,
-                    onState(state) {
-                      if (state === "running") SessionManager.setExecutionPhase(input.sessionID, "running_tools")
-                      if (state === "running") {
-                        queuedTools.delete(call.callID)
-                        runningTools.set(call.callID, call.toolName)
-                      } else if (state !== "queued") {
-                        queuedTools.delete(call.callID)
-                        runningTools.delete(call.callID)
-                      }
-                      if (runningTools.size)
-                        activity("running_tools", { id: runningTools.values().next().value, count: runningTools.size })
-                      else if (queuedTools.size) activity("queued_tools")
-                      else activity("finalizing")
-                    },
-                  })
-                  await settleTrackedExecution(call.callID)
-                  if (
-                    shouldBreak &&
-                    (task.errorName === PermissionNext.RejectedError.name ||
-                      SessionQuestionErrors.isRejectedErrorName(task.errorName))
-                  ) {
-                    blocked = true
-                  }
-                }),
+                    const task = await ToolScheduler.dispatch({
+                      sessionID: input.sessionID,
+                      generation: input.generation ?? 0,
+                      messageID: input.assistantMessage.id,
+                      callID: call.callID,
+                      toolName: call.toolName,
+                      input: call.input,
+                      tool: streamInput.executionTools[call.toolName],
+                      executor: streamInput.executorKinds[call.toolName],
+                      processor: result,
+                      signal: input.abort,
+                      onState(state) {
+                        if (state === "running") SessionManager.setExecutionPhase(input.sessionID, "running_tools")
+                        if (state === "running") {
+                          queuedTools.delete(call.callID)
+                          runningTools.set(call.callID, call.toolName)
+                        } else if (state !== "queued") {
+                          queuedTools.delete(call.callID)
+                          runningTools.delete(call.callID)
+                        }
+                        if (runningTools.size)
+                          activity("running_tools", {
+                            id: runningTools.values().next().value,
+                            count: runningTools.size,
+                          })
+                        else if (queuedTools.size) activity("queued_tools")
+                        else activity("finalizing")
+                      },
+                    })
+                    await settleTrackedExecution(call.callID)
+                    if (
+                      shouldBreak &&
+                      (task.errorName === PermissionNext.RejectedError.name ||
+                        SessionQuestionErrors.isRejectedErrorName(task.errorName))
+                    ) {
+                      blocked = true
+                    }
+                  }),
+                ),
               )
               SessionManager.setExecutionPhase(input.sessionID, "waiting_background")
             } catch (e: unknown) {

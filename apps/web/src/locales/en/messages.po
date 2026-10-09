@@ -12514,6 +12514,10 @@ msgid "execution.partialHelp"
 msgstr "Some execution evidence is missing. Only recorded values are shown."
 
 #. js-lingui-explicit-id
+msgid "execution.paused"
+msgstr "Paused"
+
+#. js-lingui-explicit-id
 msgid "execution.previous"
 msgstr "Earlier events"
 
@@ -12776,6 +12780,10 @@ msgstr "This content version is no longer available. Read the latest version."
 #. js-lingui-explicit-id
 msgid "execution.view"
 msgstr "View"
+
+#. js-lingui-explicit-id
+msgid "execution.waiting"
+msgstr "Waiting for input"
 
 #. js-lingui-explicit-id
 msgid "execution.workspace.copyPath"
@@ -25993,12 +26001,24 @@ msgid "ui.execution.interrupted"
 msgstr "Interrupted"
 
 #. js-lingui-explicit-id
+msgid "ui.execution.paused"
+msgstr "Paused"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.queued"
+msgstr "Queued"
+
+#. js-lingui-explicit-id
 msgid "ui.execution.running"
 msgstr "Running"
 
 #. js-lingui-explicit-id
 msgid "ui.execution.unknown"
-msgstr "Status not recorded"
+msgstr "Unknown"
+
+#. js-lingui-explicit-id
+msgid "ui.execution.waiting"
+msgstr "Waiting for input"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.close"

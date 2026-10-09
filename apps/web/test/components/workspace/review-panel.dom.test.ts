@@ -496,6 +496,8 @@ test("comparison references edit through one compact control and retain API para
   await mount()
   await page.getByRole("button", { name: "Comparison: Session", exact: true }).click()
   await page.getByRole("option", { name: "Branch", exact: true }).click()
+  await page.getByRole("option", { name: "Branch", exact: true }).waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Comparison: Branch")
   const refs = page.getByRole("button", { name: "Comparison: origin/dev → HEAD", exact: true })
   await refs.waitFor()
   expect(compared).toEqual({ from: "origin/dev", to: "HEAD" })

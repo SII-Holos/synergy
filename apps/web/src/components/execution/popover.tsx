@@ -1,3 +1,4 @@
+import { executionDuration } from "@ericsanchezok/synergy-ui/execution-completion"
 import { createMemo, createSignal, For, Show, onCleanup, type JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useParams } from "@solidjs/router"
@@ -17,7 +18,6 @@ import {
   cancellableTask,
   type TaskDetailsTask,
 } from "./task-details-model"
-import { executionDuration } from "./overview"
 import "./execution.css"
 import "./task-details.css"
 
@@ -35,8 +35,7 @@ export function TaskDetailsPopover(props: {
   const [history, setHistory] = createSignal(false)
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [pending, setPending] = createSignal<Set<string>>(new Set())
-  const [now, setNow] = createSignal(Date.now())
-  let timer: ReturnType<typeof setInterval> | undefined
+  const now = execution.advance
   let disposed = false
   let more: HTMLButtonElement | undefined
   let back: HTMLButtonElement | undefined
@@ -54,16 +53,10 @@ export function TaskDetailsPopover(props: {
       queueMicrotask(() => {
         if (open()) more?.focus({ preventScroll: true })
       })
-    if (timer) clearInterval(timer)
-    if (value) {
-      setNow(Date.now())
-      timer = setInterval(() => setNow(Date.now()), 1000)
-      if (execution.available() && !execution.state.summary) void execution.refresh()
-    }
+    if (value && execution.available()) void execution.refresh()
   }
   onCleanup(() => {
     disposed = true
-    if (timer) clearInterval(timer)
   })
   const Context = () => props.context?.(() => open() && !history())
   const Agenda = () =>
@@ -234,10 +227,8 @@ export function TaskDetailsPopover(props: {
                             {task.elapsedMs == null
                               ? ""
                               : executionDuration(
-                                  task.elapsedMs +
-                                    (task.elapsedActive
-                                      ? Math.max(0, now() - (execution.state.summary?.computedAt ?? now()))
-                                      : 0),
+                                  task.elapsedMs + (task.elapsedActive ? now() : 0),
+                                  task.elapsedLowerBound,
                                 )}
                           </span>
                         </button>
