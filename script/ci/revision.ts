@@ -4,6 +4,7 @@ import { analyzeSource, type SourceFacts } from "../source-analysis"
 
 export type RevisionEntry = { mode: string; type: "blob" | "commit"; oid: string; path: string }
 type RevisionStage = "revision" | "inventory" | "batch" | "read"
+export type SourceSnapshot = Pick<RevisionSnapshot, "inventory" | "files" | "sources" | "read" | "required" | "facts">
 
 export class RevisionInputError extends Error {
   constructor(
