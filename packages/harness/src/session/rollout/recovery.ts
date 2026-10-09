@@ -1,3 +1,4 @@
+import { RolloutExecution } from "./execution"
 import { Storage } from "../../storage/storage"
 import { RolloutArtifact } from "./artifact"
 import { RolloutJournal } from "./journal"
@@ -27,8 +28,13 @@ export namespace RolloutRecovery {
     return record(async () => {
       await RolloutJournal.recover(identity, onProgress)
       const snapshot = await RolloutSnapshot.read(identity, { onProgress })
+      for (const interval of snapshot.intervals) {
+        await RolloutExecution.recover(interval)
+        onProgress?.()
+      }
       for (const segment of snapshot.segments) {
-        if (segment.status === "running") await RolloutLedger.finishSegment(segment, "interrupted")
+        if (segment.status === "running")
+          await RolloutLedger.finishSegment(segment, "interrupted", { detectedAt: Date.now() })
         onProgress?.()
       }
       for (const attempt of snapshot.attempts) {
@@ -81,7 +87,8 @@ export namespace RolloutRecovery {
           onProgress,
         )
       for (const run of snapshot.runs) {
-        if (run.status === "running") await RolloutLedger.finishRun(identity, run.id, "interrupted")
+        if (run.status === "running")
+          await RolloutLedger.finishRun(identity, run.id, "interrupted", { detectedAt: Date.now() })
         onProgress?.()
       }
     })

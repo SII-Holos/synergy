@@ -16,6 +16,7 @@ import { LoopJob } from "../loop-job"
 import { SessionCortexRuntime } from "../cortex-runtime"
 import { RolloutAdmissionError, RolloutRecordingError } from "./error"
 import { StorageBusyError, StorageClosedError } from "../../storage/errors"
+import { RolloutExecution } from "./execution"
 
 export namespace RolloutLifecycle {
   export function owner(session: Session.Info): RolloutSchema.Owner {
@@ -52,6 +53,7 @@ export namespace RolloutLifecycle {
     })
     const { SessionFileChanges } = await import("../file-changes")
     await SessionFileChanges.begin({ sessionID: session.id, rootID: root.id, segmentID: segment.id })
+    await RolloutExecution.start(segment)
     return segment
   }
 
@@ -59,6 +61,7 @@ export namespace RolloutLifecycle {
     segment: RolloutSchema.ExecutionSegment,
     status: Parameters<typeof RolloutLedger.finishSegment>[1],
   ) {
+    await RolloutExecution.stop(segment)
     if (segment.owner.kind === "session") {
       const { SessionFileChanges } = await import("../file-changes")
       await SessionFileChanges.finish(
@@ -74,6 +77,7 @@ export namespace RolloutLifecycle {
     runID: string,
     file?: Experiment.File,
     model?: { providerID: string; modelID: string },
+    options?: { prepareOnly?: boolean },
   ) {
     const existing = await RolloutLedger.getRun(owner(session), runID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
@@ -102,7 +106,7 @@ export namespace RolloutLifecycle {
           model ? { model: `${model.providerID}/${model.modelID}` } : {},
           resolution!.sources,
         )
-      return await RolloutLedger.configureRun(owner(session), runID, snapshot)
+      return options?.prepareOnly ? snapshot : await RolloutLedger.configureRun(owner(session), runID, snapshot)
     } catch (cause) {
       // Deterministic admission failures park the queued task instead of
       // letting the queue retry the same input forever. Transient storage
@@ -120,9 +124,7 @@ export namespace RolloutLifecycle {
     }
   }
 
-  /** Cheap admission for a queued task's experiment: preserves the
-   *  enqueue-time rejections of full admission while the run shell stays
-   *  lightweight; configuration and provenance attach at materialization. */
+  /** Validate experiments before enqueue; configuration and provenance attach after materialization. */
   export async function assertQueuedExperiment(session: Session.Info, file?: Experiment.File) {
     if (!file) return
     Experiment.assertRuntime(file.runtime)
@@ -146,20 +148,20 @@ export namespace RolloutLifecycle {
       throw error
     })
     if (!run) {
-      // The enqueue-time run shell is best-effort; a queued task whose shell
-      // never landed still needs durable cancellation so concurrent
-      // materialization observes it. Persist the terminal record under the
-      // run lock, then remove the queued work.
-      for (const item of await SessionInbox.list(sessionID)) {
+      for (const item of [...(await SessionInbox.list(sessionID)), ...(await SessionInbox.listRemoved(sessionID))]) {
         if (item.messageID !== runID) continue
         run = await RolloutLedger.cancelUnopenedRun(identity, runID, item.time.created)
         await SessionInbox.remove({ sessionID, itemID: item.id })
         break
       }
-      // A runID with neither a run nor queued work is genuinely unknown.
+      if (!run) {
+        const message = (await SessionHistory.modelMessages({ sessionID })).find((message) => message.info.id === runID)
+        if (message?.info.role === "user" && message.info.isRoot)
+          run = await RolloutLedger.cancelUnopenedRun(identity, runID, message.info.time.created)
+      }
       if (!run) throw new Storage.NotFoundError({ message: `No rollout run ${runID} for session ${sessionID}` })
     }
-    if (run.status !== "running") return run
+    if (run.status !== "running" && run.status !== "interrupted") return run
     for (const item of await SessionInbox.list(sessionID))
       if (item.messageID === runID) await SessionInbox.remove({ sessionID, itemID: item.id })
     // Signal the live owner before waiting on it: requestCancel only marks

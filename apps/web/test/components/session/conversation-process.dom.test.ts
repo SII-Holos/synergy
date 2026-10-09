@@ -144,7 +144,7 @@ beforeAll(async () => {
     const [hidden,setHidden]=createSignal(false)
     render(()=><><button onClick={()=>setHidden(!hidden())}>Toggle list</button>
       <div style={{height:"288px",width:"320px",display:hidden()?"none":"block"}}>
-        <VList ref={value=>window.__conversationResizeList=value} data={Array.from({length:100},(_,i)=>i)} itemSize={48} overscan={2} aria-label="Measured list">
+        <VList style={new URL(location.href).searchParams.has("fixed")?{position:"fixed",height:"288px",width:"320px"}:undefined} ref={value=>window.__conversationResizeList=value} data={Array.from({length:100},(_,i)=>i)} itemSize={48} overscan={2} aria-label="Measured list">
           {item=><button style={{height:"48px",width:"100%",display:"block"}}>Item {item}</button>}
         </VList>
       </div></>,document.getElementById("root"))`,
@@ -167,6 +167,65 @@ afterAll(async () => {
   await server?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
 }, 30000)
+
+test("focus outside a large conversation does not reread its summaries", async () => {
+  await page.goto(`${url}?scrolling`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.grow(1000))
+  await frames()
+  const before = await page.evaluate(() => window.__conversationProcess.summaryReads())
+  const outside = page.getByRole("button", { name: "Outside conversation", exact: true })
+  for (let index = 0; index < 3; index++) {
+    await outside.focus()
+    await outside.evaluate((element) => (element as HTMLElement).blur())
+  }
+  await frames()
+  expect(await page.evaluate(() => window.__conversationProcess.summaryReads())).toBe(before)
+}, 30000)
+
+test("reading a finished full process does not retrace unchanged disclosure state", async () => {
+  await page.goto(`${url}?scrolling`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.mode("full")
+    window.__conversationProcess.stream()
+    window.__conversationProcess.grow(1000)
+    window.__conversationProcess.complete()
+  })
+  await frames()
+  const before = await page.evaluate(() => window.__conversationProcess.summaryReads())
+  await page.evaluate(() => window.__conversationProcess.reading(true))
+  await frames()
+  await page.evaluate(() => window.__conversationProcess.reading(false))
+  await frames()
+  expect(await page.evaluate(() => window.__conversationProcess.summaryReads())).toBe(before)
+}, 30000)
+
+test.each(["index.mjs", "index.jsx"] as const)(
+  "visible fixed viewports and native hit testing survive resize and scrolling (%s)",
+  async (entry) => {
+    const fixture = await fixtureServer(entry)
+    try {
+      await page.goto(`${fixture.resolvedUrls!.local[0]}resize.html?fixed`)
+      await page.getByRole("button", { name: "Item 0", exact: true }).waitFor()
+      await frames()
+      expect(await page.evaluate(() => window.__conversationResizeList!.viewportSize)).toBe(288)
+      await page.evaluate(() => window.__conversationResizeList!.scrollToIndex(80, { align: "start" }))
+      await page.getByRole("button", { name: "Item 80", exact: true }).waitFor()
+      const hit = await page.getByLabel("Measured list").evaluate(async (element) => {
+        element.scrollTop += 48
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+        const rect = element.getBoundingClientRect()
+        return element.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + 24))
+      })
+      expect(hit).toBe(true)
+      expect(errors).toEqual([])
+    } finally {
+      await fixture.close()
+    }
+  },
+  30000,
+)
 
 test("compact activity titles retain successful facts while showing current runtime activity", async () => {
   await page.goto(url)
@@ -747,7 +806,7 @@ test.each(["initial", "reversed"])(
         Element.prototype.animate = animate
       }
     }, reverse)
-    expect(result.initial).toHaveLength(reverse ? 9 : 3)
+    expect(result.initial).toHaveLength(3)
     expect(new Set(result.initial).size).toBe(3)
     expect(result.evicted).toBe(true)
     expect(result.remounted).toBe(2)
@@ -1722,12 +1781,94 @@ test("a process locator opens a closed group and finds an offscreen part in its 
   })
 }, 30000)
 
+test.each(["outer", "process"] as const)(
+  "disjoint selected ranges retain only their own mounted %s rows",
+  async (owner) => {
+    await page.goto(owner === "outer" ? `${url}?scrolling=1&outer-paging=1` : url)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    if (owner === "process") await page.evaluate(() => window.__conversationProcess.grow(1000))
+    const viewport = page.locator(owner === "outer" ? "[data-scroller]" : '[data-component="process-viewport"]').last()
+    await viewport.evaluate((element) => {
+      element.style.height = "16000px"
+      element.style.maxHeight = "16000px"
+      element.scrollTop = 0
+    })
+    await page.waitForFunction((owner) => {
+      const viewport = document.querySelector(
+        owner === "outer" ? "[data-scroller]" : '[data-component="process-viewport"]',
+      )!
+      return (
+        [...viewport.querySelectorAll("[data-display-row]")].filter(
+          (row) => owner === "process" || !row.closest('[data-component="process-viewport"]'),
+        ).length >= 9
+      )
+    }, owner)
+    await viewport.evaluate((element, owner) => {
+      const rows = [...element.querySelectorAll<HTMLElement>("[data-display-row]")]
+        .filter((row) => owner === "process" || !row.closest('[data-component="process-viewport"]'))
+        .slice(0, 9)
+      const ranges = [
+        [0, 2],
+        [4, 6],
+      ].map(([start, end]) => {
+        const range = document.createRange()
+        range.setStart(rows[start], 0)
+        range.setEnd(rows[end], rows[end].childNodes.length)
+        return range
+      })
+      window.__processSelection = rows
+      // Chromium exposes one native range; real DOM Ranges exercise browsers with disjoint selections.
+      Object.defineProperty(document, "getSelection", {
+        configurable: true,
+        value: () => ({
+          rangeCount: ranges.length,
+          getRangeAt: (index: number) => ranges[index],
+        }),
+      })
+      rows[8].querySelector<HTMLElement>("button, a")?.focus({ preventScroll: true })
+      document.dispatchEvent(new Event("selectionchange"))
+    }, owner)
+    await viewport.evaluate((element) => {
+      element.style.height = "280px"
+      element.style.maxHeight = "280px"
+    })
+    await viewport.hover()
+    await page.mouse.wheel(0, 100_000)
+    await page.waitForFunction(() => {
+      const rows = window.__processSelection as HTMLElement[]
+      return !rows[3].isConnected
+    })
+    expect(
+      await page.evaluate(() => {
+        const rows = window.__processSelection as HTMLElement[]
+        return rows.map((row) => row.isConnected)
+      }),
+    ).toEqual([true, true, true, false, true, true, true, false, true])
+    await page.evaluate(() => {
+      Reflect.deleteProperty(document, "getSelection")
+      ;(document.activeElement as HTMLElement)?.blur()
+      document.dispatchEvent(new Event("selectionchange"))
+    })
+  },
+  30_000,
+)
+
 test("local reading survives new actions, history prepend and reopening without moving the outer stream", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => window.__conversationProcess.grow(1000))
-  await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))
+  expect(await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))).toBe(true)
   const viewport = page.locator('[data-component="process-viewport"]').last()
+  const part = page.locator('[data-slot="activity-step"][data-part-id="many-400"]')
+  await part.waitFor()
+  await viewport.evaluate(async (element) => {
+    await Promise.allSettled(
+      element
+        .getAnimations({ subtree: true })
+        .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+        .map((animation) => animation.finished),
+    )
+  })
   await viewport.focus()
   await viewport.press("ArrowUp")
   await viewport.evaluate(async (element) => {
@@ -1741,7 +1882,6 @@ test("local reading survives new actions, history prepend and reopening without 
     }
   })
   await frames()
-  const part = page.locator('[data-slot="activity-step"][data-part-id="many-400"]')
   const before = await part.evaluate((el) => el.getBoundingClientRect().top)
   const outer = await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)
   await page.evaluate(() => window.__conversationProcess.append("live-reading-append"))

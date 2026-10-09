@@ -7,12 +7,12 @@ import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { ControlProfileCompiler } from "@ericsanchezok/synergy-harness/control-profile/compiler"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionInputStatus } from "@ericsanchezok/synergy-harness/session/input-status"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 import { SessionInvoke, type InvokeInput } from "@ericsanchezok/synergy-harness/session/invoke"
 import { SessionWorkflowService } from "@ericsanchezok/synergy-harness/session/workflow"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
-import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutQuery } from "@ericsanchezok/synergy-harness/session/rollout/query"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { Question } from "./question"
@@ -118,8 +118,8 @@ export function createLocalClient(runtime: RuntimeHandle.Handle, selector: Scope
       message: inScope(async (input: { sessionID: string; messageID: string }, _options?: RequestOptions) =>
         success(await MessageV2.get(input)),
       ),
-      run: inScope(async (input: { sessionID: string; runID: string }, _options?: RequestOptions) =>
-        success(await RolloutLedger.getRun(RolloutLifecycle.owner(await Session.get(input.sessionID)), input.runID)),
+      inputStatus: inScope(async (input: { sessionID: string; messageID: string }, _options?: RequestOptions) =>
+        success(await SessionInputStatus.get(input)),
       ),
       runResult: inScope(async (input: { sessionID: string; runID: string }, _options?: RequestOptions) =>
         success(await RolloutQuery.tree(RolloutLifecycle.owner(await Session.get(input.sessionID)), input.runID)),

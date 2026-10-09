@@ -1,3 +1,4 @@
+import { executionDuration } from "@ericsanchezok/synergy-ui/execution-completion"
 import { createMemo, For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { ExecutionCostPresentation, ExecutionSummary } from "@ericsanchezok/synergy-sdk/client"
@@ -11,16 +12,6 @@ import { executionCostText, executionMoney } from "./cost"
 import { ExecutionPerformance, UsagePopover } from "./usage"
 import "./execution.css"
 
-export function executionDuration(value: number) {
-  const seconds = Math.max(0, Math.floor(value / 1000))
-  return (
-    Math.floor(seconds / 60)
-      .toString()
-      .padStart(2, "0") +
-    ":" +
-    (seconds % 60).toString().padStart(2, "0")
-  )
-}
 export function CostBreakdown(props: { cost: ExecutionCostPresentation }) {
   const { _, i18n } = useLingui()
   return (
@@ -87,9 +78,7 @@ export function ExecutionOverview(props: {
       ? (value.unknown ? "≥ " : "") + number(value.known)
       : "—"
   }
-  const elapsed = () =>
-    (props.summary.elapsedMs ?? 0) +
-    (props.summary.elapsedActive ? Math.max(0, (props.now ?? props.summary.computedAt) - props.summary.computedAt) : 0)
+  const elapsed = () => (props.summary.elapsedMs ?? 0) + (props.summary.elapsedActive ? (props.now ?? 0) : 0)
   const ratio = () => (props.summary.context?.stale ? null : props.summary.context?.ratio)
   const context = () =>
     ratio() == null
@@ -155,10 +144,12 @@ export function ExecutionOverview(props: {
         </span>
       </div>
       <dl class="execution-metrics">
-        <div>
-          <dt>{_(E.elapsed)}</dt>
-          <dd>{props.summary.elapsedMs != null ? executionDuration(elapsed()) : "—"}</dd>
-        </div>
+        <Show when={props.summary.elapsedMs != null}>
+          <div>
+            <dt>{_(E.elapsed)}</dt>
+            <dd>{executionDuration(elapsed(), props.summary.elapsedLowerBound)}</dd>
+          </div>
+        </Show>
         <div>
           <dt>{_(E.tokens)}</dt>
           <dd>

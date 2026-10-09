@@ -1,3 +1,4 @@
+import { executionDuration } from "@ericsanchezok/synergy-ui/execution-completion"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { ExecutionNodeDetail } from "@ericsanchezok/synergy-sdk/client"
@@ -6,7 +7,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useSDK } from "@/context/sdk"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { E, K } from "./i18n"
-import { executionDuration } from "./overview"
+import { createExecutionClock } from "@/composables/create-execution-clock"
 import { EvidenceReader } from "./reader"
 import { EvidenceBlock } from "./block"
 
@@ -28,6 +29,25 @@ export function ExecutionInspector(props: {
   const sdk = useSDK()
   const navigate = useNavigateToSession()
   const [detail, setDetail] = createSignal<ExecutionNodeDetail>()
+  const [fresh, setFresh] = createSignal(false)
+  const [visible, setVisible] = createSignal(document.visibilityState !== "hidden")
+  const advance = createExecutionClock(
+    () => detail()?.execution,
+    () => sdk.connected() && fresh() && visible(),
+  )
+  const elapsed = () => {
+    const execution = detail()?.execution
+    if (execution)
+      return execution.elapsedMs == null
+        ? null
+        : executionDuration(
+            execution.elapsedMs + (execution.elapsedActive ? advance() : 0),
+            execution.elapsedLowerBound,
+          )
+    const node = detail()?.node
+    if (!node || node.kind === "turn" || node.kind === "subtask" || node.ended == null) return null
+    return executionDuration(node.ended - node.started)
+  }
   const [tab, setTab] = createSignal<Tab>("result")
   const [loading, setLoading] = createSignal(false)
   const [error, setError] = createSignal(false)
@@ -72,6 +92,7 @@ export function ExecutionInspector(props: {
         { signal: controller.signal, throwOnError: true },
       )
       if (disposed || version !== generation) return
+      setFresh(true)
       setDetail(response.data)
       if (reset || (tabs().length && !tabs().includes(tab()))) setTab(tabs()[0] ?? "result")
     } catch {
@@ -91,6 +112,22 @@ export function ExecutionInspector(props: {
   )
   createEffect(
     on(
+      sdk.connected,
+      (connected) => {
+        setFresh(false)
+        if (connected && detail()) void load()
+      },
+      { defer: true },
+    ),
+  )
+  const visibility = () => {
+    setVisible(document.visibilityState !== "hidden")
+    setFresh(false)
+    if (document.visibilityState === "visible" && sdk.connected()) void load()
+  }
+  document.addEventListener("visibilitychange", visibility)
+  createEffect(
+    on(
       () => props.revision,
       () => {
         clearTimeout(timer)
@@ -100,6 +137,7 @@ export function ExecutionInspector(props: {
     ),
   )
   onCleanup(() => {
+    document.removeEventListener("visibilitychange", visibility)
     disposed = true
     generation++
     abort?.abort()
@@ -146,11 +184,7 @@ export function ExecutionInspector(props: {
         </Show>
         <div>
           <dt>{_(E.elapsed)}</dt>
-          <dd>
-            {detail()?.node.ended == null
-              ? _(E.unknown)
-              : executionDuration(detail()!.node.ended! - detail()!.node.started)}
-          </dd>
+          <dd>{elapsed() ?? _(E.unknown)}</dd>
         </div>
         <Show when={detail()?.node.purpose}>
           <div>
@@ -191,11 +225,10 @@ export function ExecutionInspector(props: {
           </strong>
           <small title={props.filtered ? _(E.filteredNode) : undefined}>
             {detail() && _(K[detail()!.node.kind])} ·{" "}
-            <span data-state={detail()?.node.status}>{detail() && _(E[detail()!.node.status])}</span>
-            <Show when={detail()?.node.ended != null}>
-              {" "}
-              · {executionDuration(detail()!.node.ended! - detail()!.node.started)}
-            </Show>
+            <span data-state={detail()?.execution?.status ?? detail()?.node.status}>
+              {detail() && _(E[detail()!.execution?.status ?? detail()!.node.status])}
+            </span>
+            <Show when={elapsed() != null}> · {elapsed()}</Show>
             <Show when={props.filtered}> · {_(E.outsideFilters)}</Show>
           </small>
         </div>

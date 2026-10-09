@@ -72,7 +72,7 @@ export interface PluginConversationService {
   onScrolledUpChange: (val: boolean) => void
   autoScroll: PluginConversationViewport
   onClearHash: () => void
-  onScheduleScrollSpy: (container: HTMLDivElement) => void
+  onScheduleScrollSpy: (container: HTMLDivElement, messageID?: string) => void
   setScrollRef: (el: HTMLDivElement | undefined, releaseOf?: HTMLDivElement) => void
   isDesktop: Accessor<boolean>
   scrollToMessage: (msg: UserMessage, behavior?: ScrollBehavior) => void

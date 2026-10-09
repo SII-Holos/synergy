@@ -116,6 +116,8 @@ Session questions and permissions remain mounted by the host. The native compose
 
 ### Virtual conversation content
 
+Virtual presentations can pass their accepted reading message identity to `conversation.onScheduleScrollSpy(container, messageID)`, avoiding a second DOM geometry scan. The one-argument form remains available for fully materialized presentations. The host retains reading selection; custom renderers retain their own measurement lifetime.
+
 UI API 6 conversation services may provide optional `content` methods for bounded summaries, original text, Part retention and target-window loading. A retained Part lease is released when its row unmounts; expansion and measured layout belong outside row lifetime. Message location accepts an optional Part identity after obtaining that window. Public service calls check capability and component lifetime before and after asynchronous work. Original text operations cover effective server history independently of the currently mounted content.
 
 ## Tool invocation intent

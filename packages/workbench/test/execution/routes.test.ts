@@ -1,3 +1,4 @@
+import { RolloutExecution } from "@ericsanchezok/synergy-harness/rollout"
 import { afterAll, expect, spyOn, test } from "bun:test"
 import { Hono } from "hono"
 import { generateSpecs } from "hono-openapi"
@@ -17,6 +18,25 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const app = new Hono().route("/session", ExecutionRoute())
+
+test("pausing a later round does not change the outcome of an earlier completed round", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      await complete(call)
+      await RolloutLedger.finishRun(call.owner, rootID, "completed")
+      const later = Identifier.ascending("message")
+      const segment = await RolloutLedger.beginSegment({ owner: call.owner, runID: later, input: {} })
+      await RolloutLedger.finishSegment(segment, "interrupted")
+      await Session.update(session.id, (draft) => {
+        draft.paused = { reason: "aborted", since: Date.now() }
+      })
+      const summary = await ExecutionService.summary(session.id)
+      expect(summary.status).toBe("paused")
+      expect(summary.rounds.find((round) => round.id === later)?.status).toBe("paused")
+      expect(summary.rounds.find((round) => round.id === rootID)?.status).toBe("completed")
+      expect((await ExecutionService.summary(session.id, rootID)).status).toBe("completed")
+    }),
+  ))
 
 test("task summaries expose persisted origin and delegation controls without changing accounting", () =>
   runtime.run(() =>
@@ -61,7 +81,7 @@ test("an unopened cancelled run does not invent an execution interval", () =>
         1,
       )
       const summary = await ExecutionService.summary(session.id)
-      expect(summary.status).toBe("cancelled")
+      expect(summary.status).toBe("unknown")
       expect(summary.elapsedMs).toBeNull()
       expect(summary.elapsedActive).toBe(false)
       await Session.remove(session.id)
@@ -91,6 +111,7 @@ test("execution summaries retain children, canonical usage and durable running s
         input: {},
         parent: { owner: call.owner, runID: rootID, messageID: rootID },
       })
+      await RolloutExecution.provide({ owner, runID: childRun }, () => RolloutExecution.start(segment))
       const childCall = await RolloutLedger.beginCall({
         owner,
         runID: childRun,
@@ -103,7 +124,7 @@ test("execution summaries retain children, canonical usage and durable running s
       const summary = await (await app.request("/session/" + session.id + "/execution/summary")).json()
       expect(summary.status).toBe("running")
       expect(summary.rounds[0].status).toBe("running")
-      expect(summary.elapsedActive).toBe(false)
+      expect(summary.elapsedActive).toBe(true)
       expect(summary.tasks).toHaveLength(1)
       expect(summary.tasks[0].title).toBe("Architecture review")
       expect(summary.tasks[0].nodeID).toBeString()
@@ -114,12 +135,20 @@ test("execution summaries retain children, canonical usage and durable running s
         status: "completed",
         sdkUsage: { inputTokens: 7, outputTokens: 3 },
       })
+      await RolloutExecution.stop(segment)
       await RolloutLedger.finishSegment(segment, "completed")
       await RolloutLedger.finishRun(owner, childRun, "completed")
       const next = await ExecutionService.summary(session.id)
       expect(next.status).toBe("completed")
       expect(next.tasks).toHaveLength(1)
       expect(next.accounting.tokens.total.known).toBe(530)
+      const detail = await ExecutionService.node(session.id, next.tasks[0].nodeID!)
+      expect(detail.execution).toMatchObject({
+        status: "completed",
+        elapsedMs: next.tasks[0].elapsedMs,
+        elapsedActive: false,
+        elapsedLowerBound: false,
+      })
     }),
   ))
 
@@ -152,12 +181,13 @@ test("children created during the initial snapshot are included before returning
         await ready
         const child = await Session.create({ parentID: session.id, title: "Concurrent analysis" })
         const owner = { kind: "session" as const, scopeID: child.scope.id, sessionID: child.id }
-        await RolloutLedger.beginSegment({
+        const segment = await RolloutLedger.beginSegment({
           owner,
           runID: Identifier.ascending("message"),
           input: {},
           parent: { owner: call.owner, runID: rootID, messageID: rootID },
         })
+        await RolloutExecution.provide({ owner, runID: segment.runID }, () => RolloutExecution.start(segment))
         release()
         const summary = await loading
         expect(summary.tasks.map((task) => task.sessionID)).toContain(child.id)

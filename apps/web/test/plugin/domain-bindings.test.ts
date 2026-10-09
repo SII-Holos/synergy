@@ -43,6 +43,26 @@ test("published viewport reading owners retain the conversation capability and l
   expect(() => conversation.autoScroll.readingAnchorOwner()).toThrow("disposed")
 })
 
+test("reading position hints pass through the capability and lifetime boundary unchanged", () => {
+  const owner = access(["session.read"])
+  const scheduled = mock((_container: HTMLDivElement, _messageID?: string) => {})
+  const source = fixture<PluginConversationService>({ onScheduleScrollSpy: scheduled })
+  const conversation = bindPluginConversation(source, owner.service)
+  const container = {} as HTMLDivElement
+  conversation.onScheduleScrollSpy(container, "reading-root")
+  conversation.onScheduleScrollSpy(container)
+  expect(scheduled.mock.calls).toEqual([
+    [container, "reading-root"],
+    [container, undefined],
+  ])
+  expect(() => bindPluginConversation(source, access([]).service).onScheduleScrollSpy(container, "denied")).toThrow(
+    "session.read",
+  )
+  owner.lifetime.dispose()
+  expect(() => conversation.onScheduleScrollSpy(container, "released")).toThrow("disposed")
+  expect(scheduled).toHaveBeenCalledTimes(2)
+})
+
 test("conversation content leases and the message locator belong to the presentation lifetime", async () => {
   const owner = access(["session.read"])
   const pending = Promise.withResolvers<void>()

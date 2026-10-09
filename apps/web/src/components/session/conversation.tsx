@@ -341,7 +341,7 @@ function SessionConversationView(input: SessionConversationProps) {
         }}
         onScrollToBottom={props.onClearHash}
         onScrollContainer={(el) => {
-          if (props.isDesktop()) props.onScheduleScrollSpy(el)
+          if (props.isDesktop() && !props.content) props.onScheduleScrollSpy(el)
         }}
         contentClass="session-conversation-content session-content-column flex flex-col items-start justify-start gap-5"
         contentClassList={{
@@ -493,6 +493,10 @@ function SessionConversationView(input: SessionConversationProps) {
           <VirtualConversationRows
             layoutOwner={[sdk.url, sdk.scopeKey, props.sessionID]}
             onReady={setContentReady}
+            onReadingMessage={(messageID) => {
+              const element = scrollRef()
+              if (element && props.isDesktop()) props.onScheduleScrollSpy(element, messageID)
+            }}
             messageKey={messageKey}
             takePartArrival={takePartArrival}
             liveRevision={() => arrivalView()?.revision() ?? 0}
