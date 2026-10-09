@@ -8618,6 +8618,42 @@ msgid "app.reference.workspaceChanged"
 msgstr "原工作区已被移除，或其绑定已更改。"
 
 #. js-lingui-explicit-id
+msgid "app.render.capturePreview"
+msgstr "选中的可视化区域"
+
+#. js-lingui-explicit-id
+msgid "app.render.confirm"
+msgstr "发送关于此可视化的请求"
+
+#. js-lingui-explicit-id
+msgid "app.render.confirmDescription"
+msgstr "请先检查可视化生成的请求，再发送到当前会话。输入框中的草稿会保留。"
+
+#. js-lingui-explicit-id
+msgid "app.render.pending"
+msgstr "请先处理已打开的可视化请求。"
+
+#. js-lingui-explicit-id
+msgid "app.render.requestText"
+msgstr "请求"
+
+#. js-lingui-explicit-id
+msgid "app.render.send"
+msgstr "发送请求"
+
+#. js-lingui-explicit-id
+msgid "app.render.sendFailed"
+msgstr "无法发送可视化请求。"
+
+#. js-lingui-explicit-id
+msgid "app.render.sending"
+msgstr "正在发送…"
+
+#. js-lingui-explicit-id
+msgid "app.render.stale"
+msgstr "会话已切换。请重新打开可视化后再发送。"
+
+#. js-lingui-explicit-id
 msgid "app.review.toolUnavailable"
 msgstr "此工具结果已不可用。"
 
@@ -25025,12 +25061,132 @@ msgid "tool.misc.warnings"
 msgstr "警告"
 
 #. js-lingui-explicit-id
+msgid "tool.render.busy"
+msgstr "请等待当前可视化操作完成。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.changes"
+msgstr "应用以下可视化修改："
+
+#. js-lingui-explicit-id
+msgid "tool.render.closed"
+msgstr "此可视化视图已不再处于活动状态。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.conflict"
+msgstr "可视化状态已在另一个视图中改变。请检查恢复后的值再修改。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.discard"
+msgstr "不保存并关闭"
+
+#. js-lingui-explicit-id
+msgid "tool.render.download"
+msgstr "导出交互式 HTML"
+
+#. js-lingui-explicit-id
 msgid "tool.render.expand"
 msgstr "放大视图"
 
 #. js-lingui-explicit-id
+msgid "tool.render.feedback"
+msgstr "关于此可视化的反馈："
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidControls"
+msgstr "可视化控件定义无效。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidDate"
+msgstr "日历日期无效。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidIcon"
+msgstr "未知的可视化图标。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidRequest"
+msgstr "可视化请求无效。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidVariants"
+msgstr "可视化方案定义无效。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.navigation"
+msgstr "可视化已跳转到其他页面。重试可恢复已保存的源文件。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.next"
+msgstr "下个月"
+
+#. js-lingui-explicit-id
+msgid "tool.render.offline"
+msgstr "导出的可视化无法调用智能体。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.original"
+msgstr "按住查看原始值"
+
+#. js-lingui-explicit-id
+msgid "tool.render.parameters"
+msgstr "参数"
+
+#. js-lingui-explicit-id
 msgid "tool.render.preparing"
 msgstr "正在准备视图"
+
+#. js-lingui-explicit-id
+msgid "tool.render.previous"
+msgstr "上个月"
+
+#. js-lingui-explicit-id
+msgid "tool.render.reset"
+msgstr "重置"
+
+#. js-lingui-explicit-id
+msgid "tool.render.resourceFailed"
+msgstr "可视化资源加载失败。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "tool.render.review"
+msgstr "检查修改"
+
+#. js-lingui-explicit-id
+msgid "tool.render.selectFeedback"
+msgstr "选择元素并反馈"
+
+#. js-lingui-explicit-id
+msgid "tool.render.static"
+msgstr "此可视化为只读内容。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.stopFeedback"
+msgstr "结束选择"
+
+#. js-lingui-explicit-id
+msgid "tool.render.timeout"
+msgstr "可视化未响应。重试可恢复已保存的状态。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.tooLarge"
+msgstr "可视化状态超过 16 KiB。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.tooMany"
+msgstr "可视化控件或对象数量过多。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.unavailable"
+msgstr "此视图暂不支持可视化操作。"
+
+#. js-lingui-explicit-id
+msgid "tool.render.variants"
+msgstr "方案"
 
 #. js-lingui-explicit-id
 msgid "tool.render.visual"

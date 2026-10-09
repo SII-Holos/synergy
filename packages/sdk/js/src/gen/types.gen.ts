@@ -13335,6 +13335,68 @@ export type VoicePreviewInput = {
   text: string
 }
 
+export type RenderTarget = {
+  sessionID: string
+  messageID: string
+  partID: string
+}
+
+export type RenderDescriptor = {
+  format: "synergy.visual"
+  version: 1
+  id: string
+  mode: "static" | "interactive"
+  title: string
+  layout: "normal" | "wide"
+  libraries: Array<"d3" | "chart" | "mermaid">
+  replaces?: string
+  source: string
+}
+
+export type RenderSource = {
+  format: "synergy.visual"
+  version: 1
+  id: string
+  mode: "static" | "interactive"
+  title: string
+  layout: "normal" | "wide"
+  libraries: Array<"d3" | "chart" | "mermaid">
+  html: string
+  replaces?: string
+}
+
+export type RenderContent = {
+  modelContent?: unknown
+  uiContent?: unknown
+}
+
+export type RenderState = {
+  revision: number
+  updatedAt: number
+  mutationID?: string
+  content: RenderContent
+}
+
+export type RenderSnapshot = {
+  descriptor: RenderDescriptor
+  source: RenderSource
+  state: RenderState
+}
+
+export type RenderConflict = {
+  name: "RenderConflict"
+  data: {
+    message: string
+    state: RenderState
+  }
+}
+
+export type RenderStateWrite = {
+  revision: number
+  mutationID: string
+  content: RenderContent
+}
+
 export type ModelRoleUsage = {
   name: string
   description?: string
@@ -14417,6 +14479,8 @@ export type Event =
   | EventGlobalDisposed
   | EventRuntimeReloaded
   | EventReviewStateUpdated
+
+export type RenderTarget2 = string
 
 export type GlobalCapabilitiesData = {
   body?: never
@@ -29650,6 +29714,132 @@ export type VoicePreviewResponses = {
 }
 
 export type VoicePreviewResponse = VoicePreviewResponses[keyof VoicePreviewResponses]
+
+export type RenderFindData = {
+  body?: never
+  path: {
+    sessionID: string
+    assetID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/render/source/{sessionID}/{assetID}"
+}
+
+export type RenderFindErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RenderFindError = RenderFindErrors[keyof RenderFindErrors]
+
+export type RenderFindResponses = {
+  /**
+   * Producing call, if available in this transcript
+   */
+  200: {
+    target: RenderTarget
+    descriptor: RenderDescriptor
+  } | null
+}
+
+export type RenderFindResponse = RenderFindResponses[keyof RenderFindResponses]
+
+export type RenderGetData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+    partID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/render/{sessionID}/{messageID}/{partID}"
+}
+
+export type RenderGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RenderGetError = RenderGetErrors[keyof RenderGetErrors]
+
+export type RenderGetResponses = {
+  /**
+   * Immutable source and current state
+   */
+  200: RenderSnapshot
+}
+
+export type RenderGetResponse = RenderGetResponses[keyof RenderGetResponses]
+
+export type RenderUpdateData = {
+  body?: RenderStateWrite
+  path: {
+    sessionID: string
+    messageID: string
+    partID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/render/{sessionID}/{messageID}/{partID}"
+}
+
+export type RenderUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Revision conflict
+   */
+  409: RenderConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RenderUpdateError = RenderUpdateErrors[keyof RenderUpdateErrors]
+
+export type RenderUpdateResponses = {
+  /**
+   * Committed state
+   */
+  200: RenderState
+}
+
+export type RenderUpdateResponse = RenderUpdateResponses[keyof RenderUpdateResponses]
 
 export type AppLogData = {
   body?: {

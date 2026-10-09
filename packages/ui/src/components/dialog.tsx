@@ -2,6 +2,7 @@ import { OverlayLayerProvider } from "../context/overlay-layer"
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
 import { createSignal, ComponentProps, JSXElement, Match, ParentProps, Show, Switch, onCleanup } from "solid-js"
 import { useLingui } from "@lingui/solid"
+import { Dynamic } from "solid-js/web"
 import { Icon } from "./icon"
 
 const dialogCloseDescriptor = { id: "ui.dialog.close", message: "Close dialog" }
@@ -17,6 +18,7 @@ export interface DialogProps extends ParentProps {
   initialFocus?: () => HTMLElement | undefined
   footer?: JSXElement
   onEscapeKeyDown?: (event: KeyboardEvent) => void
+  onCloseRequest?: () => void
   dismissible?: boolean
   size?: DialogSize
   placement?: DialogPlacement
@@ -43,12 +45,20 @@ export function Dialog(props: DialogProps) {
               if (e.defaultPrevented) return
               if (props.dismissible === false) e.preventDefault()
               props.onEscapeKeyDown?.(e)
+              if (!e.defaultPrevented && props.onCloseRequest) {
+                e.preventDefault()
+                props.onCloseRequest()
+              }
             }}
             onPointerDownOutside={(e) => {
               if (props.dismissible === false) e.preventDefault()
+              else if (props.onCloseRequest) {
+                e.preventDefault()
+                props.onCloseRequest()
+              }
             }}
             onInteractOutside={(e) => {
-              if (props.dismissible === false) e.preventDefault()
+              if (props.dismissible === false || props.onCloseRequest) e.preventDefault()
             }}
             classList={{
               ...(props.classList ?? {}),
@@ -73,14 +83,22 @@ export function Dialog(props: DialogProps) {
                 <Switch>
                   <Match when={props.action}>{props.action}</Match>
                   <Match when={true}>
-                    <Kobalte.CloseButton
+                    <Dynamic
+                      component={props.onCloseRequest ? "button" : Kobalte.CloseButton}
+                      type="button"
+                      onClick={(event: MouseEvent) => {
+                        if (props.onCloseRequest) {
+                          event.preventDefault()
+                          props.onCloseRequest()
+                        }
+                      }}
                       aria-label={_(dialogCloseDescriptor)}
                       data-slot="dialog-close-button"
                       data-component="icon-button"
                       data-variant="ghost"
                     >
                       <Icon name="x" size="small" />
-                    </Kobalte.CloseButton>
+                    </Dynamic>
                   </Match>
                 </Switch>
               </div>

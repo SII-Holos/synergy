@@ -45,6 +45,7 @@ Synergy runs as a standalone local workspace. Connecting a Holos agent adds acco
 - **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside Desktop browser pages with saved website logins without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
 - **Compute starts when needed** — Select native or Docker execution independently of durable Workspace files. API-only work allocates no container; local, S3 and OSS object stores preserve files across compute reclamation. See [resource configuration](docs/reference/configuration-layout.md).
 - **Knowledge compounds** — Retain reusable memory and learned experience in Library while authoring Notes and Blueprints as durable documents.
+- **Visual results stay interactive** — Explore charts, simulations, calendars and variants in the conversation, retain parameters, review changes with the agent and export interactive HTML. See [visual results](docs/architecture/visual-results.md).
 - **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins and Channels while keeping local ownership of projects and data.
 
 Read the [product overview](docs/product/overview.md) for the complete product model, including Lattice Pathways, Agenda, Channels, Library, Holos, and extension boundaries.

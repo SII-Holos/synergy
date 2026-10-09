@@ -427,9 +427,14 @@ export namespace SessionInvoke {
     isTopSession: boolean,
     signal: AbortSignal,
   ): Promise<SessionContextContributions.Collected | undefined> {
-    if (!firstModelPreparation) return getCachedResult(sessionID)
-    evictRecallCache(sessionID)
-    return SessionContextContributions.collect({ sessionID, scopeID, messages, isTopSession, signal })
+    const input = { sessionID, scopeID, messages, isTopSession, signal }
+    if (firstModelPreparation) evictRecallCache(sessionID)
+    const [root, model] = await Promise.all([
+      firstModelPreparation ? SessionContextContributions.collect(input, "root") : getCachedResult(sessionID),
+      SessionContextContributions.collect(input, "model"),
+    ])
+    if (firstModelPreparation && root) cacheResult(sessionID, root)
+    return SessionContextContributions.combine(root, model)
   }
 
   export const loop = fn(Identifier.schema("session"), (sessionID) => {
@@ -1055,7 +1060,6 @@ export namespace SessionInvoke {
                 // Layer 3: Dynamic advisory context — loop-stable memory/experience, volatile across turns
                 if (memoryResult) {
                   lateSystemParts.push(memoryResult.context)
-                  if (firstModelPreparation) cacheResult(sessionID, memoryResult)
                   const { injection } = memoryResult
                   if (firstModelPreparation) SessionContextContributions.committed(sessionID, memoryResult)
                   if (Object.keys(injection).length > 0 && !R.metadata?.injectedContext) {
