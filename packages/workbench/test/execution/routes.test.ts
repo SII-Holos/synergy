@@ -14,10 +14,54 @@ import { ExecutionService } from "../../src/execution/service"
 import { ExecutionSchema } from "../../src/execution/schema"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { Usage } from "@ericsanchezok/synergy-harness/usage"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const app = new Hono().route("/session", ExecutionRoute())
+
+test("historical usage repair refreshes an already loaded task summary", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      const response = await RolloutArtifact.writeText(
+        call.owner,
+        'data: {"type":"response.completed","response":{"usage":{"input_tokens":1000,"input_tokens_details":{"cached_tokens":200},"output_tokens":500,"output_tokens_details":{"reasoning_tokens":0}}}}\n\n',
+        "application/octet-stream",
+      )
+      await RolloutLedger.writeAttempt({
+        version: 1,
+        id: crypto.randomUUID(),
+        owner: call.owner,
+        runID: rootID,
+        callID: call.id,
+        index: 0,
+        url: "https://fixture.invalid/responses",
+        method: "POST",
+        started: 1,
+        ended: 2,
+        status: "completed",
+        request: call.request,
+        response,
+        usageFinal: false,
+      })
+      await RolloutLedger.finishCall(call.owner, rootID, call.id, { status: "completed", transportCaptured: true })
+      await RolloutLedger.finishRun(call.owner, rootID, "completed")
+      expect((await ExecutionService.summary(session.id)).accounting.tokens.input.total).toBeNull()
+      await Usage.rebuild()
+      const stop = Usage.service()
+      try {
+        for (let i = 0; i < 500 && (await Usage.rebuildStatus())?.status !== "completed"; i++) await Bun.sleep(10)
+        expect((await Usage.rebuildStatus())?.status).toBe("completed")
+      } finally {
+        await stop()
+      }
+      const summary = await ExecutionService.summary(session.id)
+      expect(summary.accounting.tokens.input.total).toBe(1000)
+      expect(summary.accounting.apiEstimate.total).toBeCloseTo(0.0101)
+      expect(summary.cache.ratio).toBe(0.2)
+      expect((await ExecutionService.summary(session.id, rootID)).accounting).toEqual(summary.accounting)
+    }),
+  ))
 
 test("pausing a later round does not change the outcome of an earlier completed round", () =>
   runtime.run(() =>
