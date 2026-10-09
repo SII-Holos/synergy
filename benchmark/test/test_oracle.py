@@ -1,4 +1,5 @@
 import pytest
+from fixtures.task_copy import copy_task_fixture
 
 from synergy_bench.oracle import oracle_configuration, oracle_result
 
@@ -347,13 +348,11 @@ def test_oracle_uses_three_hours_for_both_stages_without_harness_or_inference(tm
 
 
 async def test_fixed_budget_reaches_pier_execution_timers(tmp_path):
-    import shutil
-
     from synergy_bench.prepare import BENCHMARK
     from synergy_bench.trial import BenchmarkTrial
 
     task = tmp_path / "task"
-    shutil.copytree(BENCHMARK / "test/fixtures/task", task)
+    copy_task_fixture(BENCHMARK / "test/fixtures/task", task)
     config = oracle_configuration(
         tmp_path, {"local_path": str(task)}, tmp_path / "attempt-001", cache=tmp_path / "cache", platform="linux/amd64"
     )
@@ -367,7 +366,6 @@ async def test_fixed_budget_reaches_pier_execution_timers(tmp_path):
 
 async def test_native_oracle_and_verifier_outlive_upstream_short_deadlines(tmp_path):
     import os
-    import shutil
     import uuid
 
     import pytest
@@ -379,7 +377,7 @@ async def test_native_oracle_and_verifier_outlive_upstream_short_deadlines(tmp_p
     if os.environ.get("SYNERGY_BENCH_DOCKER") != "1":
         pytest.skip("Explicit Docker deadline propagation integration")
     task = tmp_path / "task"
-    shutil.copytree(BENCHMARK / "test/fixtures/task", task)
+    copy_task_fixture(BENCHMARK / "test/fixtures/task", task)
     definition = (task / "task.toml").read_text()
     (task / "task.toml").write_text(
         definition.replace("timeout_sec = 90", "timeout_sec = 0.01").replace("timeout_sec = 30", "timeout_sec = 0.01")
@@ -484,7 +482,6 @@ def test_oracle_report_imports_raw_rewards_without_mutating_or_reexecuting(tmp_p
 
 async def test_native_oracle_timeout_still_runs_verifier(tmp_path):
     import os
-    import shutil
     import uuid
 
     import pytest
@@ -496,7 +493,7 @@ async def test_native_oracle_timeout_still_runs_verifier(tmp_path):
     if os.environ.get("SYNERGY_BENCH_DOCKER") != "1":
         pytest.skip("Explicit native oracle timeout integration")
     task = tmp_path / "task"
-    shutil.copytree(BENCHMARK / "test/fixtures/task", task)
+    copy_task_fixture(BENCHMARK / "test/fixtures/task", task)
     (task / "task.toml").write_text(
         (task / "task.toml").read_text().replace("[agent]\ntimeout_sec = 90", "[agent]\ntimeout_sec = 0.1")
     )
