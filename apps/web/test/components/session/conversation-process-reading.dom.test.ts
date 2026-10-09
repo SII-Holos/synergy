@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { page, url, errors, frames, settleConversation } from "../../support/conversation-process"
+import { page, url, errors, frames, contentPage, settleConversation } from "../../support/conversation-process"
 
 test("grouped reasoning uses exact Part location and the main paragraph anchor during body growth", async () => {
   await page.goto(`${url}?scrolling`)
@@ -476,3 +476,159 @@ test("main reading survives live actions and return to latest resumes the conver
   expect(await viewport.locator('[data-slot="activity-step"][data-part-id="reading-live-action"]').count()).toBe(1)
   expect(errors).toEqual([])
 })
+
+test("SDK conflicts recover in real conversation rows across activity modes without altering literal message text", async () => {
+  for (const mode of ["full", "balanced", "minimal"] as const) {
+    await contentPage("conflict")
+    await page
+      .getByText("I will check the project first.", { exact: true })
+      .waitFor()
+      .catch(async (error) => {
+        throw new Error(JSON.stringify({ url: page.url(), errors, html: await page.content() }), { cause: error })
+      })
+    await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 2)
+    await page.evaluate((mode) => window.__conversationProcess.mode(mode), mode)
+    await frames()
+    expect(await page.locator("[data-content-error]").count()).toBe(0)
+    expect(await page.getByText("Literal message: [object Object]", { exact: true }).count()).toBe(1)
+  }
+  expect(errors).toEqual([])
+}, 60000)
+
+test("each part clears only its own failure and keeps the existing Markdown mounted", async () => {
+  await contentPage("mixed")
+  await page
+    .getByText("Content unavailable: progress", { exact: true })
+    .waitFor()
+    .catch(async (error) => {
+      throw new Error(JSON.stringify({ url: page.url(), errors, html: await page.content() }), { cause: error })
+    })
+  await page.evaluate(() => {
+    window.answerNode = document.querySelector('[data-part-id="progress"] [data-component="markdown"]')
+    window.__conversationProcess.contentRecover("progress")
+  })
+  await page.getByText("Content unavailable: progress-2", { exact: true }).waitFor()
+  expect(await page.getByText("Content unavailable: progress", { exact: true }).count()).toBe(0)
+  expect(
+    await page.evaluate(
+      () => window.answerNode === document.querySelector('[data-part-id="progress"] [data-component="markdown"]'),
+    ),
+  ).toBe(true)
+  await page.evaluate(() => window.__conversationProcess.contentRecover("progress-2"))
+  await page.waitForFunction(() => !document.querySelector("[data-content-error]"))
+  expect(errors).toEqual([])
+}, 60000)
+
+test("manual retry is keyboard accessible, disables duplicate requests and clears the recovered error", async () => {
+  await contentPage("mixed")
+  await page.getByText("Content unavailable: progress", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.contentRecover("progress-2")
+    window.__conversationProcess.contentPending("progress")
+  })
+  const retry = page.getByRole("button", { name: "Retry loading content", exact: true })
+  await retry.focus()
+  await page.evaluate(() => {
+    window.answerNode = document.activeElement?.closest("[data-display-row]")
+  })
+  await retry.press("Enter")
+  const pending = page.getByRole("button", { name: "Retrying…", exact: true })
+  await pending.waitFor()
+  expect(await pending.isDisabled()).toBe(true)
+  await pending.evaluate((button) => (button as HTMLButtonElement).click())
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(2)
+  await page.evaluate(() => window.__conversationProcess.contentFinish("progress"))
+  await page.waitForFunction(() => !document.querySelector("[data-content-error]"))
+  expect(await page.evaluate(() => document.activeElement === window.answerNode)).toBe(true)
+  await contentPage("mixed")
+  await page.getByText("Content unavailable: progress", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.contentRecover("progress-2")
+    window.__conversationProcess.contentPending("progress")
+  })
+  await page.getByRole("button", { name: "Retry loading content", exact: true }).press("Enter")
+  await page.getByRole("button", { name: "Retrying…", exact: true }).waitFor()
+  await page.getByRole("button", { name: "Outside conversation", exact: true }).focus()
+  await page.evaluate(() => window.__conversationProcess.contentFinish("progress"))
+  await page.waitForFunction(() => !document.querySelector("[data-content-error]"))
+  expect(await page.evaluate(() => document.activeElement?.hasAttribute("data-outside-control"))).toBe(true)
+  expect(errors).toEqual([])
+}, 60000)
+
+test("exhausted conflicts show a sync retry and malformed errors use a readable fallback", async () => {
+  await contentPage("stalled")
+  await page.getByText("Couldn’t sync this content", { exact: true }).waitFor()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(8)
+  await frames()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(8)
+  await contentPage("malformed")
+  await page.getByText("Couldn’t load this content", { exact: true }).waitFor()
+  expect(await page.locator("[data-content-error]").innerText()).not.toContain("[object Object]")
+  expect(await page.getByRole("button", { name: "Retry loading content", exact: true }).count()).toBe(1)
+  expect(errors).toEqual([])
+}, 60000)
+
+test("stale accepted summaries revalidate without removing current content or replaying its entrance", async () => {
+  await page.goto(url)
+  const prose = page.getByText("I will check the project first.", { exact: true })
+  await prose.waitFor()
+  await page.evaluate(() => {
+    window.answerNode = document.querySelector('[data-part-id="progress"] [data-component="markdown"]')
+    window.__conversationProcess.contentStale()
+  })
+  await frames()
+  expect(await page.evaluate(() => window.__conversationProcess.contentPageLoads())).toBeGreaterThan(0)
+  expect(await page.evaluate(() => !!window.answerNode?.isConnected)).toBe(true)
+  expect(await prose.count()).toBe(1)
+  await page.evaluate(() => window.__conversationProcess.contentPageFinish())
+  await frames()
+  expect(
+    await page.evaluate(
+      () => window.answerNode === document.querySelector('[data-part-id="progress"] [data-component="markdown"]'),
+    ),
+  ).toBe(true)
+  expect(await prose.count()).toBe(1)
+  expect(await page.locator('[data-part-id="progress"] [data-motion-changing]').count()).toBe(0)
+})
+
+test("same-version summary refresh preserves a healthy pending body read", async () => {
+  await contentPage("pending-refresh")
+  const prose = page.getByText("I will check the project first.", { exact: true })
+  await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 1)
+  expect(await prose.count()).toBe(0)
+  await page.evaluate(() => window.__conversationProcess.contentStale())
+  await page.waitForFunction(() => window.__conversationProcess.contentPageLoads() > 0)
+  await page.evaluate(() => window.__conversationProcess.contentPageFinish())
+  await frames()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(1)
+  expect(await page.evaluate(() => window.__conversationProcess.contentAborts("progress"))).toBe(0)
+  await page.evaluate(() => window.__conversationProcess.contentFinish("progress"))
+  await prose.waitFor()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(1)
+  expect(await page.locator("[data-content-error]").count()).toBe(0)
+  expect(errors).toEqual([])
+}, 30000)
+
+test("reconnect renews invalidated body leases even when the summary version stays the same", async () => {
+  await contentPage("conflict")
+  await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 2)
+  await page.evaluate(() => window.__conversationProcess.contentReconnect())
+  await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 3)
+  expect(await page.locator("[data-content-error]").count()).toBe(0)
+  expect(errors).toEqual([])
+}, 30000)
+
+test("reconnect before the first summary page finishes restores invalidated bodies", async () => {
+  await contentPage("late-reconnect")
+  const prose = page.getByText("I will check the project first.", { exact: true })
+  await prose.waitFor()
+  await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") > 0)
+  const reads = await page.evaluate(() => window.__conversationProcess.contentReads("progress"))
+  await page.evaluate(() => window.__conversationProcess.contentReconnect())
+  await prose.waitFor({ state: "hidden" })
+  await page.evaluate(() => window.__conversationProcess.contentPageFinish())
+  await prose.waitFor()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBeGreaterThan(reads)
+  expect(await page.locator("[data-content-error]").count()).toBe(0)
+  expect(errors).toEqual([])
+}, 30000)

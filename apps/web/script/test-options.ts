@@ -25,6 +25,7 @@ const playwrightIsolated = [
   "test/components/session/workbench-navigation.render.test.ts",
   "test/components/session/workbench-layout.dom.test.tsx",
   "test/components/session/work-context.dom.test.ts",
+  "test/components/session/new-view.dom.test.ts",
 
   "test/components/workspace/builtin-workbench-panels.test.ts",
   "test/components/workspace/workspace-output-effects.test.ts",
@@ -57,7 +58,6 @@ const playwrightIsolated = [
   "test/components/session/conversation-process-reading.dom.test.ts",
   "test/components/session/conversation-process-virtualization.dom.test.ts",
   "test/components/session/conversation-presentation.dom.test.ts",
-  "test/components/session/conversation-process.dom.test.ts",
   "test/components/session/session-submission-status.dom.test.ts",
   "test/components/dialog/workspace-dialog.dom.test.ts",
   "test/components/dialog/directory-navigation.dom.test.ts",

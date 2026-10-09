@@ -1432,6 +1432,42 @@ export const SessionRoute = () =>
         }
       },
     )
+    .post(
+      "/:sessionID/part/pages",
+      describeRoute({
+        summary: "Get presentation summaries for a batch of messages' Parts",
+        description:
+          "Refresh-time fan-in for the Web conversation window: one request returns the bounded Part summary page for each of up to 100 messages; under HTTP/1.1-only deployments this avoids stalling the per-message fan-out behind the browser's connection limit.",
+        operationId: "session.partPages",
+        responses: {
+          200: {
+            description: "Bounded Part summary pages keyed by message ID",
+            content: { "application/json": { schema: resolver(SessionHistory.PartPages) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator(
+        "json",
+        z.object({
+          messageIDs: z.array(Identifier.schema("message")).min(1).max(100),
+          limit: z.number().int().min(1).max(100).optional(),
+        }),
+      ),
+      async (c) => {
+        const { messageIDs, limit } = c.req.valid("json")
+        await Session.flushPartWrites(c.req.valid("param").sessionID)
+        try {
+          return c.json(
+            await SessionHistory.partPages({ ...c.req.valid("param"), messageIDs: [...new Set(messageIDs)], limit }),
+          )
+        } catch (error) {
+          if (error instanceof SessionHistory.DisplayConflict) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
     .get(
       "/:sessionID/message/:messageID/part/:partID/content",
       describeRoute({

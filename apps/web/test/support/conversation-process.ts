@@ -53,6 +53,7 @@ type Fixture = {
   contentPending(id: string): void
   contentFinish(id: string): void
   contentReads(id: string): number
+  contentAborts(id: string): number
   contentReconnect(): void
   contentPageFinish(): void
   contentStale(): void

@@ -768,8 +768,11 @@ function ConversationDisplayRow(
       .then(() => {
         if (!alive || generation !== loadGeneration) return
         setLoadFailure(undefined)
-        for (const entry of retainedParts.values()) entry.lease.release()
-        retainedParts.clear()
+        for (const [partID, entry] of retainedParts) {
+          if (!partStates[partID]?.failed) continue
+          entry.lease.release()
+          retainedParts.delete(partID)
+        }
         setRetry((value) => value + 1)
       })
       .catch((error) => {
@@ -786,7 +789,7 @@ function ConversationDisplayRow(
     const wanted = new Set(current.parts.map((part) => part.id))
     for (const part of current.parts) {
       const previous = retainedParts.get(part.id)
-      if (previous?.version === part.content.version) continue
+      if (previous?.version === part.content.version && previous.lease.isCurrent?.() !== false) continue
       const lease = content.retain(part)
       retainedParts.set(part.id, { version: part.content.version, lease })
       previous?.lease.release()

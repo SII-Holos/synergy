@@ -134,6 +134,7 @@ if (new URL(location.href).searchParams.has("outer-paging"))
   ])
 const faults = new Map<string, "denied" | "conflict" | "stalled" | "pending" | "malformed">()
 const reads = new Map<string, number>()
+const aborts = new Map<string, number>()
 const completions = new Map<string, (response: Response) => void>()
 if (scenario) {
   setData("part", "root", 0, reconcile(part("root", "request", "text", "Literal message: [object Object]")))
@@ -143,7 +144,8 @@ if (scenario) {
     part("work", "progress-2", "text", "Second paragraph stays readable."),
     part("work", "command-0", "tool"),
   ])
-  if (scenario !== "late-reconnect")
+  if (scenario === "pending-refresh") faults.set("progress", "pending")
+  else if (scenario !== "late-reconnect")
     faults.set(
       "progress",
       scenario === "mixed"
@@ -189,9 +191,13 @@ if (scenario === "cold-user") {
   for (const item of data.part.root) faults.set(item.id, "pending")
 }
 const canonicalParts =
-  scenario === "late-reconnect" || scenario === "cold-process" || scenario === "cold-user"
+  scenario === "late-reconnect" ||
+  scenario === "pending-refresh" ||
+  scenario === "cold-process" ||
+  scenario === "cold-user"
     ? new Map(Object.entries(data.part).map(([id, parts]) => [id, [...parts]]))
     : undefined
+if (scenario === "pending-refresh") setData("part", "work", (parts) => parts.filter((part) => part.id !== "progress"))
 if (scenario === "cold-process") setData("part", "more", [])
 if (scenario === "cold-user") setData("part", "root", [])
 const scrolling = new URL(location.href).searchParams.has("scrolling")
@@ -243,8 +249,17 @@ const client = createSynergyClient({
         )
       if (fault === "malformed") return Response.json({ data: { message: { detail: "unavailable" } } }, { status: 500 })
       if (fault === "pending")
-        return new Promise((resolve) => {
-          completions.set(id, resolve)
+        return new Promise((resolve, reject) => {
+          const signal = request instanceof Request ? request.signal : undefined
+          const abort = () => {
+            aborts.set(id, (aborts.get(id) ?? 0) + 1)
+            reject(signal?.reason)
+          }
+          signal?.addEventListener("abort", abort, { once: true })
+          completions.set(id, (response) => {
+            signal?.removeEventListener("abort", abort)
+            resolve(response)
+          })
         })
       const body = (canonicalParts ? [...canonicalParts.values()] : Object.values(data.part))
         .flat()
@@ -348,6 +363,7 @@ const context: Partial<PluginConversationService> = {
       const lease = scenario ? materializer.retain(summary) : undefined
       return {
         ready: lease?.ready ?? Promise.resolve(),
+        isCurrent: lease?.isCurrent,
         release: () => {
           retained--
           lease?.release()
@@ -591,6 +607,7 @@ window.__conversationProcess = {
     completions.delete(id)
   },
   contentReads: (id) => reads.get(id) ?? 0,
+  contentAborts: (id) => aborts.get(id) ?? 0,
   contentReconnect() {
     materializer.invalidate("work")
     setHasPage(false)

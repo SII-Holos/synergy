@@ -45,6 +45,7 @@ export const UI_DEFAULTS = {
   username: "" as string,
   snapshot: true,
   compactReasoning: false,
+  welcomeGames: true,
   permission: "ask" as string, // resolved from backend { "*": "ask" } object
   sandboxEnabled: "true" as string,
   sandboxFallbackPolicy: "warn" as string,
@@ -333,6 +334,7 @@ export type GeneralStore = {
   colorScheme: ColorScheme
   snapshot: boolean
   compactReasoning: boolean
+  welcomeGames: boolean
   username: string
   theme: string
   locale: LocalePreference
@@ -459,6 +461,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       colorScheme,
       snapshot: UI_DEFAULTS.snapshot,
       compactReasoning: UI_DEFAULTS.compactReasoning,
+      welcomeGames: UI_DEFAULTS.welcomeGames,
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
       locale: UI_DEFAULTS.locale,
