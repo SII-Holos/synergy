@@ -32,6 +32,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let cleanup: (() => void) | undefined
   let readingAnchor: AutoScrollReadingAnchor | undefined
   let anchoredScrollTop: number | undefined
+  let movementOffset: number | undefined
   let resumeRequested = false
   let previousOffset = 0
   let interactionVersion = 0
@@ -49,6 +50,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     readingAnchor = undefined
     setReadingAnchorOwner(undefined)
     anchoredScrollTop = undefined
+    movementOffset = undefined
   }
   const preserveReadingAnchor = (target?: Element) => {
     if (!store.userScrolled) {
@@ -139,8 +141,13 @@ export function createAutoScroll(options: AutoScrollOptions) {
     options.onUserInteracted?.()
   }
 
-  const handleWheel = (e: WheelEvent) => {
+  const beginMovement = () => {
     anchoredScrollTop = undefined
+    movementOffset = scroll?.scrollTop
+  }
+
+  const handleWheel = (e: WheelEvent) => {
+    if (e.deltaY) beginMovement()
     if (e.deltaY < 0) stop()
     else if (e.deltaY > 0) resumeRequested = true
   }
@@ -151,7 +158,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handlePointerDown = () => {
-    anchoredScrollTop = undefined
+    beginMovement()
     if (followingLatest) stop()
     resumeRequested = true
     if (down) return
@@ -165,7 +172,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handleTouchStart = () => {
-    anchoredScrollTop = undefined
+    beginMovement()
     if (followingLatest) stop()
     resumeRequested = true
     if (down) return
@@ -178,12 +185,19 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]")) return
     if (event.key === " ") {
       if (event.target instanceof Element && event.target.closest("button, summary, [role=button]")) return
+      beginMovement()
       if (event.shiftKey) stop()
       else resumeRequested = true
       return
     }
-    if (["ArrowUp", "PageUp", "Home"].includes(event.key)) stop()
-    if (["ArrowDown", "PageDown", "End"].includes(event.key)) resumeRequested = true
+    if (["ArrowUp", "PageUp", "Home"].includes(event.key)) {
+      beginMovement()
+      stop()
+    }
+    if (["ArrowDown", "PageDown", "End"].includes(event.key)) {
+      beginMovement()
+      resumeRequested = true
+    }
   }
 
   const handleScroll = () => {
@@ -200,10 +214,14 @@ export function createAutoScroll(options: AutoScrollOptions) {
       return
     }
     if (!compensated && down) stop(resumeRequested)
-    if (!compensated) preserveReadingAnchor()
+    if (!compensated) {
+      movementOffset = undefined
+      preserveReadingAnchor()
+    }
   }
 
   const handleInteraction = (event?: Event) => {
+    movementOffset = undefined
     stop()
     preserveReadingAnchor(event && event.target instanceof Element ? event.target : undefined)
   }
@@ -221,9 +239,16 @@ export function createAutoScroll(options: AutoScrollOptions) {
         flushScrollToBottom()
         return
       }
+      if (movementOffset !== undefined && scroll && Math.abs(scroll.scrollTop - movementOffset) > 0.5) {
+        scheduleMeasure()
+        return
+      }
       readingAnchor?.restore()
       if (readingAnchor && !readingAnchor.owner.isConnected) preserveReadingAnchor()
-      if (scroll && readingAnchor) anchoredScrollTop = scroll.scrollTop
+      if (scroll && readingAnchor) {
+        anchoredScrollTop = scroll.scrollTop
+        if (movementOffset !== undefined) movementOffset = scroll.scrollTop
+      }
       scheduleMeasure()
     },
   )

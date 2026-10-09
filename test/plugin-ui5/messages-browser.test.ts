@@ -168,6 +168,30 @@ describe("production conversation history", () => {
       phase("reloaded")
       expect(diagnostics.errors.map((error) => error.message)).toEqual([])
     } catch (error) {
+      const page = browser.contexts()[0]?.pages()[0]
+      if (page && !page.isClosed())
+        console.info(
+          "[conversation history] failure viewport:",
+          await page
+            .evaluate(() => {
+              const viewport = document.querySelector<HTMLElement>("[data-conversation-viewport]")
+              if (!viewport) return { mounted: false }
+              const bounds = viewport.getBoundingClientRect()
+              return {
+                top: viewport.scrollTop,
+                height: viewport.scrollHeight,
+                client: viewport.clientHeight,
+                rows: [...viewport.querySelectorAll<HTMLElement>('[data-display-row][data-message-role="user"]')]
+                  .map((row) => ({
+                    text: row.textContent?.slice(0, 80),
+                    top: row.getBoundingClientRect().top - bounds.top,
+                    height: row.getBoundingClientRect().height,
+                  }))
+                  .slice(0, 30),
+              }
+            })
+            .catch((captureError) => ({ captureError: String(captureError) })),
+        )
       throw new AggregateError([error, ...(diagnostics?.errors ?? [])], "Conversation real-host acceptance failed")
     } finally {
       diagnostics?.dispose()

@@ -79,6 +79,8 @@ History location must follow message and Part identity through delayed preceding
 
 An explicit process location must replace the old reading anchor before moving the inner virtualizer. Test a location and body hydration in the same browser task, before the native scroll event arrives; pausing at the previous position can otherwise restore that stale anchor and evict the requested Part. Keep ordinary pause capture and later native reading ownership intact.
 
+For the outer viewport, distinguish native movement already applied before scroll delivery from resize compensation. A resize must not undo the pending user's offset change. Test compensation both before and after that native movement, retain the new reading anchor on subsequent growth, and clear pending movement on following or rebinding. When a production history assertion fails, capture bounded viewport geometry and mounted fixture rows before teardown so timing failures retain observable evidence.
+
 Cold latest navigation and return-to-latest establish viewport-owned follow intent rather than extending a component settling timeout. Delay body reads beyond that timeout and verify the latest reply remains visible, then exercise reading input and viewport replacement. Cancel queued jumps when reading begins; a pending forced frame cannot restore following after the user navigates away.
 
 ## Execution details
