@@ -155,8 +155,8 @@ async function resolveBash(input: {
   prepare: { mock: { calls: any[][] } }
 }) {
   const executions = new Map<string, Promise<any>>()
-  const originalRegistryTools = ToolRegistry.tools
-  ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool(input.prepare)])
+  const originalRegistryTools = ToolRegistry.catalog
+  ;(ToolRegistry.catalog as any) = mock(async () => [bashRegistryTool(input.prepare)])
   try {
     const resolved = await ToolResolver.resolveWithAvailability({
       agent: agentFor(input.controlProfile),
@@ -170,11 +170,11 @@ async function resolveBash(input: {
       bash: resolved.executionTools.bash as any,
       executions,
       restore: () => {
-        ;(ToolRegistry.tools as any) = originalRegistryTools
+        ;(ToolRegistry.catalog as any) = originalRegistryTools
       },
     }
   } catch (error) {
-    ;(ToolRegistry.tools as any) = originalRegistryTools
+    ;(ToolRegistry.catalog as any) = originalRegistryTools
     throw error
   }
 }
@@ -407,9 +407,9 @@ describe("sandbox denial is actionable for the model", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const prepare = spyOn(SandboxHost, "prepareWrapper")
-          const originalRegistryTools = ToolRegistry.tools
+          const originalRegistryTools = ToolRegistry.catalog
           const executions = new Map<string, Promise<any>>()
-          ;(ToolRegistry.tools as any) = mock(async () => [
+          ;(ToolRegistry.catalog as any) = mock(async () => [
             {
               id: "bash",
               description: "Bash tool",
@@ -457,7 +457,7 @@ describe("sandbox denial is actionable for the model", () => {
             expect(outcome.error).toMatch(/partial side effects/i)
             expect(outcome.error).toMatch(/no specific path could be identified/i)
           } finally {
-            ;(ToolRegistry.tools as any) = originalRegistryTools
+            ;(ToolRegistry.catalog as any) = originalRegistryTools
             prepare.mockRestore()
           }
         },

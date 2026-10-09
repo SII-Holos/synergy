@@ -146,8 +146,8 @@ async function waitForPermission(sessionID: string, timeoutMs = 2_000) {
 
 async function resolveBash(input: { controlProfile: string; sessionID: string; executed: string[] }) {
   const executions = new Map<string, Promise<any>>()
-  const originalRegistryTools = ToolRegistry.tools
-  ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool(input.executed)])
+  const originalRegistryTools = ToolRegistry.catalog
+  ;(ToolRegistry.catalog as any) = mock(async () => [bashRegistryTool(input.executed)])
   try {
     const resolved = await ToolResolver.resolveWithAvailability({
       agent: agentFor(input.controlProfile),
@@ -161,11 +161,11 @@ async function resolveBash(input: { controlProfile: string; sessionID: string; e
       bash: resolved.executionTools.bash as any,
       executions,
       restore: () => {
-        ;(ToolRegistry.tools as any) = originalRegistryTools
+        ;(ToolRegistry.catalog as any) = originalRegistryTools
       },
     }
   } catch (error) {
-    ;(ToolRegistry.tools as any) = originalRegistryTools
+    ;(ToolRegistry.catalog as any) = originalRegistryTools
     throw error
   }
 }

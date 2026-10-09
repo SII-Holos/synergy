@@ -17,6 +17,8 @@ For each model turn, the session tool resolver collects ephemeral tools, built-i
 - `ToolCatalog` definitions containing only serializable IDs, descriptions, and JSON Schemas for the Agent worker and model;
 - Control Plane execution callbacks plus an executor-class mapping for `ToolScheduler`.
 
+An owner may provide a discovery summary and a lazy tool declaration. Catalog selection checks identity, Workspace requirements, policy, exposure and companions before initializing those definitions. Only selected tools load their parameter schemas and implementations. Import reuse never shares caller-specific initialized state; loaded identity and execution requirements must match the declaration. Initialization failure suppresses dependent companions. Auto-expansion resolves the real schema before decoding and validating the request facade; deferred tools have no placeholder schema or permissive execution path.
+
 The Agent worker never receives an `execute()` callback. It emits proposed calls and completes its provider turn. After the worker stream is disposed, the Control Plane applies the runtime pipeline:
 
 1. verify that the current execution context permits the tool

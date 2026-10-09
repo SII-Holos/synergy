@@ -1,6 +1,7 @@
 import type { StoreOptions } from "../../src/storage/sql-contract"
 
 export const POSTGRES_TEST_FILES = [
+  "test/tool/lazy-catalog.test.ts",
   "test/scope/migration-empty.test.ts",
   "test/migration/empty-input.test.ts",
   "test/migration/empty-input-owners.test.ts",
