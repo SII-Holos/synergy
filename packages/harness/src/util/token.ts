@@ -1,4 +1,4 @@
-import type { Tiktoken } from "js-tiktoken"
+import type { Tiktoken } from "tiktoken/lite"
 
 type EncodingName = "o200k_base" | "cl100k_base"
 
@@ -24,7 +24,7 @@ export namespace Token {
   }
 
   // ---------------------------------------------------------------------------
-  // Model-aware tokenization via js-tiktoken
+  // Model-aware tokenization via the selected tiktoken encoding
   // ---------------------------------------------------------------------------
 
   const encoderCache = new Map<EncodingName, Tiktoken>()
@@ -42,13 +42,16 @@ export namespace Token {
     if (pending) return pending
     const loading = (async () => {
       try {
-        // The main package loads every rank table. The public lite entry uses
-        // the exact same encoder with just the selected model's rank table.
+        // The lite WASM entry loads only the selected ranks. Keep the two bounded
+        // encoders for this process's lifetime; no Runtime identity enters them.
+        // https://github.com/dqbd/tiktoken#usage
         const [{ Tiktoken }, ranks] = await Promise.all([
-          import("js-tiktoken/lite"),
-          encoding === "o200k_base" ? import("js-tiktoken/ranks/o200k_base") : import("js-tiktoken/ranks/cl100k_base"),
+          import("tiktoken/lite"),
+          encoding === "o200k_base"
+            ? import("tiktoken/encoders/o200k_base.json")
+            : import("tiktoken/encoders/cl100k_base.json"),
         ])
-        const encoder = new Tiktoken(ranks.default)
+        const encoder = new Tiktoken(ranks.default.bpe_ranks, ranks.default.special_tokens, ranks.default.pat_str)
         encoderCache.set(encoding, encoder)
         return encoder
       } catch {

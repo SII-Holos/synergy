@@ -6,6 +6,8 @@ import { migrations } from "../../src/scope/migration"
 import { ScopeLibraryStore } from "../../src/scope/library-store"
 import { Global } from "../../src/global"
 import { Storage } from "../../src/storage/storage"
+import { MigrationRegistry } from "../../src/migration/registry"
+import { runMigrations } from "../../src/migration"
 
 const migration = migrations.find((entry) => entry.id === "20260624-scope-global-to-home")!
 
@@ -91,5 +93,26 @@ test("failed root discovery cannot prove empty history", async () => {
     } finally {
       scan.mockRestore()
     }
+  })
+})
+
+test("a library-only orphan still executes through startup completion", async () => {
+  const removed: string[] = []
+  await using fixture = await migrationFixture({
+    register() {
+      ScopeLibraryStore.register({
+        experienceScopeIDs: () => ["legacy-orphan"],
+        removeExperiencesByScope(scope) {
+          removed.push(scope)
+          return 1
+        },
+        renameExperienceScope: () => 0,
+      })
+    },
+  })
+  await fixture.run(async () => {
+    MigrationRegistry.register("scope", [migrations.find((entry) => entry.id === "20260424-scope-reclaim-orphans")!])
+    expect((await runMigrations({ output: "silent" })).completed).toBe(1)
+    expect(removed).toEqual(["legacy-orphan"])
   })
 })

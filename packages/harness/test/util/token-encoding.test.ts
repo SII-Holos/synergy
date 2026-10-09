@@ -12,6 +12,13 @@ for (const model of ["gpt-4", "gpt-4o"]) {
       "",
       "a\u0301🙂\n\t",
       "<|endoftext|>",
+      "<|fim_prefix|>prefix<|fim_middle|>suffix<|fim_suffix|>",
+      "مرحبا بالعالم 日本語 실험 계획",
+      "\ud800\udc00\ud800",
+      ...Array.from(
+        { length: 100 },
+        (_, index) => `试验 ${index}: ${"a\u0301🧪; temperature=800°C\n".repeat(index + 1)}`,
+      ),
     ]
     const counts = await Promise.all(inputs.map((input) => Token.countModel(model, input)))
     for (const [index, input] of inputs.entries()) {

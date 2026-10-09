@@ -112,6 +112,8 @@ Explicit `execution: session` migrations prepare derived history on demand, inde
 
 Record-only migrations may declare `emptyInput` prefixes only when absence of every input guarantees that their body has no effects. Startup checks those prefixes and writes consecutive completion markers in one ownership-fenced transaction. Each ordinary migration ends the batch, so newly introduced records are checked again. Deferred historical input and existing cohorts disable the shortcut; filesystem, snapshot ownership, configuration and schema preparation still use their own migration bodies. On-access registrations may share the same completion transaction without running their per-Session transformations. A failed commit does not publish any completion from the batch.
 
+Startup migrations with a read-only `isApplied` proof can join that completion transaction. A false proof preserves the ordinary body and a failed proof rolls back the group. The immediate-root index can prove a nested input absent; an existing root still requires the exact prefix probe. These proofs are local to the transaction and cannot skip later changes made by an ordinary migration.
+
 ## Full tool outputs
 
 Applications can pair `StoredToolOutput.persistence()` with `read_tool_output` to retain complete results in the selected Storage artifact backend. The bounded reader uses namespace-scoped immutable references and exact imported aliases without acquiring an Environment or mounting a Workspace. See [the output persistence decision](../decisions/implemented/architecture/2026-10-09-read-persisted-tool-outputs-without-an-environment.md).

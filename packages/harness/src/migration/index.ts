@@ -329,10 +329,10 @@ async function runMigrationsInternal(
         continue
       }
 
-      // Only declared record-only no-ops and on-access registrations may share
+      // Only proven no-ops and on-access registrations may share
       // completion. A normal migration remains a durable boundary; its external
       // effects never enter a retryable database callback.
-      const completed = await completeEmptyMigrations(ordered.slice(index), logs, options.hasHistoricalInputs)
+      const completed = await completeVerifiedMigrations(ordered.slice(index), logs, options.hasHistoricalInputs)
       if (completed.length) {
         for (const entry of completed) {
           logs.get(entry.domain)![entry.migration.id] = entry.completedAt
@@ -457,7 +457,7 @@ async function runMigrationsInternal(
   }
 }
 
-async function completeEmptyMigrations(
+async function completeVerifiedMigrations(
   ordered: Array<{ domain: string; migration: Migration }>,
   logs: Map<string, Record<string, number>>,
   hasHistoricalInputs: boolean,
@@ -471,7 +471,7 @@ async function completeEmptyMigrations(
     if (
       migration.execution === "maintenance" ||
       migration.execution === "after-convergence" ||
-      (!onAccess && (!migration.emptyInput || hasHistoricalInputs)) ||
+      (!onAccess && ((!migration.emptyInput && !migration.isApplied) || hasHistoricalInputs)) ||
       migration.dependsOn?.some((dependency) => dependency.includes("/") && !logs.has(dependency.split("/")[0]))
     )
       break
@@ -483,14 +483,20 @@ async function completeEmptyMigrations(
   return Storage.transaction(async (tx) => {
     const cohorts = await tx.readMany(candidates.map(({ domain, migration }) => [...cohortRoot, domain, migration.id]))
     const empty = new Map<string, boolean>()
+    let roots: Set<string> | undefined
     const completed: Array<(typeof ordered)[number] & { completedAt: number }> = []
     for (const [index, entry] of candidates.entries()) {
       if (cohorts[index] !== undefined) break
       const onAccess = entry.migration.onAccess || entry.migration.execution === "session"
+      const applied = !onAccess && entry.migration.isApplied ? await entry.migration.isApplied() : false
+      if (!onAccess && !applied && !entry.migration.emptyInput) break
       let applicable = true
-      for (const prefix of onAccess ? [] : entry.migration.emptyInput!) {
+      for (const prefix of onAccess || applied ? [] : entry.migration.emptyInput!) {
         const key = JSON.stringify(prefix)
-        if (!empty.has(key)) empty.set(key, !(await tx.queryKeys({ prefix, limit: 1 })).length)
+        if (!empty.has(key)) {
+          roots ??= new Set(await tx.scan([]))
+          empty.set(key, !roots.has(prefix[0]) || !(await tx.queryKeys({ prefix, limit: 1 })).length)
+        }
         if (!empty.get(key)) {
           applicable = false
           break

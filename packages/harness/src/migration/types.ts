@@ -12,6 +12,7 @@ export interface Migration {
   onAccess?: true
   /** All inputs are records below these prefixes; when all are empty, up has no effects. */
   emptyInput?: string[][]
+  /** Read-only proof of the current state; startup proofs run inside the completion transaction. */
   isApplied?(): Promise<boolean>
   execution?: "startup" | "session" | "after-convergence" | "maintenance"
   upSession?(

@@ -406,9 +406,9 @@
     "gray-matter": "4.0.3",
     "hono": "catalog:",
     "ignore": "7.0.5",
-    "js-tiktoken": "1.0.21",
     "jsonc-parser": "3.3.1",
     "remeda": "catalog:",
+    "tiktoken": "1.0.22",
     "ulid": "catalog:",
     "zod": "catalog:"
   },
@@ -419,6 +419,7 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "hono-openapi": "catalog:",
+    "js-tiktoken": "1.0.21",
     "typescript": "catalog:"
   }
 }

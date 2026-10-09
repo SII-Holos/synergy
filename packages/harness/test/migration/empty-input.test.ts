@@ -5,6 +5,7 @@ import { getMigrationStatus, runMigrations } from "../../src/migration"
 import { SessionCompat } from "../../src/session/compat-import"
 import { Storage } from "../../src/storage/storage"
 import type { Migration } from "../../src/migration/types"
+import { StoreTransaction } from "../../src/storage/transactional-store"
 
 function transform(id: string, calls: string[]): Migration {
   return {
@@ -137,5 +138,95 @@ test("empty input cannot bypass an unselected dependency or change dry-run state
     expect((await getMigrationStatus()).first.pending).toHaveLength(1)
     expect((await getMigrationStatus()).second.pending).toHaveLength(1)
     expect(calls).toEqual([])
+  })
+})
+
+test("already applied startup migrations share completion without replaying their bodies", async () => {
+  await using fixture = await migrationFixture()
+  await fixture.run(async () => {
+    const calls: string[] = []
+    const applied = (id: string): Migration => ({
+      id,
+      description: id,
+      isApplied: async () => true,
+      async up() {
+        calls.push(id)
+      },
+    })
+    MigrationRegistry.register("applied", [applied("01"), applied("02")])
+    const writes = spyOn(Storage, "write")
+    try {
+      expect((await runMigrations({ output: "silent" })).completed).toBe(2)
+      expect(calls).toEqual([])
+      expect(writes.mock.calls.filter(([key]) => key.join("/") === "meta/migration/log-applied")).toHaveLength(1)
+    } finally {
+      writes.mockRestore()
+    }
+  })
+})
+
+test("a false applied proof keeps the normal migration boundary and invalidates later proofs", async () => {
+  await using fixture = await migrationFixture()
+  await fixture.run(async () => {
+    const calls: string[] = []
+    const migration = (id: string): Migration => ({
+      id,
+      description: id,
+      isApplied: async () => (await Storage.readMany<string>([["version"]]))[0] === id,
+      async up() {
+        calls.push(id)
+        await Storage.write(["version"], id)
+      },
+    })
+    await Storage.write(["version"], "01")
+    MigrationRegistry.register("applied", [migration("01"), migration("02"), migration("03")])
+    expect((await runMigrations({ output: "silent" })).completed).toBe(3)
+    expect(calls).toEqual(["02", "03"])
+    expect(await Storage.read<string>(["version"])).toBe("03")
+  })
+})
+
+test("an applied proof failure cannot publish an earlier completion from the same group", async () => {
+  await using fixture = await migrationFixture()
+  await fixture.run(async () => {
+    MigrationRegistry.register("applied", [
+      { id: "01", description: "first", isApplied: async () => true, async up() {} },
+      {
+        id: "02",
+        description: "failed proof",
+        isApplied: async () => {
+          throw new Error("proof unavailable")
+        },
+        async up() {},
+      },
+    ])
+    await expect(runMigrations({ output: "silent" })).rejects.toThrow("proof unavailable")
+    expect((await getMigrationStatus()).applied.pending).toHaveLength(2)
+  })
+})
+
+test("absent root proof avoids one indexed query per empty migration input", async () => {
+  await using fixture = await migrationFixture()
+  await fixture.run(async () => {
+    await Storage.write(["retained", "record"], { keep: true })
+    MigrationRegistry.register(
+      "empty-input",
+      Array.from({ length: 32 }, (_, index) => ({
+        id: String(index).padStart(2, "0"),
+        description: "empty historical input",
+        emptyInput: [[`absent-${index}`, "nested"]],
+        async up() {
+          throw new Error("Empty historical body must not execute")
+        },
+      })),
+    )
+    const queries = spyOn(StoreTransaction.prototype, "queryKeys")
+    try {
+      expect((await runMigrations({ output: "silent" })).completed).toBe(32)
+      expect(queries).not.toHaveBeenCalled()
+      expect(await Storage.read<{ keep: boolean }>(["retained", "record"])).toEqual({ keep: true })
+    } finally {
+      queries.mockRestore()
+    }
   })
 })

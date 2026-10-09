@@ -2032,6 +2032,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260619-snapshot-per-session",
+    emptyInput: [["sessions"]],
     description:
       "Restructure snapshots from per-scope shared to per-session isolated repos with git alternates for backward hash resolution",
     async up(progress) {

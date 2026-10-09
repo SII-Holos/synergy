@@ -49,6 +49,11 @@ export const migrations: Migration[] = [
   {
     scope: "scope",
     id: "20260424-scope-reclaim-orphans",
+    async isApplied() {
+      if (ScopeLibraryStore.get()) return false
+      const roots = new Set(await Storage.scan([]))
+      return !["sessions", "notes", "agenda"].some((root) => roots.has(root))
+    },
     description: "Consolidate orphan scope data (no active project, no worktree) into a reclaimed scope",
     async up(progress) {
       const now = Date.now()
