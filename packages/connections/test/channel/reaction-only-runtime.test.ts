@@ -1,12 +1,14 @@
-import { afterAll as afterRuntimeTests, describe, expect, test } from "bun:test"
+import { afterAll as afterRuntimeTests, describe, expect, spyOn, test } from "bun:test"
 import { Channel } from "../../src/channel"
 import { ChannelOutbound } from "../../src/channel/outbound"
 import {
   findReactionOnlyIntent,
+  deliverReactionOnlyReaction,
   reactionOnlyResolved,
   reactionOnlyRootResolved,
   resolveReactionTarget,
 } from "../../src/channel/reaction-only-runtime"
+import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -15,6 +17,7 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import type { Provider } from "../../src/channel/types"
 import { testRuntime } from "../support/runtime"
+import { FeishuReactionError } from "../../src/channel/provider/feishu"
 
 const runtime = await testRuntime()
 
@@ -64,7 +67,7 @@ function provider(type: string, calls: Calls, options: { failReaction?: boolean;
   }
   if (options.canReact !== false) {
     value.addReaction = async (input) => {
-      if (options.failReaction) throw new Error("reaction rejected by provider")
+      if (options.failReaction) throw new FeishuReactionError("reaction rejected by provider", 400, 231001)
       calls.reactions.push(input)
       return { reactionId: "reaction_1" }
     }
@@ -129,7 +132,13 @@ async function assistant(
 }
 
 /** Completed reaction-only tool part, i.e. what the tool persists. */
-async function reactionOnlyRequest(input: { sessionID: string; rootID: string; reaction: string }) {
+async function reactionOnlyRequest(input: {
+  sessionID: string
+  rootID: string
+  reaction: string
+  text?: string
+  metadata?: Record<string, unknown>
+}) {
   const toolMessage = await assistant(input.sessionID, { rootID: input.rootID, finish: "tool-calls" })
   await Session.updatePart({
     id: Identifier.ascending("part"),
@@ -147,6 +156,20 @@ async function reactionOnlyRequest(input: { sessionID: string; rootID: string; r
       time: { start: Date.now(), end: Date.now() },
     },
   })
+  if (input.text) {
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: toolMessage.id,
+      sessionID: input.sessionID,
+      type: "text",
+      text: input.text,
+    })
+  }
+  return (await Session.updateMessage({
+    ...toolMessage,
+    finish: "stop",
+    metadata: input.metadata,
+  })) as MessageV2.Assistant
 }
 
 const replyMetadata = {
@@ -170,8 +193,7 @@ describe("Channel reaction-only terminal delivery", () => {
             endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
           })
           const rootID = await channelRoot({ sessionID: session.id, inboundId: "om_inbound" })
-          await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "SILENT" })
-          await assistant(session.id, { rootID, metadata: replyMetadata })
+          await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "SILENT", metadata: replyMetadata })
 
           await waitFor(() => calls.reactions.length > 0)
           await Bun.sleep(25)
@@ -200,8 +222,7 @@ describe("Channel reaction-only terminal delivery", () => {
             endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
           })
           const rootID = await channelRoot({ sessionID: session.id, inboundId: "om_reply_in_topic" })
-          await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "DONE" })
-          await assistant(session.id, { rootID, metadata: replyMetadata })
+          await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "DONE", metadata: replyMetadata })
 
           await waitFor(() => calls.reactions.length > 0)
           await Bun.sleep(25)
@@ -231,8 +252,7 @@ describe("Channel reaction-only terminal delivery", () => {
             endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
           })
           const rootID = await channelRoot({ sessionID: session.id })
-          await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "SILENT" })
-          await assistant(session.id, { rootID, metadata: replyMetadata })
+          await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "SILENT", metadata: replyMetadata })
 
           await waitFor(() => calls.reactions.length > 0)
           expect(calls.reactions[0]?.messageId).toBe("msg_topic_root")
@@ -257,8 +277,13 @@ describe("Channel reaction-only terminal delivery", () => {
             endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
           })
           const rootID = await channelRoot({ sessionID: session.id, inboundId: "om_inbound" })
-          await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "SILENT" })
-          const terminal = await assistant(session.id, { rootID, text: "explaining", metadata: replyMetadata })
+          const terminal = await reactionOnlyRequest({
+            sessionID: session.id,
+            rootID,
+            reaction: "SILENT",
+            text: "explaining",
+            metadata: replyMetadata,
+          })
 
           await waitFor(async () => {
             const current = await MessageV2.get({ sessionID: session.id, messageID: terminal.id })
@@ -295,9 +320,10 @@ describe("Channel reaction-only terminal delivery", () => {
             endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
           })
           const rootID = await channelRoot({ sessionID: session.id, inboundId: "om_inbound" })
-          await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "SILENT" })
-          await assistant(session.id, {
+          await reactionOnlyRequest({
+            sessionID: session.id,
             rootID,
+            reaction: "SILENT",
             metadata: { ...replyMetadata, channelReactionOnlyDelivered: "SILENT" },
           })
 
@@ -311,6 +337,197 @@ describe("Channel reaction-only terminal delivery", () => {
     })
   })
 
+  for (const resolved of [undefined, "delivered", "failed"] as const) {
+    deliveryTest(
+      `delivers a later terminal answer after an earlier ${resolved ?? "unresolved"} reaction-only intent`,
+      async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const type = `reaction-only-continuation-${crypto.randomUUID()}`
+            const calls: Calls = { reactions: [], replies: [], pushes: [] }
+            const selectedProvider = provider(type, calls)
+            const replies = spyOn(selectedProvider, "replyMessage")
+            Channel.registerProvider(selectedProvider)
+            const dispose = ChannelOutbound.init({ getProvider: Channel.getProvider })
+            try {
+              const session = await Session.create({
+                endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
+              })
+              const rootID = await channelRoot({ sessionID: session.id, inboundId: "om_inbound" })
+              const artifact = await assistant(session.id, { rootID, finish: "tool-calls" })
+              const assetID = await Asset.write(
+                Buffer.from("Private reaction-only artifact"),
+                "text/plain",
+                "private.txt",
+              )
+              await Session.updatePart({
+                id: Identifier.ascending("part"),
+                sessionID: session.id,
+                messageID: artifact.id,
+                type: "tool",
+                tool: "fixture_artifact",
+                callID: "private_artifact",
+                state: {
+                  status: "completed",
+                  input: {},
+                  output: "Private artifact created",
+                  title: "Private artifact",
+                  metadata: {},
+                  time: { start: Date.now(), end: Date.now() },
+                  attachments: [
+                    {
+                      id: Identifier.ascending("part"),
+                      sessionID: session.id,
+                      messageID: artifact.id,
+                      type: "attachment",
+                      mime: "text/plain",
+                      filename: "private.txt",
+                      url: `asset://${assetID}`,
+                      presentation: { purpose: "deliverable" },
+                    },
+                  ],
+                },
+              })
+              await reactionOnlyRequest({
+                sessionID: session.id,
+                rootID,
+                reaction: "SILENT",
+                metadata:
+                  resolved === "delivered"
+                    ? { channelReactionOnlyDelivered: "SILENT", channelOutboundSent: true }
+                    : resolved === "failed"
+                      ? { channelReactionOnlyError: "SILENT" }
+                      : undefined,
+              })
+              const terminal = await assistant(session.id, {
+                rootID,
+                text: "Here is the requested follow-up answer",
+                metadata: replyMetadata,
+              })
+
+              await waitFor(async () => {
+                const current = await MessageV2.get({ sessionID: session.id, messageID: terminal.id })
+                return current.info.metadata?.channelOutboundSent === true
+              })
+              expect(calls.replies).toEqual(["msg_topic_root"])
+              expect(replies).toHaveBeenCalledWith(
+                expect.objectContaining({
+                  parts: [{ type: "text", text: "Here is the requested follow-up answer" }],
+                }),
+              )
+              expect(calls.reactions).toEqual([])
+              expect(calls.pushes).toEqual([])
+              const current = await MessageV2.get({ sessionID: session.id, messageID: terminal.id })
+              expect(current.info.metadata?.channelReactionOnlyDelivered).toBeUndefined()
+            } finally {
+              dispose()
+            }
+          },
+        })
+      },
+    )
+  }
+
+  for (const outcome of ["delivered", "failed"] as const) {
+    deliveryTest(`keeps a repeated reaction-only terminal silent after ${outcome}`, async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const type = `reaction-only-repeat-${crypto.randomUUID()}`
+          const calls: Calls = { reactions: [], replies: [], pushes: [] }
+          const selectedProvider = provider(type, calls)
+          Channel.registerProvider(selectedProvider)
+          const session = await Session.create({
+            endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
+          })
+          const rootID = await channelRoot({ sessionID: session.id, inboundId: "om_inbound" })
+          await reactionOnlyRequest({
+            sessionID: session.id,
+            rootID,
+            reaction: "SILENT",
+            metadata:
+              outcome === "delivered"
+                ? { channelReactionOnlyDelivered: "SILENT", channelOutboundSent: true }
+                : { channelReactionOnlyError: "SILENT" },
+          })
+          const terminal = await reactionOnlyRequest({
+            sessionID: session.id,
+            rootID,
+            reaction: "SILENT",
+            text: "Do not send this",
+            metadata: replyMetadata,
+          })
+          const dispose = ChannelOutbound.init({ getProvider: Channel.getProvider })
+          try {
+            await Session.mergeMessageMetadata({
+              sessionID: session.id,
+              messageID: terminal.id,
+              metadata: { updated: true },
+            })
+            await Bun.sleep(100)
+            expect(calls).toEqual({ reactions: [], replies: [], pushes: [] })
+          } finally {
+            dispose()
+          }
+        },
+      })
+    })
+  }
+
+  for (const failedWrite of ["channelReactionOnlyAttempted", "channelReactionOnlyDelivered"] as const) {
+    deliveryTest(`does not repeat a provider effect after a failed ${failedWrite} write`, async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const rootID = await channelRoot({ sessionID: session.id, inboundId: "om_inbound" })
+          const terminal = await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "SILENT" })
+          const calls: Calls = { reactions: [], replies: [], pushes: [] }
+          const selectedProvider = provider("reaction-confirmation-failure", calls)
+          const original = Session.mergeMessageMetadata
+          const writes = spyOn(Session, "mergeMessageMetadata").mockImplementation(
+            Object.assign(
+              async (input: Parameters<typeof original>[0]) => {
+                if (input.metadata[failedWrite]) throw new Error("reaction write failed")
+                return original(input)
+              },
+              { force: original.force, schema: original.schema },
+            ),
+          )
+          try {
+            const input = {
+              provider: selectedProvider,
+              accountId: "acct_test",
+              messageId: "om_inbound",
+              sessionID: session.id,
+              terminalMessageID: terminal.id,
+              rootID,
+              reaction: "SILENT",
+            }
+            const confirmationFailed = failedWrite === "channelReactionOnlyDelivered"
+            expect(await deliverReactionOnlyReaction(input)).toMatchObject({
+              status: confirmationFailed ? "ambiguous" : "failed",
+            })
+            expect(await deliverReactionOnlyReaction(input)).toMatchObject({
+              status: confirmationFailed ? "skipped" : "failed",
+            })
+            expect(calls.reactions).toHaveLength(confirmationFailed ? 1 : 0)
+            const persisted = await MessageV2.get({ sessionID: session.id, messageID: terminal.id })
+            expect(persisted.info.metadata?.channelReactionOnlyAttempted).toBe(
+              confirmationFailed ? "SILENT" : undefined,
+            )
+            expect(persisted.info.metadata?.channelReactionOnlyDelivered).toBeUndefined()
+          } finally {
+            writes.mockRestore()
+          }
+        },
+      })
+    })
+  }
   deliveryTest("keeps normal text delivery when no reaction-only intent exists", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -403,11 +620,42 @@ describe("Reaction-only intent helpers", () => {
         ],
       }),
     ]
-    expect(findReactionOnlyIntent(messages, "root")).toEqual({ reaction: "SILENT", partID: "p1" })
+    expect(findReactionOnlyIntent(messages, "root", "m1")).toEqual({ reaction: "SILENT", partID: "p1" })
+    messages[0]!.info = {
+      ...messages[0]!.info,
+      error: { name: "UnknownError", data: { message: "generation failed" } },
+    } as MessageV2.Assistant
+    expect(findReactionOnlyIntent(messages, "root", "m1")).toBeUndefined()
   })
 
-  test("treats a root with a delivered or failed reaction-only turn as having no intent", () => {
-    for (const marker of [{ channelReactionOnlyDelivered: "SILENT" }, { channelReactionOnlyError: "SILENT" }]) {
+  test("does not carry an earlier intent into a later terminal or another root", () => {
+    const messages = [
+      message({
+        id: "m1",
+        rootID: "root",
+        role: "assistant",
+        parts: [
+          toolPart({
+            id: "p1",
+            messageID: "m1",
+            tool: REACTION_TOOL,
+            metadata: { intent: { type: "reaction_only", reaction: "SILENT" } },
+          }),
+        ],
+      }),
+      message({ id: "m2", rootID: "root", role: "assistant", parts: [] }),
+    ]
+    expect(findReactionOnlyIntent(messages, "root", "m2")).toBeUndefined()
+    expect(findReactionOnlyIntent(messages, "other", "m1")).toBeUndefined()
+    expect(findReactionOnlyIntent(messages, "root", "missing")).toBeUndefined()
+  })
+
+  test("keeps terminal intent distinct from an attempted or resolved root", () => {
+    for (const marker of [
+      { channelReactionOnlyDelivered: "SILENT" },
+      { channelReactionOnlyError: "SILENT" },
+      { channelReactionOnlyAttempted: "SILENT" },
+    ]) {
       const messages = [
         message({
           id: "m0",
@@ -437,7 +685,7 @@ describe("Reaction-only intent helpers", () => {
           ],
         }),
       ]
-      expect(findReactionOnlyIntent(messages, "root")).toBeUndefined()
+      expect(findReactionOnlyIntent(messages, "root", "m1")).toEqual({ reaction: "DONE", partID: "p1" })
       expect(reactionOnlyRootResolved(messages, "root")).toBe(true)
     }
   })
@@ -473,8 +721,8 @@ describe("Reaction-only intent helpers", () => {
         ],
       }),
     ]
-    expect(findReactionOnlyIntent(messages, "root")).toBeUndefined()
-    expect(findReactionOnlyIntent(messages, "other")).toEqual({ reaction: "DONE", partID: "p4" })
+    expect(findReactionOnlyIntent(messages, "root", "m1")).toBeUndefined()
+    expect(findReactionOnlyIntent(messages, "other", "m2")).toEqual({ reaction: "DONE", partID: "p4" })
   })
 
   test("resolves the inbound message id with the reply anchor as fallback", () => {

@@ -128,6 +128,8 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/presets/test/project/worktree.test.ts",
   "packages/connections/test/channel/clarus-invite-accept.test.ts",
   "packages/connections/test/channel/feishu-provider.test.ts",
+  // Real Channel drain fixture observes the process-wide invoke boundary while owning its Runtime composition.
+  "packages/connections/test/channel/foreground-reaction-only.test.ts",
   "packages/connections/test/channel/host.test.ts",
   "packages/connections/test/channel/managed-project-ownership.test.ts",
   "packages/connections/test/channel/svg-raster-standalone.test.ts",

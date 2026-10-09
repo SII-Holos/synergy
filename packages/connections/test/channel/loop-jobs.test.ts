@@ -171,6 +171,23 @@ describe("channel_reaction_only_turn_close", () => {
       }),
     ))
 
+  test("does not turn an aborted assistant into a successful terminal", () =>
+    runtime.run(() =>
+      inScope(async (sessionID, rootID) => {
+        const assistant = await assistantMessage(sessionID, rootID)
+        assistant.finish = "tool-calls"
+        await reactionToolPart(sessionID, assistant.id)
+        const parts = await MessageV2.parts({ sessionID, messageID: assistant.id })
+        const ctx = context({ sessionID, rootID, assistant, parts })
+        const instances = collected(ctx)
+        ctx.abort = AbortSignal.abort()
+        expect(collected(ctx)).toEqual([])
+        await LoopJob.execute(instances, ctx)
+        const persisted = await MessageV2.get({ sessionID, messageID: assistant.id })
+        expect(persisted.info).not.toMatchObject({ finish: "stop" })
+      }),
+    ))
+
   test("does not fire when the intent-bearing assistant is already terminal", () =>
     runtime.run(() =>
       inScope(async (sessionID, rootID) => {
