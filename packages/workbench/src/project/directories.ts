@@ -274,6 +274,7 @@ export namespace ProjectDirectories {
   export async function migrateProject(scope: Scope): Promise<Record> {
     const [existing] = await Storage.readMany<Record>([StoragePath.projectDirectories(scope.id)])
     if (existing) return Record.parse(existing)
+    const hostID = await WorkspaceLocation.source().hostID()
     const paths = scope.local ? [...new Set([scope.local.worktree, ...scope.local.sandboxes])] : []
     const worktrees = new Set<string>()
     if (scope.local) {
@@ -290,7 +291,17 @@ export namespace ProjectDirectories {
       catalog.flatMap((record) => (record.type === "git_worktree" && record.binding.path ? [record.binding.path] : [])),
     )
     for (const directory of retainedTrees) worktrees.add(directory)
-    const locate = (directory: string) => WorkspaceBinding.locateHistory(scope.id, directory)
+    const locate = (directory: string) => {
+      const requested = path.resolve(directory)
+      const retained =
+        catalog.find(
+          (record) =>
+            record.binding.path === requested && record.binding.hostID === hostID && record.binding.state === "bound",
+        ) ?? catalog.find((record) => record.type === "git_worktree" && record.binding.path === requested)
+      return retained
+        ? { path: requested, hostID: retained.binding.hostID }
+        : WorkspaceBinding.locateHistory(scope.id, directory)
+    }
     const locations = await Promise.all(paths.map(locate))
     if (locations[0]) worktrees.delete(locations[0].path)
     const candidates = [
@@ -304,8 +315,12 @@ export namespace ProjectDirectories {
     return Storage.transaction(async () => {
       const [concurrent] = await Storage.readMany<Record>([StoragePath.projectDirectories(scope.id)])
       if (concurrent) return Record.parse(concurrent)
-      const retain = async (input: WorkspaceCatalog.RegisterInput) =>
-        (await WorkspaceCatalog.findByLocation(input)) ?? WorkspaceCatalog.register(input)
+      const retain = async (input: WorkspaceCatalog.RegisterInput) => {
+        const existing = await WorkspaceCatalog.findByLocation(input)
+        if (existing) return existing
+        const retained = catalog.find((record) => record.type === "git_worktree" && record.binding.path === input.path)
+        return retained ? WorkspaceCatalog.get(retained.id, scope.id) : WorkspaceCatalog.register(input)
+      }
       const records = await Promise.all(
         candidates.map((location) => retain({ scopeID: scope.id, type: "directory", ...location })),
       )
@@ -322,8 +337,8 @@ export namespace ProjectDirectories {
           },
         })
       }
-      const catalog = new Map((await WorkspaceCatalog.list(scope.id)).map((record) => [record.id, record]))
-      const migratedTrees = [...catalog.values()].filter((item) => item.type === "git_worktree")
+      const byID = new Map((await WorkspaceCatalog.list(scope.id)).map((record) => [record.id, record]))
+      const migratedTrees = [...byID.values()].filter((item) => item.type === "git_worktree")
       const folders = new Map([...records, ...migratedTrees].map((record) => [record.id, record]))
       for (const folder of folders.values()) {
         if (folder.lifecycle !== "active" || folder.binding.state !== "bound") continue
@@ -338,7 +353,7 @@ export namespace ProjectDirectories {
           )
           .map((other) => other.id)
         const retainedGrants = folder.sharedWritableWorkspaceIDs.filter((id) => {
-          const target = catalog.get(id)
+          const target = byID.get(id)
           return !target || canShare(target)
         })
         const workspaceIDs = [...new Set([...retainedGrants, ...grants])]

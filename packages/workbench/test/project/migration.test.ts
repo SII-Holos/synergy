@@ -402,3 +402,43 @@ test("project sharing migration retains active grants while removing retired gra
     expect(migrated.binding).toEqual(records[0].binding)
   })
 })
+
+test.each(["foreign", "unbound"] as const)(
+  "a retained %s Worktree used as the project main does not gain local authority",
+  async (state) => {
+    await using runtime = await migrationFixture({ register })
+    await using main = await tmpdir()
+    await runtime.run(async () => {
+      const { scope } = await Scope.fromDirectory(main.path)
+      const record =
+        state === "unbound"
+          ? await WorkspaceCatalog.get(
+              (
+                await WorkspaceBinding.importHistory(
+                  { scopeID: scope.id, type: "git_worktree", path: main.path },
+                  scope.id,
+                )
+              ).id!,
+              scope.id,
+            )
+          : await WorkspaceCatalog.register({
+              scopeID: scope.id,
+              hostID: "another-host",
+              type: "git_worktree",
+              path: main.path,
+              physicalID: "foreign-identity",
+            })
+      await runMigrations({ output: "silent", targetDomain: "workbench-projects" })
+      const result = await ProjectDirectories.get(scope.id)
+      const mainRecord = await WorkspaceCatalog.get(result.mainWorkspaceID!, scope.id)
+      expect(mainRecord.id).toBe(record.id)
+      expect(result.folders[0].available).toBe(false)
+      expect(mainRecord.binding.hostID).toBe(record.binding.hostID)
+      expect(await WorkspaceCatalog.get(record.id, scope.id)).toEqual(record)
+      await expect(WorkspaceBinding.validate(mainRecord.id, scope.id)).rejects.toMatchObject({
+        name: "WorkspaceUnavailable",
+      })
+      expect(await WorkspaceCatalog.list(scope.id)).toHaveLength(1)
+    })
+  },
+)
