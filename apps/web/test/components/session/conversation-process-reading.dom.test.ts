@@ -404,36 +404,57 @@ test("native reading movement wins over real body growth in the same wheel dispa
 })
 
 test("native Space paging preserves new reading when real body growth follows its first movement", async () => {
-  await page.goto(`${url}?scrolling`)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.evaluate(() => window.__conversationProcess.grow(1000))
-  await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))
-  const viewport = page.locator("[data-scroller]").last()
-  await page.locator('[data-part-id="many-400"] [data-slot="activity-step-trigger"]').evaluate((element) => {
-    const range = document.createRange()
-    range.selectNodeContents(element)
-    document.getSelection()?.removeAllRanges()
-    document.getSelection()?.addRange(range)
-    document.dispatchEvent(new Event("selectionchange"))
-  })
-  await viewport.focus()
-  for (let index = 0; index < 4; index++) await frames()
-  const before = await viewport.evaluate((element) => {
-    element.addEventListener(
-      "scroll",
-      () => {
-        window.__conversationProcess.growToolEvidence("many-400")
-      },
-      { once: true },
-    )
-    return { top: element.scrollTop, height: element.scrollHeight }
-  })
-  await viewport.press("Space")
-  for (let index = 0; index < 12; index++) await frames()
-  const after = await viewport.evaluate((element) => ({ top: element.scrollTop, height: element.scrollHeight }))
-  expect(await viewport.locator('[data-part-id="many-400"] [data-slot="activity-evidence"]').count()).toBe(1)
-  expect(after.height).toBeGreaterThan(before.height)
-  expect(after.top).toBeGreaterThan(before.top + 100)
+  const cdp = await page.context().newCDPSession(page)
+  try {
+    await page.goto(`${url}?scrolling`)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    await page.evaluate(() => window.__conversationProcess.grow(1000))
+    expect(await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))).toBe(true)
+    const viewport = page.locator("[data-scroller]").last()
+    const part = viewport.locator('[data-slot="activity-step"][data-part-id="many-400"]')
+    await part.waitFor()
+    await viewport.evaluate(async (element) => {
+      await Promise.allSettled(
+        element
+          .getAnimations({ subtree: true })
+          .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+          .map((animation) => animation.finished),
+      )
+      const part = element.querySelector<HTMLElement>('[data-part-id="many-400"]')!
+      element.scrollTop += part.getBoundingClientRect().top - element.getBoundingClientRect().top
+    })
+    await part.locator('[data-slot="activity-step-trigger"]').evaluate((element) => {
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      document.getSelection()?.removeAllRanges()
+      document.getSelection()?.addRange(range)
+      document.dispatchEvent(new Event("selectionchange"))
+    })
+    await viewport.focus()
+    for (let index = 0; index < 4; index++) await frames()
+    expect(await viewport.evaluate((element) => document.activeElement === element)).toBe(true)
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 12 })
+    const before = await viewport.evaluate((element) => {
+      element.addEventListener("scroll", () => window.__conversationProcess.growToolEvidence("many-400"), {
+        once: true,
+      })
+      return {
+        top: element.scrollTop,
+        height: element.scrollHeight,
+        remaining: element.scrollHeight - element.clientHeight - element.scrollTop,
+      }
+    })
+    expect(before.remaining).toBeGreaterThan(1000)
+    await viewport.press("Space")
+    for (let index = 0; index < 12; index++) await frames()
+    const after = await viewport.evaluate((element) => ({ top: element.scrollTop, height: element.scrollHeight }))
+    expect(await viewport.locator('[data-part-id="many-400"] [data-slot="activity-evidence"]').count()).toBe(1)
+    expect(after.height).toBeGreaterThan(before.height)
+    expect(after.top).toBeGreaterThan(before.top + 100)
+  } finally {
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
+    await cdp.detach()
+  }
 })
 
 test("main reading survives live actions and return to latest resumes the conversation", async () => {
@@ -446,8 +467,14 @@ test("main reading survives live actions and return to latest resumes the conver
   await trigger.waitFor({ state: "visible" })
   await trigger.focus()
   expect(await trigger.evaluate((element) => document.activeElement === element)).toBe(true)
-  if ((await trigger.getAttribute("aria-expanded")) === "true") await trigger.click()
+  if ((await trigger.getAttribute("aria-expanded")) === "true") {
+    await trigger.click()
+    await settleConversation()
+    expect(await trigger.getAttribute("aria-expanded")).toBe("false")
+  }
   await trigger.click()
+  await settleConversation()
+  expect(await trigger.getAttribute("aria-expanded")).toBe("true")
   const viewport = page.locator("[data-scroller]")
   await viewport.waitFor()
   await page.evaluate(() => window.__conversationProcess.latest())
