@@ -76,7 +76,7 @@ export const useGlobalSync = () => ({
   touchMessageBucket: () => {},
   reconcileCortexFromSession: () => {},
   markActiveSession: () => {},
-  partContentStore: { readThrough: (input) => input.read() },
+  partContentStore: { read: (_key, load, signal) => load(signal ?? new AbortController().signal) },
   contentBudget: { remove: () => {} },
   data: { scope: [] },
 })

@@ -135,27 +135,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         })
       },
     })
-    const retainedContent = globalSync.retainContentCache(sdk.scopeKey, () =>
+    const retainedContent = globalSync.retainContentCache(sdk.scopeKey, (contentSignal) =>
       createPartMaterializer({
         memory: globalSync.contentBudget,
         memoryKey: (summary) => contentBudgetKey(sdk.scopeKey, summary.messageID, summary.id),
-        read: async (summary, signal) => {
+        read: async (summary) => {
           const cached = store.part[summary.messageID]?.find((part) => part.id === summary.id)
           if (cached && store.partVersion[summary.id] === summary.content.version)
             return { part: cached, version: summary.content.version }
-          // Fetch through the version-keyed store so viewport prefetch, the
-          // materializer, and any later reader share one in-flight network
-          // read per content version; the read outlives the lease on purpose
-          // (released lease aborts the consumption loop, not the transport —
-          // otherwise a row scrolling out of view mid-flight throws the read
-          // away and a later retain reissues the identical request).
-          return globalSync.partContentStore.readThrough({
-            url: sdk.url,
-            scopeKey: sdk.scopeKey,
-            partID: summary.id,
-            version: summary.content.version,
-            bytes: summary.content.bytes,
-            read: async () => {
+          return globalSync.partContentStore.read(
+            { url: sdk.url, scopeKey: sdk.scopeKey, partID: summary.id, version: summary.content.version },
+            async (signal) => {
               const response = await sdk.client.session.partContent(
                 {
                   sessionID: summary.sessionID,
@@ -163,12 +153,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   partID: summary.id,
                   version: summary.content.version,
                 },
-                { signal: contentLifetime.signal, throwOnError: true },
+                { signal, throwOnError: true },
               )
               if (!response.data) throw new Error("Missing conversation content")
               return response.data
             },
-          })
+            contentSignal,
+          )
         },
         refresh: async (summary, signal) => {
           const current = store.partSummary[summary.messageID]?.find((part) => part.id === summary.id)
@@ -399,13 +390,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   return cached ? Promise.resolve(cached) : readPartPageBatch(sessionID, messageID, signal)
                 },
                 body: (summary) =>
-                  globalSync.partContentStore.readThrough({
-                    url: sdk.url,
-                    scopeKey: sdk.scopeKey,
-                    partID: summary.id,
-                    version: summary.content.version,
-                    bytes: summary.content.bytes,
-                    read: async () => {
+                  globalSync.partContentStore.read(
+                    { url: sdk.url, scopeKey: sdk.scopeKey, partID: summary.id, version: summary.content.version },
+                    async (transportSignal) => {
                       const result = await sdk.client.session.partContent(
                         {
                           sessionID,
@@ -413,12 +400,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                           partID: summary.id,
                           version: summary.content.version,
                         },
-                        { signal, throwOnError: true },
+                        { signal: transportSignal, throwOnError: true },
                       )
                       if (!result.data) throw new Error("Missing conversation content")
                       return result.data
                     },
-                  }),
+                    signal,
+                  ),
               })
             : undefined
         return { response, request, contextProjectionRevision, partSnapshotRequest, latestContextMessage, viewport }

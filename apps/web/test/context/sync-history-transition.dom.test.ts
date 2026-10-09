@@ -68,7 +68,10 @@ export const useSDK=()=>({scopeKey:'probe',scopeID:'home',directory:'/probe',isH
     get:()=>Promise.resolve({data:{id:'ses_probe',title,time:{created:0,updated:0}}}),
     inbox:()=>Promise.resolve({data:[]}),
     partPage:()=>Promise.resolve({data:{items:[],nextCursor:null,hasMore:false,previousCursor:null,hasEarlier:false}}),
-    partPages:({messageIDs})=>Promise.resolve({data:Object.fromEntries(messageIDs.map(id=>[id,{items:[],nextCursor:null,hasMore:false,previousCursor:null,hasEarlier:false}]))}),
+    partPages:async(input,options)=>{
+      options?.signal?.throwIfAborted();
+      return {data:Object.fromEntries(input.messageIDs.map(id=>[id,{items:[],nextCursor:null,hasMore:false,previousCursor:null,hasEarlier:false}]))};
+    },
     timelinePage:async(input,options)=>{
       options?.signal?.throwIfAborted();
       calls.messagePage.push({sessionID:input.sessionID,limit:input.limit,...(input.cursor?{cursor:input.cursor}:{})});

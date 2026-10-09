@@ -285,11 +285,18 @@ function createGlobalSync() {
   const partArrival = createPartArrivalState()
   const contentBudget = createContentBudget()
   const partContentStore = createPartContentStore()
-  const contentCaches = new Map<string, { cache: ReturnType<typeof createPartMaterializer>; readers: number }>()
-  function retainContentCache(scopeKey: string, create: () => ReturnType<typeof createPartMaterializer>) {
+  const contentCaches = new Map<
+    string,
+    { cache: ReturnType<typeof createPartMaterializer>; readers: number; controller: AbortController }
+  >()
+  function retainContentCache(
+    scopeKey: string,
+    create: (signal: AbortSignal) => ReturnType<typeof createPartMaterializer>,
+  ) {
     let entry = contentCaches.get(scopeKey)
     if (!entry) {
-      entry = { cache: create(), readers: 0 }
+      const controller = new AbortController()
+      entry = { cache: create(controller.signal), readers: 0, controller }
       contentCaches.set(scopeKey, entry)
     }
     entry.readers++
@@ -301,6 +308,7 @@ function createGlobalSync() {
         if (released) return
         released = true
         if (--retained.readers === 0) {
+          retained.controller.abort()
           retained.cache.dispose()
           contentCaches.delete(scopeKey)
         }
@@ -308,7 +316,10 @@ function createGlobalSync() {
     }
   }
   onCleanup(() => {
-    for (const entry of contentCaches.values()) entry.cache.dispose()
+    for (const entry of contentCaches.values()) {
+      entry.controller.abort()
+      entry.cache.dispose()
+    }
     contentCaches.clear()
     contentBudget.dispose()
   })
