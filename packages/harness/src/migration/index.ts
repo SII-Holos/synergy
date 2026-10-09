@@ -274,10 +274,9 @@ async function runMigrationsInternal(
   summary.totalDomains = domainNames.length
 
   try {
-    const logs = new Map<string, Record<string, number>>()
+    const logs = await loadDomainLogs(domainNames)
     for (const domain of domainNames) {
-      const data = await loadLogForDomain(domain)
-      logs.set(domain, data)
+      const data = logs.get(domain)!
       if (domains.get(domain)!.every((migration) => migration.id in data)) {
         upToDateDomains.push(domain)
         summary.upToDateDomains++
@@ -309,10 +308,12 @@ async function runMigrationsInternal(
           continue
         }
       }
-      const counts = await SessionCompat.stats()
-      if (migration.execution === "after-convergence" && counts.pending + counts.partial + counts.quarantined > 0) {
-        summary.deferred = (summary.deferred ?? 0) + 1
-        continue
+      if (migration.execution === "after-convergence") {
+        const counts = await SessionCompat.stats()
+        if (counts.pending + counts.partial + counts.quarantined > 0) {
+          summary.deferred = (summary.deferred ?? 0) + 1
+          continue
+        }
       }
       if (dryRun) {
         summary.dryRun++
@@ -451,6 +452,11 @@ async function loadLogForDomain(domain: string): Promise<Record<string, number>>
   )
 }
 
+async function loadDomainLogs(domains: string[]): Promise<Map<string, Record<string, number>>> {
+  const values = await Storage.readMany<Record<string, number>>(domains.map(StoragePath.metaMigrationLogDomain))
+  return new Map(domains.map((domain, index) => [domain, values[index] === undefined ? {} : values[index]!]))
+}
+
 function missingLog(error: unknown): undefined {
   if (error instanceof Storage.NotFoundError) return
   throw error
@@ -556,10 +562,11 @@ export async function getMigrationStatus(
 ): Promise<Record<string, { completed: Migration[]; pending: Migration[] }>> {
   const domains = collectByDomain({ targetDomain: domain })
   const result: Record<string, { completed: Migration[]; pending: Migration[] }> = {}
+  const logs = await loadDomainLogs([...domains.keys()])
 
   for (const [d, migrations] of domains) {
     const ordered = orderMigrations(migrations)
-    const logData = await loadLogForDomain(d)
+    const logData = logs.get(d)!
     const completed = ordered.filter((m) => m.id in logData)
     const pending = ordered.filter((m) => !(m.id in logData))
     result[d] = { completed, pending }
