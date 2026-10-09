@@ -60,6 +60,27 @@ describe("createPartRepairScheduler", () => {
     expect(repairs.length).toBe(2)
   })
 
+  test("exempt requests bypass the attempt budget so a deferred repair still fires", () => {
+    const clock = manualClock()
+    const repairs: string[] = []
+    const scheduler = createPartRepairScheduler(
+      { delayMs: 1000, maxAttempts: 2, now: clock.now, schedule: clock.schedule },
+      (scopeKey, sessionID) => repairs.push(key(scopeKey, sessionID)),
+    )
+    scheduler.request("scope", "ses_a")
+    clock.advance(1100)
+    scheduler.request("scope", "ses_a")
+    clock.advance(1100)
+    expect(repairs.length).toBe(2)
+    // Budget exhausted: a plain re-request is dropped, but the exempt re-queue
+    // used by the cold-load gate still schedules the pending repair.
+    scheduler.request("scope", "ses_a")
+    expect(repairs.length).toBe(2)
+    scheduler.request("scope", "ses_a", { exempt: true })
+    clock.advance(1100)
+    expect(repairs.length).toBe(3)
+  })
+
   test("resets the budget after the attempt window passes", () => {
     const clock = manualClock()
     const repairs: string[] = []

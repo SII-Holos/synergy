@@ -1,0 +1,33 @@
+# Decision Record: Cold-load session fetch cascade deduplication
+
+Status: implemented
+
+## Problem
+
+A cold hard-refresh of a session re-issued the same reads several times over: HAR on a real session showed 5× identical `timeline/page` responses, 2× `session.get` and `batch/volatile`, ~9 `part/pages` batches with two byte-identical repeats, and 4 overlapping `part/content` fetches for one version. First content frame arrived at ~2.3s but steady state (last non-decoration request) took ~6.7s, and the transcript visibly height-jumped as repeated window applies re-rendered it. The spiral had three cooperating causes: (1) replay-delivered historical part events unconditionally bumped per-message snapshot freshness, which both discarded the in-flight first page (supersede → restart with backoff) and scheduled the repair loader on top of it, so two fetchers kept invalidating each other for the whole boot window; (2) every accepted snapshot bumped the resource revision even when its server sync-version matched the already-accepted version, so a byte-identical re-read restarted every concurrent reader; (3) the viewport body prefetch never consulted the version-keyed content store and unlike the materializer shared no in-flight reads, so each retry re-fetched the same body versions.
+
+## Decision
+
+Four focused changes stop the cascade at its ignition and amplification points while keeping every live-event invalidation semantic:
+
+- **Replay-source gating in part-event handlers** (`global-sync.tsx`): `message.part.summary`, `message.part.delta`, `message.part.updated`, and `message.part.removed` skip `partSnapshotFreshness.touch` when the event is a replay (`source === "replay"`) AND the session's message window is not yet established (`hasMessageWindowSnapshot`). Replay that touches a loaded window keeps full live semantics — only the not-yet-established window skips the touch, because the in-flight first load will fetch that history anyway and the supersede only discards and restarts it. The re-entrant `applyEvent` calls inside `message.part.summary` now forward `source` so a live summary's inline checkpoint/delta is not misclassified as replay.
+- **Repair deferral until window establishment** (`global-sync.tsx` + `part-repair-scheduler.ts`): the repair callback checks the same window predicate and, when unset, calls `request(..., { exempt: true })` instead of running `reloadSessionWindow`, so a genuine repair need during cold load is re-queued (2s debounce) rather than racing the first load. The scheduler's `request` gains an `exempt` option that bypasses the attempt budget for exactly this re-queue path, so a slow first load cannot exhaust the repair budget and permanently drop the repair — plain requests still drop at the budget as before.
+- **Version-equal revalidation in the freshness store** (`sync-resource-freshness.ts`): `acceptSnapshot` for a version byte-identical (same epoch+seq) to the currently accepted resource version accepts without bumping the revision, so an identical re-read no longer supersedes concurrent readers. Older versions still reject; newer versions keep the full bump+invalidate semantics, so genuinely stale pages cannot slip through (the server stamps every GET with its sync-version).
+
+The duplicate content fetch was closed separately by the version-keyed `PartContentStore` contract described in [the sibling feature record](../feature/2026-10-09-visible-first-session-loading.md).
+
+## Alternatives considered
+
+- **Ownership transfer to a single fetch owner** — making one loader own the whole session lifecycle would stop the freshness-domain spiral structurally, but rewrites the `global-sync`/`sync` session ownership and its tested invalidation contracts; rejected as over-broad for a regression with narrow ignition points. Revisit if spiral behavior re-appears elsewhere.
+- **Fetch coalescing inside the part-page batch reader across animation frames** — improves batch shape but does nothing about why identical sets re-arrive; superseded by gating the sources.
+- **Pattern-matching replay events by watermark instead of the explicit `source` parameter** — the handlers already know the provenance (`"live" | "replay"`), so deriving it again from seq/epoch would duplicate the tracking and could mis-order against the scope watermark; the parameter is the honest signal.
+- **Deep-compare of page payloads to accept identical supersede responses** — hashed content comparison costs more than the request it saves in the hot path, and the server sync-version header already identifies byte-identity at the envelope level.
+- **No-exempt budget semantics (drop deferred repairs after 3 tries)** — a first load slower than ~6s would exhaust the budget while only re-queuing and silently lose a real repair; the exempt bypass keeps the budget's anti-loop purpose (it still counts real attempts) without losing repair convergence.
+
+## Consequences
+
+- Cold load issues one physical `timeline/page` fetch (plus at most one reconnect recovery re-read), `session.get`/`batch/volatile` each once, and `part/pages` batches with non-overlapping message ID sets; the transcripts stops height-jumping because a second competing window apply never happens.
+- Replay gating is window-scoped, not event-scoped: any replay event for an already-loaded session invalidates exactly as before, so reconnect-replay consistency for loaded sessions is unchanged.
+- The repair scheduler's exempt path is exercised only by the window-establishment gate; budget-exhaustion protection against pathological event streams is preserved and still tested.
+- Version-equal revalidation applies to every resource in the freshness domain (message/inbox/todo/dag): a redundant identical-version snapshot anywhere in the system no longer restarts readers, which also removes the duplicate `session.get` seen on the shared resource domain.
+- Existing suites unchanged in behavior expectations: 77 web unit tests, the part-repair DOM harness, prefetch/apply seams, and harness display-page tests all pass untouched except for the viewport-window tests updated in the sibling record.

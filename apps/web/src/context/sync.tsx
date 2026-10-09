@@ -373,14 +373,27 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                 messages: [...response.data.referencedRoots, ...response.data.items].map((entry) => entry.info),
                 signal,
                 page: (messageID) => readPartPageBatch(sessionID, messageID, signal),
-                body: async (summary) => {
-                  const result = await sdk.client.session.partContent(
-                    { sessionID, messageID: summary.messageID, partID: summary.id, version: summary.content.version },
-                    { signal, throwOnError: true },
-                  )
-                  if (!result.data) throw new Error("Missing conversation content")
-                  return result.data
-                },
+                body: (summary) =>
+                  globalSync.partContentStore.readThrough({
+                    url: sdk.url,
+                    scopeKey: sdk.scopeKey,
+                    partID: summary.id,
+                    version: summary.content.version,
+                    bytes: summary.content.bytes,
+                    read: async () => {
+                      const result = await sdk.client.session.partContent(
+                        {
+                          sessionID,
+                          messageID: summary.messageID,
+                          partID: summary.id,
+                          version: summary.content.version,
+                        },
+                        { signal, throwOnError: true },
+                      )
+                      if (!result.data) throw new Error("Missing conversation content")
+                      return result.data
+                    },
+                  }),
               })
             : undefined
         return { response, request, contextProjectionRevision, partSnapshotRequest, latestContextMessage, viewport }
