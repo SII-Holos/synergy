@@ -16,9 +16,10 @@ export namespace SessionContextContributions {
     injection: Record<string, string>
   }
   export interface Collected extends Result {
-    sources: Array<{ id: string; injection: Record<string, string> }>
+    sources: Array<{ id: string; context: string; injection: Record<string, string> }>
   }
   export interface Provider {
+    refresh?: "root" | "model"
     enabled?(input: Input): boolean | Promise<boolean>
     contribute(input: Input): Promise<Result | undefined>
     fallback?(input: Input): Result | undefined | Promise<Result | undefined>
@@ -42,12 +43,13 @@ export namespace SessionContextContributions {
     }
   }
 
-  export async function collect(input: Input): Promise<Collected | undefined> {
+  export async function collect(input: Input, refresh?: "root" | "model"): Promise<Collected | undefined> {
     const instanceState = runtimeState()
 
     input.signal.throwIfAborted()
     const results = await Promise.all(
       [...instanceState.providers].map(async ([id, provider]) => {
+        if (refresh && (provider.refresh ?? "root") !== refresh) return
         if (provider.enabled && !(await provider.enabled(input))) return
         input.signal.throwIfAborted()
         const timeout = new AbortController()
@@ -75,7 +77,17 @@ export namespace SessionContextContributions {
     return {
       context: active.map(({ result }) => result.context).join("\n\n"),
       injection: Object.assign({}, ...active.map(({ result }) => result.injection)),
-      sources: active.map(({ id, result }) => ({ id, injection: result.injection })),
+      sources: active.map(({ id, result }) => ({ id, context: result.context, injection: result.injection })),
+    }
+  }
+
+  export function combine(...results: Array<Collected | undefined>): Collected | undefined {
+    const active = results.filter((result): result is Collected => !!result)
+    if (!active.length) return
+    return {
+      context: active.map((result) => result.context).join("\n\n"),
+      injection: Object.assign({}, ...active.map((result) => result.injection)),
+      sources: active.flatMap((result) => result.sources),
     }
   }
 

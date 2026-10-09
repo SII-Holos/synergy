@@ -38,6 +38,8 @@ Native Workspace mount receipts live under `state/environments/<environment>/<al
 
 Removed user Inbox inputs and restoration receipts live at the logical keys `sessions/<scope>/<session>/inbox-removed/<item>`. They retain the complete domain input until Session deletion and never participate in ordinary queue discovery. See [Inbox removal and restoration](../architecture/session-and-messages.md#inbox-removal-and-restoration).
 
+Rollout stores execution intervals at `<owner>/rollout/runs/<run>/intervals/<interval>` alongside its existing run and segment evidence. Interval writes append through the Rollout journal; [execution evidence](../architecture/session-and-messages.md) defines timing, recovery and migration semantics.
+
 ## Agent database
 
 Installation generations retain code-version floors and explicit package selections independently of Agent storage. Running processes keep their verified generation until they exit. The `installation/20260926-installation-selection-v1` migration preserves the full Web backend for a home with existing data or configuration; fresh core homes retain a minimal selection. It neither rewrites API4 grants nor installs a second Desktop shell. Bootstrap and the central migration runner share this idempotent owner.

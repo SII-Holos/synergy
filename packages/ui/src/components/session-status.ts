@@ -1,6 +1,47 @@
 import type { I18n, MessageDescriptor } from "@lingui/core"
 import type { Part as PartType, ToolPart, SessionStatus, SessionActivity } from "@ericsanchezok/synergy-sdk/client"
 import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
+import { createEffect, createSignal, on, onCleanup, untrack } from "solid-js"
+
+export function createActivityLabel(label: () => string | undefined, ordinary: () => boolean) {
+  const [presented, setPresented] = createSignal(untrack(label))
+  const reduced = typeof window !== "undefined" ? window.matchMedia?.("(prefers-reduced-motion: reduce)") : undefined
+  const settle = () => {
+    if (reduced?.matches) setPresented(label())
+  }
+  reduced?.addEventListener?.("change", settle)
+  onCleanup(() => reduced?.removeEventListener?.("change", settle))
+  createEffect(
+    on(
+      () => [label(), ordinary()] as const,
+      ([next, delay]) => {
+        if (!delay || reduced?.matches || !next || !presented()) {
+          setPresented(next)
+          return
+        }
+        if (next === presented()) return
+        const timer = setTimeout(() => setPresented(next), 120)
+        onCleanup(() => clearTimeout(timer))
+      },
+    ),
+  )
+  return presented
+}
+
+export function processIsWorking(input: {
+  current: boolean
+  sessionStatus?: SessionStatus
+  submission?: { failed: boolean }
+  executionStatus?: string
+  projected?: boolean
+  fallback: boolean
+}): boolean {
+  if (input.submission) return !input.submission.failed
+  if (input.current && input.sessionStatus?.type === "paused") return false
+  if (input.projected !== undefined) return input.projected
+  if (input.executionStatus) return ["preparing", "running", "approval"].includes(input.executionStatus)
+  return input.fallback
+}
 
 // ── Descriptor helpers ──────────────────────────────────────────────
 

@@ -15,6 +15,7 @@ export namespace SessionInputProgress {
     "retrying",
     "completed",
     "cancelled",
+    "removed",
     "failed",
   ])
   export const Info = z

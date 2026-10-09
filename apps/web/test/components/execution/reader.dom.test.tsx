@@ -25,7 +25,9 @@ beforeAll(async () => {
     `
     import {createSynergyClient} from "@ericsanchezok/synergy-sdk/client"
     const small=new URL(location.href).searchParams.has("small")
-    const text=JSON.stringify({messages:[{role:"user",content:small?"Read README.md":"中文𐐀\\n".repeat(1900000)+"END_NEEDLE"}],temperature:0.1})
+    const ndjson=new URL(location.href).searchParams.has("ndjson")
+    const mediaType=ndjson?"application/x-ndjson":"application/json"
+    const text=ndjson?[{type:"text-delta",text:"Response"},{type:"finish"}].map(line=>JSON.stringify(line)).join("\\n")+"\\n":JSON.stringify({messages:[{role:"user",content:small?"Read README.md":"中文𐐀\\n".repeat(1900000)+"END_NEEDLE"}],temperature:0.1})
     const bytes=new TextEncoder().encode(text)
     const digest=crypto.subtle.digest("SHA-256",bytes).then(hash=>[...new Uint8Array(hash)].map(value=>value.toString(16).padStart(2,"0")).join(""))
     const fixture={bytes:bytes.length,copies:0,copiedBytes:0,cancelled:0,sections:0,escaped:0,reads:[] as number[],slow:false,invalid:new URL(location.href).searchParams.has("invalid"),partial:false}
@@ -51,14 +53,14 @@ beforeAll(async () => {
           if(request.signal.aborted){fixture.cancelled++;controller.close();return}
           if(offset===bytes.length){controller.close();return}
           const end=Math.min(bytes.length,offset+65536);controller.enqueue(bytes.slice(offset,end));offset=end
-        },cancel(){fixture.cancelled++}}),{headers:{"content-type":"application/json"}})
+        },cancel(){fixture.cancelled++}}),{headers:{"content-type":mediaType}})
       }
       const offset=Number(url.searchParams.get("offset")??0),limit=Number(url.searchParams.get("limit")??65536)
       fixture.reads.push(offset)
       if((bytes[offset]&192)===128) return Response.json({name:"RangeError"},{status:400})
       let end=Math.min(bytes.length,offset+limit)
       while(end<bytes.length&&(bytes[end]&192)===128)end--
-      return Response.json({contentVersion,sha256:fixture.invalid?"bad":await digest,offset,bytes:bytes.length,text:new TextDecoder("utf-8",{fatal:true}).decode(bytes.slice(offset,end)),nextOffset:end<bytes.length?end:null,status:fixture.partial?"partial":"complete",mediaType:"application/json"}, {headers})
+      return Response.json({contentVersion,sha256:fixture.invalid?"bad":await digest,offset,bytes:bytes.length,text:new TextDecoder("utf-8",{fatal:true}).decode(bytes.slice(offset,end)),nextOffset:end<bytes.length?end:null,status:fixture.partial?"partial":"complete",mediaType}, {headers})
     }})
     export const useSDK=()=>({client})
   `,
@@ -195,3 +197,26 @@ test("copy uses the entire pinned version, cancellation releases the stream, and
   await page.getByRole("alert").waitFor()
   expect(await page.evaluate(() => (window as unknown as { fixture: { copies: number } }).fixture.copies)).toBe(0)
 }, 30_000)
+
+test("recorded response streams copy their complete JSON lines without parsing them as a single object", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?ndjson=1")
+  await page.locator(".execution-content-row").first().waitFor()
+  await page.getByRole("button", { name: "Copy complete content", exact: true }).click()
+  await page.getByText("Copied complete content", { exact: true }).waitFor({ timeout: 3000 })
+  const copied = await page.evaluate(() => {
+    const f = (window as unknown as { fixture: { copies: number; copiedBytes: number; bytes: number } }).fixture
+    return { copies: f.copies, copiedBytes: f.copiedBytes, bytes: f.bytes }
+  })
+  expect(copied.copies).toBe(1)
+  expect(copied.copiedBytes).toBe(copied.bytes)
+  await page.getByRole("button", { name: "Content actions" }).click()
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Download complete content", exact: true }).click(),
+  ])
+  expect(download.suggestedFilename()).toEndWith(".jsonl")
+  const saved = await download.path()
+  if (!saved) throw new Error("Response stream did not download")
+  expect(await Bun.file(saved).text()).toBe('{"type":"text-delta","text":"Response"}\n{"type":"finish"}\n')
+  expect(errors).toEqual([])
+}, 15_000)

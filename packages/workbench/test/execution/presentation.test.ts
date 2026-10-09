@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { ExecutionPresentation } from "../../src/execution/presentation"
 import type { RolloutSchema } from "@ericsanchezok/synergy-harness/rollout"
-import { RolloutAccounting } from "@ericsanchezok/synergy-harness/rollout"
+import { RolloutExecution, RolloutAccounting } from "@ericsanchezok/synergy-harness/rollout"
 
 function run(id: string, started: number, ended?: number): RolloutSchema.RunRecord {
   return {
@@ -15,19 +15,47 @@ function run(id: string, started: number, ended?: number): RolloutSchema.RunReco
   }
 }
 
+function interval(started: number, ended?: number): RolloutSchema.ExecutionInterval {
+  return {
+    version: 1,
+    id: crypto.randomUUID(),
+    owner: run("a", 0).owner,
+    runID: "child",
+    segmentID: crypto.randomUUID(),
+    branchID: "main",
+    clockID: "test",
+    started,
+    ended,
+    status: ended === undefined ? "active" : "closed",
+    coverage: "complete",
+  }
+}
+const sample = { clockID: "test", now: 120 }
+
 test("execution elapsed merges overlapping task intervals and excludes gaps between turns", () => {
-  expect(ExecutionPresentation.elapsed([run("a", 10, 50), run("b", 30, 80), run("c", 100)], 120)).toBe(90)
-  expect(ExecutionPresentation.elapsed([], 120)).toBe(0)
+  expect(RolloutExecution.measure([interval(10, 50), interval(30, 80), interval(100)], sample).elapsedMs).toBe(90)
+  expect(RolloutExecution.measure([], sample).elapsedMs).toBe(0)
 })
 
 test("a running child keeps execution active after the parent has finished", () => {
-  expect(ExecutionPresentation.status([run("parent", 10, 50), run("child", 30)])).toBe("running")
-  expect(ExecutionPresentation.status([])).toBe("unknown")
+  expect(
+    RolloutExecution.summarize(
+      { roots: [run("parent", 10, 50)], runs: [run("parent", 10, 50), run("child", 30)], intervals: [interval(30)] },
+      sample,
+    ).status,
+  ).toBe("running")
+  expect(RolloutExecution.summarize({ roots: [], runs: [], intervals: [] }, sample).status).toBe("unknown")
 })
 
 test("terminal execution retains failures and cancellation instead of reporting success", () => {
-  expect(ExecutionPresentation.status([{ ...run("failed", 0, 5), status: "failed" }, run("ok", 0, 5)])).toBe("failed")
-  expect(ExecutionPresentation.status([{ ...run("cancelled", 0, 5), status: "cancelled" }])).toBe("cancelled")
+  const failed = { ...run("failed", 10, 50), status: "failed" as const }
+  expect(
+    RolloutExecution.summarize({ roots: [failed], runs: [failed, run("ok", 0, 5)], intervals: [] }, sample).status,
+  ).toBe("failed")
+  const cancelled = { ...run("cancelled", 0, 5), status: "cancelled" as const }
+  expect(RolloutExecution.summarize({ roots: [cancelled], runs: [cancelled], intervals: [] }, sample).status).toBe(
+    "cancelled",
+  )
 })
 
 test("cost presentation does not turn an empty API category into a zero fee", () => {

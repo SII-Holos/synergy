@@ -1,5 +1,7 @@
 // Provenance: https://github.com/openai/codex/blob/afb436df8b70bb5bc57b86d9a3e829968988cd21/codex-rs/tui/src/streaming/controller.rs
 // Local adaptation: keep settled DOM intact and fade only new suffixes; no terminal pacing or source buffering.
+import { readSelectionRanges } from "../utils/selection"
+
 export function createMarkdownStreamMotion(
   root: HTMLElement,
   merge: (from: Text, target: Text, offset: number) => void,
@@ -18,11 +20,8 @@ export function createMarkdownStreamMotion(
     tails.set(node, graphemes.segment(suffix).containing(suffix.length - 1)?.segment ?? "")
   }
   const selecting = () => {
-    const selection = document.getSelection()
-    return (
-      !!selection &&
-      !selection.isCollapsed &&
-      (root.contains(selection.anchorNode) || root.contains(selection.focusNode))
+    return readSelectionRanges(document).some(
+      (range) => root.contains(range.startContainer) || root.contains(range.endContainer),
     )
   }
   const preservePoints = (

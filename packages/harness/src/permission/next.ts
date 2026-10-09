@@ -6,6 +6,7 @@ import { Identifier } from "../id/id"
 import { PermissionRules } from "./rules"
 import { ScopedState } from "../scope/scoped-state"
 import { SessionInteraction } from "../session/interaction"
+import { RolloutExecution } from "../session/rollout/execution"
 import { Lock } from "../util/lock"
 import { fn } from "../util/fn"
 import { Log } from "../util/log"
@@ -174,8 +175,10 @@ export namespace PermissionNext {
         })
         s.pending[id] = { info, resolve: resolvePending!, reject: rejectPending!, cleanup }
 
-        Bus.publish(Event.Asked, info)
-        return pendingPromise
+        return RolloutExecution.wait(() => {
+          Bus.publish(Event.Asked, info)
+          return pendingPromise
+        })
       }
     },
   )

@@ -7,6 +7,38 @@ import { selectionInputs, taskInputs } from "../../script/ci/inputs"
 import { changedFiles, workspaceInputs } from "../../script/ci/catalog"
 import { createPlan, type Task, type WorkspaceInput } from "../../script/ci/plan"
 import { RevisionSnapshot } from "../../script/ci/revision"
+import { WorkingSnapshot } from "../../script/verification"
+
+test("only descriptive workspace metadata can avoid full configuration selection", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-metadata-"))
+  const file = "packages/core/package.json"
+  const workspaces = [{ directory: "packages/core", name: "core", dependencies: [], testDependencies: [] }]
+  const manifest = { name: "core", version: "1.0.0", exports: "./src/index.ts", description: "before" }
+  try {
+    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    await Bun.write(path.join(root, file), JSON.stringify(manifest))
+    const before = new WorkingSnapshot(root)
+    for (const [change, expected] of [
+      [{ description: "after", keywords: ["core"], homepage: "https://example.com" }, true],
+      [{ dependencies: { other: "*" } }, false],
+      [{ exports: "./src/new.ts" }, false],
+      [{ scripts: { test: "bun test" } }, false],
+      [{ version: "2.0.0" }, false],
+      [{ unknown: true }, false],
+    ] as const) {
+      await Bun.write(path.join(root, file), JSON.stringify({ ...manifest, ...change }))
+      const after = new WorkingSnapshot(root)
+      const result = await selectionInputs(before, after, [file], workspaces, workspaces)
+      expect(result.metadataOnly ?? []).toEqual(expected ? [file] : [])
+    }
+    await Bun.write(path.join(root, file), "{")
+    expect(
+      (await selectionInputs(before, new WorkingSnapshot(root), [file], workspaces, workspaces)).metadataOnly ?? [],
+    ).toEqual([])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 test("integration inputs follow both revisions, resources and unresolved dynamic imports", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-inputs-"))

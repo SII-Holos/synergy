@@ -108,7 +108,7 @@ beforeAll(async () => {
             },
           }
           onCleanup(bindComposerPresentation(input, { state, preview: () => ({text:"", references:[]}) }))
-          return <div class="session-workbench-pane" style={{height:"100dvh","container-type":"inline-size"}}><div data-ui-part="conversation"><div style={{height:"48px"}} /></div><div class="session-prompt-dock-content" style={{position:"fixed",bottom:0,width:"100%"}}>
+          return <div class="session-workbench-pane" style={{height:"100dvh","container-type":"inline-size"}}><div data-ui-part="conversation" data-conversation-current><div data-session-top-bar style={{height:"48px"}} /></div><div class="session-prompt-dock-content" style={{position:"fixed",bottom:0,width:"100%"}}>
             <PromptDockFloatLayer sessionID="s1" />
             <SessionDecisionOutlet />
             <div><DefaultComposer context={{input}} /></div>

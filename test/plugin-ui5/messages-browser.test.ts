@@ -115,22 +115,29 @@ describe("production conversation history", () => {
         expect(await roots.count()).toBeLessThanOrEqual(30)
         expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
       }
-      await page.keyboard.press("ControlOrMeta+f")
-      const historySearch = page.getByRole("dialog", { name: "Search conversation", exact: true })
-      await historySearch.waitFor()
-      await historySearch.getByPlaceholder("Search all conversation history").fill("Question 137")
-      expect(await historySearch.getByLabel("Include reasoning", { exact: true }).count()).toBe(1)
-      expect(await historySearch.getByLabel("Include tool content", { exact: true }).count()).toBe(1)
-      await historySearch.getByRole("button", { name: "Question 137", exact: true }).click()
-      await historySearch.waitFor({ state: "detached" })
-      await page.getByText("Question 137", { exact: true }).waitFor()
-      phase("search result")
-      expect(await roots.count()).toBeLessThanOrEqual(30)
-      expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
-      const returnLatest = page.getByRole("button", { name: "Return to latest", exact: true })
-      await returnLatest.click()
-      await page.getByText("Answer 360", { exact: true }).waitFor()
-      phase("returned to latest")
+      for (const activation of ["click", "Enter", "Space"]) {
+        await page.keyboard.press("ControlOrMeta+f")
+        const historySearch = page.getByRole("dialog", { name: "Search conversation", exact: true })
+        await historySearch.waitFor()
+        await historySearch.getByPlaceholder("Search all conversation history").fill("Question 137")
+        expect(await historySearch.getByLabel("Include reasoning", { exact: true }).count()).toBe(1)
+        expect(await historySearch.getByLabel("Include tool content", { exact: true }).count()).toBe(1)
+        await historySearch.getByRole("button", { name: "Question 137", exact: true }).click()
+        await historySearch.waitFor({ state: "detached" })
+        await page.getByText("Question 137", { exact: true }).waitFor()
+        phase("search result")
+        expect(await roots.count()).toBeLessThanOrEqual(30)
+        expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
+        const returnLatest = page.getByRole("button", { name: "Return to latest", exact: true })
+        if (activation === "click") await returnLatest.click()
+        else await returnLatest.press(activation)
+        await page.getByText("Answer 360", { exact: true }).waitFor()
+        await page.waitForFunction(() => {
+          const scroller = document.querySelector("[data-conversation-viewport]")
+          return scroller && scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop < 10
+        })
+        phase(`returned to latest with ${activation}`)
+      }
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
       const { data } = await preview.client.session.messages(
         { scopeID: "home", sessionID: conversation.id },
@@ -161,6 +168,30 @@ describe("production conversation history", () => {
       phase("reloaded")
       expect(diagnostics.errors.map((error) => error.message)).toEqual([])
     } catch (error) {
+      const page = browser.contexts()[0]?.pages()[0]
+      if (page && !page.isClosed())
+        console.info(
+          "[conversation history] failure viewport:",
+          await page
+            .evaluate(() => {
+              const viewport = document.querySelector<HTMLElement>("[data-conversation-viewport]")
+              if (!viewport) return { mounted: false }
+              const bounds = viewport.getBoundingClientRect()
+              return {
+                top: viewport.scrollTop,
+                height: viewport.scrollHeight,
+                client: viewport.clientHeight,
+                rows: [...viewport.querySelectorAll<HTMLElement>('[data-display-row][data-message-role="user"]')]
+                  .map((row) => ({
+                    text: row.textContent?.slice(0, 80),
+                    top: row.getBoundingClientRect().top - bounds.top,
+                    height: row.getBoundingClientRect().height,
+                  }))
+                  .slice(0, 30),
+              }
+            })
+            .catch((captureError) => ({ captureError: String(captureError) })),
+        )
       throw new AggregateError([error, ...(diagnostics?.errors ?? [])], "Conversation real-host acceptance failed")
     } finally {
       diagnostics?.dispose()
