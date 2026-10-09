@@ -69,3 +69,23 @@ export function planSessionViewportContent(
   }
   return { pages, bodies: content.bodies.filter((body) => pages[body.part.messageID]) }
 }
+
+/**
+ * Replay a message's already-materialized first-page summaries as the
+ * endpoint's page shape. Only usable when the window is complete
+ * (`page.hasEarlier === false`): a partial window must keep flowing through
+ * the batch endpoint so cursor state stays faithful.
+ */
+export function cachedPartPageSnapshot(
+  items: readonly SessionPartSummary[] | undefined,
+  page: { hasEarlier: boolean } | undefined,
+): SessionPartPage | undefined {
+  if (!items?.length || page?.hasEarlier !== false) return undefined
+  return {
+    items: [...items].sort((a, b) => a.id.localeCompare(b.id)),
+    nextCursor: null,
+    previousCursor: null,
+    hasMore: false,
+    hasEarlier: false,
+  }
+}

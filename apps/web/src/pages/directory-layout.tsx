@@ -7,7 +7,6 @@ import { FileProvider } from "@/context/file"
 import { ExecutionProvider } from "@/context/execution"
 import { BrowserCatalogProvider } from "@/components/workspace/browser/browser-catalog"
 import { useGlobalSync } from "@/context/global-sync"
-import { useLayout } from "@/context/layout"
 import { createSessionDataRuntime } from "@/context/session-data-view"
 
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
@@ -27,7 +26,6 @@ export default function Layout(props: ParentProps) {
         <SyncProvider>
           <SessionDecisionProvider>
             {iife(() => {
-              const layout = useLayout()
               const sync = useSync()
               const sdk = useSDK()
               const globalSync = useGlobalSync()
@@ -41,14 +39,15 @@ export default function Layout(props: ParentProps) {
                 void decisions.respondPermission({ id: input.permissionID, sessionID: input.sessionID }, input.response)
               }
 
-              // Kick session data fetches at route resolution, in parallel
-              // with scope bootstrap: the background prefetch queues
-              // session.get/timeline/partPages through the same store
-              // application path as the sidebar prefetch, so the foreground
-              // loader resolves from hasMessageSnapshot without new fetches.
+              // Kick the session's data load at route resolution, in
+              // parallel with scope bootstrap: driving the same
+              // sync.session.sync pipeline the page mount uses means the
+              // mount call joins this in-flight run (queueSessionSync
+              // satisfied-join) instead of fetching a second wave behind a
+              // separate prefetch chain.
               createEffect(() => {
                 if (!params.id) return
-                layout.nav.prefetchSessionID(scopeKey(), params.id, "high")
+                void sync.session.sync(params.id).catch(() => undefined)
               })
 
               return (
