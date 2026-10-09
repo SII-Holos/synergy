@@ -1,3 +1,4 @@
+import { createExecutionContext } from "./execution-context"
 import { createExecutionClock } from "@/composables/create-execution-clock"
 import { newerExecutionSample } from "@/utils/execution-time"
 import { createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
@@ -97,6 +98,16 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
       connectionVersion,
       advance,
       connected,
+      createContextHistory: (
+        options: Pick<Parameters<typeof createExecutionContext>[0], "runID" | "active" | "selected">,
+      ) =>
+        createExecutionContext({
+          ...options,
+          client: sdk.client,
+          sessionID: () => params.id,
+          connectionVersion,
+          subscribe: (receive) => sdk.event.on("execution.updated", (event) => receive(event.properties)),
+        }),
       round: (id: string) => {
         const round = rounds().get(id)
         return round

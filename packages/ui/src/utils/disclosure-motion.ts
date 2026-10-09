@@ -60,6 +60,32 @@ export function createDisclosureMotion(
   reduced?.addEventListener?.("change", changedPreference)
 
   return {
+    resize(from: number, to: number) {
+      if (disposed || !visible || content || pending || Math.abs(from - to) < 1) return
+      if (reduced?.matches || typeof element.animate !== "function") {
+        settle()
+        return
+      }
+      const height = animation ? element.getBoundingClientRect().height : from
+      const style = window?.getComputedStyle(element)
+      const duration = style?.getPropertyValue("--motion-duration-base").trim()
+      const milliseconds = duration ? parseFloat(duration) * (duration.endsWith("ms") ? 1 : 1000) : 180
+      const easing = style?.getPropertyValue("--motion-ease-standard").trim() || "cubic-bezier(0.2, 0, 0, 1)"
+      cancel()
+      element.setAttribute("data-motion-changing", "")
+      const current = element.animate(
+        [
+          { height: `${height}px`, minHeight: "0px" },
+          { height: `${to}px`, minHeight: "0px" },
+        ],
+        { duration: milliseconds, easing, fill: "both" },
+      )
+      animation = current
+      animationTarget = true
+      current.onfinish = () => {
+        if (animation === current && !pending) settle()
+      }
+    },
     setVisible(next: boolean, animate = false, appear = false) {
       if (disposed) return
       if (next === visible) {
@@ -166,6 +192,7 @@ export function createDisclosureMotionRef(options: {
   appear?: () => boolean
   content?: boolean
   resize?: boolean | (() => boolean)
+  observeResize?: boolean
   onHidden?: () => void
   onSettled?: () => void
 }) {
@@ -175,6 +202,17 @@ export function createDisclosureMotionRef(options: {
     const target = element()
     if (!target) return
     const motion = createDisclosureMotion(target, options.content, options.onHidden, options.resize, options.onSettled)
+    const child = target.firstElementChild
+    if (options.observeResize && child && typeof ResizeObserver !== "undefined") {
+      let height = child.getBoundingClientRect().height
+      const observer = new ResizeObserver(() => {
+        const next = child.getBoundingClientRect().height
+        if (height > 0 && !child.querySelector("[data-motion-changing]")) untrack(() => motion.resize(height, next))
+        height = next
+      })
+      observer.observe(child)
+      onCleanup(() => observer.disconnect())
+    }
     createEffect(() => {
       const next = visible()
       untrack(() => motion.setVisible(next, options.animate(), options.appear?.()))

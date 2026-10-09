@@ -8193,34 +8193,30 @@ export type ExecutionSummary = {
     observedAt: number
   } | null
   contextDistribution: {
-    version: 1
+    version: 2
     modelID: string
     providerID: string
     totalInput: number
     contextLimit?: number
     usableInputLimit?: number
-    categories: {
-      conversation: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      toolActivity: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      filesReferences: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      instructions: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-    }
+    categories: Array<{
+      category:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+        | "legacyConversation"
+        | "legacyTools"
+        | "legacyInstructions"
+      precision: "source" | "role" | "legacy"
+      estimatedTokens: number
+      attributedTokens: number
+      items?: number
+    }>
     overhead: {
       attributedTokens: number
     }
@@ -8282,6 +8278,116 @@ export type ExecutionSummary = {
   }>
   humanInputs: number
   taskInstructions: number
+}
+
+export type ExecutionContextSnapshot = {
+  sessionID: string
+  callID: string
+  nodeID: string
+  runID: string
+  started: number
+  requestNumber: number
+  roundNumber: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  modelID: string
+  providerID: string
+  inputTokens: number | null
+  contextLimit: number | null
+  outputTokens: number | null
+  cacheHit: number | null
+  elapsedMs: number | null
+  retries: number
+  usage: {
+    version: 2
+    modelID: string
+    providerID: string
+    totalInput: number
+    contextLimit?: number
+    usableInputLimit?: number
+    categories: Array<{
+      category:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+        | "legacyConversation"
+        | "legacyTools"
+        | "legacyInstructions"
+      precision: "source" | "role" | "legacy"
+      estimatedTokens: number
+      attributedTokens: number
+      items?: number
+    }>
+    overhead: {
+      attributedTokens: number
+    }
+    estimator:
+      | {
+          kind: "model-tokenizer"
+          encoding?: string
+        }
+      | {
+          kind: "bounded-utf8"
+          sampledCharacters: number
+          truncated: boolean
+        }
+    reconciliation: {
+      mode: "residual" | "scaled-down"
+      factor: number
+    }
+    capturedAt: number
+  } | null
+  compactedBefore: boolean
+  requestAvailable: boolean
+}
+
+export type ExecutionContextHistory = {
+  sessionID: string
+  revision: number
+  total: number
+  items: Array<ExecutionContextSnapshot>
+  nextCursor: string | null
+}
+
+export type ExecutionContextItem = {
+  category:
+    | "systemInstructions"
+    | "toolDefinitions"
+    | "userMessages"
+    | "injectedContext"
+    | "skills"
+    | "assistantMessages"
+    | "toolResults"
+    | "attachments"
+  path: Array<string>
+  selector?: Array<string>
+  range?: {
+    start: number
+    end: number
+  }
+  source: string
+  messageID?: string
+  partID?: string
+  characters: number
+  precision: "source" | "role"
+  id: string
+  offset: number
+  bytes: number
+}
+
+export type ExecutionContextItems = {
+  callID: string
+  nodeID: string
+  contentVersion: string | null
+  status: "available" | "legacy" | "unavailable"
+  items: Array<ExecutionContextItem>
+  total: number
+  nextCursor: string | null
+  truncated: boolean
 }
 
 export type ExecutionTrajectoryPage = {
@@ -10276,34 +10382,30 @@ export type AssistantMessage = {
     }
   }
   contextUsage?: {
-    version: 1
+    version: 2
     modelID: string
     providerID: string
     totalInput: number
     contextLimit?: number
     usableInputLimit?: number
-    categories: {
-      conversation: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      toolActivity: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      filesReferences: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      instructions: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-    }
+    categories: Array<{
+      category:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+        | "legacyConversation"
+        | "legacyTools"
+        | "legacyInstructions"
+      precision: "source" | "role" | "legacy"
+      estimatedTokens: number
+      attributedTokens: number
+      items?: number
+    }>
     overhead: {
       attributedTokens: number
     }
@@ -14230,6 +14332,7 @@ export type EventExecutionUpdated = {
     revision: number
     summary: ExecutionSummary
     roundSummaries: Array<ExecutionSummary>
+    contextUpserts?: Array<ExecutionContextSnapshot>
     previousRevision?: number
     upserts: Array<ExecutionTrajectoryNode>
     processUpserts?: Array<ExecutionTrajectoryNode>
@@ -18826,6 +18929,146 @@ export type SessionExecutionSummaryResponses = {
 }
 
 export type SessionExecutionSummaryResponse = SessionExecutionSummaryResponses[keyof SessionExecutionSummaryResponses]
+
+export type SessionExecutionContextHistoryData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+    cursor?: string
+    limit?: number
+  }
+  url: "/session/{sessionID}/execution/context/history"
+}
+
+export type SessionExecutionContextHistoryErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContextHistoryError =
+  SessionExecutionContextHistoryErrors[keyof SessionExecutionContextHistoryErrors]
+
+export type SessionExecutionContextHistoryResponses = {
+  /**
+   * Read context request history
+   */
+  200: ExecutionContextHistory
+}
+
+export type SessionExecutionContextHistoryResponse =
+  SessionExecutionContextHistoryResponses[keyof SessionExecutionContextHistoryResponses]
+
+export type SessionExecutionContextSnapshotData = {
+  body?: never
+  path: {
+    sessionID: string
+    callID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+  }
+  url: "/session/{sessionID}/execution/context/snapshots/{callID}"
+}
+
+export type SessionExecutionContextSnapshotErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContextSnapshotError =
+  SessionExecutionContextSnapshotErrors[keyof SessionExecutionContextSnapshotErrors]
+
+export type SessionExecutionContextSnapshotResponses = {
+  /**
+   * Read one context request snapshot
+   */
+  200: ExecutionContextSnapshot
+}
+
+export type SessionExecutionContextSnapshotResponse =
+  SessionExecutionContextSnapshotResponses[keyof SessionExecutionContextSnapshotResponses]
+
+export type SessionExecutionContextItemsData = {
+  body?: never
+  path: {
+    sessionID: string
+    callID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+    cursor?: string
+    limit?: number
+    category?:
+      | "systemInstructions"
+      | "toolDefinitions"
+      | "userMessages"
+      | "injectedContext"
+      | "skills"
+      | "assistantMessages"
+      | "toolResults"
+      | "attachments"
+    query?: string
+    version?: string
+  }
+  url: "/session/{sessionID}/execution/context/snapshots/{callID}/items"
+}
+
+export type SessionExecutionContextItemsErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContextItemsError =
+  SessionExecutionContextItemsErrors[keyof SessionExecutionContextItemsErrors]
+
+export type SessionExecutionContextItemsResponses = {
+  /**
+   * Read a bounded context source index
+   */
+  200: ExecutionContextItems
+}
+
+export type SessionExecutionContextItemsResponse =
+  SessionExecutionContextItemsResponses[keyof SessionExecutionContextItemsResponses]
 
 export type SessionExecutionTrajectoryData = {
   body?: never

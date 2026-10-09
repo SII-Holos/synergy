@@ -1288,6 +1288,14 @@ export namespace SessionInvoke {
                 const contextUsageProvenance = ContextUsage.buildProvenance({
                   history: plannedHistoryProvenance,
                   toolDefinitions: activeToolDefinitions,
+                  injections: [
+                    ...(memoryResult?.sources.map((source) => ({ text: source.context, source: source.id })) ?? []),
+                    ...envParts.map((text) => ({ text, source: "environment" })),
+                    ...advisoryParts.map((text) => ({ text, source: "advisory" })),
+                    ...(cortexExecutionContext ? [{ text: cortexExecutionContext, source: "task" }] : []),
+                    ...(cortexReminder ? [{ text: cortexReminder, source: "task" }] : []),
+                    ...(gitHealthBlock ? [{ text: gitHealthBlock, source: "workspace" }] : []),
+                  ],
                 })
                 const toolSchemaBytes = LLMTurnMemory.estimateBytes(activeToolDefinitions)
                 const requestBytes = LLMTurnMemory.estimateBytes({
