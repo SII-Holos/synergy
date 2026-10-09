@@ -134,45 +134,31 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         })
       },
     })
-    const retainedContent = globalSync.retainContentCache(sdk.scopeKey, () =>
+    const retainedContent = globalSync.retainContentCache(sdk.scopeKey, (contentSignal) =>
       createPartMaterializer({
         memory: globalSync.contentBudget,
         memoryKey: (summary) => contentBudgetKey(sdk.scopeKey, summary.messageID, summary.id),
-        read: async (summary, signal) => {
+        read: async (summary) => {
           const cached = store.part[summary.messageID]?.find((part) => part.id === summary.id)
           if (cached && store.partVersion[summary.id] === summary.content.version)
             return { part: cached, version: summary.content.version }
-          const remembered = globalSync.partContentStore.get({
-            url: sdk.url,
-            scopeKey: sdk.scopeKey,
-            partID: summary.id,
-            version: summary.content.version,
-          })
-          if (remembered) return { part: remembered, version: summary.content.version }
-          // The fetch outlives the lease on purpose: a released lease aborts
-          // the materializer's consumption loop, not the transport — otherwise
-          // a row scrolling out of view mid-flight throws the read away and a
-          // later retain reissues the identical versioned request (the last
-          // canceled-request source in the session-switch path).
-          const response = await sdk.client.session.partContent(
-            {
-              sessionID: summary.sessionID,
-              messageID: summary.messageID,
-              partID: summary.id,
-              version: summary.content.version,
+          return globalSync.partContentStore.read(
+            { url: sdk.url, scopeKey: sdk.scopeKey, partID: summary.id, version: summary.content.version },
+            async (signal) => {
+              const response = await sdk.client.session.partContent(
+                {
+                  sessionID: summary.sessionID,
+                  messageID: summary.messageID,
+                  partID: summary.id,
+                  version: summary.content.version,
+                },
+                { signal, throwOnError: true },
+              )
+              if (!response.data) throw new Error("Missing conversation content")
+              return response.data
             },
-            { signal: contentLifetime.signal, throwOnError: true },
+            contentSignal,
           )
-          if (!response.data) throw new Error("Missing conversation content")
-          globalSync.partContentStore.put({
-            url: sdk.url,
-            scopeKey: sdk.scopeKey,
-            partID: summary.id,
-            version: response.data.version,
-            part: response.data.part,
-            bytes: summary.content.bytes,
-          })
-          return response.data
         },
         refresh: async (summary, signal) => {
           const current = store.partSummary[summary.messageID]?.find((part) => part.id === summary.id)

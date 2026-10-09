@@ -737,16 +737,11 @@ function ConversationDisplayRow(
       .then(() => {
         if (!alive || generation !== loadGeneration) return
         setLoadFailure(undefined)
-        // The stale page finishing invalidates the server's display projection:
-        // parts whose content was evicted must be re-established even when the
-        // summary version is unchanged (the version is content-addressed, so the
-        // projection loss is what matters, not the hash). Releasing every lease
-        // here is safe now: the content transport is bound to the provider
-        // lifetime instead of the lease, so a release no longer aborts a healthy
-        // in-flight read — it only clears the materializer's ownership record
-        // and lets the retain effect below rebuild the projection.
-        for (const entry of retainedParts.values()) entry.lease.release()
-        retainedParts.clear()
+        for (const [partID, entry] of retainedParts) {
+          if (!partStates[partID]?.failed) continue
+          entry.lease.release()
+          retainedParts.delete(partID)
+        }
         setRetry((value) => value + 1)
       })
       .catch((error) => {
@@ -763,7 +758,7 @@ function ConversationDisplayRow(
     const wanted = new Set(current.parts.map((part) => part.id))
     for (const part of current.parts) {
       const previous = retainedParts.get(part.id)
-      if (previous?.version === part.content.version) continue
+      if (previous?.version === part.content.version && previous.lease.isCurrent?.() !== false) continue
       const lease = content.retain(part)
       retainedParts.set(part.id, { version: part.content.version, lease })
       previous?.lease.release()
