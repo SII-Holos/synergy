@@ -1,17 +1,18 @@
 import { executionDuration } from "@ericsanchezok/synergy-ui/execution-completion"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import type { ExecutionNodeDetail } from "@ericsanchezok/synergy-sdk/client"
+import type { ExecutionContextSnapshot, ExecutionNodeDetail } from "@ericsanchezok/synergy-sdk/client"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useSDK } from "@/context/sdk"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { E, K } from "./i18n"
+import { D } from "./context-categories"
 import { createExecutionClock } from "@/composables/create-execution-clock"
 import { EvidenceReader } from "./reader"
 import { EvidenceBlock } from "./block"
 
-type Tab = "result" | "diagnostics" | "request" | "response" | "calls"
+type Tab = "result" | "diagnostics"
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {}
 
@@ -24,6 +25,7 @@ export function ExecutionInspector(props: {
   onBack: () => void
   onSelect: (id: string) => void
   filtered?: boolean
+  snapshot?: ExecutionContextSnapshot
 }) {
   const { _, i18n } = useLingui()
   const sdk = useSDK()
@@ -49,6 +51,15 @@ export function ExecutionInspector(props: {
     return executionDuration(node.ended - node.started)
   }
   const [tab, setTab] = createSignal<Tab>("result")
+  let body: HTMLDivElement | undefined
+  const offsets = new Map<Tab, number>()
+  const chooseTab = (next: Tab) => {
+    if (body) offsets.set(tab(), body.scrollTop)
+    setTab(next)
+    requestAnimationFrame(() => {
+      if (body) body.scrollTop = offsets.get(next) ?? 0
+    })
+  }
   const [loading, setLoading] = createSignal(false)
   const [error, setError] = createSignal(false)
   let abort: AbortController | undefined
@@ -64,12 +75,7 @@ export function ExecutionInspector(props: {
   const tabs = createMemo<Tab[]>(() => {
     const value = detail()
     if (!value || value.node.source === "messages") return []
-    if (isModel())
-      return [
-        ...((value.node.group?.callCount ?? 0) > 1 ? ["calls" as const] : []),
-        ...(sources().includes("request") ? ["request" as const] : []),
-        ...(sources().includes("response") ? ["response" as const] : []),
-      ]
+    if (isModel()) return []
     return ["tool", "process"].includes(value.node.kind) ? ["result", "diagnostics"] : []
   })
   const results = () => sources().filter((field) => ["rawResult", "observation", "stream"].includes(field))
@@ -105,6 +111,8 @@ export function ExecutionInspector(props: {
     on(
       () => props.nodeID,
       () => {
+        offsets.clear()
+        if (body) body.scrollTop = 0
         setDetail(undefined)
         void load(true)
       },
@@ -182,10 +190,12 @@ export function ExecutionInspector(props: {
             <dd>{formatTime(detail()?.node.ended)}</dd>
           </div>
         </Show>
-        <div>
-          <dt>{_(E.elapsed)}</dt>
-          <dd>{elapsed() ?? _(E.unknown)}</dd>
-        </div>
+        <Show when={!isModel()}>
+          <div>
+            <dt>{_(E.elapsed)}</dt>
+            <dd>{elapsed() ?? _(E.unknown)}</dd>
+          </div>
+        </Show>
         <Show when={detail()?.node.purpose}>
           <div>
             <dt>{_(E.purpose)}</dt>
@@ -219,6 +229,9 @@ export function ExecutionInspector(props: {
         </button>
         <div class="execution-inspector-title">
           <strong>
+            <Show when={props.snapshot?.nodeID === props.nodeID}>
+              {_({ ...D.request, values: { number: props.snapshot?.requestNumber ?? 0 } })} ·{" "}
+            </Show>
             {(detail()?.node.group?.callCount ?? 0) > 1
               ? detail()?.node.group?.purpose || _(E.unclassified)
               : detail()?.node.tool || detail()?.node.title || _(E.loading)}
@@ -270,15 +283,135 @@ export function ExecutionInspector(props: {
           <nav class="execution-tabs" aria-label={_(E.view)}>
             <For each={tabs()}>
               {(item) => (
-                <button type="button" aria-current={tab() === item ? "page" : undefined} onClick={() => setTab(item)}>
-                  {_(item === "request" ? E.savedRequest : E[item])}
+                <button
+                  type="button"
+                  aria-current={tab() === item ? "page" : undefined}
+                  onClick={() => chooseTab(item)}
+                >
+                  {_(E[item])}
                 </button>
               )}
             </For>
           </nav>
         </Show>
-        <div class="execution-inspector-body">
-          <Show when={tab() === "result"}>
+        <div class="execution-inspector-body" ref={body}>
+          <Show when={isModel()}>
+            <section class="execution-request-summary">
+              <p class="execution-request-description">
+                {_(detail()?.node.usageRole === "auxiliary" ? E.auxiliaryRequest : E.conversationRequest)}
+              </p>
+              <dl class="execution-request-metrics">
+                <Show
+                  when={props.snapshot?.nodeID === props.nodeID}
+                  fallback={
+                    <div>
+                      <dt>{_(E.tokens)}</dt>
+                      <dd>
+                        {detail()?.node.tokens?.total == null
+                          ? "—"
+                          : new Intl.NumberFormat(i18n().locale).format(detail()!.node.tokens!.total!)}
+                      </dd>
+                    </div>
+                  }
+                >
+                  <div>
+                    <dt>{_(E.input)}</dt>
+                    <dd>
+                      {props.snapshot?.inputTokens == null
+                        ? "—"
+                        : new Intl.NumberFormat(i18n().locale).format(props.snapshot.inputTokens)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{_(E.output)}</dt>
+                    <dd>
+                      {props.snapshot?.outputTokens == null
+                        ? "—"
+                        : new Intl.NumberFormat(i18n().locale).format(props.snapshot.outputTokens)}
+                    </dd>
+                  </div>
+                </Show>
+                <div>
+                  <dt>{_(E.elapsed)}</dt>
+                  <dd>{elapsed() ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt>{_(E.retryCount)}</dt>
+                  <dd>
+                    {props.snapshot?.nodeID === props.nodeID
+                      ? props.snapshot.retries
+                      : (detail()?.node.group?.retryCount ?? Math.max(0, physical().length - 1))}
+                  </dd>
+                </div>
+              </dl>
+              <dl class="execution-detail-rows">
+                <div>
+                  <dt>{_(E.model)}</dt>
+                  <dd>{detail()?.node.modelID || detail()?.node.title}</dd>
+                </div>
+                <Show when={typeof object(record().model).providerID === "string"}>
+                  <div>
+                    <dt>{_(E.provider)}</dt>
+                    <dd>{object(record().model).providerID as string}</dd>
+                  </div>
+                </Show>
+              </dl>
+              <Show when={failure()}>
+                <EvidenceBlock label={_(E.errorDetails)} text={failure()} />
+              </Show>
+            </section>
+            <Show when={sources().includes("request")}>
+              {reader("request", _(detail()?.node.evidenceKind === "attempt" ? E.actualRequest : E.savedRequest))}
+            </Show>
+            <Show when={sources().includes("response")}>{reader("response", _(E.response))}</Show>
+            {timing()}
+            <Show when={physical().length > 1 || (detail()?.node.group?.callCount ?? 0) > 1}>
+              <section class="execution-request-related">
+                <Show when={physical().length > 1}>
+                  <h3>{_(K.retry)}</h3>
+                  <div class="execution-attempts">
+                    <For each={physical()}>
+                      {(attempt) => (
+                        <button type="button" data-state={attempt.status} onClick={() => props.onSelect(attempt.id)}>
+                          {(attempt.attemptIndex ?? 0) === 0
+                            ? _(E.firstRequest)
+                            : _({ ...E.retryAttempt, values: { number: attempt.attemptIndex } })}
+                          <span>{_(E[attempt.status])}</span>
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </Show>
+                <Show when={(detail()?.node.group?.callCount ?? 0) > 1}>
+                  <h3>{_(E.calls)}</h3>
+                  <div class="execution-related">
+                    <For each={calls()}>
+                      {(call) => (
+                        <button
+                          type="button"
+                          disabled={call.id === props.nodeID}
+                          onClick={() => props.onSelect(call.id)}
+                        >
+                          <span>{formatTime(call.started)}</span>
+                          <strong>{call.modelID || call.title}</strong>
+                          <span data-state={call.status}>{_(E[call.status])}</span>
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                  <Show when={calls().length < (detail()?.node.group?.callCount ?? 0)}>
+                    <p class="execution-help">
+                      {_({
+                        ...E.callsTruncated,
+                        values: { shown: calls().length, total: detail()?.node.group!.callCount },
+                      })}
+                    </p>
+                  </Show>
+                </Show>
+              </section>
+            </Show>
+          </Show>
+          <Show when={!isModel() && tab() === "result"}>
             <Show when={failure()}>
               <EvidenceBlock label={_(E.errorDetails)} text={failure()} />
             </Show>
@@ -304,7 +437,7 @@ export function ExecutionInspector(props: {
               </Show>
             </Show>
           </Show>
-          <Show when={tab() === "diagnostics"}>
+          <Show when={!isModel() && tab() === "diagnostics"}>
             <Show when={sources().includes("input")}>{reader("input", _(E.toolInput))}</Show>
             <Show
               when={
@@ -320,67 +453,6 @@ export function ExecutionInspector(props: {
               <p class="execution-help">{_(E.recordedDefinition)}</p>
             </Show>
             {timing()}
-          </Show>
-          <Show when={tab() === "request" || tab() === "response"}>
-            <Show when={tab() === "request" && physical().length > 1}>
-              <div class="execution-attempts">
-                <For each={physical()}>
-                  {(attempt) => (
-                    <button type="button" data-state={attempt.status} onClick={() => props.onSelect(attempt.id)}>
-                      {(attempt.attemptIndex ?? 0) === 0
-                        ? _(E.firstRequest)
-                        : _({ ...E.retryAttempt, values: { number: attempt.attemptIndex } })}
-                      <span>{_(E[attempt.status])}</span>
-                    </button>
-                  )}
-                </For>
-              </div>
-            </Show>
-            <Show when={tab()} keyed>
-              {(field) =>
-                reader(
-                  field,
-                  _(
-                    field === "request"
-                      ? detail()?.node.evidenceKind === "attempt"
-                        ? E.actualRequest
-                        : E.savedRequest
-                      : E.response,
-                  ),
-                )
-              }
-            </Show>
-            <Show when={tab() === "request"}>
-              <details class="execution-timing-disclosure">
-                <summary>{_(E.timing)}</summary>
-                {timing()}
-              </details>
-            </Show>
-          </Show>
-          <Show when={tab() === "calls"}>
-            <div class="execution-related">
-              <For each={calls()}>
-                {(call) => (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      call.id === props.nodeID
-                        ? setTab(sources().includes("request") ? "request" : "result")
-                        : props.onSelect(call.id)
-                    }
-                  >
-                    <span>{formatTime(call.started)}</span>
-                    <strong>{call.modelID || call.title}</strong>
-                    <span data-state={call.status}>{_(E[call.status])}</span>
-                  </button>
-                )}
-              </For>
-            </div>
-            <Show when={calls().length < (detail()?.node.group?.callCount ?? 0)}>
-              <p class="execution-help">
-                {_({ ...E.callsTruncated, values: { shown: calls().length, total: detail()?.node.group!.callCount } })}
-              </p>
-            </Show>
           </Show>
           <Show when={detail()?.node.kind === "subtask" || (detail()?.node.group && !isModel())}>
             <div class="execution-related">

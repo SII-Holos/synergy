@@ -99,7 +99,7 @@ function assistantMessage(id: string, parentID: string, text: string): MessageV2
 function installBasicLoopMocks(options?: {
   onBuildPlan?: (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => PromptBudgeter.PromptPlan | void
   onProcess?: (
-    input: any,
+    input: SessionProcessor.ProcessInput,
     assistant: MessageV2.Assistant,
     callIndex: number,
   ) => Promise<void | "stop" | "continue"> | void | "stop" | "continue"
@@ -183,7 +183,7 @@ function installBasicLoopMocks(options?: {
     partFromToolCall: () => undefined,
     modelInputFromToolCall: () => undefined,
     trackExecution: () => {},
-    process: mock(async (processInput: any) => {
+    process: mock(async (processInput: SessionProcessor.ProcessInput) => {
       callIndex++
       const result = (await options?.onProcess?.(processInput, input.assistantMessage, callIndex)) ?? "stop"
       input.assistantMessage.finish = result === "continue" ? "tool-calls" : "stop"
@@ -991,7 +991,7 @@ describe("SessionInvoke context usage provenance", () => {
         toolDefinitions,
         activeToolIDs: ["active_tool"],
         onProcess: async (input) => {
-          toolContributions = [...input.contextUsageProvenance.categories.toolActivity]
+          toolContributions = [...(input.contextUsageProvenance?.categories.toolDefinitions ?? [])]
         },
       })
 
@@ -1011,11 +1011,11 @@ describe("SessionInvoke context usage provenance", () => {
         restore()
       }
     }))
-  test("attributes conversation from the final prompt plan instead of the pre-budget projection", () =>
+  test("attributes user messages from the final prompt plan instead of the pre-budget projection", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
 
-      let conversationContributions: Array<{ text: string }> = []
+      let userContributions: Array<{ text: string }> = []
       const restore = installBasicLoopMocks({
         onBuildPlan: (input) => ({
           system: input.system,
@@ -1025,7 +1025,7 @@ describe("SessionInvoke context usage provenance", () => {
           toolDefinitions: input.toolDefinitions,
         }),
         onProcess: async (input) => {
-          conversationContributions = [...input.contextUsageProvenance.categories.conversation]
+          userContributions = [...(input.contextUsageProvenance?.categories.userMessages ?? [])]
         },
       })
 
@@ -1038,7 +1038,7 @@ describe("SessionInvoke context usage provenance", () => {
           },
         })
 
-        expect(conversationContributions.map((contribution) => contribution.text)).toEqual(["final planned history"])
+        expect(userContributions.map((contribution) => contribution.text)).toEqual(["final planned history"])
       } finally {
         restore()
       }

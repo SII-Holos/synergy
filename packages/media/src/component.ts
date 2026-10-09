@@ -4,6 +4,7 @@ import { registerMediaTools } from "./register-tools"
 import { registerDocumentExtraction } from "./register-documents"
 import { registerMediaAgents } from "./agents"
 import { registerConfig } from "./config-schema"
+import { registerRenderContext } from "./render/context"
 
 export function media(): RuntimeComponent {
   return {
@@ -18,6 +19,7 @@ export function media(): RuntimeComponent {
       registerMediaTools()
       registerDocumentExtraction()
       registerMediaAgents()
+      registerRenderContext()
     },
   }
 }

@@ -124,6 +124,66 @@ export namespace ExecutionSchema {
         .optional(),
     })
     .meta({ ref: "ExecutionTask" })
+  export const ContextQuery = z.object({
+    runID: z.string().optional(),
+    cursor: z.string().max(4096).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(30),
+  })
+  export const ContextSnapshot = z
+    .object({
+      sessionID: z.string(),
+      callID: z.string(),
+      nodeID: z.string(),
+      runID: z.string(),
+      started: z.number(),
+      requestNumber: z.number().int().positive(),
+      roundNumber: z.number().int().positive(),
+      status: RolloutSchema.Status,
+      modelID: z.string(),
+      providerID: z.string(),
+      inputTokens: z.number().nonnegative().nullable(),
+      contextLimit: z.number().nonnegative().nullable(),
+      outputTokens: z.number().nonnegative().nullable(),
+      cacheHit: z.number().min(0).max(1).nullable(),
+      elapsedMs: z.number().nonnegative().nullable(),
+      retries: z.number().int().nonnegative(),
+      usage: MessageV2.Assistant.shape.contextUsage.unwrap().nullable(),
+      compactedBefore: z.boolean(),
+      requestAvailable: z.boolean(),
+    })
+    .meta({ ref: "ExecutionContextSnapshot" })
+  export type ContextSnapshot = z.infer<typeof ContextSnapshot>
+  export const ContextHistory = z
+    .object({
+      sessionID: z.string(),
+      revision: z.number(),
+      total: z.number(),
+      items: z.array(ContextSnapshot),
+      nextCursor: z.string().nullable(),
+    })
+    .meta({ ref: "ExecutionContextHistory" })
+  export const ContextItemsQuery = ContextQuery.extend({
+    category: MessageV2.ContextSource.shape.category.optional(),
+    query: z.string().max(500).optional(),
+    version: z.string().max(4096).optional(),
+  })
+  export const ContextItem = MessageV2.ContextSource.extend({
+    id: z.string(),
+    offset: z.number().nonnegative(),
+    bytes: z.number().nonnegative(),
+  }).meta({ ref: "ExecutionContextItem" })
+  export const ContextItems = z
+    .object({
+      callID: z.string(),
+      nodeID: z.string(),
+      contentVersion: z.string().nullable(),
+      status: z.enum(["available", "legacy", "unavailable"]),
+      items: z.array(ContextItem),
+      total: z.number(),
+      nextCursor: z.string().nullable(),
+      truncated: z.boolean(),
+    })
+    .meta({ ref: "ExecutionContextItems" })
   export const Summary = z
     .object({
       sessionID: z.string(),
@@ -222,6 +282,7 @@ export namespace ExecutionSchema {
       revision: z.number(),
       summary: Summary,
       roundSummaries: z.array(Summary),
+      contextUpserts: z.array(ContextSnapshot).optional(),
       previousRevision: z.number().int().nonnegative().optional(),
       upserts: z.array(Node),
       processUpserts: z.array(Node).optional(),

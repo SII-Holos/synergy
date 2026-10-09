@@ -651,8 +651,24 @@ test("same-mount reading changes preserve the scroll anchor and line/comment sel
     const name = await line.getAttribute("aria-label")
     await line.click()
     await page.getByRole("textbox", { name: "Comment", exact: true }).fill("retained comment")
-    const firstLine = viewer.getByRole("button", { name: name!, exact: true })
-    const before = await firstLine.evaluate((element) => element.getBoundingClientRect().toJSON())
+    const lineBounds = async () => {
+      // Virtual rows can be replaced between locator resolution and element evaluation.
+      const handle = await page.waitForFunction((label) => {
+        const containers = document.querySelectorAll('[data-component="review-viewer"] diffs-container')
+        for (const container of containers) {
+          for (const row of container.shadowRoot?.querySelectorAll<HTMLElement>("[data-column-number]") ?? []) {
+            if (row.getAttribute("aria-label") !== label || !row.isConnected) continue
+            const rect = row.getBoundingClientRect()
+            if (rect.width > 0 && rect.height > 0) return { y: rect.y }
+          }
+        }
+      }, name)
+      const bounds = await handle.jsonValue()
+      await handle.dispose()
+      if (!bounds) throw new Error("Expected a rendered selected line")
+      return bounds
+    }
+    const before = await lineBounds()
     for (const action of ["files", "wrap", "layout"] as const) {
       if (action === "files") await page.getByRole("button", { name: "Hide files", exact: true }).click()
       else if (action === "wrap") await page.getByRole("button", { name: "Wrap lines", exact: true }).click()
@@ -660,8 +676,7 @@ test("same-mount reading changes preserve the scroll anchor and line/comment sel
         await page.getByRole("button", { name: /^Diff layout:/ }).click()
         await page.getByRole("option", { name: "Unified", exact: true }).click()
       }
-      await firstLine.waitFor()
-      const after = await firstLine.evaluate((element) => element.getBoundingClientRect().toJSON())
+      const after = await lineBounds()
       expect(Math.abs(after.y - before.y)).toBeLessThan(30)
       expect(await page.getByRole("textbox", { name: "Comment", exact: true }).inputValue()).toBe("retained comment")
     }

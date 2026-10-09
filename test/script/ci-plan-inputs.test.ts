@@ -157,6 +157,9 @@ function expectedPlan(fixture: Awaited<ReturnType<typeof revisionFixture>>, equa
     changed: expectedInputs(equal).changed,
     selected,
     proposed: selected,
+    ...(equal
+      ? {}
+      : { fullTriggers: [{ file: "packages/core/package.json", reason: "workspace-configuration" as const }] }),
     reasons: equal
       ? {
           complete: "not affected by this change",

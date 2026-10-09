@@ -66,6 +66,10 @@ msgid "activity.batch.searched"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "activity.batch.total"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "activity.history.earlier"
 msgstr ""
 
@@ -2089,230 +2093,6 @@ msgid "app.common.confirm"
 msgstr "⟦Confirm⟧"
 
 #. js-lingui-explicit-id
-msgid "app.context.action.copied"
-msgstr "⟦Copied⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.action.copy"
-msgstr "⟦Copy⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.action.copyFailed"
-msgstr "⟦Copy failed⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.estimatedTokens"
-msgstr "⟦Estimated {tokens}⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.estimateNote"
-msgstr "⟦Category values use bounded UTF-8 estimates reconciled to the exact provider input total.⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.exactInputShare"
-msgstr "⟦{percent} of exact input⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.itemCount"
-msgstr "⟦{count, plural, one {# item} other {# items}}⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.title"
-msgstr "⟦What’s taking space⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.breakdown.unavailable"
-msgstr "⟦Breakdown available after the next response⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.conversation"
-msgstr "⟦Conversation⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.conversation.description"
-msgstr "⟦User and assistant text, including reasoning⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.filesReferences"
-msgstr "⟦Files and references⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.filesReferences.description"
-msgstr "⟦Attachments, file summaries, and provider-file references⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.instructions"
-msgstr "⟦Instructions⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.instructions.description"
-msgstr "⟦Agent, project, workflow, memory, and runtime guidance⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.overhead"
-msgstr "⟦Overhead⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.overhead.description"
-msgstr "⟦Provider formatting, opaque file usage, and estimation variance⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.toolActivity"
-msgstr "⟦Tool activity⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.category.toolActivity.description"
-msgstr "⟦Tool definitions, calls, results, and errors⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.compact.action"
-msgstr "⟦Compact conversation⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.compact.hint"
-msgstr "⟦Compact the conversation to recover context space.⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.dataAccess.description"
-msgstr "⟦Inspect normalized persisted messages and the latest user system override.⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.dataAccess.rawMessages"
-msgstr "⟦View raw messages⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.dataAccess.title"
-msgstr "⟦Data access⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.cacheReadWrite"
-msgstr "⟦Cache read / write⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.contextUsage"
-msgstr "⟦Context usage⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.contextWindow"
-msgstr "⟦Context window⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.latestCallCost"
-msgstr "⟦Latest-call cost⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.latestCallTotal"
-msgstr "⟦Latest-call total⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.latestOutputReasoning"
-msgstr "⟦Latest output / reasoning⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.loadedMessagesCost"
-msgstr "⟦Loaded messages cost⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.model"
-msgstr "⟦Model⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.provider"
-msgstr "⟦Provider⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.remainingInput"
-msgstr "⟦Remaining input⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.usage"
-msgstr "⟦Usage details⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.assistantMessages"
-msgstr "⟦Assistant messages⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.attributedTotal"
-msgstr "⟦Attributed total⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.estimatedAttributed"
-msgstr "⟦{category} estimated / attributed⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.estimatorEncoding"
-msgstr "⟦Estimator encoding⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.estimatorKind"
-msgstr "⟦Estimator kind⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.lastActivity"
-msgstr "⟦Last activity⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.messages"
-msgstr "⟦Messages⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.rawEstimatedTotal"
-msgstr "⟦Raw estimated total⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.reconciliationFactor"
-msgstr "⟦Reconciliation factor⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.reconciliationMode"
-msgstr "⟦Reconciliation mode⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.sessionCreated"
-msgstr "⟦Session created⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.sessionID"
-msgstr "⟦Session ID⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.sessionTitle"
-msgstr "⟦Session title⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.title"
-msgstr "⟦Developer details⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.developer.userMessages"
-msgstr "⟦User messages⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.instructions.copy"
-msgstr "⟦Copy user system override⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.instructions.copyFailed"
-msgstr "⟦Unable to copy user system override.⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.instructions.empty"
-msgstr "⟦No user system override is available.⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.instructions.latestUserOverride"
-msgstr "⟦Latest user system override⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.model.label"
-msgstr "⟦Model {model}⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.session.untitled"
-msgstr "⟦Untitled session⟧"
-
-#. js-lingui-explicit-id
 msgid "app.context.status.compacted"
 msgstr "⟦Conversation compacted; usage available after the next response⟧"
 
@@ -2335,22 +2115,6 @@ msgstr "⟦Enough room to continue⟧"
 #. js-lingui-explicit-id
 msgid "app.context.status.warning"
 msgstr "⟦This context is getting full⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.usage.limitUnknown"
-msgstr "⟦Context limit unknown⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.usage.percentUsed"
-msgstr "⟦{percent} used⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.usage.tokensRemaining"
-msgstr "⟦{tokens} remaining⟧"
-
-#. js-lingui-explicit-id
-msgid "app.context.usage.usedInput"
-msgstr "⟦Used input⟧"
 
 #. Confirm
 msgid "app.dialog.confirm.actionFailed"
@@ -8618,6 +8382,42 @@ msgid "app.reference.workspaceChanged"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.render.capturePreview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.confirmDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.requestText"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.send"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.sendFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.sending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.render.stale"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.review.toolUnavailable"
 msgstr "⟦This tool result is no longer available.⟧"
 
@@ -11737,6 +11537,314 @@ msgstr "⟦Uninstall {name}? It will be removed from this Synergy install.⟧"
 msgid "confirm.uninstallPlugin.title"
 msgstr "⟦Uninstall plugin?⟧"
 
+#. js-lingui-explicit-id
+msgid "context.category.assistant"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.category.attachments"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.category.injected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.category.legacyConversation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.category.legacyInstructions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.category.legacyTools"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.category.other"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.category.results"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.category.skills"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.category.system"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.category.tools"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.category.user"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.accumulated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.answerTokens"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.back"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.byRequest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.byRound"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.capacity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.characters"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.compaction"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.comparedPrevious"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.composition"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.content"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.contentLimit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.current"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.delta"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.earlier"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.estimated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.events"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.failedTools"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.generation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.growth"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.hideContent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.historical"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.indexTruncated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.input"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.items"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.latest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.mainRequests"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.modelWait"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.moreContent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.moreItems"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.noEvents"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.noItems"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.noRequests"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.reasoning"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.records"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.remaining"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.request"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestChange"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestCount"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestDetails"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestIdentity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestInput"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.requestPicker"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.retryCount"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.round"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.roundPrompt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.sourceChange"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.sourceSearch"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.sourceUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.taskActivity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.taskScope"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.timedCalls"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.timing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.timingBasis"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.timingTotal"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.tokenStats"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.tokenUnit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.toolCount"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.toolExecution"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.total"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.usageDetails"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.viewContent"
+msgstr ""
+
 #. it a timeout would misstate what happens; only `tool_timeout` aborts.
 msgid "countdown.backgrounded"
 msgstr "⟦backgrounded⟧"
@@ -12098,14 +12206,6 @@ msgid "environment.dialog.title"
 msgstr "⟦Choose Environment⟧"
 
 #. js-lingui-explicit-id
-msgid "execution.activity"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.activityOrder"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "execution.actor"
 msgstr ""
 
@@ -12131,6 +12231,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.anomalies"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.auxiliaryRequest"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12166,15 +12270,15 @@ msgid "execution.cancelTask"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.chartEvents"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.chartExpand"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "execution.children"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.chooseRecord"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.chooseRecordHelp"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12211,6 +12315,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.contextUnknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.conversationRequest"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12330,14 +12438,6 @@ msgid "execution.history"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.humanInputs"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.idle"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "execution.inboxHistory"
 msgstr ""
 
@@ -12438,7 +12538,7 @@ msgid "execution.missingCost"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.missingTimes"
+msgid "execution.model"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12530,6 +12630,10 @@ msgid "execution.processView"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.provider"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.purpose"
 msgstr ""
 
@@ -12550,15 +12654,15 @@ msgid "execution.rawStructure"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.realTime"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "execution.recorded"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.recordedDefinition"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.recordsTitle"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12639,10 +12743,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.subscription"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.taskInstructions"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -16440,10 +16540,6 @@ msgid "session.activity.materializingInput"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.activity.operations"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "session.activity.parallelTools"
 msgstr ""
 
@@ -17714,10 +17810,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.process.interrupted"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.process.latest"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -25025,11 +25117,131 @@ msgid "tool.misc.warnings"
 msgstr "⟦Warnings⟧"
 
 #. js-lingui-explicit-id
+msgid "tool.render.busy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.changes"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.closed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.conflict"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.discard"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.download"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "tool.render.expand"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "tool.render.feedback"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidControls"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidDate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidIcon"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidRequest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.invalidVariants"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.navigation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.next"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.offline"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.original"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.parameters"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "tool.render.preparing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.previous"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.reset"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.resourceFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.review"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.selectFeedback"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.static"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.stopFeedback"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.timeout"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.tooLarge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.tooMany"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.render.variants"
 msgstr ""
 
 #. js-lingui-explicit-id

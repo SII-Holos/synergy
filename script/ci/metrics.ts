@@ -37,7 +37,12 @@ export function summarize(created: string, input: Job[], now = Date.now(), attem
     job.started_at && executed(job)
       ? Math.max(0, (Date.parse(job.completed_at ?? "") || now) - Date.parse(job.started_at)) / 1000
       : 0
+  const failed = jobs
+    .filter((job) => job.conclusion === "failure" && job.completed_at)
+    .map((job) => Date.parse(job.completed_at!))
+    .filter(Number.isFinite)
   return {
+    firstFailureSeconds: failed.length ? Math.max(0, Math.min(...failed) - first) / 1000 : null,
     endToEndSeconds: (Math.max(first, ...jobs.map((job) => Date.parse(job.completed_at ?? "") || now)) - first) / 1000,
     runnerSeconds: jobs.reduce((sum, job) => sum + elapsed(job), 0),
     jobs: jobs.map((job) => ({
