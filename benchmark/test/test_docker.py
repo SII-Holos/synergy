@@ -115,9 +115,13 @@ def experiment_fixture(tmp_path_factory: pytest.TempPathFactory):
     thread = threading.Thread(target=provider.serve_forever, daemon=True)
     thread.start()
     dataset = tmp_path / "dataset"
-    shutil.copytree(BENCHMARK / "test/fixtures/task", dataset / "tasks/fixture")
+    shutil.copytree(
+        BENCHMARK / "test/fixtures/task", dataset / "tasks/fixture", ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
+    )
     separate = dataset / "tasks/separate"
-    shutil.copytree(BENCHMARK / "test/fixtures/task", separate)
+    shutil.copytree(
+        BENCHMARK / "test/fixtures/task", separate, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
+    )
     definition = (separate / "task.toml").read_text()
     definition = 'artifacts = ["/logs/artifacts/marker"]\n' + definition
     definition = definition.replace('name = "synergy/fixture"', 'name = "synergy/separate"')
