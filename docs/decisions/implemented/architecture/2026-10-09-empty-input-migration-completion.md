@@ -22,6 +22,8 @@ Record-only rollout, usage lineage, retired Link and unfinished checkpoint trans
 
 Session identity and tool-input transforms declare the full Session subtree. Transactional Session index reconstruction also declares every removable index and the recovery-pending marker, so a stale projection cannot be mistaken for empty input. Storage removal only prunes ancestors for rows actually changed into tombstones. Retrying deletion of an absent key retains namespace fencing and transaction admission without repeating an unrelated node traversal.
 
+Observability migrations prove that both canonical and legacy telemetry files, including their WAL and shared-memory companions, are absent before sharing completion. The first telemetry write creates the current schema. Any existing file retains import, redaction and schema migration; a filesystem inspection error leaves completion pending.
+
 ## Alternatives considered
 
 **Assume a new SQL namespace is current.** A newly opened namespace may still have historical imports or external files. Blanket completion would omit required work.
