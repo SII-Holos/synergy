@@ -6,12 +6,26 @@ import { SessionHistoryDisplay } from "../../src/session/history-display"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
+import { SqliteDriver } from "../../src/storage/sqlite-driver"
+import type { SqlConnection, SqlTransactionOptions } from "../../src/storage/sql-contract"
 import { Identifier } from "../../src/id/id"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
+
+function countWriterTransactions(onWrite: () => void) {
+  const transaction = SqliteDriver.prototype.transaction
+  return spyOn(SqliteDriver.prototype, "transaction").mockImplementation(function <T>(
+    this: SqliteDriver,
+    body: (connection: SqlConnection) => Promise<T>,
+    options?: SqlTransactionOptions,
+  ): Promise<T> {
+    if (!options?.readOnly) onWrite()
+    return transaction.call(this, body, options) as Promise<T>
+  })
+}
 
 test("reasoning without readable text retains its evidence but has no display entrance", () => {
   for (const text of ["", " \n\t", "Readable reasoning"]) {
@@ -298,6 +312,60 @@ test("historical Part projection resumes across pages and excludes deleted conte
     })
   }))
 
+test("timeline preparation preserves canonical settlement state after rereading stored messages", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Canonical settlement projection" })
+        const expired: MessageV2.User = {
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test" },
+          time: { created: 1 },
+          isRoot: true,
+          visible: true,
+          summary: { diffs: [], diffState: { status: "pending", deadlineAt: 1 } },
+        }
+        const pending: MessageV2.User = {
+          ...expired,
+          id: Identifier.ascending("message"),
+          time: { created: 2 },
+          summary: { diffs: [], diffState: { status: "pending", deadlineAt: Number.MAX_SAFE_INTEGER } },
+        }
+        for (const info of [expired, pending]) {
+          await Session.updateMessage(info)
+          await Storage.write(
+            StoragePath.messageInfo(session.scope.id, session.id, Identifier.asMessageID(info.id)),
+            info,
+          )
+        }
+        const state = async (messageID: string) => {
+          const page = await SessionHistory.timelinePage({ sessionID: session.id })
+          const info = page.items.find((item) => item.info.id === messageID)!.info
+          expect(info.role).toBe("user")
+          return info.role === "user" ? info.summary?.diffState : undefined
+        }
+        expect(await state(expired.id)).toEqual({ status: "error", code: "timeout" })
+        expect(await state(pending.id)).toEqual(pending.summary!.diffState)
+        await SessionHistoryDisplay.prepareWindow(session.scope.id, session.id, [expired])
+        expect(await state(expired.id)).toEqual({ status: "error", code: "timeout" })
+        await Storage.transaction(async () => {
+          await SessionHistoryDisplay.prepareWindow(session.scope.id, session.id, [expired])
+          expect(await state(expired.id)).toEqual({ status: "error", code: "timeout" })
+        })
+        const stored = await Storage.read<MessageV2.User>(
+          StoragePath.messageInfo(session.scope.id, session.id, Identifier.asMessageID(expired.id)),
+        )
+        expect(stored.summary?.diffState).toEqual(expired.summary!.diffState)
+        await Session.remove(session.id)
+      },
+    })
+  }))
+
 test("display pages seek chronology, bound summaries, and resolve original bodies separately", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir({ git: true })
@@ -499,17 +567,10 @@ test("a cold batched part page fan-out materializes the window in a single stora
 
         const batched = await seed("Batched cold refresh")
 
-        // The changed function is the batched display fan-out in
-        // SessionHistoryDisplay.partPages. Count only real driver BEGINs at that
-        // seam: nested transaction calls delegate to the ambient transaction,
-        // so exactly one BEGIN must serve the whole three-message fan-out.
-        const openTransaction = Storage.transaction
+        // Count the real driver writer transactions, not nested Storage calls.
         const requireDisplayMessage = async () => undefined
         let driverTransactions = 0
-        using counting = spyOn(Storage, "transaction").mockImplementation((body, options) => {
-          if (!Storage.inTransaction()) driverTransactions++
-          return openTransaction(body, options)
-        })
+        using counting = countWriterTransactions(() => driverTransactions++)
         const coldResult = await SessionHistoryDisplay.partPages(
           {
             sessionID: batched.session.id,
@@ -536,15 +597,9 @@ test("a cold batched part page fan-out materializes the window in a single stora
           expect(JSON.parse(JSON.stringify(coldResult[message.id]))).toEqual(JSON.parse(JSON.stringify(single)))
         }
 
-        // Re-running over the now-warm window still opens exactly one outer
-        // batch; per-message display parts are reused and both shapes are
-        // byte-identical, proving the cold materialization produced the
-        // canonical projection semantics.
+        // Warm Display pages reuse the projection without writer admission.
         driverTransactions = 0
-        using recounting = spyOn(Storage, "transaction").mockImplementation((body, options) => {
-          if (!Storage.inTransaction()) driverTransactions++
-          return openTransaction(body, options)
-        })
+        using recounting = countWriterTransactions(() => driverTransactions++)
         const warmResult = await SessionHistoryDisplay.partPages(
           {
             sessionID: batched.session.id,
@@ -554,8 +609,9 @@ test("a cold batched part page fan-out materializes the window in a single stora
           requireDisplayMessage,
           batched.session.scope.id,
         )
-        expect(driverTransactions).toBe(1)
+        expect(driverTransactions).toBe(0)
         expect(JSON.parse(JSON.stringify(warmResult))).toEqual(JSON.parse(JSON.stringify(coldResult)))
+        recounting[Symbol.dispose]()
 
         // The public SessionHistory endpoint observes the same page bytes.
         const publicResult = await SessionHistory.partPages({
@@ -599,12 +655,8 @@ test("prepareWindow coalesces concurrent callers into shared drain waves per ses
           infos.push(info)
         }
 
-        const openTransaction = Storage.transaction
         let driverTransactions = 0
-        using counting = spyOn(Storage, "transaction").mockImplementation((body, options) => {
-          if (!Storage.inTransaction()) driverTransactions++
-          return openTransaction(body, options)
-        })
+        using counting = countWriterTransactions(() => driverTransactions++)
 
         // Enqueue the first drain wave but do not await it yet, so the second
         // caller lands while the wave is still running and attaches to the
@@ -681,12 +733,8 @@ test("overlapping batched part page calls resolve with consistent shared pages a
           messages.push({ id: messageID, partIDs })
         }
 
-        const openTransaction = Storage.transaction
         let driverTransactions = 0
-        using counting = spyOn(Storage, "transaction").mockImplementation((body, options) => {
-          if (!Storage.inTransaction()) driverTransactions++
-          return openTransaction(body, options)
-        })
+        using counting = countWriterTransactions(() => driverTransactions++)
 
         const requireDisplayMessage = async () => undefined
         // Two concurrent overlapping windows refresh the same cold messages at
@@ -708,6 +756,7 @@ test("overlapping batched part page calls resolve with consistent shared pages a
         // concurrent per-message batches (nested materialization joins the
         // ambient transaction, never the sibling call's).
         expect(driverTransactions).toBe(2)
+        counting[Symbol.dispose]()
 
         // The shared message resolves byte-identically in both overlapping
         // windows: the overlap did not fork divergent refresh output.
@@ -716,23 +765,19 @@ test("overlapping batched part page calls resolve with consistent shared pages a
         )
         expect(left[messages[1].id].items.map((part) => part.id)).toEqual(messages[1].partIDs)
 
-        // A re-run over the now-warm window opens only the single outer batch:
-        // per-message cold display_part writes no longer happen, so no further
-        // driver transaction is needed beyond that wrapper.
+        // A warm rerun reads the complete window without writer admission.
         driverTransactions = 0
-        using recounting = spyOn(Storage, "transaction").mockImplementation((body, options) => {
-          if (!Storage.inTransaction()) driverTransactions++
-          return openTransaction(body, options)
-        })
+        using recounting = countWriterTransactions(() => driverTransactions++)
         const warm = await SessionHistoryDisplay.partPages(
           { sessionID: session.id, messageIDs: messages.map((message) => message.id), limit: 100 },
           requireDisplayMessage,
           session.scope.id,
         )
-        expect(driverTransactions).toBe(1)
+        expect(driverTransactions).toBe(0)
         expect(JSON.parse(JSON.stringify(warm[messages[1].id]))).toEqual(
           JSON.parse(JSON.stringify(right[messages[1].id])),
         )
+        recounting[Symbol.dispose]()
 
         await Session.remove(session.id)
       },

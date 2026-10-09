@@ -20,6 +20,8 @@ Four focused changes stop the cascade at its ignition and amplification points w
 
 The duplicate content fetch was closed separately by the version-keyed `PartContentStore` contract described in [the sibling feature record](../feature/2026-10-09-visible-first-session-loading.md).
 
+The [cold-load refresh ownership follow-up](2026-10-10-cold-load-refresh-ownership.md) preserves transition triggers in queued callbacks and declares the route effect's session-ID dependency without changing this record's replay, freshness or content-cache decisions.
+
 ## Alternatives considered
 
 - **Ownership transfer to a single fetch owner** — making one loader own the whole session lifecycle would stop the freshness-domain spiral structurally, but rewrites the `global-sync`/`sync` session ownership and its tested invalidation contracts; rejected as over-broad for a regression with narrow ignition points. Revisit if spiral behavior re-appears elsewhere.
