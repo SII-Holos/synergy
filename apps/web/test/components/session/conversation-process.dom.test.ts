@@ -107,8 +107,8 @@ const fixtureServer = async (entry: "index.mjs" | "index.jsx") => {
   await server.warmupRequest("/main.tsx")
   return server
 }
-const frames = () =>
-  page.evaluate(
+const frames = (target = page) =>
+  target.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
 const contentPage = async (scenario: string) => {
@@ -204,15 +204,18 @@ test("reading a finished full process does not retrace unchanged disclosure stat
 test.each(["index.mjs", "index.jsx"] as const)(
   "visible fixed viewports and native hit testing survive resize and scrolling (%s)",
   async (entry) => {
-    const fixture = await fixtureServer(entry)
+    const alternate = entry === "index.jsx" ? await fixtureServer(entry) : undefined
+    const target = alternate ? await browser.newPage() : page
+    target.setDefaultTimeout(15000)
+    if (alternate) target.on("pageerror", (error) => errors.push(error.message))
     try {
-      await page.goto(`${fixture.resolvedUrls!.local[0]}resize.html?fixed`)
-      await page.getByRole("button", { name: "Item 0", exact: true }).waitFor()
-      await frames()
-      expect(await page.evaluate(() => window.__conversationResizeList!.viewportSize)).toBe(288)
-      await page.evaluate(() => window.__conversationResizeList!.scrollToIndex(80, { align: "start" }))
-      await page.getByRole("button", { name: "Item 80", exact: true }).waitFor()
-      const hit = await page.getByLabel("Measured list").evaluate(async (element) => {
+      await target.goto(`${alternate?.resolvedUrls!.local[0] ?? url}resize.html?fixed`)
+      await target.getByRole("button", { name: "Item 0", exact: true }).waitFor()
+      await frames(target)
+      expect(await target.evaluate(() => window.__conversationResizeList!.viewportSize)).toBe(288)
+      await target.evaluate(() => window.__conversationResizeList!.scrollToIndex(80, { align: "start" }))
+      await target.getByRole("button", { name: "Item 80", exact: true }).waitFor()
+      const hit = await target.getByLabel("Measured list").evaluate(async (element) => {
         element.scrollTop += 48
         await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
         const rect = element.getBoundingClientRect()
@@ -221,7 +224,10 @@ test.each(["index.mjs", "index.jsx"] as const)(
       expect(hit).toBe(true)
       expect(errors).toEqual([])
     } finally {
-      await fixture.close()
+      if (alternate) {
+        await target.close()
+        await alternate.close()
+      }
     }
   },
   30000,

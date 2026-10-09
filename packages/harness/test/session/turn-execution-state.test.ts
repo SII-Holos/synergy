@@ -29,17 +29,19 @@ test("a terminal reply stops foreground activity while background accounting sta
     false,
     { completedAt: 1_100, failed: false },
   )
-  expect(value).toMatchObject({ status: "completed", endedAt: 1_100, elapsedMs: 1_000 })
+  expect(value).toMatchObject({ status: "completed", endedAt: 1_100 })
+  expect(value).not.toHaveProperty("elapsedMs")
 })
 
-test("background settlement cannot extend the foreground duration", () => {
+test("background settlement cannot extend the foreground completion boundary", () => {
   const value = TurnExecutionState.project(
     { id: "root", status: "completed", started: 100, ended: 6_000 },
     [{ id: "segment", status: "completed", started: 120, ended: 1_110 }],
     false,
     { completedAt: 1_100, failed: false },
   )
-  expect(value).toMatchObject({ status: "completed", endedAt: 1_100, elapsedMs: 1_000 })
+  expect(value).toMatchObject({ status: "completed", endedAt: 1_100 })
+  expect(value).not.toHaveProperty("elapsedMs")
 })
 
 test("an earlier reply cannot settle a resumed or still active execution", () => {
@@ -50,7 +52,7 @@ test("an earlier reply cannot settle a resumed or still active execution", () =>
   ]) {
     const value = TurnExecutionState.project({ id: "root", status: "running", started: 100 }, [segment], false, reply)
     expect(value.status).toBe("running")
-    expect(value.elapsedMs).toBeUndefined()
+    expect(value).not.toHaveProperty("elapsedMs")
   }
 })
 
@@ -63,6 +65,6 @@ test("reply completion preserves failures, approvals and interruptions", () => {
   for (const status of ["cancelled", "interrupted"] as const) {
     const state = TurnExecutionState.project({ ...running, status, ended: 1_200 }, [...segments], false, reply)
     expect(state).toMatchObject({ status: status === "cancelled" ? "stopped" : "interrupted", endedAt: 1_200 })
-    expect(state.elapsedMs).toBeUndefined()
+    expect(state).not.toHaveProperty("elapsedMs")
   }
 })

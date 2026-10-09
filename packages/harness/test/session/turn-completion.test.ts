@@ -43,8 +43,11 @@ test("foreground completion publishes before detached work and preserves its eve
         expect(events).toEqual([rootID])
         const [state] = await SessionActivity.turns(session.id, [rootID])
         expect(state).toMatchObject({ status: "completed", endedAt: completed })
-        expect(state.elapsedMs).toBeNumber()
-        expect((await RolloutLedger.getRun(call.owner, rootID)).status).toBe("running")
+        expect(state).not.toHaveProperty("elapsedMs")
+        expect(await RolloutLedger.getRun(call.owner, rootID)).toMatchObject({
+          status: "running",
+          execution: { status: "completed", at: expect.any(Number) },
+        })
         expect((await RolloutLedger.getCall(call.owner, rootID, call.id)).status).toBe("running")
         await expect(RolloutLedger.finishRun(call.owner, rootID, "completed")).rejects.toThrow("active calls")
         await complete(call)

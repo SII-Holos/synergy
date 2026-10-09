@@ -159,6 +159,7 @@ describe("SessionTurn activity display switching", () => {
   })
 
   test("a canonical pause prevents the completion footer from advertising a stale running round", async () => {
+    harness.setExecutionStatus("stopped")
     harness.setSessionPaused(true)
     await waitForUpdate()
     const footer = document.querySelector('[data-component="execution-completion"]')!

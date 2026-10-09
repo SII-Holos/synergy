@@ -1423,9 +1423,11 @@ export function SessionTurn(
       : view.statusFor(props.sessionID),
   )
   const showCurrentActivity = createMemo(() => shouldShowCurrentActivity({ working: working(), hasError: !!error() }))
-  const showExecutionCompletion = createMemo(
-    () => !working() && (!!props.executionSummary || props.executionState?.elapsedMs != null),
-  )
+  const foregroundOutcome = () => {
+    const status = props.executionState?.status
+    return status === "completed" || status === "failed" ? status : undefined
+  }
+  const showExecutionCompletion = createMemo(() => !working() && (!!props.executionSummary || !!foregroundOutcome()))
 
   const autoScroll = createAutoScroll({
     working,
@@ -1491,10 +1493,9 @@ export function SessionTurn(
     return isLastUserMessage() && status?.type === "paused" ? status : undefined
   }
   const executionSummary = (): TurnExecutionSummary | undefined => {
-    const execution = props.executionState
-    if (execution?.elapsedMs != null && (execution.status === "completed" || execution.status === "failed"))
-      return { status: execution.status, elapsedMs: execution.elapsedMs }
     const summary = props.executionSummary
+    const outcome = foregroundOutcome()
+    if (outcome) return summary?.status === outcome ? summary : { status: outcome, elapsedMs: null }
     if (!paused() || summary?.status !== "running") return summary
     return { ...summary, status: paused()?.reason === "failed" ? "failed" : "interrupted" }
   }

@@ -8413,7 +8413,6 @@ export type TurnExecutionState = {
   status: "preparing" | "running" | "approval" | "completed" | "failed" | "stopped" | "interrupted"
   startedAt: number
   endedAt?: number
-  elapsedMs?: number
   segmentID?: string
   stoppedAt: Array<number>
 }

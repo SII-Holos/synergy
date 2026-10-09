@@ -89,7 +89,7 @@ Desktop mirrors this state with platform-native indicators. macOS shows a numeri
 
 One root user message defines one task. Every assistant message generated for that task points back to the same root. This stable grouping is independent of visual rendering or model inclusion.
 
-The reply's completion footer and copy action become available after foreground work ends. Library experience generation and other auxiliary work can continue in the background. The compact footer measures time through reply completion; execution details retain the full recorded duration and usage, including auxiliary work.
+The reply's completion footer and copy action become available after foreground work ends. Library experience generation and other auxiliary work can continue in the background. The compact footer and execution details use the same actual execution duration, excluding auxiliary work and preserving a lower-bound marker when timing evidence is incomplete. Completion actions remain available while the duration summary loads; details retain auxiliary calls and usage.
 
 Messages describe four separate questions:
 

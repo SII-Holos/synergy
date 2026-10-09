@@ -8,7 +8,6 @@ export namespace TurnExecutionState {
       status: z.enum(["preparing", "running", "approval", "completed", "failed", "stopped", "interrupted"]),
       startedAt: z.number(),
       endedAt: z.number().optional(),
-      elapsedMs: z.number().nonnegative().optional(),
       segmentID: z.string().optional(),
       stoppedAt: z.array(z.number()),
     })
@@ -53,7 +52,6 @@ export namespace TurnExecutionState {
       status: status === "running" && pendingApproval ? "approval" : status,
       startedAt: latest?.started ?? run.started,
       endedAt: completed?.completedAt ?? run.ended,
-      elapsedMs: completed ? Math.max(0, completed.completedAt - run.started) : undefined,
       segmentID: latest?.id,
       stoppedAt,
     }
