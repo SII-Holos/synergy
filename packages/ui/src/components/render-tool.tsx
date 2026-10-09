@@ -246,7 +246,6 @@ export function RenderTool(
         await loadRenderLibraries(source?.libraries ?? []),
       )
       if (disposed || key() !== captured) return
-      if (disposed || key() !== captured) return
       const url = URL.createObjectURL(new Blob([document], { type: "text/html" }))
       const link = window.document.createElement("a")
       link.href = url
