@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import fs from "node:fs/promises"
 import { migrationFixture } from "./fixture"
 import { migrations as sessions } from "../../src/session/migration"
 import { migrations as scopes } from "../../src/scope/migration"
@@ -9,6 +10,7 @@ import { UsageMigration } from "../../src/usage/migration"
 import { Storage } from "../../src/storage/storage"
 import { MigrationRegistry } from "../../src/migration/registry"
 import { runMigrations } from "../../src/migration"
+import { Tool } from "../../src/tool/tool"
 
 test("a navigation migration still clears a stale home index without Sessions", async () => {
   await using fixture = await migrationFixture()
@@ -56,6 +58,37 @@ test("empty Workspace migration does not create a local Host identity", async ()
     expect(await identity.exists()).toBe(false)
     await migration.up(() => {})
     expect(await identity.exists()).toBe(false)
+  })
+})
+
+test("index reconstruction removes stale projections and recovery markers even without Sessions", async () => {
+  await using fixture = await migrationFixture()
+  await fixture.run(async () => {
+    const migration = sessions.find((item) => item.id === "20260914-transactional-session-indexes")!
+    const stale = [
+      ["session_index", "old"],
+      ["endpoint_session", "old"],
+      ["sessions_page_index", "old"],
+      ["session_child_index", "old"],
+      ["session_nav_v2", "old"],
+      ["meta", "rollout", "recovery-pending"],
+    ]
+    for (const key of stale) await Storage.write(key, { stale: true })
+    MigrationRegistry.register("session", [migration])
+    await runMigrations({ output: "silent" })
+    expect(await Storage.readMany(stale)).toEqual(stale.map(() => undefined))
+  })
+})
+
+test("tool input history remains active for retained parts without a Session header", async () => {
+  await using fixture = await migrationFixture()
+  await fixture.run(async () => {
+    await fs.mkdir(Storage.current().artifactDirectory, { recursive: true })
+    Tool.registerInputHistory("fixture", { fixture: { previous: "current" } })
+    const key = ["sessions", "scope", "session", "messages", "message", "parts", "part"]
+    await Storage.write(key, { type: "tool", tool: "fixture", state: { input: { previous: "keep" } } })
+    await runMigrations({ output: "silent" })
+    expect(await Storage.read(key)).toMatchObject({ state: { input: { current: "keep" } } })
   })
 })
 

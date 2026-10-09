@@ -44,6 +44,7 @@ export namespace Tool {
       {
         id: `20261001-${owner}-tool-input-semantics`,
         scope: "session",
+        emptyInput: [["sessions"]],
         description: "Clarify agent tool fields and retain invocation intent",
         up,
         async upSession(target, progress) {

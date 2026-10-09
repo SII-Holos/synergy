@@ -2491,6 +2491,15 @@ export const migrations: Migration[] = [
   {
     id: "20260914-transactional-session-indexes",
     scope: "derived",
+    emptyInput: [
+      ["sessions"],
+      ["session_index"],
+      ["endpoint_session"],
+      ["sessions_page_index"],
+      ["session_child_index"],
+      ["session_nav_v2"],
+      StoragePath.rolloutRecoveryPending(),
+    ],
     async upSession(owner) {
       const { SessionCompat } = await import("./compat-import")
       await SessionCompat.writeSessionIndexes(owner)

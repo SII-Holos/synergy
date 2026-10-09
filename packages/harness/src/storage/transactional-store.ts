@@ -683,12 +683,12 @@ export class StoreTransaction {
   async remove(key: string[]): Promise<void> {
     this.check(true)
     await this.assertAdmitted([key])
-    await this.connection.query(
-      "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id = ? AND body IS NOT NULL",
+    const removed = await this.connection.query(
+      "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id = ? AND body IS NOT NULL RETURNING key_text",
       [Date.now(), this.namespace, keyParameter(this.keys, key)],
     )
     // The tombstone stays; the node chain the removal emptied does not.
-    await this.cleanDanglingNodes([key])
+    if (removed.length) await this.cleanDanglingNodes([key])
   }
 
   async removeMany(keys: string[][]): Promise<void> {
@@ -696,11 +696,11 @@ export class StoreTransaction {
     await this.assertAdmitted(keys)
     for (let offset = 0; offset < keys.length; offset += 128) {
       const batch = keys.slice(offset, offset + 128)
-      await this.connection.query(
-        `UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (${batch.map(() => "?").join(",")}) AND body IS NOT NULL`,
+      const removed = await this.connection.query<SqlRow & { key_text: string }>(
+        `UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (${batch.map(() => "?").join(",")}) AND body IS NOT NULL RETURNING key_text`,
         [Date.now(), this.namespace, ...batch.map((key) => keyParameter(this.keys, key))],
       )
-      await this.cleanDanglingNodes(batch)
+      if (removed.length) await this.cleanDanglingNodes(removed.map((row) => JSON.parse(row.key_text) as string[]))
     }
   }
 

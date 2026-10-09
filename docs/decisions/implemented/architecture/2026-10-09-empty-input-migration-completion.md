@@ -18,6 +18,8 @@ The legacy Scope rename first enumerates immediate record roots. When every cons
 
 Record-only rollout, usage lineage, retired Link and unfinished checkpoint transforms now declare all of their input roots. Rollout includes stale statistics even when no Session exists; Link retirement includes permission rules. Persistent-volume identity discovery happens only when Workspace records exist. Existing nonempty-data tests and empty-body equivalence tests cover these declarations on both database backends.
 
+Session identity and tool-input transforms declare the full Session subtree. Transactional Session index reconstruction also declares every removable index and the recovery-pending marker, so a stale projection cannot be mistaken for empty input. Storage removal only prunes ancestors for rows actually changed into tombstones. Retrying deletion of an absent key retains namespace fencing and transaction admission without repeating an unrelated node traversal.
+
 ## Alternatives considered
 
 **Assume a new SQL namespace is current.** A newly opened namespace may still have historical imports or external files. Blanket completion would omit required work.
