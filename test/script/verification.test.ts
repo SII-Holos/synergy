@@ -1,15 +1,10 @@
 import { expect, test } from "bun:test"
+import { cachedChecks } from "../../script/gates"
 import { execFileSync } from "node:child_process"
 import { chmod, mkdtemp, rm, symlink } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import {
-  WorkingSnapshot,
-  changedInputs,
-  cachedChecks,
-  missingMeasurements,
-  verificationToolchain,
-} from "../../script/verification"
+import { WorkingSnapshot, changedInputs, missingMeasurements, verificationToolchain } from "../../script/verification"
 
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "verification-"))

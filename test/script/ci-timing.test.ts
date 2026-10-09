@@ -27,6 +27,8 @@ test("browser weights follow a shared fixture while keeping ordinary isolated te
     await Bun.write(path.join(root, "test/unit.test.ts"), 'import { value } from "./support/value"')
     await Bun.write(path.join(root, "test/support/value.ts"), "export const value = 1")
     expect(batchKind(["test/browser.test.ts"], root)).toBe("browser")
+    await Bun.write(path.join(root, "test/browser.test.ts"), 'import { page } from "./support/browser.ts"')
+    expect(batchKind(["test/browser.test.ts"], root)).toBe("browser")
     expect(batchKind(["test/unit.test.ts"], root)).toBe("isolated")
   } finally {
     await rm(root, { recursive: true, force: true })

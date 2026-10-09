@@ -103,7 +103,7 @@ export function batchKind(files: string[], root: string): Kind {
     for (const match of source.matchAll(/(?:from\s*|import\s*)["'](\.[^"']+)["']/g)) {
       const target = path.resolve(path.dirname(file), match[1]!)
       if (!target.startsWith(testRoot)) continue
-      const resolved = [".ts", ".tsx", ".js", ".mjs", "/index.ts", "/index.tsx", "/index.js", ""]
+      const resolved = ["", ".ts", ".tsx", ".js", ".mjs", "/index.ts", "/index.tsx", "/index.js"]
         .map((extension) => target + extension)
         .find((candidate) => statSync(candidate, { throwIfNoEntry: false })?.isFile())
       if (resolved) pending.push(resolved)

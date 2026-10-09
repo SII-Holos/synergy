@@ -1,12 +1,10 @@
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { lstatSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs"
-import { rename } from "node:fs/promises"
 import path from "node:path"
 import { analyzeSource, type SourceFacts } from "./source-analysis"
 import { decodeRevisionInventory, type RevisionEntry } from "./ci/revision"
 import { matchesExempt, type Exemption, type LcovRecord } from "./coverage-check"
-import type { Gate, GateError } from "./gates"
 
 export class WorkingSnapshot {
   readonly inventory = new Map<string, RevisionEntry>()
@@ -74,9 +72,6 @@ export function changedInputs(root: string, base: string, snapshot: WorkingSnaps
     .sort()
 }
 
-const REUSABLE = new Set(["format:check", "lint", "typecheck", "monorepo:check", "doc:check", "decision:check"])
-type Receipt = { version: 1; input: string; gates: Record<string, { command: string; completed: number }> }
-
 export function verificationToolchain(root: string, env: NodeJS.ProcessEnv = process.env) {
   return JSON.stringify({
     bun: Bun.version,
@@ -92,57 +87,6 @@ export function verificationToolchain(root: string, env: NodeJS.ProcessEnv = pro
     }),
     environment: [env.CI, env.NODE_ENV, env.NODE_OPTIONS, env.BUN_OPTIONS],
   })
-}
-
-export async function cachedChecks(
-  root: string,
-  gates: Gate[],
-  execute: (gate: Gate) => Promise<GateError | null>,
-  toolchain = verificationToolchain(root),
-) {
-  const snapshot = new WorkingSnapshot(root)
-  const input = createHash("sha256").update(snapshot.digest).update(toolchain).digest("hex")
-  const file = path.join(root, ".artifacts/verify/checks.json")
-  const previous = (await Bun.file(file)
-    .json()
-    .catch(() => undefined)) as Receipt | undefined
-  const saved =
-    previous?.version === 1 && previous.input === input && previous.gates && typeof previous.gates === "object"
-      ? previous.gates
-      : {}
-  const reused = gates
-    .filter((gate) => {
-      const receipt = saved[gate.id]
-      return (
-        REUSABLE.has(gate.id) &&
-        receipt?.command === gate.run &&
-        Number.isFinite(receipt.completed) &&
-        receipt.completed <= Date.now() &&
-        Date.now() - receipt.completed < 24 * 60 * 60 * 1000
-      )
-    })
-    .map((gate) => gate.id)
-  const { runGateSet } = await import("./gates")
-  const result = await runGateSet(gates, root, async (gate) => (reused.includes(gate.id) ? null : execute(gate)))
-  if (new WorkingSnapshot(root).digest !== snapshot.digest) {
-    result.failures.push({
-      gate: "inputs-changed",
-      exitCode: 1,
-      stderr: "Verification inputs changed during checks; run again.",
-    })
-    await Bun.write(file, "{}\n")
-    return { ...result, reused }
-  }
-  const receipts = { ...saved }
-  for (const gate of gates) {
-    delete receipts[gate.id]
-    if (REUSABLE.has(gate.id) && !result.failures.some((failure) => failure.gate === gate.id))
-      receipts[gate.id] = { command: gate.run, completed: Date.now() }
-  }
-  const temporary = `${file}.${crypto.randomUUID()}.tmp`
-  await Bun.write(temporary, JSON.stringify({ version: 1, input, gates: receipts } satisfies Receipt))
-  await rename(temporary, file)
-  return { ...result, reused }
 }
 
 export function missingMeasurements(files: string[], records: LcovRecord[], exemptions: Exemption[]) {

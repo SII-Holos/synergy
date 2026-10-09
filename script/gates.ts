@@ -13,8 +13,10 @@
  */
 
 import path from "node:path"
+import { createHash } from "node:crypto"
 import { $ } from "bun"
-import { cachedChecks } from "./verification"
+import { rename } from "node:fs/promises"
+import { WorkingSnapshot, verificationToolchain } from "./verification"
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..")
 
@@ -183,6 +185,59 @@ export async function runGateSet(
 
   const failures = gates.filter((gate) => results.get(gate.id)).map((gate) => results.get(gate.id)!)
   return { gates: gates.map((gate) => gate.id), failures }
+}
+
+const REUSABLE = new Set(["format:check", "lint", "typecheck", "monorepo:check", "doc:check", "decision:check"])
+type Receipt = { version: 1; input: string; gates: Record<string, { command: string; completed: number }> }
+
+export async function cachedChecks(
+  root: string,
+  gates: Gate[],
+  execute: (gate: Gate) => Promise<GateError | null>,
+  toolchain = verificationToolchain(root),
+) {
+  const snapshot = new WorkingSnapshot(root)
+  const input = createHash("sha256").update(snapshot.digest).update(toolchain).digest("hex")
+  const file = path.join(root, ".artifacts/verify/checks.json")
+  const previous = (await Bun.file(file)
+    .json()
+    .catch(() => undefined)) as Receipt | undefined
+  const saved =
+    previous?.version === 1 && previous.input === input && previous.gates && typeof previous.gates === "object"
+      ? previous.gates
+      : {}
+  const reused = gates
+    .filter((gate) => {
+      const receipt = saved[gate.id]
+      return (
+        REUSABLE.has(gate.id) &&
+        receipt?.command === gate.run &&
+        Number.isFinite(receipt.completed) &&
+        receipt.completed <= Date.now() &&
+        Date.now() - receipt.completed < 24 * 60 * 60 * 1000
+      )
+    })
+    .map((gate) => gate.id)
+  const result = await runGateSet(gates, root, async (gate) => (reused.includes(gate.id) ? null : execute(gate)))
+  if (new WorkingSnapshot(root).digest !== snapshot.digest) {
+    result.failures.push({
+      gate: "inputs-changed",
+      exitCode: 1,
+      stderr: "Verification inputs changed during checks; run again.",
+    })
+    await Bun.write(file, "{}\n")
+    return { ...result, reused }
+  }
+  const receipts = { ...saved }
+  for (const gate of gates) {
+    delete receipts[gate.id]
+    if (REUSABLE.has(gate.id) && !result.failures.some((failure) => failure.gate === gate.id))
+      receipts[gate.id] = { command: gate.run, completed: Date.now() }
+  }
+  const temporary = `${file}.${crypto.randomUUID()}.tmp`
+  await Bun.write(temporary, JSON.stringify({ version: 1, input, gates: receipts } satisfies Receipt))
+  await rename(temporary, file)
+  return { ...result, reused }
 }
 
 export async function runGates(mode: string, root: string = REPO_ROOT): Promise<GateRunResult> {
