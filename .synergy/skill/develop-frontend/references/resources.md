@@ -29,7 +29,7 @@ For browser-local document readers, validate actual streamed decompression in a 
 
 ## Verify File Review and Restoration
 
-Use live browser locator actions when selecting lines after a virtualized layout change. A locator evaluation can retain a node that the viewer removes before activation; a synthetic click on that detached node does not exercise user input. Cover rapid layout changes, both diff sides and Shift ranges with native pointer and keyboard actions under browser CPU throttling.
+Use live browser locator actions when selecting lines after a virtualized layout change. A locator evaluation can retain a node that the viewer removes before activation; a synthetic click on that detached node does not exercise user input. Query and measure the current connected row within one browser task when asserting geometry; a separately resolved element handle can report zero bounds after replacement. Wait only for a rendered row, then assert the original position tolerance without waiting for the expected coordinate. Cover rapid layout changes, both diff sides and Shift ranges with native pointer and keyboard actions under browser CPU throttling.
 
 Treat compact diff rows as metadata: absent patches still require a captured-content read. Keep recording state separate from content loading and empty results, and show an explicit retry after terminal transport errors. Large comparisons need bounded concurrent reads, version-keyed projection and highlight caches and real viewer virtualization checks; placeholder metadata must never share a filename-only highlight cache with later full content. Display settings must never alter canonical patches or comment excerpts. Verify that reading switches update a stable button without removing keyboard focus.
 

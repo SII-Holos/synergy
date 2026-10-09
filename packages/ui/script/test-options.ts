@@ -32,6 +32,7 @@ export const testOptions = {
     "test/components/session-turn-activity-switch.dom.test.ts",
     "test/components/session-turn-chronology.dom.test.ts",
     "test/components/conversation-motion.browser.test.ts",
+    "test/utils/scroll-motion.browser.test.ts",
     "test/components/compaction-status.browser.test.ts",
     "test/components/render-html.browser.test.ts",
     "test/components/render-interactive.browser.test.ts",

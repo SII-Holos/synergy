@@ -15,55 +15,59 @@ msgstr "拒绝"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.browser"
-msgstr "执行了 {count} 次浏览器操作"
+msgstr "执行了 <number/> 次浏览器操作"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.coordinate"
-msgstr "完成了 {count} 次协调操作"
+msgstr "完成了 <number/> 次协调操作"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.delegate"
-msgstr "委派了 {count} 个任务"
+msgstr "委派了 <number/> 个任务"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.execute"
-msgstr "运行了 {count} 个命令"
+msgstr "运行了 <number/> 个命令"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.external"
-msgstr "执行了 {count} 次外部操作"
+msgstr "执行了 <number/> 次外部操作"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.generic"
-msgstr "完成了 {count} 次操作"
+msgstr "完成了 <number/> 次操作"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.inspect"
-msgstr "检查了 {count} 项内容"
+msgstr "检查了 <number/> 项内容"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.modify"
-msgstr "完成了 {count} 次文件修改"
+msgstr "完成了 <number/> 次文件修改"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.produce"
-msgstr "生成了 {count} 项成果"
+msgstr "生成了 <number/> 项成果"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.readFiles"
-msgstr "读取了 {count} 个文件"
+msgstr "读取了 <number/> 个文件"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.readOperations"
-msgstr "读取文件 {count} 次"
+msgstr "读取文件 <number/> 次"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.research"
-msgstr "查阅了 {count} 个来源"
+msgstr "查阅了 <number/> 个来源"
 
 #. js-lingui-explicit-id
 msgid "activity.batch.searched"
-msgstr "搜索了 {count} 次"
+msgstr "搜索了 <number/> 次"
+
+#. js-lingui-explicit-id
+msgid "activity.batch.total"
+msgstr "<number/> 项操作"
 
 #. js-lingui-explicit-id
 msgid "activity.history.earlier"
@@ -16476,10 +16480,6 @@ msgid "session.activity.materializingInput"
 msgstr "正在准备执行"
 
 #. js-lingui-explicit-id
-msgid "session.activity.operations"
-msgstr "执行了 {count} 项操作"
-
-#. js-lingui-explicit-id
 msgid "session.activity.parallelTools"
 msgstr "正在调用工具 · {count} 项"
 
@@ -17751,10 +17751,6 @@ msgstr "收起推理"
 #. js-lingui-explicit-id
 msgid "session.process.interrupted"
 msgstr "已中断"
-
-#. js-lingui-explicit-id
-msgid "session.process.latest"
-msgstr "回到最新操作"
 
 #. js-lingui-explicit-id
 msgid "session.process.loadFailed"

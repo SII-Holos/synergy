@@ -91,8 +91,8 @@ export const fixtureServer = (entry: "index.mjs" | "index.jsx") =>
       { find: "@/context/execution", replacement: path.join(directory, "execution.ts") },
     ],
   })
-export const frames = () =>
-  page.evaluate(
+export const frames = (target = page) =>
+  target.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
 async function freshPage() {

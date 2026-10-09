@@ -387,6 +387,10 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
+          "glob": "src/components/session/conversation-presentation.tsx",
+          "reason": "test/components/session/conversation-presentation.dom.test.ts exercises retained outgoing frames, superseded navigation, Scope boundaries, admission continuity and reduced motion in Chromium. Composer and toolbar browser suites also compose this real presentation layer; Vite/browser execution does not contribute Bun source LCOV."
+        },
+        {
           "glob": "src/components/session/conversation-viewport.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },

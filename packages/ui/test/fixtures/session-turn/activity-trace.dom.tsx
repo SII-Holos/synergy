@@ -13,8 +13,13 @@ import {
   MinimalActivitySummary,
 } from "../../../src/components/activity-trace.tsx"
 
+import { ActivityBatchLabel } from "../../../src/components/activity-batch.tsx"
+
 const [countValue, setCountValue] = createSignal(9)
+const [batchPending, setBatchPending] = createSignal(0)
+const [batchLive, setBatchLive] = createSignal(true)
 const [countIdentity, setCountIdentity] = createSignal("turn-a")
+const batchCount = () => ({ identity: countIdentity(), count: countValue(), pending: batchPending() })
 const [summaryCompleted, setSummaryCompleted] = createSignal(false)
 const [railState, setRailState] = createSignal<"running" | "done">("running")
 
@@ -88,7 +93,7 @@ const railGroup = (state: "running" | "done", key: string) => ({
   key,
   state,
   scopeKey: key,
-  steps: [{ ...group.steps[1], part: { ...group.steps[1].part, id: key }, scopeKey: key, state }],
+  steps: [{ ...group.steps[1], part: { ...group.steps[1].part, id: key, sessionID: "s" }, scopeKey: key, state }],
   topic: {
     state: state === "done" ? "stable" : "live",
     text: state === "done" ? "Finished rail work" : "Working through rail steps",
@@ -303,6 +308,7 @@ const data = {
 // Session runtime state lives outside the Scope store; the view resolves
 // it from this accessor bag.
 const [hasApproval, setApproval] = createSignal(false)
+const [sessionPaused, setSessionPaused] = createSignal(false)
 const permissionCalls: unknown[] = []
 let permissionReply: ReturnType<typeof Promise.withResolvers<void>> | undefined
 const respondToPermission = (input: unknown) => {
@@ -312,7 +318,7 @@ const respondToPermission = (input: unknown) => {
 }
 const NO_REQUESTS = []
 const runtime = {
-  statusFor: () => undefined,
+  statusFor: () => (sessionPaused() ? { type: "paused" as const, reason: "aborted" as const } : undefined),
   permissionsFor: () =>
     hasApproval()
       ? [
@@ -343,6 +349,14 @@ render(
         <CodeComponentProvider component={CodeFixture}>
           <div id="count-host">
             <AnimatedActivityCount value={countValue()} identity={countIdentity()} />
+          </div>
+          <div id="batch-count-host">
+            <ActivityBatchLabel
+              identity={batchCount().identity}
+              live={batchLive()}
+              total={batchCount().count + batchCount().pending}
+              batch={{ facts: [{ family: "execute", count: batchCount().count }] }}
+            />
           </div>
           <MinimalActivitySummary
             item={{
@@ -433,6 +447,9 @@ render(
   root,
 )
 ;(globalThis as unknown as { __activityDomHarness: unknown }).__activityDomHarness = {
+  setBatchPending,
+  setBatchLive,
+  setSessionPaused,
   setApproval,
   getPermissionCalls: () => permissionCalls,
   finishPermission: (failed: boolean) =>

@@ -22,6 +22,11 @@ test("compact activity titles retain successful facts while showing current runt
     })
   })
   await frames()
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('[data-slot="activity-batch-status"]')].some((node) =>
+      node.textContent?.includes("Calling tool"),
+    ),
+  )
   expect(await status.textContent()).toContain("Calling tool")
   expect(await page.evaluate(() => window.__activityTitle?.firstElementChild === window.__activityFacts)).toBe(true)
   const animation = () =>
@@ -50,6 +55,11 @@ test("compact activity titles retain successful facts while showing current runt
   )
   await page.emulateMedia({ reducedMotion: "reduce" })
   expect(await animation()).toBe("none")
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('[data-slot="activity-batch-status"]')].some((node) =>
+      node.textContent?.includes("Waiting for model response"),
+    ),
+  )
   expect(await status.textContent()).toContain("Waiting for model response")
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await page.evaluate(() => {
@@ -610,6 +620,10 @@ test("folded process headers follow actual phases and parallel tool count", asyn
   ] as const) {
     await page.evaluate((activity) => window.__conversationProcess.phase(activity), activity)
     await frames()
+    await page.waitForFunction(
+      (label) => document.querySelector('[data-slot="turn-process-trigger"]')?.textContent?.includes(label),
+      label,
+    )
     expect(await trigger.textContent()).toContain(label)
     expect(await trigger.getAttribute("aria-expanded")).toBe("false")
     expect(await page.locator('[data-slot="turn-process-trigger"]').count()).toBe(1)
@@ -623,6 +637,9 @@ test("streaming a text-only response keeps the current system status visible", a
   await page.evaluate(() => window.__conversationProcess.respond())
   await frames()
   await page.getByText("Final answer stays mounted.", { exact: true }).waitFor()
+  await page.waitForFunction(() =>
+    document.querySelector('[data-slot="turn-process-trigger"]')?.textContent?.includes("Generating response"),
+  )
   expect(await page.locator('[data-slot="turn-process-trigger"]').textContent()).toContain("Generating response")
   expect(await page.locator('[data-slot="turn-process-trigger"]').count()).toBe(1)
   expect(errors).toEqual([])
@@ -666,3 +683,25 @@ test("tool objects retain paths and command prefixes without inventing modificat
   expect(await row.textContent()).toContain("Check the project directory")
   expect(await row.textContent()).not.toContain("undefined")
 }, 30000)
+
+test("live count updates keep the existing fact and number elements mounted", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  const result = await page.evaluate(async () => {
+    const title = () => [...document.querySelectorAll('[data-component="conversation-activity"] > button')].at(-1)!
+    const fact = title().querySelector('[data-activity-fact="execute"]')!
+    const number = fact.querySelector('[data-component="animated-activity-count"]')!
+    const before = number.getAttribute("aria-label")
+    window.__conversationProcess.append("next-count")
+    for (let index = 0; index < 3; index++) await new Promise(requestAnimationFrame)
+    return {
+      fact: title().querySelector('[data-activity-fact="execute"]') === fact,
+      number: title().querySelector('[data-component="animated-activity-count"]') === number,
+      before,
+      after: number.getAttribute("aria-label"),
+    }
+  })
+  expect(result.fact).toBe(true)
+  expect(result.number).toBe(true)
+  expect(result.after).not.toBe(result.before)
+})

@@ -45,15 +45,18 @@ test("reading a finished full process does not retrace unchanged disclosure stat
 test.each(["index.mjs", "index.jsx"] as const)(
   "visible fixed viewports and native hit testing survive resize and scrolling (%s)",
   async (entry) => {
-    const fixture = await fixtureServer(entry)
+    const alternate = entry === "index.jsx" ? await fixtureServer(entry) : undefined
+    const target = alternate ? await browser.newPage() : page
+    target.setDefaultTimeout(15000)
+    if (alternate) target.on("pageerror", (error) => errors.push(error.message))
     try {
-      await page.goto(`${fixture.url}resize.html?fixed`)
-      await page.getByRole("button", { name: "Item 0", exact: true }).waitFor()
-      await frames()
-      expect(await page.evaluate(() => window.__conversationResizeList!.viewportSize)).toBe(288)
-      await page.evaluate(() => window.__conversationResizeList!.scrollToIndex(80, { align: "start" }))
-      await page.getByRole("button", { name: "Item 80", exact: true }).waitFor()
-      const hit = await page.getByLabel("Measured list").evaluate(async (element) => {
+      await target.goto(`${alternate?.url ?? url}resize.html?fixed`)
+      await target.getByRole("button", { name: "Item 0", exact: true }).waitFor()
+      await frames(target)
+      expect(await target.evaluate(() => window.__conversationResizeList!.viewportSize)).toBe(288)
+      await target.evaluate(() => window.__conversationResizeList!.scrollToIndex(80, { align: "start" }))
+      await target.getByRole("button", { name: "Item 80", exact: true }).waitFor()
+      const hit = await target.getByLabel("Measured list").evaluate(async (element) => {
         element.scrollTop += 48
         await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
         const rect = element.getBoundingClientRect()
@@ -62,7 +65,10 @@ test.each(["index.mjs", "index.jsx"] as const)(
       expect(hit).toBe(true)
       expect(errors).toEqual([])
     } finally {
-      await fixture.close()
+      if (alternate) {
+        await target.close()
+        await alternate.close()
+      }
     }
   },
   30000,
@@ -217,7 +223,7 @@ test("a long logical block uses a bounded independent viewport", async () => {
   await frames()
   expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(mainOffset)
   expect(await page.getByText("More actions below", { exact: true }).count()).toBe(0)
-  expect(await page.locator('[data-slot="process-latest"]').last().textContent()).toBe("")
+  expect(await page.locator('[data-slot="process-latest"]').count()).toBe(0)
   await viewport.focus()
   await viewport.press("End")
   await page.locator('[data-slot="process-latest"]').waitFor({ state: "detached" })
@@ -269,12 +275,12 @@ for (const scenario of [
     }
     const layout = await page.evaluate(async (width) => {
       const original = [...document.querySelectorAll<HTMLElement>('[data-component="process-viewport"]')].at(-1)!
-      const height = original.querySelector<HTMLElement>('[data-slot="process-viewport-content"] > div')!.style.height
+      const height = original.querySelector<HTMLElement>('[data-slot="process-viewport-motion"] > div')!.style.height
       const first = await new Promise<string>((resolve) => {
         const observer = new MutationObserver(() => {
           const current = [...document.querySelectorAll<HTMLElement>('[data-component="process-viewport"]')].at(-1)
           if (!current || current === original) return
-          const content = current.querySelector<HTMLElement>('[data-slot="process-viewport-content"] > div')
+          const content = current.querySelector<HTMLElement>('[data-slot="process-viewport-motion"] > div')
           if (!content) return
           observer.disconnect()
           resolve(content.style.height)

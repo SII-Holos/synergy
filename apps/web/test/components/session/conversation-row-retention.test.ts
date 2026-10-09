@@ -146,8 +146,6 @@ function aliasConfig(stubPath: string) {
     "@/context/session-optimistic-message",
     "./session-submission-status",
     "./session-preparation",
-    "@lingui/core",
-    "@lingui/solid",
     "@/context/session-transition",
   ]
   return stubbed.map((find) => ({ find, replacement: stubPath }))
@@ -220,9 +218,6 @@ beforeAll(async () => {
           i18n: { _: (d: { message?: string; id: string }) => d.message ?? d.id },
           fmt: {},
         })
-        export const setupI18n = () => ({_: descriptor => descriptor.message ?? descriptor.id})
-        export const I18nProvider = props => props.children
-        export const useLingui = () => ({_: descriptor => descriptor.message ?? descriptor.id})
         const [server, setServer] = createSignal("http://fixture")
         const [scope, setScope] = createSignal("scope")
         const [session, setSession] = createSignal("ses_1")
@@ -364,6 +359,7 @@ beforeAll(async () => {
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
         import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
+        import { DataProvider } from "@ericsanchezok/synergy-ui/context/data"
         import { SessionConversation } from ${JSON.stringify(`/@fs/${conversationPath}`)}
         import ${JSON.stringify(`/@fs/${path.resolve(import.meta.dir, "../../../../../packages/ui/src/styles/theme.css")}`)}
         import { fixtureSession, setFixtureSession, fixtureMessages, setFixtureMessages, readProjectionPage } from "./stubs"
@@ -456,7 +452,7 @@ beforeAll(async () => {
 
         const i18n = setupI18n({locale: "en", messages: {en: {}}})
         console.info("[conversation-boot] render:start")
-        const dispose = render(() => <I18nProvider i18n={i18n}><DialogProvider><Suspense fallback={<p data-test-loading>Loading conversation</p>}><App /></Suspense></DialogProvider></I18nProvider>, document.querySelector("#root")!)
+        const dispose = render(() => <I18nProvider i18n={i18n}><DataProvider data={{session:[], session_diff:{}, message:{[fixtureSession()]:fixtureMessages()}, part:{}}} directory={null} serverUrl="http://fixture"><DialogProvider><Suspense fallback={<p data-test-loading>Loading conversation</p>}><App /></Suspense></DialogProvider></DataProvider></I18nProvider>, document.querySelector("#root")!)
         window.__executionOwner.dispose = dispose
         console.info("[conversation-boot] render:end")
       `,
@@ -468,7 +464,16 @@ beforeAll(async () => {
     root: fixtureDirectory,
     cacheDir: path.join(fixtureDirectory, ".vite"),
     optimizeDeps: {
-      include: ["solid-js", "solid-js/web", "solid-js/store", "zod", "fuzzysort", "lucide-solid"],
+      include: [
+        "solid-js",
+        "solid-js/web",
+        "solid-js/store",
+        "zod",
+        "fuzzysort",
+        "lucide-solid",
+        "@lingui/core",
+        "@lingui/solid",
+      ],
       noDiscovery: true,
     },
     plugins: [solidPlugin()],

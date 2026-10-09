@@ -96,6 +96,10 @@ Read [the domain guidance](references/workbench-acceptance.md#large-history-veri
 
 Read [the domain guidance](references/resources.md#resource-workspace-changes) when this area is affected.
 
+## Conversation navigation motion
+
+Read [the domain guidance](references/conversation.md#conversation-navigation-motion) when this area is affected.
+
 ## Conversation process and read-only evidence
 
 Read [the domain guidance](references/conversation.md#conversation-process-and-read-only-evidence) when this area is affected.

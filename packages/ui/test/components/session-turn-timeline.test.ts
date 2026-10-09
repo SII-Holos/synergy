@@ -23,6 +23,7 @@ mock.module("@ericsanchezok/synergy-util/path", () => ({
   getFilename: (path: string) => path.slice(path.lastIndexOf("/") + 1),
 }))
 mock.module("@lingui/solid", () => ({
+  Trans: Empty,
   useLingui: () => ({ _: (descriptor: { message?: string; id: string }) => descriptor.message ?? descriptor.id }),
 }))
 mock.module("../../src/context", () => ({ useData: () => ({ store: {}, serverUrl: "" }) }))
@@ -53,6 +54,7 @@ mock.module("../../src/components/clipboard", () => ({
   }),
 }))
 mock.module("../../src/components/activity-trace", () => ({
+  AnimatedActivityCount: Empty,
   ActivityReasoningSummary: Empty,
   ActivityReceipt: Empty,
   ActivityTrace: Empty,

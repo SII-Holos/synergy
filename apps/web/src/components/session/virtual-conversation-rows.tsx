@@ -19,7 +19,11 @@ import { useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { ActivityBatchLabel, ActivityBatchStatus } from "@ericsanchezok/synergy-ui/activity-batch"
-import { sessionActivityAnimating, sessionActivityLabel } from "@ericsanchezok/synergy-ui/session-status"
+import {
+  processIsWorking,
+  sessionActivityAnimating,
+  sessionActivityLabel,
+} from "@ericsanchezok/synergy-ui/session-status"
 import { createDisclosureMotionRef, readSelectionElements } from "@ericsanchezok/synergy-ui/hooks"
 import "./conversation-rows.css"
 import { Dynamic } from "solid-js/web"
@@ -82,6 +86,9 @@ export function VirtualConversationRows(
 ) {
   const props = input.context
   const content = props.content!
+  const { view } = useData()
+  const paused = (rootID: string) =>
+    rootID === props.lastUserMessage()?.id && view.statusFor(props.sessionID)?.type === "paused"
   const owner = input.layoutOwner
   const layoutIdentity = () =>
     JSON.stringify([...owner, "conversation", props.activityDisplay(), props.compactReasoning()])
@@ -149,17 +156,19 @@ export function VirtualConversationRows(
         .turnMessagesFor(root)
         .findLast((message) => message.role === "assistant")
       const submission = input.submissionFor?.(root.id)
-      const working = submission
-        ? !submission.failed
-        : state
-          ? ["preparing", "running", "approval"].includes(state.status) ||
-            (state.status === "completed" && !!last?.working && final?.time.completed == null)
-          : root.id === props.lastUserMessage()?.id && props.isWorking()
+      const working = processIsWorking({
+        current: root.id === props.lastUserMessage()?.id,
+        sessionStatus: view.statusFor(props.sessionID),
+        submission,
+        projected: state?.status === "completed" && last?.working && final?.time.completed == null ? true : undefined,
+        executionStatus: state?.status,
+        fallback: root.id === props.lastUserMessage()?.id && props.isWorking(),
+      })
       const reading =
         props.scrolledUp() ||
         interactionRoots().includes(root.id) ||
         readingBlocks().some((key) => key.startsWith(`${root.id}:activity:`))
-      const held = reading && (!!last?.held || (!!last?.working && !working))
+      const held = paused(root.id) || (reading && (!!last?.held || (!!last?.working && !working)))
       if (last && working === last.working && held === last.held) next.set(root.id, last)
       else {
         changed = true
@@ -181,7 +190,7 @@ export function VirtualConversationRows(
         (props.activityDisplay() === "full" ||
           ((interactionBlocks().includes(block.key) || readingBlocks().includes(block.key) || props.scrolledUp()) &&
             !!previous?.find((row) => row.key === block.key)?.activity?.open) ||
-          (props.activityDisplay() !== "minimal" && block.active)),
+          (props.activityDisplay() !== "minimal" && (block.active || paused(block.entries[0].root.id)))),
       process: (root) => {
         const state = processState().get(root.id)!
         return {
@@ -317,6 +326,12 @@ export function VirtualConversationRows(
     if (locationFrame !== undefined) cancelAnimationFrame(locationFrame)
     locationFrame = undefined
   }
+  createEffect(() => {
+    const scroll = input.scrollRef
+    scroll?.addEventListener("conversation-reading-restored", releaseLocation)
+    onCleanup(() => scroll?.removeEventListener("conversation-reading-restored", releaseLocation))
+  })
+
   const locationElement = (row: ConversationRow, partID?: string) =>
     [...(container?.querySelectorAll<HTMLElement>(partID ? "[data-part-id]" : "[data-display-row]") ?? [])].find(
       (element) => (partID ? element.dataset.partId === partID : element.dataset.displayRow === row.key),
@@ -395,7 +410,14 @@ export function VirtualConversationRows(
         layout.resize(measuredWidth)
         setWidth(measuredWidth)
         const limit = scroll.clientHeight * 0.45
-        const margin = container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
+        let parent: HTMLElement | null = container
+        let margin = 0
+        while (parent && parent !== scroll) {
+          margin += parent.offsetTop
+          parent = parent.offsetParent as HTMLElement | null
+        }
+        if (parent !== scroll)
+          margin = container.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop
         if (limit !== viewportLimit) {
           viewportLimit = limit
           container.style.setProperty("--process-viewport-limit", `${limit}px`)
@@ -579,7 +601,7 @@ function ConversationDisplayRow(
   })
   const batchMotion = createDisclosureMotionRef({
     visible: () => !!row().activity?.open,
-    animate: () => manualDisclosure,
+    animate: () => true,
     appear: () => manualDisclosure,
     resize: true,
     onHidden: () => setActivityMounted(false),
@@ -1001,7 +1023,12 @@ function ConversationDisplayRow(
             >
               <span>
                 {row().activity?.tools ? (
-                  <ActivityBatchLabel batch={row().activity!} total={row().activity!.tools} />
+                  <ActivityBatchLabel
+                    batch={row().activity!}
+                    total={row().activity!.tools}
+                    identity={row().key}
+                    live={row().activity!.active}
+                  />
                 ) : row().activity?.entries.some((entry) => entry.kind === "body" && entry.event) ? (
                   _({ id: "session.process.records", message: "Process history" })
                 ) : (
@@ -1104,7 +1131,7 @@ function ConversationActivityBody(
   )
   const byKey = createMemo(() => new Map(entries().map((entry) => [entry.key, entry])))
   let viewport: HTMLDivElement | undefined
-  let pause: (() => void) | undefined
+  let pause: ((anchor?: ProcessReadingAnchor) => void) | undefined
   const owner = input.layoutOwner
   const layoutIdentity = () =>
     JSON.stringify([
@@ -1210,7 +1237,7 @@ function ConversationActivityBody(
           (!target.partID || (entry.kind === "body" && entry.parts.some((part) => part.id === target.partID))),
       )
       if (index >= 0) {
-        pause?.()
+        pause?.({ key: entries()[index].key, partID: target.partID, offset: 0 })
         handle()?.scrollToIndex(index, { align: "start" })
       }
     }
@@ -1249,7 +1276,7 @@ function ConversationActivityBody(
       }}
       onBeforeLayoutChange={(event) => input.context.autoScroll?.handleInteraction(event)}
       active={input.row().activity?.active ?? false}
-      following={!input.context.scrolledUp()}
+      parentFollowing={!input.context.scrolledUp()}
       revision={entries()
         .map((entry) =>
           entry.kind === "body" ? entry.parts.map((part) => `${part.id}:${part.content.version}`).join(",") : entry.key,

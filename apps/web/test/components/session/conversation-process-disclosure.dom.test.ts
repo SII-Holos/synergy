@@ -88,7 +88,7 @@ test("parent and batch disclosures preserve independent choices and tool inspect
   expect(await batches.last().getAttribute("aria-expanded")).toBe("true")
   await batches.last().press("Space")
   await page.waitForFunction(() => !document.querySelector('[data-slot="activity-step-trigger"]'))
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.getByText("I will check the project first.", { exact: true }).waitFor({ timeout: 1000 })
   expect(await page.getByText("I will check the project first.", { exact: true }).count()).toBe(1)
 }, 30000)
 
