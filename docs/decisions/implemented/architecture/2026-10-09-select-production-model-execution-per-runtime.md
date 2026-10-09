@@ -12,6 +12,8 @@ Runtime composition selects worker or same-process production inference through 
 
 Prepared same-process calls use request-local SDK instances, preserving Invocation credentials and timeouts without mutating the shared catalog or caching per-request secrets. Stream usage is collected only after consumption so the SDK cannot open an eager parallel reader that defeats backpressure. Failed disposal closes admission and remains a shutdown failure.
 
+Session title generation is admitted after the first model step. A detached job still consumes the executor's bounded capacity; starting a title before the conversation can make a single-slot Runtime wait for an auxiliary provider response before sending its main request. Deferring the title preserves capacity limits and existing detached cancellation, recovery, and rename protection without reserving another model slot.
+
 ## Alternatives considered
 
 **Always use a worker process.** This preserves process isolation but duplicates it for applications that already own one process per identity.
@@ -25,3 +27,5 @@ Prepared same-process calls use request-local SDK instances, preserving Invocati
 Same-process inference shares an event loop and memory with the caller. The composition owner must select it knowingly; hard process termination remains the embedding application's responsibility when a provider cannot be interrupted.
 
 The [executor tests](../../../../packages/harness/test/session/model-executor.test.ts) cover queue limits, cancellation, disposal and backpressure. The [Runtime test](../../../../packages/harness/test/session/model-execution-runtime.test.ts) exercises preparation, HTTP transport, concurrent request credentials and persisted rollout accounting with zero inference workers. These tests do not establish application startup latency or cross-Host recovery.
+
+The [title tests](../../../../packages/harness/test/session/title.test.ts) exercise provider ordering through loop-job dispatch and verify that title settlement survives release of the conversation lease.
