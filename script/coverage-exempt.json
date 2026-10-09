@@ -943,6 +943,10 @@
           "reason": "global context requires full app bootstrap"
         },
         {
+          "glob": "src/context/render.tsx",
+          "reason": "The real provider and shared dialog are exercised by test/context/render-confirmation.browser.test.ts for confirmation, draft preservation, stable Inbox retries, owner changes and canonical state updates. Vite/Chromium execution does not contribute to Bun source coverage."
+        },
+        {
           "glob": "src/context/resource-open.tsx",
           "reason": "global context requires full app bootstrap"
         },
@@ -2098,6 +2102,14 @@
         {
           "glob": "src/components/render-tool.tsx",
           "reason": "The real SessionTurn Chromium fixture in test/components/render-html.browser.test.ts exercises inline visual lifecycle, viewer keyboard focus and dismissal, narrow layouts and readable fallback output. Solid TSX executed by Vite in Chromium does not contribute to Bun lcov coverage."
+        },
+        {
+          "glob": "src/components/render/library-chart.ts",
+          "reason": "Bundled iframe entrypoint exercised by test/components/render-interactive.browser.test.ts, which loads Chart through the real Vite asset pipeline and verifies the sandboxed Chart global. The emitted script executes in Chromium, outside Bun source coverage."
+        },
+        {
+          "glob": "src/components/render/library-d3.ts",
+          "reason": "Bundled iframe entrypoint exercised by test/components/render-interactive.browser.test.ts, which loads D3 through the real Vite asset pipeline and verifies the sandboxed selection API. The emitted script executes in Chromium, outside Bun source coverage."
         },
         {
           "glob": "src/components/session-review.tsx",
