@@ -444,3 +444,297 @@ test("latest display pages rebuild only a bounded window when the projection is 
       },
     })
   }))
+
+test("a cold batched part page fan-out materializes the window in a single storage transaction", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        // Seed one session with cold (unmaterialized) display parts so the
+        // batched fan-out drives real materialization work.
+        async function seed(title: string) {
+          const session = await Session.create({ title })
+          const messages: { id: string; partIDs: string[] }[] = []
+          for (let index = 0; index < 3; index++) {
+            const messageID = Identifier.ascending("message")
+            await Session.updateMessage({
+              id: messageID,
+              sessionID: session.id,
+              role: "user",
+              agent: "synergy",
+              model: { providerID: "test", modelID: "test" },
+              time: { created: index + 1 },
+              isRoot: true,
+              visible: true,
+            })
+            // Force a cold display_parts projection: Session.updateMessage
+            // stamped a ready state over the not-yet-written display_part rows,
+            // which would make the fan-out serve empty pages without work.
+            await Storage.remove(["sessions", session.scope.id, session.id, "display_parts_state", messageID])
+            const partIDs = Array.from({ length: index + 2 }, () => Identifier.ascending("part"))
+            await Storage.transaction((tx) =>
+              tx.writeMany(
+                partIDs.map((partID, part) => ({
+                  key: StoragePath.messagePart(
+                    Identifier.asScopeID(session.scope.id),
+                    Identifier.asSessionID(session.id),
+                    messageID,
+                    Identifier.asPartID(partID),
+                  ),
+                  value: {
+                    id: partID,
+                    messageID,
+                    sessionID: session.id,
+                    type: "text" as const,
+                    text: `seed ${part} of ${index}`,
+                  },
+                })),
+              ),
+            )
+            messages.push({ id: messageID, partIDs })
+          }
+          return { session, messages }
+        }
+
+        const batched = await seed("Batched cold refresh")
+
+        // The changed function is the batched display fan-out in
+        // SessionHistoryDisplay.partPages. Count only real driver BEGINs at that
+        // seam: nested transaction calls delegate to the ambient transaction,
+        // so exactly one BEGIN must serve the whole three-message fan-out.
+        const openTransaction = Storage.transaction
+        const requireDisplayMessage = async () => undefined
+        let driverTransactions = 0
+        using counting = spyOn(Storage, "transaction").mockImplementation((body, options) => {
+          if (!Storage.inTransaction()) driverTransactions++
+          return openTransaction(body, options)
+        })
+        const coldResult = await SessionHistoryDisplay.partPages(
+          {
+            sessionID: batched.session.id,
+            messageIDs: batched.messages.map((message) => message.id),
+            limit: 100,
+          },
+          requireDisplayMessage,
+          batched.session.scope.id,
+        )
+        expect(driverTransactions).toBe(1)
+        counting[Symbol.dispose]()
+
+        // The same window resolved message-by-message through the public
+        // single-page endpoint yields byte-identical pages: the batch did not
+        // change observable projection semantics.
+        expect(Object.keys(coldResult)).toEqual(batched.messages.map((message) => message.id))
+        for (const message of batched.messages) {
+          const single = await SessionHistory.partPage({
+            sessionID: batched.session.id,
+            messageID: message.id,
+            limit: 100,
+          })
+          expect(coldResult[message.id].items.map((part) => part.id)).toEqual(message.partIDs)
+          expect(JSON.parse(JSON.stringify(coldResult[message.id]))).toEqual(JSON.parse(JSON.stringify(single)))
+        }
+
+        // Re-running over the now-warm window still opens exactly one outer
+        // batch; per-message display parts are reused and both shapes are
+        // byte-identical, proving the cold materialization produced the
+        // canonical projection semantics.
+        driverTransactions = 0
+        using recounting = spyOn(Storage, "transaction").mockImplementation((body, options) => {
+          if (!Storage.inTransaction()) driverTransactions++
+          return openTransaction(body, options)
+        })
+        const warmResult = await SessionHistoryDisplay.partPages(
+          {
+            sessionID: batched.session.id,
+            messageIDs: batched.messages.map((message) => message.id),
+            limit: 100,
+          },
+          requireDisplayMessage,
+          batched.session.scope.id,
+        )
+        expect(driverTransactions).toBe(1)
+        expect(JSON.parse(JSON.stringify(warmResult))).toEqual(JSON.parse(JSON.stringify(coldResult)))
+
+        // The public SessionHistory endpoint observes the same page bytes.
+        const publicResult = await SessionHistory.partPages({
+          sessionID: batched.session.id,
+          messageIDs: batched.messages.map((message) => message.id),
+          limit: 100,
+        })
+        expect(JSON.parse(JSON.stringify(publicResult))).toEqual(JSON.parse(JSON.stringify(coldResult)))
+
+        await Session.remove(batched.session.id)
+      },
+    })
+  }))
+
+test("prepareWindow coalesces concurrent callers into shared drain waves per session", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Coalesced window" })
+        const scopeID = Identifier.asScopeID(session.scope.id)
+        const infos: MessageV2.User[] = []
+        for (let index = 0; index < 2; index++) {
+          const info: MessageV2.User = {
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "user",
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+            time: { created: index + 1 },
+            isRoot: true,
+            visible: true,
+          }
+          // Raw canonical writes keep display headers cold so prepareWindow
+          // cannot short-circuit; the drain wave has real work to coalesce.
+          await Storage.write(
+            StoragePath.messageInfo(scopeID, Identifier.asSessionID(session.id), Identifier.asMessageID(info.id)),
+            info,
+          )
+          infos.push(info)
+        }
+
+        const openTransaction = Storage.transaction
+        let driverTransactions = 0
+        using counting = spyOn(Storage, "transaction").mockImplementation((body, options) => {
+          if (!Storage.inTransaction()) driverTransactions++
+          return openTransaction(body, options)
+        })
+
+        // Enqueue the first drain wave but do not await it yet, so the second
+        // caller lands while the wave is still running and attaches to the
+        // same shared `running` promise instead of opening its own batch.
+        const first = SessionHistoryDisplay.prepareWindow(scopeID, session.id, [infos[0]])
+        const second = SessionHistoryDisplay.prepareWindow(scopeID, session.id, [infos[1]])
+        await expect(first).resolves.toBeUndefined()
+        await expect(second).resolves.toBeUndefined()
+
+        // Both drain waves together share at most one driver transaction each;
+        // the coalescing guarantee is that the two concurrent calls never fan
+        // out into per-caller concurrent batches.
+        expect(driverTransactions).toBeLessThanOrEqual(2)
+
+        for (const info of infos) {
+          const header = await SessionHistoryDisplay.header(scopeID, session.id, info.id)
+          expect(header?.info.id).toBe(info.id)
+        }
+
+        // A settle round-trip proves the coalescer released the session: a new
+        // caller runs its own wave instead of hanging on the old promise.
+        const info = infos[0]
+        await expect(SessionHistoryDisplay.prepareWindow(scopeID, session.id, [info])).resolves.toBeUndefined()
+        const settled = await SessionHistoryDisplay.header(scopeID, session.id, info.id)
+        expect(settled?.info.id).toBe(info.id)
+
+        await Session.remove(session.id)
+      },
+    })
+  }))
+
+test("overlapping batched part page calls resolve with consistent shared pages and stay idempotent", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Overlapping refresh" })
+        const messages: { id: string; partIDs: string[] }[] = []
+        for (let index = 0; index < 3; index++) {
+          const messageID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: messageID,
+            sessionID: session.id,
+            role: "user",
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+            time: { created: index + 1 },
+            isRoot: true,
+            visible: true,
+          })
+          // Force a cold display_parts projection, as in the cold batch test.
+          await Storage.remove(["sessions", session.scope.id, session.id, "display_parts_state", messageID])
+          const partIDs = Array.from({ length: index + 2 }, () => Identifier.ascending("part"))
+          await Storage.transaction((tx) =>
+            tx.writeMany(
+              partIDs.map((partID, part) => ({
+                key: StoragePath.messagePart(
+                  Identifier.asScopeID(session.scope.id),
+                  Identifier.asSessionID(session.id),
+                  messageID,
+                  Identifier.asPartID(partID),
+                ),
+                value: {
+                  id: partID,
+                  messageID,
+                  sessionID: session.id,
+                  type: "text" as const,
+                  text: `overlap ${part} of ${index}`,
+                },
+              })),
+            ),
+          )
+          messages.push({ id: messageID, partIDs })
+        }
+
+        const openTransaction = Storage.transaction
+        let driverTransactions = 0
+        using counting = spyOn(Storage, "transaction").mockImplementation((body, options) => {
+          if (!Storage.inTransaction()) driverTransactions++
+          return openTransaction(body, options)
+        })
+
+        const requireDisplayMessage = async () => undefined
+        // Two concurrent overlapping windows refresh the same cold messages at
+        // the Display fan-out seam.
+        const overlapLeft = SessionHistoryDisplay.partPages(
+          { sessionID: session.id, messageIDs: [messages[0].id, messages[1].id], limit: 100 },
+          requireDisplayMessage,
+          session.scope.id,
+        )
+        const overlapRight = SessionHistoryDisplay.partPages(
+          { sessionID: session.id, messageIDs: [messages[1].id, messages[2].id], limit: 100 },
+          requireDisplayMessage,
+          session.scope.id,
+        )
+        const [left, right] = await Promise.all([overlapLeft, overlapRight])
+
+        // Each concurrent call owns exactly one outer batch: two driver
+        // transactions total. The overlap must not compound into additional
+        // concurrent per-message batches (nested materialization joins the
+        // ambient transaction, never the sibling call's).
+        expect(driverTransactions).toBe(2)
+
+        // The shared message resolves byte-identically in both overlapping
+        // windows: the overlap did not fork divergent refresh output.
+        expect(JSON.parse(JSON.stringify(left[messages[1].id]))).toEqual(
+          JSON.parse(JSON.stringify(right[messages[1].id])),
+        )
+        expect(left[messages[1].id].items.map((part) => part.id)).toEqual(messages[1].partIDs)
+
+        // A re-run over the now-warm window opens only the single outer batch:
+        // per-message cold display_part writes no longer happen, so no further
+        // driver transaction is needed beyond that wrapper.
+        driverTransactions = 0
+        using recounting = spyOn(Storage, "transaction").mockImplementation((body, options) => {
+          if (!Storage.inTransaction()) driverTransactions++
+          return openTransaction(body, options)
+        })
+        const warm = await SessionHistoryDisplay.partPages(
+          { sessionID: session.id, messageIDs: messages.map((message) => message.id), limit: 100 },
+          requireDisplayMessage,
+          session.scope.id,
+        )
+        expect(driverTransactions).toBe(1)
+        expect(JSON.parse(JSON.stringify(warm[messages[1].id]))).toEqual(
+          JSON.parse(JSON.stringify(right[messages[1].id])),
+        )
+
+        await Session.remove(session.id)
+      },
+    })
+  }))

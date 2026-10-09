@@ -52,6 +52,9 @@ export namespace SessionHistoryDisplay {
     .meta({ ref: "SessionMessageDetails" })
   export const Conflict = NamedError.create("SessionDisplayConflict", z.object({ message: z.string() }))
   const preparing = Storage.state(() => new Map<string, Promise<void>>())
+  const preparingWindow = Storage.state(
+    () => new Map<string, { pending: Map<string, MessageV2.Info>; running: Promise<void> | undefined }>(),
+  )
   const digest = (text: string) => new Bun.CryptoHasher("sha256").update(text).digest("hex")
   const key = StoragePath.sessionDisplayState
   const partStateKey = (scopeID: string, sessionID: string, messageID: string) => [
@@ -327,35 +330,60 @@ export namespace SessionHistoryDisplay {
    */
   export async function prepareWindow(scopeID: string, sessionID: string, infos: MessageV2.Info[]) {
     if (!infos.length) return
-    const headers = infos.map(summarizeMessage)
-    const previous = await Storage.readMany<MessageSummary>(
-      headers.map((header) => StoragePath.sessionDisplayMessage(scopeID, sessionID, header.info.id)),
-    )
-    const entries: Array<{ key: string[]; value: unknown }> = []
-    const removals: string[][] = []
-    for (const [index, header] of headers.entries()) {
-      const prior = previous[index]
-      if (
-        prior?.order === header.order &&
-        prior.version === header.version &&
-        prior.content.version === header.content.version
-      )
-        continue
-      if (prior && prior.order !== header.order) {
-        removals.push(StoragePath.sessionDisplayTimeline(scopeID, sessionID, prior.order))
-        removals.push(StoragePath.sessionDisplayRoot(scopeID, sessionID, prior.order))
-      }
-      entries.push({ key: StoragePath.sessionDisplayMessage(scopeID, sessionID, header.info.id), value: header })
-      entries.push({ key: StoragePath.sessionDisplayTimeline(scopeID, sessionID, header.order), value: header })
-      if (header.info.role === "user" && header.info.isRoot !== false)
-        entries.push({ key: StoragePath.sessionDisplayRoot(scopeID, sessionID, header.order), value: header })
-      else removals.push(StoragePath.sessionDisplayRoot(scopeID, sessionID, header.order))
+    const identity = `${scopeID}/${sessionID}`
+    const tracked = preparingWindow().get(identity) ?? {
+      pending: new Map<string, MessageV2.Info>(),
+      running: undefined,
     }
-    if (!entries.length && !removals.length) return
-    await Storage.transaction(async (tx) => {
-      for (const removal of removals) await tx.remove(removal)
-      if (entries.length) await tx.writeMany(entries)
-    })
+    if (!preparingWindow().has(identity)) preparingWindow().set(identity, tracked)
+    for (const info of infos) tracked.pending.set(info.id, info)
+    if (tracked.running) {
+      await tracked.running
+      return
+    }
+    const running = (async () => {
+      try {
+        for (;;) {
+          const drained = [...tracked.pending.values()]
+          tracked.pending.clear()
+          if (!drained.length) return
+          const headers = drained.map(summarizeMessage)
+          const previous = await Storage.readMany<MessageSummary>(
+            headers.map((header) => StoragePath.sessionDisplayMessage(scopeID, sessionID, header.info.id)),
+          )
+          const entries: Array<{ key: string[]; value: unknown }> = []
+          const removals: string[][] = []
+          for (const [index, header] of headers.entries()) {
+            const prior = previous[index]
+            if (
+              prior?.order === header.order &&
+              prior.version === header.version &&
+              prior.content.version === header.content.version
+            )
+              continue
+            if (prior && prior.order !== header.order) {
+              removals.push(StoragePath.sessionDisplayTimeline(scopeID, sessionID, prior.order))
+              removals.push(StoragePath.sessionDisplayRoot(scopeID, sessionID, prior.order))
+            }
+            entries.push({ key: StoragePath.sessionDisplayMessage(scopeID, sessionID, header.info.id), value: header })
+            entries.push({ key: StoragePath.sessionDisplayTimeline(scopeID, sessionID, header.order), value: header })
+            if (header.info.role === "user" && header.info.isRoot !== false)
+              entries.push({ key: StoragePath.sessionDisplayRoot(scopeID, sessionID, header.order), value: header })
+            else removals.push(StoragePath.sessionDisplayRoot(scopeID, sessionID, header.order))
+          }
+          if (!entries.length && !removals.length) continue
+          await Storage.transaction(async (tx) => {
+            for (const removal of removals) await tx.remove(removal)
+            if (entries.length) await tx.writeMany(entries)
+          })
+        }
+      } finally {
+        if (preparingWindow().get(identity) === tracked) preparingWindow().delete(identity)
+      }
+    })()
+    void running.catch(() => {})
+    tracked.running = running
+    await running
   }
 
   function cursor(value: string) {
@@ -639,16 +667,16 @@ export namespace SessionHistoryDisplay {
     scopeID: string,
   ) {
     await Promise.all(input.messageIDs.map(requireDisplayMessage))
-    const entries = await Promise.all(
-      input.messageIDs.map(
-        async (messageID) =>
-          [
-            messageID,
-            await partPageForMessage({ sessionID: input.sessionID, messageID, limit: input.limit }, scopeID),
-          ] as const,
-      ),
-    )
-    return Object.fromEntries(entries)
+    return Storage.transaction(async () => {
+      const entries: Array<readonly [string, Awaited<ReturnType<typeof partPageForMessage>>]> = []
+      for (const messageID of input.messageIDs) {
+        entries.push([
+          messageID,
+          await partPageForMessage({ sessionID: input.sessionID, messageID, limit: input.limit }, scopeID),
+        ])
+      }
+      return Object.fromEntries(entries)
+    })
   }
 
   export async function partContent(
