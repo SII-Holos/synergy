@@ -169,6 +169,8 @@
     "./util/daemon-paths": "./src/util/daemon-paths.ts",
     "./agent/external-source": "./src/agent/external-source.ts",
     "./session/tool-input": "./src/session/tool-input.ts",
+    "./tool/stored-output": "./src/tool/stored-output.ts",
+    "./tool/read-output": "./src/tool/read-output.ts",
     "./tool/truncation": "./src/tool/truncation.ts",
     "./session/external-agents": "./src/session/external-agents.ts",
     "./scope/state": "./src/scope/state.ts",
