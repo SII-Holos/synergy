@@ -55,7 +55,10 @@ export type StoreOptions = {
   readonly?: boolean
   recover?: boolean
   mustExist?: boolean
-} & ({ backend: "sqlite"; filename: string } | { backend: "postgres"; url: string; maxConnections?: number })
+} & (
+  | { backend: "sqlite"; filename: string }
+  | { backend: "postgres"; url: string; maxConnections?: number; schema?: "initialize" | "verify" }
+)
 
 export type SqliteMaintenanceOperation = "enable-incremental-vacuum" | "reclaim"
 

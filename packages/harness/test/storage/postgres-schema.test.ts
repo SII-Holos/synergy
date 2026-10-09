@@ -1,8 +1,51 @@
 import { expect, test } from "bun:test"
 import { PostgresDriver } from "../../src/storage/postgres-driver"
 import { storageTestBackends } from "../support/storage-backends"
+import { TransactionalStore } from "../../src/storage/transactional-store"
 
 const postgresTest = test.skipIf(!storageTestBackends().includes("postgres"))
+
+postgresTest("managed PostgreSQL admission never repairs missing objects", async () => {
+  const name = "schema_test_" + crypto.randomUUID().replaceAll("-", "")
+  const driver = await PostgresDriver.open(process.env.SYNERGY_TEST_POSTGRES_URL!, crypto.randomUUID(), 3)
+  const schema = [
+    `CREATE TABLE IF NOT EXISTS ${name} (value TEXT)`,
+    `CREATE INDEX IF NOT EXISTS ${name}_value ON ${name}(value)`,
+  ]
+  try {
+    await expect(driver.verifySchema(schema)).rejects.toThrow("schema preparation required")
+    expect((await driver.query("SELECT to_regclass(?)::text AS name", [name]))[0]?.name).toBeNull()
+    await driver.initializeSchema(schema)
+    await driver.query(`INSERT INTO ${name} VALUES ('retained')`)
+    await driver.verifySchema(schema)
+    await driver.query(`DROP INDEX ${name}_value`)
+    await expect(driver.verifySchema(schema)).rejects.toThrow("schema preparation required")
+    expect((await driver.query("SELECT to_regclass(?)::text AS name", [name + "_value"]))[0]?.name).toBeNull()
+    expect(await driver.query(`SELECT value FROM ${name}`)).toEqual([{ value: "retained" }])
+  } finally {
+    await driver.query(`DROP TABLE IF EXISTS ${name}`)
+    await driver.close()
+  }
+})
+
+postgresTest("explicit PostgreSQL preparation is idempotent and supports managed Runtime reopen", async () => {
+  const url = process.env.SYNERGY_TEST_POSTGRES_URL!
+  await TransactionalStore.preparePostgres({ url })
+  await TransactionalStore.preparePostgres({ url })
+  const options = { backend: "postgres" as const, namespace: crypto.randomUUID(), url, schema: "verify" as const }
+  const store = await TransactionalStore.open(options)
+  try {
+    await store.write(["retained"], { value: 1 })
+  } finally {
+    await store.close()
+  }
+  const reopened = await TransactionalStore.open(options)
+  try {
+    expect(await reopened.read<{ value: number }>(["retained"])).toEqual({ value: 1 })
+  } finally {
+    await reopened.close()
+  }
+})
 
 postgresTest(
   "concurrent PostgreSQL bootstrap and missing-object repair preserve records",

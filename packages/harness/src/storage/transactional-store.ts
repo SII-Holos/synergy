@@ -1285,6 +1285,16 @@ export class StoreTransaction {
 }
 
 export class TransactionalStore {
+  /** Explicit deployment/maintenance step, before opening any managed Runtime. */
+  static async preparePostgres(input: { url: string; maxConnections?: number }) {
+    const driver = await PostgresDriver.open(input.url, randomUUID(), input.maxConnections ?? 2)
+    try {
+      await driver.initializeSchema(schemaFor("postgres"))
+    } finally {
+      await driver.close()
+    }
+  }
+
   private readonly admission = { pending: true }
   hasUnpublishedOwners() {
     return this.admission.pending
@@ -1318,7 +1328,11 @@ export class TransactionalStore {
       store.unavailable = error
     })
     try {
-      if (!options.readonly && driver instanceof PostgresDriver) await driver.initializeSchema(schemaFor("postgres"))
+      if (!options.readonly && driver instanceof PostgresDriver) {
+        if (options.backend === "postgres" && options.schema === "verify")
+          await driver.verifySchema(schemaFor("postgres"))
+        else await driver.initializeSchema(schemaFor("postgres"))
+      }
       await driver.transaction(
         async (connection) => {
           if (!options.readonly && options.backend === "sqlite")
