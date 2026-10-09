@@ -142,37 +142,32 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const cached = store.part[summary.messageID]?.find((part) => part.id === summary.id)
           if (cached && store.partVersion[summary.id] === summary.content.version)
             return { part: cached, version: summary.content.version }
-          const remembered = globalSync.partContentStore.get({
+          // Fetch through the version-keyed store so viewport prefetch, the
+          // materializer, and any later reader share one in-flight network
+          // read per content version; the read outlives the lease on purpose
+          // (released lease aborts the consumption loop, not the transport —
+          // otherwise a row scrolling out of view mid-flight throws the read
+          // away and a later retain reissues the identical request).
+          return globalSync.partContentStore.readThrough({
             url: sdk.url,
             scopeKey: sdk.scopeKey,
             partID: summary.id,
             version: summary.content.version,
-          })
-          if (remembered) return { part: remembered, version: summary.content.version }
-          // The fetch outlives the lease on purpose: a released lease aborts
-          // the materializer's consumption loop, not the transport — otherwise
-          // a row scrolling out of view mid-flight throws the read away and a
-          // later retain reissues the identical versioned request (the last
-          // canceled-request source in the session-switch path).
-          const response = await sdk.client.session.partContent(
-            {
-              sessionID: summary.sessionID,
-              messageID: summary.messageID,
-              partID: summary.id,
-              version: summary.content.version,
-            },
-            { signal: contentLifetime.signal, throwOnError: true },
-          )
-          if (!response.data) throw new Error("Missing conversation content")
-          globalSync.partContentStore.put({
-            url: sdk.url,
-            scopeKey: sdk.scopeKey,
-            partID: summary.id,
-            version: response.data.version,
-            part: response.data.part,
             bytes: summary.content.bytes,
+            read: async () => {
+              const response = await sdk.client.session.partContent(
+                {
+                  sessionID: summary.sessionID,
+                  messageID: summary.messageID,
+                  partID: summary.id,
+                  version: summary.content.version,
+                },
+                { signal: contentLifetime.signal, throwOnError: true },
+              )
+              if (!response.data) throw new Error("Missing conversation content")
+              return response.data
+            },
           })
-          return response.data
         },
         refresh: async (summary, signal) => {
           const current = store.partSummary[summary.messageID]?.find((part) => part.id === summary.id)
@@ -387,14 +382,27 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                 messages: [...response.data.referencedRoots, ...response.data.items].map((entry) => entry.info),
                 signal,
                 page: (messageID) => readPartPageBatch(sessionID, messageID, signal),
-                body: async (summary) => {
-                  const result = await sdk.client.session.partContent(
-                    { sessionID, messageID: summary.messageID, partID: summary.id, version: summary.content.version },
-                    { signal, throwOnError: true },
-                  )
-                  if (!result.data) throw new Error("Missing conversation content")
-                  return result.data
-                },
+                body: (summary) =>
+                  globalSync.partContentStore.readThrough({
+                    url: sdk.url,
+                    scopeKey: sdk.scopeKey,
+                    partID: summary.id,
+                    version: summary.content.version,
+                    bytes: summary.content.bytes,
+                    read: async () => {
+                      const result = await sdk.client.session.partContent(
+                        {
+                          sessionID,
+                          messageID: summary.messageID,
+                          partID: summary.id,
+                          version: summary.content.version,
+                        },
+                        { signal, throwOnError: true },
+                      )
+                      if (!result.data) throw new Error("Missing conversation content")
+                      return result.data
+                    },
+                  }),
               })
             : undefined
         return { response, request, contextProjectionRevision, partSnapshotRequest, latestContextMessage, viewport }
