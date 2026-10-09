@@ -1,5 +1,4 @@
 import { S3Client } from "bun"
-import OSS from "ali-oss"
 import { Readable } from "node:stream"
 import type { ReclaimableBlobStore } from "@ericsanchezok/synergy-harness/storage/blobs"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
@@ -86,6 +85,7 @@ export function ossBlobStore(options: ObjectStorageOptions & { cname?: boolean }
   const key = prepare(options)
   const client = async () => {
     const credentials = await options.credentials()
+    const { default: OSS } = await import("ali-oss")
     return new OSS({
       bucket: options.bucket,
       region: options.region,
