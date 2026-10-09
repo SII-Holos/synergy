@@ -4,7 +4,7 @@ import { ToolIntent } from "./tool-intent"
 import { RuntimeContext } from "../lifecycle/context"
 import { SessionModelSelection } from "./model-selection"
 import { SessionExecutionContributions } from "./execution-contributions"
-import ATTACHMENT_GUIDANCE from "../attachment/guidance.txt"
+import { AttachmentDelivery } from "../attachment/delivery"
 import { RolloutExecution } from "./rollout/execution"
 import { RolloutContext } from "./rollout/context"
 import { Experiment } from "../config/experiment"
@@ -1008,7 +1008,7 @@ export namespace SessionInvoke {
                 // This ordering maximizes prompt caching by keeping static content first.
                 let systemParts: string[] = []
                 let systemCacheBreakpoint: number | undefined
-                let lateSystemParts: string[] = [ToolIntent.guidance, ATTACHMENT_GUIDANCE]
+                let lateSystemParts: string[] = [ToolIntent.guidance, AttachmentDelivery.guidance().response]
 
                 // Layer 1: Static — AGENTS.md instructions (stable within session)
                 systemParts.push(...customParts)
