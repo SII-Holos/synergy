@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { lstatSync, readFileSync, readlinkSync } from "node:fs"
+import { lstatSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs"
 import { rename } from "node:fs/promises"
 import path from "node:path"
 import { analyzeSource, type SourceFacts } from "./source-analysis"
@@ -77,19 +77,28 @@ export function changedInputs(root: string, base: string, snapshot: WorkingSnaps
 const REUSABLE = new Set(["format:check", "lint", "typecheck", "monorepo:check", "doc:check", "decision:check"])
 type Receipt = { version: 1; input: string; gates: Record<string, { command: string; completed: number }> }
 
+export function verificationToolchain(root: string, env: NodeJS.ProcessEnv = process.env) {
+  return JSON.stringify({
+    bun: Bun.version,
+    executable: realpathSync(process.execPath),
+    platform: process.platform,
+    arch: process.arch,
+    tools: ["bun", "node", "git", "rg", "sh"].map((name) => {
+      const located = Bun.which(name, { PATH: env.PATH, cwd: root })
+      if (!located) return [name, null]
+      const executable = realpathSync(located)
+      const stat = statSync(executable)
+      return [name, executable, stat.size, stat.mtimeMs]
+    }),
+    environment: [env.CI, env.NODE_ENV, env.NODE_OPTIONS, env.BUN_OPTIONS],
+  })
+}
+
 export async function cachedChecks(
   root: string,
   gates: Gate[],
   execute: (gate: Gate) => Promise<GateError | null>,
-  toolchain = JSON.stringify([
-    Bun.version,
-    process.execPath,
-    process.platform,
-    process.arch,
-    process.env.PATH,
-    process.env.CI,
-    process.env.NODE_ENV,
-  ]),
+  toolchain = verificationToolchain(root),
 ) {
   const snapshot = new WorkingSnapshot(root)
   const input = createHash("sha256").update(snapshot.digest).update(toolchain).digest("hex")

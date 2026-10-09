@@ -10,7 +10,7 @@ Static preflight does not execute product tests or establish coverage. Repeating
 
 The root `verify` command previews CI selection from the complete working tree and runs explicitly selected behavior tests through the owning coverage executor. Fresh focused reports detect newly added or newly measurable source missing from LCOV. Complete package thresholds and platform acceptance remain CI responsibilities; explicit package coverage is available locally.
 
-Local static checks and the pre-push hook share content-addressed success receipts for deterministic checks. Receipts bind all tracked and non-ignored working inputs, file modes, link targets, commands and the toolchain. They expire after one day, are written atomically, and cannot be used in CI. Changed inputs during checks reject the result. Staged pre-commit checks retain their independent index semantics.
+Local static checks and the pre-push hook share content-addressed success receipts for deterministic checks. Receipts bind all tracked and non-ignored working inputs, file modes, link targets, commands and the toolchain. Tool identity uses resolved executables and relevant runtime options, so Git/Husky PATH prefixes that resolve to the same tools can reuse evidence. They expire after one day, are written atomically, and cannot be used in CI. Changed inputs during checks reject the result. Staged pre-commit checks retain their independent index semantics.
 
 CI collects independent coverage diagnostics even when another task fails, while admission still requires every selected task and complete evidence. Current-attempt successful matrix DAG results may reconcile a lagging in-progress Jobs API record; queued, failed, missing and historical executions cannot inherit success.
 

@@ -1,9 +1,15 @@
 import { expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
-import { mkdtemp, rm, symlink } from "node:fs/promises"
+import { chmod, mkdtemp, rm, symlink } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { WorkingSnapshot, changedInputs, cachedChecks, missingMeasurements } from "../../script/verification"
+import {
+  WorkingSnapshot,
+  changedInputs,
+  cachedChecks,
+  missingMeasurements,
+  verificationToolchain,
+} from "../../script/verification"
 
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "verification-"))
@@ -95,4 +101,21 @@ test("focused coverage requires measured source and respects only declared exact
   expect(missingMeasurements(files, records, [{ glob: "src/browser.tsx", reason: "Browser behavior suite" }])).toEqual([
     "src/new.ts",
   ])
+})
+
+test("hook PATH additions reuse the same tools, while an executable or semantic environment change invalidates receipts", async () => {
+  await using f = await fixture()
+  const extra = path.join(f.root, "ignored/tools")
+  const first = verificationToolchain(f.root)
+  const env = { ...process.env, PATH: `${extra}${path.delimiter}${process.env.PATH}` }
+  expect(verificationToolchain(f.root, env)).toBe(first)
+  const gates = [{ id: "lint", run: "lint", needs: [] }]
+  await cachedChecks(f.root, gates, async () => null, first)
+  expect((await cachedChecks(f.root, gates, async () => null, verificationToolchain(f.root, env))).reused).toEqual([
+    "lint",
+  ])
+  await Bun.write(path.join(extra, "git"), "#!/bin/sh\nexit 0\n")
+  await chmod(path.join(extra, "git"), 0o755)
+  expect(verificationToolchain(f.root, env)).not.toBe(first)
+  expect(verificationToolchain(f.root, { ...process.env, NODE_OPTIONS: "--no-warnings" })).not.toBe(first)
 })
