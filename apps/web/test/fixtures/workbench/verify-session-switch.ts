@@ -4,6 +4,7 @@ import { homedir } from "node:os"
 import path from "node:path"
 import { chromium } from "playwright"
 import { createSynergyClient, type Session } from "@ericsanchezok/synergy-sdk/client"
+import { verifySessionContinuation } from "./session-continuation"
 
 const [home, origin] = process.argv.slice(2)
 if (!home || !origin) throw new Error("Usage: verify-session-switch.ts <isolated-home> <production-origin>")
@@ -193,6 +194,7 @@ try {
       })
       await page.screenshot({ path: path.join(output, `${theme}-${width}.png`) })
     }
+    await verifySessionContinuation(page, url.origin)
     await context.close()
   }
   assert.deepEqual(errors, [])

@@ -30,9 +30,10 @@ beforeAll(async () => {
     import {createAutoScroll} from ${JSON.stringify(`/@fs/${path.resolve(appSrc, "../../../packages/ui/src/hooks/create-auto-scroll.tsx")}`)}
     import {ConversationPresentation} from ${JSON.stringify(`/@fs/${appSrc}/components/session/conversation-presentation.tsx`)}
     import {ConversationViewport} from ${JSON.stringify(`/@fs/${appSrc}/components/session/conversation-viewport.tsx`)}
-    const [session,setSession]=createSignal("A"),[accepted,setAccepted]=createSignal("A"),[scope,setScope]=createSignal("scope")
-    window.presentation={select(id){setSession(id)},admit(id){setAccepted(id)},scope(id){setScope(id)}}
-    if(location.search!=="?flow") render(()=><I18nProvider i18n={setupI18n()}><ConversationPresentation owner={["server",scope(),session()]} ready={accepted()===session()}>
+    const [session,setSession]=createSignal("A"),[accepted,setAccepted]=createSignal("A"),[scope,setScope]=createSignal("scope"),[route,setRoute]=createSignal()
+    let leaves=0
+    window.presentation={select(id){setSession(id)},admit(id){setAccepted(id)},scope(id){setScope(id)},promote(){setRoute(session())},leaves(){return leaves}}
+    if(location.search!=="?flow") render(()=><I18nProvider i18n={setupI18n()}><ConversationPresentation owner={["server",scope(),route()??session()]} ready={accepted()===session()} onLeave={()=>leaves++}>
       <header>Title {session()}</header><div style="height:300px;overflow:auto"><article style="height:800px"><p id="live-id">Body {session()}</p></article></div>
     </ConversationPresentation></I18nProvider>,document.getElementById("presentation"))
     else render(()=>{const scroll=createAutoScroll({working:()=>false});return <I18nProvider i18n={setupI18n()}><ConversationViewport ready={true} scrolledUp={false} onScrolledUpChange={()=>{}} autoScroll={scroll} setScrollRef={scroll.scrollRef} contentClass="fixture-column"><article style="width:100%"><p>{"A naturally wrapping conversation paragraph. ".repeat(25)}</p></article></ConversationViewport></I18nProvider>},document.getElementById("flow"))
@@ -66,12 +67,35 @@ afterAll(async () => {
   await server?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
 }, 15000)
-type Presentation = { select(id: string): void; admit(id: string): void; scope(id: string): void }
-const presentation = (action: keyof Presentation, value: string) =>
+type Presentation = {
+  select(id: string): void
+  admit(id: string): void
+  scope(id: string): void
+  promote(): void
+  leaves(): number
+}
+const presentation = (action: "select" | "admit" | "scope", value: string) =>
   page.evaluate(
     ({ action, value }) => (window as unknown as { presentation: Presentation }).presentation[action](value),
     { action, value },
   )
+
+test("promoting a captured conversation to the same route preserves its admission", async () => {
+  await page.goto(base + "?presentation")
+  await page.getByText("Body A", { exact: true }).waitFor()
+  await frames()
+  const leaves = await page.evaluate(() => (window as unknown as { presentation: Presentation }).presentation.leaves())
+  await page.evaluate(() => (window as unknown as { presentation: Presentation }).presentation.promote())
+  await frames()
+  expect(await page.evaluate(() => (window as unknown as { presentation: Presentation }).presentation.leaves())).toBe(
+    leaves,
+  )
+  expect(await page.locator("[data-conversation-retained]").textContent()).toBe("")
+  expect(await page.locator("[data-conversation-current]").evaluate((element) => (element as HTMLElement).inert)).toBe(
+    false,
+  )
+  expect(errors).toEqual([])
+})
 
 test("session presentation keeps one inert outgoing picture through slow and superseded navigation", async () => {
   await page.goto(base + "?presentation")

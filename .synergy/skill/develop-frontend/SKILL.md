@@ -443,6 +443,8 @@ For browser-local document readers, validate actual streamed decompression in a 
 
 ## Conversation navigation motion
 
+Exercise new-task submission through the actual page as well as navigation between existing Sessions. Delay creation, type the next draft while it is pending, and send again after the first reply. Assert retained viewport/editor nodes and the next accepted request. Presentation and scroll ownership must follow the captured future Session ID before route commit; a successful first reply alone cannot establish that admission released the Composer.
+
 Test the production conversation's start-aligned flex column when adding a presentation wrapper; an un-sized intermediary can collapse percentage-width virtual rows despite isolated component tests passing. Include the real presentation layer in toolbar tests and compare vertical centers with portaled workspace controls and the open workspace header. A new positioned ancestor must not inherit content padding as a toolbar offset. Keep scrollable geometry independent from presentation transforms and measure virtual margins in canonical coordinates. Interrupt following from the painted position and do not run a second compensation during disclosure space motion.
 
 Exercise the Composer inside the real conversation presentation layers after changing their structure. Measure reserved chrome through its explicit current-view owner, never a child index or retained snapshot. Verify empty-draft text visibility, native height dragging, full expansion and collapse, and resizing while an outgoing conversation is retained; isolated resize controls with a fixed height cannot cover available-space measurement.

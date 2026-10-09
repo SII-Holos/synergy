@@ -1,4 +1,4 @@
-import { createEffect, createRenderEffect, createSignal, on, onCleanup, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, createRenderEffect, createSignal, on, onCleanup, Show, type JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { AP } from "../../app-i18n"
 import "./conversation-presentation.css"
@@ -10,6 +10,8 @@ export function ConversationPresentation(props: {
   children: JSX.Element
 }) {
   const { _ } = useLingui()
+  const owner = createMemo(() => JSON.stringify(props.owner))
+  const ready = createMemo(() => props.ready)
   let live!: HTMLDivElement
   let retained!: HTMLDivElement
   let outgoing: HTMLElement | undefined
@@ -34,52 +36,49 @@ export function ConversationPresentation(props: {
   }
   reduced.addEventListener("change", changedPreference)
   createRenderEffect(
-    on(
-      () => JSON.stringify(props.owner),
-      (_next, previous) => {
-        generation++
-        props.onLeave?.()
-        if (motion) motion.onfinish = null
-        motion?.cancel()
-        motion = undefined
-        const before = previous ? (JSON.parse(previous) as string[]) : undefined
-        const sameScope = before && before[0] === props.owner[0] && before[1] === props.owner[1]
-        if (!sameScope) release()
-        else if (shown && before[2] && live && retained) {
-          release()
-          const frame = live.cloneNode(true) as HTMLElement
-          frame.removeAttribute("data-conversation-current")
-          frame.inert = true
-          frame.setAttribute("aria-hidden", "true")
-          frame.style.opacity = "1"
-          frame.style.visibility = "visible"
-          const originals = [live, ...live.querySelectorAll<HTMLElement>("*")]
-          const copies = [frame, ...frame.querySelectorAll<HTMLElement>("*")]
-          retained.append(frame)
-          for (let index = 0; index < originals.length; index++) {
-            const source = originals[index],
-              copy = copies[index]
-            copy.removeAttribute("id")
-            copy.scrollTop = source.scrollTop
-            copy.scrollLeft = source.scrollLeft
-            if (
-              source.hasAttribute("data-motion-changing") ||
-              source.matches('[data-conversation-motion], [data-slot="process-viewport-motion"]')
-            ) {
-              const style = getComputedStyle(source)
-              copy.style.height = `${source.getBoundingClientRect().height}px`
-              copy.style.opacity = style.opacity
-              copy.style.transform = style.transform
-            }
-            if (source instanceof HTMLCanvasElement && copy instanceof HTMLCanvasElement)
-              copy.getContext("2d")?.drawImage(source, 0, 0)
+    on(owner, (_next, previous) => {
+      generation++
+      props.onLeave?.()
+      if (motion) motion.onfinish = null
+      motion?.cancel()
+      motion = undefined
+      const before = previous ? (JSON.parse(previous) as string[]) : undefined
+      const sameScope = before && before[0] === props.owner[0] && before[1] === props.owner[1]
+      if (!sameScope) release()
+      else if (shown && before[2] && live && retained) {
+        release()
+        const frame = live.cloneNode(true) as HTMLElement
+        frame.removeAttribute("data-conversation-current")
+        frame.inert = true
+        frame.setAttribute("aria-hidden", "true")
+        frame.style.opacity = "1"
+        frame.style.visibility = "visible"
+        const originals = [live, ...live.querySelectorAll<HTMLElement>("*")]
+        const copies = [frame, ...frame.querySelectorAll<HTMLElement>("*")]
+        retained.append(frame)
+        for (let index = 0; index < originals.length; index++) {
+          const source = originals[index],
+            copy = copies[index]
+          copy.removeAttribute("id")
+          copy.scrollTop = source.scrollTop
+          copy.scrollLeft = source.scrollLeft
+          if (
+            source.hasAttribute("data-motion-changing") ||
+            source.matches('[data-conversation-motion], [data-slot="process-viewport-motion"]')
+          ) {
+            const style = getComputedStyle(source)
+            copy.style.height = `${source.getBoundingClientRect().height}px`
+            copy.style.opacity = style.opacity
+            copy.style.transform = style.transform
           }
-          outgoing = frame
+          if (source instanceof HTMLCanvasElement && copy instanceof HTMLCanvasElement)
+            copy.getContext("2d")?.drawImage(source, 0, 0)
         }
-        shown = false
-        setWaiting(!!outgoing)
-      },
-    ),
+        outgoing = frame
+      }
+      shown = false
+      setWaiting(!!outgoing)
+    }),
   )
   createEffect(() => {
     if (!waiting()) {
@@ -90,11 +89,11 @@ export function ConversationPresentation(props: {
     onCleanup(() => clearTimeout(timer))
   })
   createEffect(() => {
-    const owner = JSON.stringify(props.owner)
-    if (!props.ready) return
+    const currentOwner = owner()
+    if (!ready()) return
     const current = generation
     const frame = requestAnimationFrame(() => {
-      if (generation !== current || owner !== JSON.stringify(props.owner) || !props.ready) return
+      if (generation !== current || currentOwner !== owner() || !ready()) return
       shown = true
       setWaiting(false)
       if (!outgoing || reduced.matches) {

@@ -1343,7 +1343,7 @@ function SessionPageContent() {
     })
   }
   const admittedConversation = (id: string) => {
-    if (id !== scrollSession || id !== params.id || !scroller) return
+    if (id !== scrollSession || id !== conversationSessionID() || !scroller) return
     const saved = scrollView?.conversation.get()
     if (saved && !saved.following && saved.position && !window.location.hash) {
       restoreConversationReadingPosition(scroller, saved.position)
@@ -1363,8 +1363,9 @@ function SessionPageContent() {
     // binding is still the element this releaser bound.
     if (!el && releaseOf !== undefined && scroller !== releaseOf) return
     saveReadingPosition()
-    scrollView = el ? view() : undefined
-    scrollSession = el ? params.id : undefined
+    const id = el ? conversationSessionID() : undefined
+    scrollView = el ? layout.view(`${params.dir}${id ? "/" + id : ""}`) : undefined
+    scrollSession = id
     scrollWasReady = false
     scroller?.removeEventListener("wheel", releaseHistoryLocation)
     scroller?.removeEventListener("keydown", releaseHistoryLocation)
@@ -2239,7 +2240,7 @@ function SessionPageContent() {
   const views = {
     conversation: () => (
       <ConversationPresentation
-        owner={[sdk.url, sdk.scopeKey, params.id ?? ""]}
+        owner={[sdk.url, sdk.scopeKey, conversationSessionID()]}
         ready={
           isNewSession() ||
           presentedSession() === params.id ||
