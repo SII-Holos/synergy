@@ -30,3 +30,11 @@ export function upgradeImportedRecord(key: string[], input: unknown): unknown {
   for (const migration of importedMigrations()) migration.upgradeRecord?.(key, result)
   return result
 }
+
+export function upgradeAccessRecord<T>(key: string[], input: T): T {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input
+  const result = structuredClone(input) as Record<string, unknown>
+  for (const migration of importedMigrations())
+    if (migration.execution === "record") migration.upgradeRecord?.(key, result)
+  return result as T
+}

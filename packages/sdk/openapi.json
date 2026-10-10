@@ -1168,6 +1168,18 @@
                         "type": "string"
                       }
                     },
+                    "requested": {
+                      "type": "boolean"
+                    },
+                    "lineageAfter": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "lineageComplete": {
+                      "type": "boolean"
+                    },
                     "owners": {
                       "type": "integer",
                       "minimum": 0,
@@ -38665,6 +38677,18 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "requested": {
+                        "type": "boolean"
+                      },
+                      "lineageAfter": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "lineageComplete": {
+                        "type": "boolean"
                       },
                       "owners": {
                         "type": "integer",

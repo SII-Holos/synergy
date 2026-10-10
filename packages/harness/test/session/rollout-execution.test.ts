@@ -18,6 +18,24 @@ const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const owner = { kind: "operation" as const, scopeID: "test", operationID: "execution-timing" }
 
+test("historical timing reads current run records without replaying the journal", () =>
+  runtime.run(async () => {
+    const identity = { ...owner, operationID: crypto.randomUUID() }
+    const segment = await RolloutLedger.beginSegment({ owner: identity, runID: "old", input: {} })
+    await RolloutLedger.finishSegment(segment, "completed")
+    await historical(identity)
+    const replay = spyOn(RolloutJournal, "events").mockImplementation(() => {
+      throw new Error("timing reconstruction must not replay history")
+    })
+    try {
+      await RolloutExecutionMigration.owner(identity)
+      expect((await RolloutLedger.getRun(identity, "old")).timingVersion).toBe(1)
+      expect(replay).not.toHaveBeenCalled()
+    } finally {
+      replay.mockRestore()
+    }
+  }))
+
 async function historical(identity: RolloutSchema.Owner) {
   for (const run of (await RolloutSnapshot.read(identity)).runs)
     await RolloutJournal.write(identity, [...RolloutArtifact.root(identity), "runs", run.id, "info"], {

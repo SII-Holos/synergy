@@ -8,8 +8,13 @@ import type { Migration } from "./types"
 const Ledger = z.record(z.string(), z.number().finite().nonnegative())
 
 export namespace MigrationPlan {
+  export function onAccess(migration: Migration) {
+    return Boolean(migration.onAccess || ["session", "owner", "record"].includes(migration.execution ?? ""))
+  }
+
   export function separable(migration: Migration) {
     if (migration.execution === "after-convergence" || migration.execution === "maintenance") return true
+    if (migration.execution === "owner" || migration.execution === "record") return true
     if (migration.execution === "startup" || migration.scope === "global") return true
     return Boolean((migration.scope === "session" || migration.scope === "derived") && migration.upSession)
   }
@@ -21,6 +26,13 @@ export namespace MigrationPlan {
     const byKey = new Map<string, (typeof entries)[number]>()
     for (const entry of entries) {
       const key = `${entry.domain}/${entry.migration.id}`
+      // Released migrations retain their execution semantics; newer entries must choose explicitly.
+      if (
+        /^\d{8}/.test(entry.migration.id) &&
+        entry.migration.id.slice(0, 8) >= "20261008" &&
+        !entry.migration.execution
+      )
+        throw new Error(`Migration ${key} must declare its execution policy`)
       if (byKey.has(key)) throw new Error(`Duplicate migration ${key}`)
       if (entry.migration.execution === "session" && !entry.migration.upSession)
         throw new Error(`Session migration ${key} requires an owner callback`)
@@ -30,6 +42,10 @@ export namespace MigrationPlan {
           entry.migration.emptyInput.some((prefix) => !prefix.length || prefix.some((part) => !part)))
       )
         throw new Error(`Migration ${key} requires nonempty input prefixes`)
+      if (entry.migration.execution === "owner" && !entry.migration.upOwner)
+        throw new Error(`Owner migration ${key} requires an owner callback`)
+      if (entry.migration.execution === "record" && !entry.migration.upgradeRecord)
+        throw new Error(`Record migration ${key} requires a pure record transform`)
       byKey.set(key, entry)
     }
     const graph = [...byKey].map(([key, entry]) => ({

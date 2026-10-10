@@ -49,6 +49,10 @@ For PostgreSQL deletion plans, include a new namespace created after statistics 
 
 ## Migrate Existing Data
 
+Choose migration execution independently of its data scope. New migrations must explicitly declare `startup`, `session`, `owner`, `record`, `after-convergence` or `maintenance`; `scope: session` alone does not mean lazy. Do not enumerate historical Sessions/operations, replay journals, decode message bodies or read artifact bytes to admit the application. Put owner transforms behind the central owner runner and pure compatibility transforms behind record access. Keep unknown recovery coverage durable and fence only its owner before execution; never replace unknown coverage with an empty clean index. Historical imports and full usage rebuilds require explicit resume/request, including old queued jobs. See [history admission](../../../docs/decisions/implemented/bug-fix/2026-10-10-history-work-outside-startup.md).
+
+Test a released completion ledger with the new migration absent, interrupted and complete. Include both owner kinds, simultaneous requests, deleted owners, a corrupt cold owner and restart. Measure real read/scan counts on populated SQL stores; empty-home speed alone cannot establish bounded startup. Verify first-page work separately from full export/maintenance and retain original source evidence until its owner verifies the upgrade.
+
 Register optional session fields, creation/import hooks and indexes through the owning package’s `session-schema.ts` before runtime startup. Keep the persistence reader tolerant of unloaded fields while public schemas expose only installed owners. Workflow session migrations stay with Workflows and preserve their historical `session` tracking ledger; moving ownership must not replay or discard migration history.
 
 1. Add a migration whenever an existing persisted shape can reach the new code.

@@ -26,6 +26,7 @@ export namespace RolloutLedger {
 
     const key = lockKey(owner, runID)
     instanceState.recordingFailures.set(key, error)
+    await RolloutJournal.prepare(owner)
     using lock = await Lock.write(key)
     try {
       const current = await getRun(owner, runID)
@@ -44,8 +45,13 @@ export namespace RolloutLedger {
     return `rollout:${root(owner, runID).join(":")}`
   }
 
+  async function writeLock(owner: Owner, runID: string) {
+    await RolloutJournal.prepare(owner)
+    return Lock.write(lockKey(owner, runID))
+  }
+
   export async function beginRun(owner: Owner, runID: string) {
-    using lock = await Lock.write(lockKey(owner, runID))
+    using lock = await writeLock(owner, runID)
     return requireRunning(owner, runID)
   }
 
@@ -54,7 +60,7 @@ export namespace RolloutLedger {
     runID: string,
     configuration: NonNullable<RolloutSchema.RunRecord["configuration"]>,
   ) {
-    using lock = await Lock.write(lockKey(owner, runID))
+    using lock = await writeLock(owner, runID)
     const run = await requireRunning(owner, runID)
     if (run.configuration) return run.configuration
     const provenance = await record(() => RolloutProvenance.capture())
@@ -70,7 +76,7 @@ export namespace RolloutLedger {
   }
 
   export async function attachInput(owner: Owner, runID: string, artifact: RolloutSchema.ArtifactRef) {
-    using lock = await Lock.write(lockKey(owner, runID))
+    using lock = await writeLock(owner, runID)
     const run = await requireRunning(owner, runID)
     const attachments = run.attachments ?? []
     if (attachments.some((ref) => ref.id === artifact.id)) return
@@ -84,7 +90,7 @@ export namespace RolloutLedger {
   }
 
   export async function requestCancel(owner: Owner, runID: string) {
-    using lock = await Lock.write(lockKey(owner, runID))
+    using lock = await writeLock(owner, runID)
     const run = await getRun(owner, runID)
     if ((run.status !== "running" && run.status !== "interrupted") || run.cancelRequestedAt) return run
     const updated = { ...run, cancelRequestedAt: Date.now() }
@@ -98,7 +104,7 @@ export namespace RolloutLedger {
    * and recording-failed runs stay terminal.
    */
   export async function reopenRun(owner: Owner, runID: string) {
-    using lock = await Lock.write(lockKey(owner, runID))
+    using lock = await writeLock(owner, runID)
     const run = await getRun(owner, runID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
@@ -136,7 +142,7 @@ export namespace RolloutLedger {
    * a previously complete recording.
    */
   export async function resumeRun(owner: Owner, runID: string) {
-    using lock = await Lock.write(lockKey(owner, runID))
+    using lock = await writeLock(owner, runID)
     const run = await getRun(owner, runID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
@@ -161,7 +167,7 @@ export namespace RolloutLedger {
    *  A run that appeared meanwhile only gets its cancel request marked; the
    *  live owner settles it through the normal cancel path. */
   export async function cancelUnopenedRun(owner: Owner, runID: string, started: number) {
-    using lock = await Lock.write(lockKey(owner, runID))
+    using lock = await writeLock(owner, runID)
     const existing = await getRun(owner, runID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
@@ -194,7 +200,7 @@ export namespace RolloutLedger {
     initialHistory?: RolloutSchema.RunRecord["initialHistory"]
     parent?: RolloutSchema.RunRecord["parent"]
   }) {
-    using lock = await Lock.write(lockKey(input.owner, input.runID))
+    using lock = await writeLock(input.owner, input.runID)
     const previous = await getRun(input.owner, input.runID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
@@ -252,7 +258,7 @@ export namespace RolloutLedger {
     status: Terminal,
     options?: { detectedAt: number },
   ) {
-    using lock = await Lock.write(lockKey(segment.owner, segment.runID))
+    using lock = await writeLock(segment.owner, segment.runID)
     const key = [...root(segment.owner, segment.runID), "segments", segment.id]
     const result = await record(async () => {
       const current = RolloutSchema.ExecutionSegment.parse(await Storage.read(key))
@@ -314,6 +320,7 @@ export namespace RolloutLedger {
     publish?: () => Promise<void>,
   ) {
     return record(async () => {
+      await RolloutJournal.prepare(value.owner)
       using lock = await Lock.write(`rollout-record:${key.join(":")}`)
       const current = await Storage.read<T>(key).catch((error) => {
         if (error instanceof Storage.NotFoundError) return undefined
@@ -409,7 +416,7 @@ export namespace RolloutLedger {
   }) {
     const instanceState = runtimeState()
 
-    using lock = await Lock.write(lockKey(input.owner, input.runID))
+    using lock = await writeLock(input.owner, input.runID)
     await requireRunning(input.owner, input.runID)
     const artifact = await RolloutArtifact.writeText(input.owner, JSON.stringify(input.args), "application/json")
     const tool = RolloutSchema.ToolExecutionRecord.parse({
@@ -450,7 +457,7 @@ export namespace RolloutLedger {
   }) {
     const instanceState = runtimeState()
 
-    using lock = await Lock.write(lockKey(input.owner, input.runID))
+    using lock = await writeLock(input.owner, input.runID)
     await requireRunning(input.owner, input.runID)
     const request = await RolloutArtifact.writeText(input.owner, JSON.stringify(input.request), "application/json")
     const call = RolloutSchema.CallRecord.parse({
@@ -490,7 +497,7 @@ export namespace RolloutLedger {
       error?: string
     },
   ) {
-    using lock = await Lock.write(lockKey(owner, runID))
+    using lock = await writeLock(owner, runID)
     return record(async () => {
       const current = await getCall(owner, runID, callID)
       if (current.status !== "running") return current
@@ -518,7 +525,7 @@ export namespace RolloutLedger {
     callID: string,
     response: RolloutSchema.ArtifactRef,
   ) {
-    using lock = await Lock.write(lockKey(owner, runID))
+    using lock = await writeLock(owner, runID)
     return record(async () => {
       const current = await getCall(owner, runID, callID)
       if (current.status !== "running") return
@@ -532,7 +539,7 @@ export namespace RolloutLedger {
   export async function finishRun(owner: Owner, runID: string, status: Terminal, options?: { detectedAt: number }) {
     const instanceState = runtimeState()
 
-    using lock = await Lock.write(lockKey(owner, runID))
+    using lock = await writeLock(owner, runID)
     const current = await getRun(owner, runID)
     const recordingFailed = current.recording === "failed" || instanceState.recordingFailures.has(lockKey(owner, runID))
     if (recordingFailed && status === "completed") {

@@ -476,18 +476,22 @@ export namespace UsageLedger {
       )
   }
   export function captureBatch(owner: UsageSchema.Owner, limit = 128) {
-    return capturePage(owner, limit, false)
+    return capturePage(owner, limit, "capture")
   }
-  export function replayBatch(owner: UsageSchema.Owner, limit = 128) {
-    return capturePage(owner, limit, true)
+  export function replayBatch(owner: UsageSchema.Owner, limit = 128, mode: "rebuild" | "access" = "rebuild") {
+    return capturePage(owner, limit, mode)
   }
-  async function capturePage(owner: UsageSchema.Owner, limit: number, replay: boolean) {
+  async function capturePage(owner: UsageSchema.Owner, limit: number, mode: "capture" | "rebuild" | "access") {
     using lock = await Lock.write(`usage-capture:${owner.scopeID}:${ownerKey(owner)}`)
+    const replay = mode !== "capture"
     const { RolloutJournal } = await import("../session/rollout/journal")
     const head = await RolloutJournal.head(owner)
-    const checkpointKey = replay
-      ? StoragePath.usageReplay()
-      : StoragePath.usageOwnerCheckpoint(owner.scopeID, ownerKey(owner))
+    const checkpointKey =
+      mode === "access"
+        ? [...StoragePath.usageReplay(), "owners", owner.scopeID, ownerKey(owner)]
+        : replay
+          ? StoragePath.usageReplay()
+          : StoragePath.usageOwnerCheckpoint(owner.scopeID, ownerKey(owner))
     const identity = JSON.stringify([owner.scopeID, ownerKey(owner)])
     const saved = replay ? await optional(checkpointKey) : undefined
     const cursor = saved ? Replay.parse(saved) : undefined
@@ -496,7 +500,10 @@ export namespace UsageLedger {
         ? cursor
         : undefined
       : await optional<{ revision: number }>(checkpointKey)
-    const target = replay && cursor?.owner === identity ? cursor.through : head.committed
+    const target =
+      replay && cursor?.owner === identity && (mode === "rebuild" || cursor.revision < cursor.through)
+        ? cursor.through
+        : head.committed
     const after = checkpoint?.revision ?? 0
     if (after >= target) return { processed: 0, complete: true }
     const through = Math.min(target, after + limit)

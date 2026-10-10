@@ -9,31 +9,34 @@ import { RolloutJournal } from "./journal"
 import { RolloutSnapshot } from "./snapshot"
 import { RolloutExecution } from "./execution"
 import { RolloutSchema } from "./schema"
+import { UpgradeWork } from "../../storage/upgrade-work"
+import { upgradeAccessRecord } from "../../migration/import"
 
 export namespace RolloutExecutionMigration {
   export async function owner(owner: RolloutSchema.Owner, messages?: MessageV2.WithParts[]) {
-    const snapshot = await RolloutSnapshot.read(owner)
     const root = RolloutArtifact.root(owner)
-    if (!snapshot.runs.some((run) => run.timingVersion !== 1)) return
-    if (!messages && owner.kind === "session") {
-      const scopeID = Identifier.asScopeID(owner.scopeID)
-      const sessionID = Identifier.asSessionID(owner.sessionID)
-      const ids = await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, sessionID))
-      const records = await Storage.readMany(
-        ids.map((id) => StoragePath.messageInfo(scopeID, sessionID, Identifier.asMessageID(id))),
-      )
-      messages = records.flatMap((value) => {
-        const info = MessageV2.Info.safeParse(value)
-        return info.success ? [{ info: info.data, parts: [] }] : []
-      })
-    }
-    const canonical = MessageV2.deriveSemantics(
-      (messages ?? []).toSorted(
-        (a, b) => a.info.time.created - b.info.time.created || a.info.id.localeCompare(b.info.id),
-      ),
-    )
-    for (const run of snapshot.runs) {
+    let canonical: MessageV2.WithParts[] | undefined
+    for (const runID of await Storage.scan([...root, "runs"])) {
+      UpgradeWork.signal()?.throwIfAborted()
+      const run = RolloutSchema.RunRecord.parse(await Storage.read([...root, "runs", runID, "info"]))
       if (run.timingVersion === 1) continue
+      const snapshot = await RolloutSnapshot.projected(owner, run.id)
+      if (!messages && owner.kind === "session") {
+        const scopeID = Identifier.asScopeID(owner.scopeID)
+        const sessionID = Identifier.asSessionID(owner.sessionID)
+        const ids = await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, sessionID))
+        const keys = ids.map((id) => StoragePath.messageInfo(scopeID, sessionID, Identifier.asMessageID(id)))
+        const records = await Storage.readMany(keys)
+        messages = records.flatMap((value, index) => {
+          const info = MessageV2.Info.safeParse(upgradeAccessRecord(keys[index]!, value))
+          return info.success ? [{ info: info.data, parts: [] }] : []
+        })
+      }
+      canonical ??= MessageV2.deriveSemantics(
+        (messages ?? []).toSorted(
+          (a, b) => a.info.time.created - b.info.time.created || a.info.id.localeCompare(b.info.id),
+        ),
+      )
       const segments = snapshot.segments.filter((segment) => segment.runID === run.id)
       const calls = snapshot.calls.filter((call) => call.runID === run.id)
       const intervals = snapshot.intervals.filter((interval) => interval.runID === run.id)
@@ -118,9 +121,13 @@ export namespace RolloutExecutionMigration {
     id: "20261008-rollout-execution-time",
     emptyInput: [["sessions"], ["operations"]],
     scope: "session",
+    execution: "owner",
     dependsOn: ["20261001-rollout-attempt-price-evidence"],
     description:
       "Separate execution intervals from input admission and retain confirmed historical time as a lower bound",
+    async upOwner(identity) {
+      await owner(identity)
+    },
     async upSession(identity) {
       await owner({ kind: "session", ...identity })
     },

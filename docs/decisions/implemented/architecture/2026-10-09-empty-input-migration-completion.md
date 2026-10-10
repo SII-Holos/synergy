@@ -8,7 +8,7 @@ An on-demand Runtime with no historical records still performs a transaction for
 
 ## Decision
 
-Owners can declare `emptyInput` record prefixes only when no body effects exist without those records. The runner checks all declared prefixes and completes consecutive eligible migrations in one ownership-fenced transaction. It reuses an empty-input observation only inside that transaction, ends the group before an ordinary migration, and preserves dependency order. On-access registrations can share the group because their actual transformations retain per-Session receipts.
+Owners can declare `emptyInput` record prefixes only when no body effects exist without those records. The runner checks all declared prefixes and completes consecutive eligible migrations in one ownership-fenced transaction. It reuses an empty-input observation only inside that transaction, ends the group before an ordinary migration, and preserves dependency order. On-access registrations can share the group: Session and operation preparation retains per-owner receipts, while pure record transforms remain bound to requested reads. Registration does not evaluate historical bodies or record transforms.
 
 A startup migration can also supply a read-only `isApplied` proof. The runner evaluates that proof in the completion transaction and never replays a proven body. A false proof retains normal execution; a failed proof rolls back the whole completion group. Absent immediate roots prove nested input prefixes empty without a separate indexed query per prefix; existing roots still require the exact prefix check. Both observations expire at an ordinary migration.
 
