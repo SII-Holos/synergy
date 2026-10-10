@@ -290,6 +290,8 @@ export interface StreamingSession {
   update(text: string): Promise<void>
   updateToolProgress(progress: StreamingToolProgress[]): Promise<void>
   close(finalText?: string, error?: boolean): Promise<void>
+  /** Stop streaming without delivering cached or terminal content, including fallback replies. */
+  closeWithoutDelivery(): Promise<void>
   isActive(): boolean
   /**
    * Whether this streaming session delivers the terminal reply itself in

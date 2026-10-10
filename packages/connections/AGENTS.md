@@ -6,6 +6,7 @@ Email, Channels, Holos and GitHub domains, each including its service, tools, ro
 - Own Channel Workspace upgrades in `src/channel/migration.ts`; Presets registers them before storage startup.
 - Own configuration schemas, normalization, reference checks and secret handling in `src/config-schema.ts`; consumers use its typed reader and the host composes its registration.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
+- StreamingSession separates terminal delivery (`close`) from no-delivery finalization (`closeWithoutDelivery`); provider lifecycle contracts follow `docs/architecture/channels.md`.
 - Own Holos CLI and SVG raster asset staging under `script/`, including SVG fonts and notices. Product packaging consumes these public helpers. Expose GitHub watch and Boss account facts through `workflow-settings`; the product connects them to Workflow ports.
 - Tests live under test/ and use isolated homes through the testing support package.
 

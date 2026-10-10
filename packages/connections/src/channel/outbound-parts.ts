@@ -6,6 +6,7 @@ import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import type { OutboundPart, Provider } from "./types"
+import { deliverReactionOnlyReaction, findReactionOnlyIntent, resolveReactionTarget } from "./reaction-only-runtime"
 
 const log = Log.create({ service: "channel.outbound-parts" })
 
@@ -133,7 +134,25 @@ export async function loadChannelTaskMessages(input: {
 }): Promise<MessageV2.WithParts[]> {
   const messages = await Session.messages({ sessionID: input.sessionID })
   const hydrated = messages.map((message) => (message.info.id === input.terminal.info.id ? input.terminal : message))
-  return MessageV2.deriveSemantics(hydrated)
+  const terminalIndex = hydrated.findIndex((message) => message.info.id === input.terminal.info.id)
+  const scoped = MessageV2.deriveSemantics(terminalIndex < 0 ? hydrated : hydrated.slice(0, terminalIndex + 1))
+  const suppressed = new Set<string>()
+  let segment: string[] = []
+  for (const message of scoped) {
+    if (message.info.role !== "assistant" || message.info.rootID !== input.rootID) continue
+    segment.push(message.info.id)
+    if (!SessionProgress.isTerminalAssistant(message.info)) continue
+    if (message.info.id !== input.terminal.info.id && findReactionOnlyIntent([message], input.rootID, message.info.id))
+      for (const id of segment) suppressed.add(id)
+    segment = []
+  }
+  return scoped.filter((message) => !suppressed.has(message.info.id))
+}
+
+export async function collectChannelTerminalMessages(sessionID: string): Promise<MessageV2.WithParts[]> {
+  return MessageV2.deriveSemantics(await Session.messages({ sessionID })).filter(
+    (message) => message.info.role === "assistant" && SessionProgress.isTerminalAssistant(message.info),
+  )
 }
 
 /**
@@ -146,12 +165,9 @@ export async function loadChannelTaskMessages(input: {
  * (foreground registered) yet never delivered by the foreground path.
  */
 export async function collectChannelTaskTerminals(sessionID: string): Promise<Map<string, MessageV2.WithParts>> {
-  const messages = await Session.messages({ sessionID })
   const terminals = new Map<string, MessageV2.WithParts>()
-  for (const message of MessageV2.deriveSemantics(messages)) {
-    if (message.info.role !== "assistant") continue
+  for (const message of await collectChannelTerminalMessages(sessionID)) {
     const assistant = message.info as MessageV2.Assistant
-    if (!SessionProgress.isTerminalAssistant(assistant)) continue
     const rootID = assistant.rootID ?? assistant.parentID
     if (rootID) terminals.set(rootID, message)
   }
@@ -178,11 +194,14 @@ export async function deliverForegroundTaskTerminal(input: {
   sessionID: string
   currentRootID: string
   excludeTerminalID?: string
+  terminal?: MessageV2.WithParts
   terminalsBefore: ReadonlyMap<string, MessageV2.WithParts>
 }): Promise<boolean> {
-  const terminalsAfter = await collectChannelTaskTerminals(input.sessionID)
-  const terminal = terminalsAfter.get(input.currentRootID)
+  const terminal = input.terminal ?? (await collectChannelTaskTerminals(input.sessionID)).get(input.currentRootID)
   if (!terminal) return false
+  if (terminal.info.role !== "assistant" || (terminal.info.rootID ?? terminal.info.parentID) !== input.currentRootID)
+    return false
+  if (terminal.info.metadata?.channelOutboundSent === true) return false
   if (terminal.info.id === input.excludeTerminalID) return false
   if (input.terminalsBefore.get(input.currentRootID)?.info.id === terminal.info.id) return false
 
@@ -191,6 +210,21 @@ export async function deliverForegroundTaskTerminal(input: {
     rootID: input.currentRootID,
     terminal,
   })
+  const intent = findReactionOnlyIntent(messages, input.currentRootID, terminal.info.id)
+  if (intent) {
+    const messageId = resolveReactionTarget(messages, input.currentRootID, input.messageId)
+    if (!messageId) return false
+    await deliverReactionOnlyReaction({
+      provider: input.provider,
+      accountId: input.accountId,
+      messageId,
+      sessionID: input.sessionID,
+      rootID: input.currentRootID,
+      terminalMessageID: terminal.info.id,
+      reaction: intent.reaction,
+    })
+    return true
+  }
   const { parts, urls } = await projectChannelTaskPartsWithUrls({
     messages,
     rootID: input.currentRootID,

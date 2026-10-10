@@ -1,8 +1,10 @@
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { ChannelTerminalIntent } from "./types"
 import type { Provider } from "./types"
+import { FeishuReactionError } from "./provider/feishu/reaction-only"
 
 const log = Log.create({ service: "channel.reaction-only" })
 
@@ -11,10 +13,9 @@ const REACTION_ONLY_TOOL = "channel_reaction_only"
 
 /**
  * Terminal assistant metadata recording that this turn's reaction-only
- * delivery succeeded, holding the emoji that was applied. Its presence is the
- * idempotency guard: Feishu creates a new reaction per call and exposes no
- * "already reacted" error, so a retry after a successful write would stack a
- * second identical reaction on the user's message.
+ * delivery succeeded, holding the emoji that was applied. Together with the
+ * pre-dispatch attempt it prevents a duplicate after recovery; Feishu creates
+ * a new reaction per call and exposes no idempotency key.
  */
 export const CHANNEL_REACTION_ONLY_DELIVERED = "channelReactionOnlyDelivered"
 
@@ -25,6 +26,9 @@ export const CHANNEL_REACTION_ONLY_DELIVERED = "channelReactionOnlyDelivered"
  * while leaving the failure visible and never marking the turn delivered.
  */
 export const CHANNEL_REACTION_ONLY_ERROR = "channelReactionOnlyError"
+
+/** Durable pre-dispatch guard, retained when the provider outcome is uncertain. */
+export const CHANNEL_REACTION_ONLY_ATTEMPTED = "channelReactionOnlyAttempted"
 
 export type ReactionOnlyIntent = { reaction: string; partID: string }
 
@@ -55,24 +59,22 @@ export function resolveReactionTarget(
 }
 
 /**
- * Whether this assistant already resolved a reaction-only turn, either by
- * delivering the reaction or by failing. Both outcomes stop re-delivery: a
- * success must not add a duplicate reaction, and a failure must neither be
- * marked delivered nor fall back to a text reply.
+ * Whether this assistant's reaction was attempted or resolved. Every such
+ * outcome stops automatic re-delivery without converting the intent to text.
  */
 export function reactionOnlyResolved(assistant: MessageV2.Assistant): boolean {
   const metadata = assistant.metadata as Record<string, unknown> | undefined
   return (
     !!metadataString(metadata, CHANNEL_REACTION_ONLY_DELIVERED) ||
-    !!metadataString(metadata, CHANNEL_REACTION_ONLY_ERROR)
+    !!metadataString(metadata, CHANNEL_REACTION_ONLY_ERROR) ||
+    !!metadataString(metadata, CHANNEL_REACTION_ONLY_ATTEMPTED)
   )
 }
 
 /**
- * Whether any assistant in this task root already resolved the reaction-only
- * turn, by delivering the reaction or by recording its failure. The root then
- * counts as settled for every later scan: no second reaction, and no degraded
- * text fallback on a retry.
+ * Whether this root has an attempted or resolved reaction. An attempt is
+ * persisted before its external side effect: after a crash or an unconfirmed
+ * outcome, automatically retrying could create a duplicate Feishu reaction.
  */
 export function reactionOnlyRootResolved(messages: MessageV2.WithParts[], rootID: string): boolean {
   for (const message of messages) {
@@ -83,24 +85,20 @@ export function reactionOnlyRootResolved(messages: MessageV2.WithParts[], rootID
 }
 
 /**
- * Find the reaction-only terminal intent for a task tree. Scans completed tool
- * parts the same way `ResponseCardRuntime` collects card requests, so the
- * intent is read from the persisted part rather than in-memory channel state —
- * a queued or recovered turn finds it again after a restart.
- *
- * The intent fires at most once per task root: the tool description tells the
- * model to call it once and stop, but a model that ignores that produces
- * several intent parts and a follow-up terminal. As soon as any assistant in
- * this root is marked delivered or failed, the root is treated as resolved —
- * later scans return no intent so the reaction is never applied a second time.
+ * Read the terminal assistant's persisted reaction-only intent. A steer or
+ * continuation can produce a later terminal in the same root, whose answer
+ * must not inherit an earlier assistant's delivery choice. Durable root
+ * markers still prevent retrying a reaction that already resolved.
  */
 export function findReactionOnlyIntent(
   messages: MessageV2.WithParts[],
   rootID: string,
+  terminalMessageID: string,
 ): ReactionOnlyIntent | undefined {
-  if (reactionOnlyRootResolved(messages, rootID)) return undefined
   for (const message of messages) {
-    if (message.info.role !== "assistant" || message.info.rootID !== rootID) continue
+    if (message.info.role !== "assistant" || message.info.rootID !== rootID || message.info.id !== terminalMessageID)
+      continue
+    if (message.info.error) return undefined
     for (const part of message.parts) {
       if (part.type !== "tool" || part.tool !== REACTION_ONLY_TOOL || part.state.status !== "completed") continue
       const parsed = ChannelTerminalIntent.safeParse(part.state.metadata.intent)
@@ -116,15 +114,11 @@ async function recordReactionOnlyMetadata(input: {
   terminalMessageID: string
   metadata: Record<string, unknown>
 }): Promise<void> {
-  try {
-    await Session.mergeMessageMetadata({
-      sessionID: input.sessionID,
-      messageID: input.terminalMessageID,
-      metadata: input.metadata,
-    })
-  } catch (error) {
-    log.warn("failed to record reaction-only delivery state", { sessionID: input.sessionID, error })
-  }
+  await Session.mergeMessageMetadata({
+    sessionID: input.sessionID,
+    messageID: input.terminalMessageID,
+    metadata: input.metadata,
+  })
 }
 
 /**
@@ -166,7 +160,60 @@ export async function markReactionOnlyFailed(input: {
   })
 }
 
-export type ReactionOnlyOutcome = { status: "delivered" } | { status: "failed"; error: unknown }
+export type ReactionOnlyOutcome =
+  | { status: "delivered" }
+  | { status: "skipped" }
+  | { status: "failed" | "ambiguous"; error: unknown }
+
+export async function executeReactionOnlyDelivery(input: {
+  sessionID: string
+  rootID: string
+  terminalMessageID: string
+  reaction: string
+  send: () => Promise<void>
+}): Promise<ReactionOnlyOutcome> {
+  using _ = await Lock.write(`channel-reaction-only:${input.sessionID}:${input.rootID}`)
+  const messages = MessageV2.deriveSemantics(await Session.messages({ sessionID: input.sessionID }))
+  if (reactionOnlyRootResolved(messages, input.rootID)) return { status: "skipped" }
+  try {
+    await recordReactionOnlyMetadata({
+      ...input,
+      metadata: { [CHANNEL_REACTION_ONLY_ATTEMPTED]: input.reaction },
+    })
+  } catch (error) {
+    log.error("reaction-only attempt could not be persisted", { sessionID: input.sessionID, error })
+    return { status: "failed", error }
+  }
+  try {
+    await input.send()
+  } catch (error) {
+    if (
+      !(
+        error instanceof FeishuReactionError &&
+        error.status < 500 &&
+        typeof error.code === "number" &&
+        error.code !== 0
+      )
+    ) {
+      log.warn("reaction-only provider outcome is uncertain", { sessionID: input.sessionID, error })
+      return { status: "ambiguous", error }
+    }
+    log.error("reaction-only provider rejected delivery", { sessionID: input.sessionID, error })
+    try {
+      await markReactionOnlyFailed(input)
+    } catch (recordError) {
+      log.error("failed to confirm reaction-only failure", { sessionID: input.sessionID, error: recordError })
+    }
+    return { status: "failed", error }
+  }
+  try {
+    await markReactionOnlyDelivered(input)
+  } catch (error) {
+    log.error("reaction-only outcome is unconfirmed", { sessionID: input.sessionID, error })
+    return { status: "ambiguous", error }
+  }
+  return { status: "delivered" }
+}
 
 /**
  * Add the reaction for a reaction-only turn and record the outcome. Used by
@@ -179,44 +226,20 @@ export async function deliverReactionOnlyReaction(input: {
   accountId: string
   messageId: string
   sessionID: string
+  rootID: string
   terminalMessageID: string
   reaction: string
 }): Promise<ReactionOnlyOutcome> {
-  const addReaction = input.provider.conversation?.addReaction ?? input.provider.addReaction
-  if (!addReaction) {
-    const error = new Error(`Provider "${input.provider.type}" cannot add reactions`)
-    log.error("reaction-only delivery failed", {
-      sessionID: input.sessionID,
-      messageId: input.messageId,
-      reaction: input.reaction,
-      error,
-    })
-    await markReactionOnlyFailed(input)
-    return { status: "failed", error }
-  }
-
-  try {
-    await addReaction({
-      accountId: input.accountId,
-      messageId: input.messageId,
-      emoji: input.reaction,
-    })
-  } catch (error) {
-    log.error("reaction-only delivery failed", {
-      sessionID: input.sessionID,
-      messageId: input.messageId,
-      reaction: input.reaction,
-      error,
-    })
-    await markReactionOnlyFailed(input)
-    return { status: "failed", error }
-  }
-
-  await markReactionOnlyDelivered(input)
-  log.info("reaction-only turn delivered", {
-    sessionID: input.sessionID,
-    messageId: input.messageId,
-    reaction: input.reaction,
+  return executeReactionOnlyDelivery({
+    ...input,
+    send: async () => {
+      const addReaction = input.provider.conversation?.addReaction ?? input.provider.addReaction
+      if (!addReaction) throw new Error(`Provider "${input.provider.type}" cannot add reactions`)
+      await addReaction({
+        accountId: input.accountId,
+        messageId: input.messageId,
+        emoji: input.reaction,
+      })
+    },
   })
-  return { status: "delivered" }
 }

@@ -18,7 +18,6 @@ import {
   deliverReactionOnlyReaction,
   findReactionOnlyIntent,
   reactionOnlyResolved,
-  reactionOnlyRootResolved,
   resolveReactionTarget,
 } from "./reaction-only-runtime"
 import type { Provider } from "./types"
@@ -88,7 +87,7 @@ export namespace ChannelOutbound {
         // re-publish Updated, and without this guard the re-entered handler
         // re-acquires the same non-reentrant Lock.write key while its holder is
         // still awaiting the merge publish — a self-deadlock.
-        if (eventMetadata.channelOutboundSent || eventMetadata.channelReactionOnlyError) return
+        if (eventMetadata.channelOutboundSent || reactionOnlyResolved(assistant)) return
 
         using _ = await Lock.write(`channel-outbound:${msg.id}`)
         const current = await MessageV2.get({ sessionID: msg.sessionID, messageID: msg.id }).catch(() => undefined)
@@ -98,7 +97,7 @@ export namespace ChannelOutbound {
         const metadata = currentAssistant.metadata
         if (!currentAssistant.time.completed || !SessionProgress.isTerminalAssistant(currentAssistant)) return
         if (!metadata?.mailbox && !metadata?.channelPush && !metadata?.channelReply) return
-        if (metadata.channelOutboundSent || metadata.channelReactionOnlyError) return
+        if (metadata.channelOutboundSent || reactionOnlyResolved(currentAssistant)) return
         if (ChannelOutbound.isForeground(msg.sessionID, currentAssistant.rootID ?? currentAssistant.parentID)) {
           log.debug("skipping foreground-delivered channel reply", { sessionID: msg.sessionID, messageID: msg.id })
           return
@@ -161,38 +160,29 @@ export namespace ChannelOutbound {
         // answering, so this turn posts nothing. The reaction targets the
         // message the user actually sent — not just the reply anchor, which in
         // a threaded scope is the topic root — so nothing new is created.
-        // A root that already resolved its reaction-only turn returns no
-        // intent from `findReactionOnlyIntent`; without this guard a retry of
-        // a FAILED terminal would fall through to normal delivery and degrade
-        // into the text substitute the failure path had suppressed.
-        if (reactionOnlyRootResolved(messages, rootID)) {
-          if (reactionOnlyResolved(currentAssistant)) return
-        } else {
-          const reactionOnly = findReactionOnlyIntent(messages, rootID)
-          if (reactionOnly) {
-            const reactionTarget = resolveReactionTarget(messages, rootID, replyToMessageId)
-            if (!reactionTarget) {
-              log.warn("reaction-only turn skipped without message anchor", {
-                sessionID: msg.sessionID,
-                channelType: channelInfo.type,
-              })
-              return
-            }
-            // Only a provider that can react may take this path; otherwise the
-            // turn keeps its normal delivery rather than silently dropping it.
-            const canReact = !!(provider.conversation?.addReaction ?? provider.addReaction)
-            if (canReact) {
-              await deliverReactionOnlyReaction({
-                provider,
-                accountId: channelInfo.accountId,
-                messageId: reactionTarget,
-                sessionID: msg.sessionID,
-                terminalMessageID: currentAssistant.id,
-                reaction: reactionOnly.reaction,
-              })
-              return
-            }
+        // Root markers prevent a second reaction; only the resolved terminal
+        // stays suppressed on retry. A later ordinary terminal still delivers
+        // its answer instead of inheriting the earlier reaction-only choice.
+        const reactionOnly = findReactionOnlyIntent(messages, rootID, currentAssistant.id)
+        if (reactionOnly) {
+          const reactionTarget = resolveReactionTarget(messages, rootID, replyToMessageId)
+          if (!reactionTarget) {
+            log.warn("reaction-only turn skipped without message anchor", {
+              sessionID: msg.sessionID,
+              channelType: channelInfo.type,
+            })
+            return
           }
+          await deliverReactionOnlyReaction({
+            provider,
+            accountId: channelInfo.accountId,
+            messageId: reactionTarget,
+            sessionID: msg.sessionID,
+            rootID,
+            terminalMessageID: currentAssistant.id,
+            reaction: reactionOnly.reaction,
+          })
+          return
         }
 
         try {

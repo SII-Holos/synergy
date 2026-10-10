@@ -74,6 +74,18 @@ export function isKnownFeishuReactionEmoji(value: string): boolean {
 /** Feishu's own business code for an invalid reaction type. */
 export const FEISHU_REACTION_TYPE_INVALID_CODE = 231001
 
+/** Carries Feishu's authoritative business rejection separately from an uncertain transport outcome. */
+export class FeishuReactionError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: number | undefined,
+  ) {
+    super(message)
+    this.name = "FeishuReactionError"
+  }
+}
+
 /** Trim without case folding: Feishu emoji types are case-sensitive. */
 export function normalizeFeishuReactionEmoji(value: string | undefined): FeishuReactionEmoji | undefined {
   const trimmed = value?.trim()

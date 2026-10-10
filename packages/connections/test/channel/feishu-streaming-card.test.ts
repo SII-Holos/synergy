@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { FeishuStreamingCard } from "../../src/channel/provider/feishu/streaming-card"
 
 function response(input: { status?: number; code?: number; msg?: string; data?: Record<string, unknown> } = {}) {
@@ -385,6 +385,173 @@ describe("Feishu streaming card finalization", () => {
       await Promise.all([card.close("final answer"), card.close("final answer")])
 
       expect(fallback).toEqual(["final answer"])
+    } finally {
+      restoreFetch()
+    }
+  })
+})
+
+describe("Feishu streaming card finalization without delivery", () => {
+  test("shares one cleanup with close and ignores pending cached renders", async () => {
+    const mutations: Array<{ url: string; body: Record<string, unknown> }> = []
+    const fallback: string[] = []
+    const restoreFetch = installCardFetch((url, init) => {
+      mutations.push({ url, body: requestBody(init) })
+      return response()
+    })
+
+    try {
+      const card = createCard(async (text) => {
+        fallback.push(text)
+      })
+      await card.start()
+      const update = card.update("private cached draft")
+      const cleanup = card.closeWithoutDelivery()
+      expect(card.closeWithoutDelivery()).toBe(cleanup)
+      expect(card.close("must not deliver")).toBe(cleanup)
+      await Promise.all([update, cleanup])
+      expect(card.isActive()).toBe(false)
+      expect(mutations).toHaveLength(1)
+      expect(mutations[0].url.endsWith("/settings")).toBe(true)
+      expect(JSON.parse(String(mutations[0].body.settings))).toEqual({
+        config: { streaming_mode: false, summary: { content: "" } },
+      })
+      expect(fallback).toEqual([])
+      await card.update("late text")
+      await card.updateToolProgress([{ id: "late", tool: "webfetch", status: "completed" }])
+      await card.closeWithoutDelivery()
+      expect(mutations).toHaveLength(1)
+    } finally {
+      restoreFetch()
+    }
+  })
+
+  test("finishes an already-started progress writer before settings cleanup without delivering queued content", async () => {
+    const started = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const mutations: Array<{ url: string; body: Record<string, unknown> }> = []
+    const fallback: string[] = []
+    const operations: Promise<void>[] = []
+    const restoreFetch = installCardFetch(async (url, init) => {
+      mutations.push({ url, body: requestBody(init) })
+      if (url.endsWith("/elements/status_content/content")) {
+        started.resolve()
+        await release.promise
+      }
+      return response()
+    })
+    try {
+      const card = createCard(async (text) => {
+        fallback.push(text)
+      })
+      await card.start()
+      const update = card.update("already-started progress")
+      operations.push(update)
+      await started.promise
+      const queued = card.update("must not render after cleanup")
+      const cleanup = card.closeWithoutDelivery()
+      operations.push(queued, cleanup)
+      expect(card.isActive()).toBe(false)
+      release.resolve()
+      await Promise.all([update, queued, cleanup])
+      expect(mutations.map((request) => request.url.split("/card_test/")[1])).toEqual([
+        "elements/status_content/content",
+        "elements/answer_content/content",
+        "settings",
+      ])
+      expect(mutations[1].body.content).toBe("already-started progress")
+      expect(JSON.parse(String(mutations[2].body.settings))).toEqual({
+        config: { streaming_mode: false, summary: { content: "" } },
+      })
+      expect(fallback).toEqual([])
+      await card.update("late text")
+      expect(mutations).toHaveLength(3)
+    } finally {
+      release.resolve()
+      try {
+        await Promise.allSettled(operations)
+      } finally {
+        restoreFetch()
+      }
+    }
+  })
+
+  test("does not capture queued content after cleanup starts during render pacing", async () => {
+    const started = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const operations: Promise<void>[] = []
+    const mutations: Array<{ url: string; body: Record<string, unknown> }> = []
+    const fallback: string[] = []
+    let now = 1_000_000
+    let waiting = false
+    const clock = spyOn(Date, "now").mockImplementation(() => now)
+    const sleep = spyOn(Bun, "sleep").mockImplementation(async (duration) => {
+      if (typeof duration !== "number") throw new Error("Expected numeric card pacing")
+      now += duration
+      if (!waiting) return
+      waiting = false
+      started.resolve()
+      await release.promise
+    })
+    const restoreFetch = installCardFetch((url, init) => {
+      mutations.push({ url, body: requestBody(init) })
+      return response()
+    })
+    try {
+      const card = createCard(
+        async (text) => {
+          fallback.push(text)
+        },
+        { throttleMs: 100 },
+      )
+      await card.start()
+      await card.updateToolProgress([])
+      expect(mutations).toEqual([])
+      waiting = true
+      const update = card.update("pending cached draft")
+      operations.push(update)
+      await started.promise
+      const queued = card.update("must not render after cleanup")
+      const cleanup = card.closeWithoutDelivery()
+      operations.push(queued, cleanup)
+      expect(card.isActive()).toBe(false)
+      release.resolve()
+      await Promise.all(operations)
+      expect(mutations.map((request) => request.url.split("/card_test/")[1])).toEqual(["settings"])
+      expect(JSON.parse(String(mutations[0].body.settings))).toEqual({
+        config: { streaming_mode: false, summary: { content: "" } },
+      })
+      expect(fallback).toEqual([])
+      await card.update("late text")
+      expect(mutations).toHaveLength(1)
+    } finally {
+      release.resolve()
+      try {
+        await Promise.allSettled(operations)
+      } finally {
+        restoreFetch()
+        sleep.mockRestore()
+        clock.mockRestore()
+      }
+    }
+  })
+
+  test("does not replay terminal content when cleanup is requested after normal close", async () => {
+    const fallback: string[] = []
+    const restoreFetch = installCardFetch((url) =>
+      url.includes("/elements/") ? response({ code: 230001, msg: "content rejected" }) : response(),
+    )
+    try {
+      const card = createCard(async (text) => {
+        fallback.push(text)
+      })
+      await card.start()
+      const close = card.close("normal final answer")
+      expect(card.closeWithoutDelivery()).toBe(close)
+      await close
+      expect(fallback).toEqual(["normal final answer"])
+      await card.closeWithoutDelivery()
+      expect(fallback).toEqual(["normal final answer"])
     } finally {
       restoreFetch()
     }

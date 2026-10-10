@@ -10,7 +10,13 @@ import * as ChannelTypes from "../../types"
 import type { ChannelHost } from "../../host"
 import { FeishuStreamingCard } from "./streaming-card"
 import { FeishuStreamingState } from "./streaming-state"
-import { resolveFeishuStreaming, isKnownFeishuReactionEmoji, FEISHU_REACTION_TYPE_INVALID_CODE } from "./reaction-only"
+import {
+  resolveFeishuStreaming,
+  isKnownFeishuReactionEmoji,
+  FEISHU_REACTION_TYPE_INVALID_CODE,
+  FeishuReactionError,
+} from "./reaction-only"
+export { FeishuReactionError } from "./reaction-only"
 import { feishuDedup } from "./dedup"
 import { senderNameCache, chatNameCache } from "./sender"
 import { InboundDebouncer } from "./debounce"
@@ -65,24 +71,6 @@ type FeishuReactionApiResult = {
   code?: number
   msg?: string
   data?: { reaction_id?: string }
-}
-
-/**
- * Raised when a Message Reaction call fails, carrying the HTTP status and the
- * Feishu business code so callers can distinguish a permanent rejection (e.g.
- * `231001` invalid `emoji_type`, `230110` deleted message) from a transient
- * one. Reaction-only delivery must surface this as a failure rather than
- * falling back to a text reply.
- */
-export class FeishuReactionError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly code: number | undefined,
-  ) {
-    super(message)
-    this.name = "FeishuReactionError"
-  }
 }
 
 async function readFeishuReactionResult(response: Response, operation: string): Promise<FeishuReactionApiResult> {
@@ -1364,6 +1352,8 @@ class NonStreamingSession implements ChannelTypes.StreamingSession {
   async close(finalText?: string, _error?: boolean): Promise<void> {
     if (finalText) await this.send(finalText)
   }
+
+  async closeWithoutDelivery(): Promise<void> {}
 
   isActive(): boolean {
     return false
