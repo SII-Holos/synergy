@@ -1,3 +1,4 @@
+import { ContextUsage } from "../context-usage"
 import { RuntimeContext } from "../../lifecycle/context"
 import { Log } from "../../util/log"
 import { ProviderRetryCoordinator, providerRetryKey } from "../../provider/retry-coordinator"
@@ -128,6 +129,15 @@ export namespace AgentTurn {
               JSON.stringify({
                 messages: input.messages,
                 system: prepared?.system ?? input.system,
+                lateSystem: input.lateSystem,
+                contextSources: contextUsageProvenance
+                  ? ContextUsage.sourceIndex({
+                      messages: input.messages,
+                      system: prepared?.system ?? input.system,
+                      lateSystem: input.lateSystem,
+                      provenance: contextUsageProvenance,
+                    })
+                  : undefined,
                 tools: input.toolDefinitions,
                 toolChoice: input.toolChoice,
                 params: prepared

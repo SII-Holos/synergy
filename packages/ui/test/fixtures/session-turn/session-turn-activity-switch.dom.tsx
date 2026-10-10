@@ -107,8 +107,9 @@ const data = {
 // Session runtime state lives outside the Scope store; the view resolves
 // it from this accessor bag.
 const NO_REQUESTS = []
+const [sessionPaused, setSessionPaused] = createSignal(false)
 const runtime = {
-  statusFor: () => ({ type: "idle" }),
+  statusFor: () => (sessionPaused() ? { type: "paused", reason: "aborted" } : { type: "idle" }),
   permissionsFor: () => NO_REQUESTS,
   questionsFor: () => NO_REQUESTS,
 }
@@ -146,6 +147,7 @@ render(
                   lastUserMessageID={rootID}
                   activityDisplay={mode()}
                   executionState={executionState()}
+                  executionSummary={sessionPaused() ? { status: "running", elapsedMs: 3000 } : undefined}
                 >
                   <span id="activity-switch-sentinel" hidden>
                     stable
@@ -162,6 +164,7 @@ render(
 )
 
 globalThis.__activitySwitchHarness = {
+  setSessionPaused,
   setMode,
   openedTools,
   setExecutionStatus: (status) =>

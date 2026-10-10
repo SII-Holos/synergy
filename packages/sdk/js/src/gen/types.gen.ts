@@ -3688,6 +3688,10 @@ export type ScopeUiPreferences = {
    */
   compactReasoning?: boolean
   /**
+   * Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting.
+   */
+  welcomeGames?: boolean
+  /**
    * UI locale (system = follow OS, default: system)
    */
   locale?: "system" | "en" | "zh-CN"
@@ -7097,6 +7101,10 @@ export type Config = {
    */
   compactReasoning?: boolean
   quick_switcher?: QuickSwitcherConfig
+  /**
+   * Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting.
+   */
+  welcomeGames?: boolean
   layout?: LayoutConfig
   /**
    * Toast notification preferences
@@ -8193,34 +8201,30 @@ export type ExecutionSummary = {
     observedAt: number
   } | null
   contextDistribution: {
-    version: 1
+    version: 2
     modelID: string
     providerID: string
     totalInput: number
     contextLimit?: number
     usableInputLimit?: number
-    categories: {
-      conversation: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      toolActivity: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      filesReferences: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      instructions: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-    }
+    categories: Array<{
+      category:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+        | "legacyConversation"
+        | "legacyTools"
+        | "legacyInstructions"
+      precision: "source" | "role" | "legacy"
+      estimatedTokens: number
+      attributedTokens: number
+      items?: number
+    }>
     overhead: {
       attributedTokens: number
     }
@@ -8282,6 +8286,116 @@ export type ExecutionSummary = {
   }>
   humanInputs: number
   taskInstructions: number
+}
+
+export type ExecutionContextSnapshot = {
+  sessionID: string
+  callID: string
+  nodeID: string
+  runID: string
+  started: number
+  requestNumber: number
+  roundNumber: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  modelID: string
+  providerID: string
+  inputTokens: number | null
+  contextLimit: number | null
+  outputTokens: number | null
+  cacheHit: number | null
+  elapsedMs: number | null
+  retries: number
+  usage: {
+    version: 2
+    modelID: string
+    providerID: string
+    totalInput: number
+    contextLimit?: number
+    usableInputLimit?: number
+    categories: Array<{
+      category:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+        | "legacyConversation"
+        | "legacyTools"
+        | "legacyInstructions"
+      precision: "source" | "role" | "legacy"
+      estimatedTokens: number
+      attributedTokens: number
+      items?: number
+    }>
+    overhead: {
+      attributedTokens: number
+    }
+    estimator:
+      | {
+          kind: "model-tokenizer"
+          encoding?: string
+        }
+      | {
+          kind: "bounded-utf8"
+          sampledCharacters: number
+          truncated: boolean
+        }
+    reconciliation: {
+      mode: "residual" | "scaled-down"
+      factor: number
+    }
+    capturedAt: number
+  } | null
+  compactedBefore: boolean
+  requestAvailable: boolean
+}
+
+export type ExecutionContextHistory = {
+  sessionID: string
+  revision: number
+  total: number
+  items: Array<ExecutionContextSnapshot>
+  nextCursor: string | null
+}
+
+export type ExecutionContextItem = {
+  category:
+    | "systemInstructions"
+    | "toolDefinitions"
+    | "userMessages"
+    | "injectedContext"
+    | "skills"
+    | "assistantMessages"
+    | "toolResults"
+    | "attachments"
+  path: Array<string>
+  selector?: Array<string>
+  range?: {
+    start: number
+    end: number
+  }
+  source: string
+  messageID?: string
+  partID?: string
+  characters: number
+  precision: "source" | "role"
+  id: string
+  offset: number
+  bytes: number
+}
+
+export type ExecutionContextItems = {
+  callID: string
+  nodeID: string
+  contentVersion: string | null
+  status: "available" | "legacy" | "unavailable"
+  items: Array<ExecutionContextItem>
+  total: number
+  nextCursor: string | null
+  truncated: boolean
 }
 
 export type ExecutionTrajectoryPage = {
@@ -10276,34 +10390,30 @@ export type AssistantMessage = {
     }
   }
   contextUsage?: {
-    version: 1
+    version: 2
     modelID: string
     providerID: string
     totalInput: number
     contextLimit?: number
     usableInputLimit?: number
-    categories: {
-      conversation: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      toolActivity: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      filesReferences: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      instructions: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-    }
+    categories: Array<{
+      category:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+        | "legacyConversation"
+        | "legacyTools"
+        | "legacyInstructions"
+      precision: "source" | "role" | "legacy"
+      estimatedTokens: number
+      attributedTokens: number
+      items?: number
+    }>
     overhead: {
       attributedTokens: number
     }
@@ -10595,6 +10705,10 @@ export type SessionPartPage = {
   previousCursor: string | null
   hasMore: boolean
   hasEarlier: boolean
+}
+
+export type SessionPartPages = {
+  [key: string]: SessionPartPage
 }
 
 export type SessionPartContent = {
@@ -13335,6 +13449,68 @@ export type VoicePreviewInput = {
   text: string
 }
 
+export type RenderTarget = {
+  sessionID: string
+  messageID: string
+  partID: string
+}
+
+export type RenderDescriptor = {
+  format: "synergy.visual"
+  version: 1
+  id: string
+  mode: "static" | "interactive"
+  title: string
+  layout: "normal" | "wide"
+  libraries: Array<"d3" | "chart" | "mermaid">
+  replaces?: string
+  source: string
+}
+
+export type RenderSource = {
+  format: "synergy.visual"
+  version: 1
+  id: string
+  mode: "static" | "interactive"
+  title: string
+  layout: "normal" | "wide"
+  libraries: Array<"d3" | "chart" | "mermaid">
+  html: string
+  replaces?: string
+}
+
+export type RenderContent = {
+  modelContent?: unknown
+  uiContent?: unknown
+}
+
+export type RenderState = {
+  revision: number
+  updatedAt: number
+  mutationID?: string
+  content: RenderContent
+}
+
+export type RenderSnapshot = {
+  descriptor: RenderDescriptor
+  source: RenderSource
+  state: RenderState
+}
+
+export type RenderConflict = {
+  name: "RenderConflict"
+  data: {
+    message: string
+    state: RenderState
+  }
+}
+
+export type RenderStateWrite = {
+  revision: number
+  mutationID: string
+  content: RenderContent
+}
+
 export type ModelRoleUsage = {
   name: string
   description?: string
@@ -14168,6 +14344,7 @@ export type EventExecutionUpdated = {
     revision: number
     summary: ExecutionSummary
     roundSummaries: Array<ExecutionSummary>
+    contextUpserts?: Array<ExecutionContextSnapshot>
     previousRevision?: number
     upserts: Array<ExecutionTrajectoryNode>
     processUpserts?: Array<ExecutionTrajectoryNode>
@@ -14417,6 +14594,8 @@ export type Event =
   | EventGlobalDisposed
   | EventRuntimeReloaded
   | EventReviewStateUpdated
+
+export type RenderTarget2 = string
 
 export type GlobalCapabilitiesData = {
   body?: never
@@ -18763,6 +18942,146 @@ export type SessionExecutionSummaryResponses = {
 
 export type SessionExecutionSummaryResponse = SessionExecutionSummaryResponses[keyof SessionExecutionSummaryResponses]
 
+export type SessionExecutionContextHistoryData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+    cursor?: string
+    limit?: number
+  }
+  url: "/session/{sessionID}/execution/context/history"
+}
+
+export type SessionExecutionContextHistoryErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContextHistoryError =
+  SessionExecutionContextHistoryErrors[keyof SessionExecutionContextHistoryErrors]
+
+export type SessionExecutionContextHistoryResponses = {
+  /**
+   * Read context request history
+   */
+  200: ExecutionContextHistory
+}
+
+export type SessionExecutionContextHistoryResponse =
+  SessionExecutionContextHistoryResponses[keyof SessionExecutionContextHistoryResponses]
+
+export type SessionExecutionContextSnapshotData = {
+  body?: never
+  path: {
+    sessionID: string
+    callID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+  }
+  url: "/session/{sessionID}/execution/context/snapshots/{callID}"
+}
+
+export type SessionExecutionContextSnapshotErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContextSnapshotError =
+  SessionExecutionContextSnapshotErrors[keyof SessionExecutionContextSnapshotErrors]
+
+export type SessionExecutionContextSnapshotResponses = {
+  /**
+   * Read one context request snapshot
+   */
+  200: ExecutionContextSnapshot
+}
+
+export type SessionExecutionContextSnapshotResponse =
+  SessionExecutionContextSnapshotResponses[keyof SessionExecutionContextSnapshotResponses]
+
+export type SessionExecutionContextItemsData = {
+  body?: never
+  path: {
+    sessionID: string
+    callID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+    cursor?: string
+    limit?: number
+    category?:
+      | "systemInstructions"
+      | "toolDefinitions"
+      | "userMessages"
+      | "injectedContext"
+      | "skills"
+      | "assistantMessages"
+      | "toolResults"
+      | "attachments"
+    query?: string
+    version?: string
+  }
+  url: "/session/{sessionID}/execution/context/snapshots/{callID}/items"
+}
+
+export type SessionExecutionContextItemsErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContextItemsError =
+  SessionExecutionContextItemsErrors[keyof SessionExecutionContextItemsErrors]
+
+export type SessionExecutionContextItemsResponses = {
+  /**
+   * Read a bounded context source index
+   */
+  200: ExecutionContextItems
+}
+
+export type SessionExecutionContextItemsResponse =
+  SessionExecutionContextItemsResponses[keyof SessionExecutionContextItemsResponses]
+
 export type SessionExecutionTrajectoryData = {
   body?: never
   path: {
@@ -20928,6 +21247,54 @@ export type SessionPartPageResponses = {
 }
 
 export type SessionPartPageResponse = SessionPartPageResponses[keyof SessionPartPageResponses]
+
+export type SessionPartPagesData = {
+  body?: {
+    messageIDs: Array<string>
+    limit?: number
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/part/pages"
+}
+
+export type SessionPartPagesErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionPartPagesError = SessionPartPagesErrors[keyof SessionPartPagesErrors]
+
+export type SessionPartPagesResponses = {
+  /**
+   * Bounded Part summary pages keyed by message ID
+   */
+  200: SessionPartPages
+}
+
+export type SessionPartPagesResponse = SessionPartPagesResponses[keyof SessionPartPagesResponses]
 
 export type SessionPartContentData = {
   body?: never
@@ -29650,6 +30017,132 @@ export type VoicePreviewResponses = {
 }
 
 export type VoicePreviewResponse = VoicePreviewResponses[keyof VoicePreviewResponses]
+
+export type RenderFindData = {
+  body?: never
+  path: {
+    sessionID: string
+    assetID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/render/source/{sessionID}/{assetID}"
+}
+
+export type RenderFindErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RenderFindError = RenderFindErrors[keyof RenderFindErrors]
+
+export type RenderFindResponses = {
+  /**
+   * Producing call, if available in this transcript
+   */
+  200: {
+    target: RenderTarget
+    descriptor: RenderDescriptor
+  } | null
+}
+
+export type RenderFindResponse = RenderFindResponses[keyof RenderFindResponses]
+
+export type RenderGetData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+    partID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/render/{sessionID}/{messageID}/{partID}"
+}
+
+export type RenderGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RenderGetError = RenderGetErrors[keyof RenderGetErrors]
+
+export type RenderGetResponses = {
+  /**
+   * Immutable source and current state
+   */
+  200: RenderSnapshot
+}
+
+export type RenderGetResponse = RenderGetResponses[keyof RenderGetResponses]
+
+export type RenderUpdateData = {
+  body?: RenderStateWrite
+  path: {
+    sessionID: string
+    messageID: string
+    partID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/render/{sessionID}/{messageID}/{partID}"
+}
+
+export type RenderUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Revision conflict
+   */
+  409: RenderConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RenderUpdateError = RenderUpdateErrors[keyof RenderUpdateErrors]
+
+export type RenderUpdateResponses = {
+  /**
+   * Committed state
+   */
+  200: RenderState
+}
+
+export type RenderUpdateResponse = RenderUpdateResponses[keyof RenderUpdateResponses]
 
 export type AppLogData = {
   body?: {

@@ -178,7 +178,12 @@ test(
           ).toBe(true)
           delivery.mockRestore()
 
-          const completed = nextUpdate(session.id, (summary) => summary.status === "completed")
+          const completed = nextUpdate(
+            session.id,
+            (summary) =>
+              summary.status === "completed" &&
+              summary.tasks.some((task) => task.sessionID === child.id && task.status === "completed"),
+          )
           try {
             await recorder.emit({ type: "attempt-end", attemptID, status: "completed" })
             await RolloutLedger.finishCall(owner, childRun, childCall.id, {

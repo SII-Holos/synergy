@@ -11,7 +11,7 @@ export interface PluginConversationContent {
   summaries(messageID: string): readonly SessionPartSummary[]
   page(messageID: string): { hasMore: boolean; hasEarlier?: boolean; stale?: boolean } | undefined
   load(messageID: string, more?: boolean, force?: boolean): Promise<void>
-  retain(part: SessionPartSummary): { ready: Promise<void>; release(): void }
+  retain(part: SessionPartSummary): { ready: Promise<void>; isCurrent?(): boolean; release(): void }
   text?(messageID: string): Promise<string>
   loadWindow?(messageID: string, partID?: string): Promise<boolean>
   loadEarlier?(messageID: string): Promise<void>

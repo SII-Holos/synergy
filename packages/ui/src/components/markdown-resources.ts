@@ -88,6 +88,20 @@ export function observeMarkdownResources(
       else for (const node of record.addedNodes) visit(node)
     }
   })
+  const imageError = (event: Event) => {
+    const image = event.target
+    if (!(image instanceof view.HTMLImageElement)) return
+    const value = image.dataset.resourceReference
+    if (!value) return
+    const reference = ResourceReference.parse(value)
+    if (reference.kind !== "asset" && reference.kind !== "workspace-file") return
+    const link = image.closest("a[data-resource-reference]")
+    if (!link || !root.contains(link)) return
+    image.replaceWith(root.ownerDocument.createTextNode(image.alt || value))
+    link.removeAttribute("data-slot")
+    bind(link)
+  }
+  root.addEventListener("error", imageError, true)
   observer.observe(root, {
     childList: true,
     subtree: true,
@@ -159,6 +173,7 @@ export function observeMarkdownResources(
   return () => {
     disposed = true
     observer.disconnect()
+    root.removeEventListener("error", imageError, true)
     for (const element of busy) element.removeAttribute("aria-busy")
     busy.clear()
     root.removeEventListener("click", open)

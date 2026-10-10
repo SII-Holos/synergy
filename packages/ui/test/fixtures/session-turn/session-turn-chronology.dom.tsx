@@ -137,6 +137,7 @@ const [preview, setPreview] = createSignal(false)
 const [stage, setStage] = createSignal(0)
 const [expanded, setExpanded] = createStore({})
 const [executionState, setExecutionState] = createSignal()
+const [executionSummary, setExecutionSummary] = createSignal()
 const SlotProbe = (props) => <span data-test-slot={props.slot} data-test-message={props.messageId} />
 setExternalMessageSlotLookup((slot) =>
   ["message.before", "message.actions", "message.after"].includes(slot)
@@ -199,6 +200,7 @@ render(
                         activityDisplay={mode()}
                         compactReasoning={preview()}
                         executionState={executionState()}
+                        executionSummary={executionSummary()}
                         following={following()}
                         takeUserArrival={() => {
                           const arrival = userArrival
@@ -278,6 +280,8 @@ function move(next) {
 }
 move(0)
 globalThis.__chronologyHarness = {
+  setExecutionState,
+  setExecutionSummary,
   send: () => {
     userArrival = true
     setMount((value) => value + 1)
@@ -403,6 +407,7 @@ globalThis.__chronologyHarness = {
   },
   setProgress: (value) => setData("part", assistantID, 1, "text", value),
   reset: () => {
+    setExecutionSummary(undefined)
     for (const key of Object.keys(expanded)) setExpanded(key, undefined)
     setSegmented(false)
     setMode("balanced")

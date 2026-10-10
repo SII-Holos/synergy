@@ -38,7 +38,16 @@ export function bindPluginConversation(
           read()
           const lease = source.content!.retain(part)
           const release = access.own("session.read", () => lease.release)
-          return { ready: access.run("session.read", () => lease.ready), release }
+          return {
+            ready: access.run("session.read", () => lease.ready),
+            isCurrent: lease.isCurrent
+              ? () => {
+                  read()
+                  return lease.isCurrent!()
+                }
+              : undefined,
+            release,
+          }
         },
       }
     },

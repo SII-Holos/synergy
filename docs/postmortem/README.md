@@ -1,6 +1,6 @@
 # Postmortems
 
-Failures, causes and guardrails.
+- [0061: Usage recovery](0061-streamed-usage-recovery.md)
 
 ## When to write one
 
@@ -8,16 +8,16 @@ Failures, causes and guardrails.
 - **Systemic** — a gap in tests, tooling, or conventions let the bug escape.
 - **Costly to rediscover** — rediscovery would repeat substantial debugging.
 
-Otherwise, add a tested fix.
+Otherwise, test the fix.
 
 ## Placement
 
-- Bugs and underlying process failures belong here.
-- Decisions, alternatives and rationale belong in `docs/decisions/`.
+- Bugs and process failures belong here.
+- Decisions and rationale belong in `docs/decisions/`.
 
 ## Format
 
-Use the next `NNNN-kebab-case-title.md`. Sections:
+Use `NNNN-kebab-case-title.md`. Sections:
 
 - **Executive summary** — one paragraph: what broke, its cause, why it escaped, and the durable lesson.
 - **Summary** — details of the failure.
@@ -28,6 +28,7 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 
 ## Index
 
+- [0062: Historical project bindings](0062-project-migration-required-live-directory-identity.md)
 - [0059: Disclosure](0059-cold-process-disclosure-jank.md)
 
 - [0058: Markdown settlement](0058-markdown-terminal-estimates-lost-reading.md)

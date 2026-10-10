@@ -54,12 +54,25 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
         toolDefinitions: [],
         contextUsageProvenance: {
           categories: {
-            conversation: [{ text: "queued prompt" }],
-            toolActivity: [],
-            filesReferences: [],
-            instructions: [],
+            userMessages: [{ text: "queued prompt" }],
+            toolResults: [],
+            attachments: [],
+            systemInstructions: [],
+            assistantMessages: [],
+            toolDefinitions: [],
+            injectedContext: [],
+            skills: [],
           },
-          items: { conversation: 1, toolActivity: 0, filesReferences: 0, instructions: 0 },
+          items: {
+            userMessages: 1,
+            toolResults: 0,
+            attachments: 0,
+            systemInstructions: 0,
+            assistantMessages: 0,
+            toolDefinitions: 0,
+            injectedContext: 0,
+            skills: 0,
+          },
         },
       } as any)
 

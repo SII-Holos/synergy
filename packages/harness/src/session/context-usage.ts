@@ -1,111 +1,209 @@
 import type { ModelMessage } from "ai"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
-import type { MessageV2 } from "./message-v2"
+import { MessageV2 } from "./message-v2"
 import type { ToolResolver } from "./tool-resolver"
-import { ContextUsageSchema, type ContextUsageSnapshot } from "./context-usage-schema"
+import {
+  ContextUsageSchema,
+  ContextCategoryKeys,
+  ContextSourceSchema,
+  type ContextCategoryKey,
+  type ContextUsageSnapshot,
+} from "./context-usage-schema"
 import { ContextUsageEstimator } from "./context-usage-estimator"
 
 export namespace ContextUsage {
-  const CATEGORY_KEYS = ["conversation", "toolActivity", "filesReferences", "instructions"] as const
-  type CategoryKey = (typeof CATEGORY_KEYS)[number]
-
+  const CATEGORY_KEYS = ContextCategoryKeys
+  type CategoryKey = ContextCategoryKey
   export const Schema = ContextUsageSchema
   export type Snapshot = ContextUsageSnapshot
-
   export interface DraftCategory {
     estimatedTokens: number
     items: number
+    precision?: "source" | "role"
   }
-
   export interface Draft {
     modelID: string
     providerID: string
     contextLimit?: number
     usableInputLimit?: number
     categories: Record<CategoryKey, DraftCategory>
-    estimator:
-      | {
-          kind: "model-tokenizer"
-          encoding?: string
-        }
-      | {
-          kind: "bounded-utf8"
-          sampledCharacters: number
-          truncated: boolean
-        }
+    estimator: Snapshot["estimator"]
   }
-
   type Contribution = MessageV2.ModelMessageContribution
-
   export type Provenance = MessageV2.ModelMessageProvenance
 
   export function remapProvenance(messages: ModelMessage[], source: Provenance): Provenance {
-    const provenance = emptyProvenance()
-    const sourceCategories = new Map<string, CategoryKey[]>()
-    for (const key of CATEGORY_KEYS) {
-      for (const contribution of source.categories[key]) {
-        const categories = sourceCategories.get(contribution.text) ?? []
-        categories.push(key)
-        sourceCategories.set(contribution.text, categories)
+    const provenance = MessageV2.createModelMessageProvenance()
+    provenance.injections = source.injections
+    const native = source.categories.attachments.filter((entry) => entry.nativeURL)
+    const sources = new Map<string, { category: CategoryKey; contribution: Contribution }[]>()
+    for (const category of CATEGORY_KEYS) {
+      for (const contribution of source.categories[category]) {
+        const entries = sources.get(contribution.text) ?? []
+        entries.push({ category, contribution })
+        sources.set(contribution.text, entries)
       }
     }
-
-    for (const message of messages) {
+    const add = (
+      text: string | undefined,
+      fallback: CategoryKey,
+      path: string[],
+      selector: string[],
+      name?: string,
+    ) => {
+      if (!text) return
+      const entries = sources.get(text)
+      const index = entries?.findIndex((entry) => entry.category === fallback) ?? -1
+      const match = entries?.splice(Math.max(0, index), 1)[0]
+      addContribution(provenance, match?.category ?? fallback, {
+        ...match?.contribution,
+        text,
+        path,
+        selector,
+        source: match?.contribution.source ?? name ?? fallback,
+        precision: match?.contribution.precision ?? "role",
+      })
+    }
+    messages.forEach((message, index) => {
+      const path = ["messages", String(index)]
       const fallback =
-        message.role === "system" ? "instructions" : message.role === "tool" ? "toolActivity" : "conversation"
+        message.role === "system"
+          ? "systemInstructions"
+          : message.role === "tool"
+            ? "toolResults"
+            : message.role === "assistant"
+              ? "assistantMessages"
+              : "userMessages"
       if (typeof message.content === "string") {
-        addRemappedContribution(provenance, sourceCategories, fallback, message.content)
-        continue
+        add(message.content, fallback, path, ["content"])
+        return
       }
-      if (!Array.isArray(message.content)) continue
-      for (const part of message.content) {
-        if (part.type === "text" || part.type === "reasoning") {
-          addRemappedContribution(provenance, sourceCategories, fallback, part.text)
-          continue
+      message.content.forEach((part, partIndex) => {
+        const selector = ["content", String(partIndex)]
+        if (part.type === "text" || part.type === "reasoning") add(part.text, fallback, path, [...selector, "text"])
+        if (part.type === "tool-call")
+          add(serializeContribution(part.input), "assistantMessages", path, [...selector, "input"], part.toolName)
+        if (part.type === "tool-result")
+          add(
+            serializeToolOutput(part.output),
+            part.toolName === "skill" ? "skills" : "toolResults",
+            path,
+            [...selector, "output"],
+            part.toolName,
+          )
+        if (part.type === "file" || part.type === "image") {
+          provenance.items.attachments++
+          const data = part.type === "file" ? part.data : part.image
+          const index = native.findIndex((entry) => entry.nativeURL === String(data))
+          const match = index >= 0 ? native.splice(index, 1)[0] : undefined
+          provenance.categories.attachments.push({
+            ...match,
+            text: "",
+            path,
+            selector,
+            source: match?.source ?? part.type,
+            precision: match?.precision ?? "role",
+          })
         }
-        if (part.type === "tool-call") {
-          addRemappedContribution(provenance, sourceCategories, "toolActivity", serializeContribution(part.input))
-          continue
-        }
-        if (part.type === "tool-result") {
-          addRemappedContribution(provenance, sourceCategories, "toolActivity", serializeToolOutput(part.output))
-          continue
-        }
-        if (part.type === "file" || part.type === "image") provenance.items.filesReferences++
-      }
-    }
+      })
+    })
     return provenance
   }
 
   export function buildProvenance(input: {
-    history: MessageV2.ModelMessageProvenance
+    history: Provenance
     toolDefinitions: Pick<ToolResolver.Definition, "id" | "description" | "inputSchema">[]
     instructions?: string[]
+    injections?: Provenance["injections"]
   }): Provenance {
-    const provenance: Provenance = {
-      categories: {
-        conversation: [...input.history.categories.conversation],
-        toolActivity: [...input.history.categories.toolActivity],
-        filesReferences: [...input.history.categories.filesReferences],
-        instructions: [...input.history.categories.instructions],
-      },
-      items: { ...input.history.items },
-    }
-    for (const instruction of input.instructions ?? []) addContribution(provenance, "instructions", instruction)
-
-    for (const definition of input.toolDefinitions) {
-      addContribution(
-        provenance,
-        "toolActivity",
-        JSON.stringify({
+    const provenance = MessageV2.createModelMessageProvenance()
+    for (const key of CATEGORY_KEYS) provenance.categories[key] = [...input.history.categories[key]]
+    provenance.items = { ...input.history.items }
+    provenance.injections = input.injections ?? input.history.injections
+    for (const text of input.instructions ?? [])
+      addContribution(provenance, "systemInstructions", { text, precision: "source" })
+    input.toolDefinitions.forEach((definition, index) =>
+      addContribution(provenance, "toolDefinitions", {
+        text: JSON.stringify({
           name: definition.id,
           description: definition.description,
           inputSchema: definition.inputSchema,
         }),
-      )
-    }
-
+        path: ["tools", String(index)],
+        source: definition.id,
+        precision: "source",
+      }),
+    )
     return provenance
+  }
+
+  function instructionContributions(instructions: string[], provenance: Provenance, field: string) {
+    const result: { category: CategoryKey; contribution: Contribution }[] = []
+    instructions.forEach((text, index) => {
+      const matches = (provenance.injections ?? [])
+        .flatMap((entry) => {
+          if (!entry.text) return []
+          const start = text.indexOf(entry.text)
+          return start < 0 ? [] : [{ ...entry, start, end: start + entry.text.length }]
+        })
+        .sort((a, b) => a.start - b.start || b.end - a.end)
+      const add = (start: number, end: number, category: CategoryKey, source: string) => {
+        if (end <= start) return
+        result.push({
+          category,
+          contribution: {
+            text: text.slice(start, end),
+            path: [field, String(index)],
+            source,
+            precision: "source",
+            ...(start || end !== text.length ? { range: { start, end } } : {}),
+          },
+        })
+      }
+      let cursor = 0
+      for (const match of matches) {
+        if (match.start < cursor) continue
+        add(cursor, match.start, "systemInstructions", "system")
+        add(match.start, match.end, "injectedContext", match.source)
+        cursor = match.end
+      }
+      add(cursor, text.length, "systemInstructions", "system")
+    })
+    return result
+  }
+
+  export function sourceIndex(input: {
+    messages: ModelMessage[]
+    system: string[]
+    lateSystem?: string[]
+    provenance: Provenance
+  }) {
+    const history = remapProvenance(input.messages, input.provenance)
+    const sources = CATEGORY_KEYS.flatMap((category) => {
+      const contributions =
+        category === "toolDefinitions" ? input.provenance.categories[category] : history.categories[category]
+      return contributions
+        .filter((entry) => entry.path)
+        .map((entry) =>
+          ContextSourceSchema.parse({
+            category,
+            path: entry.path,
+            selector: entry.selector,
+            range: entry.range,
+            source: entry.source ?? category,
+            messageID: entry.messageID,
+            partID: entry.partID,
+            characters: entry.text.length,
+            precision: entry.precision ?? "role",
+          }),
+        )
+    })
+    for (const { category, contribution } of [
+      ...instructionContributions(input.system, input.provenance, "system"),
+      ...instructionContributions(input.lateSystem ?? [], input.provenance, "lateSystem"),
+    ])
+      sources.push(ContextSourceSchema.parse({ category, ...contribution, characters: contribution.text.length }))
+    return sources
   }
 
   export async function measureDraft(input: {
@@ -115,161 +213,87 @@ export namespace ContextUsage {
     instructions: string[]
     provenance: Provenance
   }): Promise<Draft | undefined> {
-    const contributions: Record<CategoryKey, Contribution[]> = {
-      ...input.provenance.categories,
-      instructions: [
-        ...input.instructions.filter((text) => text.length > 0).map((text) => ({ text })),
-        ...input.provenance.categories.instructions,
-      ],
+    const contributions = Object.fromEntries(
+      CATEGORY_KEYS.map((key) => [key, [...input.provenance.categories[key]]]),
+    ) as Record<CategoryKey, Contribution[]>
+    const items = { ...input.provenance.items }
+    for (const { category, contribution } of instructionContributions(input.instructions, input.provenance, "system")) {
+      contributions[category].push(contribution)
+      items[category]++
     }
-    const request = boundedEstimatorRequest(contributions)
-    const measured = await ContextUsageEstimator.estimate(request)
+    const measured = await ContextUsageEstimator.estimate(boundedEstimatorRequest(contributions))
     if (!measured) return undefined
-
-    const categories = emptyDraftCategories()
-    for (const key of CATEGORY_KEYS) {
-      categories[key] = {
-        estimatedTokens: nonNegativeInteger(measured.categories[key]),
-        items: nonNegativeInteger(
-          input.provenance.items[key] + (key === "instructions" ? input.instructions.length : 0),
-        ),
-      }
-    }
-
-    const contextLimit = positiveInteger(input.limits?.context)
-    const usableInputLimit = positiveInteger(ModelLimit.usableInput(input.limits))
     return {
       modelID: input.modelID,
       providerID: input.providerID,
-      ...(contextLimit === undefined ? {} : { contextLimit }),
-      ...(usableInputLimit === undefined ? {} : { usableInputLimit }),
-      categories,
-      estimator: {
-        kind: "bounded-utf8",
-        sampledCharacters: measured.sampledCharacters,
-        truncated: measured.truncated,
-      },
+      contextLimit: positiveInteger(input.limits?.context),
+      usableInputLimit: positiveInteger(ModelLimit.usableInput(input.limits)),
+      categories: Object.fromEntries(
+        CATEGORY_KEYS.map((key) => [
+          key,
+          {
+            estimatedTokens: nonNegativeInteger(measured.categories[key]),
+            items: nonNegativeInteger(items[key]),
+            ...(contributions[key].some((entry) => entry.precision === "role") ? { precision: "role" as const } : {}),
+          },
+        ]),
+      ) as Draft["categories"],
+      estimator: { kind: "bounded-utf8", sampledCharacters: measured.sampledCharacters, truncated: measured.truncated },
     }
   }
 
   export function reconcile(draft: Draft, totalInput: number, capturedAt = Date.now()): Snapshot {
     const exactTotal = nonNegativeInteger(totalInput)
     const estimates = CATEGORY_KEYS.map((key) => nonNegativeInteger(draft.categories[key].estimatedTokens))
-    const estimatedTotal = estimates.reduce((sum, tokens) => sum + tokens, 0)
+    const estimatedTotal = estimates.reduce((sum, value) => sum + value, 0)
     const scaledDown = estimatedTotal > exactTotal
-    const factor = scaledDown && estimatedTotal > 0 ? exactTotal / estimatedTotal : 1
     const attributed = scaledDown ? largestRemainder(estimates, exactTotal) : estimates
-    const attributedSum = attributed.reduce((sum, tokens) => sum + tokens, 0)
-
-    const categories = Object.fromEntries(
-      CATEGORY_KEYS.map((key, index) => [
-        key,
-        {
-          estimatedTokens: estimates[index],
-          attributedTokens: attributed[index],
-          items: nonNegativeInteger(draft.categories[key].items),
-        },
-      ]),
-    ) as Snapshot["categories"]
-
     return Schema.parse({
-      version: 1,
+      version: 2,
       modelID: draft.modelID,
       providerID: draft.providerID,
       totalInput: exactTotal,
-      ...(positiveInteger(draft.contextLimit) === undefined
-        ? {}
-        : { contextLimit: positiveInteger(draft.contextLimit) }),
-      ...(positiveInteger(draft.usableInputLimit) === undefined
-        ? {}
-        : { usableInputLimit: positiveInteger(draft.usableInputLimit) }),
-      categories,
-      overhead: { attributedTokens: exactTotal - attributedSum },
+      contextLimit: positiveInteger(draft.contextLimit),
+      usableInputLimit: positiveInteger(draft.usableInputLimit),
+      categories: CATEGORY_KEYS.map((category, index) => ({
+        category,
+        precision: draft.categories[category].precision ?? "source",
+        estimatedTokens: estimates[index],
+        attributedTokens: attributed[index],
+        items: nonNegativeInteger(draft.categories[category].items),
+      })),
+      overhead: { attributedTokens: exactTotal - attributed.reduce((sum, value) => sum + value, 0) },
       estimator: draft.estimator,
       reconciliation: {
         mode: scaledDown ? "scaled-down" : "residual",
-        factor,
+        factor: scaledDown ? exactTotal / estimatedTotal : 1,
       },
       capturedAt: nonNegativeInteger(capturedAt),
     })
   }
 
   export function attributedTotal(snapshot: Snapshot): number {
-    return (
-      CATEGORY_KEYS.reduce((sum, key) => sum + snapshot.categories[key].attributedTokens, 0) +
-      snapshot.overhead.attributedTokens
+    return snapshot.categories.reduce(
+      (sum, category) => sum + category.attributedTokens,
+      snapshot.overhead.attributedTokens,
     )
   }
-
-  function emptyProvenance(): Provenance {
-    return {
-      categories: {
-        conversation: [],
-        toolActivity: [],
-        filesReferences: [],
-        instructions: [],
-      },
-      items: {
-        conversation: 0,
-        toolActivity: 0,
-        filesReferences: 0,
-        instructions: 0,
-      },
-    }
+  function addContribution(provenance: Provenance, category: CategoryKey, contribution: Contribution) {
+    if (!contribution.text) return
+    provenance.categories[category].push(contribution)
+    provenance.items[category]++
   }
-
-  function addRemappedContribution(
-    provenance: Provenance,
-    sourceCategories: Map<string, CategoryKey[]>,
-    fallback: CategoryKey,
-    text: string | undefined,
-  ) {
-    if (!text) return
-    const categories = sourceCategories.get(text)
-    const fallbackIndex = categories?.indexOf(fallback) ?? -1
-    let category = fallback
-    if (categories)
-      category = fallbackIndex >= 0 ? categories.splice(fallbackIndex, 1)[0] : (categories.shift() ?? fallback)
-    addContribution(provenance, category, text)
-  }
-
-  function serializeContribution(input: unknown): string | undefined {
-    if (typeof input === "string") return input
+  function serializeContribution(value: unknown): string | undefined {
+    if (typeof value === "string") return value
     try {
-      return JSON.stringify(input)
+      return JSON.stringify(value)
     } catch {
       return undefined
     }
   }
-
   function serializeToolOutput(output: unknown): string | undefined {
-    if (!output || typeof output !== "object" || !("type" in output)) return serializeContribution(output)
-    if (
-      (output.type === "text" || output.type === "error-text") &&
-      "value" in output &&
-      typeof output.value === "string"
-    ) {
-      return output.value
-    }
-    if ((output.type === "json" || output.type === "error-json") && "value" in output) {
-      return serializeContribution(output.value)
-    }
+    if (output && typeof output === "object" && "value" in output) return serializeContribution(output.value)
     return serializeContribution(output)
-  }
-
-  function emptyDraftCategories(): Record<CategoryKey, DraftCategory> {
-    return {
-      conversation: { estimatedTokens: 0, items: 0 },
-      toolActivity: { estimatedTokens: 0, items: 0 },
-      filesReferences: { estimatedTokens: 0, items: 0 },
-      instructions: { estimatedTokens: 0, items: 0 },
-    }
-  }
-
-  function addContribution(provenance: Provenance, category: CategoryKey, text: string | undefined) {
-    if (!text) return
-    provenance.categories[category].push({ text })
-    provenance.items[category]++
   }
 
   function boundedEstimatorRequest(contributions: Record<CategoryKey, Contribution[]>): ContextUsageEstimator.Request {

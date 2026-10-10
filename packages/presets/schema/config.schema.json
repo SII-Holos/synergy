@@ -3304,6 +3304,10 @@
       },
       "additionalProperties": false
     },
+    "welcomeGames": {
+      "description": "Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting.",
+      "type": "boolean"
+    },
     "layout": {
       "description": "@deprecated Always uses stretch layout.",
       "ref": "LayoutConfig",

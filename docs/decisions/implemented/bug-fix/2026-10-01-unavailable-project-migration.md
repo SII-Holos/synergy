@@ -22,4 +22,4 @@ The existing domain migration and central ledger remain authoritative. Missing p
 
 ## Consequences
 
-Startup tolerates missing historical directories while execution still rejects unavailable bindings. Tests use real temporary directories and storage, covering a fresh home, deleted project roots, preserved historical Worktrees, restart idempotence and a non-directory replacement that keeps the migration pending. Git metadata unavailable at conversion cannot enrich discovery; existing catalog evidence is retained.
+Startup tolerates missing historical directories while execution still rejects unavailable bindings. Tests use real temporary directories and storage, covering a fresh home, deleted project roots, preserved historical Worktrees and restart idempotence. Git metadata unavailable at conversion cannot enrich discovery; existing catalog evidence is retained. [Historical project binding migration](2026-10-10-historical-project-binding-migration.md) defines conversion of mismatched identities and non-directory replacements without admitting live file access.

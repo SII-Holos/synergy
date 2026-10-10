@@ -49,6 +49,8 @@ import { internMessages, internParts } from "../string-intern"
 import { findSessionIndex } from "../session-collection"
 import { classifyScopeEvent } from "./event-routing"
 import { readSessionViewportContent, planSessionViewportContent } from "../session-viewport-content"
+import { createPartPageBatchReader } from "../part-page-batch"
+import type { ConversationReadingPosition } from "@/components/session/conversation-reading-anchor"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -185,6 +187,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const MAX_SESSION_KEYS = 50
     const meta = { active: undefined as string | undefined, pruned: false }
     const used = new Map<string, number>()
+    const conversationReading = new Map<
+      string,
+      { server: string; following: boolean; position?: ConversationReadingPosition }
+    >()
 
     const SESSION_STATE_KEYS = [
       { key: "prompt", legacy: "prompt", version: "v2" },
@@ -238,6 +244,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       )
 
       scroll.drop(drop)
+      for (const key of drop) conversationReading.delete(key)
       dropSessionState(drop)
 
       for (const key of drop) {
@@ -1060,17 +1067,20 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       )
         .then(async (response) => {
           if (prefetchToken.value !== token || !response.data) return
+          const readBatchedPartPages = createPartPageBatchReader({
+            read: async (batchSessionID, messageIDs, batchSignal) => {
+              const result = await globalSdk.client.session.partPages(
+                { ...scopeRequest(scopeKey), sessionID: batchSessionID, messageIDs, limit: 100 },
+                { signal: batchSignal, throwOnError: true },
+              )
+              if (!result.data) throw new Error("Missing conversation summaries")
+              return result.data
+            },
+          })
           const content = await readSessionViewportContent({
             messages: [...response.data.referencedRoots, ...response.data.items].map((entry) => entry.info),
             signal,
-            page: async (messageID) => {
-              const result = await globalSdk.client.session.partPage(
-                { ...scopeRequest(scopeKey), sessionID, messageID, limit: 100 },
-                { signal, throwOnError: true },
-              )
-              if (!result.data) throw new Error("Missing conversation summary")
-              return result.data
-            },
+            page: (messageID) => readBatchedPartPages(sessionID, messageID, signal),
             body: async (summary) => {
               const result = await globalSdk.client.session.partContent(
                 {
@@ -1461,10 +1471,23 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       view(sessionKey: string) {
+        const server = globalSdk.url
         touch(sessionKey)
         scroll.seed(sessionKey)
         const s = createMemo(() => store.sessionView[sessionKey] ?? { scroll: {} })
         return {
+          conversation: {
+            get() {
+              const saved = conversationReading.get(sessionKey)
+              return saved?.server === server && server === globalSdk.url ? saved : undefined
+            },
+            set(value: { following: boolean; position?: ConversationReadingPosition }) {
+              conversationReading.delete(sessionKey)
+              conversationReading.set(sessionKey, { ...value, server })
+              while (conversationReading.size > MAX_SESSION_KEYS)
+                conversationReading.delete(conversationReading.keys().next().value!)
+            },
+          },
           activity: {
             getExpanded(key: string) {
               return s().activityOpen?.[key]

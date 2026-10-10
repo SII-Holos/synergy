@@ -1,3 +1,4 @@
+import { migrateContextUsage, upgradeContextUsageRecord } from "./context-usage-migration"
 import { RolloutExecutionMigration } from "./rollout/execution-migration"
 import { migrateReferenceContexts, upgradeReferenceContext } from "./reference-context"
 import { migrateAttachmentPurposes, upgradeAttachmentPresentation } from "./attachment-migration"
@@ -1591,6 +1592,23 @@ async function migrateAttachmentDisplay(
 }
 
 export const migrations: Migration[] = [
+  {
+    id: "20261009-context-usage-categories",
+    scope: "session",
+    execution: "session",
+    description: "Preserve historical context attribution in the current category schema",
+    upgradeRecord: upgradeContextUsageRecord,
+    upSession: migrateContextUsage,
+    async up(progress) {
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID)) {
+          await migrateContextUsage({ scopeID, sessionID }, () => {})
+          progress(++done, 0)
+        }
+      progress(done, done)
+    },
+  },
   {
     id: "20261008-resource-reference-context",
     scope: "session",

@@ -195,6 +195,10 @@ export const ConfigShape = {
     .optional()
     .describe("Show a compact reasoning preview in the execution process (default: false)"),
   quick_switcher: QuickSwitcher.optional().describe("Quick switcher model visibility preferences"),
+  welcomeGames: z
+    .boolean()
+    .optional()
+    .describe("Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting."),
   layout: Layout.optional().describe("@deprecated Always uses stretch layout."),
   toast: z
     .object({
@@ -247,6 +251,7 @@ export function registerConfig() {
         "keybinds",
         "toast",
         "compactReasoning",
+        "welcomeGames",
         "locale",
         "activityDisplay",
         "defaultSessionWorkspace",

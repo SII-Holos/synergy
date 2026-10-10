@@ -1,11 +1,16 @@
+import { createSignal } from "solid-js"
+
 export function createMessageArrivalState(now = () => performance.now()) {
   const pending = new Map<string, number>()
+  const [submitted, setSubmitted] = createSignal<{ owner: readonly string[]; messageID: string }>()
   const key = (owner: readonly string[], messageID: string) => JSON.stringify([...owner, messageID])
   const prune = () => {
     for (const [id, expires] of pending) if (expires <= now()) pending.delete(id)
   }
   return {
+    submitted,
     add(owner: readonly string[], messageID: string) {
+      setSubmitted({ owner: [...owner], messageID })
       prune()
       pending.set(key(owner, messageID), now() + 2000)
       while (pending.size > 64) pending.delete(pending.keys().next().value!)
