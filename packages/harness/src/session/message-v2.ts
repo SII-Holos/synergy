@@ -1,3 +1,4 @@
+import { upgradeAccessRecord } from "../migration/import"
 import {
   AttachmentPresentation as SharedAttachmentPresentation,
   attachmentPurpose,
@@ -1815,7 +1816,7 @@ export namespace MessageV2 {
       scopeID: input.scopeID,
       sessionID: input.sessionID,
     })) {
-      infos.push(canonicalMessage(record.value))
+      infos.push(canonicalMessage(upgradeAccessRecord(record.key, record.value)))
     }
     return infos.sort(compareStorageOrder)
   }
@@ -1826,6 +1827,36 @@ export namespace MessageV2 {
     before?: string
     limit?: number
   }) {
+    if (input.limit !== undefined) {
+      const [raw] = await Storage.readMany([StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID)])
+      const state = MessageOrderState.safeParse(raw)
+      if (state.success) {
+        let after: string[] | undefined
+        let remaining = input.limit
+        while (remaining > 0) {
+          const keys = await Storage.queryKeys({
+            prefix: StoragePath.sessionMessageOrderMarkersRoot(input.scopeID, input.sessionID),
+            descending: true,
+            orderTo: input.before,
+            after,
+            limit: Math.min(32, remaining),
+          })
+          if (!keys.length) break
+          const paths = keys.flatMap((key) => {
+            const id = markerMessageID(key.at(-1)!)
+            return id ? [StoragePath.messageInfo(input.scopeID, input.sessionID, Identifier.asMessageID(id))] : []
+          })
+          const infos = await Storage.readMany<Info>(paths)
+          for (const [index, info] of infos.entries()) {
+            if (!info) continue
+            remaining--
+            yield canonicalMessage(upgradeAccessRecord(paths[index]!, info))
+          }
+          after = keys.at(-1)
+        }
+        return
+      }
+    }
     const markers = await messageOrderSnapshot(input.scopeID, input.sessionID)
     let index = markers.length - 1
     if (input.before !== undefined) {
@@ -1859,7 +1890,12 @@ export namespace MessageV2 {
       for (const info of infos) {
         if (!info) continue
         yielded++
-        yield canonicalMessage(info)
+        yield canonicalMessage(
+          upgradeAccessRecord(
+            StoragePath.messageInfo(input.scopeID, input.sessionID, Identifier.asMessageID(info.id)),
+            info,
+          ),
+        )
         if (input.limit !== undefined && yielded >= input.limit) return
       }
     }
@@ -1905,7 +1941,7 @@ export namespace MessageV2 {
       const messageID = input.messageID as Identifier.MessageID
       const results: MessageV2.Part[] = []
       for await (const record of Storage.records<MessageV2.Part>({ kind: "part", scopeID, sessionID, messageID })) {
-        results.push(record.value)
+        results.push(upgradeAccessRecord(record.key, record.value))
       }
       const parts = await Promise.all(
         results
@@ -1951,7 +1987,10 @@ export namespace MessageV2 {
       const sessionID = input.sessionID as Identifier.SessionID
       const messageID = input.messageID as Identifier.MessageID
       const info = canonicalMessage(
-        await Storage.read<MessageV2.Info>(StoragePath.messageInfo(scopeID, sessionID, messageID)),
+        upgradeAccessRecord(
+          StoragePath.messageInfo(scopeID, sessionID, messageID),
+          await Storage.read<MessageV2.Info>(StoragePath.messageInfo(scopeID, sessionID, messageID)),
+        ),
       )
       return {
         info,

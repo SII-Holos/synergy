@@ -10,8 +10,18 @@ import { StorageIncrementalVacuum } from "./incremental-vacuum"
 import { StorageFormatV3State } from "./format-v3-state"
 import { StoragePath } from "./path"
 import { EvidenceOwnerProjection } from "./evidence-owner-projection"
+import { UpgradeWork } from "./upgrade-work"
 
 export const migrations: Migration[] = [
+  {
+    id: "20261010-demand-driven-history",
+    scope: "global",
+    execution: "startup",
+    description: "Keep historical imports paused until explicitly resumed; selected Sessions prepare on demand",
+    async up() {
+      await UpgradeWork.control("pause")
+    },
+  },
   {
     id: "20261001-text-projection-structure",
     scope: "global",

@@ -6,7 +6,7 @@
 
 - **Subtle** — the mechanism requires careful investigation.
 - **Systemic** — a gap in tests, tooling, or conventions let the bug escape.
-- **Costly to rediscover** — rediscovery would repeat substantial debugging.
+- **Costly to rediscover** — repeats substantial debugging.
 
 Otherwise, test the fix.
 
@@ -19,14 +19,16 @@ Otherwise, test the fix.
 
 Use `NNNN-kebab-case-title.md`. Sections:
 
-- **Executive summary** — one paragraph: what broke, its cause, why it escaped, and the durable lesson.
-- **Summary** — details of the failure.
+- **Executive summary** — what broke, why, how it escaped, and the durable lesson.
+- **Summary** — failure details.
 - **Timeline** — what was observed and when.
 - **Root cause** — the mechanism and missing safeguards.
 - **Guardrails added** — linked fixes: tests, doc updates, gate changes.
 - **Lessons** — the durable takeaways.
 
 ## Index
+
+- [0063: Startup replay](0063-history-replay-blocked-startup.md)
 
 - [0062: Historical project bindings](0062-project-migration-required-live-directory-identity.md)
 - [0059: Disclosure](0059-cold-process-disclosure-jank.md)

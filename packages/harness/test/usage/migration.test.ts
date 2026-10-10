@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from "bun:test"
+import { afterAll, expect, spyOn, test } from "bun:test"
 import { testRuntime } from "../support/runtime"
 import { Storage } from "../../src/storage/storage"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
@@ -14,6 +14,80 @@ import { RolloutAccounting } from "../../src/session/rollout/accounting"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
+
+test("upgraded rebuilds retain their cursor without automatically enumerating history", () =>
+  runtime.run(async () => {
+    const saved = {
+      version: 1 as const,
+      status: "running" as const,
+      phase: "sessions" as const,
+      after: ["sessions", "old", "cursor", "info"],
+      owners: 7,
+      records: 23,
+      failures: 0,
+      updatedAt: 1,
+    }
+    await Storage.write(StoragePath.usageRebuild(), saved)
+    using query = spyOn(Storage, "query")
+    const stop = UsageMigration.service()
+    await stop()
+    expect(query).not.toHaveBeenCalled()
+    expect(await UsageMigration.status()).toEqual(saved)
+    expect(await UsageMigration.start()).toEqual({ ...saved, requested: true })
+    await Storage.remove(StoragePath.usageRebuild())
+  }))
+
+test("on-demand usage repair touches only the selected owner and is idempotent", () =>
+  runtime.run(async () => {
+    const selected = { kind: "operation" as const, scopeID: crypto.randomUUID(), operationID: "selected" }
+    const cold = { ...selected, operationID: "cold", scopeID: crypto.randomUUID() }
+    for (const owner of [selected, cold]) {
+      const call = await RolloutLedger.beginCall({
+        owner,
+        runID: "run",
+        purpose: "test",
+        request: {},
+        model: { providerID: "test", modelID: "test", sdk: "test", pricing: null },
+      })
+      await RolloutLedger.finishCall(owner, "run", call.id, {
+        status: "completed",
+        sdkUsage: { inputTokens: 2, outputTokens: 3 },
+      })
+      await Storage.removeTree(StoragePath.usageOwner(owner.scopeID, UsageLedger.ownerKey(owner)))
+    }
+    await UsageMigration.prepare(selected)
+    expect((await UsageQuery.summary({ scopeID: selected.scopeID })).accounting.tokens.total.total).toBe(5)
+    expect((await UsageQuery.summary({ scopeID: cold.scopeID })).accounting.tokens.total.total).toBe(0)
+    const revision = await UsageLedger.revision()
+    await UsageMigration.prepare(selected)
+    expect(await UsageLedger.revision()).toBe(revision)
+  }))
+
+test("interleaved owner reads retain independent usage cursors and preserve the full rebuild cursor", () =>
+  runtime.run(async () => {
+    const owners = ["first", "second"].map((operationID) => ({
+      kind: "operation" as const,
+      scopeID: crypto.randomUUID(),
+      operationID,
+    }))
+    for (const owner of owners)
+      for (let index = 0; index < 70; index++) await RolloutLedger.beginRun(owner, String(index))
+    const rebuild = { version: 1, owner: "full-rebuild", revision: 23, through: 90 }
+    await Storage.write(StoragePath.usageReplay(), rebuild)
+    using events = spyOn(RolloutJournal, "events")
+    await UsageMigration.prepare(owners[0]!)
+    await UsageMigration.prepare(owners[1]!)
+    await UsageMigration.prepare(owners[0]!)
+    await UsageMigration.prepare(owners[1]!)
+    expect(events.mock.calls.map(([, , after]) => after)).toEqual([0, 0, 64, 64])
+    expect(await Storage.read<typeof rebuild>(StoragePath.usageReplay())).toEqual(rebuild)
+    events.mockClear()
+    await UsageMigration.prepare(owners[0]!)
+    expect(events).not.toHaveBeenCalled()
+    await RolloutLedger.beginRun(owners[0]!, "later")
+    await UsageMigration.prepare(owners[0]!)
+    expect(events.mock.calls.map(([, , after]) => after)).toEqual([70])
+  }))
 
 test("historical capture resumes from durable pages without repricing or duplication", () =>
   runtime.run(async () => {

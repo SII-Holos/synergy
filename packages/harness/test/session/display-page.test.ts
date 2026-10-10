@@ -200,6 +200,10 @@ test("batched part pages bound a message window with the same semantics as singl
             ),
           )
           messages.push({ id: messageID, partIDs })
+          await Storage.write(["sessions", session.scope.id, session.id, "display_parts_state", messageID], {
+            ready: true,
+            generation: 0,
+          })
         }
         const result = await SessionHistory.partPages({
           sessionID: session.id,
@@ -437,9 +441,11 @@ test("latest display pages rebuild only a bounded window when the projection is 
         using noFullScan = spyOn(MessageV2, "readInfoList").mockImplementation(async () => {
           throw new Error("timeline page must not read the complete message history")
         })
+        using noMarkerInventory = spyOn(Storage, "scan")
         const page = await SessionHistory.timelinePage({ sessionID: session.id, limit: 2 })
         expect(page.items.map((item) => item.info.id)).toEqual(ids.slice(-2))
         expect(page.total).toBe(ids.length)
+        expect(noMarkerInventory.mock.calls.some(([key]) => key[0] === "session_message_order_v1")).toBe(false)
         await Session.remove(session.id)
       },
     })

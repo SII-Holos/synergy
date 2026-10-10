@@ -518,6 +518,9 @@ export type UsageSummary = {
       phase: "indexes" | "sessions" | "operations" | "completed"
       after?: Array<string>
       ownerAfter?: Array<string>
+      requested?: boolean
+      lineageAfter?: Array<string>
+      lineageComplete?: boolean
       owners: number
       records: number
       updatedAt: number
@@ -15147,6 +15150,9 @@ export type GlobalStatsUsageRebuildResponses = {
     phase: "indexes" | "sessions" | "operations" | "completed"
     after?: Array<string>
     ownerAfter?: Array<string>
+    requested?: boolean
+    lineageAfter?: Array<string>
+    lineageComplete?: boolean
     owners: number
     records: number
     updatedAt: number
