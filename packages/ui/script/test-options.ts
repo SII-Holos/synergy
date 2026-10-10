@@ -3,6 +3,7 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 export const testOptions = {
   timeoutMs: 120000,
   isolated: [
+    "test/components/conversation-flow.test.tsx",
     "test/markdown-resources.test.ts",
     "test/markdown-sanitize.test.ts",
     "test/solid-ordered-rows.test.ts",
@@ -55,6 +56,7 @@ export const testOptions = {
     "test/components/provider-icon.test.ts",
   ],
   browserOnly: [
+    "test/components/conversation-flow.test.tsx",
     "test/solid-ordered-rows.test.ts",
     "test/components/message-readers.render.test.ts",
     "test/components/tool/worktree-tool-presentation.test.tsx",

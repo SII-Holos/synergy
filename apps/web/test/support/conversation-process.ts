@@ -48,6 +48,7 @@ type Fixture = {
   reading(value: boolean): void
   retained(): number
   summaryReads(): number
+  statusReads(): number
   contentRecover(id: string): void
   contentPending(id: string): void
   contentFinish(id: string): void
@@ -96,6 +97,27 @@ export const frames = (target = page) =>
   target.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
+export const settleConversation = (target = page) =>
+  target.evaluate(async () => {
+    let previous = "",
+      stable = 0
+    for (let frame = 0; frame < 120; frame++) {
+      await new Promise(requestAnimationFrame)
+      const signature =
+        `${window.__conversationProcess.summaryReads()}:${window.__conversationProcess.retained()}:` +
+        [...document.querySelectorAll<HTMLElement>("[data-display-row]")]
+          .map((row) => `${row.dataset.displayRow}:${row.getBoundingClientRect().height}`)
+          .join(";")
+      stable =
+        signature === previous &&
+        !document.querySelector("[data-motion-changing],[data-content-pending],[data-layout-changing]")
+          ? stable + 1
+          : 0
+      if (stable === 4) return
+      previous = signature
+    }
+    throw new Error("Conversation geometry did not settle")
+  })
 async function freshPage() {
   await page?.close()
   page = await browser.newPage()

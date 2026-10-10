@@ -18,6 +18,8 @@ Foreground live summary acceptance grants bounded, short-lived Part entrance rec
 
 The canonical Part summary omits empty or whitespace-only reasoning from rendering while preserving raw Parts and encrypted metadata. A registered Session migration invalidates prepared and partially prepared display-index metadata in batches of 100, advances generation and clears preparation cursors. The existing paged preparation rebuilds summaries, including imported records. Loading and failures retain recovery controls; only successfully loaded empty reasoning hides its control. Existing HTTP methods and plugin interfaces remain compatible. The optional reasoning identity in summaries follows the companion [continuous reasoning decision](2026-10-05-group-continuous-reasoning-item-fragments.md).
 
+The nested scroll owner is superseded by [conversation scroll ownership](../architecture/2026-10-09-conversation-scroll-ownership.md); semantic grouping, system-event identity, live arrival and recovery requirements continue to apply.
+
 ## Alternatives considered
 
 **Only restyle the window.** This removes the discrete geometry change but leaves resize-driven following and mount-driven replay intact.

@@ -19,6 +19,60 @@ function fixture(options?: { settleMs?: number; submitTimeoutMs?: number }) {
 }
 
 describe("ComposerDocumentController", () => {
+  test("does not schedule draft reads without an active draft observer", async () => {
+    let reads = 0
+    const controller = new ComposerDocumentController(
+      {
+        read: () => {
+          reads++
+          return { text: "", selection: { start: 0, end: 0 }, mode: "normal" }
+        },
+        applyEdits: () => undefined,
+      },
+      { settleMs: 1 },
+    )
+    try {
+      controller.register({ id: "submit-only", onBeforeSubmit: async () => undefined })
+      controller.changed()
+      await Bun.sleep(10)
+      expect(reads).toBe(0)
+    } finally {
+      controller.dispose()
+    }
+  })
+
+  test("cancels settled draft work when its last observer is removed", async () => {
+    const { controller } = fixture({ settleMs: 1 })
+    const settled = Promise.withResolvers<AbortSignal>()
+    const remove = controller.register({
+      id: "draft",
+      onDraftSettled: (_snapshot, context) => settled.resolve(context.signal),
+    })
+    try {
+      const signal = await settled.promise
+      expect(signal.aborted).toBe(false)
+      remove()
+      expect(signal.aborted).toBe(true)
+    } finally {
+      controller.dispose()
+    }
+  })
+
+  test("cancels an extension's draft work when its handler unsubscribes", async () => {
+    const { controller } = fixture({ settleMs: 1 })
+    const settled = Promise.withResolvers<AbortSignal>()
+    const service = controller.service({ id: "draft", capabilities: new Set(["composer.read"]) })
+    const remove = service.onDraftSettled((_snapshot, context) => settled.resolve(context.signal))
+    try {
+      const signal = await settled.promise
+      remove()
+      expect(signal.aborted).toBe(true)
+    } finally {
+      service.dispose()
+      controller.dispose()
+    }
+  })
+
   test("does not read the document when no completion exists", () => {
     let reads = 0
     const controller = new ComposerDocumentController({

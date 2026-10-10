@@ -132,6 +132,7 @@ export class ComposerDocumentController {
       this.#completions.delete(input.id)
       this.#decorations.delete(input.id)
       this.#notify()
+      this.#scheduleSettled()
     }
   }
 
@@ -162,7 +163,10 @@ export class ComposerDocumentController {
         requireCapability("composer.read")
         setRegistration({ onDraftSettled: handler })
         this.#scheduleSettled()
-        return () => setRegistration({ onDraftSettled: undefined })
+        return () => {
+          setRegistration({ onDraftSettled: undefined })
+          this.#scheduleSettled()
+        }
       },
       onBeforeSubmit: (handler) => {
         requireCapability("composer.intercept")
@@ -192,7 +196,7 @@ export class ComposerDocumentController {
 
   changed() {
     this.#revision++
-    this.#draftController?.abort()
+    this.#cancelDraft()
     this.#completions.clear()
     this.#decorations.clear()
     this.#notify()
@@ -208,7 +212,7 @@ export class ComposerDocumentController {
   setComposing(value: boolean) {
     this.#composing = value
     if (value) {
-      if (this.#settleTimer) clearTimeout(this.#settleTimer)
+      this.#cancelDraft()
       return
     }
     this.#scheduleSettled()
@@ -279,9 +283,10 @@ export class ComposerDocumentController {
   }
 
   dispose() {
-    if (this.#settleTimer) clearTimeout(this.#settleTimer)
-    this.#draftController?.abort()
-    this.#submitController?.abort()
+    this.#cancelDraft()
+    const submit = this.#submitController
+    this.#submitController = undefined
+    submit?.abort()
     this.#registrations.clear()
     this.#completions.clear()
     this.#decorations.clear()
@@ -328,16 +333,25 @@ export class ComposerDocumentController {
     this.#notify()
   }
 
-  #scheduleSettled() {
-    if (this.#composing) return
+  #cancelDraft() {
     if (this.#settleTimer) clearTimeout(this.#settleTimer)
+    this.#settleTimer = undefined
+    const controller = this.#draftController
+    this.#draftController = undefined
+    controller?.abort()
+  }
+
+  #scheduleSettled() {
+    this.#cancelDraft()
+    if (this.#composing || !this.#ordered().some((entry) => entry.onDraftSettled && !entry.degraded)) return
     this.#settleTimer = setTimeout(() => {
       this.#settleTimer = undefined
-      this.#draftController?.abort()
+      const entries = this.#ordered().filter((entry) => entry.onDraftSettled && !entry.degraded)
+      if (entries.length === 0) return
       const controller = new AbortController()
       this.#draftController = controller
       const snapshot = this.current()
-      for (const entry of this.#ordered()) {
+      for (const entry of entries) {
         if (!entry.onDraftSettled || entry.degraded) continue
         void Promise.resolve(entry.onDraftSettled(snapshot, { signal: controller.signal })).catch((error) => {
           if (!controller.signal.aborted && this.current().revision === snapshot.revision) {

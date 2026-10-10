@@ -1,49 +1,42 @@
 import { expect, test } from "bun:test"
-import { page, url, errors, frames } from "../../support/conversation-process"
+import { page, url, errors, frames, contentPage, settleConversation } from "../../support/conversation-process"
 
-test("reading a grouped reasoning fragment survives an earlier fragment growing in the same virtual chunk", async () => {
+test("grouped reasoning uses exact Part location and the main paragraph anchor during body growth", async () => {
+  await page.goto(`${url}?scrolling`)
+  await page.evaluate(() => window.__conversationProcess.fragments(80))
+  const trigger = page.locator('[data-slot="process-reasoning-trigger"]').first()
+  await trigger.waitFor()
+  if ((await trigger.getAttribute("aria-expanded")) === "false") await trigger.click()
+  expect(await page.evaluate(() => window.__conversationProcess.locate("work", "summary-14"))).toBe(true)
+  await settleConversation()
+  const fragment = page.locator('[data-reasoning-part="summary-14"]')
+  const offset = () =>
+    fragment.evaluate((element) => {
+      const viewport = document.querySelector("[data-scroller]")!
+      return element.getBoundingClientRect().top - viewport.getBoundingClientRect().top
+    })
+  expect(Math.abs(await offset())).toBeLessThanOrEqual(2)
   const cdp = await page.context().newCDPSession(page)
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
   try {
-    await page.goto(url)
-    await page.evaluate(() => window.__conversationProcess.fragments(12))
-    const trigger = page.locator('[data-slot="process-reasoning-trigger"]')
-    await trigger.waitFor()
-    if ((await trigger.getAttribute("aria-expanded")) === "false") await trigger.click()
-    await page.getByText("Summary paragraph 7", { exact: true }).waitFor()
-    await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
-    const viewport = page.locator('[data-component="process-viewport"]').first()
-    await viewport.evaluate((element) => ((element as HTMLElement).style.maxHeight = "140px"))
-    await viewport.hover()
-    await page.mouse.wheel(0, -1)
-    await frames()
-    await viewport.evaluate((element) => {
-      const target = element.querySelector<HTMLElement>('[data-reasoning-part="summary-7"]')!
-      element.scrollTop += target.getBoundingClientRect().top - element.getBoundingClientRect().top - 2
+    await page.locator("[data-scroller]").hover()
+    await page.mouse.wheel(0, 8)
+    for (let index = 0; index < 6; index++) await frames()
+    const before = await offset()
+    await page.evaluate(() => {
+      window.__conversationProcess.reasoning("Earlier reasoning grows. ".repeat(120), "summary-12")
+      window.__conversationProcess.reasoning("Later reasoning grows. ".repeat(120), "summary-15")
     })
-    await frames()
-    const position = () =>
-      viewport.evaluate((element) => {
-        const target = element.querySelector<HTMLElement>('[data-reasoning-part="summary-7"]')!
-        return target.getBoundingClientRect().top - element.getBoundingClientRect().top
-      })
-    const before = await position()
-    expect(Math.abs(before - 2)).toBeLessThanOrEqual(1)
-    await page.evaluate(() =>
-      window.__conversationProcess.reasoning("An earlier fragment finishes loading.\n".repeat(12), "summary-6"),
-    )
-    await frames()
-    expect(Math.abs((await position()) - before)).toBeLessThanOrEqual(1)
-    await page.evaluate(() =>
-      window.__conversationProcess.reasoning("A later fragment finishes loading.\n".repeat(12), "summary-10"),
-    )
-    await frames()
-    expect(Math.abs((await position()) - before)).toBeLessThanOrEqual(1)
+    for (let index = 0; index < 12; index++) {
+      await frames()
+      expect(Math.abs((await offset()) - before)).toBeLessThanOrEqual(2)
+    }
+    expect(await page.locator('[data-component="process-viewport"]').count()).toBe(0)
   } finally {
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
     await cdp.detach()
   }
-}, 30000)
+})
 
 test("a history locator retains its Part through late preceding summaries and releases on wheel input", async () => {
   const cdp = await page.context().newCDPSession(page)
@@ -89,59 +82,14 @@ test("a history locator retains its Part through late preceding summaries and re
   }
 })
 
-test("an unfocused process reader survives outer layout changes until an outer reading gesture", async () => {
-  await page.goto(url)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.evaluate(() => window.__conversationProcess.mode("full"))
-  const viewport = page.locator('[data-component="process-viewport"]').first()
-  const trigger = viewport.locator('[data-slot="process-reasoning-trigger"]')
-  if ((await trigger.getAttribute("aria-expanded")) === "true")
-    await trigger.evaluate((button) => (button as HTMLElement).click())
-  await trigger.evaluate((button) => (button as HTMLElement).click())
-  await page.getByText("Check evidence", { exact: true }).waitFor()
-  await page.evaluate(() => {
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-    window.__conversationProcess.hydrateBefore(80)
-  })
-  await page.locator("[data-scroller]").evaluate((scroller) => (scroller.scrollTop = 0))
-  await frames()
-  await frames()
-  expect(await viewport.count()).toBeGreaterThan(0)
-  expect(await page.getByText("Check evidence", { exact: true }).count()).toBe(1)
-  await page
-    .locator("[data-outside-control]")
-    .evaluate((control) => control.dispatchEvent(new WheelEvent("wheel", { deltaY: 1, bubbles: true })))
-  await page.waitForFunction(() => !document.querySelector('[data-component="process-viewport"]'))
-})
-
-test("an already-paused process reader reacquires retention after another reader takes ownership", async () => {
-  await page.goto(url)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.evaluate(() => window.__conversationProcess.mode("full"))
-  await page.waitForFunction(() => document.querySelectorAll('[data-component="process-viewport"]').length === 2)
-  await page.evaluate(() => {
-    const [first, second] = document.querySelectorAll('[data-component="process-viewport"]')
-    for (const viewport of [first, second, first])
-      viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }))
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-    window.__conversationProcess.hydrateBefore(80)
-  })
-  await page.locator("[data-scroller]").evaluate((scroller) => (scroller.scrollTop = 0))
-  await frames()
-  await frames()
-  await page.waitForFunction(() => document.querySelectorAll('[data-component="process-viewport"]').length === 1)
-  expect(await page.locator('[data-component="process-viewport"]').textContent()).toContain("Check evidence")
-  expect(await page.getByText("Continue checking", { exact: true }).count()).toBe(0)
-})
-
 test("replayed additions and passive resize cannot follow a historical viewport", async () => {
-  await page.goto(url)
+  await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => {
     window.__conversationProcess.mode("full")
     window.__conversationProcess.grow(80)
   })
-  const viewport = page.locator('[data-component="process-viewport"]').last()
+  const viewport = page.locator("[data-scroller]").last()
   await page.waitForTimeout(250)
   await viewport.evaluate((el) => {
     el.dispatchEvent(new WheelEvent("wheel", { deltaY: -24, bubbles: true }))
@@ -380,25 +328,44 @@ test("native Shift+Space leaves latest following and retains its reading row thr
 })
 
 test("native reading movement wins over real body growth in the same wheel dispatch", async () => {
-  await page.goto(url)
+  await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => {
     window.__conversationProcess.grow(1000)
   })
   for (let index = 0; index < 4; index++) await frames()
   await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
-  const viewport = page.locator('[data-component="process-viewport"]').last()
+  const viewport = page.locator("[data-scroller]").last()
   await viewport.hover()
+  await frames()
+  const selected = await viewport.evaluate((element) => {
+    const row = element.querySelector('[data-part-id="many-999"] [data-slot="activity-step-trigger"]')!
+    const range = document.createRange()
+    range.selectNodeContents(row)
+    const selection = document.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.dispatchEvent(new Event("selectionchange"))
+    return selection.toString()
+  })
   await frames()
   const before = await viewport.evaluate((element) => {
     const top = element.scrollTop
     const height = element.scrollHeight
+    const row = [...element.querySelectorAll<HTMLElement>('[data-display-row][data-row-kind="body"]')].findLast(
+      (row) => row.dataset.messageRole === "assistant",
+    )!
+    const probe = { row, calls: 0, connected: row.isConnected, height: row.getBoundingClientRect().height, grown: 0 }
+    window.__processSelection = probe
     element.addEventListener(
       "wheel",
       () => {
+        probe.calls++
+        probe.connected = row.isConnected
         const body = document.createElement("p")
         body.textContent = "Late current-version output below the reading position. ".repeat(100)
-        ;[...element.querySelectorAll("[data-display-row]")].at(-1)!.append(body)
+        row.append(body)
+        probe.grown = row.getBoundingClientRect().height
       },
       { once: true },
     )
@@ -406,132 +373,125 @@ test("native reading movement wins over real body growth in the same wheel dispa
   })
   await page.mouse.wheel(0, -120)
   for (let index = 0; index < 4; index++) await frames()
-  const after = await viewport.evaluate((element) => ({ top: element.scrollTop, height: element.scrollHeight }))
+  const after = await viewport.evaluate((element) => {
+    const probe = window.__processSelection as {
+      row: HTMLElement
+      calls: number
+      connected: boolean
+      height: number
+      grown: number
+    }
+    return {
+      top: element.scrollTop,
+      height: element.scrollHeight,
+      probe: {
+        ...probe,
+        row: probe.row.dataset.displayRow,
+        stillConnected: probe.row.isConnected,
+        measuredHeight: probe.row.getBoundingClientRect().height,
+        wrapper: probe.row.parentElement?.getAttribute("style"),
+      },
+    }
+  })
+  expect(after.probe.calls).toBe(1)
+  expect(after.probe.connected).toBe(true)
+  expect(after.probe.stillConnected).toBe(true)
+  expect(after.probe.measuredHeight).toBeGreaterThan(after.probe.height)
   expect(after.height).toBeGreaterThan(before.height)
   expect(after.top).toBeLessThanOrEqual(before.top - 100)
+  expect(await page.evaluate(() => document.getSelection()?.toString())).toBe(selected)
   expect(await page.locator('[data-slot="process-latest"]').count()).toBe(0)
 })
 
 test("native Space paging preserves new reading when real body growth follows its first movement", async () => {
-  await page.goto(url)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.evaluate(() => window.__conversationProcess.grow(1000))
-  await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))
-  const viewport = page.locator('[data-component="process-viewport"]').last()
-  await viewport.focus()
-  for (let index = 0; index < 4; index++) await frames()
-  const before = await viewport.evaluate((element) => {
-    element.addEventListener(
-      "scroll",
-      () => {
-        window.__conversationProcess.growToolEvidence("many-400")
-      },
-      { once: true },
-    )
-    return { top: element.scrollTop, height: element.scrollHeight }
-  })
-  await viewport.press("Space")
-  for (let index = 0; index < 12; index++) await frames()
-  const after = await viewport.evaluate((element) => ({ top: element.scrollTop, height: element.scrollHeight }))
-  expect(await viewport.locator('[data-part-id="many-400"] [data-slot="activity-evidence"]').count()).toBe(1)
-  expect(after.height).toBeGreaterThan(before.height)
-  expect(after.top).toBeGreaterThan(before.top + 100)
+  const cdp = await page.context().newCDPSession(page)
+  try {
+    await page.goto(`${url}?scrolling`)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    await page.evaluate(() => window.__conversationProcess.grow(1000))
+    expect(await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))).toBe(true)
+    const viewport = page.locator("[data-scroller]").last()
+    const part = viewport.locator('[data-slot="activity-step"][data-part-id="many-400"]')
+    await part.waitFor()
+    await viewport.evaluate(async (element) => {
+      await Promise.allSettled(
+        element
+          .getAnimations({ subtree: true })
+          .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+          .map((animation) => animation.finished),
+      )
+      const part = element.querySelector<HTMLElement>('[data-part-id="many-400"]')!
+      element.scrollTop += part.getBoundingClientRect().top - element.getBoundingClientRect().top
+    })
+    await part.locator('[data-slot="activity-step-trigger"]').evaluate((element) => {
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      document.getSelection()?.removeAllRanges()
+      document.getSelection()?.addRange(range)
+      document.dispatchEvent(new Event("selectionchange"))
+    })
+    await viewport.focus()
+    for (let index = 0; index < 4; index++) await frames()
+    expect(await viewport.evaluate((element) => document.activeElement === element)).toBe(true)
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 12 })
+    const before = await viewport.evaluate((element) => {
+      element.addEventListener(
+        "keydown",
+        () => {
+          element.addEventListener("scroll", () => window.__conversationProcess.growToolEvidence("many-400"), {
+            once: true,
+          })
+        },
+        { once: true },
+      )
+      return {
+        top: element.scrollTop,
+        height: element.scrollHeight,
+        remaining: element.scrollHeight - element.clientHeight - element.scrollTop,
+      }
+    })
+    expect(before.remaining).toBeGreaterThan(1000)
+    await viewport.press("Space")
+    for (let index = 0; index < 12; index++) await frames()
+    const after = await viewport.evaluate((element) => ({ top: element.scrollTop, height: element.scrollHeight }))
+    expect(await viewport.locator('[data-part-id="many-400"] [data-slot="activity-evidence"]').count()).toBe(1)
+    expect(after.height).toBeGreaterThan(before.height)
+    expect(after.top).toBeGreaterThan(before.top + 100)
+  } finally {
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
+    await cdp.detach()
+  }
 })
 
-test("local reading survives new actions, history prepend and reopening without moving the outer stream", async () => {
-  await page.goto(url)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
-  await page.evaluate(() => window.__conversationProcess.grow(1000))
-  expect(await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))).toBe(true)
-  const viewport = page.locator('[data-component="process-viewport"]').last()
-  const part = page.locator('[data-slot="activity-step"][data-part-id="many-400"]')
-  await part.waitFor()
-  await viewport.evaluate(async (element) => {
-    await Promise.allSettled(
-      element
-        .getAnimations({ subtree: true })
-        .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
-        .map((animation) => animation.finished),
-    )
-  })
-  await viewport.focus()
-  await viewport.press("ArrowUp")
-  await viewport.evaluate(async (element) => {
-    let previous = element.scrollTop,
-      stable = 0
-    for (let i = 0; i < 40 && stable < 4; i++) {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-      const next = element.scrollTop
-      stable = next === previous ? stable + 1 : 0
-      previous = next
-    }
-  })
-  await frames()
-  const before = await part.evaluate((el) => el.getBoundingClientRect().top)
-  const outer = await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)
-  await page.evaluate(() => window.__conversationProcess.append("live-reading-append"))
-  await frames()
-  await frames()
-  expect(Math.abs((await part.evaluate((el) => el.getBoundingClientRect().top)) - before)).toBeLessThan(2)
-  expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(outer)
-  await page.evaluate(() => window.__conversationProcess.prepend(24))
-  await frames()
-  expect(Math.abs((await part.evaluate((el) => el.getBoundingClientRect().top)) - before)).toBeLessThan(2)
-  expect(await page.locator("[data-scroller]").evaluate((el) => el.scrollTop)).toBe(outer)
-  expect(await page.locator('[data-slot="process-latest"]').count()).toBe(0)
-  const header = page.locator('[data-slot="turn-process-trigger"]')
-  const relative = await part.evaluate(
-    (el) =>
-      el.getBoundingClientRect().top - el.closest('[data-component="process-viewport"]')!.getBoundingClientRect().top,
-  )
-  await header.click()
-  await page.waitForFunction(() => !document.querySelector('[data-row-kind="activity"]'))
-  await header.click()
-  await frames()
-  await frames()
-  await page.locator("[data-scroller]").evaluate((element, offset) => (element.scrollTop = offset), outer)
-  await frames()
-  expect(
-    Math.abs(
-      (await part.evaluate(
-        (el) =>
-          el.getBoundingClientRect().top -
-          el.closest('[data-component="process-viewport"]')!.getBoundingClientRect().top,
-      )) - relative,
-    ),
-  ).toBeLessThan(2)
-  expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(120)
-  await viewport.focus()
-  await viewport.press("End")
-  await page.waitForFunction(() => {
-    const part = document.querySelector('[data-part-id="live-reading-append"]')
-    const viewport = part?.closest('[data-component="process-viewport"]')
-    if (!part || !viewport) return false
-    const bounds = viewport.getBoundingClientRect(),
-      row = part.getBoundingClientRect()
-    return row.height > 0 && row.bottom > bounds.top && row.top < bounds.bottom
-  })
-}, 30000)
-
-test("opening a live group follows its actions independently and the outer latest action resumes it", async () => {
+test("main reading survives live actions and return to latest resumes the conversation", async () => {
   await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => window.__conversationProcess.grow(80))
+  expect(await page.evaluate(() => window.__conversationProcess.locate("more", "many-0"))).toBe(true)
+  await settleConversation()
   const trigger = page.locator('[data-slot="activity-batch-trigger"]').last()
-  if ((await trigger.getAttribute("aria-expanded")) === "true") await trigger.click()
+  await trigger.waitFor({ state: "visible" })
+  await trigger.focus()
+  expect(await trigger.evaluate((element) => document.activeElement === element)).toBe(true)
+  if ((await trigger.getAttribute("aria-expanded")) === "true") {
+    await trigger.click()
+    await settleConversation()
+    expect(await trigger.getAttribute("aria-expanded")).toBe("false")
+  }
   await trigger.click()
-  const viewport = page.locator('[data-component="process-viewport"]').last()
+  await settleConversation()
+  expect(await trigger.getAttribute("aria-expanded")).toBe("true")
+  const viewport = page.locator("[data-scroller]")
   await viewport.waitFor()
+  await page.evaluate(() => window.__conversationProcess.latest())
   for (let index = 0; index < 15; index++) await frames()
-  const outer = page.locator("[data-scroller]")
-  const outerTop = await outer.evaluate((element) => element.scrollTop)
   await page.evaluate(() => window.__conversationProcess.append("opened-live-action"))
   for (let index = 0; index < 15; index++) await frames()
   expect(
     await viewport.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop),
   ).toBeLessThanOrEqual(2)
-  expect(await viewport.locator('[data-part-id="opened-live-action"]').count()).toBe(1)
-  expect(await outer.evaluate((element) => element.scrollTop)).toBe(outerTop)
+  expect(await viewport.locator('[data-display-row][data-part-id="opened-live-action"]').count()).toBe(1)
+  expect(await viewport.locator('[data-slot="activity-step"][data-part-id="opened-live-action"]').count()).toBe(1)
   await viewport.hover()
   await page.mouse.wheel(0, -120)
   for (let index = 0; index < 10; index++) await frames()
@@ -545,6 +505,163 @@ test("opening a live group follows its actions independently and the outer lates
   expect(
     await viewport.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop),
   ).toBeLessThanOrEqual(2)
-  expect(await viewport.locator('[data-part-id="reading-live-action"]').count()).toBe(1)
+  expect(await viewport.locator('[data-display-row][data-part-id="reading-live-action"]').count()).toBe(1)
+  expect(await viewport.locator('[data-slot="activity-step"][data-part-id="reading-live-action"]').count()).toBe(1)
   expect(errors).toEqual([])
 })
+
+test("SDK conflicts recover in real conversation rows across activity modes without altering literal message text", async () => {
+  for (const mode of ["full", "balanced", "minimal"] as const) {
+    await contentPage("conflict")
+    await page
+      .getByText("I will check the project first.", { exact: true })
+      .waitFor()
+      .catch(async (error) => {
+        throw new Error(JSON.stringify({ url: page.url(), errors, html: await page.content() }), { cause: error })
+      })
+    await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 2)
+    await page.evaluate((mode) => window.__conversationProcess.mode(mode), mode)
+    await frames()
+    expect(await page.locator("[data-content-error]").count()).toBe(0)
+    expect(await page.getByText("Literal message: [object Object]", { exact: true }).count()).toBe(1)
+  }
+  expect(errors).toEqual([])
+}, 60000)
+
+test("each part clears only its own failure and keeps the existing Markdown mounted", async () => {
+  await contentPage("mixed")
+  await page
+    .getByText("Content unavailable: progress", { exact: true })
+    .waitFor()
+    .catch(async (error) => {
+      throw new Error(JSON.stringify({ url: page.url(), errors, html: await page.content() }), { cause: error })
+    })
+  await page.evaluate(() => {
+    window.answerNode = document.querySelector('[data-part-id="progress"] [data-component="markdown"]')
+    window.__conversationProcess.contentRecover("progress")
+  })
+  await page.getByText("Content unavailable: progress-2", { exact: true }).waitFor()
+  expect(await page.getByText("Content unavailable: progress", { exact: true }).count()).toBe(0)
+  expect(
+    await page.evaluate(
+      () => window.answerNode === document.querySelector('[data-part-id="progress"] [data-component="markdown"]'),
+    ),
+  ).toBe(true)
+  await page.evaluate(() => window.__conversationProcess.contentRecover("progress-2"))
+  await page.waitForFunction(() => !document.querySelector("[data-content-error]"))
+  expect(errors).toEqual([])
+}, 60000)
+
+test("manual retry is keyboard accessible, disables duplicate requests and clears the recovered error", async () => {
+  await contentPage("mixed")
+  await page.getByText("Content unavailable: progress", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.contentRecover("progress-2")
+    window.__conversationProcess.contentPending("progress")
+  })
+  const retry = page.getByRole("button", { name: "Retry loading content", exact: true })
+  await retry.focus()
+  await page.evaluate(() => {
+    window.answerNode = document.activeElement?.closest("[data-display-row]")
+  })
+  await retry.press("Enter")
+  const pending = page.getByRole("button", { name: "Retrying…", exact: true })
+  await pending.waitFor()
+  expect(await pending.isDisabled()).toBe(true)
+  await pending.evaluate((button) => (button as HTMLButtonElement).click())
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(2)
+  await page.evaluate(() => window.__conversationProcess.contentFinish("progress"))
+  await page.waitForFunction(() => !document.querySelector("[data-content-error]"))
+  expect(await page.evaluate(() => document.activeElement === window.answerNode)).toBe(true)
+  await contentPage("mixed")
+  await page.getByText("Content unavailable: progress", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.contentRecover("progress-2")
+    window.__conversationProcess.contentPending("progress")
+  })
+  await page.getByRole("button", { name: "Retry loading content", exact: true }).press("Enter")
+  await page.getByRole("button", { name: "Retrying…", exact: true }).waitFor()
+  await page.getByRole("button", { name: "Outside conversation", exact: true }).focus()
+  await page.evaluate(() => window.__conversationProcess.contentFinish("progress"))
+  await page.waitForFunction(() => !document.querySelector("[data-content-error]"))
+  expect(await page.evaluate(() => document.activeElement?.hasAttribute("data-outside-control"))).toBe(true)
+  expect(errors).toEqual([])
+}, 60000)
+
+test("exhausted conflicts show a sync retry and malformed errors use a readable fallback", async () => {
+  await contentPage("stalled")
+  await page.getByText("Couldn’t sync this content", { exact: true }).waitFor()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(8)
+  await frames()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(8)
+  await contentPage("malformed")
+  await page.getByText("Couldn’t load this content", { exact: true }).waitFor()
+  expect(await page.locator("[data-content-error]").innerText()).not.toContain("[object Object]")
+  expect(await page.getByRole("button", { name: "Retry loading content", exact: true }).count()).toBe(1)
+  expect(errors).toEqual([])
+}, 60000)
+
+test("stale accepted summaries revalidate without removing current content or replaying its entrance", async () => {
+  await page.goto(url)
+  const prose = page.getByText("I will check the project first.", { exact: true })
+  await prose.waitFor()
+  await page.evaluate(() => {
+    window.answerNode = document.querySelector('[data-part-id="progress"] [data-component="markdown"]')
+    window.__conversationProcess.contentStale()
+  })
+  await frames()
+  expect(await page.evaluate(() => window.__conversationProcess.contentPageLoads())).toBeGreaterThan(0)
+  expect(await page.evaluate(() => !!window.answerNode?.isConnected)).toBe(true)
+  expect(await prose.count()).toBe(1)
+  await page.evaluate(() => window.__conversationProcess.contentPageFinish())
+  await frames()
+  expect(
+    await page.evaluate(
+      () => window.answerNode === document.querySelector('[data-part-id="progress"] [data-component="markdown"]'),
+    ),
+  ).toBe(true)
+  expect(await prose.count()).toBe(1)
+  expect(await page.locator('[data-part-id="progress"] [data-motion-changing]').count()).toBe(0)
+})
+
+test("same-version summary refresh preserves a healthy pending body read", async () => {
+  await contentPage("pending-refresh")
+  const prose = page.getByText("I will check the project first.", { exact: true })
+  await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 1)
+  expect(await prose.count()).toBe(0)
+  await page.evaluate(() => window.__conversationProcess.contentStale())
+  await page.waitForFunction(() => window.__conversationProcess.contentPageLoads() > 0)
+  await page.evaluate(() => window.__conversationProcess.contentPageFinish())
+  await frames()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(1)
+  expect(await page.evaluate(() => window.__conversationProcess.contentAborts("progress"))).toBe(0)
+  await page.evaluate(() => window.__conversationProcess.contentFinish("progress"))
+  await prose.waitFor()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBe(1)
+  expect(await page.locator("[data-content-error]").count()).toBe(0)
+  expect(errors).toEqual([])
+}, 30000)
+
+test("reconnect renews invalidated body leases even when the summary version stays the same", async () => {
+  await contentPage("conflict")
+  await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 2)
+  await page.evaluate(() => window.__conversationProcess.contentReconnect())
+  await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") === 3)
+  expect(await page.locator("[data-content-error]").count()).toBe(0)
+  expect(errors).toEqual([])
+}, 30000)
+
+test("reconnect before the first summary page finishes restores invalidated bodies", async () => {
+  await contentPage("late-reconnect")
+  const prose = page.getByText("I will check the project first.", { exact: true })
+  await prose.waitFor()
+  await page.waitForFunction(() => window.__conversationProcess.contentReads("progress") > 0)
+  const reads = await page.evaluate(() => window.__conversationProcess.contentReads("progress"))
+  await page.evaluate(() => window.__conversationProcess.contentReconnect())
+  await prose.waitFor({ state: "hidden" })
+  await page.evaluate(() => window.__conversationProcess.contentPageFinish())
+  await prose.waitFor()
+  expect(await page.evaluate(() => window.__conversationProcess.contentReads("progress"))).toBeGreaterThan(reads)
+  expect(await page.locator("[data-content-error]").count()).toBe(0)
+  expect(errors).toEqual([])
+}, 30000)

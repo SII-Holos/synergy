@@ -8,7 +8,7 @@
 - **Systemic** — a gap in tests, tooling, or conventions let the bug escape.
 - **Costly to rediscover** — rediscovery would repeat substantial debugging.
 
-Otherwise, add a tested fix.
+Otherwise, test the fix.
 
 ## Placement
 
@@ -17,7 +17,7 @@ Otherwise, add a tested fix.
 
 ## Format
 
-Use the next `NNNN-kebab-case-title.md`. Sections:
+Use next `NNNN-kebab-case-title.md`:
 
 - **Executive summary** — one paragraph: what broke, its cause, why it escaped, and the durable lesson.
 - **Summary** — details of the failure.
@@ -27,6 +27,8 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 - **Lessons** — the durable takeaways.
 
 ## Index
+
+- [0061: Ownership](0061-conversation-scroll-ownership.md)
 
 - [0059: Disclosure](0059-cold-process-disclosure-jank.md)
 

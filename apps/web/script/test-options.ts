@@ -58,7 +58,6 @@ const playwrightIsolated = [
   "test/components/session/conversation-process-reading.dom.test.ts",
   "test/components/session/conversation-process-virtualization.dom.test.ts",
   "test/components/session/conversation-presentation.dom.test.ts",
-  "test/components/session/conversation-process.dom.test.ts",
   "test/components/session/session-submission-status.dom.test.ts",
   "test/components/dialog/workspace-dialog.dom.test.ts",
   "test/components/dialog/directory-navigation.dom.test.ts",
@@ -135,6 +134,7 @@ export const testOptions = {
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/components/session/conversation-layout-motion.test.ts",
     "test/context/session-submission-view.test.ts",
     "test/components/workspace/browser/browser-import-target.test.ts",
     "test/components/execution/controls.render.test.ts",

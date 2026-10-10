@@ -1,7 +1,8 @@
 import type { PluginConversationActivityView } from "@ericsanchezok/synergy-plugin"
 import { Trans, useLingui } from "@lingui/solid"
-import { createComponent, createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
+import { createComponent, createEffect, createMemo, createSignal, For, on, Show, type JSX } from "solid-js"
 import { ActivityTrace, AnimatedActivityCount } from "./activity-trace"
+import { ConversationFlowProvider } from "./conversation-flow"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import type {
@@ -16,8 +17,6 @@ import { ActivityReasoning } from "./process-reasoning"
 import { createDisclosureMotionRef } from "../utils/disclosure-motion"
 import { MAX_ACTIVITY_GROUP_STEPS } from "@ericsanchezok/synergy-util/activity"
 import "./activity-batch.css"
-import { ProcessViewport } from "./process-viewport"
-import { useData } from "../context/data"
 import { createActivityLabel } from "./session-status"
 
 const facts: Record<ActivityFamily, MessageDescriptor> = {
@@ -197,6 +196,28 @@ export function ActivityBatchStatus(props: { label?: string; animated?: boolean 
   )
 }
 
+export function ActivityBatchTrigger(props: {
+  expanded: boolean
+  controls?: string
+  ref?: (element: HTMLButtonElement) => void
+  onClick: JSX.EventHandlerUnion<HTMLButtonElement, MouseEvent>
+  children: JSX.Element
+}) {
+  return (
+    <button
+      ref={props.ref}
+      data-slot="activity-batch-trigger"
+      type="button"
+      aria-expanded={props.expanded}
+      aria-controls={props.controls}
+      onClick={props.onClick}
+    >
+      <span>{props.children}</span>
+      <Icon name={getSemanticIcon("navigation.expand")} size="small" />
+    </button>
+  )
+}
+
 export function ActivityBatch(props: {
   batch: ActivityBatchItem
   serverUrl: string
@@ -211,7 +232,6 @@ export function ActivityBatch(props: {
   onBeforeLayoutChange?: (event: Event) => void
 }) {
   const { _ } = useLingui()
-  const data = useData()
   const [explicit, setExplicit] = createSignal<boolean>()
   const [retained, setRetained] = createSignal<string[]>([])
   const [focused, setFocused] = createSignal<string>()
@@ -274,12 +294,10 @@ export function ActivityBatch(props: {
   })
   return (
     <div data-component="activity-batch" data-state={props.batch.state}>
-      <button
+      <ActivityBatchTrigger
         ref={triggerRef}
-        data-slot="activity-batch-trigger"
-        type="button"
-        aria-expanded={open()}
-        aria-controls={`${props.batch.key}:steps`}
+        expanded={open()}
+        controls={`${props.batch.key}:steps`}
         onClick={(event) => {
           props.onBeforeLayoutChange?.(event)
           const value = !open()
@@ -288,12 +306,9 @@ export function ActivityBatch(props: {
           if (value) props.onInspect?.()
         }}
       >
-        <span>
-          {label()}
-          <ActivityBatchStatus label={props.active ? props.statusLabel : undefined} animated={props.statusAnimated} />
-        </span>
-        <Icon name={getSemanticIcon("navigation.expand")} size="small" />
-      </button>
+        {label()}
+        <ActivityBatchStatus label={props.active ? props.statusLabel : undefined} animated={props.statusAnimated} />
+      </ActivityBatchTrigger>
       <Show when={open() && window().total > MAX_ACTIVITY_GROUP_STEPS}>
         <div data-slot="activity-history-pages">
           <button
@@ -327,13 +342,7 @@ export function ActivityBatch(props: {
           </button>
         </div>
       </Show>
-      <ProcessViewport
-        identity={`${props.serverUrl}:${data.directory}:${props.batch.message.sessionID}:${props.batch.key}`}
-        active={props.active}
-        parentFollowing={props.following}
-        revision={props.batch.steps.map((step) => `${step.part.id}:${step.state}`).join(",")}
-        onBeforeLayoutChange={props.onBeforeLayoutChange}
-      >
+      <ConversationFlowProvider>
         <ActivityTrace
           id={`${props.batch.key}:steps`}
           group={group()}
@@ -388,7 +397,7 @@ export function ActivityBatch(props: {
             </For>
           )}
         />
-      </ProcessViewport>
+      </ConversationFlowProvider>
     </div>
   )
 }
