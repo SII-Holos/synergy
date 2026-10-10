@@ -117,6 +117,29 @@ test("snapshot history and fork ownership survive deletion of every local Git ca
   })
 })
 
+test.each(["pack", "blob"] as const)(
+  "snapshot ownership repairs a retained reference with a missing %s",
+  async (lost) => {
+    await using f = await fixture()
+    const hash = await f.capture("durable historical content")
+    if (lost === "pack") await f.reopen()
+    await f.run(async () => {
+      expect(await SnapshotStore.owns(f.scope, f.session, hash)).toBe(true)
+      const repo = SnapshotStore.repository(f.scope)
+      if (lost === "pack") {
+        const directory = path.join(repo, "objects", "pack")
+        for (const file of await fs.readdir(directory)) await fs.rm(path.join(directory, file))
+      } else {
+        const blob = await SnapshotStore.command(repo, ["rev-parse", `${hash}:file.txt`])
+        await fs.rm(path.join(repo, "objects", blob.slice(0, 2), blob.slice(2)))
+      }
+      expect(await SnapshotStore.command(repo, ["rev-parse", SnapshotStore.reference(f.session, hash)])).toBe(hash)
+      expect(await SnapshotStore.owns(f.scope, f.session, hash)).toBe(true)
+      expect(await SnapshotStore.command(repo, ["show", `${hash}:file.txt`])).toBe("durable historical content")
+    })
+  },
+)
+
 test("failed snapshot upload never grants ownership from an uncommitted local reference", async () => {
   await using f = await fixture()
   f.failUploads()

@@ -82,6 +82,7 @@ export class InProcessModelExecutor {
           let result: LLM.StreamOutput | undefined
           const usage = Promise.withResolvers<Awaited<AgentTurnStream["usage"]>>()
           let complete = false
+          let errored = false
           let closing: Promise<void> | undefined
           const finish = AsyncLocalStorage.bind(
             () =>
@@ -89,7 +90,10 @@ export class InProcessModelExecutor {
                 try {
                   if (!complete) {
                     controller.abort(new DOMException("Model stream disposed", "AbortError"))
-                    await reader?.cancel(controller.signal.reason)
+                    await reader?.cancel(controller.signal.reason).catch((error) => {
+                      // An errored stream rejects cancellation with its read error despite already being terminal.
+                      if (!errored) throw error
+                    })
                   }
                   await owned?.dispose()
                   // Reading SDK usage early starts an eager tee consumer and defeats stream backpressure.
@@ -122,6 +126,9 @@ export class InProcessModelExecutor {
             result = await (archive ? RolloutTransport.provide(archive, open) : open())
             owned = LLM.takeFullStream(result)
             reader = owned.stream.getReader()
+            void reader.closed.catch(() => {
+              errored = true
+            })
             task.close = AsyncLocalStorage.bind(finish)
             controller.signal.throwIfAborted()
             onPhase?.("waiting_model")

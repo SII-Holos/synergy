@@ -12,7 +12,7 @@ Owners can declare `emptyInput` record prefixes only when no body effects exist 
 
 A startup migration can also supply a read-only `isApplied` proof. The runner evaluates that proof in the completion transaction and never replays a proven body. A false proof retains normal execution; a failed proof rolls back the whole completion group. Absent immediate roots prove nested input prefixes empty without a separate indexed query per prefix; existing roots still require the exact prefix check. Both observations expire at an ordinary migration.
 
-Historical import activity and existing cohorts prevent an empty-input completion. External effects stay outside retryable database callbacks. Commit failure publishes none of the group's completion markers. Configuration, schema, filesystem and snapshot ownership migrations retain their existing execution paths.
+Historical import activity and existing cohorts prevent an empty-input completion. External effects stay outside retryable database callbacks. Commit failure publishes none of the group's completion markers. Configuration, schema, filesystem and snapshot ownership migrations retain their existing execution paths. Artifact migration treats an absent source directory as empty only before any checkpoint exists. An interrupted backup with a missing source remains an error and retains its recovery state.
 
 Navigation transforms include both Session records and navigation records in their input declaration. Building an absent, empty index is a no-op; an existing stale index is still replaced. Schema-only and superseded Session transforms keep their migration IDs and can share empty completion. PostgreSQL and SQLite run the same owner-body and atomic-completion tests.
 

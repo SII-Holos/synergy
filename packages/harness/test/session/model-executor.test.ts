@@ -189,3 +189,30 @@ test("an unconfirmed disposal remains a shutdown failure", async () => {
   await expect(executor.run(input())).rejects.toThrow("stopping")
   await expect(executor.stop()).rejects.toThrow("failed to stop")
 })
+
+test.each(["read", "dispose", "abort"] as const)(
+  "a terminal upstream stream error releases capacity after %s",
+  async (action) => {
+    const { executor, calls } = fixture()
+    const controller = new AbortController()
+    const first = await executor.run(input(controller.signal))
+    const pending = executor.run(input())
+    const failure = new Error("upstream connection lost")
+    calls[0]!.output.error(failure)
+    if (action === "read") {
+      await expect(
+        (async () => {
+          for await (const part of first.fullStream) void part
+        })(),
+      ).rejects.toBe(failure)
+    } else if (action === "dispose") await first.dispose()
+    else controller.abort(new Error("caller cancelled"))
+    const second = await pending
+    expect(await first.usage).toBeUndefined()
+    expect(executor.stats()).toMatchObject({ active: 1, queued: 0, queuedBytes: 0 })
+    calls[1]!.output.close()
+    for await (const part of second.fullStream) void part
+    await executor.stop()
+    expect(executor.stats().active).toBe(0)
+  },
+)
