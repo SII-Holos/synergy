@@ -88,6 +88,27 @@ export namespace WorkspaceMounts {
     }
   }
 
+  /** Wait for this Runtime's writer; an orphaned preparing record is not recovery authority. */
+  export async function waitForAttachment(input: { scopeID: string; workspaceID: string; signal?: AbortSignal }) {
+    input.signal?.throwIfAborted()
+    const pending = attaching().get(JSON.stringify([input.scopeID, input.workspaceID]))
+    if (!pending) return
+    const signal = input.signal
+    if (!signal) {
+      await pending
+      return
+    }
+    const cancelled = Promise.withResolvers<never>()
+    const aborted = () => cancelled.reject(signal.reason)
+    signal.addEventListener("abort", aborted, { once: true })
+    try {
+      if (signal.aborted) aborted()
+      await Promise.race([pending, cancelled.promise])
+    } finally {
+      signal.removeEventListener("abort", aborted)
+    }
+  }
+
   async function mount(input: Selection) {
     const useID = `mount:${input.workspaceID}`
     const use = await Environment.acquire(input.environmentID, {

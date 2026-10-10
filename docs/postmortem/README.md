@@ -12,8 +12,8 @@ Otherwise, add a tested fix.
 
 ## Placement
 
-- Bugs and underlying process failures belong here.
-- Decisions, alternatives and rationale belong in `docs/decisions/`.
+- Bugs belong here.
+- Decisions and rationale belong in `docs/decisions/`.
 
 ## Format
 
@@ -27,6 +27,8 @@ Use the next `NNNN-kebab-case-title.md`. Sections:
 - **Lessons** — the durable takeaways.
 
 ## Index
+
+- [0061: Concurrent Workspace admission](0061-concurrent-workspace-admission.md)
 
 - [0059: Disclosure](0059-cold-process-disclosure-jank.md)
 
