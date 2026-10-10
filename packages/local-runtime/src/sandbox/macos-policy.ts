@@ -15,7 +15,11 @@ import * as fs_node from "fs"
 import * as path_node from "path"
 
 import type { SynergySandboxPermissionProfile } from "@ericsanchezok/synergy-harness/sandbox/policy-engine"
-import { partitionDeniesByWritableRoot } from "@ericsanchezok/synergy-harness/sandbox/policy"
+import {
+  partitionDeniesByWritableRoot,
+  traversalLiterals,
+  worktreeSandboxReadGrants,
+} from "@ericsanchezok/synergy-harness/sandbox/policy"
 import { MacOSSbpl } from "./macos-sbpl"
 
 // ------------------------------------------------------------------
@@ -43,12 +47,11 @@ function readDenyRule(denied: string): string {
   return `(deny file-read* (subpath "${escapeSbpl(denied)}"))`
 }
 
-function metadataDenyRegex(name: string): string {
-  // Protect writable paths containing /.<name>/ or ending in /.<name>
-  const escaped = name.replace(/\./g, "\\.")
-  return `(deny file-write*
-  (regex #"/${escaped}/")
-  (regex #"/${escaped}$"))`
+function metadataDenyRegex(root: string, name: string): string {
+  const prefix = [...canonicalize(root).replace(/\/+$/, "")].map(escapeRegexChar).join("")
+  const metadata = [...name].map(escapeRegexChar).join("")
+  const regex = `^${prefix}/(.*/)?${metadata}(/|$)`
+  return `(deny file-write* (regex "${escapeSbpl(regex)}"))`
 }
 
 /**
@@ -66,7 +69,7 @@ function escapeSbpl(s: string): string {
  * Escape a single character for use in an SBPL regex.
  */
 function escapeRegexChar(c: string): string {
-  const specials = new Set([".", "+", "^", "$", "(", ")", "[", "]", "|", "\\"])
+  const specials = new Set([".", "*", "+", "?", "^", "$", "(", ")", "[", "]", "{", "}", "|", "\\"])
   return specials.has(c) ? "\\" + c : c
 }
 
@@ -230,7 +233,7 @@ export namespace MacOSPolicy {
    *
    * Call generateParams() to produce the corresponding -D parameter map.
    */
-  export function compileProfile(profile: SynergySandboxPermissionProfile): string {
+  export function compileProfile(profile: SynergySandboxPermissionProfile, originalCheckout?: string): string {
     const lines: string[] = []
     const fs = profile.fileSystem
 
@@ -258,12 +261,21 @@ export namespace MacOSPolicy {
     //     missing path canonicalizes to itself (denying nothing that exists)
     //     and because the -D writable roots bind canonicalized spellings —
     //     comparing raw spellings could place a deny on the wrong side.
-    const readDenies = partitionDeniesByWritableRoot(
-      (fs.readDenyPaths ?? []).map(canonicalize),
-      fs.writableRoots.map(canonicalize),
-    )
+    const gitReads = worktreeSandboxReadGrants(fs.workspace, originalCheckout)
+    const worktreeReads = gitReads.length ? [canonicalize(fs.workspace), ...gitReads] : []
+    const readDenies = partitionDeniesByWritableRoot((fs.readDenyPaths ?? []).map(canonicalize), [
+      ...fs.writableRoots.map(canonicalize),
+      ...worktreeReads,
+    ])
     for (const denied of readDenies.beforeWritableRoots) {
       lines.push(readDenyRule(denied))
+    }
+
+    for (const ancestor of traversalLiterals(worktreeReads)) {
+      lines.push(`(allow file-read-metadata (literal "${escapeSbpl(ancestor)}"))`)
+    }
+    for (const grant of worktreeReads) {
+      lines.push(`(allow file-read* (subpath "${escapeSbpl(grant)}"))`)
     }
 
     // 4. Writable roots — parameterized allow rules
@@ -296,11 +308,10 @@ export namespace MacOSPolicy {
       lines.push(unixSocketRules)
     }
 
-    // 7a. Protected metadata names — deny writes to critical dirs
-    for (const name of fs.protectedMetadataNames) {
-      // Skip empty strings
-      if (name.length > 0) {
-        lines.push(metadataDenyRegex(name))
+    // Metadata ancestors of an admitted root are not metadata inside that root.
+    for (const root of fs.writableRoots) {
+      for (const name of fs.protectedMetadataNames) {
+        if (name.length > 0) lines.push(metadataDenyRegex(root, name))
       }
     }
 
@@ -314,10 +325,10 @@ export namespace MacOSPolicy {
     return lines.join("\n") + "\n"
   }
 
-  export function compileExecution(profile: SynergySandboxPermissionProfile) {
+  export function compileExecution(profile: SynergySandboxPermissionProfile, originalCheckout?: string) {
     const params = generateParams(profile)
     return {
-      profile: compileProfile(profile),
+      profile: compileProfile(profile, originalCheckout),
       params,
       writeFootprint: {
         kind: "roots" as const,

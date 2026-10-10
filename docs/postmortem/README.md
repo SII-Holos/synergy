@@ -28,6 +28,8 @@ Use `NNNN-kebab-case-title.md`. Sections:
 
 ## Index
 
+- [0067: Isolated containment](0067-isolated-runtime-containment-gaps.md)
+
 - [0066: Completion settlement](0066-completion-waited-for-file-settlement.md)
 
 - [0065: Session navigation](0065-session-navigation-flashed-introduction.md)

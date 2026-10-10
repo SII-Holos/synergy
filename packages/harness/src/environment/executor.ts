@@ -35,6 +35,7 @@ export namespace ExecutionProtocol {
       command: z.string(),
       args: z.array(z.string()),
       workspace: z.string().min(1),
+      originalCheckout: z.string().optional(),
       executionCwd: z.string().optional(),
       sandboxMode: z.enum(["none", "read_only", "workspace_write"]),
       backend: z.string().optional(),
