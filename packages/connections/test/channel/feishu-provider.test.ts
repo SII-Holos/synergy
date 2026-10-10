@@ -1431,6 +1431,7 @@ describe("Streaming session compatibility", () => {
         async update() {},
         async updateToolProgress() {},
         async close() {},
+        async closeWithoutDelivery() {},
         isActive() {
           return true
         },

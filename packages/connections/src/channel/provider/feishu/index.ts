@@ -1353,6 +1353,8 @@ class NonStreamingSession implements ChannelTypes.StreamingSession {
     if (finalText) await this.send(finalText)
   }
 
+  async closeWithoutDelivery(): Promise<void> {}
+
   isActive(): boolean {
     return false
   }

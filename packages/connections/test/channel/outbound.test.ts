@@ -79,6 +79,7 @@ function provider(type: string, calls: ProviderCalls): Provider {
         async update() {},
         async updateToolProgress() {},
         async close() {},
+        async closeWithoutDelivery() {},
         isActive: () => false,
       }
     },

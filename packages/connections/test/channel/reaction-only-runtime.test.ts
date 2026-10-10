@@ -61,6 +61,7 @@ function provider(type: string, calls: Calls, options: { failReaction?: boolean;
         async update() {},
         async updateToolProgress() {},
         async close() {},
+        async closeWithoutDelivery() {},
         isActive: () => false,
       }
     },

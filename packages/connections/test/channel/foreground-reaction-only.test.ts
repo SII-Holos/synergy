@@ -10,9 +10,13 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Channel } from "../../src/channel"
+import { ChannelOutbound } from "../../src/channel/outbound"
+import { FeishuStreamingCard } from "../../src/channel/provider/feishu/streaming-card"
 import type { ChannelHost } from "../../src/channel/host"
 import type { Provider, StreamingSession } from "../../src/channel/types"
 import { ChannelReactionOnlyTool } from "../../src/channel/tools/channel-reaction-only"
@@ -94,6 +98,9 @@ async function runScenario(
   reactionTransport: ReactionTransport = "acknowledged",
   compensationFails = false,
   enumerationFails = false,
+  streamingEnabled = false,
+  closeRejects = false,
+  cardFailure?: "settings-rejection" | "oversize" | "terminal",
 ) {
   const connected = Promise.withResolvers<ChannelHost.Instance>()
   const modelStarted = Promise.withResolvers<void>()
@@ -102,6 +109,7 @@ async function runScenario(
   const pushes: Array<Parameters<NonNullable<Provider["pushMessage"]>>[0]> = []
   const reactions: Array<Parameters<NonNullable<Provider["addReaction"]>>[0]> = []
   const appliedReactions: Array<Parameters<NonNullable<Provider["addReaction"]>>[0]> = []
+  const cleanups: string[] = []
   const closes: Array<{ replyToMessageId?: string; finalText?: string; error?: boolean }> = []
   const updates: string[] = []
   const toolProgressUpdates: Array<Parameters<StreamingSession["updateToolProgress"]>[0]> = []
@@ -109,6 +117,12 @@ async function runScenario(
   let primaryCalls = 0
   let failHistoryRead = false
   let historyFailures = 0
+  let activeStreaming = false
+  let streamingStarts = 0
+  const originalFetch = globalThis.fetch
+  const cardRequests: Array<{ url: string; body: Record<string, unknown> }> = []
+  let streamingCard: FeishuStreamingCard | undefined
+  let cardRequestsAfterInvoke = 0
 
   const sdk: FixtureSdk = {
     languageModel(modelId): FixtureModel {
@@ -199,7 +213,7 @@ async function runScenario(
               [ACCOUNT_ID]: {
                 appId: "synthetic-app",
                 appSecret: "synthetic-secret",
-                streaming: false,
+                streaming: streamingEnabled,
                 model: "foreground-fixture/primary",
                 reactionOnlyReply: { enabled: true, forceReaction: "SILENT" },
               },
@@ -250,6 +264,21 @@ async function runScenario(
     ScopeContext.provide({
       scope: Scope.home(),
       async fn() {
+        if (cardFailure)
+          globalThis.fetch = (async (input, init) => {
+            const url = String(input)
+            const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+            cardRequests.push({ url, body })
+            if (url.endsWith("/cardkit/v1/cards"))
+              return Response.json({ code: 0, data: { card_id: "card_history_failure" } })
+            if (url.endsWith(`/im/v1/messages/${FOREGROUND_TOPIC}/reply`))
+              return Response.json({ code: 0, data: { message_id: "message_history_failure" } })
+            if (url.endsWith("/settings") && cardFailure === "settings-rejection")
+              return Response.json({ code: 230001, msg: "Settings rejected" })
+            if (url.includes("/elements/") && cardFailure === "terminal")
+              return Response.json({ code: 300309, msg: "streaming mode is closed" })
+            return Response.json({ code: 0 })
+          }) as typeof fetch
         const provider: Provider = {
           type: "feishu",
           lifecycle: "self_connected",
@@ -279,8 +308,28 @@ async function runScenario(
           },
           async removeReaction() {},
           createStreamingSession(input) {
+            if (cardFailure) {
+              streamingCard = new FeishuStreamingCard({
+                apiBase: "https://open.feishu.test/open-apis",
+                getAccessToken: async () => "fixture_token",
+                chatId: input.chatId,
+                replyToMessageId: input.replyToMessageId,
+                throttleMs: 0,
+                persistence: { accountId: input.accountId, sessionID: input.sessionID },
+                sendFallback: async (text) => {
+                  await fetch(`https://open.feishu.test/open-apis/im/v1/messages/${input.replyToMessageId}/reply`, {
+                    method: "POST",
+                    body: JSON.stringify({ msg_type: "text", content: JSON.stringify({ text }) }),
+                  })
+                },
+              })
+              return streamingCard
+            }
             return {
-              async start() {},
+              async start() {
+                streamingStarts += 1
+                activeStreaming = streamingEnabled
+              },
               async update(text) {
                 updates.push(text)
               },
@@ -289,6 +338,8 @@ async function runScenario(
               },
               async close(finalText, error) {
                 closes.push({ replyToMessageId: input.replyToMessageId, finalText, error })
+                activeStreaming = false
+                if (closeRejects) throw new Error("Streaming card finalization failed")
                 if (finalText)
                   await provider.replyMessage!({
                     accountId: input.accountId,
@@ -296,7 +347,12 @@ async function runScenario(
                     parts: [{ type: "text", text: finalText }],
                   })
               },
-              isActive: () => false,
+              async closeWithoutDelivery() {
+                cleanups.push(input.replyToMessageId!)
+                activeStreaming = false
+                if (closeRejects) throw new Error("Streaming card finalization failed")
+              },
+              isActive: () => activeStreaming,
               ownsTerminalDelivery: () => true,
             }
           },
@@ -330,6 +386,12 @@ async function runScenario(
           try {
             const result = await realInvoke(input, lease)
             returned.push(result)
+            if (streamingCard) {
+              await streamingCard.update(ORDINARY_ANSWER).catch(() => {})
+              if (cardFailure === "oversize") await streamingCard.update("答".repeat(11_000))
+              expect(cardRequests.some((request) => request.url.includes("/elements/"))).toBe(true)
+            }
+            cardRequestsAfterInvoke = cardRequests.length
             failHistoryRead = enumerationFails
             return result
           } catch (error) {
@@ -375,6 +437,11 @@ async function runScenario(
           expect(foreground.accepted).toBe(true)
           if (!foreground.accepted) throw new Error("Expected foreground acceptance")
           await modelStarted.promise
+          if (streamingCard) expect(streamingCard.isActive()).toBe(true)
+          else {
+            expect(streamingStarts).toBe(1)
+            expect(activeStreaming).toBe(streamingEnabled)
+          }
           if (scenario !== "same-root-steer" && scenario !== "ordinary-no-answer") {
             const queued = await host.conversations.receive(inbound(QUEUED_INBOUND, QUEUED_TOPIC, "Answer B."))
             expect(queued.accepted).toBe(true)
@@ -400,18 +467,77 @@ async function runScenario(
           if (enumerationFails) {
             expect(historyFailures).toBe(1)
             expect(returned).toHaveLength(1)
-            expect(
-              messages.some((message) =>
-                message.parts.some((part) => part.type === "tool" && part.tool === "channel_reaction_only"),
-              ),
-            ).toBe(true)
+            if (!streamingEnabled)
+              expect(
+                messages.some((message) =>
+                  message.parts.some((part) => part.type === "tool" && part.tool === "channel_reaction_only"),
+                ),
+              ).toBe(true)
+            else {
+              if (streamingCard)
+                expect(
+                  messages
+                    .flatMap((message) => message.parts)
+                    .some((part) => part.type === "text" && part.text === ORDINARY_ANSWER),
+                ).toBe(true)
+              else expect(updates).toContain(ORDINARY_ANSWER)
+              expect(artifacts.get("A")).toBeDefined()
+            }
             expect(replies).toEqual([])
             expect(pushes).toEqual([])
-            expect(closes).toEqual([])
+            if (streamingCard) {
+              expect(streamingCard.isActive()).toBe(false)
+              expect(
+                cardRequests.slice(cardRequestsAfterInvoke).every((request) => request.url.endsWith("/settings")),
+              ).toBe(true)
+              const cardKey = StoragePath.channelFeishuStreamingCard(ACCOUNT_ID, sessionID, "card_history_failure")
+              if (cardFailure === "settings-rejection")
+                expect(await Storage.read(cardKey)).toMatchObject({ cardId: "card_history_failure" })
+              else await expect(Storage.read(cardKey)).rejects.toBeInstanceOf(Storage.NotFoundError)
+              const messageRequests = cardRequests.filter((request) => request.url.includes("/im/v1/messages/"))
+              expect(messageRequests).toHaveLength(1)
+              expect(messageRequests[0].body.msg_type).toBe("interactive")
+              const settings = cardRequests.filter((request) => request.url.endsWith("/settings"))
+              expect(settings).toHaveLength(cardFailure === "terminal" ? 0 : 1)
+              if (settings.length)
+                expect(JSON.parse(String(settings[0].body.settings))).toEqual({
+                  config: { streaming_mode: false, summary: { content: "" } },
+                })
+            } else {
+              expect(closes).toEqual([])
+              expect(cleanups).toEqual([FOREGROUND_TOPIC])
+              expect(streamingStarts).toBe(1)
+              expect(activeStreaming).toBe(false)
+            }
+            expect(ChannelOutbound.isForeground(sessionID, rootA.info.id)).toBe(false)
             expect(reactions.filter((reaction) => reaction.emoji !== "Typing")).toEqual([])
+            for (const message of messages.filter((message) => message.info.role === "assistant")) {
+              expect(message.info.metadata?.channelOutboundSent).toBeUndefined()
+              expect(message.info.metadata?.channelReactionOnlyAttempted).toBeUndefined()
+              expect(message.info.metadata?.channelReactionOnlyError).toBeUndefined()
+            }
+            const updatesBeforeCleanup = [...updates]
+            const progressBeforeCleanup = [...toolProgressUpdates]
+            const requestsBeforeCleanup = [...cardRequests]
+            if (streamingCard) await streamingCard.closeWithoutDelivery().catch(() => {})
+            const foregroundParts = messages
+              .filter((message) => message.info.role === "assistant" && message.info.rootID === rootA.info.id)
+              .flatMap((message) => message.parts)
+            await Promise.all(
+              foregroundParts
+                .filter((part) => part.type === "text" || part.type === "tool")
+                .map((part) => Bus.publish(MessageV2.Event.PartUpdated, { part })),
+            )
+            expect(updates).toEqual(updatesBeforeCleanup)
+            expect(toolProgressUpdates).toEqual(progressBeforeCleanup)
+            if (streamingCard) expect(cardRequests).toEqual(requestsBeforeCleanup)
+            else expect(cleanups).toHaveLength(1)
+            expect(replies).toEqual([])
+            expect(pushes).toEqual([])
             return
           }
           if (scenario === "ordinary-no-answer") {
+            expect(cleanups).toEqual([])
             const assistants = messages.filter((message) => message.info.role === "assistant")
             expect(assistants).toHaveLength(2)
             if (assistants[0].info.role !== "assistant" || assistants[1].info.role !== "assistant")
@@ -693,6 +819,7 @@ async function runScenario(
           invoke.mockRestore()
           history.mockRestore()
           await Channel.stopAll()
+          globalThis.fetch = originalFetch
         }
       },
     }),
@@ -738,3 +865,28 @@ test(
   () => runScenario("same-root-steer", "acknowledged", false, true),
   30_000,
 )
+
+test(
+  "streaming account closes its card after post-invoke history failure without delivering an unclassified transcript",
+  () => runScenario("ordinary-no-answer", "acknowledged", false, true, true),
+  30_000,
+)
+
+test(
+  "streaming history failure releases foreground ownership even when card finalization rejects",
+  () => runScenario("ordinary-no-answer", "acknowledged", false, true, true, true),
+  30_000,
+)
+
+test(
+  "streaming account closes its ordinary terminal once without cleanup redelivery",
+  () => runScenario("ordinary-no-answer", "acknowledged", false, false, true),
+  30_000,
+)
+
+for (const cardFailure of ["settings-rejection", "oversize", "terminal"] as const)
+  test(
+    `real Feishu card never delivers cached text after history failure: ${cardFailure}`,
+    () => runScenario("ordinary-no-answer", "acknowledged", false, true, true, false, cardFailure),
+    30_000,
+  )

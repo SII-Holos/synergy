@@ -390,3 +390,60 @@ describe("Feishu streaming card finalization", () => {
     }
   })
 })
+
+describe("Feishu streaming card finalization without delivery", () => {
+  test("shares one cleanup with close and ignores pending cached renders", async () => {
+    const mutations: Array<{ url: string; body: Record<string, unknown> }> = []
+    const fallback: string[] = []
+    const restoreFetch = installCardFetch((url, init) => {
+      mutations.push({ url, body: requestBody(init) })
+      return response()
+    })
+
+    try {
+      const card = createCard(async (text) => {
+        fallback.push(text)
+      })
+      await card.start()
+      const update = card.update("private cached draft")
+      const cleanup = card.closeWithoutDelivery()
+      expect(card.closeWithoutDelivery()).toBe(cleanup)
+      expect(card.close("must not deliver")).toBe(cleanup)
+      await Promise.all([update, cleanup])
+      expect(card.isActive()).toBe(false)
+      expect(mutations).toHaveLength(1)
+      expect(mutations[0].url.endsWith("/settings")).toBe(true)
+      expect(JSON.parse(String(mutations[0].body.settings))).toEqual({
+        config: { streaming_mode: false, summary: { content: "" } },
+      })
+      expect(fallback).toEqual([])
+      await card.update("late text")
+      await card.updateToolProgress([{ id: "late", tool: "webfetch", status: "completed" }])
+      await card.closeWithoutDelivery()
+      expect(mutations).toHaveLength(1)
+    } finally {
+      restoreFetch()
+    }
+  })
+
+  test("does not replay terminal content when cleanup is requested after normal close", async () => {
+    const fallback: string[] = []
+    const restoreFetch = installCardFetch((url) =>
+      url.includes("/elements/") ? response({ code: 230001, msg: "content rejected" }) : response(),
+    )
+    try {
+      const card = createCard(async (text) => {
+        fallback.push(text)
+      })
+      await card.start()
+      const close = card.close("normal final answer")
+      expect(card.closeWithoutDelivery()).toBe(close)
+      await close
+      expect(fallback).toEqual(["normal final answer"])
+      await card.closeWithoutDelivery()
+      expect(fallback).toEqual(["normal final answer"])
+    } finally {
+      restoreFetch()
+    }
+  })
+})
