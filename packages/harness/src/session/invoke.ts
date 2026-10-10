@@ -1,3 +1,4 @@
+import { SessionPauseRecovery } from "./pause-recovery"
 import { PrimaryAgentIdentity } from "../agent/primary-identity"
 
 import { ToolIntent } from "./tool-intent"
@@ -2588,21 +2589,31 @@ export namespace SessionInvoke {
    * restart is not evidence that the user wants the work continued — it is only
    * evidence that the turn was interrupted.
    *
-   * Each session is examined for direct evidence of an unfinished turn rather
-   * than for a flag a previous run happened to leave behind, so a session whose
-   * marker was never written is still caught.
+   * Enumerate atomically recorded recovery candidates. Historical Sessions
+   * enter this path on access through their versioned metadata migration.
    */
   export async function reconcilePausedSessions(scopeID?: string): Promise<void> {
     await reconcileInterruptedCortexDelegations(scopeID)
     await SessionCortexRuntime.reconcileParentNotifications(scopeID)
-    for (const sessionID of await SessionLifecycle.listUnfinishedSessions(scopeID)) {
-      if (SessionManager.isRunning(sessionID)) continue
-      try {
-        await SessionLifecycle.pause({ sessionID, reason: "interrupted" })
+    for await (const owner of SessionPauseRecovery.owners(scopeID)) await reconcilePausedSession(owner.sessionID)
+  }
+
+  export async function reconcilePausedSession(sessionID: string): Promise<void> {
+    using control = await Lock.tryAcquireWrite(`session-control:${sessionID}`)
+    if (!control || SessionManager.isRunning(sessionID)) return
+    try {
+      const session = await SessionManager.getSession(sessionID)
+      if (!session) return
+      const owner = { scopeID: session.scope.id, sessionID }
+      const revision = await SessionPauseRecovery.request(owner)
+      if (!revision) return
+      if (await SessionLifecycle.isUnfinished(session)) {
         await repairIncompleteAssistant(sessionID, { terminalize: false })
-      } catch (error) {
-        log.warn("session pause reconcile failed", { sessionID, error })
+        await SessionLifecycle.pause({ sessionID, reason: "interrupted" })
       }
+      await SessionPauseRecovery.complete(owner, revision)
+    } catch (error) {
+      log.warn("session pause reconcile failed", { sessionID, error })
     }
   }
 

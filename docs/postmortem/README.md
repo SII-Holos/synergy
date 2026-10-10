@@ -4,7 +4,7 @@
 
 ## When to write one
 
-- **Subtle** — the mechanism requires careful investigation.
+- **Subtle** — requires investigation.
 - **Systemic** — tests, tooling, or conventions missed the bug.
 - **Costly to rediscover** — repeats substantial debugging.
 
@@ -27,6 +27,8 @@ Use `NNNN-kebab-case-title.md`. Sections:
 - **Lessons** — the durable takeaways.
 
 ## Index
+
+- [0064: History latency](0064-history-pages-scanned-authoritative-storage.md)
 
 - [0063: Startup replay](0063-history-replay-blocked-startup.md)
 

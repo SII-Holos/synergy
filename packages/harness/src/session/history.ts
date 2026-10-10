@@ -24,6 +24,7 @@ import { SnapshotRanges } from "./snapshot-ranges"
 import { SessionFileRestore } from "./file-restore"
 import type { Info } from "./types"
 import { prepareSessionMigrations } from "../migration"
+import { upgradeAccessRecord } from "../migration/import"
 
 const log = Log.create({ service: "session.history" })
 const PAGE_HYDRATION_CONCURRENCY = 16
@@ -124,7 +125,15 @@ export namespace SessionHistory {
 
   export async function requireDisplayMessage(session: Info, messageID: string) {
     const sessionID = session.id
-    await prepareSessionDisplay(session, { messageID })
+    if (!Storage.inTransaction() || Storage.inWriteTransaction())
+      await prepareSessionMigrations({ scopeID: session.scope.id, sessionID })
+    const key = StoragePath.messageInfo(
+      asScopeID(session.scope.id),
+      asSessionID(sessionID),
+      Identifier.asMessageID(messageID),
+    )
+    const info = MessageV2.canonicalMessage(upgradeAccessRecord(key, await Storage.read<MessageV2.Info>(key)))
+    await SessionHistoryDisplay.prepareWindow(session.scope.id, sessionID, [info])
     const [header, visibility] = await Promise.all([
       SessionHistoryDisplay.header(session.scope.id, sessionID, messageID),
       displayVisibility(session),

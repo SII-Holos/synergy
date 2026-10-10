@@ -9,7 +9,7 @@ description: Run and test a source checkout of Synergy in an isolated second run
 
 Never stop, restart, signal, or reuse the `SYNERGY_HOME` of the Synergy instance carrying the current task. Do not run `synergy stop`, broad `kill`/`pkill`, or modify its data/lock files.
 
-For startup or migration changes, seed an isolated installed database with cold Sessions and operations before timing readiness. Run `bun test test/lifecycle/history-startup.test.ts` from Harness, then the affected page/recovery tests. Report Core preparation separately from HTTP/UI readiness and actual bytes read separately from logical dataset size; never use the live Home as a performance fixture.
+For startup or migration changes, seed an isolated installed database with cold Sessions and operations before timing readiness. Run `bun test test/lifecycle/history-startup.test.ts` from Harness, then the affected page/recovery tests. Report Core preparation separately from HTTP/UI readiness and actual bytes read separately from logical dataset size; never use the live Home as a performance fixture. Follow the [experience measurement rules](../testing-guide/references/local-verification.md#local-performance-experiments); exercise an old Session’s readable body and interactive composer after readiness, plus new Session and worktree creation under the same historical load.
 
 Read [Development reference](../../../docs/reference/development.md) before choosing a mode.
 

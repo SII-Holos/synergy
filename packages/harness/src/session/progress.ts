@@ -1,4 +1,5 @@
 import { MessageV2 } from "./message-v2"
+import { Identifier } from "../id/id"
 
 export namespace SessionProgress {
   /**
@@ -46,13 +47,38 @@ export namespace SessionProgress {
   }
 
   /**
-   * Resolve whether the given session still has a pending reply by loading its
-   * messages and delegating to {@link pendingReply}. Shared by session recovery
-   * and session working resolution.
+   * Inspect headers backwards to the latest reply root, retaining the same
+   * compaction boundary as filterCompacted without loading unrelated bodies.
    */
   export async function pendingReplyFor(input: { scopeID: string; sessionID: string }): Promise<boolean> {
-    const messages = await MessageV2.filterCompacted(MessageV2.stream(input)).catch(() => [] as MessageV2.WithParts[])
-    return pendingReply(messages)
+    const scopeID = Identifier.asScopeID(input.scopeID)
+    const sessionID = Identifier.asSessionID(input.sessionID)
+    const terminalRoots = new Set<string>()
+    let boundaryUserID: string | undefined
+    let skippedReply: boolean | undefined
+    let before: string | undefined
+    for (;;) {
+      let count = 0
+      for await (const info of MessageV2.readNewestInfos({ scopeID, sessionID, before, limit: 32 })) {
+        count++
+        before = MessageV2.messageOrderMarker(info)
+        if (info.role === "assistant") {
+          if (isTerminalAssistant(info)) {
+            terminalRoots.add(info.parentID)
+            if (info.rootID) terminalRoots.add(info.rootID)
+          }
+          if (!boundaryUserID && info.summary && info.finish) boundaryUserID = info.parentID
+          continue
+        }
+        const pending = isReplyRequiredUser(info) ? !terminalRoots.has(info.id) : undefined
+        if (!boundaryUserID && pending !== undefined) return pending
+        if (pending !== undefined && skippedReply === undefined) skippedReply = pending
+        if (info.id !== boundaryUserID) continue
+        const parts = await MessageV2.parts({ scopeID, sessionID, messageID: info.id })
+        if (parts.some((part) => part.type === "compaction")) return pending ?? false
+      }
+      if (count < 32) return skippedReply ?? false
+    }
   }
 
   /**

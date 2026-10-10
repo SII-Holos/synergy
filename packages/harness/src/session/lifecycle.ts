@@ -1,3 +1,4 @@
+import { SessionPauseRecovery } from "./pause-recovery"
 import z from "zod"
 import { Log } from "../util/log"
 import { SessionInteraction } from "./interaction"
@@ -88,33 +89,38 @@ export namespace SessionLifecycle {
     return session?.paused
   }
 
-  /**
-   * Sessions in the scope whose last turn never reached a normal end.
-   *
-   * Startup reconciliation asks for the *evidence* rather than for a flag a
-   * previous process happened to write, so a session whose marker was never
-   * persisted is still found. A session qualifies when either signal the drive
-   * gate would have acted on is present: the latest reply-required root never
-   * got a terminal assistant, or runnable queued work is still waiting.
-   *
-   * Already-paused sessions remain candidates: a process can die after writing
-   * the latch but before settling tool parts. Machine sessions are excluded.
-   */
+  /** Inspect enrolled recovery candidates; untouched history is prepared on access. */
   export async function listUnfinishedSessions(scopeID?: string): Promise<string[]> {
-    const { Storage } = await import("../storage/storage")
+    const { SessionManager } = await import("./manager")
     const unfinished: string[] = []
-    for await (const { value: info } of Storage.records<Info>({ kind: "session", scopeID })) {
-      if (!latchable(info)) continue
-      if (info.paused || (await hasUnfinishedTurn(info.scope.id, info.id))) unfinished.push(info.id)
+    for await (const owner of SessionPauseRecovery.owners(scopeID)) {
+      const info = await SessionManager.getSession(owner.sessionID)
+      const revision = await SessionPauseRecovery.revision(owner)
+      if (await isUnfinished(info)) unfinished.push(owner.sessionID)
+      else if (revision) await SessionPauseRecovery.complete(owner, revision)
     }
     return unfinished
+  }
+
+  export async function isUnfinished(info: Info | undefined): Promise<boolean> {
+    return latchable(info) && !!info && (!!info.paused || (await hasUnfinishedTurn(info.scope.id, info.id)))
+  }
+
+  export async function completeRecoveryIfSettled(sessionID: string): Promise<void> {
+    const { SessionManager } = await import("./manager")
+    const info = await SessionManager.getSession(sessionID)
+    if (!info) return
+    const owner = { scopeID: info.scope.id, sessionID }
+    const revision = await SessionPauseRecovery.revision(owner)
+    if (revision && !(await isUnfinished(info)) && !SessionManager.isRunning(sessionID))
+      await SessionPauseRecovery.complete(owner, revision)
   }
 
   async function hasUnfinishedTurn(scopeID: string, sessionID: string): Promise<boolean> {
     const { SessionInbox } = await import("./inbox")
     const { SessionProgress } = await import("./progress")
     if (await SessionInbox.hasRunnableItem(sessionID).catch(() => false)) return true
-    return SessionProgress.pendingReplyFor({ scopeID, sessionID }).catch(() => false)
+    return SessionProgress.pendingReplyFor({ scopeID, sessionID })
   }
 
   /**
