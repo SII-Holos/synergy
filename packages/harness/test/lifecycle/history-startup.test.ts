@@ -8,6 +8,11 @@ import { StoragePath } from "../../src/storage/path"
 import { RolloutExecutionMigration } from "../../src/session/rollout/execution-migration"
 import { prepareOwnerMigrations } from "../../src/migration"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
+import { ArtifactPack } from "../../src/storage/artifact-pack"
+import { StorageMaintenance } from "../../src/storage/maintenance"
+import { RuntimeContext } from "../../src/lifecycle/context"
+import { registerHarness } from "../../src/lifecycle/register"
+import { StorageBootstrap } from "../../src/storage/bootstrap"
 
 test.each([0, 1000, 10000])(
   "runtime readiness does not read cold history (%s owners)",
@@ -68,10 +73,12 @@ test.each([0, 1000, 10000])(
         using query = spyOn(Storage, "query")
         using read = spyOn(Storage, "read")
         using readMany = spyOn(Storage, "readMany")
+        using collect = spyOn(Storage, "collectArtifactGarbage")
         const start = performance.now()
         const runtime = await open()
         elapsed.push(performance.now() - start)
         try {
+          expect(collect).not.toHaveBeenCalled()
           const historical = (key: string[]) => ["sessions", "operations"].includes(key[0]!)
           expect(scan.mock.calls.filter(([key]) => historical(key))).toEqual([])
           expect(read.mock.calls.filter(([key]) => historical(key))).toEqual([])
@@ -117,3 +124,44 @@ test.each([0, 1000, 10000])(
   },
   30000,
 )
+
+test("startup retains artifact orphans until explicit offline recovery", async () => {
+  await using fixture = await runtimeHome()
+  const open = () =>
+    RuntimeHandle.open({
+      host: fixture.host,
+      mode: "oneshot",
+      composition: { register() {} },
+      storage: {
+        kind: "owned",
+        async open() {
+          const prepared = await StorageBootstrap.prepare({ root: fixture.host.root })
+          return {
+            handle: { store: prepared.store, artifactDirectory: path.join(fixture.host.root, "data") },
+            activate: prepared.activate,
+            needsValidation: prepared.manifest.phase !== "active",
+          }
+        },
+      },
+    })
+  const runtime = await open()
+  const key = ["blobs", "retained"]
+  try {
+    await runtime.run(() => Storage.writeBinary(key, Buffer.from("retained bytes")))
+  } finally {
+    await runtime.close()
+  }
+  const directory = path.join(fixture.host.root, "data", "agent-artifacts")
+  const orphan = await new ArtifactPack(directory).append(Buffer.from("unpublished bytes"))
+  const filename = path.join(directory, orphan.pack)
+  await using reopened = await open()
+  expect(await Bun.file(filename).exists()).toBe(true)
+  await reopened.run(async () => expect(Buffer.from(await Storage.readBinary(key)).toString()).toBe("retained bytes"))
+  await reopened.close()
+  await RuntimeContext.create(fixture.host).run(async () => {
+    registerHarness()
+    await using handle = await StorageMaintenance.open({ recover: true })
+    expect(await Bun.file(filename).exists()).toBe(false)
+    expect(Buffer.from(await Storage.readBinary(key)).toString()).toBe("retained bytes")
+  })
+}, 30000)

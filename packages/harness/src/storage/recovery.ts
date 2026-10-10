@@ -23,9 +23,6 @@ export namespace StorageRecovery {
     const instanceState = runtimeState()
 
     instanceState.sealed = true
-    const artifacts = (current: number) => progress?.({ stage: "artifacts", current, total: 0, bytes: 0 })
-    artifacts(0)
-    await Storage.collectArtifactGarbage({ scanOrphans: true, progress: artifacts })
     let current = 0
     const resources = () => progress?.({ stage: "resources", current, total: 0, bytes: 0 })
     resources()

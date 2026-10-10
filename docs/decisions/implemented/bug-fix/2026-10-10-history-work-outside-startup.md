@@ -14,7 +14,9 @@ Pure record upgrades run at the message/Part read boundary. Timeline requests se
 
 Rollout admission retains known pending owners. Missing, malformed or incomplete coverage becomes a durable epoch, with the malformed source preserved. Before an owner's evidence read or mutation, its single-flight recovery verifies the journal and referenced evidence, settles interrupted work, and writes an epoch receipt. Recovery bypass is scoped to that owner, storage Handle and Runtime. New owners remain independent of corrupt cold history. Shutdown settles only owners touched by the current Runtime and retains other pending owners. Recovery never executes an external tool again.
 
-Historical import is paused by a versioned policy migration. Explicitly selected owners can still import under the existing foreground budget and integrity checks. Usage jobs without an explicit request retain their cursor but do not run automatically. Selected statistics advance bounded usage preparation; an explicit full rebuild also repairs historical lineage before resuming its owner cursor. Original prices, source bytes and clear markers remain authoritative.
+Full artifact orphan collection belongs to explicit offline recovery (`data storage resume`), since unreferenced bytes cannot affect readiness. Required resource recovery still runs before admission, and pinned or referenced bytes remain protected during collection.
+
+Historical import is paused by a versioned policy migration. Explicitly selected owners can still import under the existing foreground budget and integrity checks. A requested full conversation search prepares only that owner in bounded batches independently of the automatic import pause; cancellation and Runtime shutdown still drain its work. Usage jobs without an explicit request retain their cursor but do not run automatically. Selected statistics advance bounded usage preparation; an explicit full rebuild also repairs historical lineage before resuming its owner cursor. Original prices, source bytes and clear markers remain authoritative.
 
 ## Alternatives considered
 
