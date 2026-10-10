@@ -1694,6 +1694,10 @@
           "reason": "session/LLM-loop runtime requires the full model pipeline"
         },
         {
+          "glob": "src/storage/blobs.ts",
+          "reason": "types-only immutable and reclaimable BlobStore contracts; concrete storage behavior is exercised by test/storage/object-artifacts.test.ts and Local Runtime's test/workspace/blob-store.test.ts"
+        },
+        {
           "glob": "src/storage/sql-contract.ts",
           "reason": "types-only SQL and IPC contracts, no runtime logic"
         },

@@ -67,7 +67,8 @@ test.each([false, true])(
       } else {
         await StorageArtifactMigration.run({ dataRoot, store })
         await StorageArtifactMigration.run({ dataRoot, store })
-        expect(await store.read(key)).toEqual({ version: 2, phase: "complete", cursor: 0 })
+        const completed = { version: 2, phase: "complete", cursor: 0 }
+        expect(await store.read<typeof completed>(key)).toEqual(completed)
         expect(await Bun.file(dataRoot).exists()).toBe(false)
       }
     } finally {
