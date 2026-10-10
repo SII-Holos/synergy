@@ -49,6 +49,7 @@ import { internMessages, internParts } from "../string-intern"
 import { findSessionIndex } from "../session-collection"
 import { classifyScopeEvent } from "./event-routing"
 import { readSessionViewportContent, planSessionViewportContent } from "../session-viewport-content"
+import { createPartPageBatchReader } from "../part-page-batch"
 import type { ConversationReadingPosition } from "@/components/session/conversation-reading-anchor"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
@@ -1066,17 +1067,20 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       )
         .then(async (response) => {
           if (prefetchToken.value !== token || !response.data) return
+          const readBatchedPartPages = createPartPageBatchReader({
+            read: async (batchSessionID, messageIDs, batchSignal) => {
+              const result = await globalSdk.client.session.partPages(
+                { ...scopeRequest(scopeKey), sessionID: batchSessionID, messageIDs, limit: 100 },
+                { signal: batchSignal, throwOnError: true },
+              )
+              if (!result.data) throw new Error("Missing conversation summaries")
+              return result.data
+            },
+          })
           const content = await readSessionViewportContent({
             messages: [...response.data.referencedRoots, ...response.data.items].map((entry) => entry.info),
             signal,
-            page: async (messageID) => {
-              const result = await globalSdk.client.session.partPage(
-                { ...scopeRequest(scopeKey), sessionID, messageID, limit: 100 },
-                { signal, throwOnError: true },
-              )
-              if (!result.data) throw new Error("Missing conversation summary")
-              return result.data
-            },
+            page: (messageID) => readBatchedPartPages(sessionID, messageID, signal),
             body: async (summary) => {
               const result = await globalSdk.client.session.partContent(
                 {
