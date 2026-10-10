@@ -29,6 +29,8 @@ Use `NNNN-kebab-case-title.md`. Sections:
 ## Index
 
 - [0062: Historical project bindings](0062-project-migration-required-live-directory-identity.md)
+- [0061: Concurrent Workspace admission](0061-concurrent-workspace-admission.md)
+
 - [0059: Disclosure](0059-cold-process-disclosure-jank.md)
 
 - [0058: Markdown settlement](0058-markdown-terminal-estimates-lost-reading.md)
