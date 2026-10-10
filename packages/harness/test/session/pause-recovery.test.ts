@@ -35,7 +35,7 @@ test("recovery enrollment rolls back with its write and an old receipt cannot er
     expect(await SessionPauseRecovery.revision(owner)).toBeUndefined()
   }))
 
-test("historical access enrolls only its owner and recovery yields to an active human control operation", () =>
+test("first historical access reconciles its owner and recovery yields to an active human control operation", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -67,7 +67,6 @@ test("historical access enrolls only its owner and recovery yields to an active 
         ).toBeUndefined()
         {
           using control = await Lock.write(`session-control:${session.id}`)
-          await Session.get(session.id)
           expect(await SessionPauseRecovery.revision(owner)).toBeUndefined()
           await SessionInvoke.reconcilePausedSession(session.id)
           expect(await SessionPauseRecovery.revision(owner)).toBeUndefined()
