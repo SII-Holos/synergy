@@ -27,6 +27,7 @@ export const migrations: Migration[] = [
   {
     scope: "scope",
     id: "20260430-scope-add-type-directory",
+    emptyInput: [StoragePath.scopeRoot()],
     description: "Add type and directory fields to scope records that predate these schema fields",
     async up(progress) {
       const ids = await Storage.scan(StoragePath.scopeRoot())
@@ -48,6 +49,11 @@ export const migrations: Migration[] = [
   {
     scope: "scope",
     id: "20260424-scope-reclaim-orphans",
+    async isApplied() {
+      if (ScopeLibraryStore.get()) return false
+      const roots = new Set(await Storage.scan([]))
+      return !["sessions", "notes", "agenda"].some((root) => roots.has(root))
+    },
     description: "Consolidate orphan scope data (no active project, no worktree) into a reclaimed scope",
     async up(progress) {
       const now = Date.now()
@@ -71,6 +77,11 @@ export const migrations: Migration[] = [
       dataScopeIDs.delete(LEGACY_GLOBAL_SCOPE_ID)
       dataScopeIDs.delete(HOME_SCOPE_ID)
       dataScopeIDs.delete(RECLAIMED_SCOPE_ID)
+
+      if (dataScopeIDs.size === 0) {
+        progress(1, 1)
+        return
+      }
 
       // 2. Collect active project scopeIDs: non-archived + worktree exists
       const activeProjectIDs = new Set<string>()
@@ -192,6 +203,32 @@ export const migrations: Migration[] = [
     id: "20260624-scope-global-to-home",
     description: "Rename legacy global scope data to the home scope",
     async up(progress) {
+      // The namespace's immediate roots prove the absence of every record
+      // consumed below. Filesystem snapshots and the optional library have
+      // separate authority and must still be migrated without these records.
+      const roots = new Set(await Storage.scan([]))
+      const inputs = [
+        "sessions",
+        "sessions_page_index",
+        "session_nav_v2",
+        "session_index",
+        "endpoint_session",
+        "notes",
+        "agenda",
+        "blueprint_loops",
+        "permissions",
+        "stats",
+        "library",
+      ]
+      if (!inputs.some((root) => roots.has(root))) {
+        await moveDir(
+          path.join(Global.Path.snapshot, LEGACY_GLOBAL_SCOPE_ID),
+          path.join(Global.Path.snapshot, HOME_SCOPE_ID),
+        )
+        await renameLibraryScope()
+        progress(1, 1)
+        return
+      }
       const fromSID = Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID)
       const toSID = Identifier.asScopeID(HOME_SCOPE_ID)
       const steps = 12
@@ -258,6 +295,7 @@ export const migrations: Migration[] = [
   {
     scope: "scope",
     id: "20260827-scope-archive-ephemeral-test-artifacts",
+    emptyInput: [StoragePath.scopeRoot()],
     description: "Archive scopes whose worktree is an ephemeral test artifact (synergy-test-*/synergy-orchestrated-*)",
     async up(progress) {
       const { Scope } = await import(".")
@@ -284,6 +322,7 @@ export const migrations: Migration[] = [
   {
     scope: "global",
     id: "20260921-scope-local-binding",
+    emptyInput: [StoragePath.scopeRoot()],
     description: "Separate stable Scope identity from nullable local resources without moving history",
     async up(progress) {
       const ids = await Storage.scan(StoragePath.scopeRoot())

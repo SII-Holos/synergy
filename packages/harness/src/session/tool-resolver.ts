@@ -228,7 +228,11 @@ export namespace ToolResolver {
     createRuntimeTool?(input: Input): AITool
   }
 
-  type RegistryTool = Awaited<ReturnType<typeof ToolRegistry.tools>>[number]
+  type RegistryTool = ToolRegistry.Initialized
+  type DeferredDefinition = Omit<Definition, "inputSchema" | "createRuntimeTool"> & {
+    loadDefinition(): Promise<Definition>
+  }
+  type DefinitionCandidate = Definition | DeferredDefinition
 
   export function registryInputSchema(item: {
     parameters: z.ZodType
@@ -1272,12 +1276,17 @@ export namespace ToolResolver {
     return model?.capabilities.input.image === true
   }
 
-  async function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Promise<Availability> {
+  async function applyAvailability(
+    defs: DefinitionCandidate[],
+    input: Omit<Input, "processor">,
+  ): Promise<Availability> {
     const { ToolIntent } = await import("./tool-intent")
     const intentBindings = new Map(
-      defs.map((definition) => [definition.id, ToolIntent.snapshot(definition.inputSchema)]),
+      defs.flatMap((definition) =>
+        "loadDefinition" in definition ? [] : [[definition.id, ToolIntent.snapshot(definition.inputSchema)] as const],
+      ),
     )
-    const eligible: Definition[] = []
+    const eligible: DefinitionCandidate[] = []
     const diagnostics = new Map<string, ToolDiagnosticInfo>()
     const autoExpandable = new Set<string>()
     const disabled = PermissionNext.disabled(
@@ -1353,12 +1362,46 @@ export namespace ToolResolver {
         toolIDs: eligible.map((item) => item.id),
       }),
     )
-    const visibility = ToolExposure.resolveVisibility(
+    let visibility = ToolExposure.resolveVisibility(
       eligible.filter((item) => allowed.has(item.id)),
       input.session?.toolState,
       { forcedGroups, forcedTools: forcedToolIDs },
     )
+    const selected = eligible.filter((item) => visibility.visible.has(item.id))
+    const initialized = await Promise.allSettled(
+      selected.map((item) => ("loadDefinition" in item ? item.loadDefinition() : Promise.resolve(item))),
+    )
+    const loaded: Definition[] = []
+    const failed = new Set<string>()
+    for (let i = 0; i < initialized.length; i++) {
+      const result = initialized[i]
+      const candidate = selected[i]!
+      const definition = result.status === "fulfilled" ? result.value : undefined
+      if (!definition || definition.diagnostic) {
+        failed.add(candidate.id)
+        diagnostics.set(
+          candidate.id,
+          definition?.diagnostic ?? {
+            code: "tool_unavailable",
+            toolName: candidate.id,
+            message: `Tool ${candidate.id} could not initialize: ${errorMessage(result.status === "rejected" ? result.reason : "missing definition")}`,
+            metadata: { source: candidate.source, stage: "initialization" },
+          },
+        )
+        continue
+      }
+      loaded.push(definition)
+      intentBindings.set(definition.id, ToolIntent.snapshot(definition.inputSchema))
+    }
+    // A companion which could not initialize must suppress its dependents too.
+    if (failed.size)
+      visibility = ToolExposure.resolveVisibility(
+        eligible.filter((item) => allowed.has(item.id) && !failed.has(item.id)),
+        input.session?.toolState,
+        { forcedGroups, forcedTools: forcedToolIDs },
+      )
     for (const item of eligible) {
+      if (failed.has(item.id)) continue
       if (visibility.visible.has(item.id)) continue
       const available = visibility.available.has(item.id)
       diagnostics.set(
@@ -1381,7 +1424,7 @@ export namespace ToolResolver {
         autoExpandable.add(item.id)
     }
     return {
-      visible: eligible.filter((item) => visibility.visible.has(item.id)),
+      visible: loaded.filter((item) => visibility.visible.has(item.id)),
       diagnostics,
       autoExpandable,
       intentBindings,
@@ -1445,7 +1488,7 @@ export namespace ToolResolver {
     } as any) as AITool
   }
 
-  function toolSchemaDiagnostic(item: RegistryTool, error: unknown): ToolDiagnosticInfo {
+  function toolSchemaDiagnostic(item: Pick<RegistryTool, "id" | "source">, error: unknown): ToolDiagnosticInfo {
     const source = item.source
     const message =
       source?.type === "plugin"
@@ -1478,9 +1521,400 @@ export namespace ToolResolver {
     }
   }
 
-  async function collectDefinitions(input: Omit<Input, "processor">): Promise<Definition[]> {
+  async function registryDefinition(item: RegistryTool, input: Omit<Input, "processor">): Promise<Definition> {
+    let schema: JSONSchema7
+    try {
+      schema = ProviderTransform.schema(input.model, registryInputSchema(item) as any, {
+        tool: item.id,
+      }) as JSONSchema7
+    } catch (error) {
+      if (item.source?.type === "plugin") {
+        await SessionToolContext.plugin()?.markToolSchemaDegraded(item.source.pluginId, item.source.toolId, error)
+      }
+      const diagnostic = toolSchemaDiagnostic(item, error)
+      log.warn("tool skipped due to schema failure", {
+        tool: item.id,
+        source: item.source,
+        executor: ToolExecutor.classify(item.id, item.source),
+        sessionID: input.sessionID,
+        error: error instanceof Error ? error.message : String(error),
+        diagnostic: diagnostic.message,
+      })
+      return {
+        id: item.id,
+        exposure: item.exposure,
+        display: item.display,
+        source: item.source,
+        executor: ToolExecutor.classify(item.id, item.source),
+        diagnostic,
+        description: diagnostic.message,
+        inputSchema: {
+          type: "object",
+          additionalProperties: true,
+        },
+      }
+    }
+
+    return {
+      id: item.id,
+      exposure: item.exposure,
+      display: item.display,
+      source: item.source,
+      executor: ToolExecutor.classify(item.id, item.source),
+      description: item.description,
+      inputSchema: schema,
+      createRuntimeTool(runtimeInput) {
+        const context = contextFactory(runtimeInput, item.id)
+        return tool({
+          id: item.id as any,
+          description: item.description,
+          inputSchema: jsonSchema(schema),
+          async execute(args, options) {
+            log.info("tool.execute.callback.start", {
+              tool: item.id,
+              sessionID: runtimeInput.sessionID,
+              messageID: runtimeInput.processor.message.id,
+              callID: options.toolCallId,
+              kind: "builtin",
+            })
+            const ctx = context(args, options)
+            let toolTrace: ToolTrace | undefined
+            const slot = runtimeInput.processor.beginExecution(options.toolCallId)
+            let resources: EnvironmentResources.Resolved | undefined
+            log.info("tool.execute.callback.slot", {
+              tool: item.id,
+              sessionID: runtimeInput.sessionID,
+              messageID: runtimeInput.processor.message.id,
+              callID: options.toolCallId,
+              kind: "builtin",
+              slotStatus: slot.status,
+            })
+
+            try {
+              toolTrace = await startToolTrace(runtimeInput, ctx, item.id, args as Record<string, unknown>)
+              if (runtimeInput.session) {
+                SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${item.id}`)
+              }
+              const workspaceInfo =
+                item.requiresWorkspace !== false || item.requiresExecution ? ScopeContext.current.workspace : null
+              if (item.requiresExecution || item.requiresWorkspace) {
+                resources = await EnvironmentResources.select({
+                  scopeID: ScopeContext.current.scope.id,
+                  ownerID: ctx.sessionID,
+                  environmentID: ctx.environmentID,
+                  workspaceID: runtimeInput.session?.workspaceID ?? workspaceInfo?.id,
+                  workspaceGeneration: workspaceInfo?.generation,
+                  needs: { execution: item.requiresExecution, workspace: item.requiresWorkspace },
+                  signal: ctx.abort,
+                })
+                ctx.resources = resources
+              }
+              const workspace = resources?.directory ?? workspaceInfo?.path ?? null
+              const profileId = await Session.resolveEffectiveControlProfile({
+                sessionID: runtimeInput.session?.id,
+                agentControlProfile: runtimeInput.agent.controlProfile,
+              })
+              // The bash detached-daemon guard reads ctx.extra.controlProfile; carry the
+              // session-effective profile (session > agent config) so full_access sessions
+              // bypass the guard as documented (issue #1006).
+              ;(ctx.extra as any).controlProfile = profileId
+              const localFiles =
+                !resources ||
+                resources.kind === "native" ||
+                (resources.environment?.provider === "native" && resources.workspace?.backend?.provider === "directory")
+              const pathMode = localFiles
+                ? "native"
+                : resources?.kind === "objects"
+                  ? "relative"
+                  : resources?.runtime?.platform === "win32"
+                    ? "win32"
+                    : "posix"
+              const synergyRoot = localFiles ? Global.Path.root : undefined
+              const trustedRoots = !localFiles
+                ? []
+                : await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
+              const gate = await EnforcementGate.create(
+                await configureGateOptions({
+                  activeWorkspace: workspace,
+                  pathMode,
+                  virtualRoot: EnvironmentResources.virtualRoot(resources?.workspace),
+                  workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+                  originalCheckout: localFiles ? (workspaceInfo as any)?.originalCheckout : undefined,
+                  profileId,
+                  readRoots: localFiles
+                    ? [Global.Path.root, ...trustedRoots, ...SkillSourceProfile.allRootPaths(workspace)]
+                    : [],
+                  trustedRoots,
+                  synergyRoot,
+                  sessionKey: runtimeInput.session?.id,
+                }),
+              )
+              await toolTrace.phase("tool.resolver.ready", "resolver ready", {
+                profileId,
+                workspace,
+                workspaceType: workspaceInfo?.type ?? "scope",
+              })
+
+              // Containment is known before authorization: the wrapper is
+              // prepared first, its verdict decides the `shell` capability,
+              // and a call the sandbox refuses to wrap falls back to the
+              // ordinary capability flow instead of being allowed as if it
+              // were contained.
+              const containment =
+                item.id === "bash"
+                  ? await prepareShellContainment({
+                      gate,
+                      ctx,
+                      workspace: workspace ?? "",
+                      command: String(args.command ?? ""),
+                    })
+                  : undefined
+              let envelope: ReturnType<Awaited<ReturnType<typeof EnforcementGate.create>>["evaluate"]>
+              try {
+                envelope = await gate.evaluateIsolated(
+                  item.id,
+                  args as Record<string, any>,
+                  ctx.abort,
+                  containment?.verdict,
+                )
+              } finally {
+                // The verdict is already carried by the envelope and the
+                // execution path prepares the wrapper it actually runs, so
+                // release here — on refusal and on success alike — through
+                // the host's existing cleanup contract.
+                await containment?.release()
+              }
+              await RolloutTool.authorize({ stage: "evaluated", profile: gate.getProfileInfo(), envelope })
+              const modeDiagnostic = SessionModePolicy.evaluateCall({
+                toolName: item.id,
+                args: args as Record<string, any>,
+                session: runtimeInput.session,
+                capabilities: envelope.capabilities,
+              })
+              if (modeDiagnostic) throw new ToolDiagnosticError(modeDiagnostic)
+              await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>, runtimeInput)
+              await RolloutTool.authorize({
+                stage: "authorized",
+                profile: gate.getProfileInfo(),
+                envelope,
+                approval: approvalFromContext(ctx),
+              })
+              await toolTrace.phase("tool.approval.resolved", "approval resolved", {
+                decision: envelope.decision,
+                capabilities: envelope.capabilities.map((cap) => cap.class),
+              })
+
+              const timeoutCfg = await TimeoutConfig.resolve()
+              const toolTimeoutMs = timeoutCfg.toolOverrides[item.id] ?? timeoutCfg.toolDefaultMs
+              const toolTimeout = ToolTimeout.metadataForTool({
+                tool: item.id,
+                args: args as Record<string, any>,
+                toolTimeoutMs,
+              })
+              const combinedAbort = startToolTimeout(ctx, toolTimeoutMs)
+              ctx.abort = combinedAbort
+              await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>, toolTimeout)
+              await toolTrace.phase("tool.execution.started", "execution started", {
+                timeoutMs: toolTimeoutMs,
+              })
+              const toolCtx = { ...ctx, abort: combinedAbort }
+              using toolTimer = log.time("tool.execute", { tool: item.id, callID: options.toolCallId })
+
+              // ── Sandbox wrapping for bash ──────────────────────────
+              if (item.id === "bash") {
+                const sandbox = gate.getSandbox()
+                if (sandbox.mode !== "none" && !shouldBypassShellSandbox(ctx)) {
+                  // Register externally-approved roots, plus the paths the
+                  // user approved for this session after a sandbox denial,
+                  // so the policy engine aggregates them with auto-approved
+                  // paths and a retry finds them inside the sandbox roots.
+                  const sessionKey = runtimeInput.session?.id ?? ctx.sessionID
+                  const sessionReads = SandboxSessionApproval.readPaths(sessionKey)
+                  const sessionWrites = SandboxSessionApproval.writePaths(sessionKey)
+                  const extRoots = [...new Set([...approvedExternalRoots(ctx), ...sessionReads])]
+                  if (extRoots.length > 0 || sessionWrites.length > 0) {
+                    gate.registerApprovedPaths(extRoots, [...new Set([...extRoots, ...sessionWrites])], false)
+                  }
+                  const sandboxPolicy = gate.getSandboxPolicy()
+                  const sandboxPrepare: BashSandboxPrepare = async (input) => {
+                    await toolTrace?.phase("tool.sandbox.prepare", "sandbox prepare", {
+                      mode: sandbox.mode,
+                      backend: sandbox.backend,
+                      fallback: sandbox.fallback,
+                    })
+                    const options = {
+                      command: resources?.runtime?.shell ?? "/bin/sh",
+                      args: ExecutionProtocol.shellArgs(
+                        resources?.runtime?.shell ?? "/bin/sh",
+                        resources?.runtime?.platform ?? process.platform,
+                        input.command,
+                      ),
+                      workspace: workspace ?? "",
+                      sandboxMode: sandbox.mode,
+                      extraReadRoots: [
+                        ...new Set([
+                          ...(sandboxPolicy?.fileSystem.readableRoots ?? []),
+                          ...(synergyRoot ? [synergyRoot] : []),
+                          ...trustedRoots,
+                          ...extRoots,
+                          ...input.extraReadRoots,
+                        ]),
+                      ],
+                      extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
+                      protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
+                      dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
+                      stripDefaultHomeDenyRoot: true,
+                      networkMode: sandboxPolicy?.network.mode,
+                      backend: sandbox.backend,
+                    }
+                    const wrapper = resources
+                      ? await EnvironmentResources.prepareSandbox(resources, options)
+                      : SandboxHost.prepareWrapper(options)
+                    if (wrapper.skipReason && sandbox.fallback !== "deny") {
+                      log.warn("sandbox.unavailable", { skipReason: wrapper.skipReason })
+                    }
+                    await toolTrace?.phase("tool.sandbox.prepared", "sandbox prepared", {
+                      skipReason: wrapper.skipReason,
+                      command: wrapper.command,
+                      args: wrapper.args,
+                    })
+                    return wrapper
+                  }
+                  ;(toolCtx.extra as any).sandboxPrepare = sandboxPrepare
+                  ;(toolCtx.extra as any).sandboxFallback = sandbox.fallback
+                }
+              }
+
+              // ── Plugin: tool.execute.before ────────────────────────
+              await toolTrace.phase("plugin.runtime.before.start", "plugin before start")
+              await triggerToolHook(
+                "tool.execute.before",
+                {
+                  tool: item.id,
+                  sessionID: ctx.sessionID,
+                  callID: ctx.callID,
+                },
+                {
+                  args,
+                },
+                combinedAbort,
+              )
+              await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
+              await toolTrace.phase("tool.execute.start", "tool execute start")
+              // Secret boundary: tokens resolve into an execution-only args
+              // copy (the durable args stay tokenized), the bash secret
+              // environment rides toolCtx.extra, and the settled result is
+              // masked before rollout capture, plugins, and persistence.
+              const secrets = await SecretResolve.transformArgs(args, {
+                sessionID: ctx.sessionID,
+                tool: item.id,
+              })
+              if (secrets.secretEnv) (toolCtx.extra ??= {}).secretEnv = secrets.secretEnv
+              const executed = await settleExecutionOnAbort(() => item.execute(secrets.args, toolCtx), combinedAbort)
+              const result = (await SecretMask.transformResult(executed, combinedAbort)) as typeof executed
+              Tool.validateAttachmentResult(item.id, result)
+              await RolloutTool.capture(result)
+              await toolTrace.phase("tool.execute.end", "tool execute end", {
+                outputChars: result.output.length,
+                attachmentCount: result.attachments?.length ?? 0,
+              })
+              await toolTrace.phase("plugin.runtime.after.start", "plugin after start")
+              await triggerToolHook(
+                "tool.execute.after",
+                {
+                  tool: item.id,
+                  sessionID: ctx.sessionID,
+                  callID: ctx.callID,
+                },
+                result,
+                combinedAbort,
+              )
+              await toolTrace.phase("plugin.runtime.after.end", "plugin after end")
+              RolloutTool.afterCommit(() =>
+                slot.complete(args, {
+                  output: result.output,
+                  title: result.title ?? "",
+                  metadata: approvalFromContext(ctx)
+                    ? { approval: approvalFromContext(ctx), ...(result.metadata ?? {}) }
+                    : (result.metadata ?? {}),
+                  attachments: result.attachments,
+                  activityEvidence: result.activityEvidence,
+                  afterPersist: item.afterPersist ? () => item.afterPersist!(args, toolCtx, result) : undefined,
+                }),
+              )
+              log.info("tool.execute.callback.completed", {
+                tool: item.id,
+                sessionID: ctx.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "builtin",
+                slotStatus: slot.status,
+              })
+              await toolTrace.end({
+                outputChars: result.output.length,
+                attachmentCount: result.attachments?.length ?? 0,
+              })
+              return result
+            } catch (error) {
+              if (error instanceof EnforcementError.SandboxBlocked) {
+                await requestSandboxDenialApproval(error, ctx, runtimeInput)
+                await setApprovalMetadata(ctx, {
+                  status: "sandbox_blocked",
+                  source: "sandbox",
+                  reason: error.message,
+                })
+              }
+              log.error("tool.execute.error", {
+                tool: item.id,
+                sessionID: ctx.sessionID,
+                callID: options.toolCallId,
+                error,
+              })
+              ObservabilityToolFailures.raiseIssue({
+                tool: item.id,
+                sessionID: runtimeInput.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                traceId: toolTrace?.traceId,
+                spanId: toolTrace?.span?.spanId,
+                scopeID: toolTrace?.span?.scopeID,
+                phase: "tool.execute",
+                error,
+                owner: "builtin",
+              })
+              RolloutTool.afterCommit(() =>
+                slot.fail(args, formatErrorForModel(error, ctx), metadataForError(error, approvalFromContext(ctx))),
+              )
+              log.warn("tool.execute.callback.failed", {
+                tool: item.id,
+                sessionID: ctx.sessionID,
+                messageID: runtimeInput.processor.message.id,
+                callID: options.toolCallId,
+                kind: "builtin",
+                slotStatus: slot.status,
+              })
+              await toolTrace?.error(error)
+              throw error
+            } finally {
+              toolTrace?.dispose()
+              disposeToolTimeout(ctx)
+              await resources?.release()
+            }
+          },
+          toModelOutput(result) {
+            return {
+              type: "text",
+              value: result.output,
+            }
+          },
+        })
+      },
+    }
+  }
+
+  async function collectDefinitions(input: Omit<Input, "processor">): Promise<DefinitionCandidate[]> {
     using _ = log.time("definitions.collect")
-    let result: Definition[] = []
+    let result: DefinitionCandidate[] = []
 
     for (const item of input.ephemeralTools ?? []) {
       const schema = ProviderTransform.schema(input.model, item.inputSchema as any, {
@@ -1567,397 +2001,20 @@ export namespace ToolResolver {
       })
     }
 
-    for (const item of await ToolRegistry.tools(input.model.providerID, input.agent, input.session?.workspaceID)) {
-      let schema: JSONSchema7
-      try {
-        schema = ProviderTransform.schema(input.model, registryInputSchema(item) as any, {
-          tool: item.id,
-        }) as JSONSchema7
-      } catch (error) {
-        if (item.source?.type === "plugin") {
-          await SessionToolContext.plugin()?.markToolSchemaDegraded(item.source.pluginId, item.source.toolId, error)
-        }
-        const diagnostic = toolSchemaDiagnostic(item, error)
-        log.warn("tool skipped due to schema failure", {
-          tool: item.id,
-          source: item.source,
-          executor: ToolExecutor.classify(item.id, item.source),
-          sessionID: input.sessionID,
-          error: error instanceof Error ? error.message : String(error),
-          diagnostic: diagnostic.message,
-        })
-        result.push({
-          id: item.id,
-          exposure: item.exposure,
-          display: item.display,
-          source: item.source,
-          executor: ToolExecutor.classify(item.id, item.source),
-          diagnostic,
-          description: diagnostic.message,
-          inputSchema: {
-            type: "object",
-            additionalProperties: true,
-          },
-        })
-        continue
-      }
-
-      result.push({
-        id: item.id,
-        exposure: item.exposure,
-        display: item.display,
-        source: item.source,
-        executor: ToolExecutor.classify(item.id, item.source),
-        description: item.description,
-        inputSchema: schema,
-        createRuntimeTool(runtimeInput) {
-          const context = contextFactory(runtimeInput, item.id)
-          return tool({
-            id: item.id as any,
-            description: item.description,
-            inputSchema: jsonSchema(schema),
-            async execute(args, options) {
-              log.info("tool.execute.callback.start", {
-                tool: item.id,
-                sessionID: runtimeInput.sessionID,
-                messageID: runtimeInput.processor.message.id,
-                callID: options.toolCallId,
-                kind: "builtin",
-              })
-              const ctx = context(args, options)
-              let toolTrace: ToolTrace | undefined
-              const slot = runtimeInput.processor.beginExecution(options.toolCallId)
-              let resources: EnvironmentResources.Resolved | undefined
-              log.info("tool.execute.callback.slot", {
-                tool: item.id,
-                sessionID: runtimeInput.sessionID,
-                messageID: runtimeInput.processor.message.id,
-                callID: options.toolCallId,
-                kind: "builtin",
-                slotStatus: slot.status,
-              })
-
-              try {
-                toolTrace = await startToolTrace(runtimeInput, ctx, item.id, args as Record<string, unknown>)
-                if (runtimeInput.session) {
-                  SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${item.id}`)
-                }
-                const workspaceInfo =
-                  item.requiresWorkspace !== false || item.requiresExecution ? ScopeContext.current.workspace : null
-                if (item.requiresExecution || item.requiresWorkspace) {
-                  resources = await EnvironmentResources.select({
-                    scopeID: ScopeContext.current.scope.id,
-                    ownerID: ctx.sessionID,
-                    environmentID: ctx.environmentID,
-                    workspaceID: runtimeInput.session?.workspaceID ?? workspaceInfo?.id,
-                    workspaceGeneration: workspaceInfo?.generation,
-                    needs: { execution: item.requiresExecution, workspace: item.requiresWorkspace },
-                    signal: ctx.abort,
-                  })
-                  ctx.resources = resources
-                }
-                const workspace = resources?.directory ?? workspaceInfo?.path ?? null
-                const profileId = await Session.resolveEffectiveControlProfile({
-                  sessionID: runtimeInput.session?.id,
-                  agentControlProfile: runtimeInput.agent.controlProfile,
-                })
-                // The bash detached-daemon guard reads ctx.extra.controlProfile; carry the
-                // session-effective profile (session > agent config) so full_access sessions
-                // bypass the guard as documented (issue #1006).
-                ;(ctx.extra as any).controlProfile = profileId
-                const localFiles =
-                  !resources ||
-                  resources.kind === "native" ||
-                  (resources.environment?.provider === "native" &&
-                    resources.workspace?.backend?.provider === "directory")
-                const pathMode = localFiles
-                  ? "native"
-                  : resources?.kind === "objects"
-                    ? "relative"
-                    : resources?.runtime?.platform === "win32"
-                      ? "win32"
-                      : "posix"
-                const synergyRoot = localFiles ? Global.Path.root : undefined
-                const trustedRoots = !localFiles
-                  ? []
-                  : await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
-                const gate = await EnforcementGate.create(
-                  await configureGateOptions({
-                    activeWorkspace: workspace,
-                    pathMode,
-                    virtualRoot: EnvironmentResources.virtualRoot(resources?.workspace),
-                    workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-                    originalCheckout: localFiles ? (workspaceInfo as any)?.originalCheckout : undefined,
-                    profileId,
-                    readRoots: localFiles
-                      ? [Global.Path.root, ...trustedRoots, ...SkillSourceProfile.allRootPaths(workspace)]
-                      : [],
-                    trustedRoots,
-                    synergyRoot,
-                    sessionKey: runtimeInput.session?.id,
-                  }),
-                )
-                await toolTrace.phase("tool.resolver.ready", "resolver ready", {
-                  profileId,
-                  workspace,
-                  workspaceType: workspaceInfo?.type ?? "scope",
-                })
-
-                // Containment is known before authorization: the wrapper is
-                // prepared first, its verdict decides the `shell` capability,
-                // and a call the sandbox refuses to wrap falls back to the
-                // ordinary capability flow instead of being allowed as if it
-                // were contained.
-                const containment =
-                  item.id === "bash"
-                    ? await prepareShellContainment({
-                        gate,
-                        ctx,
-                        workspace: workspace ?? "",
-                        command: String(args.command ?? ""),
-                      })
-                    : undefined
-                let envelope: ReturnType<Awaited<ReturnType<typeof EnforcementGate.create>>["evaluate"]>
-                try {
-                  envelope = await gate.evaluateIsolated(
-                    item.id,
-                    args as Record<string, any>,
-                    ctx.abort,
-                    containment?.verdict,
-                  )
-                } finally {
-                  // The verdict is already carried by the envelope and the
-                  // execution path prepares the wrapper it actually runs, so
-                  // release here — on refusal and on success alike — through
-                  // the host's existing cleanup contract.
-                  await containment?.release()
-                }
-                await RolloutTool.authorize({ stage: "evaluated", profile: gate.getProfileInfo(), envelope })
-                const modeDiagnostic = SessionModePolicy.evaluateCall({
-                  toolName: item.id,
-                  args: args as Record<string, any>,
-                  session: runtimeInput.session,
-                  capabilities: envelope.capabilities,
-                })
-                if (modeDiagnostic) throw new ToolDiagnosticError(modeDiagnostic)
-                await applyGateApproval(ctx, gate, envelope, item.id, args as Record<string, any>, runtimeInput)
-                await RolloutTool.authorize({
-                  stage: "authorized",
-                  profile: gate.getProfileInfo(),
-                  envelope,
-                  approval: approvalFromContext(ctx),
-                })
-                await toolTrace.phase("tool.approval.resolved", "approval resolved", {
-                  decision: envelope.decision,
-                  capabilities: envelope.capabilities.map((cap) => cap.class),
-                })
-
-                const timeoutCfg = await TimeoutConfig.resolve()
-                const toolTimeoutMs = timeoutCfg.toolOverrides[item.id] ?? timeoutCfg.toolDefaultMs
-                const toolTimeout = ToolTimeout.metadataForTool({
-                  tool: item.id,
-                  args: args as Record<string, any>,
-                  toolTimeoutMs,
-                })
-                const combinedAbort = startToolTimeout(ctx, toolTimeoutMs)
-                ctx.abort = combinedAbort
-                await markExecutionStarted(runtimeInput, ctx, args as Record<string, any>, toolTimeout)
-                await toolTrace.phase("tool.execution.started", "execution started", {
-                  timeoutMs: toolTimeoutMs,
-                })
-                const toolCtx = { ...ctx, abort: combinedAbort }
-                using toolTimer = log.time("tool.execute", { tool: item.id, callID: options.toolCallId })
-
-                // ── Sandbox wrapping for bash ──────────────────────────
-                if (item.id === "bash") {
-                  const sandbox = gate.getSandbox()
-                  if (sandbox.mode !== "none" && !shouldBypassShellSandbox(ctx)) {
-                    // Register externally-approved roots, plus the paths the
-                    // user approved for this session after a sandbox denial,
-                    // so the policy engine aggregates them with auto-approved
-                    // paths and a retry finds them inside the sandbox roots.
-                    const sessionKey = runtimeInput.session?.id ?? ctx.sessionID
-                    const sessionReads = SandboxSessionApproval.readPaths(sessionKey)
-                    const sessionWrites = SandboxSessionApproval.writePaths(sessionKey)
-                    const extRoots = [...new Set([...approvedExternalRoots(ctx), ...sessionReads])]
-                    if (extRoots.length > 0 || sessionWrites.length > 0) {
-                      gate.registerApprovedPaths(extRoots, [...new Set([...extRoots, ...sessionWrites])], false)
-                    }
-                    const sandboxPolicy = gate.getSandboxPolicy()
-                    const sandboxPrepare: BashSandboxPrepare = async (input) => {
-                      await toolTrace?.phase("tool.sandbox.prepare", "sandbox prepare", {
-                        mode: sandbox.mode,
-                        backend: sandbox.backend,
-                        fallback: sandbox.fallback,
-                      })
-                      const options = {
-                        command: resources?.runtime?.shell ?? "/bin/sh",
-                        args: ExecutionProtocol.shellArgs(
-                          resources?.runtime?.shell ?? "/bin/sh",
-                          resources?.runtime?.platform ?? process.platform,
-                          input.command,
-                        ),
-                        workspace: workspace ?? "",
-                        sandboxMode: sandbox.mode,
-                        extraReadRoots: [
-                          ...new Set([
-                            ...(sandboxPolicy?.fileSystem.readableRoots ?? []),
-                            ...(synergyRoot ? [synergyRoot] : []),
-                            ...trustedRoots,
-                            ...extRoots,
-                            ...input.extraReadRoots,
-                          ]),
-                        ],
-                        extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
-                        protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
-                        dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
-                        stripDefaultHomeDenyRoot: true,
-                        networkMode: sandboxPolicy?.network.mode,
-                        backend: sandbox.backend,
-                      }
-                      const wrapper = resources
-                        ? await EnvironmentResources.prepareSandbox(resources, options)
-                        : SandboxHost.prepareWrapper(options)
-                      if (wrapper.skipReason && sandbox.fallback !== "deny") {
-                        log.warn("sandbox.unavailable", { skipReason: wrapper.skipReason })
-                      }
-                      await toolTrace?.phase("tool.sandbox.prepared", "sandbox prepared", {
-                        skipReason: wrapper.skipReason,
-                        command: wrapper.command,
-                        args: wrapper.args,
-                      })
-                      return wrapper
-                    }
-                    ;(toolCtx.extra as any).sandboxPrepare = sandboxPrepare
-                    ;(toolCtx.extra as any).sandboxFallback = sandbox.fallback
-                  }
-                }
-
-                // ── Plugin: tool.execute.before ────────────────────────
-                await toolTrace.phase("plugin.runtime.before.start", "plugin before start")
-                await triggerToolHook(
-                  "tool.execute.before",
-                  {
-                    tool: item.id,
-                    sessionID: ctx.sessionID,
-                    callID: ctx.callID,
-                  },
-                  {
-                    args,
-                  },
-                  combinedAbort,
-                )
-                await toolTrace.phase("plugin.runtime.before.end", "plugin before end")
-                await toolTrace.phase("tool.execute.start", "tool execute start")
-                // Secret boundary: tokens resolve into an execution-only args
-                // copy (the durable args stay tokenized), the bash secret
-                // environment rides toolCtx.extra, and the settled result is
-                // masked before rollout capture, plugins, and persistence.
-                const secrets = await SecretResolve.transformArgs(args, {
-                  sessionID: ctx.sessionID,
-                  tool: item.id,
-                })
-                if (secrets.secretEnv) (toolCtx.extra ??= {}).secretEnv = secrets.secretEnv
-                const executed = await settleExecutionOnAbort(() => item.execute(secrets.args, toolCtx), combinedAbort)
-                const result = (await SecretMask.transformResult(executed, combinedAbort)) as typeof executed
-                Tool.validateAttachmentResult(item.id, result)
-                await RolloutTool.capture(result)
-                await toolTrace.phase("tool.execute.end", "tool execute end", {
-                  outputChars: result.output.length,
-                  attachmentCount: result.attachments?.length ?? 0,
-                })
-                await toolTrace.phase("plugin.runtime.after.start", "plugin after start")
-                await triggerToolHook(
-                  "tool.execute.after",
-                  {
-                    tool: item.id,
-                    sessionID: ctx.sessionID,
-                    callID: ctx.callID,
-                  },
-                  result,
-                  combinedAbort,
-                )
-                await toolTrace.phase("plugin.runtime.after.end", "plugin after end")
-                RolloutTool.afterCommit(() =>
-                  slot.complete(args, {
-                    output: result.output,
-                    title: result.title ?? "",
-                    metadata: approvalFromContext(ctx)
-                      ? { approval: approvalFromContext(ctx), ...(result.metadata ?? {}) }
-                      : (result.metadata ?? {}),
-                    attachments: result.attachments,
-                    activityEvidence: result.activityEvidence,
-                    afterPersist: item.afterPersist ? () => item.afterPersist!(args, toolCtx, result) : undefined,
-                  }),
-                )
-                log.info("tool.execute.callback.completed", {
-                  tool: item.id,
-                  sessionID: ctx.sessionID,
-                  messageID: runtimeInput.processor.message.id,
-                  callID: options.toolCallId,
-                  kind: "builtin",
-                  slotStatus: slot.status,
-                })
-                await toolTrace.end({
-                  outputChars: result.output.length,
-                  attachmentCount: result.attachments?.length ?? 0,
-                })
-                return result
-              } catch (error) {
-                if (error instanceof EnforcementError.SandboxBlocked) {
-                  await requestSandboxDenialApproval(error, ctx, runtimeInput)
-                  await setApprovalMetadata(ctx, {
-                    status: "sandbox_blocked",
-                    source: "sandbox",
-                    reason: error.message,
-                  })
-                }
-                log.error("tool.execute.error", {
-                  tool: item.id,
-                  sessionID: ctx.sessionID,
-                  callID: options.toolCallId,
-                  error,
-                })
-                ObservabilityToolFailures.raiseIssue({
-                  tool: item.id,
-                  sessionID: runtimeInput.sessionID,
-                  messageID: runtimeInput.processor.message.id,
-                  callID: options.toolCallId,
-                  traceId: toolTrace?.traceId,
-                  spanId: toolTrace?.span?.spanId,
-                  scopeID: toolTrace?.span?.scopeID,
-                  phase: "tool.execute",
-                  error,
-                  owner: "builtin",
-                })
-                RolloutTool.afterCommit(() =>
-                  slot.fail(args, formatErrorForModel(error, ctx), metadataForError(error, approvalFromContext(ctx))),
-                )
-                log.warn("tool.execute.callback.failed", {
-                  tool: item.id,
-                  sessionID: ctx.sessionID,
-                  messageID: runtimeInput.processor.message.id,
-                  callID: options.toolCallId,
-                  kind: "builtin",
-                  slotStatus: slot.status,
-                })
-                await toolTrace?.error(error)
-                throw error
-              } finally {
-                toolTrace?.dispose()
-                disposeToolTimeout(ctx)
-                await resources?.release()
-              }
-            },
-            toModelOutput(result) {
-              return {
-                type: "text",
-                value: result.output,
-              }
-            },
-          })
-        },
-      })
+    for (const item of await ToolRegistry.catalog(input.model.providerID, input.agent, input.session?.workspaceID)) {
+      result.push(
+        "resolve" in item
+          ? {
+              id: item.id,
+              exposure: item.exposure,
+              display: item.display,
+              source: item.source,
+              description: item.description,
+              executor: ToolExecutor.classify(item.id, item.source),
+              loadDefinition: async () => registryDefinition(await item.resolve(), input),
+            }
+          : await registryDefinition(item, input),
+      )
     }
 
     if (input.includeMCP !== false) {

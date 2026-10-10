@@ -20,6 +20,8 @@ import { SessionManager } from "../manager"
 import { RolloutRecordingError } from "../rollout/error"
 import { RolloutTransport } from "../rollout/transport"
 import { materializeAttachmentInput } from "../../attachment/model-input"
+import { ModelExecution } from "../../execution/model-execution"
+import { InProcessModelExecutor } from "./model-executor"
 
 export namespace AgentTurn {
   export type Input = AgentTurnInput
@@ -28,7 +30,7 @@ export namespace AgentTurn {
 
   const runtimeState = RuntimeContext.state(() => ({
     recovery: new ProviderRetryCoordinator(),
-    pool: undefined as AgentWorkerPool | undefined,
+    pool: undefined as AgentWorkerPool | InProcessModelExecutor | undefined,
     options: DEFAULT_AGENT_WORKER_POOL_OPTIONS,
     accepting: true,
     stopPromise: undefined as Promise<void> | undefined,
@@ -75,7 +77,7 @@ export namespace AgentTurn {
 
     if (!instanceState.accepting || instanceState.stopPromise || instanceState.inProcessStream) return
     try {
-      instanceState.pool ??= new AgentWorkerPool(instanceState.options)
+      instanceState.pool ??= createExecutor(instanceState.options)
     } catch (error) {
       // Option validation cannot succeed in any later attempt either; log it
       // and let the first turn surface the failure through lazy creation.
@@ -152,7 +154,7 @@ export namespace AgentTurn {
               onPhase?.("waiting_model")
               return RolloutTransport.provide(archive, () => instanceState.inProcessStream!(input))
             }
-            instanceState.pool ??= new AgentWorkerPool(instanceState.options)
+            instanceState.pool ??= createExecutor(instanceState.options)
             onPhase?.("queued_agent")
             const result = await instanceState.pool.run({ ...turnInput, prepared: prepared!, archive, onPhase })
             const contextUsageDraft = startContextUsageDraft(input, prepared!.system, contextUsageProvenance)
@@ -216,5 +218,9 @@ export namespace AgentTurn {
     } finally {
       instanceState.stopPromise = undefined
     }
+  }
+
+  function createExecutor(options: AgentWorkerPoolOptions) {
+    return ModelExecution.mode() === "in-process" ? new InProcessModelExecutor(options) : new AgentWorkerPool(options)
   }
 }

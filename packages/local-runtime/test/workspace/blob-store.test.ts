@@ -12,6 +12,10 @@ for (const protocol of ["s3", "oss"] as const)
       async fetch(request) {
         authorizations.push(request.headers.get("authorization") ?? "")
         const key = new URL(request.url).pathname
+        if (request.method === "DELETE") {
+          data.delete(key)
+          return new Response(null, { status: 204, headers: { "x-oss-request-id": "fixture" } })
+        }
         if (request.method === "PUT") {
           data.set(key, new Uint8Array(await request.arrayBuffer()))
           return new Response(null, { headers: { etag: '"fixture"', "x-oss-request-id": "fixture" } })
@@ -46,6 +50,10 @@ for (const protocol of ["s3", "oss"] as const)
       await expect(store.put(hash, new Uint8Array([3]))).rejects.toThrow("integrity")
       for (const key of data.keys()) data.set(key, new Uint8Array([3]))
       await expect(store.get(hash, bytes.length)).rejects.toThrow("integrity")
+      await expect(store.delete("../outside")).rejects.toThrow()
+      await store.delete(hash)
+      await store.delete(hash)
+      expect(data.size).toBe(0)
     } finally {
       await server.stop(true)
     }

@@ -24,6 +24,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20261001-text-projection-structure",
+    isApplied: async () => true,
     scope: "global",
     execution: "startup",
     domain: "storage",
@@ -34,6 +35,7 @@ export const migrations: Migration[] = [
   },
   {
     id: EvidenceOwnerProjection.id,
+    isApplied: async () => true,
     scope: "global",
     execution: "startup",
     domain: "storage",
@@ -44,6 +46,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260929-retire-synergy-link",
+    emptyInput: [["synergy_link"], StoragePath.permissionRules()],
     scope: "global",
     execution: "startup",
     description: "Remove retired Link targets and their obsolete permission rules",
@@ -63,6 +66,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260921-format-v3-maintenance-state",
+    isApplied: async () => Storage.current().store.options.backend === "postgres",
     scope: "global",
     execution: "startup",
     description: "Separate committed format upgrades from resumable space reclamation",
@@ -80,6 +84,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260921-pending-owner-admission",
+    emptyInput: [["compat_catalog"]],
     scope: "global",
     execution: "startup",
     description: "Protect unpublished historical records from business access",

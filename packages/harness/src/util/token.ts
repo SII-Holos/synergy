@@ -1,4 +1,4 @@
-import type { Tiktoken } from "js-tiktoken"
+import type { Tiktoken } from "tiktoken/lite"
 
 type EncodingName = "o200k_base" | "cl100k_base"
 
@@ -24,10 +24,11 @@ export namespace Token {
   }
 
   // ---------------------------------------------------------------------------
-  // Model-aware tokenization via js-tiktoken
+  // Model-aware tokenization via the selected tiktoken encoding
   // ---------------------------------------------------------------------------
 
   const encoderCache = new Map<EncodingName, Tiktoken>()
+  const initializing = new Map<EncodingName, Promise<Tiktoken | undefined>>()
 
   /**
    * Lazily initialize and cache a Tiktoken encoder for the given encoding.
@@ -37,17 +38,30 @@ export namespace Token {
   async function getTokenizer(encoding: EncodingName): Promise<Tiktoken | undefined> {
     const cached = encoderCache.get(encoding)
     if (cached) return cached
-
-    try {
-      // Dynamic import so the ~2MB BPE rank files are loaded only when needed
-      // and only for encodings actually used at runtime.
-      const { getEncoding } = await import("js-tiktoken")
-      const enc = getEncoding(encoding)
-      encoderCache.set(encoding, enc)
-      return enc
-    } catch {
-      return undefined
-    }
+    const pending = initializing.get(encoding)
+    if (pending) return pending
+    const loading = (async () => {
+      try {
+        // The lite WASM entry loads only the selected ranks. Keep the two bounded
+        // encoders for this process's lifetime; no Runtime identity enters them.
+        // https://github.com/dqbd/tiktoken#usage
+        const [{ Tiktoken }, ranks] = await Promise.all([
+          import("tiktoken/lite"),
+          encoding === "o200k_base"
+            ? import("tiktoken/encoders/o200k_base.json")
+            : import("tiktoken/encoders/cl100k_base.json"),
+        ])
+        const encoder = new Tiktoken(ranks.default.bpe_ranks, ranks.default.special_tokens, ranks.default.pat_str)
+        encoderCache.set(encoding, encoder)
+        return encoder
+      } catch {
+        return undefined
+      } finally {
+        initializing.delete(encoding)
+      }
+    })()
+    initializing.set(encoding, loading)
+    return loading
   }
 
   /**

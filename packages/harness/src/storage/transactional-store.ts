@@ -683,12 +683,12 @@ export class StoreTransaction {
   async remove(key: string[]): Promise<void> {
     this.check(true)
     await this.assertAdmitted([key])
-    await this.connection.query(
-      "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id = ? AND body IS NOT NULL",
+    const removed = await this.connection.query(
+      "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id = ? AND body IS NOT NULL RETURNING key_text",
       [Date.now(), this.namespace, keyParameter(this.keys, key)],
     )
     // The tombstone stays; the node chain the removal emptied does not.
-    await this.cleanDanglingNodes([key])
+    if (removed.length) await this.cleanDanglingNodes([key])
   }
 
   async removeMany(keys: string[][]): Promise<void> {
@@ -696,11 +696,11 @@ export class StoreTransaction {
     await this.assertAdmitted(keys)
     for (let offset = 0; offset < keys.length; offset += 128) {
       const batch = keys.slice(offset, offset + 128)
-      await this.connection.query(
-        `UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (${batch.map(() => "?").join(",")}) AND body IS NOT NULL`,
+      const removed = await this.connection.query<SqlRow & { key_text: string }>(
+        `UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (${batch.map(() => "?").join(",")}) AND body IS NOT NULL RETURNING key_text`,
         [Date.now(), this.namespace, ...batch.map((key) => keyParameter(this.keys, key))],
       )
-      await this.cleanDanglingNodes(batch)
+      if (removed.length) await this.cleanDanglingNodes(removed.map((row) => JSON.parse(row.key_text) as string[]))
     }
   }
 
@@ -1285,6 +1285,16 @@ export class StoreTransaction {
 }
 
 export class TransactionalStore {
+  /** Explicit deployment/maintenance step, before opening any managed Runtime. */
+  static async preparePostgres(input: { url: string; maxConnections?: number }) {
+    const driver = await PostgresDriver.open(input.url, randomUUID(), input.maxConnections ?? 2)
+    try {
+      await driver.initializeSchema(schemaFor("postgres"))
+    } finally {
+      await driver.close()
+    }
+  }
+
   private readonly admission = { pending: true }
   hasUnpublishedOwners() {
     return this.admission.pending
@@ -1318,7 +1328,11 @@ export class TransactionalStore {
       store.unavailable = error
     })
     try {
-      if (!options.readonly && driver instanceof PostgresDriver) await driver.initializeSchema(schemaFor("postgres"))
+      if (!options.readonly && driver instanceof PostgresDriver) {
+        if (options.backend === "postgres" && options.schema === "verify")
+          await driver.verifySchema(schemaFor("postgres"))
+        else await driver.initializeSchema(schemaFor("postgres"))
+      }
       await driver.transaction(
         async (connection) => {
           if (!options.readonly && options.backend === "sqlite")

@@ -5,7 +5,7 @@
 ## When to write one
 
 - **Subtle** — the mechanism requires careful investigation.
-- **Systemic** — a gap in tests, tooling, or conventions let the bug escape.
+- **Systemic** — tests, tooling, or conventions missed the bug.
 - **Costly to rediscover** — repeats substantial debugging.
 
 Otherwise, test the fix.
@@ -31,6 +31,8 @@ Use `NNNN-kebab-case-title.md`. Sections:
 - [0063: Startup replay](0063-history-replay-blocked-startup.md)
 
 - [0062: Historical project bindings](0062-project-migration-required-live-directory-identity.md)
+- [0061: Concurrent Workspace admission](0061-concurrent-workspace-admission.md)
+
 - [0059: Disclosure](0059-cold-process-disclosure-jank.md)
 
 - [0058: Markdown settlement](0058-markdown-terminal-estimates-lost-reading.md)

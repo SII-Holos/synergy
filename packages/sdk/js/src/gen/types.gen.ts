@@ -6738,6 +6738,10 @@ export type Config = {
      */
     policyWorkers?: number
     /**
+     * Start isolated Policy workers during server startup instead of first classification (default: true)
+     */
+    policyWorkerPrewarm?: boolean
+    /**
      * Maximum queued Policy classifications waiting for a worker (default: 256)
      */
     policyQueueMax?: number
@@ -8976,6 +8980,10 @@ export type ExperimentSnapshotRuntime = {
      */
     policyWorkers?: number
     /**
+     * Start isolated Policy workers during server startup instead of first classification (default: true)
+     */
+    policyWorkerPrewarm?: boolean
+    /**
      * Maximum queued Policy classifications waiting for a worker (default: 256)
      */
     policyQueueMax?: number
@@ -10045,6 +10053,10 @@ export type ExperimentRuntime = {
      * Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)
      */
     policyWorkers?: number
+    /**
+     * Start isolated Policy workers during server startup instead of first classification (default: true)
+     */
+    policyWorkerPrewarm?: boolean
     /**
      * Maximum queued Policy classifications waiting for a worker (default: 256)
      */

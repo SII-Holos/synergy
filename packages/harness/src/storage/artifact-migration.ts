@@ -30,6 +30,16 @@ export namespace StorageArtifactMigration {
       await store.write(stateKey, { version: 2, phase: "complete", cursor: 0 })
       return
     }
+    if (!state) {
+      const source = await fs.lstat(dataRoot).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return undefined
+        throw error
+      })
+      if (!source) {
+        await store.write(stateKey, { version: 2, phase: "complete", cursor: 0 })
+        return
+      }
+    }
     state ??= { version: 2, phase: "backup", cursor: 0 }
     if (state.version !== 2) throw new StorageIntegrityError("Unsupported artifact migration version")
     const backupRoot = path.join(dataRoot, "storage", "backups", "artifacts-v2")

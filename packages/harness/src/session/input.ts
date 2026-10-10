@@ -349,7 +349,7 @@ async function materializeUserMessage(
           }
           if (url.protocol === "asset:" || url.protocol === "file:") {
             const filepath =
-              url.protocol === "asset:" ? Asset.resolvePath(url.hostname + url.pathname) : fileURLToPath(url)
+              url.protocol === "asset:" ? await Asset.materialize(url.hostname + url.pathname) : fileURLToPath(url)
             if (!filepath) throw new Attachment.InvalidUrlError()
             source = await Attachment.resolveLocalPath(filepath)
           }

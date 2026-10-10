@@ -2,8 +2,18 @@ import path from "path"
 import { Global } from "../global"
 import { Identifier } from "../id/id"
 import type { Agent } from "../agent/agent"
+import { RuntimeContext } from "../lifecycle/context"
 
 export namespace Truncate {
+  export interface Persistence {
+    save(id: string, text: string): Promise<{ reference: string; instructions: string }>
+  }
+  const state = RuntimeContext.state(() => ({ backend: undefined as Persistence | undefined }))
+  export function registerStorage(backend: Persistence) {
+    RuntimeContext.assertCompositionOpen("Tool output storage")
+    if (state().backend) throw new Error("Tool output storage is already registered")
+    state().backend = backend
+  }
   export const MAX_LINES = 2000
   export const MAX_BYTES = 50 * 1024
   export function directory() {
@@ -61,10 +71,15 @@ export namespace Truncate {
     const preview = out.join("\n")
 
     const id = Identifier.ascending("tool")
-    const filepath = path.join(directory(), id)
-    await Bun.write(Bun.file(filepath), text)
+    const backend = state().backend
+    const saved = backend ? await backend.save(id, text) : undefined
+    const filepath = saved?.reference ?? path.join(directory(), id)
+    if (!saved) await Bun.write(Bun.file(filepath), text)
 
-    const hint = `The tool call succeeded but the output was truncated. Full output saved to: ${filepath}\nSearch the saved output or read a targeted range with offset/limit. Delegate only when a separate analysis task would help.`
+    const instructions =
+      saved?.instructions ??
+      "Search the saved output or read a targeted range with offset/limit. Delegate only when a separate analysis task would help."
+    const hint = `The tool call succeeded but the output was truncated. Full output saved to: ${filepath}\n${instructions}`
 
     const message =
       direction === "head"

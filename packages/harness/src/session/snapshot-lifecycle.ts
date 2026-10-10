@@ -52,7 +52,7 @@ export namespace SnapshotLifecycle {
           continue
         }
         let exists = false
-        if (input.allowMissing)
+        if (input.allowMissing && !SnapshotStore.usesExternalStorage())
           exists = await SnapshotStore.command(source, ["cat-file", "-t", hash]).then(
             (type) => type === "tree",
             () => false,
@@ -70,6 +70,7 @@ export namespace SnapshotLifecycle {
         await using catalog = await SnapshotTransfer.Catalog.create(target.repository)
         const imported = await catalog.import(source, { roots: retained })
         await catalog.protect(input.targetSessionID, retained)
+        await SnapshotStore.retainMany(input.scopeID, input.targetSessionID, retained)
         await catalog.releaseKeep(imported.keep)
       } else {
         await SnapshotStore.retainMany(input.scopeID, input.targetSessionID, retained)

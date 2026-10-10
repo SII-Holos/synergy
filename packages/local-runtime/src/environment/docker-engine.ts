@@ -13,7 +13,13 @@ export const DockerContainer = z.object({
 // Local adaptation: Docker owns allocation only; command identity and replay belong to the Synergy Executor protocol.
 export class DockerEngine {
   private version?: Promise<string>
-  constructor(private readonly options: { endpoint: string; tls?: Bun.TLSOptions }) {
+  constructor(
+    private readonly options: {
+      endpoint: string
+      tls?: Bun.TLSOptions
+      transport?: (request: Request) => Promise<Response>
+    },
+  ) {
     const url = new URL(options.endpoint)
     if (!["unix:", "https:", "http:"].includes(url.protocol)) throw new Error("Unsupported Docker Engine transport")
     if (url.protocol === "http:" && !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))
@@ -38,15 +44,17 @@ export class DockerEngine {
   private async send(method: string, route: string, body?: unknown, allowed: number[] = []) {
     const endpoint = new URL(this.options.endpoint)
     const unix = endpoint.protocol === "unix:" ? decodeURIComponent(endpoint.pathname) : undefined
-    const response = await fetch(new URL(route, unix ? "http://docker" : endpoint), {
+    const url = new URL(route, unix ? "http://docker" : endpoint)
+    const init = {
       method,
-      unix,
-      tls: this.options.tls,
       headers: { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(120_000),
-      redirect: "error",
-    })
+      redirect: "error" as const,
+    }
+    const response = this.options.transport
+      ? await this.options.transport(new Request(url, init))
+      : await fetch(url, { ...init, unix, tls: this.options.tls })
     if (!response.ok && !allowed.includes(response.status))
       throw new Error(`Docker Engine request failed (${response.status}) for ${method} ${route.split("?")[0]}`)
     return response

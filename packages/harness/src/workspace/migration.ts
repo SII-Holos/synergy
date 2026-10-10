@@ -12,6 +12,7 @@ import { RuntimeContext } from "../lifecycle/context"
 export const workspaceMigrations: Migration[] = [
   {
     id: "20260927-workspace-storage-backend",
+    emptyInput: [["workspace"]],
     description: "Record directory storage independently of Workspace identity and binding",
     scope: "global",
     execution: "startup",
@@ -38,6 +39,7 @@ export const workspaceMigrations: Migration[] = [
   },
   {
     id: "20260929-workspace-checkpoint-attempts",
+    emptyInput: [StoragePath.environmentExecutionActive(), StoragePath.workspaceOperationActive()],
     description: "Recapture unfinished legacy checkpoints without replaying their side effects",
     scope: "global",
     execution: "startup",
@@ -68,14 +70,16 @@ export const workspaceMigrations: Migration[] = [
   },
   {
     id: "20261003-persistent-volume-identity",
+    emptyInput: [["workspace"]],
     description: "Upgrade verified local directory identities without changing Workspace generations",
     scope: "global",
     execution: "startup",
     async up(progress) {
       const source = RuntimeContext.current().host.workspaceLocation
       if (!source) return
-      const hostID = await source.hostID()
       const keys = await Storage.list(["workspace"])
+      if (!keys.length) return
+      const hostID = await source.hostID()
       for (let offset = 0; offset < keys.length; offset += 128) {
         const records = await Storage.readMany<unknown>(keys.slice(offset, offset + 128))
         for (const raw of records) {

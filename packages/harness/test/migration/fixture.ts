@@ -7,6 +7,7 @@ import { ObservabilityStore } from "../../src/observability/store"
 import { Log } from "../../src/util/log"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 import { runtimeHome } from "../support/runtime-home"
+import { storageTestOptions } from "../support/storage-backends"
 
 export async function migrationFixture(
   options: { home?: string; env?: Record<string, string | undefined>; register?: () => void } = {},
@@ -40,11 +41,12 @@ export async function migrationFixture(
   try {
     if (options.register) context.run(options.register)
     store = await context.run(() =>
-      TransactionalStore.open({
-        backend: "sqlite",
-        namespace: "migration-test",
-        filename: path.join(host.root, "migration.sqlite"),
-      }),
+      TransactionalStore.open(
+        storageTestOptions({
+          namespace: "migration-test-" + Bun.hash(host.root).toString(16),
+          filename: path.join(host.root, "migration.sqlite"),
+        }),
+      ),
     )
     context.storage = { store, artifactDirectory: path.join(host.root, "data") }
     return { host, [Symbol.asyncDispose]: close, run: context.run, bind: context.bind, close }

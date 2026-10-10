@@ -452,7 +452,10 @@ export namespace LLM {
     if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1") {
       await Provider.configureWorkerProvider(input.model, prepared.provider)
     }
-    const language = await Provider.getLanguage(input.model)
+    const language = await Provider.getLanguage(
+      input.model,
+      RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1" ? undefined : prepared.provider,
+    )
     langTimer.stop()
     const { system, baseSystemLength, params } = prepared
     l.debug("prompt layout", {

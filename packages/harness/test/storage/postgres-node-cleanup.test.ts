@@ -103,6 +103,15 @@ test.skipIf(!storageTestBackends().includes("postgres"))(
         survivors.map((entry) => entry.value),
       )
       expect((await current.verify()).issues).toEqual([])
+      visits.length = 0
+      await current.transaction(async (tx) => {
+        await tx.remove(removed[0]!)
+        await tx.remove(["never-created", "nested", "completion"])
+        await tx.removeMany(removed)
+      })
+      expect(visits).toEqual([])
+      expect(await current.readMany(survivors.map((entry) => entry.key))).toEqual(survivors.map((entry) => entry.value))
+      expect((await current.verify()).issues).toEqual([])
     } finally {
       await Promise.all(stores.map((store) => store.close()))
       await sql.close()

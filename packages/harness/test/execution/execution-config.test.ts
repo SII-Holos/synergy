@@ -17,6 +17,15 @@ function budget(limitBytes: number) {
 }
 
 describe("resolveExecutionConfiguration", () => {
+  test("keeps policy prewarming enabled by default and preserves an explicit lazy selection", () =>
+    runtime.run(() => {
+      expect(resolveExecutionConfiguration({} as Config.Info, "server").execution?.policyWorkerPrewarm).toBe(true)
+      expect(
+        resolveExecutionConfiguration({ execution: { policyWorkerPrewarm: false } } as Config.Info, "server").execution
+          ?.policyWorkerPrewarm,
+      ).toBe(false)
+    }))
+
   test("applies the warm Agent worker reserve only to resident servers", () =>
     runtime.run(() => {
       expect(resolveExecutionConfiguration({} as Config.Info, "server").execution?.agentWorkerMinIdle).toBe(

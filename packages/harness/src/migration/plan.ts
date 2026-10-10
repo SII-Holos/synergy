@@ -8,6 +8,10 @@ import type { Migration } from "./types"
 const Ledger = z.record(z.string(), z.number().finite().nonnegative())
 
 export namespace MigrationPlan {
+  export function onAccess(migration: Migration) {
+    return Boolean(migration.onAccess || ["session", "owner", "record"].includes(migration.execution ?? ""))
+  }
+
   export function separable(migration: Migration) {
     if (migration.execution === "after-convergence" || migration.execution === "maintenance") return true
     if (migration.execution === "owner" || migration.execution === "record") return true
@@ -32,6 +36,12 @@ export namespace MigrationPlan {
       if (byKey.has(key)) throw new Error(`Duplicate migration ${key}`)
       if (entry.migration.execution === "session" && !entry.migration.upSession)
         throw new Error(`Session migration ${key} requires an owner callback`)
+      if (
+        entry.migration.emptyInput &&
+        (!entry.migration.emptyInput.length ||
+          entry.migration.emptyInput.some((prefix) => !prefix.length || prefix.some((part) => !part)))
+      )
+        throw new Error(`Migration ${key} requires nonempty input prefixes`)
       if (entry.migration.execution === "owner" && !entry.migration.upOwner)
         throw new Error(`Owner migration ${key} requires an owner callback`)
       if (entry.migration.execution === "record" && !entry.migration.upgradeRecord)

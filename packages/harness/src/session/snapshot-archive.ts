@@ -82,6 +82,7 @@ export namespace SnapshotArchive {
         await using catalog = await SnapshotTransfer.Catalog.create(operation.repository)
         const imported = await catalog.import(repository, { roots })
         await catalog.protect(sessionID, roots)
+        await SnapshotStore.retainMany(operation.scopeID, sessionID, roots)
         await catalog.releaseKeep(imported.keep)
       })
     })

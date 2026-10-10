@@ -48,4 +48,34 @@ test("existing SQL authority upgrades loose rollout bytes before runtime admissi
     }
   }))
 
+test.each([false, true])(
+  "absent artifact sources are empty only without an interrupted migration: %s",
+  async (interrupted) => {
+    const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "artifact-empty-"))
+    const store = await TransactionalStore.open({
+      backend: "sqlite",
+      namespace: "empty",
+      filename: path.join(root, "db"),
+    })
+    const key = ["storage_meta", "artifact-packs-v2"]
+    const dataRoot = path.join(root, "absent")
+    try {
+      if (interrupted) await store.write(key, { version: 2, phase: "backup", cursor: 0 })
+      if (interrupted) {
+        await expect(StorageArtifactMigration.run({ dataRoot, store })).rejects.toMatchObject({ code: "ENOENT" })
+        expect(await store.read(key)).toMatchObject({ phase: "backup" })
+      } else {
+        await StorageArtifactMigration.run({ dataRoot, store })
+        await StorageArtifactMigration.run({ dataRoot, store })
+        const completed = { version: 2, phase: "complete", cursor: 0 }
+        expect(await store.read<typeof completed>(key)).toEqual(completed)
+        expect(await Bun.file(dataRoot).exists()).toBe(false)
+      }
+    } finally {
+      await store.close()
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  },
+)
+
 afterRuntimeTests(() => runtime.close())

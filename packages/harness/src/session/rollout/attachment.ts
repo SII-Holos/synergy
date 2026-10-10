@@ -36,7 +36,7 @@ export namespace RolloutAttachment {
     } else {
       const filepath =
         url.protocol === "asset:"
-          ? Asset.resolvePath(url.hostname + url.pathname)
+          ? await Asset.materialize(url.hostname + url.pathname)
           : url.protocol === "file:" && options.allowFile
             ? fileURLToPath(url)
             : undefined
@@ -81,6 +81,7 @@ export namespace RolloutAttachment {
       await file.sync()
       await file.close()
       await rename(temporary, target)
+      await Asset.persist(id)
       return `asset://${id}`
     } catch (error) {
       await file.close().catch(() => {})

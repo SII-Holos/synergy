@@ -1,12 +1,9 @@
 import path from "node:path"
 import { RuntimeComponents, RuntimeHandle, type RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
-import {
-  createLocalClient,
-  createLocalHost,
-  createLocalStorage,
-  type LocalRuntimeOptions,
-} from "@ericsanchezok/synergy-local-runtime"
+import { createLocalClient } from "@ericsanchezok/synergy-local-runtime/client"
+import { createLocalHost, createLocalStorage } from "@ericsanchezok/synergy-local-runtime/host"
+import type { LocalRuntimeOptions } from "@ericsanchezok/synergy-local-runtime"
 import { workerPlan, registerRuntimeWorkers } from "./workers"
 import { loadHttpAdapters } from "./adapters"
 

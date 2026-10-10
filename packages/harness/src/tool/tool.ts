@@ -44,6 +44,7 @@ export namespace Tool {
       {
         id: `20261001-${owner}-tool-input-semantics`,
         scope: "session",
+        emptyInput: [["sessions"]],
         description: "Clarify agent tool fields and retain invocation intent",
         up,
         async upSession(target, progress) {
@@ -123,6 +124,8 @@ export namespace Tool {
     source?: Source
     inputSchema?: PluginJsonSchema
     enabledWhen?: PluginSettingCondition
+    /** Owner-provided discovery summary; permits catalog selection before init. */
+    catalogDescription?: string
     init: (ctx?: InitContext) => Promise<{
       description: string
       parameters: Parameters
@@ -134,6 +137,34 @@ export namespace Tool {
 
   export type InferParameters<T extends Info> = T extends Info<infer P> ? z.infer<P> : never
   export type InferMetadata<T extends Info> = T extends Info<any, infer M> ? M : never
+
+  export function lazy(
+    declaration: Pick<Info, "id" | "requiresWorkspace" | "requiresExecution">,
+    load: () => Promise<Info>,
+  ): Info {
+    let pending: Promise<Info> | undefined
+    return {
+      ...declaration,
+      async init(context) {
+        pending ??= load()
+          .then((implementation) => {
+            if (
+              implementation.id !== declaration.id ||
+              Boolean(implementation.requiresWorkspace) !== Boolean(declaration.requiresWorkspace) ||
+              implementation.requiresExecution !== declaration.requiresExecution
+            )
+              throw new Error(`Lazy tool ${declaration.id} does not match its declaration`)
+            return implementation
+          })
+          .catch((error) => {
+            pending = undefined
+            throw error
+          })
+        // Module identity is reusable; initialized definitions can contain caller state.
+        return (await pending).init(context)
+      },
+    }
+  }
 
   export async function withWorkspace<T>(
     required: boolean | undefined,

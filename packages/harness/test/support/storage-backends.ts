@@ -1,10 +1,20 @@
 import type { StoreOptions } from "../../src/storage/sql-contract"
 
 export const POSTGRES_TEST_FILES = [
+  "test/tool/lazy-catalog.test.ts",
+  "test/scope/migration-empty.test.ts",
+  "test/migration/empty-input.test.ts",
+  "test/migration/empty-input-owners.test.ts",
+  "test/tool/stored-output.test.ts",
+  "test/snapshot/persistence.test.ts",
+  "test/asset/persistence.test.ts",
+  "test/secrets/encrypted-store.test.ts",
   "test/tool/search-guard-durable.test.ts",
   "test/workspace/catalog-retirement.test.ts",
   "test/environment/provider-request-maintenance.test.ts",
   "test/storage/artifact-pack.test.ts",
+  "test/storage/object-artifacts.test.ts",
+  "test/storage/local-content.test.ts",
   "test/storage/backend-selection.test.ts",
   "test/storage/event-sinks.test.ts",
   "test/storage/compat-defer.test.ts",
