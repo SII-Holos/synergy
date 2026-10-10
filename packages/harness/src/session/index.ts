@@ -1,3 +1,4 @@
+import { SessionTransferState } from "./transfer-state"
 import { Workspace } from "./workspace-schema"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { WorkspaceBinding } from "../workspace/binding"
@@ -233,7 +234,7 @@ export namespace Session {
   }
 
   export function withoutRuntimeInfo(session: Info): Info {
-    const { working: _working, ...rest } = session
+    const { working: _working, transfer: _transfer, ...rest } = session
     return rest
   }
 
@@ -486,7 +487,13 @@ export namespace Session {
         ? SessionHistory.storedInfo(session.id).catch(() => session.history)
         : session.history,
     ])
-    const result = { ...withoutRuntimeInfo(session), history }
+    const [rawTransfer] = await Storage.readMany([["session_transfer_out", session.id]])
+    const transfer = rawTransfer ? SessionTransferState.parse(rawTransfer) : undefined
+    const result = {
+      ...withoutRuntimeInfo(session),
+      history,
+      transfer: transfer?.phase === "cancelled" ? undefined : transfer,
+    }
     if (!working) return result
     return { ...result, working }
   }

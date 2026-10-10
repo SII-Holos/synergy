@@ -12,6 +12,7 @@ import { Tooltip, TooltipKeybind } from "@ericsanchezok/synergy-ui/tooltip"
 import { DialogSessionRename, ModelSelectorPopover, useConfirm } from "@/components/dialog"
 import { archiveSessionConfirm, leaveWorktreeConfirm } from "@/components/dialog/confirm-copy"
 import { DialogSessionExport } from "@/components/dialog/dialog-session-export"
+import { DialogSessionTransfer, transferCopy } from "@/components/dialog/dialog-session-transfer"
 import { DialogSessionImport } from "@/components/dialog/dialog-session-import"
 import { useLayout } from "@/context/layout"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -55,6 +56,7 @@ function SessionActionMenu(props: {
   onWorktreeToggle: () => void
   onExport: () => void
   onImport: () => void
+  onTransfer?: () => void
   onAbandon?: () => void
   onArchive: () => void
   tags: string[]
@@ -156,6 +158,11 @@ function SessionActionMenu(props: {
           <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onExport)}>
             <Icon name={getSemanticIcon("action.export")} size="small" />
             <span>{_(topBar.exportSessionData)}</span>
+          </button>
+        </Show>
+        <Show when={props.onTransfer}>
+          <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onTransfer!)}>
+            <span>{_(transferCopy.title)}</span>
           </button>
         </Show>
         <Show when={props.visibility.import}>
@@ -470,6 +477,14 @@ export function SessionTopBar(props: {
                 onWorktreeToggle={toggleWorktree}
                 onExport={() => dialog.show(() => <DialogSessionExport />)}
                 onImport={() => dialog.show(() => <DialogSessionImport />)}
+                onTransfer={
+                  sessionInfo()?.paused
+                    ? () =>
+                        dialog.show(() => (
+                          <DialogSessionTransfer sessionID={params.id!} scopeID={sessionInfo()!.scope.id} />
+                        ))
+                    : undefined
+                }
                 onArchive={archiveSession}
                 tags={sessionInfo()?.tags ?? []}
                 availableTags={availableSessionTags()}
@@ -526,6 +541,14 @@ export function SessionTopBar(props: {
                 onWorktreeToggle={toggleWorktree}
                 onExport={() => dialog.show(() => <DialogSessionExport />)}
                 onImport={() => dialog.show(() => <DialogSessionImport />)}
+                onTransfer={
+                  sessionInfo()?.paused
+                    ? () =>
+                        dialog.show(() => (
+                          <DialogSessionTransfer sessionID={params.id!} scopeID={sessionInfo()!.scope.id} />
+                        ))
+                    : undefined
+                }
                 onArchive={archiveSession}
                 tags={sessionInfo()?.tags ?? []}
                 availableTags={availableSessionTags()}

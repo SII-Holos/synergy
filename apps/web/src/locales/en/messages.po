@@ -18541,6 +18541,70 @@ msgid "session.todo.unknown"
 msgstr "Unknown status"
 
 #. js-lingui-explicit-id
+msgid "session.transfer.activating"
+msgstr "Finishing on destination…"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.cancel"
+msgstr "Cancel transfer"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.committedHint"
+msgstr "The source is locked. Retry to finish on the selected destination."
+
+#. js-lingui-explicit-id
+msgid "session.transfer.committing"
+msgstr "Handing over task…"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.completed"
+msgstr "Moved. Continue the paused task on the destination device."
+
+#. js-lingui-explicit-id
+msgid "session.transfer.copying"
+msgstr "Copying and verifying…"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.description"
+msgstr "Move this paused task and its files to another connected device. It will stay paused until you continue it there."
+
+#. js-lingui-explicit-id
+msgid "session.transfer.destination"
+msgstr "Destination device"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.empty"
+msgstr "Add another device in the server selector first."
+
+#. js-lingui-explicit-id
+msgid "session.transfer.failed"
+msgstr "Session transfer failed"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.move"
+msgstr "Move task"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.open"
+msgstr "Open on destination"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.preparing"
+msgstr "Preparing task and files…"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.retry"
+msgstr "Retry transfer"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.select"
+msgstr "Choose a device"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.title"
+msgstr "Move to another device"
+
+#. js-lingui-explicit-id
 msgid "session.transition.continue"
 msgstr "Continue task"
 

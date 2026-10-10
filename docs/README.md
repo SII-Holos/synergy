@@ -38,6 +38,7 @@ Architecture documents define current invariants, ownership boundaries, and the 
 - [Agent storage](architecture/agent-storage.md)
 - [Workspace and files](architecture/workspace-and-files.md)
 - [Environments](architecture/environments.md)
+- [Paused Session transfer](architecture/session-transfer.md)
 - [Sessions and messages](architecture/session-and-messages.md)
 - [LLM loop and compaction](architecture/llm-loop.md)
 - [Usage accounting](architecture/usage-accounting.md)

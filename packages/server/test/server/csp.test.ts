@@ -16,6 +16,8 @@ describe("Server SPA CSP", () => {
     expect(script).toContain("'unsafe-inline'")
     expect(script).toContain("'wasm-unsafe-eval'")
     expect(directive(policy, "font-src")).toContain("data:")
+    expect(directive(policy, "connect-src")).toContain("http:")
+    expect(directive(policy, "connect-src")).toContain("https:")
     expect(directive(policy, "connect-src")).toContain("blob:")
     expect(directive(policy, "connect-src")).toContain("data:")
     expect(directive(policy, "media-src")).toContain("'self'")

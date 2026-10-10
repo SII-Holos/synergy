@@ -18541,6 +18541,70 @@ msgid "session.todo.unknown"
 msgstr "状态未知"
 
 #. js-lingui-explicit-id
+msgid "session.transfer.activating"
+msgstr "正在完成目标设备的交接…"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.cancel"
+msgstr "取消迁移"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.committedHint"
+msgstr "源设备已锁定，请重试以完成向所选设备的迁移。"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.committing"
+msgstr "正在交接任务…"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.completed"
+msgstr "已迁移，请在目标设备上继续这个暂停中的任务。"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.copying"
+msgstr "正在复制并校验…"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.description"
+msgstr "将这个暂停中的任务及其文件迁移到另一台已连接设备。迁移后保持暂停，由你在目标设备上点击继续。"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.destination"
+msgstr "目标设备"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.empty"
+msgstr "请先在服务器选择器中添加另一台设备。"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.failed"
+msgstr "任务迁移失败"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.move"
+msgstr "迁移任务"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.open"
+msgstr "在目标设备上打开"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.preparing"
+msgstr "正在准备任务和文件…"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.retry"
+msgstr "重试迁移"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.select"
+msgstr "选择设备"
+
+#. js-lingui-explicit-id
+msgid "session.transfer.title"
+msgstr "迁移到另一台设备"
+
+#. js-lingui-explicit-id
 msgid "session.transition.continue"
 msgstr "继续任务"
 

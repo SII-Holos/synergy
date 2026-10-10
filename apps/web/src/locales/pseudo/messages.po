@@ -18541,6 +18541,70 @@ msgid "session.todo.unknown"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.transfer.activating"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.committedHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.committing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.copying"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.destination"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.move"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.open"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.preparing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.select"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.transfer.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.transition.continue"
 msgstr "⟦Continue task⟧"
 

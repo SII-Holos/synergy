@@ -3961,6 +3961,16 @@ export type SessionWorkingInfo =
       since: number
     }
 
+export type SessionTransferState = {
+  migrationID: string
+  sessionID: string
+  sourceID: string
+  targetID: string
+  phase: "preparing" | "prepared" | "committed" | "completed" | "cancelled"
+  digest?: string
+  error?: string
+}
+
 export type WorkflowExtension = {
   kind: string
   payload?: unknown
@@ -4126,6 +4136,7 @@ export type Session = {
   rollbackAck?: SessionRollbackAck
   cortex?: SessionCortexDelegation
   working?: SessionWorkingInfo
+  transfer?: SessionTransferState
   workspace: SessionWorkspace | null
   workspaceID?: string | null
   environmentID?: string | null
@@ -10968,6 +10979,45 @@ export type SessionImportResult = {
   sessionCount: number
   messageCount: number
   warnings: Array<string>
+}
+
+export type SessionTransferHost = {
+  id: string
+  version: string
+  platform: string
+  components: Array<RuntimeComponentInfo>
+}
+
+export type SessionTransferReceipt = {
+  migrationID: string
+  sessionID: string
+  sourceID: string
+  targetID: string
+  digest: string
+  phase: "prepared" | "activated"
+}
+
+export type SessionTransferActivation = {
+  migrationID: string
+  sessionID: string
+  sourceID: string
+  targetID: string
+  digest: string
+  phase: "prepared"
+  secret: string
+}
+
+export type SessionTransferCancellation = {
+  migrationID: string
+  sessionID: string
+  sourceID: string
+  targetID: string
+  secret: string
+}
+
+export type SessionTransferPrepare = {
+  migrationID: string
+  targetID: string
 }
 
 export type CortexConcurrencyStatus = {
@@ -22474,6 +22524,494 @@ export type SessionImportResponses = {
 }
 
 export type SessionImportResponse = SessionImportResponses[keyof SessionImportResponses]
+
+export type SessionTransferHostData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/host"
+}
+
+export type SessionTransferHostErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
+}
+
+export type SessionTransferHostError = SessionTransferHostErrors[keyof SessionTransferHostErrors]
+
+export type SessionTransferHostResponses = {
+  /**
+   * Session transfer result
+   */
+  200: SessionTransferHost
+}
+
+export type SessionTransferHostResponse = SessionTransferHostResponses[keyof SessionTransferHostResponses]
+
+export type SessionTransferStageData = {
+  body?: {
+    file: Blob | File
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/stage"
+}
+
+export type SessionTransferStageErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
+}
+
+export type SessionTransferStageError = SessionTransferStageErrors[keyof SessionTransferStageErrors]
+
+export type SessionTransferStageResponses = {
+  /**
+   * Session transfer result
+   */
+  200: SessionTransferReceipt
+}
+
+export type SessionTransferStageResponse = SessionTransferStageResponses[keyof SessionTransferStageResponses]
+
+export type SessionTransferActivateData = {
+  body?: SessionTransferActivation
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/activate"
+}
+
+export type SessionTransferActivateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
+}
+
+export type SessionTransferActivateError = SessionTransferActivateErrors[keyof SessionTransferActivateErrors]
+
+export type SessionTransferActivateResponses = {
+  /**
+   * Session transfer result
+   */
+  200: SessionTransferReceipt
+}
+
+export type SessionTransferActivateResponse = SessionTransferActivateResponses[keyof SessionTransferActivateResponses]
+
+export type SessionTransferDestinationData = {
+  body?: never
+  path: {
+    migrationID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/destination/{migrationID}"
+}
+
+export type SessionTransferDestinationErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
+}
+
+export type SessionTransferDestinationError = SessionTransferDestinationErrors[keyof SessionTransferDestinationErrors]
+
+export type SessionTransferDestinationResponses = {
+  /**
+   * Session transfer result
+   */
+  200: SessionTransferReceipt
+}
+
+export type SessionTransferDestinationResponse =
+  SessionTransferDestinationResponses[keyof SessionTransferDestinationResponses]
+
+export type SessionTransferDiscardData = {
+  body?: SessionTransferCancellation
+  path: {
+    migrationID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/destination/{migrationID}/discard"
+}
+
+export type SessionTransferDiscardErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
+}
+
+export type SessionTransferDiscardError = SessionTransferDiscardErrors[keyof SessionTransferDiscardErrors]
+
+export type SessionTransferDiscardResponses = {
+  /**
+   * Session transfer result
+   */
+  200: boolean
+}
+
+export type SessionTransferDiscardResponse = SessionTransferDiscardResponses[keyof SessionTransferDiscardResponses]
+
+export type SessionTransferStatusData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/{sessionID}"
+}
+
+export type SessionTransferStatusErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
+}
+
+export type SessionTransferStatusError = SessionTransferStatusErrors[keyof SessionTransferStatusErrors]
+
+export type SessionTransferStatusResponses = {
+  /**
+   * Session transfer result
+   */
+  200: SessionTransferState | null
+}
+
+export type SessionTransferStatusResponse = SessionTransferStatusResponses[keyof SessionTransferStatusResponses]
+
+export type SessionTransferPrepareData = {
+  body?: SessionTransferPrepare
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/{sessionID}/prepare"
+}
+
+export type SessionTransferPrepareErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
+}
+
+export type SessionTransferPrepareError = SessionTransferPrepareErrors[keyof SessionTransferPrepareErrors]
+
+export type SessionTransferPrepareResponses = {
+  /**
+   * Session transfer result
+   */
+  200: SessionTransferState
+}
+
+export type SessionTransferPrepareResponse = SessionTransferPrepareResponses[keyof SessionTransferPrepareResponses]
+
+export type SessionTransferArchiveData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/{sessionID}/archive"
+}
+
+export type SessionTransferArchiveErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionTransferArchiveError = SessionTransferArchiveErrors[keyof SessionTransferArchiveErrors]
+
+export type SessionTransferArchiveResponses = {
+  /**
+   * Validated Session transfer ZIP
+   */
+  200: Blob | File
+}
+
+export type SessionTransferArchiveResponse = SessionTransferArchiveResponses[keyof SessionTransferArchiveResponses]
+
+export type SessionTransferCommitData = {
+  body?: SessionTransferReceipt
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/{sessionID}/commit"
+}
+
+export type SessionTransferCommitErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
+}
+
+export type SessionTransferCommitError = SessionTransferCommitErrors[keyof SessionTransferCommitErrors]
+
+export type SessionTransferCommitResponses = {
+  /**
+   * Session transfer result
+   */
+  200: SessionTransferActivation
+}
+
+export type SessionTransferCommitResponse = SessionTransferCommitResponses[keyof SessionTransferCommitResponses]
+
+export type SessionTransferCompleteData = {
+  body?: SessionTransferReceipt
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/{sessionID}/complete"
+}
+
+export type SessionTransferCompleteErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
+}
+
+export type SessionTransferCompleteError = SessionTransferCompleteErrors[keyof SessionTransferCompleteErrors]
+
+export type SessionTransferCompleteResponses = {
+  /**
+   * Session transfer result
+   */
+  200: SessionTransferState | null
+}
+
+export type SessionTransferCompleteResponse = SessionTransferCompleteResponses[keyof SessionTransferCompleteResponses]
+
+export type SessionTransferCancelData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/{sessionID}/cancel"
+}
+
+export type SessionTransferCancelErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
+}
+
+export type SessionTransferCancelError = SessionTransferCancelErrors[keyof SessionTransferCancelErrors]
+
+export type SessionTransferCancelResponses = {
+  /**
+   * Session transfer result
+   */
+  200: SessionTransferCancellation
+}
+
+export type SessionTransferCancelResponse = SessionTransferCancelResponses[keyof SessionTransferCancelResponses]
 
 export type CortexListData = {
   body?: never

@@ -35,3 +35,5 @@ Use `file/view` for selected Workspace paths and bounded content reads.
 Trusted transfers use `workspace-file/service`: imports accept stable operation IDs; `serveFile` accepts byte limits. Streams retain Runtime/resources after request return until read completion, cancellation or Workspace disposal. Run SQLite/PG `managed-transfer.test.ts` and native lifetime verification.
 
 `environment/profiles` owns global profiles and local/S3/OSS factories. Snapshot settings, fail closed, and keep external mounts read-only. Test `test/environment/profiles.test.ts`; `SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE` enables Docker integration.
+
+Session transfer directories use `session/transfer-workspace`; verify `test/session/transfer.test.ts`.

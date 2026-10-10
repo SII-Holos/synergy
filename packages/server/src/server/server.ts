@@ -36,6 +36,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status"
 import { upgradeWebSocket, websocket } from "hono/bun"
 import { errors, RuntimeShuttingDownError, StorageServiceError } from "./error"
 import { QuestionRoute } from "./question"
+import { SessionTransferRoute } from "./session-transfer"
 import { SessionExportRoute } from "./session-export"
 import { CortexRoute } from "./cortex"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
@@ -160,7 +161,7 @@ export namespace Server {
   // third-party components that dynamically create scripts (e.g., Ghostty Web).
 
   export function spaCsp(_nonce?: string): string {
-    return CSP_BASELINE
+    return CSP_BASELINE.replace("connect-src 'self'", "connect-src 'self' http: https:")
   }
 
   export function cspMiddleware(): MiddlewareHandler {
@@ -599,7 +600,9 @@ export namespace Server {
             err instanceof Environment.Stale ||
             err instanceof Scope.WorkspaceUnavailableError ||
             err instanceof Session.ForkPointMissingError ||
-            err.name === "SessionModelSelectionConflictError"
+            err.name === "SessionModelSelectionConflictError" ||
+            err.name === "SessionTransferBlocked" ||
+            err.name === "SessionTransferRejected"
           )
             status = 409
           else if (err instanceof Environment.Unavailable) status = 503
@@ -1502,6 +1505,7 @@ export namespace Server {
       .route("", PermissionRoute())
       .route("/question", QuestionRoute())
       .route("/session", SessionExportRoute())
+      .route("/session-transfer", SessionTransferRoute())
       .route("/cortex/tasks", CortexRoute())
 
       .get(

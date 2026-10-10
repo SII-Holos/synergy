@@ -21,3 +21,5 @@ Hosts with a different file delivery mechanism register `AttachmentDelivery` gui
 The public `/usage` entry exposes retained accounting, typed queries, clear/rebuild operations, and explicit host lifecycle/transfer integration. Its [accounting contract](../../docs/architecture/usage-accounting.md) is independent of transcript and archive retention.
 
 Selective tool catalogs use `cortexTools()` and register `registerCortexToolInputHistory()` from `./cortex/tools` before sealing the Runtime. The history registration keeps owned session migrations independent of product tool registration.
+
+Harness owns manual paused Session migration through `session/transfer` and the explicit `session/transfer-workspace` Host contract. The protocol does not execute historical calls; see [Session transfer](../../docs/architecture/session-transfer.md).

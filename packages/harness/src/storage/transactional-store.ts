@@ -340,6 +340,11 @@ const schemaFor = (backend: StorageBackend) => [
 
 export class StoreTransaction {
   private publishedOnly = false
+  private mutationGuard?: (keys: string[][], tree: boolean) => Promise<void>
+
+  guardMutations(guard: (keys: string[][], tree: boolean) => Promise<void>) {
+    this.mutationGuard = guard
+  }
 
   restrictToPublishedOwners() {
     this.publishedOnly = this.admission.pending
@@ -440,6 +445,7 @@ export class StoreTransaction {
   async appendTextProjection(input: TextProjectionAppend) {
     this.check(true)
     await this.assertAdmitted([input.key])
+    await this.mutationGuard?.([input.key], false)
     return new TextProjection(this.connection, this.namespace, this.backend, (key) =>
       keyParameter(this.keys, key),
     ).append(input)
@@ -510,6 +516,7 @@ export class StoreTransaction {
   async write<T>(key: string[], value: T, options: { expectedRevision?: bigint } = {}): Promise<void> {
     this.check(true)
     await this.assertAdmitted([key])
+    await this.mutationGuard?.([key], false)
     if (key[0] === "compat_pending") this.admission.pending = true
     if (key[0] === "sessions" && key.length >= 4) await this.assertNotDeleted([...key.slice(0, 3), "info"])
     await this.put(key, value, options)
@@ -518,6 +525,10 @@ export class StoreTransaction {
   async writeMany(entries: Array<{ key: string[]; value: unknown }>): Promise<void> {
     this.check(true)
     await this.assertAdmitted(entries.map((entry) => entry.key))
+    await this.mutationGuard?.(
+      entries.map((entry) => entry.key),
+      false,
+    )
     if (entries.some((entry) => entry.key[0] === "compat_pending")) this.admission.pending = true
     const unique = new Set<string>()
     const prepared = entries.map(({ key, value }) => {
@@ -683,6 +694,7 @@ export class StoreTransaction {
   async remove(key: string[]): Promise<void> {
     this.check(true)
     await this.assertAdmitted([key])
+    await this.mutationGuard?.([key], false)
     const removed = await this.connection.query(
       "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id = ? AND body IS NOT NULL RETURNING key_text",
       [Date.now(), this.namespace, keyParameter(this.keys, key)],
@@ -694,6 +706,7 @@ export class StoreTransaction {
   async removeMany(keys: string[][]): Promise<void> {
     this.check(true)
     await this.assertAdmitted(keys)
+    await this.mutationGuard?.(keys, false)
     for (let offset = 0; offset < keys.length; offset += 128) {
       const batch = keys.slice(offset, offset + 128)
       const removed = await this.connection.query<SqlRow & { key_text: string }>(
@@ -730,6 +743,7 @@ export class StoreTransaction {
   async removeTree(prefix: string[]): Promise<void> {
     this.check(true)
     await this.assertAdmitted([prefix], true)
+    await this.mutationGuard?.([prefix], true)
     let artifactCondition = "namespace = ?"
     const artifactValues: SqlValue[] = [this.namespace]
     if (prefix.length) {
@@ -846,6 +860,7 @@ export class StoreTransaction {
   async pruneTree(prefix: string[], options: { maintenance?: boolean; signal?: AbortSignal } = {}): Promise<number> {
     this.check(true)
     await this.assertAdmitted([prefix], true)
+    await this.mutationGuard?.([prefix], true)
     if (!prefix.length) throw new StorageIntegrityError("Cannot prune the storage root")
     const text = JSON.stringify(prefix)
     const like = (text.slice(0, -1) + ",").replace(/[!%_]/g, (value) => "!" + value) + "%"
@@ -1112,6 +1127,10 @@ export class StoreTransaction {
   async writeArtifacts(entries: Array<{ key: string[]; location: ArtifactLocation }>) {
     this.check(true)
     await this.assertAdmitted(entries.map((entry) => entry.key))
+    await this.mutationGuard?.(
+      entries.map((entry) => entry.key),
+      false,
+    )
     // The pack column is an engine-derived one only in the generated layout, and
     // a writer must not name such a column. Which layout this namespace has is
     // read from its artifact table rather than assumed from the backend or the
@@ -1182,14 +1201,27 @@ export class StoreTransaction {
     )
   }
 
-  async *artifacts(): AsyncGenerator<{ key: string[]; location: ArtifactLocation }> {
+  async *artifacts(prefix: string[] = []): AsyncGenerator<{ key: string[]; location: ArtifactLocation }> {
     this.check()
-    await this.assertAdmitted([[]], true)
+    await this.assertAdmitted([prefix], true)
+    const text = JSON.stringify(prefix)
+    const like = (text.slice(0, -1) + ",").replace(/[!%_]/g, (value) => "!" + value) + "%"
+    const condition = prefix.length ? " AND (key_text = ? OR key_text LIKE ? ESCAPE '!')" : ""
+    const ownerLength = ["sessions", "operations"].includes(prefix[0]) ? 3 : 1
+    const owner = prefix.length >= ownerLength ? " AND owner_key = ?" : ""
     let after = ""
     for (;;) {
       const rows = await this.connection.query(
-        "SELECT key_text, location FROM storage_artifacts WHERE namespace = ? AND key_text > ? ORDER BY key_text LIMIT 256",
-        [this.namespace, after],
+        "SELECT key_text, location FROM storage_artifacts WHERE namespace = ? AND key_text > ?" +
+          condition +
+          owner +
+          " ORDER BY key_text LIMIT 256",
+        [
+          this.namespace,
+          after,
+          ...(prefix.length ? [text, like] : []),
+          ...(owner ? [JSON.stringify(prefix.slice(0, ownerLength))] : []),
+        ],
       )
       if (!rows.length) return
       for (const row of rows)
@@ -1223,6 +1255,7 @@ export class StoreTransaction {
       return
     }
     if (entry.type === "record") {
+      await this.mutationGuard?.([entry.key], false)
       if (BigInt(entry.revision) > 9223372036854775807n) throw new StorageIntegrityError("Unsupported record revision")
       if ((await this.readMany([entry.key]))[0] !== undefined)
         throw new StorageConflictError("Portable record conflicts with existing target data")
