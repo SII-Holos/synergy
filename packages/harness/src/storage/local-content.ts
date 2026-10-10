@@ -247,7 +247,7 @@ export async function convertLocalContent(input: {
           const directory = await fs.mkdtemp(path.join(parent, "snapshot-"))
           try {
             const restored = path.join(directory, "store.git")
-            if (!(await snapshots.restore(scopeID, sessionID, root, restored, input.signal)))
+            if (!(await snapshots.restore(scopeID, sessionID, [root], restored, input.signal)).has(root))
               throw new StorageIntegrityError("Snapshot content cannot be restored")
             await SnapshotGit.checked(restored, ["fsck", "--full"], { signal: input.signal })
           } finally {

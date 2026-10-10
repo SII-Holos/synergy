@@ -1,8 +1,9 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import { randomBytes } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { SnapshotStore } from "../../src/session/snapshot-store"
+import { SnapshotGit } from "../../src/session/snapshot-git"
 import { storedSnapshots } from "../../src/session/stored-snapshots"
 import { SnapshotLifecycle } from "../../src/session/snapshot-lifecycle"
 import { Storage } from "../../src/storage/storage"
@@ -90,6 +91,21 @@ async function fixture() {
     },
   }
 }
+
+test("a comparison verifies the shared object graph once without granting unrelated ownership", async () => {
+  await using f = await fixture()
+  const before = await f.capture("before")
+  const after = await f.capture("after")
+  await f.run(async () => {
+    using traverse = spyOn(SnapshotGit, "lines")
+    using initialize = spyOn(SnapshotStore, "initializeBareRepository")
+    expect(await SnapshotStore.ownsMany(f.scope, f.session, [before, after, before])).toEqual(new Set([before, after]))
+    expect(traverse).toHaveBeenCalledTimes(1)
+    expect(initialize).not.toHaveBeenCalled()
+    expect(await SnapshotStore.ownsMany(f.scope, "unrelated-session", [before, after])).toEqual(new Set())
+    expect(traverse).toHaveBeenCalledTimes(1)
+  })
+})
 
 test("snapshot history and fork ownership survive deletion of every local Git cache", async () => {
   await using f = await fixture()

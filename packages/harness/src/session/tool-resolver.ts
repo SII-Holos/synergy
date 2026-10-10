@@ -1750,6 +1750,10 @@ export namespace ToolResolver {
                         input.command,
                       ),
                       workspace: workspace ?? "",
+                      originalCheckout:
+                        localFiles && typeof workspaceInfo?.originalCheckout === "string"
+                          ? workspaceInfo.originalCheckout
+                          : undefined,
                       sandboxMode: sandbox.mode,
                       extraReadRoots: [
                         ...new Set([

@@ -208,7 +208,7 @@ export namespace Snapshot {
     return SnapshotStore.withSession(
       sessionID,
       async () => {
-        if (!(await SnapshotStore.ownsCurrent(from)) || !(await SnapshotStore.ownsCurrent(to)))
+        if (!(await SnapshotStore.ownsCurrentRoots([from, to], signal)))
           throw new SnapshotStore.StorageError("Operation snapshot endpoints are unavailable")
         const result = await gitSpawn(
           [
@@ -242,7 +242,7 @@ export namespace Snapshot {
     return SnapshotStore.withSession(
       sessionID,
       async () => {
-        if (!(await SnapshotStore.ownsCurrent(from)) || !(await SnapshotStore.ownsCurrent(to)))
+        if (!(await SnapshotStore.ownsCurrentRoots([from, to], signal)))
           throw new SnapshotStore.StorageError("Snapshot comparison endpoints are unavailable")
         return diffSummaryImpl(from, to, sessionID, signal)
       },
@@ -259,7 +259,7 @@ export namespace Snapshot {
     return SnapshotStore.withSession(
       sessionID,
       async () => {
-        if (!(await SnapshotStore.ownsCurrent(from)) || !(await SnapshotStore.ownsCurrent(to)))
+        if (!(await SnapshotStore.ownsCurrentRoots([from, to], signal)))
           throw new SnapshotStore.StorageError("Snapshot comparison endpoints are unavailable")
         const diff = (await diffSummaryImpl(from, to, sessionID, signal, file))[0]
         if (!diff) return
@@ -312,7 +312,7 @@ export namespace Snapshot {
     return SnapshotStore.withSession(
       sessionID,
       async () => {
-        if (!(await SnapshotStore.ownsCurrent(from)) || !(await SnapshotStore.ownsCurrent(to)))
+        if (!(await SnapshotStore.ownsCurrentRoots([from, to], signal)))
           throw new SnapshotStore.StorageError("Snapshot ownership is unavailable")
         const git = gitdir()
         const entries = await objectEntries(
@@ -747,19 +747,22 @@ export namespace Snapshot {
     // Provenance: https://git-scm.com/docs/git-ls-tree (-l -z).
     // Tree entries carry sizes without interpolating filenames into a line protocol.
     for (const tree of new Set(objects.map((object) => object.tree))) {
-      const listing = await gitSpawn(
-        ["git", "--git-dir", git, "ls-tree", "-r", "-l", "-z", tree],
-        path.dirname(git),
-        undefined,
-        signal,
-      )
-      if (listing.exitCode !== 0) throw new SnapshotStore.StorageError("Snapshot tree metadata is unavailable")
-      for (const entry of listing.text.split("\0")) {
-        if (!entry) continue
-        const separator = entry.indexOf("\t")
-        const [mode, , oid, size] = entry.slice(0, separator).trim().split(/\s+/)
-        const key = objectSizeKey(tree, entry.slice(separator + 1))
-        if (requested.has(key) && /^\d+$/.test(size)) result.set(key, { mode, oid, size: Number(size) })
+      const files = [...new Set(objects.filter((object) => object.tree === tree).map((object) => object.file))]
+      for (let offset = 0; offset < files.length; offset += 32) {
+        const listing = await gitSpawn(
+          ["git", "--git-dir", git, "ls-tree", "-r", "-l", "-z", tree, "--", ...files.slice(offset, offset + 32)],
+          path.dirname(git),
+          undefined,
+          signal,
+        )
+        if (listing.exitCode !== 0) throw new SnapshotStore.StorageError("Snapshot tree metadata is unavailable")
+        for (const entry of listing.text.split("\0")) {
+          if (!entry) continue
+          const separator = entry.indexOf("\t")
+          const [mode, , oid, size] = entry.slice(0, separator).trim().split(/\s+/)
+          const key = objectSizeKey(tree, entry.slice(separator + 1))
+          if (requested.has(key) && /^\d+$/.test(size)) result.set(key, { mode, oid, size: Number(size) })
+        }
       }
     }
     return result

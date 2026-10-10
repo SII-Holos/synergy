@@ -610,6 +610,7 @@ export async function waitForHealth(
 ): Promise<void> {
   const remaining = () => startup.remainingMs()
   let lastError: unknown
+  const failureReason = () => startup.failureError() ?? lastError
   const childFailure = watchChildFailure(child)
   try {
     while (child.exitCode === null && child.signalCode === null) {
@@ -620,7 +621,7 @@ export async function waitForHealth(
         const response = await raceWithChildFailure(
           fetchWithTimeout(url, Math.min(remainingMs, 1000), requestController.signal),
           childFailure.promise,
-          () => lastError,
+          failureReason,
           () => requestController.abort(),
         )
         if (response.ok && remaining() > 0 && startup.isReady()) return
@@ -634,18 +635,17 @@ export async function waitForHealth(
         await raceWithChildFailure(
           new Promise((resolve) => setTimeout(resolve, delayMs)),
           childFailure.promise,
-          () => lastError,
+          failureReason,
         )
       }
     }
-    if (remaining() <= 0) {
-      throw new Error(`${startup.timeoutError().message}${lastError instanceof Error ? `: ${lastError.message}` : ""}`)
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new ChildProcessHealthError(
+        { kind: "exit", code: child.exitCode, signal: child.signalCode },
+        failureReason(),
+      )
     }
-    throw new Error(
-      `Synergy server exited before health became ready (code=${child.exitCode ?? "null"} signal=${child.signalCode ?? "null"}): ${
-        lastError instanceof Error ? lastError.message : String(lastError)
-      }`,
-    )
+    throw new Error(`${startup.timeoutError().message}${lastError instanceof Error ? `: ${lastError.message}` : ""}`)
   } finally {
     childFailure.dispose()
   }
@@ -690,10 +690,8 @@ class ChildProcessHealthError extends Error {
     const message =
       failure.kind === "error"
         ? `Synergy server process error before health became ready: ${failure.error.message}${detail}`
-        : `Synergy server exited before health became ready (code=${failure.code ?? "null"} signal=${failure.signal ?? "null"}): ${
-            lastError instanceof Error ? lastError.message : String(lastError)
-          }`
-    super(message, { cause: failure.kind === "error" ? failure.error : undefined })
+        : `Synergy server exited before health became ready (code=${failure.code ?? "null"} signal=${failure.signal ?? "null"})${detail}`
+    super(message, { cause: failure.kind === "error" ? failure.error : lastError })
     this.name = "ChildProcessHealthError"
   }
 }

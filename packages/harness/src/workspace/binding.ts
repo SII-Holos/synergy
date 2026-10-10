@@ -82,7 +82,11 @@ export namespace WorkspaceBinding {
     return migrate(ScopeContext.defaultWorkspace(scope), scope.id)
   }
 
-  export async function adopt(workspace: Workspace | null, scopeID: string): Promise<Workspace | null> {
+  export async function adopt(
+    workspace: Workspace | null,
+    scopeID: string,
+    options: { sharedWritableWorkspaceIDs?: string[] } = {},
+  ): Promise<Workspace | null> {
     if (!workspace) return null
     if (workspace.scopeID !== scopeID) throw new Error("Workspace belongs to a different Scope")
     if (workspace.id?.startsWith("wsp_"))
@@ -92,7 +96,15 @@ export namespace WorkspaceBinding {
     const hostID = await source.hostID()
     const location = await source.identify(workspace.path, true)
     const { path: _path, scopeID: _scope, type, id: _id, generation: _generation, ...metadata } = workspace
-    const info = await WorkspaceCatalog.register({ scopeID, type, hostID, ...location, metadata })
+    await Promise.all((options.sharedWritableWorkspaceIDs ?? []).map((id) => validate(id, scopeID)))
+    const info = await WorkspaceCatalog.register({
+      scopeID,
+      type,
+      hostID,
+      ...location,
+      metadata,
+      sharedWritableWorkspaceIDs: options.sharedWritableWorkspaceIDs,
+    })
     return WorkspaceCatalog.projection(info)
   }
 

@@ -2,6 +2,7 @@ import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { afterEach, describe, expect, mock, test, spyOn } from "bun:test"
 import path from "path"
 import { AgentCall } from "../../src/agent/call"
+import { Bus } from "../../src/bus"
 import { RolloutRecordingError } from "../../src/session/rollout/error"
 import { SessionManager } from "../../src/session/manager"
 import { Identifier } from "../../src/id/id"
@@ -25,7 +26,6 @@ const runtime = await testRuntime()
 const originalDiffSummary = Snapshot.diffSummary
 const originalGetModel = Provider.getModel
 const originalSessionMessages = Session.messages
-const originalDetachedModelMessages = SessionHistory.detachedModelMessages
 
 function summarizeFromLoop(input: { sessionID: string; messageID: string; messages: MessageV2.WithParts[] }) {
   return SessionSummary.summarize(input)
@@ -36,7 +36,6 @@ afterEach(() =>
     ;(Snapshot.diffSummary as any) = originalDiffSummary
     ;(Provider.getModel as any) = originalGetModel
     ;(Session.messages as any) = originalSessionMessages
-    ;(SessionHistory.detachedModelMessages as any) = originalDetachedModelMessages
   }),
 )
 
@@ -330,13 +329,7 @@ describe("SessionSummary", () => {
             api: { npm: "@ai-sdk/openai", id: modelID },
             options: {},
           }))
-          let historyReads = 0
-          ;(SessionHistory.detachedModelMessages as any) = mock(
-            async (input: Parameters<typeof SessionHistory.detachedModelMessages>[0]) => {
-              historyReads++
-              return originalDetachedModelMessages(input)
-            },
-          )
+          using history = spyOn(SessionHistory, "turnMessages")
 
           await LoopJob.execute([{ type: "summarize" }], {
             session,
@@ -360,7 +353,11 @@ describe("SessionSummary", () => {
           }
           expect(storedUser?.summary?.diffs).toEqual([{ ...diff, legacyRoot: tmp.path }])
           expect(messages).toEqual(before)
-          expect(historyReads).toBeGreaterThan(0)
+          expect(history).toHaveBeenCalledWith({
+            sessionID: session.id,
+            rootID: user.id,
+            signal: expect.any(AbortSignal),
+          })
 
           await Session.remove(session.id)
         },
@@ -561,7 +558,11 @@ describe("SessionSummary", () => {
             throw new Error("bounded summary must not reload the full transcript")
           })
           const second = await writeTurn(2)
-          await summarizeFromLoop({ sessionID: session.id, messageID: second.user.id, messages: second.messages })
+          using parts = spyOn(MessageV2, "parts")
+          await SessionSummary.summarize({ sessionID: session.id, messageID: second.user.id })
+          expect(
+            parts.mock.calls.every(([input]) => !first.messages.some((msg) => msg.info.id === input.messageID)),
+          ).toBe(true)
 
           expect(diffSummary).toHaveBeenCalledTimes(3)
           const ranges = diffSummary.mock.calls.map((call) => (call as unknown[]).slice(0, 3))
@@ -1431,5 +1432,93 @@ test("summary propagates recording failure after draining its parallel model cal
       },
     })
   }))
+
+test.each([undefined, "AbortError", "TimeoutError"] as const)(
+  "checkpoint diffs settle independently of same-turn inference (%s)",
+  (reason) =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const turn = await createTurn({
+            sessionID: session.id,
+            directory: tmp.path,
+            index: 91,
+            text: "Summarize",
+            finish: "stop",
+          })
+          installTestModel()
+          using diff = spyOn(Snapshot, "diffSummary").mockResolvedValue([turn.diff])
+          const started = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          let modelCalls = 0
+          using model = spyOn(AgentCall, "text").mockImplementation(async () => {
+            const first = ++modelCalls <= 2
+            started.resolve()
+            if (first) await release.promise
+            return { text: first ? "Summary" : "Updated summary", model: await Provider.getModel("test", "test") }
+          })
+          const controller = new AbortController()
+          const first = SessionSummary.summarize({
+            sessionID: session.id,
+            messageID: turn.user.id,
+            signal: controller.signal,
+          })
+          let second: Promise<void> | undefined
+          let third: Promise<void> | undefined
+          try {
+            await started.promise
+            using history = spyOn(SessionHistory, "rawMessages")
+            diff.mockResolvedValue([{ ...turn.diff, additions: 2 }])
+            second = SessionSummary.summarize({ sessionID: session.id, messageID: turn.user.id, diffOnly: true })
+            const timeout = Promise.withResolvers<void>()
+            const timer = setTimeout(timeout.resolve, 15_000)
+            timer.unref()
+            try {
+              await Promise.race([second, timeout.promise])
+            } finally {
+              clearTimeout(timer)
+            }
+            expect((await storedUser(session.id, turn.user.id))?.summary?.diffs[0]?.additions).toBe(2)
+            expect(history).not.toHaveBeenCalled()
+            const published = Promise.withResolvers<void>()
+            using updates = {
+              [Symbol.dispose]: Bus.subscribe(MessageV2.Event.Updated, (event) => {
+                const message = event.properties.info
+                if (
+                  message.id === turn.user.id &&
+                  message.role === "user" &&
+                  message.summary?.diffs[0]?.additions === 3
+                )
+                  published.resolve()
+              }),
+            }
+            diff.mockResolvedValue([{ ...turn.diff, additions: 3 }])
+            third = SessionSummary.summarize({
+              sessionID: session.id,
+              messageID: turn.user.id,
+              revisionID: "newer-comparison",
+            })
+            await published.promise
+            await Bun.sleep(0)
+            expect(modelCalls).toBe(2)
+            if (reason) controller.abort(new DOMException("Inference stopped", reason))
+          } finally {
+            release.resolve()
+            await Promise.all([first, second, third])
+          }
+          expect((await storedUser(session.id, turn.user.id))?.summary).toMatchObject({
+            title: "Updated summary",
+            body: "Updated summary",
+            diffState: { status: "ready" },
+            diffs: [expect.objectContaining({ additions: 3 })],
+          })
+        },
+      })
+    }),
+  30_000,
+)
 
 afterRuntimeTests(() => runtime.close())

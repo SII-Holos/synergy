@@ -1831,18 +1831,17 @@ export namespace MessageV2 {
       const [raw] = await Storage.readMany([StoragePath.sessionMessageOrderState(input.scopeID, input.sessionID)])
       const state = MessageOrderState.safeParse(raw)
       if (state.success) {
-        let after: string[] | undefined
+        let after: string | undefined
         let remaining = input.limit
         while (remaining > 0) {
-          const keys = await Storage.queryKeys({
+          const page = await Storage.childKeys({
             prefix: StoragePath.sessionMessageOrderMarkersRoot(input.scopeID, input.sessionID),
             descending: true,
-            orderTo: input.before,
+            before: input.before,
             after,
             limit: Math.min(32, remaining),
           })
-          if (!keys.length) break
-          const paths = keys.flatMap((key) => {
+          const paths = page.keys.flatMap((key) => {
             const id = markerMessageID(key.at(-1)!)
             return id ? [StoragePath.messageInfo(input.scopeID, input.sessionID, Identifier.asMessageID(id))] : []
           })
@@ -1852,7 +1851,8 @@ export namespace MessageV2 {
             remaining--
             yield canonicalMessage(upgradeAccessRecord(paths[index]!, info))
           }
-          after = keys.at(-1)
+          after = page.after
+          if (after === undefined) break
         }
         return
       }

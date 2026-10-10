@@ -1079,17 +1079,9 @@ export namespace Worktree {
         updatedAt: now,
         lastUsedAt: now,
       })
-      const adopted = await WorkspaceBinding.adopt(workspace(registry), scope.id)
       const sourceID = sourceContext.getStore()?.workspace.id
       const shared = sourceID ? (await WorkspaceCatalog.get(sourceID, scope.id)).sharedWritableWorkspaceIDs : []
-      if (adopted?.id && shared.length) {
-        const record = await WorkspaceCatalog.get(adopted.id, scope.id)
-        await WorkspaceBinding.setSharing(record.id, {
-          scopeID: scope.id,
-          expectedRevision: record.revision,
-          workspaceIDs: shared,
-        })
-      }
+      await WorkspaceBinding.adopt(workspace(registry), scope.id, { sharedWritableWorkspaceIDs: shared })
       const result = await withUse(registry.path, parsed.sessionID, async () => {
         const setup = await setupInfo(repoRoot)
         try {

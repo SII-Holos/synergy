@@ -17362,14 +17362,6 @@ msgid "session.fork.confirm.title"
 msgstr "⟦Fork session from this message⟧"
 
 #. js-lingui-explicit-id
-msgid "session.greeting.taskHint"
-msgstr "⟦Describe a task or add files to get started.⟧"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.taskTitle"
-msgstr "⟦What would you like to work on?⟧"
-
-#. js-lingui-explicit-id
 msgid "session.history.copied"
 msgstr ""
 

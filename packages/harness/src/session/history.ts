@@ -24,6 +24,7 @@ import { SnapshotRanges } from "./snapshot-ranges"
 import { SessionFileRestore } from "./file-restore"
 import type { Info } from "./types"
 import { prepareSessionMigrations } from "../migration"
+import { upgradeAccessRecord } from "../migration/import"
 
 const log = Log.create({ service: "session.history" })
 const PAGE_HYDRATION_CONCURRENCY = 16
@@ -124,7 +125,15 @@ export namespace SessionHistory {
 
   export async function requireDisplayMessage(session: Info, messageID: string) {
     const sessionID = session.id
-    await prepareSessionDisplay(session, { messageID })
+    if (!Storage.inTransaction() || Storage.inWriteTransaction())
+      await prepareSessionMigrations({ scopeID: session.scope.id, sessionID })
+    const key = StoragePath.messageInfo(
+      asScopeID(session.scope.id),
+      asSessionID(sessionID),
+      Identifier.asMessageID(messageID),
+    )
+    const info = MessageV2.canonicalMessage(upgradeAccessRecord(key, await Storage.read<MessageV2.Info>(key)))
+    await SessionHistoryDisplay.prepareWindow(session.scope.id, sessionID, [info])
     const [header, visibility] = await Promise.all([
       SessionHistoryDisplay.header(session.scope.id, sessionID, messageID),
       displayVisibility(session),
@@ -775,6 +784,34 @@ export namespace SessionHistory {
     const raw = await loadRawFromDisk(input.sessionID)
     const derived = MessageV2.deriveSemantics(raw)
     return sliceWithReferencedRoots(derived, input.limit)
+  }
+
+  export async function turnMessages(input: { sessionID: string; rootID: string; signal?: AbortSignal }) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    const root = await requireDisplayMessage(session, input.rootID)
+    const visibility = await displayVisibility(session)
+    const result: MessageV2.WithParts[] = []
+    let before = visibility.cut
+    for (;;) {
+      input.signal?.throwIfAborted()
+      const page = await Array.fromAsync(
+        MessageV2.readNewestInfos({
+          scopeID: asScopeID(session.scope.id),
+          sessionID: asSessionID(session.id),
+          before,
+          limit: 32,
+        }),
+      )
+      if (!page.length) break
+      for (const info of page) {
+        if (MessageV2.messageOrderMarker(info) < root.order) return MessageV2.deriveSemantics(result.reverse())
+        if (visibility.hidden.has(info.id) || (info.id !== input.rootID && info.rootID !== input.rootID)) continue
+        input.signal?.throwIfAborted()
+        result.push(await MessageV2.get({ sessionID: session.id, messageID: info.id }))
+      }
+      before = MessageV2.messageOrderMarker(page.at(-1)!)
+    }
+    return MessageV2.deriveSemantics(result.reverse())
   }
 
   export async function modelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {

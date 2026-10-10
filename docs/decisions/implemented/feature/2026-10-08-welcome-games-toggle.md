@@ -12,9 +12,9 @@ A new optional boolean preference `welcomeGames` (default: enabled) lives in the
 
 The Settings General panel renders a "New task games" switch in the Behavior section, wired through the standard settings form pipeline (`UI_DEFAULTS`, `GeneralStore`, `defaultSettingsState`, `ensureInit`, `buildGeneralPatch`) exactly like the adjacent `compactReasoning` boolean, and the settings catalog lists the row so search can find it.
 
-`NewSessionGreeting` gates its interactive branch on the preference in addition to the existing interactive eligibility: when `welcomeGames` is `false` the plain greeting fallback renders instead of `WelcomeStage`, so no scene module is loaded, no ambient animation mounts, and none of the game's input listeners are installed. An unset preference preserves the previous behavior.
+`NewSessionGreeting` belongs to the new-task route and gates its interactive branch on the preference: when `welcomeGames` is `false` the plain greeting fallback renders instead of `WelcomeStage`, so no scene module is loaded, no ambient animation mounts, and none of the game's input listeners are installed. An unset preference enables games.
 
-The plain greeting reuses the shared `.session-greeting` block, which is styled for the existing-session empty view (left-aligned, no stage padding). A scoped `.session-welcome-region > .session-greeting` rule mirrors the welcome stage's presentation for the new-task container — full height with the same responsive top padding, centered content capped at 50rem, and centered starter actions — so both branches of the greeting occupy the same visual position and only the scene below changes.
+The plain `.session-greeting` shares `WelcomeHeading` with the game stage. Full height, responsive top padding and centered starter actions preserve the introduction's position. Existing Session loading and emptiness use the separate conversation loader, as described in [Session navigation presentation](../bug-fix/2026-10-10-session-navigation-presentation.md).
 
 ## Alternatives considered
 

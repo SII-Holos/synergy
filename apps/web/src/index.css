@@ -209,38 +209,15 @@ a {
   container-type: inline-size;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.session-welcome-region > .session-greeting {
+  width: 100%;
   height: 100%;
   min-height: 410px;
   align-items: center;
   text-align: center;
-  padding: clamp(24px, 6vh, 72px) 24px 12px;
+  gap: 16px;
+  padding: clamp(24px, 6vh, 72px) 0 12px;
 }
 
-.session-welcome-region > .session-greeting > * {
-  max-width: 50rem;
-}
-
-.session-welcome-region > .session-greeting .session-starter-actions {
-  justify-content: center;
-}
-
-.session-greeting-heading {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-.session-greeting-wordmark {
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: -0.6px;
-  color: var(--text-strong);
-}
 .session-starter-actions button:focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: 3px;
@@ -252,6 +229,8 @@ a {
 .session-starter-actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
+  padding-inline: 24px;
   gap: 4px 16px;
   margin-top: 4px;
 }
@@ -269,37 +248,6 @@ a {
   color: var(--text-strong);
   background: var(--surface-hover-base);
 }
-.session-greeting-brand {
-  display: inline-flex;
-  border-radius: var(--radius-lg);
-}
-
-.session-greeting-brand:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 4px;
-}
-
-.session-greeting-brand img {
-  width: 32px;
-  height: 32px;
-  object-fit: contain;
-}
-
-.session-greeting h1 {
-  margin: 0;
-  font-size: var(--type-ui-page-title-size);
-  line-height: var(--type-ui-page-title-line-height);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-strong);
-}
-
-.session-greeting p {
-  margin: 0;
-  font-size: var(--type-ui-body-size);
-  line-height: var(--type-ui-body-line-height);
-  color: var(--text-weak);
-}
-
 .session-prompt-dock {
   flex-shrink: 0;
   padding-bottom: 24px;

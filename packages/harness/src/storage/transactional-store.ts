@@ -68,6 +68,13 @@ export interface RecordQuery {
   orderFrom?: string
   orderTo?: string
 }
+export interface ChildKeyQuery {
+  prefix: string[]
+  after?: string
+  before?: string
+  limit?: number
+  descending?: boolean
+}
 export interface StoredRecord<T = unknown> {
   key: string[]
   value: T
@@ -730,6 +737,34 @@ export class StoreTransaction {
     return rows.map((row) => row.child).sort()
   }
 
+  async childKeys(input: ChildKeyQuery): Promise<{ keys: string[][]; after?: string }> {
+    this.check()
+    const limit = input.limit ?? 100
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10000)
+      throw new StorageIntegrityError("Invalid storage page limit")
+    const conditions = ["namespace = ?", "parent_id = ?"]
+    const values: SqlValue[] = [this.namespace, keyParameter(this.keys, input.prefix)]
+    if (input.after !== undefined) {
+      conditions.push(`segment ${input.descending ? "<" : ">"} ?`)
+      values.push(input.after)
+    }
+    if (input.before !== undefined) {
+      conditions.push("segment < ?")
+      values.push(input.before)
+    }
+    const direction = input.descending ? "DESC" : "ASC"
+    // Materialize the node page before probing record bodies. Empty branches and
+    // tombstones still advance its cursor; they cannot end the live-key stream.
+    const rows = await this.connection.query<{ segment: string; key_text: string | null }>(
+      `WITH candidates AS MATERIALIZED (SELECT key_id, segment FROM storage_nodes WHERE ${conditions.join(" AND ")} ORDER BY segment ${direction} LIMIT ?) SELECT candidates.segment, record.key_text FROM candidates LEFT JOIN storage_records record ON record.namespace = ? AND record.key_id = candidates.key_id AND record.body IS NOT NULL${this.visibility("record")} ORDER BY candidates.segment ${direction}`,
+      [...values, limit, this.namespace],
+    )
+    return {
+      keys: rows.flatMap((row) => (row.key_text === null ? [] : [JSON.parse(row.key_text) as string[]])),
+      after: rows.length === limit ? rows.at(-1)!.segment : undefined,
+    }
+  }
+
   async list(prefix: string[]): Promise<string[][]> {
     this.check()
     const rows = await this.connection.query<SqlRow & { key_text: string }>(
@@ -976,6 +1011,8 @@ export class StoreTransaction {
 
   private async queryRows<Row extends SqlRow>(input: RecordQuery, columns: string, count = false): Promise<Row[]> {
     this.check()
+    const subtree =
+      input.prefix?.length && input.kind === undefined && input.sessionID === undefined && input.messageID === undefined
     const conditions = ["namespace = ?", "body IS NOT NULL"]
     const values: SqlValue[] = [this.namespace]
     for (const [field, value] of [
@@ -993,7 +1030,9 @@ export class StoreTransaction {
     // an equality on the column alone does not imply `message_id <> ''`, and
     // without this the message-keyed page would fall back to a full scan.
     if (this.keys === "bytes" && input.messageID !== undefined) conditions.push("message_id <> ''")
-    if (input.prefix?.length) {
+    if (subtree) {
+      conditions.push("key_id = tree.node_id")
+    } else if (input.prefix?.length) {
       const key = JSON.stringify(input.prefix)
       const descendants = key.slice(0, -1) + ","
       conditions.push("(key_text = ? OR substr(key_text, 1, length(?)) = ?)")
@@ -1024,8 +1063,14 @@ export class StoreTransaction {
       throw new StorageIntegrityError("Invalid storage page limit")
     if (!count) values.push(limit)
     const direction = input.descending ? "DESC" : "ASC"
+    // A prefix without an owner/kind index must drive keyed probes from its
+    // existing node tree; a text predicate plus LIMIT still scans the namespace.
+    const traversal = subtree
+      ? "WITH RECURSIVE tree(node_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.node_id) "
+      : ""
+    if (subtree) values.unshift(this.namespace, keyParameter(this.keys, input.prefix!), this.namespace)
     return this.connection.query<Row>(
-      `SELECT ${columns} FROM storage_records WHERE ${conditions.join(" AND ")}${this.visibility()}${count ? "" : ` ORDER BY order_key ${direction}, key_id ${direction} LIMIT ?`}`,
+      `${traversal}SELECT ${columns} FROM ${subtree ? "tree CROSS JOIN " : ""}storage_records WHERE ${conditions.join(" AND ")}${this.visibility()}${count ? "" : ` ORDER BY order_key ${direction}, key_id ${direction} LIMIT ?`}`,
       values,
     )
   }

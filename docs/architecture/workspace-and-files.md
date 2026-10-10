@@ -95,6 +95,8 @@ Terminal startup resolves its native library before acquiring resource ownership
 
 ## Worktree Ownership
 
+New worktrees inherit only the selected source Workspace's direct shared-directory grants. Binding adoption validates physical identities, and catalog registration validates and publishes those grants with the first record revision. Repeated registration returns an existing record unchanged. Initial sharing does not require exclusive access to source-directory readers; changes to published sharing retain normal exclusion and revision checks. See [atomic sharing initialization](../decisions/implemented/bug-fix/2026-10-10-initialize-worktree-sharing-atomically.md).
+
 Worktrees have explicit owners such as a session, Cortex task, Blueprint workflow, or internal orchestration record. Creating or entering a worktree updates session workspace binding; leaving returns to the project checkout according to the worktree lifecycle.
 
 The active worktree is the default write and execution boundary. Ordinary files in the original checkout can be read when they are not sensitive, but autonomous work cannot modify or execute from the original checkout. Cleanup removes resources only when their recorded owner permits it; a worktree is not inferred to be disposable merely because one session stopped using it. It becomes eligible for the managed-worktree cap only once it is idle, clean, free of local-only commits, and unlocked; a worktree that fails any of those tests is reported with its reason instead of reclaimed. The cap therefore bounds growth without ever deleting the only copy of unpushed work, and a lock written outside Synergy is never cleared.
