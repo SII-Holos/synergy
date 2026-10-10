@@ -1,4 +1,5 @@
 const TEXT_DELTA_WINDOW_MS = 16
+const TOOL_DELTA_WINDOW_MS = 250
 const DELTA_MAX_CHARS = 32 * 1024
 
 type DeltaField = "text" | "delta"
@@ -30,10 +31,7 @@ export class AgentStreamEventCoalescer<T extends { type: string }> {
       while (true) {
         next ??= iterator.next()
         const pending = this.pending
-        const delay =
-          pending && pending.type !== "tool-input-delta"
-            ? Math.max(0, pending.startedAt + TEXT_DELTA_WINDOW_MS - Date.now())
-            : undefined
+        const delay = pending ? Math.max(0, pending.startedAt + deltaWindow(pending.type) - Date.now()) : undefined
         const result =
           delay === undefined
             ? await next
@@ -80,8 +78,7 @@ export class AgentStreamEventCoalescer<T extends { type: string }> {
     if (!delta) return [...this.flush(), event]
 
     const pending = this.pending
-    const withinWindow =
-      delta.type === "tool-input-delta" || (pending && now - pending.startedAt < TEXT_DELTA_WINDOW_MS)
+    const withinWindow = pending && now - pending.startedAt < deltaWindow(delta.type)
     if (
       pending &&
       pending.type === delta.type &&
@@ -117,6 +114,10 @@ export class AgentStreamEventCoalescer<T extends { type: string }> {
       },
     ]
   }
+}
+
+function deltaWindow(type: DeltaInfo["type"]) {
+  return type === "tool-input-delta" ? TOOL_DELTA_WINDOW_MS : TEXT_DELTA_WINDOW_MS
 }
 
 function deltaInfo<T extends { type: string }>(event: T): DeltaInfo | undefined {

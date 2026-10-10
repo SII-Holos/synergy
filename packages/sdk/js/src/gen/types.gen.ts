@@ -13478,8 +13478,127 @@ export type RenderDescriptor = {
   title: string
   layout: "normal" | "wide"
   libraries: Array<"d3" | "chart" | "mermaid">
+  renderer?: "native" | "html"
   replaces?: string
   source: string
+}
+
+export type RenderUi = {
+  state?: {
+    [key: string]: string | number | boolean
+  }
+  computed?: Array<{
+    id: string
+    op: "add" | "subtract" | "multiply" | "divide" | "min" | "max"
+    inputs: [
+      (
+        | string
+        | number
+        | boolean
+        | {
+            ref: string
+          }
+      ),
+      (
+        | string
+        | number
+        | boolean
+        | {
+            ref: string
+          }
+      ),
+    ]
+  }>
+  nodes: Array<
+    | {
+        id: string
+        parent?: string
+        type: "heading"
+        text: string
+        level?: "2" | "3"
+      }
+    | {
+        id: string
+        parent?: string
+        type: "text"
+        text: string
+      }
+    | {
+        id: string
+        parent?: string
+        type: "row"
+        columns?: number
+      }
+    | {
+        id: string
+        parent?: string
+        type: "card"
+        title?: string
+      }
+    | {
+        id: string
+        parent?: string
+        type: "metric"
+        label: string
+        value:
+          | string
+          | number
+          | boolean
+          | {
+              ref: string
+            }
+        prefix?: string
+        suffix?: string
+      }
+    | {
+        id: string
+        parent?: string
+        type: "slider"
+        label: string
+        state: string
+        min: number
+        max: number
+        step?: number
+      }
+    | {
+        id: string
+        parent?: string
+        type: "select"
+        label: string
+        state: string
+        options: Array<string>
+      }
+    | {
+        id: string
+        parent?: string
+        type: "checkbox"
+        label: string
+        state: string
+      }
+    | {
+        id: string
+        parent?: string
+        type: "button"
+        label: string
+        text: string
+      }
+    | {
+        id: string
+        parent?: string
+        type: "bar"
+        label: string
+        items: Array<{
+          label: string
+          value:
+            | string
+            | number
+            | boolean
+            | {
+                ref: string
+              }
+        }>
+      }
+  >
 }
 
 export type RenderSource = {
@@ -13490,6 +13609,8 @@ export type RenderSource = {
   title: string
   layout: "normal" | "wide"
   libraries: Array<"d3" | "chart" | "mermaid">
+  renderer?: "native" | "html"
+  ui?: RenderUi
   html: string
   replaces?: string
 }

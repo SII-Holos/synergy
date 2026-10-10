@@ -10,6 +10,14 @@ State updates compare revisions within the existing Storage transaction and publ
 
 The per-model context contributor refreshes semantic state from stored Parts. It prioritizes explicit source references and then recent state, omits HTML and authored UI state, and bounds the complete injected message. Root-scoped contributors keep their existing cache lifecycle. Context remains untrusted data.
 
+## Native component results
+
+`render` accepts exactly one of HTML or a declarative `ui`. [RenderUI](../../packages/util/src/render-ui.ts) owns the bounded catalog, ordered arithmetic and reference validation. Native sources retain catalog data plus an escaped initial HTML fallback; descriptors carry only identity and the renderer. Existing sources remain readable without a storage migration.
+
+The native presenter consumes the existing throttled partial tool input. Validated nodes appear during generation and retain DOM identity and keyed user values. Incomplete tails wait for more input; failed computations preserve the last successful view and expose diagnostics. Generated content supplies only data, text and finite arithmetic; the host creates known components without evaluating authored scripts or CSS. Preview edits stay local until Media verifies the completed producing call. They then save through the existing Part state, with current parameters in `modelContent.parameters`. Cancelled calls cannot save or request follow-ups.
+
+Native results share expansion, save conflicts, close flushing and confirmed follow-ups with HTML. Standalone export embeds the same host-authored renderer and saved parameters, disabling host actions. See [the catalog decision](../decisions/implemented/architecture/2026-10-10-native-render-catalog.md).
+
 ## Presentation and recovery
 
 App supplies `RenderProvider` with SDK reads, revisioned writes, canonical state observation and confirmed follow-ups. Shared UI owns the controller, iframe runtime, controls and expanded viewer. Source references resolve to their producing call through Media; MIME or a filename cannot authorize a bridge. Source Assets are JSON links; if authored as images, decode failure preserves an accessible managed-resource link. Historical unversioned HTML enters this same presentation with static execution policy.
@@ -20,7 +28,7 @@ Export creates a standalone HTML document containing saved state and selected bu
 
 ## Execution and authority
 
-Generated JavaScript runs in an opaque `allow-scripts` iframe without same-origin, popup, navigation, device or Electron authority. A nonce and the current iframe WindowProxy bind each MessageChannel to one document. The bridge validates message types, payload bounds and active view ownership. Navigation closes the channel. Historical static content is sanitized and permits only the host bootstrap.
+HTML-mode generated JavaScript runs in an opaque `allow-scripts` iframe without same-origin, popup, navigation, device or Electron authority. A nonce and the current iframe WindowProxy bind each MessageChannel to one document. The bridge validates message types, payload bounds and active view ownership. Navigation closes the channel. Historical static content is sanitized and permits only the host bootstrap.
 
 Interactive CSP permits HTTPS static resources and blocks connection APIs, forms, child frames, workers and objects. Bundled libraries load before authored scripts. HTTPS permission is not a data isolation guarantee: an external resource URL can carry data. The source never receives host credentials or internal API clients.
 

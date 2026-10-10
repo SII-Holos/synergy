@@ -458,3 +458,135 @@ test("deferred browser resize notifications do not hide a working visual or supp
   await inline().getByRole("button", { name: "Authored error" }).click()
   await page.getByRole("alert").filter({ hasText: "ResizeObserver loop completed" }).waitFor()
 })
+
+const estimate = {
+  state: { seats: 8 },
+  computed: [{ id: "price", op: "multiply", inputs: [{ ref: "seats" }, 29] }],
+  nodes: [
+    { id: "heading", type: "heading", text: "Team estimate" },
+    { id: "seats", type: "slider", label: "Seats", state: "seats", min: 1, max: 50 },
+    { id: "price", type: "metric", label: "Monthly price", value: { ref: "price" }, prefix: "$" },
+    { id: "next", type: "button", label: "Discuss estimate", text: "Review this estimate" },
+  ],
+}
+async function native(ui: unknown = estimate, streaming = false) {
+  await page.evaluate(
+    ({ ui, streaming }) =>
+      (window as unknown as { __renderTest: { setupUI(ui: unknown, streaming: boolean): void } }).__renderTest.setupUI(
+        ui,
+        streaming,
+      ),
+    { ui, streaming },
+  )
+  await page.getByRole("heading", { name: "Team estimate" }).waitFor()
+}
+async function stream(ui: unknown, complete = false) {
+  await page.evaluate(
+    ({ ui, complete }) =>
+      (window as unknown as { __renderTest: { stream(ui: unknown, complete: boolean): void } }).__renderTest.stream(
+        ui,
+        complete,
+      ),
+    { ui, complete },
+  )
+}
+test("native catalog streams locally, retains focused controls and promotes preview state on completion", async () => {
+  await native({ ...estimate, nodes: estimate.nodes.slice(0, 3) }, true)
+  expect(await page.locator("iframe").count()).toBe(0)
+  const slider = page.getByRole("slider", { name: "Seats" })
+  await slider.fill("9")
+  await slider.focus()
+  const before = await page.evaluate(
+    () => (window as unknown as { __renderTest: { stats(): { writes: number } } }).__renderTest.stats().writes,
+  )
+  await stream({ ...estimate, nodes: [...estimate.nodes, { id: "partial", type: "metric" }] })
+  expect(await slider.inputValue()).toBe("9")
+  expect(await slider.evaluate((element) => element === document.activeElement)).toBe(true)
+  await page.getByText("$261", { exact: true }).waitFor()
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __renderTest: { stats(): { writes: number } } }).__renderTest.stats().writes,
+    ),
+  ).toBe(before)
+  await page.evaluate(() => (window as unknown as { __renderTest: { prepare(): void } }).__renderTest.prepare())
+  expect(await slider.inputValue()).toBe("9")
+  await stream(estimate, true)
+  await page.waitForFunction(
+    () =>
+      (
+        window as unknown as {
+          __renderTest: { stats(): { state: { content: { modelContent: { parameters: { seats: number } } } } } }
+        }
+      ).__renderTest.stats().state.content.modelContent?.parameters?.seats === 9,
+  )
+  await page.getByRole("button", { name: "Expand visual" }).click()
+  const expanded = page.locator('[data-component="render-viewer"]')
+  expect(await expanded.getByRole("slider", { name: "Seats" }).inputValue()).toBe("9")
+  await expanded.getByRole("slider", { name: "Seats" }).fill("10")
+  await expanded.getByRole("button", { name: "Close dialog" }).click()
+  expect(await slider.inputValue()).toBe("10")
+})
+test("native preview promotion keeps failed saves recoverable before expanding", async () => {
+  await native(estimate, true)
+  await page.getByRole("slider", { name: "Seats" }).fill("9")
+  await page.evaluate(() =>
+    (window as unknown as { __renderTest: { rejectWrites(): void } }).__renderTest.rejectWrites(),
+  )
+  await stream(estimate, true)
+  await page.getByRole("alert").getByText("Saving is unavailable", { exact: true }).waitFor()
+  await page.getByRole("button", { name: "Expand visual" }).click()
+  expect(await page.locator('[data-component="render-viewer"]').count()).toBe(0)
+  expect(await page.getByRole("slider", { name: "Seats" }).inputValue()).toBe("9")
+  await page.evaluate(() => (window as unknown as { __renderTest: { retryWrites(): void } }).__renderTest.retryWrites())
+  await page.getByRole("button", { name: "Expand visual" }).click()
+  const viewer = page.locator('[data-component="render-viewer"]')
+  expect(await viewer.getByRole("slider", { name: "Seats" }).inputValue()).toBe("9")
+  await viewer.getByRole("button", { name: "Close dialog" }).click()
+})
+test("native catalog keeps its last good view on arithmetic failure and previews follow-ups", async () => {
+  await native(estimate, true)
+  await stream({ ...estimate, computed: [{ id: "price", op: "divide", inputs: [1, 0] }] })
+  await page.getByRole("alert").filter({ hasText: "price" }).waitFor()
+  expect(await page.getByText("$232", { exact: true }).count()).toBe(1)
+  await stream(estimate, true)
+  await page.getByRole("button", { name: "Discuss estimate" }).click()
+  const requests = await page.evaluate(
+    () => (window as unknown as { __renderTest: { stats(): { requests: string[] } } }).__renderTest.stats().requests,
+  )
+  expect(requests.at(-1)).toContain('"seats":8')
+  await page.setViewportSize({ width: 375, height: 800 })
+  expect(
+    await page
+      .locator('[data-component="render-native"]')
+      .evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true)
+  await page.setViewportSize({ width: 1000, height: 900 })
+})
+
+test("native state adopts conflicts and standalone exports retain controls without host authority", async () => {
+  await native()
+  await page.evaluate(() =>
+    (window as unknown as { __renderTest: { conflictWrites(): void } }).__renderTest.conflictWrites(),
+  )
+  const slider = page.getByRole("slider", { name: "Seats" })
+  await slider.fill("11")
+  await page.getByRole("alert").filter({ hasText: "Another view" }).waitFor()
+  expect(await slider.inputValue()).toBe("12")
+  await slider.fill("13")
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export interactive HTML" }).click(),
+  ])
+  const file = await download.path()
+  const document = await Bun.file(file!).text()
+  const exported = await browser.newPage()
+  try {
+    await exported.setContent(document)
+    await exported.getByText("$377", { exact: true }).waitFor()
+    await exported.getByRole("slider", { name: "Seats" }).fill("14")
+    expect(await exported.getByText("$406", { exact: true }).count()).toBe(1)
+    expect(await exported.getByRole("button", { name: "Discuss estimate" }).isDisabled()).toBe(true)
+  } finally {
+    await exported.close()
+  }
+})

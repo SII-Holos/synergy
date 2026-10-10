@@ -751,7 +751,7 @@ describe("session turn activity projection", () => {
     expect(groups[0]?.steps[0]?.part.id).toBe("hidden-error")
   })
 
-  test("preserves media and promoted tool attachments on the existing timeline path", () => {
+  test("preserves media, visual cards and their promoted attachments on the existing timeline path", () => {
     const media = tool({ id: "media", tool: "plugin__synergy-meme-plugin__generate_meme", status: "running" })
     media.state.metadata = { display: { kind: "media-generation", toolCard: "hidden" } }
     const completed = tool({ id: "attachment-tool", tool: "plugin_export" })
@@ -759,11 +759,20 @@ describe("session turn activity projection", () => {
       completed.state.metadata = { display: { toolCard: "hidden" } }
       completed.state.attachments = [attachment("promoted") as never]
     }
-    const items = project({ parts: [tool({ id: "read-a" }), media, completed, tool({ id: "read-b" })] })
+    const visual = tool({ id: "visual", tool: "render" })
+    if (visual.state.status === "completed") visual.state.attachments = [attachment("source") as never]
+    const items = project({ parts: [tool({ id: "read-a" }), media, completed, visual, tool({ id: "read-b" })] })
 
     expect(activities(items).map((group) => group.steps.map((step) => step.part.id))).toEqual([["read-a"], ["read-b"]])
     expect(items.some((item) => item.kind === "passthrough" && item.item.kind === "media")).toBe(true)
     expect(items.some((item) => item.kind === "passthrough" && item.item.kind === "tool-attachments")).toBe(true)
+    const faces = items
+      .filter(
+        (item) => item.kind === "passthrough" && item.item.kind !== "compaction" && item.item.part.id === visual.id,
+      )
+      .map((item) => item.kind === "passthrough" && item.item.kind)
+    expect(faces).toEqual(["part", "tool-attachments"])
+    expect(new Set(items.map(activityItemStableKey)).size).toBe(items.length)
   })
   test("folds built-in MCP search tools into one activity group", () => {
     const parts = [
