@@ -437,9 +437,15 @@ test("native Space paging preserves new reading when real body growth follows it
     expect(await viewport.evaluate((element) => document.activeElement === element)).toBe(true)
     await cdp.send("Emulation.setCPUThrottlingRate", { rate: 12 })
     const before = await viewport.evaluate((element) => {
-      element.addEventListener("scroll", () => window.__conversationProcess.growToolEvidence("many-400"), {
-        once: true,
-      })
+      element.addEventListener(
+        "keydown",
+        () => {
+          element.addEventListener("scroll", () => window.__conversationProcess.growToolEvidence("many-400"), {
+            once: true,
+          })
+        },
+        { once: true },
+      )
       return {
         top: element.scrollTop,
         height: element.scrollHeight,
