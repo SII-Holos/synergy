@@ -85,7 +85,7 @@ Global `config/synergy.d/130-storage.jsonc` selects storage. Omission selects SQ
 }
 ```
 
-Use `synergy data storage status` to inspect the active dataset, `verify` to check integrity and relationships, `resume` to finish interrupted upgrades or switches, and `migrate --target <config-file>` to change backend, namespace or SQLite location. These commands acquire the appropriate read-only or exclusive maintenance Handle. They do not stop the running Runtime.
+Use `synergy data storage status` to inspect the active dataset, `verify` to check integrity and relationships, `resume` to finish interrupted upgrades or switches and collect unreferenced artifact packs, and `migrate --target <config-file>` to change backend, namespace or SQLite location. These commands acquire the appropriate read-only or exclusive maintenance Handle. They do not stop the running Runtime.
 
 `verify` also checks every referenced binary artifact's bounds and hash. `restore-backup <backup> <destination>` verifies a sealed version 2 Home backup or a version 3/4 segmented backup and publishes a separate, new Home directory; the destination is the Home directory itself, not its parent. It rejects existing destinations and does not open the current database. An incomplete segmented backup also requires its original frozen source; restoration seals those remaining segments before publishing the restored Home. See [upgrade recovery](../migrations/transactional-agent-storage.md) for backup formats and downgrade limits.
 

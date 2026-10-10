@@ -220,7 +220,11 @@ export namespace SessionHistory {
     await prepareSessionDisplay(session)
     input.signal?.throwIfAborted()
     const release = UpgradeWork.priority(input.sessionID)
-    const preparation = await SessionHistorySearch.prepareBatch(session.scope.id, input.sessionID).finally(release)
+    const preparation = await SessionHistorySearch.prepareBatch(
+      session.scope.id,
+      input.sessionID,
+      input.signal,
+    ).finally(release)
     if (!preparation.ready) SessionHistorySearch.requestBackground(session.scope.id, input.sessionID)
     const fingerprint = new Bun.CryptoHasher("sha256")
       .update(

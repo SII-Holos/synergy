@@ -35,6 +35,8 @@ AI agent work often outlives a single conversation. Synergy treats it as durable
 
 Choose **Atlas** for general assistance, **Forge** for coding, or **Pico** for lightweight work. Their CLI names are `atlas`, `forge`, and `pico`; for example, `synergy send --agent forge "Fix the failing test"`. Existing configurations and conversations [upgrade automatically](docs/migrations/primary-agent-identities.md).
 
+Historical conversations prepare when opened. Full history import and usage rebuilds require an explicit request; [storage admission](docs/architecture/agent-storage.md) documents upgrade and recovery behavior.
+
 Synergy runs as a standalone local workspace. Connecting a Holos agent adds account identity, messaging, and presence without replacing local projects, providers, sessions, or data.
 
 ## What makes Synergy different

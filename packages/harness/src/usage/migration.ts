@@ -7,13 +7,14 @@ import { RolloutUsage } from "../session/rollout/usage"
 import { UsageLedger } from "./ledger"
 import { UsageSchema } from "./schema"
 import { Lock } from "../util/lock"
+import { upgradeAccessRecord } from "../migration/import"
 
 export namespace UsageMigration {
   export const id = "20260928-independent-usage-ledger-v1"
   export const lineageMigration: Migration = {
     id: "20261003-usage-parent-index-v1",
     scope: "derived",
-    execution: "startup",
+    execution: "maintenance",
     description: "Index retained usage lineage by parent owner and run",
     async up(progress) {
       let completed = 0
@@ -42,7 +43,7 @@ export namespace UsageMigration {
       execution: "after-convergence",
       description: "Schedule resumable historical usage capture without blocking runtime startup",
       async up() {
-        if (!(await status())) await start()
+        if (!(await status())) await schedule(false, false)
       },
     },
     {
@@ -52,7 +53,7 @@ export namespace UsageMigration {
       dependsOn: [id],
       description: "Schedule bounded raw-response usage recovery independently of live capture checkpoints",
       async up() {
-        await start(true)
+        await schedule(true, false)
       },
     },
   ]
@@ -67,14 +68,22 @@ export namespace UsageMigration {
     return raw ? UsageSchema.Rebuild.parse(raw) : undefined
   }
   export async function start(restart = false) {
+    return schedule(restart, true)
+  }
+  async function schedule(restart: boolean, requested: boolean) {
     using lock = await Lock.write("usage-rebuild")
     const previous = await status()
-    if (!restart && (previous?.status === "running" || previous?.status === "pending")) return previous
+    if (!restart && (previous?.status === "running" || previous?.status === "pending")) {
+      const resumed = { ...previous, requested }
+      await Storage.write(StoragePath.usageRebuild(), resumed)
+      return resumed
+    }
     const result: UsageSchema.Rebuild =
       !restart && previous?.status === "failed"
-        ? { ...previous, status: "pending" }
+        ? { ...previous, status: "pending", requested }
         : {
             version: 1,
+            requested,
             status: "pending",
             phase: "indexes",
             owners: 0,
@@ -98,36 +107,50 @@ export namespace UsageMigration {
     } while (after)
     return count
   }
+
+  export async function prepare(owner: UsageSchema.Owner) {
+    using lock = await Lock.write(`usage-prepare:${owner.scopeID}:${UsageLedger.ownerKey(owner)}`)
+    const page = await UsageLedger.replayBatch(owner, 64, "access")
+    if (!page.complete || owner.kind !== "session") return
+    const key = [...StoragePath.usageReplay(), "legacy", owner.scopeID, UsageLedger.ownerKey(owner)]
+    const [state] = await Storage.readMany<{ after?: string[]; complete?: boolean }>([key])
+    if (state?.complete) return
+    const legacy = await preserveLegacy(owner, state?.after, 16, false)
+    await Storage.write(key, { after: legacy.after, complete: !legacy.after })
+  }
+
   async function preserveLegacy(
     owner: UsageSchema.Owner,
     after?: string[],
+    limit = 128,
+    tools = true,
   ): Promise<{ count: number; after?: string[] }> {
     if (owner.kind !== "session") return { count: 0 }
     let count = 0
-    const covered = new Set<string>()
-    for await (const row of Storage.records<UsageSchema.Record>({
-      kind: "usage",
-      messageID: "call",
-      scopeID: owner.scopeID,
-      sessionID: owner.sessionID,
-    }))
-      covered.add(row.value.runID)
     const messages = await Storage.query<unknown>({
       kind: "message",
       scopeID: owner.scopeID,
       sessionID: owner.sessionID,
       after,
-      limit: 128,
+      limit,
     })
     for (const row of messages) {
       if (row.key.at(-1) !== "info") continue
-      const parsed = MessageV2.Info.safeParse(row.value)
+      const parsed = MessageV2.Info.safeParse(upgradeAccessRecord(row.key, row.value))
       if (!parsed.success) throw new Error("Historical usage message cannot be decoded")
       const message = parsed.data
+      if (message.role !== "assistant" || ["inherited", "imported"].includes(message.accounting?.kind ?? "")) continue
       if (
-        message.role !== "assistant" ||
-        ["inherited", "imported"].includes(message.accounting?.kind ?? "") ||
-        covered.has(message.rootID ?? message.parentID)
+        (
+          await Storage.queryKeys({
+            prefix: [
+              ...StoragePath.usageOwner(owner.scopeID, UsageLedger.ownerKey(owner)),
+              message.rootID ?? message.parentID,
+              "call",
+            ],
+            limit: 1,
+          })
+        ).length
       )
         continue
       if (
@@ -178,38 +201,39 @@ export namespace UsageMigration {
           accounting: message.accounting?.kind === "rollout" ? message.accounting.summary : undefined,
         }),
       )
-      for await (const partRow of Storage.records({
-        kind: "part",
-        scopeID: owner.scopeID,
-        sessionID: owner.sessionID,
-        messageID: message.id,
-      })) {
-        const part = MessageV2.Part.parse(partRow.value)
-        if (part.type !== "tool") continue
-        const finished =
-          part.state.status === "completed" || part.state.status === "error" ? part.state.time : undefined
-        const started = "time" in part.state ? part.state.time.start : message.time.created
-        await Storage.transaction(() =>
-          UsageLedger.writeLegacyTool({
-            owner,
-            runID: message.rootID ?? message.parentID,
-            entityID: part.id,
-            started,
-            ended: finished?.end,
-            tool: part.tool,
-            status:
-              part.state.status === "completed"
-                ? "completed"
-                : part.state.status === "error"
-                  ? "failed"
-                  : "interrupted",
-            durationMs: finished ? Math.max(0, finished.end - finished.start) : null,
-          }),
-        )
-      }
+      if (tools)
+        for await (const partRow of Storage.records({
+          kind: "part",
+          scopeID: owner.scopeID,
+          sessionID: owner.sessionID,
+          messageID: message.id,
+        })) {
+          const part = MessageV2.Part.parse(upgradeAccessRecord(partRow.key, partRow.value))
+          if (part.type !== "tool") continue
+          const finished =
+            part.state.status === "completed" || part.state.status === "error" ? part.state.time : undefined
+          const started = "time" in part.state ? part.state.time.start : message.time.created
+          await Storage.transaction(() =>
+            UsageLedger.writeLegacyTool({
+              owner,
+              runID: message.rootID ?? message.parentID,
+              entityID: part.id,
+              started,
+              ended: finished?.end,
+              tool: part.tool,
+              status:
+                part.state.status === "completed"
+                  ? "completed"
+                  : part.state.status === "error"
+                    ? "failed"
+                    : "interrupted",
+              durationMs: finished ? Math.max(0, finished.end - finished.start) : null,
+            }),
+          )
+        }
       count++
     }
-    return { count, after: messages.length === 128 ? messages.at(-1)!.key : undefined }
+    return { count, after: messages.length === limit ? messages.at(-1)!.key : undefined }
   }
   export async function batch(limit = 16) {
     using lock = await Lock.write("usage-rebuild")
@@ -218,6 +242,20 @@ export namespace UsageMigration {
     if (current.status === "completed" || current.status === "failed") return current
     const state = { ...current, status: "running" as UsageSchema.Rebuild["status"], updatedAt: Date.now() }
     try {
+      if (!state.lineageComplete) {
+        const links = await Storage.query<UsageSchema.Link>({
+          kind: "usage_link",
+          after: state.lineageAfter,
+          limit: 128,
+        })
+        await Storage.transaction(async () => {
+          for (const row of links) await UsageLedger.indexLink(UsageSchema.Link.parse(row.value))
+          state.lineageAfter = links.at(-1)?.key ?? state.lineageAfter
+          state.lineageComplete = links.length < 128
+          await Storage.write(StoragePath.usageRebuild(), state)
+        })
+        return state
+      }
       const rows = await Storage.query({
         kind: state.phase === "indexes" ? "usage" : state.phase === "sessions" ? "session" : "operations",
         after: state.after,
@@ -273,12 +311,12 @@ export namespace UsageMigration {
     const done = (async () => {
       while (!stopped) {
         const current = await status().catch(() => undefined)
-        if (current && ["pending", "running"].includes(current.status)) {
+        if (current?.requested && ["pending", "running"].includes(current.status)) {
           await batch().catch(() => {})
         }
         if (stopped) return
         await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, current?.status === "running" ? 25 : 1000)
+          const timer = setTimeout(resolve, current?.requested && current.status === "running" ? 25 : 1000)
           timer.unref()
           wake = () => {
             clearTimeout(timer)

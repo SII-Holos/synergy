@@ -1595,7 +1595,7 @@ export const migrations: Migration[] = [
   {
     id: "20261009-context-usage-categories",
     scope: "session",
-    execution: "session",
+    execution: "record",
     description: "Preserve historical context attribution in the current category schema",
     upgradeRecord: upgradeContextUsageRecord,
     upSession: migrateContextUsage,
@@ -1612,7 +1612,7 @@ export const migrations: Migration[] = [
   {
     id: "20261008-resource-reference-context",
     scope: "session",
-    execution: "session",
+    execution: "record",
     domain: "session",
     dependsOn: ["20261007-attachment-resource-summaries"],
     description: "Retain recorded Workspace ownership for message references",
@@ -1633,7 +1633,7 @@ export const migrations: Migration[] = [
   {
     id: "20261007-media-cancellation-display",
     scope: "session",
-    execution: "session",
+    execution: "record",
     domain: "session",
     dependsOn: ["20261007-attachment-resource-summaries"],
     description: "Refresh display summaries to omit cancelled media generation",
@@ -1647,7 +1647,7 @@ export const migrations: Migration[] = [
   {
     id: "20261007-attachment-resource-summaries",
     scope: "session",
-    execution: "session",
+    execution: "record",
     domain: "session",
     dependsOn: ["20261007-attachment-presentation"],
     description: "Rebuild bounded managed resource summaries for attachment presentation",
@@ -1661,7 +1661,7 @@ export const migrations: Migration[] = [
   {
     id: "20261007-attachment-presentation",
     scope: "session",
-    execution: "session",
+    execution: "record",
     domain: "session",
     dependsOn: ["20261005-reasoning-display-identity"],
     description: "Record attachment purpose and rebuild bounded presentation summaries",
@@ -1684,7 +1684,7 @@ export const migrations: Migration[] = [
   {
     id: "20261005-reasoning-display-identity",
     scope: "session",
-    execution: "session",
+    execution: "record",
     domain: "session",
     dependsOn: ["20261005-session-reasoning-display"],
     description: "Rebuild bounded Part summaries with provider reasoning item identities on demand",
@@ -1698,7 +1698,7 @@ export const migrations: Migration[] = [
   {
     id: "20261005-session-reasoning-display",
     scope: "session",
-    execution: "session",
+    execution: "record",
     domain: "session",
     dependsOn: ["20261001-session-display-index"],
     description: "Refresh reasoning presentation summaries without changing canonical evidence",

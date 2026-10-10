@@ -611,14 +611,14 @@ describe("GlobalStorageRoute", () => {
 })
 
 afterRuntimeTests(() => runtime.close())
-test("upgrade status is available independently of history and the catalog validates bounds", () =>
+test("ready storage reports deferred history work paused and the catalog validates bounds", () =>
   runtime.run(async () => {
     const response = await GlobalStorageRoute().request("http://localhost/upgrade")
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({
       ready: true,
       historyReady: true,
-      paused: false,
+      paused: true,
       backup: { complete: true },
       pending: 0,
       partial: 0,

@@ -14,6 +14,7 @@ test("owner schema walks stop between records when preparation is cancelled", ()
       await Storage.write(["sessions", scopeID, sessionID, "messages", id, "info"], { id })
     const controller = new AbortController()
     let seen = 0
+    await UpgradeWork.control("resume")
     try {
       await expect(
         UpgradeWork.run({ background: true, signal: controller.signal }, () =>
@@ -27,6 +28,7 @@ test("owner schema walks stop between records when preparation is cancelled", ()
       ).rejects.toMatchObject({ name: "AbortError" })
       expect(seen).toBe(1)
     } finally {
+      await UpgradeWork.control("pause")
       await Storage.removeTree(["sessions", scopeID])
     }
   }))

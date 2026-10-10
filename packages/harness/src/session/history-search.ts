@@ -38,7 +38,7 @@ export namespace SessionHistorySearch {
       state.task = (async () => {
         while (!state.stopping && state.pending.size) {
           const [key, owner] = [...state.pending].at(-1)!
-          state.controller = UpgradeWork.controller(true, owner.sessionID)
+          state.controller = UpgradeWork.controller(false, owner.sessionID)
           try {
             const status = await prepareBatch(owner.scopeID, owner.sessionID, state.controller.controller.signal)
             if (status.ready) state.pending.delete(key)
@@ -113,7 +113,7 @@ export namespace SessionHistorySearch {
     const identity = `${scopeID}/${sessionID}`
     const pending = batches().get(identity)
     if (pending) return pending
-    const task = UpgradeWork.run({ background: true, sessionID, signal }, async () => {
+    const task = UpgradeWork.run({ background: false, sessionID, signal }, async () => {
       await UpgradeWork.checkpoint()
       const stateKey = StoragePath.sessionTextState(scopeID, sessionID)
       const source = await Storage.snapshot(async (tx) => {

@@ -307,9 +307,6 @@ export namespace SessionCompat {
         await ensureImported(locator.sessionID)
         continue
       }
-      const info = await pendingInfo(locator.scopeID, locator.sessionID)
-      if (!info || info.paused || info.working || ["queued", "running"].includes(info.cortex?.status ?? ""))
-        await ensureImported(locator.sessionID)
     }
   }
 

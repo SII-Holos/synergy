@@ -49,6 +49,10 @@ For PostgreSQL deletion plans, include a new namespace created after statistics 
 
 ## Migrate Existing Data
 
+Choose migration execution independently of its data scope. New migrations must explicitly declare `startup`, `session`, `owner`, `record`, `after-convergence` or `maintenance`; `scope: session` alone does not mean lazy. Do not enumerate historical Sessions/operations, replay journals, decode message bodies or read artifact bytes to admit the application. Put owner transforms behind the central owner runner and pure compatibility transforms behind record access. Keep unknown recovery coverage durable and fence only its owner before execution; never replace unknown coverage with an empty clean index. Historical imports and full usage rebuilds require explicit resume/request, including old queued jobs. See [history admission](../../../docs/decisions/implemented/bug-fix/2026-10-10-history-work-outside-startup.md).
+
+Test a released completion ledger with the new migration absent, interrupted and complete. Include both owner kinds, simultaneous requests, deleted owners, a corrupt cold owner and restart. Measure real read/scan counts on populated SQL stores; empty-home speed alone cannot establish bounded startup. Verify first-page work separately from full export/maintenance and retain original source evidence until its owner verifies the upgrade.
+
 Register optional session fields, creation/import hooks and indexes through the owning package’s `session-schema.ts` before runtime startup. Keep the persistence reader tolerant of unloaded fields while public schemas expose only installed owners. Workflow session migrations stay with Workflows and preserve their historical `session` tracking ledger; moving ownership must not replay or discard migration history.
 
 1. Add a migration whenever an existing persisted shape can reach the new code.
@@ -99,6 +103,8 @@ For hierarchical deletion, measure missing-key and batched-key cleanup beside a 
 For storage queues and worker changes, hold the preceding operation past the waiter's deadline and verify it never executes later. Check inherited cancellation, caller context and shutdown drain. Suspend or terminate owned reader and writer processes independently; two connections in a shared synchronous process do not establish read availability. Preserve the distinct ordinary-work and maintenance budgets.
 
 Bound batch writes by encoded parameter bytes as well as row count. Use real-engine fixtures with several individually valid large records, and verify a later failure rolls back every statement and its migration checkpoint.
+
+Keep orphan collection outside ordinary Runtime admission; verify restart preserves referenced and unpublished bytes, then explicitly recover offline and assert only unreferenced, unpinned packs are removed. Test requested owner preparation, including conversation search, while automatic history import remains paused.
 
 For packed Agent evidence, measure logical bytes, filesystem allocation and unique file identities separately; backup-to-artifact hard links count once in migration peaks. Exercise independently readable backup restoration, interrupted chunk publication and retirement, source drift, corrupted final manifests, capacity exhaustion, legacy SQL format upgrades and SQLite/PostgreSQL locators. Keep source deletion after target verification. Test collection against a concurrent verification snapshot, unpublished orphan recovery and deletion fencing; a shared pack may be removed only after its last reference disappears. Run portable pack/merge/move and long completed/cancelled/failed Rollout streams. Calibrate the actual implemented layout on representative data; do not present a synthetic alternative schema's size as deployed savings.
 
