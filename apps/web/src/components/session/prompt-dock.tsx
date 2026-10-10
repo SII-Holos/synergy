@@ -1,12 +1,12 @@
 import { SessionDecisionOutlet } from "./decision-surface"
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { DefaultComposer } from "@/plugin/default-composer"
 import type { PluginComponentProps, PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
 
-export function PromptDock(props: PluginComponentProps<PluginComposerLayoutService>) {
+export function PromptDock(props: PluginComponentProps<PluginComposerLayoutService> & { pending?: JSX.Element }) {
   const layout = props.context
   let body: HTMLDivElement | undefined
   let retainedFocus: HTMLElement | undefined
@@ -68,6 +68,7 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
                 )}
               </For>
               <div class="relative">
+                <div data-prompt-pending>{props.pending}</div>
                 <Show when={layout.input()}>{(input) => <DefaultComposer context={{ input: input() }} />}</Show>
               </div>
             </Show>

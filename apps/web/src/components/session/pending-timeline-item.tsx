@@ -7,6 +7,7 @@ import { useLocale } from "@/context/locale"
 import { requestErrorMessage } from "@/utils/error"
 import { pendingTimelineItemView } from "./conversation-pending"
 import { S } from "./session-i18n"
+import "./pending-composer-queue.css"
 
 export function PendingTimelineItem(props: {
   item: SessionInboxItem
@@ -45,20 +46,28 @@ export function PendingTimelineItem(props: {
       data-slot="pending-timeline-item"
       data-mode={props.item.mode}
       data-frozen={view().frozen}
-      class="flex w-full flex-col gap-2 rounded-lg bg-background-weak px-3 py-2 text-sm text-text-weak"
+      class="flex w-full flex-col text-sm text-text-weak"
     >
-      <div class="flex items-center gap-2">
+      <div class="pending-composer-row">
         <span
-          class="inline-flex items-center gap-1 text-11-medium"
+          class="pending-composer-status"
           title={props.rollbackActive ? _(S.convPausedTooltip) : props.item.failReason}
         >
-          <Icon name={getSemanticIcon("agenda.main")} size="small" />
-          {_(
-            props.rollbackActive ? S.convPaused : props.item.status === "failed" ? S.inboxFailedStatus : S.convPending,
-          )}
+          <Icon name={getSemanticIcon(props.item.mode === "steer" ? "inbox.steer" : "inbox.task")} size="small" />
+          <span classList={{ "sr-only": !view().frozen && props.item.status !== "failed" }}>
+            {_(
+              props.rollbackActive
+                ? S.convPaused
+                : props.item.status === "failed"
+                  ? S.inboxFailedStatus
+                  : S.convPending,
+            )}
+          </span>
         </span>
-        <div class="min-w-0 flex-1 text-14-regular line-clamp-2">{label()}</div>
-        <div class="ml-auto flex shrink-0 items-center gap-1">
+        <div class="pending-composer-label" title={label()}>
+          {label()}
+        </div>
+        <div class="pending-composer-actions">
           <Show when={view().primaryAction}>
             {(action) => (
               <Button
@@ -84,7 +93,9 @@ export function PendingTimelineItem(props: {
         </div>
       </div>
       <Show when={pending()}>
-        <div role="status">{_(S.inboxOperationPending)}</div>
+        <div role="status" class="pending-composer-feedback">
+          {_(S.inboxOperationPending)}
+        </div>
       </Show>
       <Show when={failure()}>
         {(failed) => (
