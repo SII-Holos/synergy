@@ -33,8 +33,10 @@ The [reaction-only feature](../feature/2026-09-28-feishu-reaction-only-terminal.
 
 **Retry ambiguous attempts with a new provider request** is unsafe without a provider idempotency key or authoritative reconciliation API. An uncertain attempt requires explicit operator reconciliation; the runtime does not infer failure from absent confirmation.
 
+**Call `close(undefined, false)` to mean no delivery** still materializes cached Feishu answer text and can send it as a fallback after CardKit failure or an oversized render. Resource finalization therefore has an explicit no-delivery operation; omitting final text is not a delivery policy.
+
 ## Consequences
 
-Reaction-only turns remain exclusive across foreground, queued, recovered, and compensating delivery, while ordinary answers are preserved in either order with reaction-only steers. Real Session and Storage regressions cover repeated intents, continuation after delivered and failed outcomes, confirmation-write failure, response loss after remote application, metadata-event re-entry, paused closure, queued-root failure, and multi-root compensation.
+Reaction-only turns remain exclusive across foreground, queued, recovered, and compensating delivery, while ordinary answers are preserved in either order with reaction-only steers. Real Session and Storage regressions cover repeated intents, continuation after delivered and failed outcomes, confirmation-write failure, response loss after remote application, metadata-event re-entry, paused closure, queued-root failure, multi-root compensation, and post-invoke history failure on a configured streaming account. History-failure coverage uses real Feishu cards with only network fakes to verify no cached-text fallback after rejected settings, oversized content, or a terminal CardKit failure; cleanup is single-flight, foreground ownership and subscriptions are released, and no ordinary reply or reaction error flip occurs. Already-streamed progress is not retracted by cleanup.
 
 A crash between recording an attempt and dispatch can leave an undelivered but ambiguous turn. This is an explicit at-most-once trade-off, not an exactly-once delivery guarantee. Provider calls and metadata writes remain outside retryable SQL callbacks. The feature's account gate, non-streaming restriction, target identity, and curated emoji vocabulary are unchanged.

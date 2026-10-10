@@ -921,6 +921,11 @@ export namespace Channel {
                   completedTerminals = await collectChannelTerminalMessages(sessionID)
                 } catch (error) {
                   log.error("foreground terminal history unavailable", { sessionID, error })
+                  await streaming
+                    .closeWithoutDelivery()
+                    .catch((closeError) =>
+                      log.warn("streaming card history failure finalization failed", { sessionID, error: closeError }),
+                    )
                   return
                 }
                 const results = completedTerminals.filter(
@@ -1144,6 +1149,7 @@ export namespace Channel {
           parts: [{ type: "text", text: finalText }],
         })
       },
+      async closeWithoutDelivery() {},
       isActive: () => false,
       ownsTerminalDelivery: () => true,
     }
@@ -1163,6 +1169,7 @@ export namespace Channel {
       async update() {},
       async updateToolProgress() {},
       async close() {},
+      async closeWithoutDelivery() {},
       isActive: () => false,
       ownsTerminalDelivery: () => false,
     }
