@@ -399,6 +399,7 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
     const run = this.enqueueWriter(async () => {
       if (this.phase !== "active" || this.terminalCause) return
       await this.paceRender()
+      if (this.phase !== "active" || this.terminalCause) return
       const desired = this.desiredState()
       const rendered = renderSections(desired, false)
       if (this.isCardTooLarge(rendered)) return
