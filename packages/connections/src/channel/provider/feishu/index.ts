@@ -10,6 +10,13 @@ import * as ChannelTypes from "../../types"
 import type { ChannelHost } from "../../host"
 import { FeishuStreamingCard } from "./streaming-card"
 import { FeishuStreamingState } from "./streaming-state"
+import {
+  resolveFeishuStreaming,
+  isKnownFeishuReactionEmoji,
+  FEISHU_REACTION_TYPE_INVALID_CODE,
+  FeishuReactionError,
+} from "./reaction-only"
+export { FeishuReactionError } from "./reaction-only"
 import { feishuDedup } from "./dedup"
 import { senderNameCache, chatNameCache } from "./sender"
 import { InboundDebouncer } from "./debounce"
@@ -59,6 +66,32 @@ const MAX_FEISHU_ATTACHMENTS = 8
 const API_REQUEST_TIMEOUT_MS = 15_000
 const TOKEN_REQUEST_TIMEOUT_MS = 10_000
 const ACCOUNT_DRAIN_TIMEOUT_MS = 30_000
+
+type FeishuReactionApiResult = {
+  code?: number
+  msg?: string
+  data?: { reaction_id?: string }
+}
+
+async function readFeishuReactionResult(response: Response, operation: string): Promise<FeishuReactionApiResult> {
+  let result: FeishuReactionApiResult | undefined
+  try {
+    result = (await response.json()) as FeishuReactionApiResult
+  } catch {
+    result = undefined
+  }
+
+  // A business code is authoritative: Feishu answers a rejection with a 4xx
+  // status plus a non-zero `code` (`231001` invalid emoji_type, `230110`
+  // deleted message, ...), and a success with `code: 0`. A missing body or a
+  // missing code carries no business detail, and `code: 0` on a non-OK status
+  // is a protocol contradiction; both are reported as transport failures.
+  if (typeof result?.code !== "number" || response.ok !== (result.code === 0)) {
+    throw new FeishuReactionError(`${operation} failed: HTTP ${response.status}`, response.status, result?.code)
+  }
+
+  return result
+}
 
 type FeishuCardActionHandler = (data: unknown, accountId: string) => Promise<unknown>
 const cardActionHandlers = RuntimeContext.state(() => new Set<FeishuCardActionHandler>())
@@ -1136,6 +1169,18 @@ export class FeishuProvider
     const account = this.accounts.get(input.accountId)
     if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
 
+    // Reject a blank or unknown emoji_type locally with Feishu's own
+    // "reaction type is invalid" code, before spending a round trip. The
+    // caller must not fall back to a text reply on this failure.
+    const emoji = input.emoji?.trim()
+    if (!emoji || !isKnownFeishuReactionEmoji(emoji)) {
+      throw new FeishuReactionError(
+        `Add reaction failed: invalid emoji_type "${input.emoji ?? ""}"`,
+        400,
+        FEISHU_REACTION_TYPE_INVALID_CODE,
+      )
+    }
+
     const token = await this.getAccessToken(input.accountId)
     const response = await fetch(`${account.apiBase}/im/v1/messages/${input.messageId}/reactions`, {
       method: "POST",
@@ -1144,14 +1189,18 @@ export class FeishuProvider
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        reaction_type: { emoji_type: input.emoji },
+        reaction_type: { emoji_type: emoji },
       }),
       signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
     })
 
-    const result = (await response.json()) as { code?: number; msg?: string; data?: { reaction_id?: string } }
+    const result = await readFeishuReactionResult(response, "Add reaction")
     if (result.code !== 0) {
-      throw new Error(`Add reaction failed: ${result.msg ?? `code ${result.code}`}`)
+      throw new FeishuReactionError(
+        `Add reaction failed: ${result.msg ?? `code ${result.code}`}`,
+        response.status,
+        result.code,
+      )
     }
 
     return { reactionId: result.data?.reaction_id ?? "" }
@@ -1170,9 +1219,13 @@ export class FeishuProvider
       signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
     })
 
-    const result = (await response.json()) as { code?: number; msg?: string }
+    const result = await readFeishuReactionResult(response, "Remove reaction")
     if (result.code !== 0) {
-      throw new Error(`Remove reaction failed: ${result.msg ?? `code ${result.code}`}`)
+      throw new FeishuReactionError(
+        `Remove reaction failed: ${result.msg ?? `code ${result.code}`}`,
+        response.status,
+        result.code,
+      )
     }
   }
 
@@ -1220,7 +1273,7 @@ export class FeishuProvider
       )
     }
 
-    const streamingEnabled = account.config.streaming ?? account.channelConfig.streaming ?? true
+    const streamingEnabled = resolveFeishuStreaming({ account: account.config, channel: account.channelConfig })
     if (!streamingEnabled) return new NonStreamingSession(sendText)
 
     return new FeishuStreamingCard({
@@ -1299,6 +1352,8 @@ class NonStreamingSession implements ChannelTypes.StreamingSession {
   async close(finalText?: string, _error?: boolean): Promise<void> {
     if (finalText) await this.send(finalText)
   }
+
+  async closeWithoutDelivery(): Promise<void> {}
 
   isActive(): boolean {
     return false

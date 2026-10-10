@@ -2,7 +2,6 @@ import asyncio
 import importlib.util
 import json
 import os
-import shutil
 import threading
 import zipfile
 from http.server import ThreadingHTTPServer
@@ -11,6 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 from fixtures.resources import fixture_resources, healthy_docker_snapshot
+from fixtures.task_copy import copy_task_fixture
 
 from synergy_bench.catalog import tree_digest
 from synergy_bench.prepare import BENCHMARK
@@ -115,9 +115,9 @@ def experiment_fixture(tmp_path_factory: pytest.TempPathFactory):
     thread = threading.Thread(target=provider.serve_forever, daemon=True)
     thread.start()
     dataset = tmp_path / "dataset"
-    shutil.copytree(BENCHMARK / "test/fixtures/task", dataset / "tasks/fixture")
+    copy_task_fixture(BENCHMARK / "test/fixtures/task", dataset / "tasks/fixture")
     separate = dataset / "tasks/separate"
-    shutil.copytree(BENCHMARK / "test/fixtures/task", separate)
+    copy_task_fixture(BENCHMARK / "test/fixtures/task", separate)
     definition = (separate / "task.toml").read_text()
     definition = 'artifacts = ["/logs/artifacts/marker"]\n' + definition
     definition = definition.replace('name = "synergy/fixture"', 'name = "synergy/separate"')

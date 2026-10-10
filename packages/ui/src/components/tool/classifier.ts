@@ -247,7 +247,10 @@ export function classifyTool(
       ? input.action
       : toolName === "response_card" && typeof input.title === "string"
         ? input.title
-        : (extractField(metadata, spec.subtitleKeys) ?? extractField(input, spec.subtitleKeys))
+        : toolName === "channel_reaction_only" &&
+            typeof (metadata.intent as { reaction?: unknown } | undefined)?.reaction === "string"
+          ? (metadata.intent as { reaction: string }).reaction
+          : (extractField(metadata, spec.subtitleKeys) ?? extractField(input, spec.subtitleKeys))
 
   const args = buildArgs(input, metadata, spec)
   const count = classifyCount(toolName, category, metadata)

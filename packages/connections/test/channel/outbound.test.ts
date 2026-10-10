@@ -39,6 +39,7 @@ type ProviderCalls = {
   pushes: string[]
   replyParts?: OutboundPart[][]
   pushParts?: OutboundPart[][]
+  reactions?: Array<{ accountId: string; messageId: string; emoji: string }>
   responseCards?: Array<{
     accountId: string
     chatId: string
@@ -69,13 +70,16 @@ function provider(type: string, calls: ProviderCalls): Provider {
       calls.responseCards?.push(input)
       return { messageId: "response_card_sent" }
     },
-    async addReaction() {},
+    async addReaction(input) {
+      calls.reactions?.push(input)
+    },
     createStreamingSession() {
       return {
         async start() {},
         async update() {},
         async updateToolProgress() {},
         async close() {},
+        async closeWithoutDelivery() {},
         isActive: () => false,
       }
     },
@@ -972,6 +976,137 @@ test("delivers a foreground-completed terminal that the loop did not return", ()
         expect(persisted.info.metadata?.channelOutboundSent).toBe(true)
         const root = await MessageV2.get({ sessionID: session.id, messageID: rootID })
         expect(root.info.metadata?.channelOutboundAttachmentUrls).toEqual([`asset://${assetID}`])
+      },
+    })
+  }))
+
+test("foreground compensation reacts only to its inbound root when the drain returns another terminal", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const type = `foreground-compensate-reaction-only-${crypto.randomUUID()}`
+        const calls: ProviderCalls = { replies: [], pushes: [], replyParts: [], pushParts: [], reactions: [] }
+        const channelProvider = provider(type, calls)
+        Channel.registerProvider(channelProvider)
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
+        })
+        const foregroundRootID = Identifier.ascending("message")
+        const queuedRootID = Identifier.ascending("message")
+        for (const [rootID, inboundMessageId] of [
+          [foregroundRootID, "msg_foreground_inbound"],
+          [queuedRootID, "msg_queued_inbound"],
+        ]) {
+          await Session.updateMessage({
+            id: rootID,
+            sessionID: session.id,
+            role: "user",
+            isRoot: true,
+            rootID,
+            agent: PrimaryAgentIdentity.names.general,
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+            metadata: { channelInboundMessageId: inboundMessageId },
+          } as MessageV2.User)
+        }
+        const assetID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
+        await completedToolAttachment({
+          sessionID: session.id,
+          rootID: foregroundRootID,
+          assetID,
+          mime: "image/png",
+          filename: "preview.png",
+        })
+        const terminalsBefore = await collectChannelTaskTerminals(session.id)
+        ChannelOutbound.beginForeground(session.id, foregroundRootID)
+        let dispose: (() => void) | undefined
+        try {
+          const foregroundTerminal = await completedAssistant(
+            session.id,
+            "This text must not become a reply",
+            "stop",
+            { channelPush: true, channelReply: true, channelReplyToMessageId: "msg_foreground_topic" },
+            foregroundRootID,
+          )
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: foregroundTerminal.id,
+            sessionID: session.id,
+            type: "tool",
+            callID: "call_foreground_reaction_only",
+            tool: "channel_reaction_only",
+            state: {
+              status: "completed",
+              input: {},
+              output: 'Ending this turn with the "SILENT" reaction.',
+              title: "Reaction only: SILENT",
+              metadata: { intent: { type: "reaction_only", reaction: "SILENT" } },
+              time: { start: Date.now(), end: Date.now() },
+            },
+          })
+          const queuedTerminal = await completedAssistant(
+            session.id,
+            "Queued reply belongs to B",
+            "stop",
+            { channelPush: true, channelReply: true, channelReplyToMessageId: "msg_queued_topic" },
+            queuedRootID,
+          )
+          const terminalsAfter = await collectChannelTaskTerminals(session.id)
+          expect(terminalsAfter.get(foregroundRootID)?.info.id).toBe(foregroundTerminal.id)
+          expect(terminalsAfter.get(queuedRootID)?.info.id).toBe(queuedTerminal.id)
+
+          expect(
+            await deliverForegroundTaskTerminal({
+              provider: channelProvider,
+              accountId: "acct_test",
+              messageId: "msg_foreground_topic",
+              chatId: "chat_test",
+              sessionID: session.id,
+              currentRootID: foregroundRootID,
+              excludeTerminalID: queuedTerminal.id,
+              terminalsBefore,
+            }),
+          ).toBe(true)
+
+          expect(calls.replies).toEqual([])
+          expect(calls.replyParts).toEqual([])
+          expect(calls.pushes).toEqual([])
+          expect(calls.pushParts).toEqual([])
+          expect(calls.reactions).toEqual([
+            { accountId: "acct_test", messageId: "msg_foreground_inbound", emoji: "SILENT" },
+          ])
+          const persistedForeground = await MessageV2.get({
+            sessionID: session.id,
+            messageID: foregroundTerminal.id,
+          })
+          const persistedQueued = await MessageV2.get({ sessionID: session.id, messageID: queuedTerminal.id })
+          expect(persistedForeground.info.metadata?.channelReactionOnlyDelivered).toBe("SILENT")
+          expect(persistedForeground.info.metadata?.channelOutboundSent).toBe(true)
+          expect(persistedQueued.info.metadata?.channelOutboundSent).toBeUndefined()
+          expect(persistedQueued.info.metadata?.channelReactionOnlyDelivered).toBeUndefined()
+          const foregroundRoot = await MessageV2.get({ sessionID: session.id, messageID: foregroundRootID })
+          expect(foregroundRoot.info.metadata?.channelOutboundAttachmentUrls).toBeUndefined()
+
+          ChannelOutbound.endForeground(session.id, foregroundRootID)
+          dispose = initOutbound()
+          await Bus.publish(MessageV2.Event.Updated, { info: persistedForeground.info })
+          await Bus.publish(MessageV2.Event.Updated, { info: persistedQueued.info })
+
+          expect(calls.replies).toEqual(["msg_queued_topic"])
+          expect(calls.replyParts).toEqual([[{ type: "text", text: "Queued reply belongs to B" }]])
+          expect(calls.pushes).toEqual([])
+          expect(calls.reactions).toEqual([
+            { accountId: "acct_test", messageId: "msg_foreground_inbound", emoji: "SILENT" },
+          ])
+          const deliveredQueued = await MessageV2.get({ sessionID: session.id, messageID: queuedTerminal.id })
+          expect(deliveredQueued.info.metadata?.channelOutboundSent).toBe(true)
+          expect(deliveredQueued.info.metadata?.channelReactionOnlyDelivered).toBeUndefined()
+        } finally {
+          dispose?.()
+          ChannelOutbound.endForeground(session.id, foregroundRootID)
+        }
       },
     })
   }))

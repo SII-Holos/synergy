@@ -14,6 +14,12 @@ import {
   projectChannelTaskPartsWithUrls,
 } from "./outbound-parts"
 import { ResponseCardRuntime } from "./response-card"
+import {
+  deliverReactionOnlyReaction,
+  findReactionOnlyIntent,
+  reactionOnlyResolved,
+  resolveReactionTarget,
+} from "./reaction-only-runtime"
 import type { Provider } from "./types"
 
 const log = Log.create({ service: "channel.outbound" })
@@ -76,7 +82,12 @@ export namespace ChannelOutbound {
 
         const eventMetadata = assistant.metadata
         if (!eventMetadata?.mailbox && !eventMetadata?.channelPush && !eventMetadata?.channelReply) return
-        if (eventMetadata.channelOutboundSent) return
+        // A resolved reaction-only turn is terminal for this bridge even if it
+        // never carried `channelOutboundSent`: the failure merge would
+        // re-publish Updated, and without this guard the re-entered handler
+        // re-acquires the same non-reentrant Lock.write key while its holder is
+        // still awaiting the merge publish — a self-deadlock.
+        if (eventMetadata.channelOutboundSent || reactionOnlyResolved(assistant)) return
 
         using _ = await Lock.write(`channel-outbound:${msg.id}`)
         const current = await MessageV2.get({ sessionID: msg.sessionID, messageID: msg.id }).catch(() => undefined)
@@ -86,7 +97,7 @@ export namespace ChannelOutbound {
         const metadata = currentAssistant.metadata
         if (!currentAssistant.time.completed || !SessionProgress.isTerminalAssistant(currentAssistant)) return
         if (!metadata?.mailbox && !metadata?.channelPush && !metadata?.channelReply) return
-        if (metadata.channelOutboundSent) return
+        if (metadata.channelOutboundSent || reactionOnlyResolved(currentAssistant)) return
         if (ChannelOutbound.isForeground(msg.sessionID, currentAssistant.rootID ?? currentAssistant.parentID)) {
           log.debug("skipping foreground-delivered channel reply", { sessionID: msg.sessionID, messageID: msg.id })
           return
@@ -144,6 +155,35 @@ export namespace ChannelOutbound {
           terminalMessageID: currentAssistant.id,
           includeText: true,
         })
+
+        // Reaction-only terminal: the model chose to acknowledge without
+        // answering, so this turn posts nothing. The reaction targets the
+        // message the user actually sent — not just the reply anchor, which in
+        // a threaded scope is the topic root — so nothing new is created.
+        // Root markers prevent a second reaction; only the resolved terminal
+        // stays suppressed on retry. A later ordinary terminal still delivers
+        // its answer instead of inheriting the earlier reaction-only choice.
+        const reactionOnly = findReactionOnlyIntent(messages, rootID, currentAssistant.id)
+        if (reactionOnly) {
+          const reactionTarget = resolveReactionTarget(messages, rootID, replyToMessageId)
+          if (!reactionTarget) {
+            log.warn("reaction-only turn skipped without message anchor", {
+              sessionID: msg.sessionID,
+              channelType: channelInfo.type,
+            })
+            return
+          }
+          await deliverReactionOnlyReaction({
+            provider,
+            accountId: channelInfo.accountId,
+            messageId: reactionTarget,
+            sessionID: msg.sessionID,
+            rootID,
+            terminalMessageID: currentAssistant.id,
+            reaction: reactionOnly.reaction,
+          })
+          return
+        }
 
         try {
           const cardsHandled = await ResponseCardRuntime.deliverTaskCards({

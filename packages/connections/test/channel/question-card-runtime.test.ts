@@ -50,6 +50,7 @@ function provider(
         async update() {},
         async updateToolProgress() {},
         async close() {},
+        async closeWithoutDelivery() {},
         isActive: () => false,
       }
     },

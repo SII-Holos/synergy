@@ -235,6 +235,28 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
     return this.closePromise
   }
 
+  closeWithoutDelivery(): Promise<void> {
+    if (this.closePromise) return this.closePromise
+    if (!this.state || this.phase === "closed") return Promise.resolve()
+
+    this.phase = "closing"
+    this.closePromise = this.enqueueWriter(async () => {
+      try {
+        if (!this.terminalCause) {
+          await this.closeStreamingMode("")
+          await this.removePersistedState()
+        } else if (this.terminalCause instanceof FeishuRequestError && this.terminalCause.terminal) {
+          await this.removePersistedState()
+        } else {
+          throw this.terminalCause
+        }
+      } finally {
+        this.phase = "closed"
+      }
+    })
+    return this.closePromise
+  }
+
   isActive(): boolean {
     return this.state !== null && this.phase === "active"
   }
@@ -377,6 +399,7 @@ export class FeishuStreamingCard implements ChannelTypes.StreamingSession {
     const run = this.enqueueWriter(async () => {
       if (this.phase !== "active" || this.terminalCause) return
       await this.paceRender()
+      if (this.phase !== "active" || this.terminalCause) return
       const desired = this.desiredState()
       const rendered = renderSections(desired, false)
       if (this.isCardTooLarge(rendered)) return

@@ -18,6 +18,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
 import { SessionInteraction } from "@ericsanchezok/synergy-harness/session/interaction"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
+import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
 
 import { ChannelCommand } from "./command"
 import { resolveChannelAccountInvocation, resolveChannelAccountAgent } from "./model-selection"
@@ -34,11 +35,13 @@ import {
 } from "./diagnostics"
 import {
   collectChannelTaskTerminals,
+  collectChannelTerminalMessages,
   deliverForegroundTaskTerminal,
   loadChannelTaskMessages,
   replyChannelTaskAttachments,
 } from "./outbound-parts"
 import { ResponseCardRuntime } from "./response-card"
+import { executeReactionOnlyDelivery, findReactionOnlyIntent } from "./reaction-only-runtime"
 import { QuestionCardRuntime } from "./question-card"
 import { QuestionCardBridge } from "./question-card-bridge"
 import { getProvider as getProviderImpl, registerProvider as registerProviderImpl } from "./provider-registry"
@@ -744,6 +747,11 @@ export namespace Channel {
           const metadata = {
             channelReply: true,
             channelReplyToMessageId: replyToMessageId,
+            // The message this turn was triggered by, distinct from the reply
+            // anchor: a threaded reply anchors to the topic root, while a
+            // reaction-only turn must react to the user's own message. The
+            // bridge has no inbound context, so it reads this instead.
+            channelInboundMessageId: ctx.messageId,
             channelRequesterId: ctx.senderId,
             channelChatId: ctx.chatId,
             channelChatName: ctx.chatName,
@@ -829,7 +837,7 @@ export namespace Channel {
               }
 
               const assistantTranscript = new Map<string, string>()
-              const messageRoles = new Map<string, MessageV2.Info["role"]>()
+              const messageInfos = new Map<string, MessageV2.Info>()
               const toolProgress = new Map<
                 string,
                 StreamingSession["updateToolProgress"] extends (progress: infer P) => Promise<void>
@@ -841,7 +849,7 @@ export namespace Channel {
 
               const unsubMessage = Bus.subscribe(MessageV2.Event.Updated, (event) => {
                 if (event.properties.info.sessionID !== sessionID) return
-                messageRoles.set(event.properties.info.id, event.properties.info.role)
+                messageInfos.set(event.properties.info.id, event.properties.info)
               })
 
               const pushToolProgress = async () => {
@@ -864,8 +872,8 @@ export namespace Channel {
                 const part = event.properties.part
                 if (part.sessionID !== sessionID) return
 
-                const role = messageRoles.get(part.messageID)
-                if (role !== "assistant") return
+                const info = messageInfos.get(part.messageID)
+                if (info?.role !== "assistant" || (info.rootID ?? info.parentID) !== delivery.messageID) return
 
                 if (part.type === "text") {
                   if (MessageV2.isSystemPart(part) || !part.text.trim()) return
@@ -898,82 +906,171 @@ export namespace Channel {
               // root would otherwise be skipped by the bridge (foreground
               // registered) and never delivered. Deliver it here instead.
               const terminalsBefore = await collectChannelTaskTerminals(sessionID)
+              const terminalIDsBefore = new Set(
+                (await collectChannelTerminalMessages(sessionID)).map((message) => message.info.id),
+              )
               try {
-                const result = await SessionInvoke.invokeInboxWithLease(
-                  {
-                    sessionID,
-                    itemID: delivery.itemID,
-                  },
-                  lease,
+                let drainFailure: { error: unknown } | undefined
+                try {
+                  await SessionInvoke.invokeInboxWithLease({ sessionID, itemID: delivery.itemID }, lease)
+                } catch (error) {
+                  drainFailure = { error }
+                }
+                let completedTerminals: Awaited<ReturnType<typeof collectChannelTerminalMessages>>
+                try {
+                  completedTerminals = await collectChannelTerminalMessages(sessionID)
+                } catch (error) {
+                  log.error("foreground terminal history unavailable", { sessionID, error })
+                  await streaming
+                    .closeWithoutDelivery()
+                    .catch((closeError) =>
+                      log.warn("streaming card history failure finalization failed", { sessionID, error: closeError }),
+                    )
+                  return
+                }
+                const results = completedTerminals.filter(
+                  (message) =>
+                    message.info.role === "assistant" &&
+                    (message.info.rootID ?? message.info.parentID) === delivery.messageID &&
+                    !terminalIDsBefore.has(message.info.id),
                 )
+                if (results.length === 0) {
+                  if (drainFailure) throw drainFailure.error
+                  await streaming.close(undefined, false)
+                  return
+                }
+                let reactionSelected = false
+                for (const result of results) {
+                  const isFinalTerminal = result === results.at(-1)
+                  try {
+                    const hasError = result.info.role === "assistant" && result.info.error != null
 
-                const responseText = resolveFinalResponseText(assistantTranscript, result.parts)
-                const hasError = result.info.role === "assistant" && "error" in result.info && result.info.error != null
+                    const rootID =
+                      result.info.role === "assistant" ? (result.info.rootID ?? result.info.parentID) : result.info.id
+                    // Boss-route (R6) delivers nothing, so it never needs the task
+                    // messages; every other path loads them once here and reuses the
+                    // result for reaction-only detection and card/attachment delivery.
+                    const taskMessages = isBossRoute
+                      ? undefined
+                      : await loadChannelTaskMessages({ sessionID, rootID, terminal: result })
+                    const rootAssistants = taskMessages?.filter(
+                      (message) => message.info.role === "assistant" && message.info.rootID === rootID,
+                    )
+                    const previousTerminalIndex =
+                      rootAssistants?.findLastIndex(
+                        (message) =>
+                          message.info.role === "assistant" &&
+                          message.info.id !== result.info.id &&
+                          SessionProgress.isTerminalAssistant(message.info),
+                      ) ?? -1
+                    const segmentIDs = new Set(
+                      rootAssistants?.slice(previousTerminalIndex + 1).map((message) => message.info.id) ?? [
+                        result.info.id,
+                      ],
+                    )
+                    const ownedTranscript = new Map(
+                      Array.from(assistantTranscript).filter(([id]) => segmentIDs.has(id)),
+                    )
+                    const responseText = resolveFinalResponseText(ownedTranscript, result.parts)
 
-                // If the response failed but tools completed successfully, build a
-                // degraded fallback so the user still receives tool outputs.
-                const fallbackText = hasError ? buildDegradedFallback(toolProgress) : undefined
-                await streaming.close(responseText || fallbackText, hasError)
-                if (result.info.role === "assistant" && ownsTerminalDelivery) {
-                  // The streaming session already delivered this root's terminal
-                  // reply. Persist the sent marker so any later message update
-                  // (context usage, metadata merge) never re-triggers the
-                  // outbound bridge after the foreground registration ends.
-                  await Session.mergeMessageMetadata({
-                    sessionID,
-                    messageID: result.info.id,
-                    metadata: { channelOutboundSent: true },
-                  }).catch((err) => log.warn("failed to mark channel reply as sent", { sessionID, error: err }))
+                    // Reaction-only terminal: the model chose to acknowledge without
+                    // answering. This is an exclusive terminal, so no text, card,
+                    // attachment, or compensation delivery for this turn — only the
+                    // reaction on the original inbound message. A generation error
+                    // keeps the normal error path so the failure stays visible.
+                    const reactionOnlyIntent =
+                      !isBossRoute && !hasError && result.info.role === "assistant" && taskMessages
+                        ? findReactionOnlyIntent(taskMessages, rootID, result.info.id)
+                        : undefined
+
+                    if (reactionOnlyIntent) {
+                      reactionSelected = true
+                      if (isFinalTerminal) await streaming.close(undefined, false)
+                      const outcome = await executeReactionOnlyDelivery({
+                        sessionID,
+                        rootID,
+                        terminalMessageID: result.info.id,
+                        reaction: reactionOnlyIntent.reaction,
+                        send: async () => {
+                          const status = await reactionController.setFinishedWith(reactionOnlyIntent.reaction)
+                          if (!status.delivered) throw status.error ?? new Error("Reaction-only delivery failed")
+                        },
+                      })
+                      if (outcome.status === "failed") {
+                        log.error("reaction-only return delivery failed", { sessionID, error: outcome.error })
+                        await reactionController.setError()
+                      }
+                    } else {
+                      // If the response failed but tools completed successfully, build a
+                      // degraded fallback so the user still receives tool outputs.
+                      const fallbackText = hasError ? buildDegradedFallback(toolProgress) : undefined
+                      if (isFinalTerminal) await streaming.close(responseText || fallbackText, hasError)
+                      else if (!isBossRoute)
+                        await deliverForegroundTaskTerminal({
+                          provider,
+                          accountId: ctx.accountId,
+                          messageId: replyToMessageId,
+                          chatId: ctx.chatId,
+                          chatType: ctx.chatType,
+                          scopeKey: ctx.scopeKey,
+                          sessionID,
+                          currentRootID: rootID,
+                          terminal: result,
+                          terminalsBefore,
+                        })
+                      if (isFinalTerminal && result.info.role === "assistant" && ownsTerminalDelivery) {
+                        // The streaming session already delivered this root's terminal
+                        // reply. Persist the sent marker so any later message update
+                        // (context usage, metadata merge) never re-triggers the
+                        // outbound bridge after the foreground registration ends.
+                        await Session.mergeMessageMetadata({
+                          sessionID,
+                          messageID: result.info.id,
+                          metadata: { channelOutboundSent: true },
+                        }).catch((err) => log.warn("failed to mark channel reply as sent", { sessionID, error: err }))
+                      }
+                      // Boss-route (R6): no response cards, no attachment delivery, no
+                      // terminal posting — the boss decides what reaches the user and
+                      // sends it through an explicit channel_push tool call.
+                      if (!isBossRoute && taskMessages) {
+                        await ResponseCardRuntime.deliverTaskCards({
+                          provider,
+                          accountId: ctx.accountId,
+                          chatId: ctx.chatId,
+                          chatType: ctx.chatType,
+                          scopeKey: ctx.scopeKey,
+                          replyToMessageId,
+                          sessionID,
+                          terminal: result,
+                          messages: taskMessages,
+                        }).catch((err) => log.warn("response card delivery failed", { sessionID, error: err }))
+                        if (isFinalTerminal)
+                          await replyChannelTaskAttachments({
+                            provider,
+                            accountId: ctx.accountId,
+                            messageId: replyToMessageId,
+                            sessionID,
+                            terminal: result,
+                            messages: taskMessages,
+                          }).catch((err) =>
+                            log.warn("channel task attachments delivery failed", { sessionID, error: err }),
+                          )
+                      }
+                      if (isFinalTerminal && !reactionSelected) await reactionController.setDone()
+                    }
+                  } catch (error) {
+                    log.error("foreground terminal delivery failed", {
+                      sessionID,
+                      messageID: result.info.id,
+                      error,
+                    })
+                  }
                 }
-                // Deliver a terminal this lane completed but the loop did not
-                // return (another queued task was drained afterwards). Only the
-                // current lane root is covered; other roots completed by the
-                // drain keep the bridge as their delivery path (they are not
-                // foreground-registered).
-                if (ownsTerminalDelivery && result.info.role === "assistant") {
-                  await deliverForegroundTaskTerminal({
-                    provider,
-                    accountId: ctx.accountId,
-                    messageId: replyToMessageId,
-                    chatId: ctx.chatId,
-                    chatType: ctx.chatType,
-                    scopeKey: ctx.scopeKey,
+                if (drainFailure)
+                  log.warn("another inbox task failed after foreground completion", {
                     sessionID,
-                    currentRootID: delivery.messageID,
-                    excludeTerminalID: result.info.id,
-                    terminalsBefore,
-                  }).catch((err) =>
-                    log.warn("foreground terminal compensation delivery failed", { sessionID, error: err }),
-                  )
-                }
-                const rootID =
-                  result.info.role === "assistant" ? (result.info.rootID ?? result.info.parentID) : result.info.id
-                // Boss-route (R6): no response cards, no attachment delivery, no
-                // terminal posting — the boss decides what reaches the user and
-                // sends it through an explicit channel_push tool call.
-                if (!isBossRoute) {
-                  const taskMessages = await loadChannelTaskMessages({ sessionID, rootID, terminal: result })
-                  await ResponseCardRuntime.deliverTaskCards({
-                    provider,
-                    accountId: ctx.accountId,
-                    chatId: ctx.chatId,
-                    chatType: ctx.chatType,
-                    scopeKey: ctx.scopeKey,
-                    replyToMessageId,
-                    sessionID,
-                    terminal: result,
-                    messages: taskMessages,
-                  }).catch((err) => log.warn("response card delivery failed", { sessionID, error: err }))
-                  await replyChannelTaskAttachments({
-                    provider,
-                    accountId: ctx.accountId,
-                    messageId: replyToMessageId,
-                    sessionID,
-                    terminal: result,
-                    messages: taskMessages,
-                  }).catch((err) => log.warn("channel task attachments delivery failed", { sessionID, error: err }))
-                }
-                await reactionController.setDone()
+                    error: drainFailure.error,
+                  })
               } catch (err) {
                 // A busy Session must not surface a generation failure: persist the
                 // message as a durable inbox task with stable delivery identity so
@@ -1052,6 +1149,7 @@ export namespace Channel {
           parts: [{ type: "text", text: finalText }],
         })
       },
+      async closeWithoutDelivery() {},
       isActive: () => false,
       ownsTerminalDelivery: () => true,
     }
@@ -1071,6 +1169,7 @@ export namespace Channel {
       async update() {},
       async updateToolProgress() {},
       async close() {},
+      async closeWithoutDelivery() {},
       isActive: () => false,
       ownsTerminalDelivery: () => false,
     }

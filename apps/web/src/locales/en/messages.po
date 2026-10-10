@@ -25389,6 +25389,10 @@ msgid "tool.title.channel-push"
 msgstr "Push to channel"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.channel-reaction-only"
+msgstr "Reply with reaction only"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
 msgstr "Manage research claims"
 

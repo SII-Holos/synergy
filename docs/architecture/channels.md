@@ -83,6 +83,8 @@ Providers receive an account-bound `ChannelHost` rather than direct Scope or Ses
 
 Conversation ingress separates durable acceptance from execution. `host.conversations.receive()` returns an acceptance result whose `execution` Promise owns streaming and generation. A provider lane waits only until Channel core has resolved the endpoint Session and either reserved its loop lease or durably written the request to `SessionInbox`; it tracks accepted execution separately for bounded account drain. Feishu serializes this acceptance by its existing conversation key, preserving same-topic order and different-topic parallelism without creating a provider-owned durable queue.
 
+`StreamingSession.close()` owns terminal delivery and may use a provider's cached answer or fallback. `closeWithoutDelivery()` is a separate required resource-finalization operation: it stops streaming without rendering cached/terminal content or sending a fallback reply. Channel core uses it when post-invoke history is unavailable and cannot safely classify a terminal. Feishu only closes streaming-mode settings with an empty summary; it does not retract progress already streamed. A live writer may finish its already-captured snapshot, but a render waiting for pacing must recheck admission before capturing content. Cleanup shares the session's single-flight close promise, and core releases foreground ownership and subscriptions even when the provider rejects cleanup.
+
 `host.projects` owns:
 
 - idempotent ensure of active or paused managed Projects;
@@ -174,6 +176,7 @@ Feishu keeps unsupported image-format adaptation inside the provider boundary. O
 - Conversation providers release their ingress lane only after durable acceptance, track background execution through account drain, and use `SessionInbox` as the sole durable busy-session queue.
 - Durable outbound state is written before send, and ambiguous dispatch is never retried automatically.
 - Foreground conversation replies are delivered exactly once: while a streaming card owns a root's terminal reply, the outbound bridge skips that root; after delivery the bridge persists `channelOutboundSent` so queued, recovered, or late metadata updates never re-deliver the same answer.
+- A reaction-only terminal (Feishu, opted-in non-streaming accounts) is exclusive: its intent belongs to the selected terminal assistant, targets the user's own inbound message rather than the reply anchor, and posts nothing on either delivery path. A durable root-scoped attempt precedes the provider effect; delivered, failed, or ambiguous attempts are never automatically repeated. Repeated intent-bearing terminals stay silent, but root-level idempotency markers do not suppress ordinary answers in either order with reaction-only steers. Foreground delivery processes all newly completed terminals owned by its root even if a later queued root fails, rather than using the inbox drain's last result. Error or paused assistants cannot become successful reaction terminals; uncertain provider outcomes never append an ERROR reaction.
 - Remote archive preserves local Scope data but blocks new Task delivery.
 - An expired assignment creates no Session or assignment binding; an archived owning Session blocks replay without replacement.
 - Deadline guidance is hidden Session context, not a visible user prompt.

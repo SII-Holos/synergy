@@ -11,6 +11,38 @@ let server: ViteDevServer
 let browser: Browser
 let page: Page
 const errors: string[] = []
+const browserEvents: string[] = []
+
+async function clipboardDiagnostics() {
+  return page.evaluate(() => {
+    const fixture = (window as unknown as { markdownFixture: { copies: string[]; code: string } }).markdownFixture
+    const expected = fixture.code.trimEnd()
+    const copied = fixture.copies.at(-1) ?? ""
+    let firstDifference = 0
+    while (
+      firstDifference < Math.min(copied.length, expected.length) &&
+      copied[firstDifference] === expected[firstDifference]
+    )
+      firstDifference += 1
+    return {
+      copyCount: fixture.copies.length,
+      copies: fixture.copies.map((value) => ({ length: value.length, bytes: new TextEncoder().encode(value).length })),
+      expectedLength: expected.length,
+      expectedBytes: new TextEncoder().encode(expected).length,
+      equal: copied === expected,
+      firstDifference: copied === expected ? null : firstDifference,
+      copiedAtDifference: copied.slice(firstDifference, firstDifference + 40),
+      expectedAtDifference: expected.slice(firstDifference, firstDifference + 40),
+      buttons: [...document.querySelectorAll<HTMLButtonElement>('[data-slot="markdown-code-header"] button')].map(
+        (button) => ({
+          label: button.getAttribute("aria-label"),
+          state: button.dataset.copyState,
+          text: button.textContent,
+        }),
+      ),
+    }
+  })
+}
 
 beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".markdown-virtual-"))
@@ -43,11 +75,25 @@ beforeAll(async () => {
     const [identity,setIdentity] = createSignal(0)
     const copies: string[] = []
     const opened: string[] = []
+    const recordCopy = (value:string) => { copies.push(value); return true }
+    let pendingCopy: {started:boolean; release():void} | undefined
+    const holdNextCopy = () => {
+      let release!: () => void
+      const ready = new Promise<void>(resolve => release = resolve)
+      const pending = {started:false, release}
+      pendingCopy = pending
+      configureClipboard({writer: async value => {
+        pending.started = true
+        await ready
+        return recordCopy(value)
+      }})
+    }
+    const releaseCopy = () => { pendingCopy?.release(); pendingCopy = undefined; configureClipboard({writer:recordCopy}) }
     const resources = {
       resolveUrl(reference) { return reference.kind === "asset" ? location.origin + "/asset/" + reference.url.slice(8) : reference.kind === "workspace-file" && reference.path === "/image.svg" ? location.origin + reference.path : undefined },
       open: async resource => { if (resource.kind === "asset") opened.push(resource.url); return {status: "opened"} },
     }
-    configureClipboard({writer: value=>{ copies.push(value);return true }})
+    configureClipboard({writer:recordCopy})
     const i18n = setupI18n({locale:"en",messages:{en:{}}})
     render(()=><I18nProvider i18n={i18n}><MarkedProvider><ResourceOpenProvider value={resources}><div id="scroller" data-scroll-viewport="vertical" style="height:480px;overflow:auto;width:720px"><div id="horizontal-host"><Markdown text={text()} streaming={streaming()} cacheKey={"fixture:"+identity()} /></div></div></ResourceOpenProvider></MarkedProvider></I18nProvider>,document.getElementById("root")!)
     Object.assign(window,{markdownFixture:{setText,setStreaming,beginStream(text:string){batch(()=>{setIdentity(value=>value+1);setText(text);setStreaming(true)})},copies,code,opened}, async paragraphRanges(text:string){const parser=createMarkdownParser();try{return (await parseMarkdownDocument(parser,text)).blocks.map(block=>block.source)}finally{parser.dispose()}}, async runStreamProbe(){
@@ -153,6 +199,7 @@ beforeAll(async () => {
       host.style.minHeight=""
       return {scroller,handle,setIncrease,dispose:()=>{dispose();scroller.remove();if(windowed)window.scrollTo(0,0)}}
     }})
+    Object.assign(window.markdownFixture, {holdNextCopy, releaseCopy, copyStarted:()=>pendingCopy?.started ?? false})
   `,
   )
   await Bun.write(
@@ -162,7 +209,29 @@ beforeAll(async () => {
   server = await createServer({
     configFile: false,
     root: directory,
+    cacheDir: path.join(directory, "vite-cache"),
     plugins: [solidPlugin()],
+    optimizeDeps: {
+      noDiscovery: true,
+      include: [
+        "solid-js",
+        "solid-js/web",
+        "solid-js/jsx-runtime",
+        "@lingui/core",
+        "@lingui/solid",
+        "streaming-markdown",
+        "dompurify",
+        "marked",
+        "marked-katex-extension",
+        "marked-shiki",
+        "shiki",
+        "@pierre/diffs",
+        "katex",
+        "character-entities",
+        "micromark-util-decode-numeric-character-reference",
+        "zod",
+      ],
+    },
     server: {
       host: "127.0.0.1",
       // Vite maps port 0 to its default: https://github.com/vitejs/vite/blob/v7.1.4/packages/vite/src/node/server/index.ts
@@ -172,9 +241,14 @@ beforeAll(async () => {
     },
   })
   await server.listen()
+  await server.warmupRequest("/main.tsx")
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 800, height: 600 } })
   page.on("pageerror", (error) => errors.push(error.message))
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) browserEvents.push("main-frame navigation")
+  })
+  page.on("console", (message) => browserEvents.push(message.text()))
   const address = server.httpServer!.address() as { port: number }
   await page.goto(`http://127.0.0.1:${address.port}`)
   await page.waitForSelector("[data-markdown-block]", { timeout: 20_000 })
@@ -187,29 +261,63 @@ afterAll(async () => {
 })
 
 test("real worker rendering bounds huge Markdown DOM and preserves full code and trusted math copying", async () => {
-  await page.waitForSelector("[data-markdown-block]", { timeout: 20_000 })
-  expect(await page.locator("[data-markdown-block]").count()).toBeLessThan(20)
-  expect(await page.locator("p").count()).toBeLessThan(100)
-  expect(await page.locator('[data-katex-copy="true"]').count()).toBe(1)
-  await page.locator('[data-katex-copy="true"]').first().click()
-  expect(
-    await page.evaluate(
-      () => (window as unknown as { markdownFixture: { copies: string[] } }).markdownFixture.copies[0],
-    ),
-  ).toBe("E=mc^2")
-  await page.locator("#scroller").evaluate((element) => {
-    element.scrollTop = element.scrollHeight
-  })
-  await page.waitForSelector('[data-slot="markdown-code-copy-text"]')
-  await page.locator('[data-slot="markdown-code-header"] button').last().click()
-  expect(
-    await page.evaluate(() => {
-      const fixture = (window as unknown as { markdownFixture: { copies: string[]; code: string } }).markdownFixture
-      return fixture.copies.at(-1) === fixture.code.trimEnd()
-    }),
-  ).toBe(true)
-  expect(await page.locator("[data-markdown-block]").count()).toBeLessThan(20)
-  expect(errors).toEqual([])
+  try {
+    await page.waitForSelector("[data-markdown-block]", { timeout: 20_000 })
+    expect(await page.locator("[data-markdown-block]").count()).toBeLessThan(20)
+    expect(await page.locator("p").count()).toBeLessThan(100)
+    expect(await page.locator('[data-katex-copy="true"]').count()).toBe(1)
+    await page.locator('[data-katex-copy="true"]').first().click()
+    await page.waitForSelector('[data-slot="katex-copy-tooltip"]', { timeout: 20_000 })
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { markdownFixture: { copies: string[] } }).markdownFixture.copies[0],
+      ),
+    ).toBe("E=mc^2")
+    await page.locator("#scroller").evaluate((element) => {
+      element.scrollTop = element.scrollHeight
+    })
+    await page.waitForSelector('[data-slot="markdown-code-copy-text"]')
+    const button = await page.locator('[data-slot="markdown-code-header"] button').last().elementHandle()
+    if (!button) throw new Error("full-code copy button missing")
+    expect(await button.getAttribute("aria-label")).toBe("Copy code")
+    expect(
+      await button.evaluate(
+        (element) => element.closest('[data-slot="markdown-code-block"]')?.querySelector("code")?.textContent,
+      ),
+    ).toContain("const original = '保持原文';")
+    await page.evaluate(() =>
+      (window as unknown as { markdownFixture: { holdNextCopy(): void } }).markdownFixture.holdNextCopy(),
+    )
+    try {
+      await button.click()
+      await page.waitForFunction(
+        () => (window as unknown as { markdownFixture: { copyStarted(): boolean } }).markdownFixture.copyStarted(),
+        undefined,
+        { timeout: 20_000 },
+      )
+      expect(
+        await page.evaluate(
+          () => (window as unknown as { markdownFixture: { copies: string[] } }).markdownFixture.copies.length,
+        ),
+      ).toBe(1)
+      expect(await button.getAttribute("data-copy-state")).toBe("idle")
+    } finally {
+      await page.evaluate(() =>
+        (window as unknown as { markdownFixture: { releaseCopy(): void } }).markdownFixture.releaseCopy(),
+      )
+    }
+    await page.waitForFunction((element) => element.dataset.copyState !== "idle", button, { timeout: 20_000 })
+    expect(await button.getAttribute("data-copy-state")).toBe("copied")
+    const result = await clipboardDiagnostics()
+    expect(result.copyCount).toBe(2)
+    expect(result.equal, JSON.stringify(result)).toBe(true)
+    expect(await page.locator("[data-markdown-block]").count()).toBeLessThan(20)
+    expect(errors).toEqual([])
+  } catch (error) {
+    const result = await clipboardDiagnostics().catch((error) => ({ unavailable: String(error) }))
+    console.error("clipboard failure diagnostics", JSON.stringify({ result, browserEvents, errors }))
+    throw error
+  }
 }, 30_000)
 
 test("a new Markdown version replaces the old worker document without stale blocks", async () => {

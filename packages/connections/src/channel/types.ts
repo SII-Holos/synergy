@@ -127,6 +127,28 @@ export const ResponseCardIntent = z
   .meta({ ref: "ChannelResponseCardIntent" })
 export type ResponseCardIntent = z.infer<typeof ResponseCardIntent>
 
+/**
+ * Structured terminal intent for a Channel turn. A turn that carries no intent
+ * delivers normally, so `type: "normal"` is deliberately not modeled: it would
+ * be a branch that never changes outcome.
+ *
+ * `reaction` is required so a stored intent always names a concrete reaction:
+ * the model-facing tool resolves the account default before recording it, and
+ * a value that fails to parse simply is not a reaction-only turn. Providers
+ * still narrow the free-form value against their own vocabulary when acting.
+ */
+export const ChannelTerminalIntent = z
+  .discriminatedUnion("type", [
+    z
+      .object({
+        type: z.literal("reaction_only"),
+        reaction: z.string().trim().min(1).max(64),
+      })
+      .strict(),
+  ])
+  .meta({ ref: "ChannelTerminalIntent" })
+export type ChannelTerminalIntent = z.infer<typeof ChannelTerminalIntent>
+
 export const ResponseCardCallback = z
   .object({
     eventId: z.string().trim().min(1).max(200),
@@ -268,6 +290,8 @@ export interface StreamingSession {
   update(text: string): Promise<void>
   updateToolProgress(progress: StreamingToolProgress[]): Promise<void>
   close(finalText?: string, error?: boolean): Promise<void>
+  /** Stop streaming without delivering cached or terminal content, including fallback replies. */
+  closeWithoutDelivery(): Promise<void>
   isActive(): boolean
   /**
    * Whether this streaming session delivers the terminal reply itself in
