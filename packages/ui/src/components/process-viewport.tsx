@@ -149,6 +149,8 @@ export function ProcessViewport(
   let captureFrame: number | undefined
   let capturedOffset = 0
   let movementPending = false
+  let pagingPending = false
+  let pagingAnchorPending = false
   let notifiedReading = false
   let resumeRequested = false
   let explicitFollow = false
@@ -169,6 +171,7 @@ export function ProcessViewport(
     if (captureFrame !== undefined) cancelAnimationFrame(captureFrame)
     captureFrame = undefined
     movementPending = false
+    pagingPending = false
   }
   const refreshAnchor = () => {
     if (disposed || restoring || disclosureAnchor || layoutPending) return
@@ -191,6 +194,10 @@ export function ProcessViewport(
     return measured !== false
   }
   const preserve = () => {
+    if (pagingPending) {
+      layoutPending = true
+      return
+    }
     if (restoreFrame !== undefined) return
     if (layoutReleaseFrame !== undefined) cancelAnimationFrame(layoutReleaseFrame)
     layoutReleaseFrame = undefined
@@ -210,6 +217,11 @@ export function ProcessViewport(
       layoutReleaseFrame = requestAnimationFrame(() => {
         layoutReleaseFrame = undefined
         layoutPending = false
+        if (pagingAnchorPending) {
+          pagingAnchorPending = false
+          cancelCapture()
+          refreshAnchor()
+        }
       })
     })
   }
@@ -227,10 +239,12 @@ export function ProcessViewport(
     if (layoutReleaseFrame !== undefined) cancelAnimationFrame(layoutReleaseFrame)
     layoutReleaseFrame = undefined
     layoutPending = false
+    pagingAnchorPending = false
   }
   const pause = (captureReading = true) => {
     motion.interrupt(viewport)
     movementPending = false
+    pagingPending = false
     if (restoring || disclosureAnchor || layoutPending) cancelCapture()
     cancelPreserve()
     restoring = false
@@ -463,6 +477,19 @@ export function ProcessViewport(
             event.preventDefault()
             latest()
           }
+          if (
+            event.isTrusted &&
+            !event.defaultPrevented &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.altKey &&
+            movementPending &&
+            event.key === " "
+          ) {
+            pagingPending = event.shiftKey
+              ? viewport.scrollTop > 1
+              : viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop > 1
+          }
         }}
         onScroll={() => {
           if (!viewport.clientHeight) return
@@ -470,7 +497,11 @@ export function ProcessViewport(
           props.onScroll?.()
           const compensated = restoredOffset !== undefined && Math.abs(viewport.scrollTop - restoredOffset) < 1
           restoredOffset = undefined
-          if (movementPending && !compensated && viewport.scrollTop !== capturedOffset) {
+          if (pagingPending && layoutPending) {
+            if (readingAnchor)
+              readingAnchor = { ...readingAnchor, offset: readingAnchor.offset - (viewport.scrollTop - capturedOffset) }
+            capturedOffset = viewport.scrollTop
+          } else if (movementPending && !compensated && viewport.scrollTop !== capturedOffset) {
             cancelPreserve()
           }
           if (!restoring && !disclosureAnchor && !compensated && !layoutPending) refreshAnchor()
@@ -486,6 +517,13 @@ export function ProcessViewport(
         }}
         on:scrollend={() => {
           movementPending = false
+          if (pagingPending) {
+            pagingPending = false
+            if (layoutPending) {
+              pagingAnchorPending = true
+              preserve()
+            }
+          }
         }}
       >
         <div ref={content} data-slot="process-viewport-content">
