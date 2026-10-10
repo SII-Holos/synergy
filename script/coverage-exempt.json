@@ -2310,6 +2310,10 @@
         {
           "glob": "src/plugin/skin.ts",
           "reason": "shared browser UI exercised by App components.dom, overlays.dom, skin.dom and real-host acceptance; package Bun coverage cannot observe browser execution"
+        },
+        {
+          "glob": "src/components/render-native.tsx",
+          "reason": "Native preview promotion, canonical conflicts, shared-view flushing, confirmed follow-ups and standalone exports run in test/components/render-interactive.browser.test.ts through Vite and Chromium. Solid browser execution is outside Bun source coverage; the shared catalog is measured separately by test/components/render/catalog.test.ts."
         }
       ]
     },

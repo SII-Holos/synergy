@@ -1,9 +1,10 @@
 import "../../../src/styles/index.css"
 import { I18nProvider } from "@lingui/solid"
-import { createSignal } from "solid-js"
+import { createSignal, batch } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { DialogProvider } from "../../../src/context/dialog"
-import { RenderProvider, type RenderHost } from "../../../src/context/render"
+import { RenderProvider, RenderStateConflict, type RenderHost } from "../../../src/context/render"
 import { RenderTool } from "../../../src/components/render-tool"
 import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
 import { setupI18n } from "../../../src/testing/i18n"
@@ -28,9 +29,13 @@ let holdFollowUp = false
 let rejectWrite = false
 let releaseFollowUp: (() => void) | undefined
 const descriptor = () => {
-  const { html, ...rest } = source
+  const { html, ui, ...rest } = source
   return { ...rest, source: `asset://${String(count).padStart(16, "0")}.bin` }
 }
+const [callID, setCallID] = createSignal("prt_render0")
+let conflict = false
+const [input, setInput] = createStore<Record<string, unknown>>({})
+const [status, setStatus] = createSignal("completed")
 const [metadata, setMetadata] = createSignal({ visual: descriptor(), visualState: state })
 const host: RenderHost = {
   async read() {
@@ -38,6 +43,16 @@ const host: RenderHost = {
     return { source, state }
   },
   async write(target, update) {
+    if (conflict) {
+      conflict = false
+      state = {
+        revision: state.revision + 1,
+        updatedAt: Date.now(),
+        content: { modelContent: { parameters: { seats: 12 } } },
+      }
+      setMetadata({ visual: descriptor(), visualState: state })
+      throw new RenderStateConflict("Another view changed the estimate", state)
+    }
     if (rejectWrite) {
       throw new Error("Saving is unavailable")
     }
@@ -69,17 +84,56 @@ Object.assign(window, {
   __renderTest: {
     setup(html: string, libraries: RenderArtifact.Source["libraries"] = []) {
       rejectWrite = false
-      source = { ...source, id: crypto.randomUUID(), html, libraries }
+      source = { ...source, id: crypto.randomUUID(), html, libraries, ui: undefined, renderer: undefined }
       state = RenderArtifact.emptyState()
       count++
-      setMetadata({ visual: descriptor(), visualState: state })
+      batch(() => {
+        setInput(reconcile({}))
+        setStatus("completed")
+        setCallID(`prt_render${count}`)
+        setMetadata({ visual: descriptor(), visualState: state })
+      })
       return source.id
+    },
+    setupUI(ui: RenderArtifact.Source["ui"], streaming = false) {
+      rejectWrite = false
+      count++
+      source = { ...source, id: crypto.randomUUID(), renderer: "native", ui, html: "<p>Fallback</p>" }
+      state = RenderArtifact.emptyState()
+      batch(() => {
+        setCallID(`prt_render${count}`)
+        setInput(reconcile({ ui }))
+        setStatus(streaming ? "generating" : "completed")
+        setMetadata({ visual: descriptor(), visualState: state })
+      })
+    },
+    stream(ui: unknown, complete = false) {
+      batch(() => {
+        setInput(reconcile({ ui }))
+        if (complete) {
+          source = { ...source, ui: ui as RenderArtifact.Source["ui"] }
+          setMetadata({ visual: descriptor(), visualState: state })
+          setStatus("completed")
+        }
+      })
+    },
+    prepare() {
+      batch(() => {
+        setInput(reconcile({}))
+        setStatus("running")
+      })
     },
     stats() {
       return { reads, writes, requests, images, state }
     },
+    conflictWrites() {
+      conflict = true
+    },
     rejectWrites() {
       rejectWrite = true
+    },
+    retryWrites() {
+      rejectWrite = false
     },
     remote(content: RenderArtifact.Content) {
       state = { revision: state.revision + 1, updatedAt: Date.now(), content }
@@ -104,12 +158,12 @@ render(
         <RenderProvider value={host}>
           <RenderTool
             tool="render"
-            input={{}}
+            input={input}
             metadata={metadata()}
-            status="completed"
+            status={status()}
             sessionId="ses_render"
             messageId="msg_render"
-            partId="prt_render"
+            partId={callID()}
           />
         </RenderProvider>
       </DialogProvider>

@@ -8,9 +8,9 @@ Checking a text batching window only when another provider event arrives leaves 
 
 ## Decision
 
-The Agent worker consumes text and reasoning batches through a deadline-aware async iterator. A pending delta races the one outstanding upstream read against its original 16 millisecond deadline. Deadline expiry releases the batch while retaining that same read for the next iteration. IPC delivery remains serial and respects its existing acknowledgement window. Adjacent tool-input deltas retain their call-based, size-bounded batching.
+The Agent worker consumes batches through a deadline-aware async iterator. A pending text or reasoning delta races the one outstanding upstream read against its original 16 millisecond deadline. Deadline expiry releases the batch while retaining that same read for the next iteration. IPC delivery remains serial and respects its existing acknowledgement window. Adjacent tool-input deltas retain their call-based, size-bounded batching with a 250 millisecond deadline so native visual previews can arrive before a tool call completes; see the [native catalog decision](../architecture/2026-10-10-native-render-catalog.md).
 
-Normal end flushes pending content. Early consumer termination clears the timer and closes the upstream iterator; a cleanup failure cannot replace an existing provider failure. No interval runs when there is no pending text or reasoning.
+Normal end flushes pending content. Early consumer termination clears the timer and closes the upstream iterator; a cleanup failure cannot replace an existing provider failure. No interval runs when there is no pending delta.
 
 Production composer acceptance selects distinct foreground and auxiliary fixture models. It observes an unfinished visible reply on both sides of the workbench transition before allowing the foreground stream to complete. The fixture disables its server idle timeout because the test deliberately holds that stream across navigation; the bounded UI and whole-test deadlines remain unchanged, and cleanup releases the stream.
 

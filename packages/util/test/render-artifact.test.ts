@@ -24,3 +24,21 @@ test("structured-clone cycles are rejected without throwing out of validation", 
   cycle.self = cycle
   expect(RenderArtifact.Content.safeParse({ modelContent: cycle }).success).toBe(false)
 })
+
+test("native sources retain a static fallback and cannot acquire script-library authority", () => {
+  const source = {
+    format: "synergy.visual",
+    version: 1,
+    id: "00000000-0000-4000-8000-000000000000",
+    mode: "interactive",
+    title: "Estimate",
+    layout: "normal",
+    libraries: [],
+    html: "<p>Fallback</p>",
+    renderer: "native",
+  }
+  expect(RenderArtifact.Source.safeParse(source).success).toBe(false)
+  const ui = { nodes: [{ id: "summary", type: "text", text: "Estimate" }] }
+  expect(RenderArtifact.Source.safeParse({ ...source, ui }).success).toBe(true)
+  expect(RenderArtifact.Source.safeParse({ ...source, ui, libraries: ["chart"] }).success).toBe(false)
+})

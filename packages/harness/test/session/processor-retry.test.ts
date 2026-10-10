@@ -68,6 +68,7 @@ async function run(
     | "reasoning-only"
     | "tools"
     | "tools-stop"
+    | "tools-preview"
     | "length",
 ) {
   await using tmp = await tmpdir({ git: true })
@@ -106,6 +107,8 @@ async function run(
       let calls = 0
       let effects = 0
       let disposed = 0
+      let preview: string | undefined
+      let previewEffects = 0
       spyOn(SessionRetry, "delay").mockReturnValue(0)
       if (mode === "cancel")
         spyOn(SessionRetry, "sleep").mockImplementation(async () => {
@@ -148,8 +151,20 @@ async function run(
                 yield { type: "finish" as const }
                 return
               }
-              if (mode === "tools" || mode === "tools-stop") {
+              if (mode === "tools" || mode === "tools-stop" || mode === "tools-preview") {
                 yield { type: "start-step" as const }
+                if (mode === "tools-preview") {
+                  const raw = JSON.stringify({ attempt, label: "x".repeat(60) })
+                  yield { type: "tool-input-start" as const, id: `call-${attempt}`, toolName: "probe" }
+                  yield { type: "tool-input-delta" as const, id: `call-${attempt}`, delta: raw.slice(0, 30) }
+                  yield { type: "tool-input-delta" as const, id: `call-${attempt}`, delta: raw.slice(30, 60) }
+                  const current = await MessageV2.get({ sessionID: session.id, messageID: assistant.id })
+                  const part = current.parts.find((part) => part.type === "tool")
+                  preview = part?.type === "tool" && part.state.status === "generating" ? part.state.raw : undefined
+                  previewEffects = effects
+                  yield { type: "tool-input-delta" as const, id: `call-${attempt}`, delta: raw.slice(60) }
+                  yield { type: "tool-input-end" as const, id: `call-${attempt}` }
+                }
                 yield {
                   type: "tool-call" as const,
                   toolCallId: `call-${attempt}`,
@@ -255,11 +270,23 @@ async function run(
         calls,
         effects,
         disposed,
+        preview,
+        previewEffects,
         message: await MessageV2.get({ sessionID: session.id, messageID: assistant.id }),
       }
     },
   })
 }
+
+test(
+  "small tool-input deltas publish accumulated progress before any execution",
+  runtime.bind(async () => {
+    const result = await run("tools-preview")
+    expect(result.preview).toBe(JSON.stringify({ attempt: 1, label: "x".repeat(60) }).slice(0, 60))
+    expect(result.previewEffects).toBe(0)
+    expect(result.effects).toBe(1)
+  }),
+)
 
 test(
   "a failed provider stream cannot execute its proposed tool, and recovery executes once",

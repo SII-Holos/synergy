@@ -1322,7 +1322,8 @@ export namespace SessionProcessor {
                       generatingAccum[value.id] = raw
                       streamInput.memoryTurn?.observeToolRawChars(value.id, raw.length)
                       // Throttle generating updates: emit when enough new content has accumulated
-                      if (raw.length - (prevRaw.length || 0) < 50 && raw.length % 128 !== 0) break
+                      const published = match.state.status === "generating" ? match.state.charsReceived : 0
+                      if (raw.length - published < 50) break
                       const part = await Session.updatePart({
                         ...match,
                         state: {

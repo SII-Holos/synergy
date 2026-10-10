@@ -510,6 +510,8 @@ An observed execution ending retains its progress receipt for 1.6 seconds and fa
 
 ## Workspace output visibility
 
+Native catalog results reveal validated components during generation, retain focused controls and user values as content grows, and save preview edits only after the call completes. A failed computation preserves the last usable view with a visible diagnostic.
+
 Interactive visual results appear inline and expand in the shared viewer on request. Opening a result does not open a workbench panel. Host controls use the current theme, typography, focus treatment and motion tokens. Restoring saved content does not replay a framework entrance animation; inactive views pause animation work. Parameters and variants preview locally. Sending a change or selected-region feedback requires an editable host confirmation and preserves the composer draft. Failed saves remain visible, with an explicit choice to discard before closing. Source versions and framework state follow the [visual results model](../../docs/architecture/visual-results.md).
 
 The first new viewable note, Blueprint, non-image attachment or valid webpage produced by the visible task may reveal Workspace once while preserving focus. Manual resource choice or collapse, an editor/dialog in use, narrow modal presentation or a consumed allowance yields a resource notification instead. Manual choices and the consumed allowance persist across refresh. History restoration, event replay, background tasks, ordinary file reads and directory scans cannot reveal Workspace. Blueprint output uses this same path. Resource references and shell presentation migrate through frontend layout version 2; resource owners retain their editing state.

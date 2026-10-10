@@ -176,6 +176,7 @@ function groupState(steps: readonly ActivityStepProjection[]): ActivityGroupStat
 
 function timelineItemIdentity(item: SessionTurnTimelineItem): string {
   if (item.kind === "compaction") return `compaction:${item.message.id}`
+  if (item.kind === "tool-attachments") return timelineItemStableKey(item)
   return `${item.message.id}:${item.part.id}`
 }
 

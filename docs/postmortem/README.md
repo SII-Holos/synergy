@@ -28,6 +28,8 @@ Use `NNNN-kebab-case-title.md`. Sections:
 
 ## Index
 
+- [0064](0064-visual-card-attachment-identity.md)
+
 - [0063: Startup replay](0063-history-replay-blocked-startup.md)
 
 - [0062: Historical project bindings](0062-project-migration-required-live-directory-identity.md)

@@ -52,7 +52,7 @@ export namespace Render {
     if (`asset://${Asset.generateId(bytes, RenderArtifact.MIME)}` !== descriptor.source)
       throw new Unavailable({ message: "Visual source integrity check failed" })
     const source = RenderArtifact.Source.parse(JSON.parse(bytes.toString()))
-    const { html: _, ...identity } = source
+    const { html: _, ui: _ui, ...identity } = source
     if (
       JSON.stringify(RenderArtifact.Descriptor.parse({ ...identity, source: descriptor.source })) !==
       JSON.stringify(descriptor)
