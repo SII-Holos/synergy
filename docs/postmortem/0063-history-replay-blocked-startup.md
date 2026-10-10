@@ -14,7 +14,7 @@ The earlier staged-import and bounded-history changes separated metadata admissi
 
 ## Root cause
 
-`scope: session` described data ownership, while absent `execution` retained startup behavior. `upSession` supported deferred legacy import but did not defer resident SQL owners. A completion receipt represented a global pass, and recovery treated unknown coverage as an instruction to enumerate every owner. Tests verified final corrected values without asserting which cold records admission touched.
+`scope: session` described data ownership, while absent `execution` retained startup behavior. `upSession` supported deferred legacy import but did not defer resident SQL owners. A completion receipt represented a global pass, and recovery treated unknown coverage as an instruction to enumerate every owner. Startup also inventoried all artifact packs for optional orphan collection. Tests verified final corrected values without asserting which cold records admission touched.
 
 ## Guardrails added
 
