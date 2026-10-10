@@ -40,6 +40,10 @@ Removed user Inbox inputs and restoration receipts live at the logical keys `ses
 
 Rollout stores execution intervals at `<owner>/rollout/runs/<run>/intervals/<interval>` alongside its existing run and segment evidence. Interval writes append through the Rollout journal; [execution evidence](../architecture/session-and-messages.md) defines timing, recovery and migration semantics.
 
+## Session migration data
+
+`data/session-transfers/<migration UUID>/` owns frozen `payload.zip`, transient capture chunks and receive files. On a destination, `workspace/` becomes the published private native Workspace after activation and remains there when temporary payloads are cleaned. Migration states, proof hashes/secrets, gates, receiving reservations, cancellation proofs and native Workspace validation receipts live in the agent database under `session_transfer_*` namespaces. See [Session transfer](../architecture/session-transfer.md) for retention, cancellation and recovery semantics.
+
 ## Agent database
 
 Installation generations retain code-version floors and explicit package selections independently of Agent storage. Running processes keep their verified generation until they exit. The `installation/20260926-installation-selection-v1` migration preserves the full Web backend for a home with existing data or configuration; fresh core homes retain a minimal selection. It neither rewrites API4 grants nor installs a second Desktop shell. Bootstrap and the central migration runner share this idempotent owner.

@@ -1,3 +1,4 @@
+import { SessionTransferState } from "./transfer-state"
 import { z } from "zod"
 import { SessionSchemaRegistry } from "./schema-registry"
 import { ModelSelection } from "./model-selection-schema"
@@ -299,6 +300,7 @@ const BaseInfo = z.preprocess(
     rollbackAck: RollbackAck.optional(),
     cortex: CortexDelegationInfo.optional(),
     working: WorkingInfo.optional(),
+    transfer: SessionTransferState.optional(),
     workspace: Workspace.nullable(),
     workspaceID: z.string().nullable().optional(),
     environmentID: z.string().min(1).nullable().optional(),

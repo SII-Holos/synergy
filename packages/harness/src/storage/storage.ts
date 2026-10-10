@@ -1,3 +1,4 @@
+import { StorageMutationGuard } from "./mutation-guard"
 import { RuntimeContext } from "../lifecycle/context"
 import path from "node:path"
 import { createHash } from "node:crypto"
@@ -114,7 +115,10 @@ export namespace Storage {
     let outcome: "committed" | "aborted" | "unknown" = "aborted"
     try {
       const result = await parent.store.transaction(async (tx) => {
-        if (!parent.migrationAccess) tx.restrictToPublishedOwners()
+        if (!parent.migrationAccess) {
+          tx.restrictToPublishedOwners()
+          tx.guardMutations((keys, tree) => StorageMutationGuard.assert(tx, keys, tree))
+        }
         effects = []
         const pending: Promise<unknown>[] = []
         return RuntimeContext.transaction(() =>

@@ -1,3 +1,4 @@
+import { registerSessionTransferWorkspace } from "./session-transfer-workspace"
 import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
 import { FileLink } from "./file/link"
 import { SnapshotRestore } from "@ericsanchezok/synergy-harness/session/snapshot-restore"
@@ -35,6 +36,7 @@ const workspaceServices: SessionWorkspaceRuntime.Provider = {
 
 export function registerWorkspace(coordinator = new WorkspaceCoordinator()) {
   registerWorkspaceIdentityMigrations()
+  registerSessionTransferWorkspace()
   SnapshotLink.register({ type: (filename) => FileLink.type(filename) })
   SnapshotRestore.register(WorkspaceFileRestore)
   WorkspaceFileImport.register(WorkspaceFileService)

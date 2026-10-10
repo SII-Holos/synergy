@@ -168,3 +168,7 @@ Pause stops current execution and keeps its task resumable. Continue resumes it;
 ## Session tags
 
 Sessions carry optional user-defined tags, with up to 20 tags of 40 characters each. The session actions menu adds or removes tags. Sidebar tag search filters matching sessions across Home and Projects, including paginated history; pressing Enter also searches a tag absent from the loaded suggestions. Clearing the filter restores normal navigation.
+
+## Move a paused task to another device
+
+Add the destination in the server selector, then choose “Move to another device” from the paused task menu. The dialog shows preparation, copying and handoff progress. Before handoff you can cancel; after handoff use Retry to finish the same destination. “Open on destination” selects that connection and opens the preserved task. It stays paused until you click Continue. Both devices must be online and compatible; unsupported task bindings or files produce an explicit error. Detailed restrictions follow [Session transfer](../architecture/session-transfer.md).

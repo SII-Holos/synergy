@@ -21,7 +21,7 @@ export namespace SessionRecords {
   }
 
   export function serialize(info: Info) {
-    const { workspace, working: _working, workspaceError: _error, ...stored } = info
+    const { workspace, working: _working, workspaceError: _error, transfer: _transfer, ...stored } = info
     if (workspace && !workspace.id) throw new Error("Session workspace must be registered before persistence")
     return { ...stored, workspaceID: workspace?.id ?? info.workspaceID ?? null }
   }

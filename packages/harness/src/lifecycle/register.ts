@@ -1,3 +1,4 @@
+import { SessionTransferGate } from "../session/transfer-gate"
 import { WorkspaceOperations } from "../workspace/operations"
 import { registerConfigMigrations } from "../config/migration"
 import { registerScopeMigrations } from "../scope/migration"
@@ -36,6 +37,7 @@ export function registerHarness() {
   WorkspaceMounts.register()
   EnvironmentExecution.registerRecovery()
   WorkspaceOperations.register()
+  SessionTransferGate.register()
   registerSessionResolver()
   registerSummaryJob()
   registerTitleJob()

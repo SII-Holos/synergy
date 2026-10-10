@@ -37,3 +37,5 @@ The `workspace/blob-store` export supplies `s3BlobStore` and `ossBlobStore` for 
 Coding reads and searches use shared display budgets; anchored edits return compact final-file previews with full UI diffs. See [workspace file architecture](../../docs/architecture/workspace-and-files.md). The fixed-input observation probe at `test/tools/coding-observation-probe.test.ts` can emit versioned UTF-8 byte measurements through `SYNERGY_OBSERVATION_REPORT`; it does not invoke a model or estimate token savings.
 
 Selective hosts call `registerLocalToolInputHistory()` from `./tool-input-history` while composing their tool catalog. This retains owned input migrations without registering native providers or product tool groups.
+
+Local Runtime registers the native directory Host for [paused Session transfer](../../docs/architecture/session-transfer.md). It captures under Workspace coordination, rejects Runtime-data overlap and linked Git metadata, and materializes a verified private directory before publication.

@@ -811,6 +811,32 @@ import type {
   SessionTodoResponses,
   SessionToolActivityErrors,
   SessionToolActivityResponses,
+  SessionTransferActivateErrors,
+  SessionTransferActivateResponses,
+  SessionTransferActivation,
+  SessionTransferArchiveErrors,
+  SessionTransferArchiveResponses,
+  SessionTransferCancelErrors,
+  SessionTransferCancellation,
+  SessionTransferCancelResponses,
+  SessionTransferCommitErrors,
+  SessionTransferCommitResponses,
+  SessionTransferCompleteErrors,
+  SessionTransferCompleteResponses,
+  SessionTransferDestinationErrors,
+  SessionTransferDestinationResponses,
+  SessionTransferDiscardErrors,
+  SessionTransferDiscardResponses,
+  SessionTransferHostErrors,
+  SessionTransferHostResponses,
+  SessionTransferPrepare,
+  SessionTransferPrepareErrors,
+  SessionTransferPrepareResponses,
+  SessionTransferReceipt,
+  SessionTransferStageErrors,
+  SessionTransferStageResponses,
+  SessionTransferStatusErrors,
+  SessionTransferStatusResponses,
   SessionTurnExecutionErrors,
   SessionTurnExecutionResponses,
   SessionUnrollbackErrors,
@@ -10265,6 +10291,415 @@ export class Question extends HeyApiClient {
   }
 }
 
+export class SessionTransfer extends HeyApiClient {
+  /**
+   * Session transfer host
+   */
+  public host<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionTransferHostResponses, SessionTransferHostErrors, ThrowOnError>({
+      url: "/session-transfer/host",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Session transfer stage
+   */
+  public stage<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      file?: Blob | File
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "file" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTransferStageResponses,
+      SessionTransferStageErrors,
+      ThrowOnError
+    >({
+      ...formDataBodySerializer,
+      url: "/session-transfer/stage",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Session transfer activate
+   */
+  public activate<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      sessionTransferActivation?: SessionTransferActivation
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionTransferActivation", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTransferActivateResponses,
+      SessionTransferActivateErrors,
+      ThrowOnError
+    >({
+      url: "/session-transfer/activate",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Session transfer destination
+   */
+  public destination<ThrowOnError extends boolean = false>(
+    parameters: {
+      migrationID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "migrationID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionTransferDestinationResponses,
+      SessionTransferDestinationErrors,
+      ThrowOnError
+    >({
+      url: "/session-transfer/destination/{migrationID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Session transfer discard
+   */
+  public discard<ThrowOnError extends boolean = false>(
+    parameters: {
+      migrationID: string
+      directory?: string
+      scopeID?: string
+      sessionTransferCancellation?: SessionTransferCancellation
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "migrationID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionTransferCancellation", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTransferDiscardResponses,
+      SessionTransferDiscardErrors,
+      ThrowOnError
+    >({
+      url: "/session-transfer/destination/{migrationID}/discard",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Session transfer status
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionTransferStatusResponses,
+      SessionTransferStatusErrors,
+      ThrowOnError
+    >({
+      url: "/session-transfer/{sessionID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Session transfer prepare
+   */
+  public prepare<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      sessionTransferPrepare?: SessionTransferPrepare
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionTransferPrepare", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTransferPrepareResponses,
+      SessionTransferPrepareErrors,
+      ThrowOnError
+    >({
+      url: "/session-transfer/{sessionID}/prepare",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Download frozen Session transfer
+   */
+  public archive<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionTransferArchiveResponses,
+      SessionTransferArchiveErrors,
+      ThrowOnError
+    >({
+      url: "/session-transfer/{sessionID}/archive",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Session transfer commit
+   */
+  public commit<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      sessionTransferReceipt?: SessionTransferReceipt
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionTransferReceipt", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTransferCommitResponses,
+      SessionTransferCommitErrors,
+      ThrowOnError
+    >({
+      url: "/session-transfer/{sessionID}/commit",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Session transfer complete
+   */
+  public complete<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      sessionTransferReceipt?: SessionTransferReceipt
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionTransferReceipt", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTransferCompleteResponses,
+      SessionTransferCompleteErrors,
+      ThrowOnError
+    >({
+      url: "/session-transfer/{sessionID}/complete",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Session transfer cancel
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTransferCancelResponses,
+      SessionTransferCancelErrors,
+      ThrowOnError
+    >({
+      url: "/session-transfer/{sessionID}/cancel",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Cortex extends HeyApiClient {
   /**
    * List Cortex tasks
@@ -16440,6 +16875,8 @@ export class SynergyClient extends HeyApiClient {
   permission = new Permission({ client: this.client })
 
   question = new Question({ client: this.client })
+
+  sessionTransfer = new SessionTransfer({ client: this.client })
 
   cortex = new Cortex({ client: this.client })
 

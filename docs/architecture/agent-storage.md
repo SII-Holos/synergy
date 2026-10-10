@@ -117,3 +117,7 @@ Startup migrations with a read-only `isApplied` proof can join that completion t
 ## Full tool outputs
 
 Applications can pair `StoredToolOutput.persistence()` with `read_tool_output` to retain complete results in the selected Storage artifact backend. The bounded reader uses namespace-scoped immutable references and exact imported aliases without acquiring an Environment or mounting a Workspace. See [the output persistence decision](../decisions/implemented/architecture/2026-10-09-read-persisted-tool-outputs-without-an-environment.md).
+
+## Session transfer admission
+
+Ordinary Storage transactions install Runtime-scoped mutation guards. [Session transfer](session-transfer.md) uses them to protect frozen source records and reserved target identities across single, batch, binary, restoration, deletion and pruning operations. Migration access is reserved for trusted owner upgrades. Native Workspace and snapshot bytes are prepared outside publication transactions.
