@@ -551,7 +551,7 @@ for (const input of ["cancelled", "Control", "Meta", "Alt"] as const) {
   })
 }
 
-test("native Space completes its paging before compensating body growth above the reading anchor", async () => {
+test.each(["native", "withheld"] as const)("native Space %s scrolls settle body growth", async (delivery) => {
   await load("local")
   const viewport = page.locator('[data-component="process-viewport"]')
   await viewport.evaluate(async () => {
@@ -564,10 +564,20 @@ test("native Space completes its paging before compensating body growth above th
   const cdp = await page.context().newCDPSession(page)
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 12 })
   try {
-    const before = await viewport.evaluate((element) => {
+    const before = await viewport.evaluate((element, delivery) => {
       const paragraph = document.getElementById("reading-paragraph")!
-      const paging = { ended: false, writesBeforeEnd: 0, offsetAtEnd: 0, topAtEnd: 0 }
+      const paging = { ended: false, writesBeforeEnd: 0, offsetAtEnd: 0, topAtEnd: 0, withheldScrolls: 0 }
       Object.assign(window, { processSpacePaging: paging })
+      const startTop = element.scrollTop
+      let deliveredTop = startTop
+      const withholdScroll = (event: Event) => {
+        if (deliveredTop - startTop <= 100) {
+          deliveredTop = element.scrollTop
+          return
+        }
+        paging.withheldScrolls++
+        event.stopImmediatePropagation()
+      }
       const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop")!
       Object.defineProperty(element, "scrollTop", {
         get() {
@@ -582,6 +592,7 @@ test("native Space completes its paging before compensating body growth above th
         "scrollend",
         () => {
           paging.ended = true
+          element.removeEventListener("scroll", withholdScroll, { capture: true })
           paging.offsetAtEnd = paragraph.getBoundingClientRect().top - element.getBoundingClientRect().top
           paging.topAtEnd = element.scrollTop
         },
@@ -592,7 +603,10 @@ test("native Space completes its paging before compensating body growth above th
         () => {
           element.addEventListener(
             "scroll",
-            () => (window as unknown as FixtureWindow).processViewportFixture.growCharacterData("above"),
+            () => {
+              ;(window as unknown as FixtureWindow).processViewportFixture.growCharacterData("above")
+              if (delivery === "withheld") element.addEventListener("scroll", withholdScroll, { capture: true })
+            },
             { once: true },
           )
         },
@@ -604,7 +618,7 @@ test("native Space completes its paging before compensating body growth above th
         height: element.scrollHeight,
         offset: paragraph.getBoundingClientRect().top - element.getBoundingClientRect().top,
       }
-    })
+    }, delivery)
     expect(before.remaining).toBeGreaterThan(1000)
     await viewport.press("Space")
     for (let frame = 0; frame < 12; frame++)
@@ -615,11 +629,19 @@ test("native Space completes its paging before compensating body growth above th
         document.getElementById("reading-paragraph")!.getBoundingClientRect().top - element.getBoundingClientRect().top,
       paging: (
         window as unknown as {
-          processSpacePaging: { ended: boolean; writesBeforeEnd: number; offsetAtEnd: number; topAtEnd: number }
+          processSpacePaging: {
+            ended: boolean
+            writesBeforeEnd: number
+            offsetAtEnd: number
+            topAtEnd: number
+            withheldScrolls: number
+          }
         }
       ).processSpacePaging,
     }))
     expect(after.paging.ended).toBe(true)
+    if (delivery === "withheld") expect(after.paging.withheldScrolls).toBeGreaterThan(0)
+    else expect(after.paging.withheldScrolls).toBe(0)
     expect(after.paging.writesBeforeEnd).toBe(0)
     expect(after.paging.topAtEnd - before.top).toBeGreaterThan(100)
     expect(after.paging.offsetAtEnd - after.offset).toBeGreaterThan(100)

@@ -520,6 +520,12 @@ export function ProcessViewport(
           if (pagingPending) {
             pagingPending = false
             if (layoutPending) {
+              if (readingAnchor)
+                readingAnchor = {
+                  ...readingAnchor,
+                  offset: readingAnchor.offset - (viewport.scrollTop - capturedOffset),
+                }
+              capturedOffset = viewport.scrollTop
               pagingAnchorPending = true
               preserve()
             }
