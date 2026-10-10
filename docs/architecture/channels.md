@@ -83,6 +83,8 @@ Providers receive an account-bound `ChannelHost` rather than direct Scope or Ses
 
 Conversation ingress separates durable acceptance from execution. `host.conversations.receive()` returns an acceptance result whose `execution` Promise owns streaming and generation. A provider lane waits only until Channel core has resolved the endpoint Session and either reserved its loop lease or durably written the request to `SessionInbox`; it tracks accepted execution separately for bounded account drain. Feishu serializes this acceptance by its existing conversation key, preserving same-topic order and different-topic parallelism without creating a provider-owned durable queue.
 
+`StreamingSession.close()` owns terminal delivery and may use a provider's cached answer or fallback. `closeWithoutDelivery()` is a separate required resource-finalization operation: it stops streaming without rendering cached/terminal content or sending a fallback reply. Channel core uses it when post-invoke history is unavailable and cannot safely classify a terminal. Feishu only closes streaming-mode settings with an empty summary; it does not retract progress already streamed. A live writer may finish its already-captured snapshot, but a render waiting for pacing must recheck admission before capturing content. Cleanup shares the session's single-flight close promise, and core releases foreground ownership and subscriptions even when the provider rejects cleanup.
+
 `host.projects` owns:
 
 - idempotent ensure of active or paused managed Projects;

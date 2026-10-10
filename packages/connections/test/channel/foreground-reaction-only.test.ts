@@ -407,7 +407,45 @@ async function runScenario(
             ).toBe(true)
             expect(replies).toEqual([])
             expect(pushes).toEqual([])
-            expect(closes).toEqual([])
+            if (streamingCard) {
+              expect(streamingCard.isActive()).toBe(false)
+              const cleanupRequests = cardRequests.slice(cardRequestsAfterInvoke)
+              const settingsIndex = cleanupRequests.findIndex((request) => request.url.endsWith("/settings"))
+              const liveProgress = settingsIndex < 0 ? cleanupRequests : cleanupRequests.slice(0, settingsIndex)
+              expect(
+                liveProgress.every(
+                  (request) =>
+                    (request.url.endsWith("/elements/status_content/content") &&
+                      request.body.content === "💬 Generating response…") ||
+                    (request.url.endsWith("/elements/tool_content/content") &&
+                      request.body.content ===
+                        "**Tools · Completed**\n- ✅ fixture_artifact · artifact-A.txt\n\n1/1 completed"),
+                ),
+              ).toBe(true)
+              if (settingsIndex >= 0)
+                expect(cleanupRequests.slice(settingsIndex).every((request) => request.url.endsWith("/settings"))).toBe(
+                  true,
+                )
+              const cardKey = StoragePath.channelFeishuStreamingCard(ACCOUNT_ID, sessionID, "card_history_failure")
+              if (cardFailure === "settings-rejection")
+                expect(await Storage.read(cardKey)).toMatchObject({ cardId: "card_history_failure" })
+              else await expect(Storage.read(cardKey)).rejects.toBeInstanceOf(Storage.NotFoundError)
+              const messageRequests = cardRequests.filter((request) => request.url.includes("/im/v1/messages/"))
+              expect(messageRequests).toHaveLength(1)
+              expect(messageRequests[0].body.msg_type).toBe("interactive")
+              const settings = cardRequests.filter((request) => request.url.endsWith("/settings"))
+              expect(settings).toHaveLength(cardFailure === "terminal" ? 0 : 1)
+              if (settings.length)
+                expect(JSON.parse(String(settings[0].body.settings))).toEqual({
+                  config: { streaming_mode: false, summary: { content: "" } },
+                })
+            } else {
+              expect(closes).toEqual([])
+              expect(cleanups).toEqual([FOREGROUND_TOPIC])
+              expect(streamingStarts).toBe(1)
+              expect(activeStreaming).toBe(false)
+            }
+            expect(ChannelOutbound.isForeground(sessionID, rootA.info.id)).toBe(false)
             expect(reactions.filter((reaction) => reaction.emoji !== "Typing")).toEqual([])
             return
           }
