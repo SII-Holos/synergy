@@ -2,7 +2,7 @@
 
 - [0061: Usage recovery](0061-streamed-usage-recovery.md)
 
-## When to write one
+## Criteria
 
 - **Subtle** — requires investigation.
 - **Systemic** — tests, tooling, or conventions missed the bug.
@@ -27,6 +27,8 @@ Use `NNNN-kebab-case-title.md`. Sections:
 - **Lessons** — the durable takeaways.
 
 ## Index
+
+- [0065: Session navigation](0065-session-navigation-flashed-introduction.md)
 
 - [0064: History latency](0064-history-pages-scanned-authoritative-storage.md)
 
