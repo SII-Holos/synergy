@@ -25,6 +25,11 @@ export namespace SessionTransferGate {
     return activation.run({ runtime: RuntimeContext.current(), migrationID }, fn)
   }
 
+  export async function isFrozen(sessionID: string) {
+    const [gate] = await Storage.readMany([key(sessionID)])
+    return !!gate
+  }
+
   export async function assert(sessionID: string) {
     const [gate] = await Storage.readMany<z.infer<typeof Info>>([key(sessionID)])
     if (gate)

@@ -676,15 +676,17 @@ export async function upgradeSessionRecords(owners: Array<{ scopeID: string; ses
   const completed = await Storage.readMany(targets.map((target) => target.key))
   const pending = targets.filter((_, index) => completed[index] === undefined)
   if (!pending.length) return
-  await Storage.transaction(async () => {
-    const current = await Storage.readMany(pending.map((target) => target.key))
-    for (const [index, target] of pending.entries()) {
-      if (current[index] !== undefined) continue
-      if (!(await Storage.readMany([["sessions", target.owner.scopeID, target.owner.sessionID, "info"]]))[0]) continue
-      await target.migration.upSession!(target.owner, () => {})
-      await Storage.write(target.key, { completed: Date.now() })
-    }
-  })
+  const upgrade = () =>
+    Storage.transaction(async () => {
+      const current = await Storage.readMany(pending.map((target) => target.key))
+      for (const [index, target] of pending.entries()) {
+        if (current[index] !== undefined) continue
+        if (!(await Storage.readMany([["sessions", target.owner.scopeID, target.owner.sessionID, "info"]]))[0]) continue
+        await target.migration.upSession!(target.owner, () => {})
+        await Storage.write(target.key, { completed: Date.now() })
+      }
+    })
+  await (Storage.inTransaction() ? upgrade() : Storage.withMigrationRecords(upgrade))
 }
 
 const sessionPreparations = Storage.state(() => new Map<string, Promise<void>>())
