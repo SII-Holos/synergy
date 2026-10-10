@@ -40,6 +40,61 @@ function buildProfile(unreadableGlobs: string[] = []): SynergySandboxPermissionP
   }
 }
 
+test.skipIf(process.platform !== "darwin")(
+  "metadata ancestors do not deny workspace writes while nested metadata stays protected",
+  () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "synergy-metadata-")))
+    try {
+      for (const ancestor of [".codex", ".agents"]) {
+        const workspace = path.join(root, ancestor, 'work [1]+ *?{2} "空间"', "project")
+        const extra = path.join(root, ancestor, "extra")
+        const sibling = path.join(root, ancestor, "sibling")
+        for (const directory of [workspace, extra, sibling]) fs.mkdirSync(directory, { recursive: true })
+        const policy = buildProfile()
+        policy.fileSystem.workspace = workspace
+        policy.fileSystem.writableRoots = [workspace, extra]
+        policy.fileSystem.protectedMetadataNames = [".agents", ".codex"]
+        policy.network.mode = "restricted"
+        const compiled = MacOSPolicy.compileExecution(policy)
+        const filename = path.join(root, "profile.sb")
+        fs.writeFileSync(filename, compiled.profile)
+        const write = (target: string) =>
+          Bun.spawnSync(
+            [
+              "/usr/bin/sandbox-exec",
+              "-f",
+              filename,
+              ...Object.entries(compiled.params).flatMap(([key, value]) => ["-D", `${key}=${value}`]),
+              "/bin/sh",
+              "-c",
+              'printf changed > "$1"',
+              "probe",
+              target,
+            ],
+            { stdout: "pipe", stderr: "pipe" },
+          )
+        for (const directory of [workspace, extra]) {
+          const allowed = write(path.join(directory, "source.txt"))
+          expect({ code: allowed.exitCode, stderr: allowed.stderr.toString() }).toEqual({ code: 0, stderr: "" })
+          for (const metadata of [".agents", ".codex", "nested/.agents", "nested/.codex"]) {
+            const target = path.join(directory, metadata, "config")
+            fs.mkdirSync(path.dirname(target), { recursive: true })
+            fs.writeFileSync(target, "original")
+            expect(write(target).exitCode).not.toBe(0)
+            expect(fs.readFileSync(target, "utf8")).toBe("original")
+          }
+          const ordinary = path.join(directory, "sub.codex", "source.txt")
+          fs.mkdirSync(path.dirname(ordinary), { recursive: true })
+          expect(write(ordinary).exitCode).toBe(0)
+        }
+        expect(write(path.join(sibling, "outside.txt")).exitCode).not.toBe(0)
+      }
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
+
 // ------------------------------------------------------------------
 // 1. Glob → Seatbelt regex compilation
 // ------------------------------------------------------------------

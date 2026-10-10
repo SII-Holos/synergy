@@ -35,6 +35,13 @@ function path(session: SessionKey) {
 }
 
 export namespace LightLoopTerminalStore {
+  export async function* list(scopeID: string): AsyncGenerator<LightLoopTerminalRecord> {
+    for await (const record of Storage.records<unknown>({ kind: "lightloop_terminal", scopeID })) {
+      const parsed = LightLoopTerminalRecord.safeParse(record.value)
+      if (parsed.success && parsed.data.sessionID === record.key[2]) yield parsed.data
+    }
+  }
+
   export async function get(session: SessionKey): Promise<LightLoopTerminalRecord | undefined> {
     const value = await Storage.read<unknown>(path(session)).catch(() => undefined)
     const parsed = LightLoopTerminalRecord.safeParse(value)

@@ -2,11 +2,11 @@
 
 - [0061: Usage recovery](0061-streamed-usage-recovery.md)
 
-## When to write one
+## Criteria
 
-- **Subtle** — the mechanism requires careful investigation.
-- **Systemic** — tests, tooling, or conventions missed the bug.
-- **Costly to rediscover** — repeats substantial debugging.
+- **Subtle** — needs investigation.
+- **Systemic** — safeguards missed it.
+- **Costly to rediscover**.
 
 Otherwise, test the fix.
 
@@ -27,6 +27,14 @@ Use `NNNN-kebab-case-title.md`. Sections:
 - **Lessons** — the durable takeaways.
 
 ## Index
+
+- [0067: Isolated containment](0067-isolated-runtime-containment-gaps.md)
+
+- [0066: Completion settlement](0066-completion-waited-for-file-settlement.md)
+
+- [0065: Session navigation](0065-session-navigation-flashed-introduction.md)
+
+- [0064: History latency](0064-history-pages-scanned-authoritative-storage.md)
 
 - [0063: Startup replay](0063-history-replay-blocked-startup.md)
 

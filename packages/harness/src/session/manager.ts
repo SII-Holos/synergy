@@ -629,6 +629,9 @@ export namespace SessionManager {
       log.warn("failed to emit session update after release", { sessionID: lease.sessionID, error })
     })
 
+    await SessionLifecycle.completeRecoveryIfSettled(lease.sessionID).catch((error) => {
+      log.warn("failed to acknowledge settled session recovery", { sessionID: lease.sessionID, error })
+    })
     if (runtimeState().accepting && !pausedTurn && options.requestNextWork !== false) {
       const { SessionDrive } = await import("./drive")
       await SessionDrive.request(lease.sessionID, "release")

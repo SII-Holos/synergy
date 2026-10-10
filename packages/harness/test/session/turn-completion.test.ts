@@ -4,6 +4,9 @@ import { testRuntime } from "../support/runtime"
 import { Session } from "../../src/session"
 import { SessionHistory } from "../../src/session/history"
 import { SessionActivity } from "../../src/session/activity"
+import { SessionFileChanges } from "../../src/session/file-changes"
+import { Snapshot } from "../../src/session/snapshot"
+import { LoopJob } from "../../src/session/loop-job"
 import { SessionInbox } from "../../src/session/inbox"
 import { MessageV2 } from "../../src/session/message-v2"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
@@ -27,6 +30,53 @@ async function foreground(sessionID: string, rootID: string, owner: Parameters<t
   await Session.updateMessage({ ...reply, time: { created: segment.started, completed } })
   return { segment, completed }
 }
+
+test("foreground completion does not wait for checkpoint capture while the lifecycle still owns settlement", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      await Session.updatePart({
+        id: Identifier.ascending("part"),
+        type: "text",
+        messageID: rootID,
+        sessionID: session.id,
+        text: "Finish the reply",
+      })
+      const { segment, completed } = await foreground(session.id, rootID, call.owner)
+      await SessionFileChanges.begin({ sessionID: session.id, rootID, segmentID: segment.id })
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const track = Snapshot.track
+      using capture = spyOn(Snapshot, "track").mockImplementation(async (...args) => {
+        entered.resolve()
+        await release.promise
+        return track(...args)
+      })
+      let settled = false
+      const finishing = RolloutLifecycle.finishSegment(segment, "completed").then(() => {
+        settled = true
+      })
+      try {
+        await entered.promise
+        expect(settled).toBe(false)
+        expect((await SessionActivity.turns(session.id, [rootID]))[0]).toMatchObject({
+          status: "completed",
+          endedAt: completed,
+        })
+        expect((await RolloutLedger.getRun(call.owner, rootID)).status).toBe("running")
+      } finally {
+        release.resolve()
+        await finishing
+      }
+      expect(settled).toBe(true)
+      await LoopJob.settleDetached(session.id, new Set([rootID]))
+      const message = await MessageV2.get({ sessionID: session.id, messageID: rootID })
+      expect(message.parts.find((part) => part.type === "patch")?.checkpoint?.status).toBe("complete")
+      expect(message.info.role === "user" && message.info.summary?.diffState?.status).toBe("ready")
+      await complete(call)
+      await RolloutLifecycle.reconcile(session.id, rootID)
+      expect((await RolloutLedger.getRun(call.owner, rootID)).status).toBe("completed")
+    }),
+  ))
 
 test("foreground completion publishes before detached work and preserves its eventual accounting", () =>
   runtime.run(() =>

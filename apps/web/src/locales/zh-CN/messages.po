@@ -17362,14 +17362,6 @@ msgid "session.fork.confirm.title"
 msgstr "从此消息分叉会话"
 
 #. js-lingui-explicit-id
-msgid "session.greeting.taskHint"
-msgstr "描述你的任务，或添加文件开始。"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.taskTitle"
-msgstr "想开始什么任务？"
-
-#. js-lingui-explicit-id
 msgid "session.history.copied"
 msgstr "已复制完整会话"
 

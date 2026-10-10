@@ -194,6 +194,10 @@ export class DesktopServerStartup {
     return this.ready && !this.failure
   }
 
+  failureError(): Error | undefined {
+    return this.failure
+  }
+
   private receiveRuntime(event: RuntimeStartupEvent) {
     if (event.state === "failed") {
       this.failure = new Error(`Synergy runtime startup failed during ${this.runtimeStage ?? "initializing"}`)

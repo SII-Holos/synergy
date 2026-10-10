@@ -205,12 +205,19 @@ test("batched part pages bound a message window with the same semantics as singl
             generation: 0,
           })
         }
+        using read = spyOn(Storage, "read")
+        using readMany = spyOn(Storage, "readMany")
         const result = await SessionHistory.partPages({
           sessionID: session.id,
           messageIDs: messages.map((message) => message.id),
           limit: 100,
         })
         expect(Object.keys(result)).toEqual(messages.map((message) => message.id))
+        const canonicalHeaders = [
+          ...read.mock.calls.map(([key]) => key),
+          ...readMany.mock.calls.flatMap(([keys]) => keys),
+        ].filter((key) => key[3] === "messages" && key[5] === "info")
+        expect(canonicalHeaders).toHaveLength(messages.length)
         messages.forEach((message) => {
           expect(result[message.id].items.map((part) => part.id)).toEqual(message.partIDs)
           expect(result[message.id].hasMore).toBe(false)

@@ -118,16 +118,27 @@ export function expandGitProtectedSubpaths(paths: string[]): string[] {
 export function worktreeSandboxReadGrants(workspace: string, originalCheckout?: string): string[] {
   if (!originalCheckout) return []
   const flavor = pathFlavor(workspace)
+  try {
+    workspace = fs.realpathSync(workspace)
+    originalCheckout = fs.realpathSync(originalCheckout)
+  } catch {
+    return []
+  }
   const pointer = flavor.resolve(workspace, ".git")
   let gitdirLine: string
   try {
-    if (!fs.statSync(pointer).isFile()) return []
+    if (!fs.lstatSync(pointer).isFile()) return []
     gitdirLine = fs.readFileSync(pointer, "utf8").trim()
   } catch {
     return []
   }
   if (!gitdirLine.startsWith("gitdir:")) return []
-  const gitdir = flavor.resolve(workspace, gitdirLine.slice("gitdir:".length).trim())
+  let gitdir: string
+  try {
+    gitdir = fs.realpathSync(flavor.resolve(workspace, gitdirLine.slice("gitdir:".length).trim()))
+  } catch {
+    return []
+  }
 
   const checkout = flavor.resolve(originalCheckout)
   const metaRoot = joinPathLike(checkout, ".git", "worktrees")
@@ -143,6 +154,11 @@ export function worktreeSandboxReadGrants(workspace: string, originalCheckout?: 
   }
   const common = flavor.resolve(gitdir, commonRaw)
   if (common !== joinPathLike(checkout, ".git")) return []
+  try {
+    if (fs.realpathSync(common) !== common || fs.realpathSync(gitdir) !== gitdir) return []
+  } catch {
+    return []
+  }
 
   let backlinkRaw: string
   try {
@@ -153,11 +169,22 @@ export function worktreeSandboxReadGrants(workspace: string, originalCheckout?: 
   } catch {
     return []
   }
-  if (flavor.resolve(gitdir, backlinkRaw) !== pointer) return []
+  try {
+    if (fs.realpathSync(flavor.resolve(gitdir, backlinkRaw)) !== pointer) return []
+  } catch {
+    return []
+  }
 
   const existingFile = (p: string): string[] => {
     try {
-      return fs.statSync(p).isFile() ? [p] : []
+      return fs.realpathSync(p) === p && fs.statSync(p).isFile() ? [p] : []
+    } catch {
+      return []
+    }
+  }
+  const existingDirectory = (p: string): string[] => {
+    try {
+      return fs.realpathSync(p) === p && fs.statSync(p).isDirectory() ? [p] : []
     } catch {
       return []
     }
@@ -171,8 +198,8 @@ export function worktreeSandboxReadGrants(workspace: string, originalCheckout?: 
       joinPathLike(gitdir, "ORIG_HEAD"),
       joinPathLike(gitdir, "config.worktree"),
     ].flatMap(existingFile),
-    joinPathLike(common, "objects"),
-    joinPathLike(common, "refs"),
+    ...existingDirectory(joinPathLike(common, "objects")),
+    ...existingDirectory(joinPathLike(common, "refs")),
     ...[
       joinPathLike(common, "config"),
       joinPathLike(common, "packed-refs"),

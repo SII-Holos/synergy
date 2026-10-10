@@ -1,10 +1,11 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { testRuntime } from "../support/runtime"
 import { registerSnapshotTestHost } from "../support/snapshot-host"
 import { tmpdir } from "../support/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Snapshot } from "../../src/session/snapshot"
+import { SnapshotGit } from "../../src/session/snapshot-git"
 import { Identifier } from "../../src/id/id"
 import { mkdir } from "node:fs/promises"
 
@@ -16,6 +17,7 @@ test("historical versions retain captured text and never substitute the current 
       scope: await directory.scope(),
       fn: async () => {
         const sessionID = Identifier.descending("session")
+        await Bun.write(path.join(directory.path, "unrelated.txt"), "unrelated\n")
         await Bun.write(path.join(directory.path, "version.txt"), "before\n")
         const longBefore = Array.from({ length: 20000 }, (_, index) => `export const row${index} = ${index}\n`).join("")
         await Bun.write(path.join(directory.path, "long.ts"), longBefore)
@@ -24,8 +26,17 @@ test("historical versions retain captured text and never substitute the current 
         await Bun.write(path.join(directory.path, "long.ts"), longBefore.replace("row5 = 5", "row5 = 500"))
         const after = (await Snapshot.track(sessionID))!
         await Bun.write(path.join(directory.path, "version.txt"), "current\n")
+        const run = SnapshotGit.run
+        const metadata: string[] = []
+        using git = spyOn(SnapshotGit, "run").mockImplementation(async (...args) => {
+          const result = await run(...args)
+          if (args[0].includes("ls-tree")) metadata.push(result.text)
+          return result
+        })
         const versions = await Snapshot.fileVersions(before, after, "version.txt", sessionID)
         const long = await Snapshot.fileVersions(before, after, "long.ts", sessionID)
+        expect(metadata).not.toHaveLength(0)
+        expect(metadata.every((text) => !text.includes("unrelated.txt"))).toBe(true)
         expect(long.before.content?.length).toBe(longBefore.length)
         expect(long.after.content).toContain("row5 = 500")
         expect(versions.before.content).toBe("before\n")

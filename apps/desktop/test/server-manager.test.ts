@@ -327,6 +327,38 @@ describe("desktop server manager", () => {
     }
   })
 
+  test.each(["before health", "during health"])(
+    "retains the failed startup stage when a progressing child exits %s",
+    async (timing) => {
+      const child = new ChildProcessFixture() as unknown as ChildProcess
+      let now = 0
+      const startup = new DesktopServerStartup({ now: () => now })
+      startup.receive('SYNERGY_STARTUP_V1 {"phase":"runtime","state":"opening","stage":"migrations"}\n')
+      const originalFetch = globalThis.fetch
+      const fail = () => {
+        now = 60_000
+        startup.receive('SYNERGY_STARTUP_V1 {"phase":"runtime","state":"opening","stage":"migrations","current":1}\n')
+        startup.receive('SYNERGY_STARTUP_V1 {"phase":"runtime","state":"failed"}\n')
+        child.exitCode = 1
+        child.emit("exit", 1, null)
+      }
+      globalThis.fetch = (async () => {
+        fail()
+        throw new Error("fetch failed")
+      }) as typeof fetch
+      try {
+        if (timing === "before health") fail()
+        await expect(waitForHealth("http://127.0.0.1:1/global/health", child, startup, 0)).rejects.toThrow(
+          /code=1.*startup failed during migrations/,
+        )
+        expect(child.listenerCount("error")).toBe(0)
+        expect(child.listenerCount("exit")).toBe(0)
+      } finally {
+        globalThis.fetch = originalFetch
+      }
+    },
+  )
+
   test.skipIf(process.platform === "win32")("force kills a managed server that ignores SIGTERM", async () => {
     const child = spawn(
       process.execPath,
