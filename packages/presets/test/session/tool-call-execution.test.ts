@@ -167,7 +167,7 @@ test("configured tool timeout settles a non-cooperative built-in execution exact
       scope: await tmp.scope(),
       fn: async () => {
         const originalConfigCurrent = Config.current
-        const originalRegistryTools = ToolRegistry.tools
+        const originalRegistryCatalog = ToolRegistry.catalog
         let releaseTool!: () => void
         const toolRelease = new Promise<void>((resolve) => {
           releaseTool = resolve
@@ -184,7 +184,7 @@ test("configured tool timeout settles a non-cooperative built-in execution exact
             },
           },
         }))
-        ;(ToolRegistry.tools as any) = mock(async () => [
+        ;(ToolRegistry.catalog as any) = mock(async () => [
           {
             id: "file_search",
             description: "Waits without observing AbortSignal",
@@ -261,7 +261,7 @@ test("configured tool timeout settles a non-cooperative built-in execution exact
           releaseTool()
           processor.dispose("test")
           ;(Config.current as any) = originalConfigCurrent
-          ;(ToolRegistry.tools as any) = originalRegistryTools
+          ;(ToolRegistry.catalog as any) = originalRegistryCatalog
           TimeoutConfig.invalidate()
         }
       },
@@ -282,7 +282,7 @@ for (const scenario of [
         fn: async () => {
           const originalConfigCurrent = Config.current
           const originalPluginTrigger = Plugin.trigger
-          const originalRegistryTools = ToolRegistry.tools
+          const originalRegistryCatalog = ToolRegistry.catalog
           const originalMcpToolEntries = MCP.toolEntries
           let releaseHook!: () => void
           const hookRelease = new Promise<void>((resolve) => {
@@ -315,7 +315,7 @@ for (const scenario of [
               return output
             },
           )
-          ;(ToolRegistry.tools as any) = mock(async () =>
+          ;(ToolRegistry.catalog as any) = mock(async () =>
             scenario.executor === "built-in"
               ? [
                   {
@@ -439,7 +439,7 @@ for (const scenario of [
             processor.dispose("test")
             ;(Config.current as any) = originalConfigCurrent
             ;(Plugin.trigger as any) = originalPluginTrigger
-            ;(ToolRegistry.tools as any) = originalRegistryTools
+            ;(ToolRegistry.catalog as any) = originalRegistryCatalog
             ;(MCP.toolEntries as any) = originalMcpToolEntries
             TimeoutConfig.invalidate()
           }

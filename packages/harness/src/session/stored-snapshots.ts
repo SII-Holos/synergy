@@ -52,6 +52,20 @@ export function storedSnapshots(options: { maxBytes?: number } = {}): SnapshotSt
       await fs.rm(directory, { recursive: true, force: true })
     }
   }
+  async function cachedTree(repository: string, root: string, signal?: AbortSignal) {
+    try {
+      for await (const object of SnapshotGit.lines(
+        repository,
+        ["rev-list", "--objects", "--missing=print", "--no-object-names", root, "--"],
+        { signal },
+      ))
+        if (object.startsWith("?")) return false
+      return true
+    } catch {
+      signal?.throwIfAborted()
+      return false
+    }
+  }
   return {
     async retain(scopeID, sessionID, root, repository, signal) {
       signal?.throwIfAborted()
@@ -119,7 +133,8 @@ export function storedSnapshots(options: { maxBytes?: number } = {}): SnapshotSt
             undefined,
             signal,
           )
-          if (cached.exitCode === 0 && cached.text.trim() === root) return true
+          if (cached.exitCode === 0 && cached.text.trim() === root && (await cachedTree(repository, root, signal)))
+            return true
           await temporary(scopeID, async (directory) => {
             for (const [packIndex, pack] of manifest.packs.entries()) {
               const file = path.join(directory, `${packIndex}.pack`)

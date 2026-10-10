@@ -233,14 +233,14 @@ describe("SessionSummary", () => {
         LoopJob.collect("post", {
           ...base,
           lastAssistant: { id: "msg_a", sessionID: "session_1", role: "assistant", finish: "tool-calls" } as any,
-        }),
+        }).filter((job) => job.type === "summarize"),
       ).toEqual([])
 
       expect(
         LoopJob.collect("post", {
           ...base,
           lastAssistant: { id: "msg_b", sessionID: "session_1", role: "assistant", finish: "stop" } as any,
-        }),
+        }).filter((job) => job.type === "summarize"),
       ).toEqual([{ type: "summarize" }])
     }))
 

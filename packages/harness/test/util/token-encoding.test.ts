@@ -2,6 +2,32 @@ import { expect, test } from "bun:test"
 import { getEncoding } from "js-tiktoken"
 import { Token } from "../../src/util/token"
 
+test("a fresh process uses the heuristic until its selected encoder is warm", async () => {
+  const script = `
+    import { Token } from ${JSON.stringify(new URL("../../src/util/token.ts", import.meta.url).href)};
+    const input = "这是一个中文测试";
+    const before = Token.estimateModelSync("gpt-4-turbo", input);
+    await Token.warmup("gpt-4-turbo");
+    console.log(JSON.stringify({ before, after: Token.estimateModelSync("gpt-4-turbo", input) }));
+  `
+  const child = Bun.spawn([process.execPath, "--eval", script], { stdout: "pipe", stderr: "pipe" })
+  try {
+    const [exit, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(stderr).toBe("")
+    expect(exit).toBe(0)
+    const result = JSON.parse(stdout)
+    expect(result.before).toBe(Token.estimate("这是一个中文测试"))
+    expect(result.after).toBeGreaterThan(result.before)
+  } finally {
+    if (child.exitCode === null) child.kill()
+    await child.exited
+  }
+})
+
 for (const model of ["gpt-4", "gpt-4o"]) {
   test(`${model} selective loading preserves exact multilingual token counts`, async () => {
     const reference = getEncoding(Token.encodingForModelID(model))
