@@ -390,13 +390,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   return cached ? Promise.resolve(cached) : readPartPageBatch(sessionID, messageID, signal)
                 },
                 body: (summary) =>
-                  globalSync.partContentStore.readThrough({
-                    url: sdk.url,
-                    scopeKey: sdk.scopeKey,
-                    partID: summary.id,
-                    version: summary.content.version,
-                    bytes: summary.content.bytes,
-                    read: async () => {
+                  globalSync.partContentStore.read(
+                    { url: sdk.url, scopeKey: sdk.scopeKey, partID: summary.id, version: summary.content.version },
+                    async (transportSignal) => {
                       const result = await sdk.client.session.partContent(
                         {
                           sessionID,
@@ -404,12 +400,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                           partID: summary.id,
                           version: summary.content.version,
                         },
-                        { signal, throwOnError: true },
+                        { signal: transportSignal, throwOnError: true },
                       )
                       if (!result.data) throw new Error("Missing conversation content")
                       return result.data
                     },
-                  }),
+                    signal,
+                  ),
               })
             : undefined
         return { response, request, contextProjectionRevision, partSnapshotRequest, latestContextMessage, viewport }

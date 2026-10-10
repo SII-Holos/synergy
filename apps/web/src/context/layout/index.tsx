@@ -1089,13 +1089,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
               return cached ? Promise.resolve(cached) : readBatchedPartPages(sessionID, messageID, signal)
             },
             body: async (summary) =>
-              globalSync.partContentStore.readThrough({
-                url: globalSdk.url,
-                scopeKey,
-                partID: summary.id,
-                version: summary.content.version,
-                bytes: summary.content.bytes,
-                read: async () => {
+              globalSync.partContentStore.read(
+                { url: globalSdk.url, scopeKey, partID: summary.id, version: summary.content.version },
+                async (transportSignal) => {
                   const result = await globalSdk.client.session.partContent(
                     {
                       ...scopeRequest(scopeKey),
@@ -1104,12 +1100,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
                       partID: summary.id,
                       version: summary.content.version,
                     },
-                    { signal, throwOnError: true },
+                    { signal: transportSignal, throwOnError: true },
                   )
                   if (!result.data) throw new Error("Missing conversation content")
                   return result.data
                 },
-              }),
+                signal,
+              ),
           })
           if (prefetchToken.value !== token) return
           const viewport = planSessionViewportContent(content, (messageID) =>
