@@ -132,7 +132,11 @@ test("continuation keeps the root baseline and session aggregation cancels rever
         const continued = { ...first, segmentID: crypto.randomUUID() }
         await SessionFileChanges.begin(continued)
         await Bun.write(file, "final\n")
-        await SessionFileChanges.finish(continued)
+        {
+          using history = spyOn(SessionHistory, "rawMessages")
+          await SessionFileChanges.finish(continued)
+          expect(history).not.toHaveBeenCalled()
+        }
         const message = await MessageV2.get({ sessionID: session.id, messageID: first.rootID })
         expect(message.info.role === "user" && message.info.summary?.diffs).toHaveLength(1)
         expect(message.info.role === "user" && message.info.summary?.diffs[0]).toMatchObject({

@@ -786,6 +786,34 @@ export namespace SessionHistory {
     return sliceWithReferencedRoots(derived, input.limit)
   }
 
+  export async function turnMessages(input: { sessionID: string; rootID: string; signal?: AbortSignal }) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    const root = await requireDisplayMessage(session, input.rootID)
+    const visibility = await displayVisibility(session)
+    const result: MessageV2.WithParts[] = []
+    let before = visibility.cut
+    for (;;) {
+      input.signal?.throwIfAborted()
+      const page = await Array.fromAsync(
+        MessageV2.readNewestInfos({
+          scopeID: asScopeID(session.scope.id),
+          sessionID: asSessionID(session.id),
+          before,
+          limit: 32,
+        }),
+      )
+      if (!page.length) break
+      for (const info of page) {
+        if (MessageV2.messageOrderMarker(info) < root.order) return MessageV2.deriveSemantics(result.reverse())
+        if (visibility.hidden.has(info.id) || (info.id !== input.rootID && info.rootID !== input.rootID)) continue
+        input.signal?.throwIfAborted()
+        result.push(await MessageV2.get({ sessionID: session.id, messageID: info.id }))
+      }
+      before = MessageV2.messageOrderMarker(page.at(-1)!)
+    }
+    return MessageV2.deriveSemantics(result.reverse())
+  }
+
   export async function modelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {
     const policy = (await Config.current()).execution?.messageCache
     const useCache = policy?.enabled !== false

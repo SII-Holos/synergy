@@ -4,9 +4,9 @@
 
 ## Criteria
 
-- **Subtle** — requires investigation.
-- **Systemic** — tests, tooling, or conventions missed the bug.
-- **Costly to rediscover** — repeats substantial debugging.
+- **Subtle** — needs investigation.
+- **Systemic** — safeguards missed it.
+- **Costly to rediscover**.
 
 Otherwise, test the fix.
 
@@ -27,6 +27,8 @@ Use `NNNN-kebab-case-title.md`. Sections:
 - **Lessons** — the durable takeaways.
 
 ## Index
+
+- [0066: Completion settlement](0066-completion-waited-for-file-settlement.md)
 
 - [0065: Session navigation](0065-session-navigation-flashed-introduction.md)
 

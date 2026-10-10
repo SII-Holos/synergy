@@ -457,6 +457,22 @@ test(
 )
 
 test(
+  "finishing a reply does not drain unrelated session writes",
+  runtime.bind(async () => {
+    const flush = Session.flushPartWrites
+    spyOn(Session, "flushPartWrites").mockImplementation((sessionID) => {
+      if (!sessionID) throw new Error("An unrelated session has a failed buffered write")
+      return flush(sessionID)
+    })
+    const result = await run("tools-stop")
+    if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+    expect(result.message.info.finish).toBe("stop")
+    expect(result.message.info.time.completed).toBeDefined()
+    expect(result.effects).toBe(1)
+  }),
+)
+
+test(
   "an empty response retries and keeps the recovered answer",
   runtime.bind(async () => {
     const result = await run("empty-then-text")
