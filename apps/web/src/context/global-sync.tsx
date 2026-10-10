@@ -694,6 +694,10 @@ function createGlobalSync() {
     return partSnapshotFreshness.action(scopeKey, sessionID, messageID, request)
   }
 
+  function partSnapshotGenerationDrifted(scopeKey: string, sessionID: string, request: SessionPartSnapshotRequest) {
+    return partSnapshotFreshness.generationDrifted(scopeKey, sessionID, request)
+  }
+
   function scheduleBootstrap(scopeKey: string) {
     if (!scopeKey || !children[scopeKey]) return
     if (bootstrapActive.has(children[scopeKey]) || bootstrapQueued.has(scopeKey)) return
@@ -1724,6 +1728,13 @@ function createGlobalSync() {
   // budget-bounded reloads turn the drop into one repair fetch instead of a
   // segment that stays missing until a manual refresh.
   const partRepairScheduler = createPartRepairScheduler({}, (scopeKey, sessionID) => {
+    const scopeState = children[scopeKey]?.[0]
+    if (!hasMessageWindowSnapshot(scopeState?.message[sessionID], scopeState?.messageWindow[sessionID])) {
+      // The first window load owns cold-load state; a competing reload here
+      // restarts it through the supersede chain (cold-load fetch cascade).
+      partRepairScheduler.request(scopeKey, sessionID, { exempt: true })
+      return
+    }
     reloadSessionWindow(scopeKey, sessionID)
   })
 
@@ -2104,7 +2115,14 @@ function createGlobalSync() {
           render: summary.render !== false,
           previous: index >= 0 ? summaries[index].render !== false : undefined,
         })
-        partSnapshotFreshness.touch(scopeKey, summary.sessionID, summary.messageID)
+        // Replay summaries rebuilt history the in-flight first load is about
+        // to fetch; touching freshness here is the cold-load cascade's
+        // ignition point. Loaded windows keep live invalidation semantics.
+        if (
+          source !== "replay" ||
+          hasMessageWindowSnapshot(store.message[summary.sessionID], store.messageWindow[summary.sessionID])
+        )
+          partSnapshotFreshness.touch(scopeKey, summary.sessionID, summary.messageID)
         if (index >= 0) setStore("partSummary", summary.messageID, index, reconcile(summary))
         else
           setStore(
@@ -2118,21 +2136,29 @@ function createGlobalSync() {
           const parts = store.part[summary.messageID] ?? []
           const index = parts.findIndex((part) => part.id === summary.id)
           if (index >= 0) setStore("part", summary.messageID, index, reconcile(content.part))
-          applyEvent(scopeKey, {
-            type: "message.part.updated",
-            properties: { part: content.part, delta: event.properties.delta },
-          })
-        } else
-          applyEvent(scopeKey, {
-            type: "message.part.delta",
-            properties: {
-              sessionID: summary.sessionID,
-              messageID: summary.messageID,
-              partID: summary.id,
-              kind: summary.type,
-              delta: content.delta,
+          applyEvent(
+            scopeKey,
+            {
+              type: "message.part.updated",
+              properties: { part: content.part, delta: event.properties.delta },
             },
-          })
+            source,
+          )
+        } else
+          applyEvent(
+            scopeKey,
+            {
+              type: "message.part.delta",
+              properties: {
+                sessionID: summary.sessionID,
+                messageID: summary.messageID,
+                partID: summary.id,
+                kind: summary.type,
+                delta: content.delta,
+              },
+            },
+            source,
+          )
         contentBudget.publish(
           contentBudgetKey(scopeKey, summary.messageID, summary.id),
           summary.content.version,
@@ -2161,7 +2187,11 @@ function createGlobalSync() {
         if (!parts) break
         const result = Binary.search(parts, partID, (p) => p.id)
         if (!result.found) break
-        partSnapshotFreshness.touch(scopeKey, sessionID, messageID)
+        // Replay part deltas only describe history the in-flight first load
+        // will fetch; touching freshness here would restart it. Once the
+        // window is established, replay keeps the live invalidation semantics.
+        if (source !== "replay" || hasMessageWindowSnapshot(store.message[sessionID], store.messageWindow[sessionID]))
+          partSnapshotFreshness.touch(scopeKey, sessionID, messageID)
         // Fine-grained: produce mutates only the .text leaf of this one part, so
         // a streaming reply re-renders the changed text node rather than the
         // whole part on every delta.
@@ -2187,7 +2217,8 @@ function createGlobalSync() {
         const metadata = store.messageWindow[part.sessionID]
         const messageLoaded =
           hasMessageWindowSnapshot(messages, metadata) && messages.some((message) => message.id === part.messageID)
-        partSnapshotFreshness.touch(scopeKey, part.sessionID, part.messageID, { requiresSnapshot: !messageLoaded })
+        if (source !== "replay" || hasMessageWindowSnapshot(messages, metadata))
+          partSnapshotFreshness.touch(scopeKey, part.sessionID, part.messageID, { requiresSnapshot: !messageLoaded })
         if (!messageLoaded) {
           // The checkpoint's message is outside the loaded window; the event
           // drops and nothing else converges the missing part while the user
@@ -2276,7 +2307,8 @@ function createGlobalSync() {
         const metadata = store.messageWindow[sessionID]
         const messageLoaded =
           hasMessageWindowSnapshot(messages, metadata) && messages.some((message) => message.id === messageID)
-        partSnapshotFreshness.touch(scopeKey, sessionID, messageID, { requiresSnapshot: true })
+        if (source !== "replay" || hasMessageWindowSnapshot(messages, metadata))
+          partSnapshotFreshness.touch(scopeKey, sessionID, messageID, { requiresSnapshot: true })
         if (!messageLoaded) {
           if (hasMessageWindowSnapshot(messages, metadata) && metadata?.mode === "latest") {
             partRepairScheduler.request(scopeKey, sessionID)
@@ -2720,6 +2752,7 @@ function createGlobalSync() {
     invalidateResource,
     capturePartSnapshotRequest,
     partSnapshotAction,
+    partSnapshotGenerationDrifted,
     get agenda() {
       return globalStore.agenda
     },

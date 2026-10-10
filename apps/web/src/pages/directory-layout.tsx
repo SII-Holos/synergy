@@ -1,4 +1,4 @@
-import { createMemo, Show, type ParentProps } from "solid-js"
+import { createEffect, createMemo, on, Show, type ParentProps } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
@@ -38,6 +38,22 @@ export default function Layout(props: ParentProps) {
               }) => {
                 void decisions.respondPermission({ id: input.permissionID, sessionID: input.sessionID }, input.response)
               }
+
+              // Kick the session's data load at route resolution, in
+              // parallel with scope bootstrap: driving the same
+              // sync.session.sync pipeline the page mount uses means the
+              // mount call joins this in-flight run (queueSessionSync
+              // satisfied-join) instead of fetching a second wave behind a
+              // separate prefetch chain.
+              createEffect(
+                on(
+                  () => params.id,
+                  (id) => {
+                    if (!id) return
+                    void sync.session.sync(id).catch(() => undefined)
+                  },
+                ),
+              )
 
               return (
                 <DataProvider

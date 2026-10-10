@@ -11,6 +11,7 @@ export const POSTGRES_TEST_FILES = [
   "test/storage/large-artifacts.test.ts",
   "test/storage/packed-import.test.ts",
   "test/session/message-read-errors.test.ts",
+  "test/session/display-transaction-isolation.test.ts",
   "test/storage/postgres-contract.test.ts",
   "test/storage/postgres-node-cleanup.test.ts",
   "test/storage/postgres-schema.test.ts",

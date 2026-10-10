@@ -18,8 +18,10 @@ export async function readSessionViewportContent(input: {
   body(summary: SessionPartSummary): Promise<SessionPartContent>
 }): Promise<SessionViewportContent> {
   input.signal.throwIfAborted()
-  const root = input.messages.findLast((message) => message.role === "user" && message.isRoot !== false)
-  const ids = [...new Set([...(root ? [root.id] : []), ...input.messages.slice(-3).map((message) => message.id)])]
+  // Seed part structure for the whole initial window so the first rendered
+  // frame is complete in one batched fan-out. The endpoint caps at 100 IDs
+  // per request; anything older falls back to the row-driven lazy path.
+  const ids = [...new Set(input.messages.map((message) => message.id))].slice(-100)
   const responses = await Promise.allSettled(ids.map(input.page))
   input.signal.throwIfAborted()
   const pages: Record<string, SessionPartPage> = {}
@@ -66,4 +68,24 @@ export function planSessionViewportContent(
     if (current === "apply") pages[messageID] = page
   }
   return { pages, bodies: content.bodies.filter((body) => pages[body.part.messageID]) }
+}
+
+/**
+ * Replay a message's already-materialized first-page summaries as the
+ * endpoint's page shape. Only usable when the window is complete
+ * (`page.hasEarlier === false`): a partial window must keep flowing through
+ * the batch endpoint so cursor state stays faithful.
+ */
+export function cachedPartPageSnapshot(
+  items: readonly SessionPartSummary[] | undefined,
+  page: { hasEarlier: boolean } | undefined,
+): SessionPartPage | undefined {
+  if (!items?.length || page?.hasEarlier !== false) return undefined
+  return {
+    items: [...items].sort((a, b) => a.id.localeCompare(b.id)),
+    nextCursor: null,
+    previousCursor: null,
+    hasMore: false,
+    hasEarlier: false,
+  }
 }

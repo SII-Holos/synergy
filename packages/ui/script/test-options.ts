@@ -5,6 +5,7 @@ export const testOptions = {
   isolated: [
     "test/markdown-resources.test.ts",
     "test/markdown-sanitize.test.ts",
+    "test/markdown-virtual.browser.test.ts",
     "test/solid-ordered-rows.test.ts",
     "test/components/iframe-focus.browser.test.ts",
     "test/components/review-viewer.dom.test.ts",
@@ -44,6 +45,7 @@ export const testOptions = {
     "test/components/session-turn-projection-memoization.dom.test.ts",
     "test/components/session-switch-stress.dom.test.ts",
     "test/components/tool/renders/task.test.tsx",
+    "test/components/tool/renders/channel-reaction-only.test.tsx",
     "test/components/tool/task-subagent-detail.test.tsx",
     "test/components/tool/renders/standard.test.tsx",
     "test/components/tool/renders/file-ops.test.tsx",

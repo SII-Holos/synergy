@@ -18,7 +18,7 @@ export type PartRepairSchedulerOptions = {
 }
 
 export type PartRepairScheduler = {
-  request(scopeKey: string, sessionID: string): void
+  request(scopeKey: string, sessionID: string, options?: { exempt?: boolean }): void
   clear(scopeKey: string, sessionID: string): void
   clearScope(scopeKey: string): void
   dispose(): void
@@ -66,11 +66,11 @@ export function createPartRepairScheduler(
   }
 
   return {
-    request(scopeKey, sessionID) {
+    request(scopeKey, sessionID, options) {
       const key = bucketKey(scopeKey, sessionID)
       const bucket = state(key)
       if (bucket.cancel) return
-      if (recentAttempts(bucket) >= maxAttempts) return
+      if (recentAttempts(bucket) >= maxAttempts && !options?.exempt) return
       bucket.cancel = schedule(() => {
         bucket.cancel = undefined
         bucket.attempts.push(now())

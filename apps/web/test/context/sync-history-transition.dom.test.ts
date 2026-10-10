@@ -9,7 +9,7 @@ type MessagePageCall = { sessionID: string; limit: number; cursor?: string }
 
 type Harness = {
   calls: { messagePage: MessagePageCall[]; permissionList: Array<unknown> }
-  run: () => Promise<Array<{ messages: string[]; parts: string[] }>>
+  run: () => Promise<Array<{ messages: string[]; parts: string[]; title: string }>>
   runQueued: () => Promise<{ result: string; duplicate: string; olderReads: number; messages: string[]; mode: string }>
   runDisposed: () => Promise<{ rejected: boolean; newPageReads: number }>
   dispose: () => void
@@ -21,10 +21,13 @@ test("history transitions replace branches while reconnect preserves the retaine
     stub = path.join(dir, "stub.tsx")
   const sync = path.resolve(import.meta.dir, "../../src/context/sync.tsx"),
     helper = path.resolve(import.meta.dir, "../../../../packages/ui/src/context/helper.tsx")
+  const freshnessPath = path.resolve(import.meta.dir, "../../src/context/session-part-snapshot-freshness.ts")
   await Bun.write(
     stub,
     `
 import {createStore} from 'solid-js/store';
+import { SessionPartSnapshotFreshness } from ${JSON.stringify(freshnessPath)};
+const freshness = new SessionPartSnapshotFreshness();
 const state=createStore({status:'ready',path:{directory:''},scopeID:'home',session:[],message:{},messageWindow:{},latestContextMessage:{},part:{},partSummary:{},partPage:{},partVersion:{},permission:{},question:{},inbox:{},todo:{},dag:{},session_diff:{},cortex:[]});
 export const calls={messagePage:[],permissionList:[]};
 export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:create(),release(){}}),
@@ -32,10 +35,11 @@ export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:creat
   retainScopeState:()=>({state,release:()=>{}}),
   peekScopeState:()=>state,
   scopeReconnectVersion:()=>generation,
-  capturePartSnapshotRequest:()=>({}),
+  capturePartSnapshotRequest:(_scope,sessionID)=>freshness.capture('probe',sessionID),
   captureResourceRequest:()=>({}),
   beginContextProjection:()=>0,
-  partSnapshotAction:()=>'apply',
+  partSnapshotAction:(_scope,sessionID,messageID,request)=>freshness.action('probe',sessionID,messageID,request),
+  partSnapshotGenerationDrifted:(_scope,sessionID,request)=>freshness.generationDrifted('probe',sessionID,request),
   applyResourceResponse:(_scopeKey,_sessionID,_resource,_request,_headers,apply)=>{apply();return true},
   seedSessionViewportContent:(_scope,content)=>{
     for(const [id,{items,...page}] of Object.entries(content.pages)) {
@@ -48,6 +52,7 @@ export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:creat
   markActiveSession:()=>{},
   reconcileCortexFromSession:()=>{},
   seedSessionPermissions:()=>{},
+  contentBudget:{remove:()=>{}},
 });
 export const refreshPlanBlueprintOfferFromLoadedParts=()=>{};
 export const updatePlanBlueprintOfferState=()=>{};
@@ -58,13 +63,13 @@ const gates=new Map();export const pausePage=kind=>{
   let release;const promise=new Promise(resolve=>{release=resolve});gates.set(kind,promise);
   return ()=>{gates.delete(kind);release()};
 };
-let ids=['root-old','answer-old','injection'];
-export const setPage = value => {ids=value};
+let ids=['root-old','answer-old','injection'];let title='initial';
+export const setPage = value => {ids=value};export const setTitle=value=>{title=value};
 const page=(input)=>({data:{items:(input.messageID||input.cursor?(historyIds??ids):ids).map((id,index)=>({info:{id,sessionID:'ses_probe',role:'user',time:{created:index-(input.cursor?2:0)}},parts:[{id:'part-'+id,type:'text',text:'fixture'}]})),referencedRoots:[],nextCursor:input.cursor||input.messageID?null:nextCursor??null,hasMore:!input.cursor&&!input.messageID&&!!nextCursor,total:nextCursor?4:ids.length},response:{headers:{get:()=>null}}});
 export const useSDK=()=>({scopeKey:'probe',scopeID:'home',directory:'/probe',isHome:true,client:{
   permission:{list:(input)=>{calls.permissionList.push(input);return Promise.resolve({data:[]})}},
   session:{
-    get:()=>Promise.resolve({data:{id:'ses_probe',time:{created:0,updated:0}}}),
+    get:()=>Promise.resolve({data:{id:'ses_probe',title,time:{created:0,updated:0}}}),
     inbox:()=>Promise.resolve({data:[]}),
     partPage:()=>Promise.resolve({data:{items:[],nextCursor:null,hasMore:false,previousCursor:null,hasEarlier:false}}),
     partPages:async(input,options)=>{
@@ -86,14 +91,17 @@ export const useSDK=()=>({scopeKey:'probe',scopeID:'home',directory:'/probe',isH
   await Bun.write(
     entry,
     `
-import {render} from 'solid-js/web';import {SyncProvider,useSync} from ${JSON.stringify(sync)};import {calls,setPage,setGeneration,setHistoryPage,setCursor,pausePage} from ${JSON.stringify(stub)};
+import {render} from 'solid-js/web';import {SyncProvider,useSync} from ${JSON.stringify(sync)};import {calls,setPage,setTitle,setGeneration,setHistoryPage,setCursor,pausePage} from ${JSON.stringify(stub)};
 let api;function Child(){api=useSync();return <div>probe</div>}
 const dispose=render(()=><SyncProvider><Child/></SyncProvider>,document.getElementById('root'));
 export const harness={calls,dispose,run:async()=>{
   const snapshots=[];
-  const snapshot=()=>snapshots.push({messages:api.data.message.ses_probe.map(m=>m.id),parts:Object.keys(api.data.part).sort()});
+  const snapshot=()=>snapshots.push({messages:api.data.message.ses_probe.map(m=>m.id),parts:Object.keys(api.data.part).sort(),title:api.session.get('ses_probe').title});
   await api.session.sync('ses_probe');snapshot();
+  setTitle('workspace changed');
+  await api.session.sync('ses_probe',{trigger:{type:'workspace-transition'}});snapshot();
   setPage(['root-retry','answer-retry']);
+  setTitle('history changed');
   await api.session.sync('ses_probe',{trigger:{type:'history-transition'}});snapshot();
   setPage(['injection','root-new']);
   await api.session.sync('ses_probe',{trigger:{type:'history-transition'}});snapshot();
@@ -176,11 +184,20 @@ export const harness={calls,dispose,run:async()=>{
     })
     harness = ((await import(pathToFileURL(path.join(dir, "dist/fixture.js")).href)) as { harness: Harness }).harness
     expect(await harness.run()).toEqual([
-      { messages: ["root-old", "answer-old", "injection"], parts: ["answer-old", "injection", "root-old"] },
-      { messages: ["root-retry", "answer-retry"], parts: ["answer-retry", "root-retry"] },
-      { messages: ["injection", "root-new"], parts: ["injection", "root-new"] },
-      { messages: ["root-retry", "answer-retry"], parts: ["answer-retry", "root-retry"] },
-      { messages: ["older-root", "older-answer"], parts: ["older-answer", "older-root"] },
+      {
+        messages: ["root-old", "answer-old", "injection"],
+        parts: ["answer-old", "injection", "root-old"],
+        title: "initial",
+      },
+      {
+        messages: ["root-old", "answer-old", "injection"],
+        parts: ["answer-old", "injection", "root-old"],
+        title: "workspace changed",
+      },
+      { messages: ["root-retry", "answer-retry"], parts: ["answer-retry", "root-retry"], title: "history changed" },
+      { messages: ["injection", "root-new"], parts: ["injection", "root-new"], title: "history changed" },
+      { messages: ["root-retry", "answer-retry"], parts: ["answer-retry", "root-retry"], title: "history changed" },
+      { messages: ["older-root", "older-answer"], parts: ["older-answer", "older-root"], title: "history changed" },
     ])
     expect(harness.calls.messagePage).toHaveLength(7)
     expect(await harness.runQueued()).toEqual({

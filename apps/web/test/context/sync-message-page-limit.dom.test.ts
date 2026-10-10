@@ -19,10 +19,13 @@ test("an initial latest load requests the rendered-bound page while history and 
     stub = path.join(dir, "stub.tsx")
   const sync = path.resolve(import.meta.dir, "../../src/context/sync.tsx"),
     helper = path.resolve(import.meta.dir, "../../../../packages/ui/src/context/helper.tsx")
+  const freshnessPath = path.resolve(import.meta.dir, "../../src/context/session-part-snapshot-freshness.ts")
   await Bun.write(
     stub,
     `
 import {createStore} from 'solid-js/store';
+import { SessionPartSnapshotFreshness } from ${JSON.stringify(freshnessPath)};
+const freshness = new SessionPartSnapshotFreshness();
 const state=createStore({status:'ready',path:{directory:''},scopeID:'home',session:[],message:{},messageWindow:{},latestContextMessage:{},part:{},partSummary:{},partPage:{},partVersion:{},permission:{},question:{},inbox:{},todo:{},dag:{},session_diff:{},cortex:[]});
 export const calls={messagePage:[],permissionList:[]};
 export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:create(),release(){}}),
@@ -30,10 +33,11 @@ export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:creat
   retainScopeState:()=>({state,release:()=>{}}),
   peekScopeState:()=>state,
   scopeReconnectVersion:()=>0,
-  capturePartSnapshotRequest:()=>({}),
+  capturePartSnapshotRequest:(_scope,sessionID)=>freshness.capture('probe',sessionID),
   captureResourceRequest:()=>({}),
   beginContextProjection:()=>0,
-  partSnapshotAction:()=>'apply',
+  partSnapshotAction:(_scope,sessionID,messageID,request)=>freshness.action('probe',sessionID,messageID,request),
+  partSnapshotGenerationDrifted:(_scope,sessionID,request)=>freshness.generationDrifted('probe',sessionID,request),
   applyResourceResponse:(_scopeKey,_sessionID,_resource,_request,_headers,apply)=>{apply();return true},
   setLatestContextMessage:()=>{},
   touchMessageBucket:()=>{},

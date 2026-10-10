@@ -68,6 +68,21 @@ describe("session part snapshot freshness", () => {
     expect(freshness.action("scope", "session", "live", request)).toBe("preserve")
   })
 
+  test("distinguishes per-message marks from generation drift for partial-apply", () => {
+    const freshness = new SessionPartSnapshotFreshness()
+    const request = freshness.capture("scope", "session")
+
+    freshness.touch("scope", "session", "marked", { requiresSnapshot: true })
+
+    expect(freshness.action("scope", "session", "marked", request)).toBe("retry")
+    expect(freshness.generationDrifted("scope", "session", request)).toBe(false)
+
+    freshness.releaseSession("scope", "session")
+
+    expect(freshness.action("scope", "session", "message", request)).toBe("retry")
+    expect(freshness.generationDrifted("scope", "session", request)).toBe(true)
+  })
+
   test("invalidates captured requests when a scope is released", () => {
     const freshness = new SessionPartSnapshotFreshness()
     const request = freshness.capture("scope", "session")

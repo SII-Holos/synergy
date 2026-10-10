@@ -48,7 +48,11 @@ import { planPrefetchApply } from "./prefetch-apply"
 import { internMessages, internParts } from "../string-intern"
 import { findSessionIndex } from "../session-collection"
 import { classifyScopeEvent } from "./event-routing"
-import { readSessionViewportContent, planSessionViewportContent } from "../session-viewport-content"
+import {
+  cachedPartPageSnapshot,
+  readSessionViewportContent,
+  planSessionViewportContent,
+} from "../session-viewport-content"
 import { createPartPageBatchReader } from "../part-page-batch"
 import type { ConversationReadingPosition } from "@/components/session/conversation-reading-anchor"
 
@@ -1047,7 +1051,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     const prefetchMessages = (scopeKey: string, sessionID: string, token: number) => {
-      const [, setChildStore] = globalSync.ensureScopeState(scopeKey)
+      const [childStore, setChildStore] = globalSync.ensureScopeState(scopeKey)
       const request = globalSync.captureResourceRequest(scopeKey, sessionID, "message")
       const revision = globalSync.beginContextProjection(scopeKey, sessionID)
       const signal = prefetchAbort.signal
@@ -1080,21 +1084,29 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           const content = await readSessionViewportContent({
             messages: [...response.data.referencedRoots, ...response.data.items].map((entry) => entry.info),
             signal,
-            page: (messageID) => readBatchedPartPages(sessionID, messageID, signal),
-            body: async (summary) => {
-              const result = await globalSdk.client.session.partContent(
-                {
-                  ...scopeRequest(scopeKey),
-                  sessionID,
-                  messageID: summary.messageID,
-                  partID: summary.id,
-                  version: summary.content.version,
-                },
-                { signal, throwOnError: true },
-              )
-              if (!result.data) throw new Error("Missing conversation content")
-              return result.data
+            page: (messageID) => {
+              const cached = cachedPartPageSnapshot(childStore.partSummary[messageID], childStore.partPage[messageID])
+              return cached ? Promise.resolve(cached) : readBatchedPartPages(sessionID, messageID, signal)
             },
+            body: async (summary) =>
+              globalSync.partContentStore.read(
+                { url: globalSdk.url, scopeKey, partID: summary.id, version: summary.content.version },
+                async (transportSignal) => {
+                  const result = await globalSdk.client.session.partContent(
+                    {
+                      ...scopeRequest(scopeKey),
+                      sessionID,
+                      messageID: summary.messageID,
+                      partID: summary.id,
+                      version: summary.content.version,
+                    },
+                    { signal: transportSignal, throwOnError: true },
+                  )
+                  if (!result.data) throw new Error("Missing conversation content")
+                  return result.data
+                },
+                signal,
+              ),
           })
           if (prefetchToken.value !== token) return
           const viewport = planSessionViewportContent(content, (messageID) =>

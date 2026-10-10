@@ -39,6 +39,7 @@ import type { SyncResourceRequest } from "./sync-resource-freshness"
 import { internMessages, internParts } from "./string-intern"
 import { findSessionByID, findSessionIndex } from "./session-collection"
 import {
+  cachedPartPageSnapshot,
   readSessionViewportContent,
   planSessionViewportContent,
   type SessionViewportContent,
@@ -292,6 +293,18 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       if (reconnectVersion > current) sessionReconnectVersions.set(sessionID, reconnectVersion)
     }
 
+    const computeReloadPlan = (sessionID: string, reconnectVersion: number, trigger?: SessionSyncTrigger) => {
+      const session = getSession(sessionID)
+      return planSessionSyncReload({
+        hasSessionRecord: session !== undefined,
+        hasMessages: hasMessageSnapshot(sessionID),
+        reconnectVersion,
+        lastSyncedReconnectVersion: sessionReconnectVersions.get(sessionID),
+        canUnrollback: session?.history?.rollback?.canUnrollback === true,
+        trigger,
+      })
+    }
+
     type SessionMessagePageResponse = Awaited<ReturnType<(typeof sdk.client.session)["timelinePage"]>>
     type SessionMessagePageLoadResult = {
       response: SessionMessagePageResponse
@@ -372,15 +385,28 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             ? await readSessionViewportContent({
                 messages: [...response.data.referencedRoots, ...response.data.items].map((entry) => entry.info),
                 signal,
-                page: (messageID) => readPartPageBatch(sessionID, messageID, signal),
-                body: async (summary) => {
-                  const result = await sdk.client.session.partContent(
-                    { sessionID, messageID: summary.messageID, partID: summary.id, version: summary.content.version },
-                    { signal, throwOnError: true },
-                  )
-                  if (!result.data) throw new Error("Missing conversation content")
-                  return result.data
+                page: (messageID) => {
+                  const cached = cachedPartPageSnapshot(store.partSummary[messageID], store.partPage[messageID])
+                  return cached ? Promise.resolve(cached) : readPartPageBatch(sessionID, messageID, signal)
                 },
+                body: (summary) =>
+                  globalSync.partContentStore.read(
+                    { url: sdk.url, scopeKey: sdk.scopeKey, partID: summary.id, version: summary.content.version },
+                    async (transportSignal) => {
+                      const result = await sdk.client.session.partContent(
+                        {
+                          sessionID,
+                          messageID: summary.messageID,
+                          partID: summary.id,
+                          version: summary.content.version,
+                        },
+                        { signal: transportSignal, throwOnError: true },
+                      )
+                      if (!result.data) throw new Error("Missing conversation content")
+                      return result.data
+                    },
+                    signal,
+                  ),
               })
             : undefined
         return { response, request, contextProjectionRevision, partSnapshotRequest, latestContextMessage, viewport }
@@ -402,15 +428,26 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           mode: input?.mode,
           replace: !!input?.targetMessageID || !!input?.retainedWindow,
         })
-        const partActions = new Map(
-          Object.keys(plan.parts).map((messageID) => [
-            messageID,
-            globalSync.partSnapshotAction(sdk.scopeKey, sessionID, messageID, result.partSnapshotRequest),
-          ]),
+        const actionOf = (messageID: string) =>
+          globalSync.partSnapshotAction(sdk.scopeKey, sessionID, messageID, result.partSnapshotRequest)
+        const keptMessageIDs = new Set(plan.window.messages.map((message) => message.id))
+        const snapshotMessageIDs = new Set(
+          [...page.referencedRoots, ...page.items]
+            .map((item) => item.info.id)
+            .filter((messageID) => keptMessageIDs.has(messageID)),
         )
-        if ([...partActions.values()].some((action) => action === "retry")) return "superseded"
-        const viewport = planSessionViewportContent(result.viewport, (messageID) =>
-          globalSync.partSnapshotAction(sdk.scopeKey, sessionID, messageID, result.partSnapshotRequest),
+        const partActions = new Map([...snapshotMessageIDs].map((messageID) => [messageID, actionOf(messageID)]))
+        const retryMessageIDs = new Set(
+          [...partActions.entries()].flatMap(([messageID, action]) => (action === "retry" ? [messageID] : [])),
+        )
+        // Structural generation drift rejects the entire window, even without inline Parts.
+        if (globalSync.partSnapshotGenerationDrifted(sdk.scopeKey, sessionID, result.partSnapshotRequest))
+          return "superseded"
+        // Message-only marks preserve accepted content and repair through the existing page owner.
+        for (const messageID of retryMessageIDs) partActions.set(messageID, "preserve")
+        const viewport = planSessionViewportContent(
+          result.viewport,
+          (messageID) => partActions.get(messageID) ?? actionOf(messageID),
         )
         if (!viewport) return "superseded"
         const apply = () => {
@@ -419,6 +456,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             for (const messageID of plan.droppedIds) materializer.invalidate(messageID)
             setStore(
               produce((draft) => {
+                for (const messageID of retryMessageIDs) {
+                  const page = draft.partPage[messageID]
+                  if (page) page.stale = true
+                }
                 for (const messageID of plan.droppedIds) {
                   clearConversationContent(draft, messageID)
                 }
@@ -440,6 +481,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               if (partActions.get(messageID) === "preserve") continue
               setStore("part", messageID, reconcile(internParts(parts), { key: "id" }))
             }
+            // Register the repair owner before stale-state effects can start an ordinary refresh.
+            for (const messageID of retryMessageIDs)
+              void loadPartSummaries(sessionID, messageID, false, true).catch(() => {})
           })
           globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
           refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
@@ -704,29 +748,21 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           // Session metadata alone is not enough: tool parts publish as
           // unsequenced streaming events, so reconnect recovery must re-fetch
           // durable message/part snapshots too (issue #509 / #331).
-          const currentReconnectVersion = globalSync.scopeReconnectVersion(sdk.scopeKey)
-          const session = getSession(sessionID)
-          const plan = planSessionSyncReload({
-            hasSessionRecord: session !== undefined,
-            hasMessages: hasMessageSnapshot(sessionID),
-            reconnectVersion: currentReconnectVersion,
-            lastSyncedReconnectVersion: sessionReconnectVersions.get(sessionID),
-            canUnrollback: session?.history?.rollback?.canUnrollback === true,
-            trigger: options?.trigger,
-          })
+          const reconnectVersion = globalSync.scopeReconnectVersion(sdk.scopeKey)
+          const plan = computeReloadPlan(sessionID, reconnectVersion, options?.trigger)
           const target: SessionSyncTarget = {
-            reconnectVersion: currentReconnectVersion,
+            reconnectVersion,
             forceSession: plan.forceSession,
             forceMessages: plan.forceMessages,
           }
-          const reloadMessages = async () => {
+          const reloadMessages = async (active: ReturnType<typeof computeReloadPlan>) => {
             while (navigation.has(sessionID)) await navigation.get(sessionID)!.promise.catch(() => {})
             contentLifetime.signal.throwIfAborted()
             const messages = store.message[sessionID]
             if (
               store.messageWindow[sessionID]?.mode === "history" &&
               messages?.length &&
-              !plan.needsDerivedHistoryRefresh &&
+              !active.needsDerivedHistoryRefresh &&
               options?.trigger?.type !== "history-transition"
             )
               return loadMessagePage(
@@ -736,23 +772,34 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   limit: 100,
                   retainedWindow: { first: messages[0], last: messages.at(-1)!, count: messages.length },
                 },
-                { force: true, reconnectVersion: currentReconnectVersion },
+                { force: true, reconnectVersion },
               )
-            return loadLatestMessages(sessionID, { force: true, reconnectVersion: currentReconnectVersion })
+            return loadLatestMessages(sessionID, { force: true, reconnectVersion })
           }
-          const runBaseSync = async () => {
+          // The trigger chain defers this run behind the in-flight base load;
+          // by then the window and the sync generation are settled, so the plan
+          // captured at invocation time would re-issue an already-accepted wave
+          // (HAR cold-load wave 3). Re-plan from live store state at execution.
+          const runBaseSync = async (trigger?: SessionSyncTrigger) => {
+            const active = computeReloadPlan(sessionID, reconnectVersion, trigger)
+            if (active.ready) return
             await Promise.all([
-              plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve(),
-              plan.forceMessages ? reloadMessages() : Promise.resolve(),
+              active.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve(),
+              active.forceMessages ? reloadMessages(active) : Promise.resolve(),
             ])
-            if (!plan.forceMessages) markSessionSynced(sessionID, currentReconnectVersion)
+            if (!active.forceMessages) markSessionSynced(sessionID, reconnectVersion)
           }
           const active = plan.ready ? undefined : inflight.get(sessionID)
           const baseReq = plan.ready
             ? Promise.resolve()
             : active && options?.trigger
-              ? trackSessionSync(inflight, sessionID, target, refreshSessionAfterPending(active.request, runBaseSync))
-              : queueSessionSync(inflight, sessionID, target, runBaseSync)
+              ? trackSessionSync(
+                  inflight,
+                  sessionID,
+                  target,
+                  refreshSessionAfterPending(active.request, () => runBaseSync(options?.trigger)),
+                )
+              : queueSessionSync(inflight, sessionID, target, () => runBaseSync(options?.trigger))
 
           const requests = [baseReq, syncPermissions()]
           if (options?.refreshVolatile) {

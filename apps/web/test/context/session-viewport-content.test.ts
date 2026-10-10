@@ -12,7 +12,7 @@ const part = (messageID: string, id: string, bytes = 10): SessionPartSummary => 
   content: { version: id, bytes },
 })
 
-test("prepares a bounded latest viewport with the root and versioned bodies", async () => {
+test("prepares the whole initial window in one pass with versioned bodies", async () => {
   const calls: string[] = []
   const result = await readSessionViewportContent({
     messages: [
@@ -30,8 +30,35 @@ test("prepares a bounded latest viewport with the root and versioned bodies", as
       version: summary.content.version,
     }),
   })
-  expect(calls).toEqual(["root", "reply17", "reply18", "reply19"])
-  expect(result.bodies.map((item) => item.version)).toEqual(["reply19", "reply18", "reply17", "root"])
+  // Whole initial window now seeds in one pass; the legacy tail-only
+  // (root + last 3) behavior let late-mounted rows refetch part pages and
+  // restarted the cascade this test suite's Blueprint removes.
+  expect(calls).toEqual(["old", "root", ...Array.from({ length: 20 }, (_, i) => `reply${i}`)])
+  // Bodies stay bottom-up budgeted (16 parts ≤128KB): the newest 16 replies
+  // are eager; older/roots defer to the lazy materializer path.
+  expect(result.bodies.map((item) => item.version)).toEqual(Array.from({ length: 16 }, (_, i) => `reply${19 - i}`))
+})
+
+test("keeps the page fan-out inside the endpoint's ≤100-ID cap with tail priority", async () => {
+  const calls: string[] = []
+  const result = await readSessionViewportContent({
+    messages: Array.from({ length: 140 }, (_, i) => message(`m${i}`, i % 2 ? "assistant" : "user")),
+    signal: new AbortController().signal,
+    page: async (id) => {
+      calls.push(id)
+      return { items: [], hasMore: false, hasEarlier: false, nextCursor: null, previousCursor: null }
+    },
+    body: async (summary) => ({
+      part: { id: summary.id, messageID: summary.messageID, sessionID: "session", type: "text", text: "ready" },
+      version: summary.content.version,
+    }),
+  })
+  expect(calls).toHaveLength(100)
+  expect(calls[0]).toBe("m40")
+  expect(calls.at(-1)).toBe("m139")
+  // Bodies stay bounded by the legacy bottom-up budget even though every
+  // message in the window issued a page read.
+  expect(result.bodies.length).toBeLessThanOrEqual(16)
 })
 
 test("keeps oversized and failed bodies lazy without discarding accepted summaries", async () => {
@@ -105,4 +132,26 @@ test("limits bodies by count and bytes and rejects superseded snapshots before p
   expect(planSessionViewportContent(content, () => "preserve")).toEqual({ pages: {}, bodies: [] })
   expect(planSessionViewportContent(content, () => "retry")).toBeUndefined()
   expect(planSessionViewportContent(content, () => "apply")).toEqual(content)
+})
+
+test("cachedPartPageSnapshot replays a complete materialized window and sorts by id", async () => {
+  const { cachedPartPageSnapshot } = await import("../../src/context/session-viewport-content")
+  const items = [part("root", "p2"), part("root", "p1"), part("root", "p3")]
+  const page = cachedPartPageSnapshot(items, { hasEarlier: false })
+  expect(page).toEqual({
+    items: [items[1], items[0], items[2]],
+    nextCursor: null,
+    previousCursor: null,
+    hasMore: false,
+    hasEarlier: false,
+  })
+})
+
+test("cachedPartPageSnapshot refuses incomplete windows so cursor state stays server-owned", async () => {
+  const { cachedPartPageSnapshot } = await import("../../src/context/session-viewport-content")
+  const items = [part("root", "p1")]
+  expect(cachedPartPageSnapshot(undefined, undefined)).toBeUndefined()
+  expect(cachedPartPageSnapshot([], { hasEarlier: false })).toBeUndefined()
+  expect(cachedPartPageSnapshot(items, undefined)).toBeUndefined()
+  expect(cachedPartPageSnapshot(items, { hasEarlier: true })).toBeUndefined()
 })
