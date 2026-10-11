@@ -332,6 +332,7 @@ export const SessionRoute = () =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         log.info("SEARCH", { route: ObservabilityRedaction.routePath(c.req.url) })
+        await SessionInvoke.reconcilePausedSession(sessionID)
         const session = await Session.get(sessionID)
         return c.json(session)
       },

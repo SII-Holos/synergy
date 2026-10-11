@@ -1,5 +1,8 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import {
   isActiveLightLoopWorkflow,
@@ -148,8 +151,23 @@ export namespace LightLoopRuntime {
   export async function reattachPluginTimers(): Promise<void> {
     const instanceState = runtimeState()
 
-    for await (const session of Session.listAll()) {
-      const terminal = await LightLoopTerminalStore.get(session)
+    const scopeID = ScopeContext.current.scope.id
+    const nav = await SessionNav.readNavIndex(scopeID)
+    const candidates = new Set(
+      nav.entries.filter((entry) => entry.workflow?.kind === "lightloop").map((entry) => entry.id),
+    )
+    const terminals = new Map<string, LightLoopTerminalRecord>()
+    for await (const terminal of LightLoopTerminalStore.list(scopeID)) {
+      if (terminal.hookDeliveredAt !== undefined && !candidates.has(terminal.sessionID)) continue
+      terminals.set(terminal.sessionID, terminal)
+      candidates.add(terminal.sessionID)
+    }
+    for (const sessionID of candidates) {
+      const session = await Session.get(sessionID).catch((error: unknown) => {
+        if (!(error instanceof Storage.NotFoundError)) throw error
+      })
+      if (!session) continue
+      const terminal = terminals.get(sessionID)
       if (terminal) {
         const workflow = session.workflow
         if (

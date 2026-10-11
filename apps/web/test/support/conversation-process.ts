@@ -44,6 +44,7 @@ type Fixture = {
   manualCompaction(): void
   compaction(state: "running" | "committed" | "failed"): void
   mode(value: "balanced" | "full" | "minimal"): void
+  preferWorkBrief(value: boolean): void
   locate(messageID: string, partID?: string): Promise<boolean>
   reading(value: boolean): void
   retained(): number

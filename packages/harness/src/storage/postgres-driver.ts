@@ -94,6 +94,12 @@ export class PostgresDriver implements SqlDriver {
     )
   }
 
+  /** Managed deployments prepare schema outside Runtime admission; missing objects fail closed. */
+  async verifySchema(statements: string[]) {
+    if ((await missingPostgresSchema(this, statements)).length)
+      throw new StorageIntegrityError("PostgreSQL schema preparation required before Runtime admission")
+  }
+
   private async transact<T>(
     body: (connection: SqlConnection) => Promise<T>,
     options: SqlTransactionOptions,

@@ -1,0 +1,94 @@
+{
+  "tag": "v2.0.0",
+  "commit": "4d674739ca4d8d959e28310d0d4864e1cc3e46ef",
+  "sources": [
+    "packages/synergy/src/storage/path.ts",
+    "packages/synergy/src/session/types.ts",
+    "packages/synergy/src/session/message-v2.ts",
+    "packages/synergy/src/scope/types.ts"
+  ],
+  "records": [
+    {
+      "key": ["sessions", "global", "ses_00000000000000000000000001", "info"],
+      "value": {
+        "id": "ses_00000000000000000000000001",
+        "scope": {
+          "id": "global",
+          "type": "global",
+          "directory": "$HOME",
+          "worktree": "$HOME"
+        },
+        "title": "Historical conversation",
+        "version": "2.0.0",
+        "time": {
+          "created": 1700000000000,
+          "updated": 1700000000000
+        },
+        "futureOwner": {
+          "retained": true
+        },
+        "allowAll": true,
+        "pendingReply": true
+      }
+    },
+    {
+      "key": ["session_index", "ses_00000000000000000000000001"],
+      "value": {
+        "sessionID": "ses_00000000000000000000000001",
+        "scopeID": "global",
+        "directory": "$HOME"
+      }
+    },
+    {
+      "key": [
+        "sessions",
+        "global",
+        "ses_00000000000000000000000001",
+        "messages",
+        "msg_00000000000000000000000001",
+        "info"
+      ],
+      "value": {
+        "id": "msg_00000000000000000000000001",
+        "sessionID": "ses_00000000000000000000000001",
+        "role": "user",
+        "time": {
+          "created": 1700000000000
+        },
+        "agent": "synergy",
+        "model": {
+          "providerID": "openai",
+          "modelID": "gpt-4.1"
+        },
+        "metadata": {
+          "fixture": "released-writer"
+        }
+      }
+    },
+    {
+      "key": [
+        "sessions",
+        "global",
+        "ses_00000000000000000000000001",
+        "messages",
+        "msg_00000000000000000000000001",
+        "parts",
+        "prt_00000000000000000000000001"
+      ],
+      "value": {
+        "id": "prt_00000000000000000000000001",
+        "sessionID": "ses_00000000000000000000000001",
+        "messageID": "msg_00000000000000000000000001",
+        "type": "text",
+        "text": "Keep the original transcript.",
+        "synthetic": false
+      }
+    },
+    {
+      "key": ["meta", "migration", "log"],
+      "value": {
+        "unloaded-fixture-owner": 1700000000000
+      }
+    }
+  ]
+}

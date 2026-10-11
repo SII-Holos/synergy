@@ -274,6 +274,10 @@
           "exclusiveMinimum": 0,
           "maximum": 16
         },
+        "policyWorkerPrewarm": {
+          "description": "Start isolated Policy workers during server startup instead of first classification (default: true)",
+          "type": "boolean"
+        },
         "policyQueueMax": {
           "description": "Maximum queued Policy classifications waiting for a worker (default: 256)",
           "type": "integer",

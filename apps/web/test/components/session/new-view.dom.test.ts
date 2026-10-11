@@ -61,7 +61,7 @@ beforeAll(async () => {
     function App() {
       return <div class="session-workbench-pane" style="height:100dvh"><div class="session-empty-view" data-interactive>
         <div class="session-welcome-region">
-          <NewSessionGreeting interactive disabled={false} onProject={() => { window.fixture.projects++ }} onFiles={() => { window.fixture.files++ }} />
+          <NewSessionGreeting disabled={false} onProject={() => { window.fixture.projects++ }} onFiles={() => { window.fixture.files++ }} />
         </div>
       </div></div>
     }
@@ -122,6 +122,11 @@ afterAll(async () => {
 test("welcomeGames disabled renders the plain greeting without the welcome stage", async () => {
   await page.goto(`${base}?nogames`)
   await page.locator(".session-greeting h1").waitFor()
+  expect(await page.locator(".session-greeting h1").textContent()).toBe("Bring your ideas to life.")
+  expect(await page.locator(".session-greeting p").textContent()).toBe(
+    "From a spark to something real. What will you create?",
+  )
+  expect(await page.locator(".session-greeting-brand, .session-greeting-wordmark").count()).toBe(0)
   expect(await page.locator(".welcome-stage").count()).toBe(0)
   expect(await page.locator(".welcome-ambient").count()).toBe(0)
   expect(await page.locator("canvas").count()).toBe(0)
@@ -189,7 +194,6 @@ test("plain greeting stays reachable in light and dark narrow and short viewport
         expect(actionBounds!.x + actionBounds!.width).toBeLessThanOrEqual(viewport.width)
         expect(actionBounds!.y + actionBounds!.height).toBeLessThanOrEqual(viewport.height)
       }
-      await page.keyboard.press("Tab")
       await page.keyboard.press("Tab")
       expect(await actions.first().evaluate((button) => button === document.activeElement)).toBe(true)
       await page.keyboard.press("Enter")

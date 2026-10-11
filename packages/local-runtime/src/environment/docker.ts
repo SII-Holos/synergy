@@ -94,13 +94,19 @@ export interface DockerEnvironmentOptions {
   id?: string
   endpoint: string
   engineTLS?: Bun.TLSOptions
+  engineTransport?: (request: Request) => Promise<Response>
+  executorTransport?: (request: Request) => Promise<Response>
   executionHostname?: string
   publishHostIP?: string
   executionTLS?: { cert: string; key: string; ca?: string }
 }
 
 export function dockerEnvironment(options: DockerEnvironmentOptions): EnvironmentProvider {
-  const engine = new DockerEngine({ endpoint: options.endpoint, tls: options.engineTLS })
+  const engine = new DockerEngine({
+    endpoint: options.endpoint,
+    tls: options.engineTLS,
+    transport: options.engineTransport,
+  })
   const providerID = options.id ?? "docker"
   const hostname = options.executionHostname ?? "127.0.0.1"
   const publishHostIP = options.publishHostIP ?? "127.0.0.1"
@@ -176,6 +182,7 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
       url: `${options.executionTLS ? "https" : "http"}://${address}:${port}`,
       target: { environmentID: request.environmentID, allocationID: request.requestID, generation: request.generation },
       token: await credential(request),
+      transport: options.executorTransport,
       tls: options.executionTLS ? { ca: options.executionTLS.ca ?? options.executionTLS.cert } : undefined,
     })
   }

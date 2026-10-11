@@ -107,6 +107,7 @@ const [submission, setSubmission] = createSignal<{ activity?: SessionActivity; f
 const [reading, setReading] = createSignal(false)
 const [connected, setConnected] = createSignal(true)
 const [mode, setMode] = createSignal<"balanced" | "full" | "minimal">("balanced")
+const [preferWorkBrief, setPreferWorkBrief] = createSignal(false)
 const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
 const [scroll, setScroll] = createSignal<HTMLDivElement>()
 const [versions, setVersions] = createStore<Record<string, string>>({})
@@ -328,6 +329,7 @@ const context: Partial<PluginConversationService> = {
   isWorking: () => status() === "running",
   scrolledUp: reading,
   compactReasoning: () => false,
+  preferWorkBrief,
   canRewind: () => false,
   anchor: (id) => "message-" + id,
   onFirstTurnMounted() {},
@@ -376,6 +378,7 @@ let toolCaseSequence = 0
 let statusReads = 0
 window.__conversationProcess = {
   statusReads: () => statusReads,
+  preferWorkBrief: setPreferWorkBrief,
   fragments(count: number) {
     setData("message", "session", [root, work])
     setData("part", "work", [
@@ -384,7 +387,7 @@ window.__conversationProcess = {
         (_, index) =>
           ({
             ...part("work", `summary-${index}`, "reasoning", `Summary paragraph ${index}`),
-            metadata: { "openai-codex": { itemId: "rs_shared" } },
+            metadata: index % 3 === 0 ? undefined : { "openai-codex": { itemId: `rs_${index}` } },
           }) as Part,
       ),
       part("work", "command-0", "tool"),

@@ -72,6 +72,9 @@ const inline = () => page.frameLocator('[data-component="render-tool"] iframe').
 
 test("interactive source runs in an opaque frame and preserves parameters through the shared viewer", async () => {
   await setup()
+  expect(await page.locator('[data-component="render-tool"]').count()).toBe(1)
+  expect(await page.locator('[data-component="attachment-card"]').count()).toBe(1)
+  expect(await page.locator('[data-component="attachment-card"]').innerText()).toContain("visual.synergy.json")
   expect(await page.locator("iframe").getAttribute("sandbox")).toBe("allow-scripts")
   await inline().getByRole("slider", { name: "Workers" }).fill("4")
   await inline().getByRole("slider", { name: "Workers" }).dispatchEvent("change")

@@ -16,6 +16,8 @@ The `environment` host entries own durable allocation and operation identities. 
 
 Hosts supply immutable environment and paths, composition, and storage ownership to `RuntimeHandle.open()`. Imports have no registration side effects. Enter work with `handle.run()` or capture callbacks with `handle.bind()`; await `close()` or use `await using`. Multiple handles can coexist in one process. See [Runtime and Scope](../../docs/architecture/runtime-and-scope.md) for lifecycle and workspace semantics.
 
+Hosts with a different file delivery mechanism register `AttachmentDelivery` guidance during composition. The selected response instructions and execution-tool instructions replace the default immutable-attachment guidance together, and remain isolated to that Runtime. This changes model instructions only: the host must also supply the matching delivery tools and authorization. Without a registration, the existing attachment behavior and guidance remain unchanged.
+
 The public `/usage` entry exposes retained accounting, typed queries, clear/rebuild operations, and explicit host lifecycle/transfer integration. Its [accounting contract](../../docs/architecture/usage-accounting.md) is independent of transcript and archive retention.
 
 Selective tool catalogs use `cortexTools()` and register `registerCortexToolInputHistory()` from `./cortex/tools` before sealing the Runtime. The history registration keeps owned session migrations independent of product tool registration.

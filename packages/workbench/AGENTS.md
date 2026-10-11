@@ -21,4 +21,4 @@ Expose composition through `./component`; keep registration side-effect free unt
 
 Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.
 
-Task execution presentation belongs in `src/execution`. Use public Harness Rollout and usage queries; keep evidence storage layouts and accounting formulas in Harness. Verify `bun test test/execution`, regenerate the SDK after schema changes, and preserve Scope/round/descendant checks, lazy content and revisioned updates.
+Task execution presentation belongs in `src/execution`. Use public Harness Rollout and usage queries and the public `context` reconciliation; keep evidence storage layouts and accounting formulas in Harness. Verify `bun test test/execution`, regenerate the SDK after schema changes, and preserve Scope/round/descendant checks, lazy content and revisioned updates.

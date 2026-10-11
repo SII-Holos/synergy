@@ -6,6 +6,7 @@ import { StoragePath } from "../storage/path"
 import { MessageV2 } from "./message-v2"
 import { UpgradeWork } from "../storage/upgrade-work"
 import { SessionHistorySearch } from "./history-search"
+import { upgradeAccessRecord } from "../migration/import"
 
 export namespace SessionHistoryDisplay {
   const budget = 256 * 1024
@@ -61,7 +62,7 @@ export namespace SessionHistoryDisplay {
     "display_parts_state",
     messageID,
   ]
-  type PartsState = { ready: boolean; generation: number; cursor?: string; sourceGeneration?: number }
+  type PartsState = { version?: 1; ready: boolean; generation: number; cursor?: string; sourceGeneration?: number }
 
   export const summarizePart = MessageV2.summarizePart
 
@@ -183,7 +184,7 @@ export namespace SessionHistoryDisplay {
     if (backfill) return
     const current = await state(scopeID, info.sessionID)
     if (!previous && current.ready)
-      await Storage.write(partStateKey(scopeID, info.sessionID, info.id), { ready: true, generation: 0 })
+      await Storage.write(partStateKey(scopeID, info.sessionID, info.id), { version: 1, ready: true, generation: 0 })
     await Storage.write(key(scopeID, info.sessionID), {
       ...current,
       count: current.count + Number(!previous),
@@ -510,7 +511,9 @@ export namespace SessionHistoryDisplay {
       (after[0] !== "sessions" || after[1] !== scopeID || after[2] !== input.sessionID || after[4] !== input.messageID)
     )
       throw new Conflict({ message: "Part cursor belongs to another Message" })
-    const [prepared] = await Storage.readMany<PartsState>([partStateKey(scopeID, input.sessionID, input.messageID)])
+    const [saved] = await Storage.readMany<PartsState>([partStateKey(scopeID, input.sessionID, input.messageID)])
+    const prepared =
+      saved?.version === 1 ? saved : saved && { ...saved, ready: false, cursor: undefined, sourceGeneration: undefined }
     const limit = Math.max(1, Math.min(100, input.limit ?? 100))
     const descending = Boolean(input.partID || input.older)
     const query = {
@@ -539,7 +542,9 @@ export namespace SessionHistoryDisplay {
               Identifier.asPartID(after.at(-1)!),
             ),
         })
-    const projected = records.map((record) => ("content" in record.value ? record.value : summarizePart(record.value)))
+    const projected = records.map((record) =>
+      "content" in record.value ? record.value : summarizePart(upgradeAccessRecord(record.key, record.value)),
+    )
     const selected: PartSummary[] = []
     let bytes = 256
     for (let index = 0; index < Math.min(limit, records.length); index++) {
@@ -593,6 +598,7 @@ export namespace SessionHistoryDisplay {
           !descending && (!after || (current?.sourceGeneration === generation && current.cursor === after.at(-1)))
         if (continuous)
           await Storage.write(partStateKey(scopeID, input.sessionID, input.messageID), {
+            version: 1,
             ready: !hasMore,
             generation,
             cursor: items.at(-1)?.id,
@@ -655,14 +661,13 @@ export namespace SessionHistoryDisplay {
     input: { sessionID: string; messageID: string; partID: string; version?: string },
     scopeID: string,
   ) {
-    const part = await Storage.read<MessageV2.Part>(
-      StoragePath.messagePart(
-        Identifier.asScopeID(scopeID),
-        Identifier.asSessionID(input.sessionID),
-        Identifier.asMessageID(input.messageID),
-        Identifier.asPartID(input.partID),
-      ),
+    const key = StoragePath.messagePart(
+      Identifier.asScopeID(scopeID),
+      Identifier.asSessionID(input.sessionID),
+      Identifier.asMessageID(input.messageID),
+      Identifier.asPartID(input.partID),
     )
+    const part = upgradeAccessRecord(key, await Storage.read<MessageV2.Part>(key))
     const version = summarizePart(part).content.version
     if (input.version && version !== input.version)
       throw new Conflict({ message: "Part content changed; refresh its summary" })
@@ -673,13 +678,12 @@ export namespace SessionHistoryDisplay {
     input: { sessionID: string; messageID: string; version?: string },
     scopeID: string,
   ) {
-    const info = await Storage.read<MessageV2.Info>(
-      StoragePath.messageInfo(
-        Identifier.asScopeID(scopeID),
-        Identifier.asSessionID(input.sessionID),
-        Identifier.asMessageID(input.messageID),
-      ),
+    const key = StoragePath.messageInfo(
+      Identifier.asScopeID(scopeID),
+      Identifier.asSessionID(input.sessionID),
+      Identifier.asMessageID(input.messageID),
     )
+    const info = MessageV2.canonicalMessage(upgradeAccessRecord(key, await Storage.read<MessageV2.Info>(key)))
     const version = digest(JSON.stringify(info))
     if (input.version && version !== input.version)
       throw new Conflict({ message: "Message content changed; refresh its summary" })

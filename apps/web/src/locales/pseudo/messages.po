@@ -12822,10 +12822,6 @@ msgid "execution.usage.generationRate"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.usage.observedCacheHit"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "execution.usage.reasoning"
 msgstr ""
 
@@ -17226,11 +17222,23 @@ msgid "session.execution.copyInput"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.execution.copyLoaded"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.execution.copyOutput"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.execution.detailViews"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.execution.diagnostics"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.execution.diagnosticsOnly"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17247,6 +17255,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.execution.exit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.execution.expandLoaded"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17278,7 +17290,19 @@ msgid "session.execution.lineRange"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.execution.loadedPortion"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.execution.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.execution.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.execution.noDiagnostics"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17302,19 +17326,15 @@ msgid "session.execution.signal"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.execution.taskStatus"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.execution.toolOutput"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.execution.truncated"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "session.execution.unavailable"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.execution.views"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17360,14 +17380,6 @@ msgstr "⟦Request failed⟧"
 #. dialog-fork-confirm.tsx
 msgid "session.fork.confirm.title"
 msgstr "⟦Fork session from this message⟧"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.taskHint"
-msgstr "⟦Describe a task or add files to get started.⟧"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.taskTitle"
-msgstr "⟦What would you like to work on?⟧"
 
 #. js-lingui-explicit-id
 msgid "session.history.copied"
@@ -17789,7 +17801,15 @@ msgid "session.process.agentMessage"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.process.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.process.compactionDetail"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.compactionFailure"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17797,7 +17817,19 @@ msgid "session.process.completed"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.process.copyExecution"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.copyOriginal"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.process.copyResult"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.execution"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17817,6 +17849,14 @@ msgid "session.process.loadFailed"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.process.mechanicalSummary"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.noReport"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.process.openSource"
 msgstr ""
 
@@ -17829,11 +17869,19 @@ msgid "session.process.priorStop"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.process.rawOutput"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.process.records"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.process.resultUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.process.statistics"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -20271,6 +20319,14 @@ msgstr "⟦Appearance, behavior, and notification preferences.⟧"
 #. js-lingui-explicit-id
 msgid "settings.general.page.title"
 msgstr "⟦General⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preferWorkBrief.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.preferWorkBrief.title"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.preventSleep.active"

@@ -194,6 +194,10 @@ export const ConfigShape = {
     .boolean()
     .optional()
     .describe("Show a compact reasoning preview in the execution process (default: false)"),
+  preferWorkBrief: z
+    .boolean()
+    .optional()
+    .describe("Prefer a tool call's purpose description over its action and target when available (default: false)"),
   quick_switcher: QuickSwitcher.optional().describe("Quick switcher model visibility preferences"),
   welcomeGames: z
     .boolean()
@@ -235,6 +239,7 @@ const contribution: ConfigExtensions.Contribution = {
     const result = raw as ConfigValues
     if (result.activityDisplay === undefined) result.activityDisplay = "balanced"
     if (result.compactReasoning === undefined) result.compactReasoning = false
+    if (result.preferWorkBrief === undefined) result.preferWorkBrief = false
     if (!result.keybinds) result.keybinds = Keybinds.parse({})
   },
 }
@@ -251,6 +256,7 @@ export function registerConfig() {
         "keybinds",
         "toast",
         "compactReasoning",
+        "preferWorkBrief",
         "welcomeGames",
         "locale",
         "activityDisplay",

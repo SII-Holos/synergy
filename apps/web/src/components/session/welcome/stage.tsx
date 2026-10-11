@@ -7,6 +7,21 @@ import type { WelcomeMemory, WelcomeSceneDefinition } from "./types"
 import { AmbientField } from "./ambient"
 import "./style.css"
 
+export function WelcomeHeading() {
+  const { i18n } = useLocale()
+  return (
+    <div class="welcome-scene-heading">
+      <h1>{i18n._({ id: "welcome.common.title", message: "Bring your ideas to life." })}</h1>
+      <p>
+        {i18n._({
+          id: "welcome.common.subtitle",
+          message: "From a spark to something real. What will you create?",
+        })}
+      </p>
+    </div>
+  )
+}
+
 export function WelcomeStage(props: {
   definition: WelcomeSceneDefinition
   seed: number
@@ -109,15 +124,7 @@ export function WelcomeStage(props: {
           </Portal>
         )}
       </Show>
-      <div class="welcome-scene-heading">
-        <h1>{i18n._({ id: "welcome.common.title", message: "Bring your ideas to life." })}</h1>
-        <p>
-          {i18n._({
-            id: "welcome.common.subtitle",
-            message: "From a spark to something real. What will you create?",
-          })}
-        </p>
-      </div>
+      <WelcomeHeading />
       <ErrorBoundary
         fallback={(_error, reset) => (
           <div class="welcome-unavailable" role="status">

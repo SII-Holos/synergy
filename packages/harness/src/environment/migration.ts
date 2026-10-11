@@ -45,6 +45,7 @@ export async function migrateSessionEnvironment(
 export const environmentMigrations: Migration[] = [
   {
     id: "20260928-environment-active-executions",
+    emptyInput: [["environment_execution"]],
     scope: "global",
     description: "Index unfinished Environment operations for receipt and checkpoint recovery",
     async up(progress) {
@@ -61,6 +62,7 @@ export const environmentMigrations: Migration[] = [
   },
   {
     id: "20260927-session-environment-binding",
+    emptyInput: [["sessions"]],
     scope: "session",
     description: "Record explicit Environment selection without allocating compute",
     async upSession(owner) {

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { page, url, errors, frames, contentPage, settleConversation } from "../../support/conversation-process"
 
-test("a reasoning item has one keyboard disclosure across streaming growth and virtual body chunks", async () => {
+test("continuous reasoning with changing or missing item IDs has one keyboard disclosure across streaming growth and virtual body chunks", async () => {
   await page.goto(url)
   await page.evaluate(() => window.__conversationProcess.fragments(1))
   await page.waitForFunction(() => document.querySelector('[data-part-id="summary-0"]'))
@@ -94,6 +94,30 @@ test("parent and batch disclosures preserve independent choices and tool inspect
   await page.getByText("I will check the project first.", { exact: true }).waitFor({ timeout: 1000 })
   expect(await page.getByText("I will check the project first.", { exact: true }).count()).toBe(1)
 }, 30000)
+
+test("compact activity bodies react to operation-description preference without changing result ownership", async () => {
+  await page.goto(url)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  const tool = page.locator('[data-slot="activity-step"][data-part-id="command-1"] [data-slot="activity-step-trigger"]')
+  await tool.waitFor()
+  expect(await tool.textContent()).toContain("pwd")
+  await page.evaluate(() => window.__conversationProcess.preferWorkBrief(true))
+  await frames()
+  expect(await tool.textContent()).toContain("Check the project directory")
+  await tool.click()
+  expect(await page.evaluate(() => window.__processSelection)).toMatchObject({
+    sessionID: "session",
+    messageID: "more",
+    partID: "command-1",
+    callID: "command-1",
+  })
+  await page.evaluate(() => window.__conversationProcess.preferWorkBrief(false))
+  await frames()
+  expect(await tool.textContent()).toContain("pwd")
+  expect(await tool.textContent()).not.toContain("Check the project directory")
+  expect(await page.locator('[data-component="process-viewport"]').count()).toBe(0)
+  expect(errors).toEqual([])
+})
 
 test("cold batch bodies reserve main-flow space without animating unfinished geometry", async () => {
   await contentPage("cold-process")

@@ -8,6 +8,7 @@ import { RolloutLedger } from "./ledger"
 import { RolloutExecution } from "./execution"
 import { Storage } from "../../storage/storage"
 import { Experiment } from "../../config/experiment"
+import { prepareOwnerMigrations } from "../../migration"
 
 export namespace RolloutQuery {
   export const Result = z
@@ -25,6 +26,7 @@ export namespace RolloutQuery {
   export type Result = z.infer<typeof Result>
 
   export async function tree(owner: RolloutSchema.Owner, runID: string): Promise<Result> {
+    await prepareOwnerMigrations(owner)
     const root = await RolloutSnapshot.read(owner, { runID })
     const run = root.runs.find((run) => run.id === runID)
     if (!run) throw new Error(`Run not found: ${runID}`)
@@ -35,6 +37,7 @@ export namespace RolloutQuery {
       if (snapshot.owner.kind !== "session") continue
       for (const child of await Session.children(snapshot.owner.sessionID)) {
         const identity = { kind: "session" as const, scopeID: child.scope.id, sessionID: child.id }
+        await prepareOwnerMigrations(identity)
         const recorded = await RolloutSnapshot.read(identity)
         for (const childRun of recorded.runs) {
           const parent = childRun.parent

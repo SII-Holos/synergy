@@ -228,7 +228,7 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
         <ContextDashboardLayout
           composition={
             <ContextComposition
-              snapshot={history.state.latest}
+              snapshot={history.state.displayedLatest}
               category={category()}
               highlight={highlight()}
               onHighlight={setHighlight}

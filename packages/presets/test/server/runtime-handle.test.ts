@@ -1,7 +1,7 @@
 import { Experiment } from "@ericsanchezok/synergy-harness/config/experiment"
 import { resolveAgentWorkerCapacity } from "@ericsanchezok/synergy-harness/execution/execution-config"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { PresetRuntimeHandle } from "../../src"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
@@ -9,6 +9,8 @@ import { ScopeStartup } from "@ericsanchezok/synergy-harness/scope/startup"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { TransactionalStore } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
+import { RolloutRecovery } from "@ericsanchezok/synergy-harness/session/rollout/recovery"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 
 test("one-shot owns its Home, omits autonomous recovery, and awaits idempotent shutdown", async () => {
@@ -58,7 +60,7 @@ test("embedding the full backend serves only an explicitly selected Web applicat
   expect(await response.text()).toContain("Company UI fixture")
 }, 30_000)
 
-test("failed recovery does not announce completion or retain home ownership", async () => {
+test("cold corrupt history stays deferred while new work remains usable", async () => {
   await using fixture = await runtimeHome()
   const store = await TransactionalStore.open({
     backend: "sqlite",
@@ -82,21 +84,48 @@ test("failed recovery does not announce completion or retain home ownership", as
       await tx.write([...root, "head"], { allocated: 1, committed: 1 })
       await tx.write([...root, "events", "000000000001"], { version: 1, seq: 2, time: 0, kind: "gap" })
     })
-    await expect(
-      PresetRuntimeHandle.open({
-        host: fixture.host,
-        mode: "oneshot",
-        storage: { kind: "borrowed", handle: { store, artifactDirectory: path.join(fixture.host.root, "data") } },
-        recoveryReporter: {
-          progress: (current) => recovery.push(current),
-          completed: () => recovery.push("completed"),
-        },
-      }),
-    ).rejects.toThrow()
+    await using runtime = await PresetRuntimeHandle.open({
+      host: fixture.host,
+      mode: "oneshot",
+      storage: { kind: "borrowed", handle: { store, artifactDirectory: path.join(fixture.host.root, "data") } },
+      recoveryReporter: {
+        progress: (current) => recovery.push(current),
+        completed: () => recovery.push("completed"),
+      },
+    })
     expect(recovery[0]).toBe(0)
-    expect(recovery).not.toContain("completed")
+    expect(recovery.at(-1)).toBe("completed")
+    await runtime.run(async () => {
+      await expect(
+        RolloutLedger.beginRun({ kind: "operation", scopeID: root[1]!, operationID: root[2]! }, "blocked"),
+      ).rejects.toThrow()
+      expect(
+        (await RolloutLedger.beginRun({ kind: "operation", scopeID: "test", operationID: "new-work" }, "new")).id,
+      ).toBe("new")
+    })
+    await runtime.close()
+    expect((await store.read<{ owners: unknown[] }>(StoragePath.rolloutRecoveryPending())).owners).toHaveLength(1)
     expect(await RuntimeContext.create(fixture.host).run(() => ServerProcessLock.read())).toBeUndefined()
   } finally {
     await store.close()
   }
 }, 30_000)
+
+test("failed recovery admission does not announce completion or retain home ownership", async () => {
+  await using fixture = await runtimeHome()
+  const recovery: Array<number | "completed"> = []
+  const failure = new Error("Recovery admission failed")
+  using recover = spyOn(RolloutRecovery, "all").mockImplementation(async (progress) => {
+    progress?.(0)
+    throw failure
+  })
+  await expect(
+    PresetRuntimeHandle.open({
+      host: fixture.host,
+      mode: "oneshot",
+      recoveryReporter: { progress: (current) => recovery.push(current), completed: () => recovery.push("completed") },
+    }),
+  ).rejects.toBe(failure)
+  expect(recovery).toEqual([0])
+  expect(await RuntimeContext.create(fixture.host).run(() => ServerProcessLock.read())).toBeUndefined()
+}, 30000)

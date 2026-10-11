@@ -24,6 +24,8 @@ A separate browser regression found 21 nested scroll listeners and reader resize
 
 Native heap inspection then found departed conversation viewports reachable through the current Composer's draft controller, its aborted signal, a cancellation exception's stack and disposed reactive owners. Draft settling ran without any draft observers and retained the cancelled controller until another settling timer ran. Three failing behavioral tests reproduced unnecessary document reads and uncancelled observer removals. Draft work is now demand-driven, and cancellation releases the owner's reference before aborting.
 
+Integration with the action-description preference exposed a missing prop in the selected-Part fast path. A real browser regression switched the preference but still observed `Execute commandpwd` instead of the recorded intent. Forwarding the preference to the shared timeline renderer makes both toggle directions pass while the original message, Part and call remain the inspector target; no nested process viewport is introduced.
+
 ## Root cause
 
 The group owned presentation semantics and an independent reading system at the same time. Shared turn rendering also implicitly allocated a reader per segment. Neither a single mount flag nor an animation deadline can establish that asynchronous content, local virtual dimensions and the outer reader have accepted the same state. Rendering chunks coupled the demand for six tools to the visibility of one row. Fixed compact estimates transferred that same assumption into long prose; animated measured heights required continuous virtual layout publication.

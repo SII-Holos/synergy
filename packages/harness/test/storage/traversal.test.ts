@@ -24,6 +24,14 @@ beforeAll(async () => {
         const usage = ["usage_time", "scope", `operation_${index % 2}`, String(index).padStart(6, "0")]
         await tx.write(usage, value)
         expected.set(JSON.stringify(usage), value)
+        const marker = ["markers", String(index).padStart(6, "0")]
+        await tx.write([...marker, "nested"], value)
+        expected.set(JSON.stringify([...marker, "nested"]), value)
+        if (index % 3) {
+          await tx.write(marker, value)
+          if (index % 19 === 0) await tx.remove(marker)
+          else expected.set(JSON.stringify(marker), value)
+        }
       }
     })
   } finally {
@@ -48,10 +56,7 @@ function transaction() {
   const plans: string[] = []
   const connection: SqlConnection = {
     async query<Row extends SqlRow>(statement: string, values: SqlValue[] = []) {
-      if (
-        statement.startsWith("WITH RECURSIVE") ||
-        (statement.startsWith("SELECT") && statement.includes("storage_records"))
-      ) {
+      if (statement.startsWith("WITH ") || (statement.startsWith("SELECT") && statement.includes("storage_records"))) {
         const plan = database.query<{ detail: string }, SqlValue[]>("EXPLAIN QUERY PLAN " + statement)
         plans.push(...plan.all(...values).map((row) => row.detail))
         plan.finalize()
@@ -66,6 +71,39 @@ function transaction() {
   }
   return { tx: new StoreTransaction(connection, "traversal", true), plans }
 }
+
+test("direct child pages bound record probes and retain cursors across empty pages", async () => {
+  for (const descending of [false, true]) {
+    const { tx, plans } = transaction()
+    try {
+      const keys: string[][] = []
+      let after: string | undefined
+      let empty = 0
+      do {
+        const page = await tx.childKeys({ prefix: ["markers"], after, limit: 1, descending, before: "000020" })
+        keys.push(...page.keys)
+        if (!page.keys.length && page.after) empty++
+        after = page.after
+      } while (after)
+      const sorted = [...expected.keys()]
+        .map((key) => JSON.parse(key) as string[])
+        .filter((key) => key[0] === "markers" && key.length === 2 && key[1]! < "000020")
+        .sort()
+      expect(keys).toEqual(descending ? sorted.toReversed() : sorted)
+      expect(empty).toBeGreaterThan(0)
+      expect(
+        plans
+          .filter((plan) => /(?:SEARCH|SCAN) record\b/.test(plan))
+          .every((plan) => /namespace=\? AND key_id=\?/.test(plan)),
+      ).toBe(true)
+      expect(plans.some((plan) => plan.includes("MATERIALIZE candidates"))).toBe(true)
+      expect(await tx.childKeys({ prefix: ["missing"] })).toEqual({ keys: [], after: undefined })
+      await expect(tx.childKeys({ prefix: ["markers"], limit: 0 })).rejects.toThrow("Invalid storage page limit")
+    } finally {
+      tx.finish()
+    }
+  }
+})
 
 test("prefix traversal probes only descendant records, including an absent recovery root", async () => {
   for (const prefix of [["first"], ["storage_staging"], ["first", "foreign"]]) {
@@ -153,6 +191,35 @@ test("prefix cursor pages retain indexed range seeks without sorting their full 
       )
     } finally {
       tx.finish()
+    }
+  }
+})
+
+test("prefix-only pages and counts probe their subtree instead of unrelated history", async () => {
+  for (const prefix of [["first"], ["first", "101"], ["first", "101", "3"], ["missing"]]) {
+    for (const descending of [false, true]) {
+      const { tx, plans } = transaction()
+      try {
+        const expectedKeys = (await tx.query({ kind: "first", descending, limit: 1000 }))
+          .map((row) => row.key)
+          .filter((key) => prefix.every((part, index) => key[index] === part))
+        plans.length = 0
+        const keys: string[][] = []
+        let after: string[] | undefined
+        for (;;) {
+          const page = await tx.queryKeys({ prefix, descending, after, limit: 30 })
+          if (!page.length) break
+          keys.push(...page)
+          after = page.at(-1)
+        }
+        expect(keys).toEqual(expectedKeys)
+        expect(await tx.count({ prefix })).toBe(expectedKeys.length)
+        const recordPlans = plans.filter((plan) => /(?:SEARCH|SCAN) storage_records\b/.test(plan))
+        expect(recordPlans.length).toBeGreaterThan(0)
+        expect(recordPlans.every((plan) => /namespace=\? AND key_id=\?/.test(plan))).toBe(true)
+      } finally {
+        tx.finish()
+      }
     }
   }
 })

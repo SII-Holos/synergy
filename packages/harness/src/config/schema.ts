@@ -777,6 +777,12 @@ export const CoreInfo = z
           .max(16)
           .optional()
           .describe("Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)"),
+        policyWorkerPrewarm: z
+          .boolean()
+          .optional()
+          .describe(
+            "Start isolated Policy workers during server startup instead of first classification (default: true)",
+          ),
         policyQueueMax: z
           .number()
           .int()

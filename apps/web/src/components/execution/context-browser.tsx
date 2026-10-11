@@ -12,7 +12,8 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import { createDisclosureMotionRef } from "@ericsanchezok/synergy-ui/hooks"
 import { useSDK } from "@/context/sdk"
-import { contextCategories, contextRows, D } from "./context-categories"
+import { contextCategories, D } from "./context-categories"
+import { contextDisplay } from "./context-display"
 import { E } from "./i18n"
 import { ContextSourceItem } from "./context-item-content"
 import { contextSourceChanges } from "./context-chart-model"
@@ -32,7 +33,8 @@ export function ContextBrowser(props: {
   const { _, i18n } = useLingui()
   const [search, setSearch] = createSignal("")
   const [query, setQuery] = createSignal("")
-  const rows = () => contextRows(props.snapshot?.usage ?? undefined).filter((row) => row.category !== "overhead")
+  const display = () => contextDisplay(props.snapshot)
+  const rows = () => display().rows.filter((row) => row.category !== "overhead")
   const changes = () => contextSourceChanges(props.snapshot, props.history)
   const number = (value: number) =>
     new Intl.NumberFormat(i18n().locale, { notation: "compact", maximumFractionDigits: 1 }).format(value)
@@ -81,19 +83,22 @@ export function ContextBrowser(props: {
           <div class="context-source-caption">
             <strong>{_({ ...D.historical, values: { number: snapshot().requestNumber } })}</strong>
             <span>
-              {_(D.input)} {snapshot().inputTokens == null ? "—" : number(snapshot().inputTokens!)}
+              {_(D.input)} {display().total == null ? "—" : (display().estimated ? "≈" : "") + number(display().total!)}
             </span>
           </div>
         )}
       </Show>
       <div class="context-source-strip" aria-hidden="true">
-        <For each={contextRows(props.snapshot?.usage ?? undefined)}>
-          {(row) => (
+        <For each={display().rows.map((row) => row.category)}>
+          {(category) => (
             <span
               style={{
                 width:
-                  (props.snapshot?.inputTokens ? (row.attributedTokens / props.snapshot.inputTokens) * 100 : 0) + "%",
-                background: row.color,
+                  (display().total
+                    ? (display().rows.find((row) => row.category === category)!.attributedTokens / display().total!) *
+                      100
+                    : 0) + "%",
+                background: contextCategories[category].color,
               }}
             />
           )}
@@ -108,10 +113,7 @@ export function ContextBrowser(props: {
           aria-label={_(D.sourceSearch)}
         />
       </label>
-      <Show
-        when={rows().length}
-        fallback={<p class="context-note">{_(props.snapshot ? D.sourceUnavailable : D.noRequests)}</p>}
-      >
+      <Show when={rows().length}>
         <For each={rows().map((row) => row.category)}>
           {(category) => {
             const row = () => rows().find((entry) => entry.category === category)!
@@ -164,10 +166,13 @@ export function ContextBrowser(props: {
                       </span>
                     </Show>
                   </span>
-                  <strong>{number(row().attributedTokens)}</strong>
+                  <strong>
+                    {display().estimated ? "≈" : ""}
+                    {number(row().attributedTokens)}
+                  </strong>
                   <small class="context-category-percent">
                     {new Intl.NumberFormat(i18n().locale, { style: "percent", maximumFractionDigits: 1 }).format(
-                      props.snapshot?.inputTokens ? row().attributedTokens / props.snapshot.inputTokens : 0,
+                      display().total ? row().attributedTokens / display().total! : 0,
                     )}
                   </small>
                 </button>
@@ -181,7 +186,7 @@ export function ContextBrowser(props: {
                         >
                           <ContextCategoryItems
                             snapshot={snapshot()}
-                            category={row().category as ExecutionContextItem["category"]}
+                            category={category as ExecutionContextItem["category"]}
                             query={query()}
                             active={open() && props.active}
                           />

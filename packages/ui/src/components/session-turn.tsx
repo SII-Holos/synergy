@@ -599,7 +599,7 @@ function TimelineItemDisplay(props: {
     return <CompactReasoningLine fullText={props.item.part.text} running={running()} />
   }
   if (props.item.kind === "part" || props.item.kind === "reasoning") {
-    return <Part part={props.item.part} message={props.item.message} />
+    return <Part part={props.item.part} message={props.item.message} showAttachments={false} />
   }
   if (props.item.kind === "media") {
     const current = () => props.item as Extract<SessionTurnTimelineItem, { kind: "media" }>
@@ -841,6 +841,7 @@ export function TimelineDisplay(props: {
   onRewind?: () => void
   working: boolean
   compactReasoning?: boolean
+  preferWorkBrief?: boolean
   activityDisplay?: ActivityDisplayMode
   activityView?: PluginConversationActivityView
   activeBatch?: string
@@ -875,6 +876,7 @@ function TimelineDisplayInner(props: {
   onRewind?: () => void
   working: boolean
   compactReasoning?: boolean
+  preferWorkBrief?: boolean
   activityDisplay?: ActivityDisplayMode
   activityView?: PluginConversationActivityView
   activeBatch?: string
@@ -936,13 +938,16 @@ function TimelineDisplayInner(props: {
             statusAnimated={props.statusAnimated}
             following={props.following !== false}
             reasoningPreview={props.compactReasoning}
+            preferWorkBrief={props.preferWorkBrief}
             view={props.activityView}
             onInspect={props.onInspectProcess}
             onBeforeLayoutChange={props.onBeforeProcessLayoutChange}
           />
         )}
       </Match>
-      <Match when={exceptionalTools()}>{(item) => <ActivityTrace group={item()} serverUrl={props.serverUrl} />}</Match>
+      <Match when={exceptionalTools()}>
+        {(item) => <ActivityTrace group={item()} serverUrl={props.serverUrl} preferWorkBrief={props.preferWorkBrief} />}
+      </Match>
       <Match when={activityReceipt()}>{(item) => <ActivityReceipt item={item()} serverUrl={props.serverUrl} />}</Match>
       <Match when={guidedUser()}>
         {(item) => (
@@ -1044,6 +1049,7 @@ type SessionTurnProps = ParentProps<{
   onExecutionDetails?: () => void
   activityDisplay?: ActivityDisplayMode
   compactReasoning?: boolean
+  preferWorkBrief?: boolean
   copyMessageText?: (messageID: string) => Promise<string>
   userPresentation?: import("./user-message-content").UserMessagePresentation
   segment?: {
@@ -1233,6 +1239,7 @@ function SessionTurnAssistantActivityBody(props: SessionTurnProps) {
                         rollbackActive={props.rollbackActive === true}
                         working={working()}
                         compactReasoning={props.compactReasoning}
+                        preferWorkBrief={props.preferWorkBrief}
                         activityView={props.activityView}
                         following={props.following}
                         onInspectProcess={() =>
@@ -1982,6 +1989,7 @@ function SessionTurnContent(props: SessionTurnProps) {
                                           onInspectProcess={inspectProcess}
                                           onBeforeProcessLayoutChange={beforeProcessLayoutChange}
                                           compactReasoning={props.compactReasoning}
+                                          preferWorkBrief={props.preferWorkBrief}
                                           userMetadata={afterBoundary()}
                                           userHasText={props.segment?.userHasText}
                                           userPresentation={props.userPresentation}

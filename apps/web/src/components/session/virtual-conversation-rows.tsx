@@ -84,7 +84,13 @@ export function VirtualConversationRows(
     rootID === props.lastUserMessage()?.id && view.statusFor(props.sessionID)?.type === "paused"
   const owner = input.layoutOwner
   const layoutIdentity = () =>
-    JSON.stringify([...owner, "conversation", props.activityDisplay(), props.compactReasoning()])
+    JSON.stringify([
+      ...owner,
+      "conversation",
+      props.activityDisplay(),
+      props.compactReasoning(),
+      props.preferWorkBrief?.() ?? false,
+    ])
   const pending = new Set<symbol>()
   const [pendingCount, setPendingCount] = createSignal(0)
   const onRowReady = (owner: symbol, ready: boolean | undefined) => {
@@ -1008,6 +1014,7 @@ function ConversationDisplayRow(
                     following={!props.scrolledUp()}
                     lastUserMessageID={props.lastUserMessage()?.id}
                     compactReasoning={props.compactReasoning()}
+                    preferWorkBrief={props.preferWorkBrief?.()}
                     onRewind={
                       props.canRewind(row().root as UserMessage)
                         ? () => props.onRewind?.(row().root as UserMessage)

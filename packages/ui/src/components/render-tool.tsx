@@ -3,7 +3,7 @@ import { createEffect, createMemo, createResource, createSignal, onCleanup, Show
 import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
 import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
 import { useDialog } from "../context/dialog"
-import { RenderStateConflict, useRenderHost } from "../context/render"
+import { readRenderState, RenderStateConflict, useRenderHost } from "../context/render"
 import { BasicTool } from "./basic-tool"
 import { Button } from "./button"
 import { Dialog } from "./dialog"
@@ -98,7 +98,7 @@ export function RenderTool(
   })
   const loaded = () => (unavailable() || snapshot.error || snapshot.loading ? undefined : snapshot())
   const state = createMemo(() =>
-    [RenderArtifact.state(props.metadata), acknowledged(), loaded()?.state ?? RenderArtifact.emptyState()].reduce(
+    [readRenderState(props.metadata), acknowledged(), loaded()?.state ?? RenderArtifact.emptyState()].reduce(
       (newest, next) => (next.revision > newest.revision ? next : newest),
     ),
   )

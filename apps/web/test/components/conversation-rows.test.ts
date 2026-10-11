@@ -134,12 +134,12 @@ test("binary attachment hydration cannot split a short user message or its galle
   expect(after[0].after).toBe(true)
 })
 
-test("one reasoning item keeps its disclosure anchor across bounded body chunks and stream growth", () => {
+test("continuous reasoning keeps its disclosure anchor across bounded body chunks and stream growth", () => {
   const fragments = Array.from({ length: 8 }, (_, index) => ({
     ...parts[0],
     id: `summary-${index}`,
     type: "reasoning",
-    reasoningKey: "provider:rs-shared",
+    reasoningKey: index % 3 === 0 ? undefined : `provider-${index % 2}:rs-${index}`,
     content: { version: `v${index}`, bytes: 1024 },
   }))
   const input = {

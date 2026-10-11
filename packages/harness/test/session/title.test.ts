@@ -6,6 +6,7 @@ import { Identifier } from "../../src/id/id"
 import { Provider } from "../../src/provider/provider"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
+import { LoopJob } from "../../src/session/loop-job"
 import { MessageV2 } from "../../src/session/message-v2"
 import { createDefaultTitle, ensureTitle, isDefaultTitle } from "../../src/session/title"
 import { tmpdir } from "../support/fixture"
@@ -78,6 +79,42 @@ async function runEnsureTitle(sessionID: string) {
 }
 
 describe("ensureTitle", () => {
+  test("runs the title provider after the first conversation step and survives lease release", () =>
+    runtime.run(async () => {
+      installMocks()
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session, user } = await createSessionWithUser(createDefaultTitle())
+          const calls: string[] = []
+          ;(AgentCall.text as any) = mock(async () => {
+            calls.push("title")
+            return { text: "Deferred title" }
+          })
+          const lease = new AbortController()
+          const ctx: LoopJob.Context = {
+            session,
+            sessionID: session.id,
+            step: 1,
+            messages: await Session.messages({ sessionID: session.id }),
+            lastUser: user,
+            lastUserParts: [],
+            abort: lease.signal,
+          }
+          await LoopJob.execute(LoopJob.collect("pre", ctx), ctx)
+          await LoopJob.settleDetached(session.id)
+          calls.push("conversation")
+          await LoopJob.execute(LoopJob.collect("post", ctx), ctx)
+          lease.abort()
+          await LoopJob.settleDetached(session.id)
+
+          expect(calls).toEqual(["conversation", "title"])
+          expect((await Session.get(session.id))?.title).toBe("Deferred title")
+        },
+      })
+    }))
+
   test("calls AgentCall.text with the first real user and updates the session title", () =>
     runtime.run(async () => {
       installMocks()

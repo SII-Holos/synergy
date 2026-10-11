@@ -12,6 +12,8 @@ The output-provider portion of this decision is superseded by [the bounded exten
 
 Register a Runtime-scoped ConfigSource before composition seals. Its schema-validated JSON snapshot replaces file, inline, remote and experiment configuration reads. Host-owned configuration is read-only through Config's mutation APIs; source errors do not select a last-good fallback. Register ToolOutputSource to save complete tool output and return its model-readable reference, with optional exact tool origin. Truncate retains one algorithm and the default native file behavior when no source is selected.
 
+Runtime composition selects the configuration migration authority before registration seals. An exclusive ConfigSource leaves local configuration file migrations unregistered and unstamped; a file-backed Runtime can still apply them later. The provider credential migration retains its original domain and receipt because configuration ownership does not imply credential ownership.
+
 ## Alternatives considered
 
 **Private configuration files.** They add a second configuration authority and preserve implicit discovery of scripts and tool definitions.
