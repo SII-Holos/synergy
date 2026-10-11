@@ -31,7 +31,6 @@ import { SessionEndpoint } from "./endpoint"
 import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
-import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
 import COAUTHOR_REMINDER from "./prompt/coauthor-reminder.txt"
 import { defer } from "../util/defer"
 import { SessionCommandRuntime } from "./command-runtime"
@@ -74,6 +73,7 @@ import { LoopJob } from "./loop-job"
 import { ContinuationKernel } from "./continuation-kernel"
 import { SessionContextContributions } from "./context-contributions"
 import { SessionProjectHealth } from "./project-health"
+import { RuntimeAdvisory } from "./runtime-context"
 import { formatElapsed } from "../util/elapsed"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
@@ -864,6 +864,8 @@ export namespace SessionInvoke {
                 const isLastStep = step >= maxSteps
 
                 const producingProvider = await Provider.getProvider(model.providerID)
+                const advisoryHistory = producingProvider?.profileID === "openai-codex"
+                const contextMessageID = Identifier.ascending("message")
                 const deliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
                 const toolDisplayByName = new Map<string, ToolDisplay>()
                 const processor = SessionProcessor.create({
@@ -919,7 +921,7 @@ export namespace SessionInvoke {
                 // the heavy string payloads (tool outputs, text content) to avoid the
                 // memory cost of a full deep clone while still isolating msgs from
                 // downstream mutations (reminder wrapping, plugin transforms).
-                const sessionMessages = msgs.map((m) => ({ ...m, parts: [...m.parts] }))
+                let sessionMessages = msgs.map((m) => ({ ...m, parts: [...m.parts] }))
 
                 // Ephemerally wrap non-root user-origin steer messages with a reminder.
                 // Only user-origin steer (mid-run interruptions) get wrapped; cortex/agenda
@@ -951,6 +953,9 @@ export namespace SessionInvoke {
                     })
                   }
                 }
+
+                if (!advisoryHistory)
+                  sessionMessages = sessionMessages.filter((message) => !RuntimeAdvisory.read(message.info))
 
                 try {
                   await SessionExecutionContributions.prepareModel(session, {
@@ -988,7 +993,14 @@ export namespace SessionInvoke {
                   buildCortexExecutionContext(sessionID),
                   buildCortexReminder(sessionID),
                   SessionExecutionContributions.advisory(sessionID, scopeID, lease.signal),
-                  recallMemory(firstModelPreparation, sessionID, scopeID, sessionMessages, isTopSession, lease.signal),
+                  recallMemory(
+                    firstModelPreparation,
+                    sessionID,
+                    scopeID,
+                    sessionMessages.filter((message) => !RuntimeAdvisory.read(message.info)),
+                    isTopSession,
+                    lease.signal,
+                  ),
                 ]).catch(async (error) => {
                   await completeAssistantWithError({ sessionID, processor, model, error, abort })
                   return undefined
@@ -1015,6 +1027,14 @@ export namespace SessionInvoke {
                 let systemParts: string[] = []
                 let systemCacheBreakpoint: number | undefined
                 let lateSystemParts: string[] = [ToolIntent.guidance, AttachmentDelivery.guidance().response]
+                const advisorySources: RuntimeAdvisory.Source[] = [
+                  RuntimeAdvisory.present("tool-intent", lateSystemParts[0]),
+                  RuntimeAdvisory.present("attachment-guidance", lateSystemParts[1]),
+                ]
+                const appendAdvisory = (id: string, text: string) => {
+                  lateSystemParts.push(text)
+                  advisorySources.push(RuntimeAdvisory.present(id, text))
+                }
 
                 // Layer 1: Static — AGENTS.md instructions (stable within session)
                 systemParts.push(...customParts)
@@ -1061,6 +1081,12 @@ export namespace SessionInvoke {
                 // Layer 3: Dynamic advisory context — loop-stable memory/experience, volatile across turns
                 if (memoryResult) {
                   lateSystemParts.push(memoryResult.context)
+                  advisorySources.push(
+                    ...memoryResult.observations.map((source) => ({
+                      ...source,
+                      id: `memory:${source.id}`,
+                    })),
+                  )
                   const { injection } = memoryResult
                   if (firstModelPreparation) SessionContextContributions.committed(sessionID, memoryResult)
                   if (Object.keys(injection).length > 0 && !R.metadata?.injectedContext) {
@@ -1075,13 +1101,15 @@ export namespace SessionInvoke {
                 }
 
                 // Layer 4: Dynamic advisory context — environment block (contains timestamp, changes per invoke)
-                lateSystemParts.push(...envParts)
+                envParts.forEach((text, index) => appendAdvisory(`environment:${index}`, text))
 
                 // Layer 4.5: Dynamic advisory context — git health diagnostics (warns about uncommitted changes, large files, etc.)
-                const gitHealthBlock = ScopeContext.current.workspace
-                  ? SessionProjectHealth.injectCachedGitHealth(ScopeContext.current.directory)
-                  : undefined
+                const gitHealth = ScopeContext.current.workspace
+                  ? SessionProjectHealth.observeGitHealth(ScopeContext.current.directory)
+                  : { state: "cleared" as const }
+                const gitHealthBlock = gitHealth.state === "present" ? gitHealth.text : undefined
                 if (gitHealthBlock) lateSystemParts.push(gitHealthBlock)
+                advisorySources.push({ id: "git-health", ...gitHealth })
 
                 // Layer 4.55: Configurable advisory context — git commit coauthor footer reminder
                 // Only meaningful in a git working tree; use the same live probe as the
@@ -1092,18 +1120,19 @@ export namespace SessionInvoke {
                     ScopeContext.current.workspace &&
                     (await SessionProjectHealth.isGitRepo(ScopeContext.current.directory))
                   if (inGitRepo) {
-                    lateSystemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
+                    appendAdvisory("coauthor", `<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
                   }
                 }
 
                 // Domain advisories share the turn cancellation signal.
-                lateSystemParts.push(...advisoryParts)
+                advisoryParts.forEach(({ id, text }) => appendAdvisory(`advisory:${id}`, text))
 
                 // Secret token semantics — present only when the vault is in
                 // use, so installs that never register secrets see no extra
                 // prompt bytes.
                 if (await SecretVault.hasAny()) {
-                  lateSystemParts.push(
+                  appendAdvisory(
+                    "secret-tokens",
                     "<secret-tokens>\n" +
                       "Registered secrets appear in this conversation only as ⟦sec:<id>⟧ references. " +
                       "Synergy resolves them to the real values automatically when a tool call executes; " +
@@ -1114,20 +1143,35 @@ export namespace SessionInvoke {
                 }
 
                 // Layer 6: Dynamic advisory context — cortex reminders and time context
-                if (cortexReminder) lateSystemParts.push(cortexReminder)
-
-                // Layer 7: Dynamic advisory context — planning reminder when agent self-executes without a DAG
-                const planningReminder = await buildPlanningReminder(sessionID, agent, sessionMessages)
-                if (planningReminder) lateSystemParts.push(planningReminder)
+                if (cortexReminder) appendAdvisory("cortex", cortexReminder)
 
                 if (step === 1 && lastFinished?.time.completed) {
                   const elapsed = R.time.created - lastFinished.time.completed
                   if (elapsed > 0) {
-                    lateSystemParts.push(
+                    appendAdvisory(
+                      "time",
                       `<time-context>\nTime since your last response: ${formatElapsed(elapsed)}\n</time-context>`,
                     )
                   }
                 }
+                const observation = advisoryHistory
+                  ? RuntimeAdvisory.prepare({
+                      scope: JSON.stringify([scopeID, ScopeContext.current.workspace?.path ?? null]),
+                      sources: advisorySources,
+                      previous: RuntimeAdvisory.history(sessionMessages),
+                    })
+                  : undefined
+                const contextMessage = observation
+                  ? RuntimeAdvisory.message({
+                      id: contextMessageID,
+                      partID: Identifier.ascending("part"),
+                      created: processor.message.time.created,
+                      root: R,
+                      observation,
+                    })
+                  : undefined
+                if (advisoryHistory) lateSystemParts = []
+                if (contextMessage) sessionMessages.push(contextMessage)
                 const historyBeforeBytes = LLMTurnMemory.estimateBytes(sessionMessages)
                 using memoryTurn = LLMTurnMemory.begin({
                   sessionID,
@@ -1292,7 +1336,7 @@ export namespace SessionInvoke {
                   injections: [
                     ...(memoryResult?.sources.map((source) => ({ text: source.context, source: source.id })) ?? []),
                     ...envParts.map((text) => ({ text, source: "environment" })),
-                    ...advisoryParts.map((text) => ({ text, source: "advisory" })),
+                    ...advisoryParts.map(({ text, id }) => ({ text, source: id })),
                     ...(cortexExecutionContext ? [{ text: cortexExecutionContext, source: "task" }] : []),
                     ...(cortexReminder ? [{ text: cortexReminder, source: "task" }] : []),
                     ...(gitHealthBlock ? [{ text: gitHealthBlock, source: "workspace" }] : []),
@@ -1446,6 +1490,12 @@ export namespace SessionInvoke {
                   lane: session.parentID ? "background" : "interactive",
                 }
                 try {
+                  if (contextMessage) {
+                    await Storage.transaction(async () => {
+                      await Session.updateMessage(contextMessage.info)
+                      for (const part of contextMessage.parts) await Session.updatePart(part)
+                    })
+                  }
                   const currentStreamInput = streamInput
                   const process = () => Promise.race([processor.process(currentStreamInput), deadlinePromise])
                   result = turnSpan
@@ -2164,54 +2214,6 @@ export namespace SessionInvoke {
       .join("\n")
 
     return `<cortex-reminder>\n${CORTEX_REMINDER.replace("{{count}}", String(running.length)).replace("{{task_list}}", taskList)}\n</cortex-reminder>`
-  }
-
-  const ACCUMULATING_TOOLS = new Set([
-    "bash",
-    "process",
-    "read",
-    "grep",
-    "ast_grep",
-    "glob",
-    "look_at",
-    "scan_document",
-    "edit",
-    "write",
-    "webfetch",
-  ])
-  const CLEARING_TOOLS = new Set(["dagwrite", "dagread", "dagpatch", "task", "task_list", "task_output", "task_cancel"])
-
-  async function buildPlanningReminder(
-    sessionID: string,
-    agent: { name: string; mode?: string },
-    sessionMessages: { info: { role: string }; parts: { type: string; tool?: string }[] }[],
-  ): Promise<string | undefined> {
-    if (agent.name !== PrimaryAgentIdentity.names.coding) return undefined
-
-    const lastUserIdx = sessionMessages.reduce((last, msg, idx) => (msg.info.role === "user" ? idx : last), -1)
-    if (lastUserIdx < 0) return undefined
-
-    const currentTurnTools = new Set<string>()
-    for (let i = lastUserIdx + 1; i < sessionMessages.length; i++) {
-      for (const part of sessionMessages[i].parts) {
-        if (part.type === "tool" && part.tool) {
-          currentTurnTools.add(part.tool)
-        }
-      }
-    }
-
-    let counter = 0
-    for (const tool of currentTurnTools) {
-      if (CLEARING_TOOLS.has(tool)) counter = 0
-      else if (ACCUMULATING_TOOLS.has(tool)) counter += 1
-    }
-    if (counter < 3) return undefined
-
-    const { Dag } = await import("./dag")
-    const nodes = await Dag.get(sessionID)
-    if (nodes.length > 0) return undefined
-
-    return `<planning-reminder>\n${PLANNING_REMINDER.trim()}\n</planning-reminder>`
   }
 
   interface ExternalModelInfo {

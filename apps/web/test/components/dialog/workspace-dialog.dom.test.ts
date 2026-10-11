@@ -86,12 +86,25 @@ beforeAll(async () => {
       include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid"],
       noDiscovery: true,
     },
-    server: { host: "127.0.0.1", port, strictPort: true, fs: { allow: [path.resolve(appSrc, "../../.."), fixture] } },
+    server: {
+      host: "127.0.0.1",
+      port,
+      strictPort: true,
+      watch: null,
+      fs: { allow: [path.resolve(appSrc, "../../.."), fixture] },
+    },
   })
   await server.listen()
   base = server.resolvedUrls!.local[0]!
   await server.warmupRequest("/main.tsx")
   browser = await chromium.launch({ headless: true })
+  const preparation = await browser.newPage()
+  try {
+    await preparation.goto(base, { timeout: 20_000 })
+    await preparation.locator("#recover").waitFor({ timeout: 4000 })
+  } finally {
+    await preparation.close()
+  }
 }, 30_000)
 beforeEach(async () => {
   errors.length = 0

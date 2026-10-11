@@ -44,10 +44,11 @@ export namespace SessionExecutionContributions {
   export async function advisory(sessionID: string, scopeID: string, signal: AbortSignal) {
     const instanceState = runtimeState()
 
-    const parts: string[] = []
+    const parts: Array<{ id: string; text: string }> = []
     for (const entry of instanceState.contributions.values()) {
       signal.throwIfAborted()
-      parts.push(...((await entry.advisory?.(sessionID, scopeID, signal)) ?? []))
+      const text = (await entry.advisory?.(sessionID, scopeID, signal))?.join("\n\n")
+      if (text) parts.push({ id: entry.id, text })
     }
     return parts
   }
