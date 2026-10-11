@@ -139,6 +139,7 @@ export class PostgresDriver implements SqlDriver {
       const result = await body({ query })
       if (!options.readOnly) await this.assertOwnership()
       if (transactional) {
+        options.commitGuard?.()
         committing = true
         await query("COMMIT")
       }

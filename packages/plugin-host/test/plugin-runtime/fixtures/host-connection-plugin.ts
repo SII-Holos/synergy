@@ -28,5 +28,17 @@ export default definePlugin({
         return context.hostConnection!.configure({ enabled: true, name: "Fixture" })
       },
     }),
+    ...(["approve", "finish"] as const).map((method) =>
+      operation({
+        id: method,
+        type: "command",
+        requires: ["host.connection.manage"],
+        input: z.object({ requestID: z.string() }),
+        output: z.unknown(),
+        async handler(input, context) {
+          return context.hostConnection![method](input)
+        },
+      }),
+    ),
   ],
 })

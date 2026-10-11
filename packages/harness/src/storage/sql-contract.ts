@@ -26,6 +26,7 @@ export interface SqlTransactionOptions {
   readOnly?: boolean
   background?: boolean
   operationID?: string
+  commitGuard?: () => void
   // Declared by the caller when its body issues at most one statement. A lone
   // statement is already atomic, so an explicit transaction would only add round
   // trips to the engine; a body that reads more than once must not declare it,

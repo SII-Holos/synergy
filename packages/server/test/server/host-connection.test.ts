@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import { Hono } from "hono"
 import { upgradeWebSocket, websocket } from "hono/bun"
 import { WSContext, type WSEvents } from "hono/ws"
@@ -594,3 +594,213 @@ test("the anonymous pairing read deadline cancels the reader and returns its cap
     (await runtime.run(() => app.request("/host-connection/gateway/pair", { method: "POST", body: "{}" }))).status,
   ).toBe(400)
 }, 40_000)
+
+test("an old socket error then close cannot detach a successor's revocation lease", async () => {
+  await using source = await testRuntime()
+  await using target = await testRuntime()
+  const descriptor = await target.run(() => HostConnection.configure("fixture", { enabled: true, name: "Target" }))
+  await source.run(() => HostConnection.configure("fixture", { enabled: true, name: "Source" }))
+  const invitation = await target.run(() => HostConnection.invite())
+  const pairing = await source.run(() => HostConnection.pairRequest(descriptor, invitation.code))
+  await target.run(() => HostConnection.receivePair(pairing))
+  await source.run(() =>
+    target
+      .run(() => HostConnection.approve(pairing.requestID))
+      .then((receipt) => HostConnection.acceptPair(descriptor, receipt)),
+  )
+  const callbacks: WSEvents[] = []
+  const business = new Hono().get(
+    "/socket",
+    upgradeWebSocket(() => ({})),
+  )
+  const app = new Hono().route(
+    "/host-connection",
+    HostConnectionRoute({
+      forward: async (request, env) => business.fetch(request, env),
+      originAllowed: () => true,
+    }),
+  )
+  const open = async () => {
+    const packet = await source.run(() =>
+      HostConnection.signRequest(descriptor.id, "GET", "/socket", "", new Uint8Array()),
+    )
+    await target.run(() =>
+      app.fetch(
+        new Request("http://fixture/host-connection/gateway/api/socket", {
+          headers: { upgrade: "websocket", "x-synergy-host-proof": JSON.stringify(packet) },
+        }),
+        {
+          server: {
+            upgrade(_request: Request, options: { data: { events: WSEvents } }) {
+              callbacks.push(options.data.events)
+              return true
+            },
+          },
+        },
+      ),
+    )
+  }
+  let closed = 0
+  const socket = new WSContext({
+    close() {
+      closed++
+    },
+    send() {},
+    readyState: WebSocket.OPEN,
+  })
+  await open()
+  await target.run(() => callbacks[0].onOpen?.(new Event("open"), socket))
+  await target.run(() => callbacks[0].onError?.(new Event("error"), socket))
+  await open()
+  await target.run(() => callbacks[1].onOpen?.(new Event("open"), socket))
+  await target.run(() => callbacks[0].onClose?.(new CloseEvent("close"), socket))
+  await target.run(() => HostConnection.revoke(pairing.requester.id))
+  expect(closed).toBe(1)
+  await target.run(() => callbacks[1].onClose?.(new CloseEvent("close"), socket))
+}, 30_000)
+
+test.each(["missing", "plain", "upgrade-false"])(
+  "a %s WebSocket request releases ordinary HTTP admission",
+  async (kind) => {
+    await using source = await testRuntime()
+    await using target = await testRuntime()
+    const descriptor = await target.run(() => HostConnection.configure("fixture", { enabled: true, name: "Target" }))
+    await source.run(() => HostConnection.configure("fixture", { enabled: true, name: "Source" }))
+    const invitation = await target.run(() => HostConnection.invite())
+    const pairing = await source.run(() => HostConnection.pairRequest(descriptor, invitation.code))
+    await target.run(() => HostConnection.receivePair(pairing))
+    await source.run(() =>
+      target
+        .run(() => HostConnection.approve(pairing.requestID))
+        .then((receipt) => HostConnection.acceptPair(descriptor, receipt)),
+    )
+    const admit = HostConnection.admit
+    let disposals = 0
+    using _admit = spyOn(HostConnection, "admit").mockImplementation(async (...args) => {
+      const lease = await admit(...args)
+      return {
+        ...lease,
+        [Symbol.dispose]() {
+          disposals++
+          lease[Symbol.dispose]()
+        },
+      }
+    })
+    const business = new Hono()
+      .get("/plain", (c) => c.text("ordinary"))
+      .get(
+        "/upgrade-false",
+        upgradeWebSocket(() => ({})),
+      )
+    const app = new Hono().route(
+      "/host-connection",
+      HostConnectionRoute({
+        forward: async (request, env) => business.fetch(request, env),
+        originAllowed: () => true,
+      }),
+    )
+    const packet = await source.run(() =>
+      HostConnection.signRequest(descriptor.id, "GET", `/${kind}`, "", new Uint8Array()),
+    )
+    const response = await target.run(() =>
+      app.fetch(
+        new Request(`http://fixture/host-connection/gateway/api/${kind}`, {
+          headers: { upgrade: "websocket", "x-synergy-host-proof": JSON.stringify(packet) },
+        }),
+        {
+          server: {
+            upgrade() {
+              return false
+            },
+          },
+        },
+      ),
+    )
+    expect(response.status).toBe(kind === "plain" ? 200 : 404)
+    expect(await response.text()).toBe(kind === "plain" ? "ordinary" : "404 Not Found")
+    expect(disposals).toBe(1)
+  },
+  30_000,
+)
+
+test.each(["false", "throw", "true"] as const)(
+  "source proxy native upgrade %s settles admission only when transport ownership ends",
+  async (outcome) => {
+    await using source = await testRuntime({ SYNERGY_SERVER_TOKEN: "source-upgrade-fixture" })
+    await using target = await testRuntime()
+    const descriptor = await target.run(() =>
+      HostConnection.configure("fixture", { enabled: true, name: "Target", url: "http://127.0.0.1:1" }),
+    )
+    await source.run(() => HostConnection.configure("fixture", { enabled: true, name: "Source" }))
+    const invitation = await target.run(() => HostConnection.invite())
+    const pairing = await source.run(() => HostConnection.pairRequest(descriptor, invitation.code))
+    await target.run(() => HostConnection.receivePair(pairing))
+    const receipt = await target.run(() => HostConnection.approve(pairing.requestID))
+    await source.run(() => HostConnection.acceptPair(descriptor, receipt))
+    const admit = HostConnection.admit
+    const leases: Array<{ signal: AbortSignal; disposals: number }> = []
+    using _admit = spyOn(HostConnection, "admit").mockImplementation(async (...args) => {
+      const lease = await admit(...args)
+      const tracked = { signal: lease.signal, disposals: 0 }
+      leases.push(tracked)
+      return {
+        ...lease,
+        [Symbol.dispose]() {
+          tracked.disposals++
+          lease[Symbol.dispose]()
+        },
+      }
+    })
+    const callbacks: WSEvents[] = []
+    const env = {
+      server: {
+        upgrade(_request: Request, options: { data: { events: WSEvents } }) {
+          callbacks.push(options.data.events)
+          if (outcome === "throw") throw new Error("native upgrade failed")
+          return outcome === "true"
+        },
+      },
+    }
+    const request = (authenticated: boolean) =>
+      new Request(`http://fixture/host-connection/peers/${descriptor.id}/proxy/global/event/ws`, {
+        headers: {
+          upgrade: "websocket",
+          origin: "http://fixture",
+          ...(authenticated ? { authorization: "Bearer source-upgrade-fixture" } : {}),
+        },
+      })
+    expect((await source.run(() => Server.App().fetch(request(false), env))).status).toBe(401)
+    expect(leases).toHaveLength(0)
+    expect(callbacks).toHaveLength(0)
+    const attempts = outcome === "true" ? 1 : 3
+    for (let index = 0; index < attempts; index++) {
+      const response = await source.run(() => Server.App().fetch(request(true), env))
+      expect(response.status).toBe(outcome === "true" ? 200 : 500)
+      expect(callbacks).toHaveLength(index + 1)
+      await response.text()
+      expect(leases[index].disposals).toBe(outcome === "true" ? 0 : 1)
+    }
+    expect(callbacks).toHaveLength(attempts)
+    expect(leases.every((lease) => !lease.signal.aborted)).toBe(true)
+    await source.run(() => HostConnection.revoke(descriptor.id))
+    expect(leases.every((lease) => lease.signal.aborted === (outcome === "true"))).toBe(true)
+    if (outcome === "true") {
+      let closed = 0
+      await source.run(() =>
+        callbacks[0].onOpen?.(
+          new Event("open"),
+          new WSContext({
+            close() {
+              closed++
+            },
+            send() {},
+            readyState: WebSocket.OPEN,
+          }),
+        ),
+      )
+      expect(closed).toBe(1)
+      expect(leases[0].disposals).toBe(1)
+    } else expect(leases.every((lease) => lease.disposals === 1)).toBe(true)
+  },
+  30_000,
+)

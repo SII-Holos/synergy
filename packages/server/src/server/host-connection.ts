@@ -204,6 +204,7 @@ export function HostConnectionRoute(input: {
         Parameters<typeof websocket.open>[0]["data"]
       >
       const transport = Object.create(server) as typeof server
+      let hasUpgraded = false
       transport.upgrade = (request, options) => {
         if (!options?.data) return false
         const data = options.data
@@ -243,12 +244,13 @@ export function HostConnectionRoute(input: {
             },
           },
         })
-        if (!upgraded) dispose()
+        if (upgraded) hasUpgraded = true
         return upgraded
       }
       try {
         admission.assert()
-        return await HostConnection.withRemote(hostID, () => input.forward(request, { server: transport }))
+        const response = await HostConnection.withRemote(hostID, () => input.forward(request, { server: transport }))
+        return hasUpgraded ? response : responseBody(response, admission)
       } catch (error) {
         admission[Symbol.dispose]()
         throw error
@@ -279,7 +281,7 @@ export function HostConnectionRoute(input: {
             admission[Symbol.dispose]()
             return c.text("Origin not allowed", 403)
           }
-          return upgradeWebSocket(() => {
+          const response = await upgradeWebSocket(() => {
             let upstream: WebSocket | undefined
             let client: WSContext | undefined
             let timeout: ReturnType<typeof setTimeout> | undefined
@@ -345,6 +347,8 @@ export function HostConnectionRoute(input: {
               onError: close,
             }
           })(c, async () => {})
+          if (!response) admission[Symbol.dispose]()
+          return response
         }
         const response = await fetch(destination, {
           method: c.req.method,

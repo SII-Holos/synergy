@@ -793,7 +793,11 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
     if (!input.limits) input.limits = await resolvePluginRuntimeLimits()
     const value = params(input)
     if (input.method.startsWith("host.connection.")) {
-      input.assertAuthority?.()
+      const assertAuthority = () => {
+        input.signal.throwIfAborted()
+        input.assertAuthority?.()
+      }
+      assertAuthority()
       if (HostConnection.remoteRequester())
         throw pluginHostServiceError(
           PluginHostServiceErrorCode.HOST_CONNECTION_LOCAL_REQUIRED,
@@ -807,7 +811,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       const request = z.object({ requestID: z.string().uuid() }).strict()
       switch (input.method) {
         case "host.connection.configure":
-          return HostConnection.configure(input.pluginId, HostConnection.Configure.parse(value), input.assertAuthority)
+          return HostConnection.configure(input.pluginId, HostConnection.Configure.parse(value), assertAuthority)
         case "host.connection.probe":
           return HostConnection.probe(z.object({ url: z.string().url() }).strict().parse(value).url)
         case "host.connection.pair": {
@@ -815,18 +819,21 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
             .object({ target: HostConnection.Descriptor, code: z.string().max(32) })
             .strict()
             .parse(value)
-          return HostConnection.pair(pair.target, pair.code)
+          return HostConnection.pair(pair.target, pair.code, assertAuthority)
         }
         case "host.connection.approve":
-          return HostConnection.approve(request.parse(value).requestID)
+          return HostConnection.approve(request.parse(value).requestID, assertAuthority)
         case "host.connection.finish":
-          return HostConnection.finish(request.parse(value).requestID)
+          return HostConnection.finish(request.parse(value).requestID, assertAuthority)
         case "host.connection.revoke":
-          return HostConnection.revoke(z.object({ hostID: z.string().uuid() }).strict().parse(value).hostID)
+          return HostConnection.revoke(
+            z.object({ hostID: z.string().uuid() }).strict().parse(value).hostID,
+            assertAuthority,
+          )
       }
       z.object({}).strict().parse(value)
       if (input.method === "host.connection.endpoint") return HostConnection.endpoint()
-      if (input.method === "host.connection.invite") return HostConnection.invite()
+      if (input.method === "host.connection.invite") return HostConnection.invite(assertAuthority)
       if (input.method === "host.connection.pending") return HostConnection.pending()
       if (input.method === "host.connection.peers") return HostConnection.peers()
     }

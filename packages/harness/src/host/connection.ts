@@ -28,9 +28,12 @@ export namespace HostConnection {
     const callbacks = state.get(hostID) ?? new Set<() => void>()
     callbacks.add(close)
     state.set(hostID, callbacks)
+    let isDisposed = false
     return () => {
+      if (isDisposed) return
+      isDisposed = true
       callbacks.delete(close)
-      if (!callbacks.size) state.delete(hostID)
+      if (!callbacks.size && state.get(hostID) === callbacks) state.delete(hostID)
     }
   }
   function disconnect(hostID?: string) {
@@ -124,6 +127,16 @@ export namespace HostConnection {
   export const Rejected = NamedError.create("HostConnectionRejected", z.object({ message: z.string() }))
   const reject = (message: string) => new Rejected({ message })
 
+  function commitAuthorityChange<T>(assertAuthority: (() => void) | undefined, change: () => Promise<T>) {
+    return Storage.transaction(
+      async () => {
+        assertAuthority?.()
+        return change()
+      },
+      { commitGuard: assertAuthority },
+    )
+  }
+
   async function identity() {
     using claim = await Lock.write("host-connection-identity")
     const previous = await optional(Storage.read(key("identity")))
@@ -173,8 +186,9 @@ export namespace HostConnection {
     const previous = await optional(Storage.read(key("gateway")))
     if (previous && Configuration.parse(previous).enabled && Configuration.parse(previous).pluginID !== pluginID)
       throw reject("Remote gateway belongs to another plugin")
-    assertAuthority?.()
-    await Storage.write(key("gateway"), { version: 1, pluginID, ...input })
+    await commitAuthorityChange(assertAuthority, () =>
+      Storage.write(key("gateway"), { version: 1, pluginID, ...input }),
+    )
     assertAuthority?.()
     if (input.enabled) active().add(pluginID)
     else {
@@ -211,18 +225,20 @@ export namespace HostConnection {
     return { ...endpoint, url: `${endpoint.url}/host-connection/gateway` }
   }
 
-  export async function invite() {
+  export async function invite(assertAuthority?: () => void) {
     await configuration()
-    for (const direction of ["incoming", "outgoing"] as const)
-      for await (const record of Storage.records<{ request: z.infer<typeof Attempt> }>({ prefix: key(direction) }))
-        if (record.value.request.expiresAt < Date.now()) await Storage.remove(record.key)
     const code = randomBytes(6).toString("hex").toUpperCase()
     const expiresAt = Date.now() + 5 * 60_000
-    await Storage.write(key("invitation"), { version: 1, digest: hash(code), expiresAt, attempts: 0 })
+    await commitAuthorityChange(assertAuthority, async () => {
+      for (const direction of ["incoming", "outgoing"] as const)
+        for await (const record of Storage.records<{ request: z.infer<typeof Attempt> }>({ prefix: key(direction) }))
+          if (record.value.request.expiresAt < Date.now()) await Storage.remove(record.key)
+      await Storage.write(key("invitation"), { version: 1, digest: hash(code), expiresAt, attempts: 0 })
+    })
     return Invitation.parse({ code, expiresAt })
   }
 
-  export async function pairRequest(target: z.infer<typeof Descriptor>, code: string) {
+  export async function pairRequest(target: z.infer<typeof Descriptor>, code: string, assertAuthority?: () => void) {
     target = Descriptor.parse(target)
     const requester = await describe()
     if (requester.id === target.id) throw reject("Cannot pair a Host with itself")
@@ -235,15 +251,17 @@ export namespace HostConnection {
       expiresAt: Date.now() + 5 * 60_000,
     })
     const request = PairRequest.parse({ ...body, signature: await signature(body) })
-    await Storage.write(key("outgoing", request.requestID), {
-      version: 1,
-      target,
-      request: Attempt.strip().parse(body),
-    })
+    await commitAuthorityChange(assertAuthority, () =>
+      Storage.write(key("outgoing", request.requestID), {
+        version: 1,
+        target,
+        request: Attempt.strip().parse(body),
+      }),
+    )
     return request
   }
 
-  export async function receivePair(input: z.infer<typeof PairRequest>) {
+  export async function receivePair(input: z.infer<typeof PairRequest>, assertAuthority?: () => void) {
     input = PairRequest.parse(input)
     const target = await describe()
     const { signature: proof, ...body } = input
@@ -256,7 +274,7 @@ export namespace HostConnection {
     )
       throw reject("Invalid pairing request signature")
     using claim = await Lock.write("host-connection-invitation")
-    const accepted = await Storage.transaction(async () => {
+    const accepted = await commitAuthorityChange(assertAuthority, async () => {
       const invitation = await optional(
         Storage.read<{ digest: string; expiresAt: number; attempts: number }>(key("invitation")),
       )
@@ -294,9 +312,10 @@ export namespace HostConnection {
     return Receipt.parse({ ...body, signature: await signature(body) })
   }
 
-  export async function approve(requestID: string) {
+  export async function approve(requestID: string, assertAuthority?: () => void) {
     const target = await describe()
     using claim = await Lock.write(`host-connection-pair:${z.string().uuid().parse(requestID)}`)
+    assertAuthority?.()
     const stored = await Storage.read<{ request: z.infer<typeof Attempt>; phase: "pending" | "approved" }>(
       key("incoming", requestID),
     )
@@ -307,7 +326,7 @@ export namespace HostConnection {
       if (!peer || StoredPeer.parse(peer).pairID !== request.pairID) throw reject("Pairing was revoked or replaced")
       return receipt(request, target, "approved")
     }
-    await Storage.transaction(async () => {
+    await commitAuthorityChange(assertAuthority, async () => {
       await Storage.write(key("peers", request.requester.id), {
         version: 1,
         descriptor: request.requester,
@@ -330,7 +349,11 @@ export namespace HostConnection {
     return receipt(stored.request, await describe(), stored.phase)
   }
 
-  export async function acceptPair(target: z.infer<typeof Descriptor>, input: z.infer<typeof Receipt>) {
+  export async function acceptPair(
+    target: z.infer<typeof Descriptor>,
+    input: z.infer<typeof Receipt>,
+    assertAuthority?: () => void,
+  ) {
     target = Descriptor.parse(target)
     input = Receipt.parse(input)
     const { signature: proof, ...body } = input
@@ -350,7 +373,7 @@ export namespace HostConnection {
       !valid(target.publicKey, body, proof)
     )
       throw reject("Invalid approved pairing signature")
-    await Storage.transaction(async () => {
+    await commitAuthorityChange(assertAuthority, async () => {
       await Storage.write(key("peers", target.id), {
         version: 1,
         descriptor: target,
@@ -402,8 +425,8 @@ export namespace HostConnection {
     return result
   }
 
-  export async function revoke(hostID: string) {
-    await Storage.remove(key("peers", hostID))
+  export async function revoke(hostID: string, assertAuthority?: () => void) {
+    await commitAuthorityChange(assertAuthority, () => Storage.remove(key("peers", hostID)))
     disconnect(hostID)
   }
 
@@ -586,15 +609,16 @@ export namespace HostConnection {
     return Descriptor.parse({ ...Descriptor.parse(await remoteJSON(url, "descriptor")), url: address(url) })
   }
 
-  export async function pair(target: z.infer<typeof Descriptor>, code: string) {
+  export async function pair(target: z.infer<typeof Descriptor>, code: string, assertAuthority?: () => void) {
     if (!target.url) throw reject("Destination address is unavailable")
-    const request = await pairRequest(target, code)
+    const request = await pairRequest(target, code, assertAuthority)
     const result = Receipt.parse(await remoteJSON(target.url, "pair", request))
+    assertAuthority?.()
     validateReceipt(target, request, result)
     return result
   }
 
-  export async function finish(requestID: string) {
+  export async function finish(requestID: string, assertAuthority?: () => void) {
     const stored = await Storage.read<{ target: z.infer<typeof Descriptor>; request: z.infer<typeof Attempt> }>(
       key("outgoing", z.string().uuid().parse(requestID)),
     )
@@ -605,8 +629,9 @@ export namespace HostConnection {
         signature: await signature(["pair-status", requestID]),
       }),
     )
+    assertAuthority?.()
     validateReceipt(stored.target, stored.request, result)
-    if (result.phase === "approved") await acceptPair(stored.target, result)
+    if (result.phase === "approved") await acceptPair(stored.target, result, assertAuthority)
     return result
   }
 }

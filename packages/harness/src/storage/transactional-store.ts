@@ -48,6 +48,7 @@ export interface StoredEvent {
 export interface TransactionOptions extends StorageQueueOptions {
   operationID?: string
   requestHash?: string
+  commitGuard?: () => void
 }
 export interface PruneLimits {
   records: number

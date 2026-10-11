@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import { Storage } from "../../src/storage/storage"
 import { HostConnection } from "../../src/host/connection"
 import { testRuntime } from "../support/runtime"
@@ -160,7 +160,10 @@ test("pending admissions reject revocation, gateway replacement and an old pairi
     return request.pairID
   }
   const first = await pair()
+  const released = await target.run(() => HostConnection.admit(requester.id, first))
+  released[Symbol.dispose]()
   using revoked = await target.run(() => HostConnection.admit(requester.id, first))
+  released[Symbol.dispose]()
   await target.run(() => HostConnection.revoke(requester.id))
   expect(() => revoked.assert()).toThrow()
   const second = await pair()
@@ -193,3 +196,56 @@ test("bounded body reads cancel a pending reader on an external abort", async ()
   await expect(reading).rejects.toThrow("upload stopped")
   expect(cancelled).toBe(true)
 })
+
+test.each(["configure", "invite", "pairRequest", "receivePair", "approve", "acceptPair", "revoke"] as const)(
+  "%s rolls back staged authority records when cancelled before transaction completion",
+  async (mutation) => {
+    await using source = await testRuntime()
+    await using target = await testRuntime()
+    const descriptor = await target.run(() => HostConnection.configure("fixture", { enabled: true, name: "Target" }))
+    await source.run(() => HostConnection.configure("fixture", { enabled: true, name: "Source" }))
+    const invitation = await target.run(() => HostConnection.invite())
+    const pairing = await source.run(() => HostConnection.pairRequest(descriptor, invitation.code))
+    if (mutation !== "receivePair") await target.run(() => HostConnection.receivePair(pairing))
+    const receipt =
+      mutation === "acceptPair" || mutation === "revoke"
+        ? await target.run(() => HostConnection.approve(pairing.requestID))
+        : undefined
+    if (mutation === "revoke") await source.run(() => HostConnection.acceptPair(descriptor, receipt!))
+    const selected = mutation === "pairRequest" || mutation === "acceptPair" || mutation === "revoke" ? source : target
+    await selected.run(async () => {
+      const records = async () => {
+        const records = []
+        for await (const record of Storage.records({ prefix: ["host_connection"] })) records.push(record)
+        return records
+      }
+      const before = await records()
+      const controller = new AbortController()
+      const write = Storage.write
+      const remove = Storage.remove
+      using _write = spyOn(Storage, "write").mockImplementation(async (key, content) => {
+        const written = await write(key, content)
+        if (key[0] === "host_connection") controller.abort(new Error("authority withdrawn before commit"))
+        return written
+      })
+      using _remove = spyOn(Storage, "remove").mockImplementation(async (key) => {
+        const removed = await remove(key)
+        if (key[0] === "host_connection") controller.abort(new Error("authority withdrawn before commit"))
+        return removed
+      })
+      const assertAuthority = () => controller.signal.throwIfAborted()
+      const mutations = {
+        configure: () => HostConnection.configure("fixture", { enabled: false, name: "Changed" }, assertAuthority),
+        invite: () => HostConnection.invite(assertAuthority),
+        pairRequest: () => HostConnection.pairRequest(descriptor, invitation.code, assertAuthority),
+        receivePair: () => HostConnection.receivePair(pairing, assertAuthority),
+        approve: () => HostConnection.approve(pairing.requestID, assertAuthority),
+        acceptPair: () => HostConnection.acceptPair(descriptor, receipt!, assertAuthority),
+        revoke: () => HostConnection.revoke(descriptor.id, assertAuthority),
+      }
+      await expect(mutations[mutation]()).rejects.toThrow("authority withdrawn before commit")
+      expect(await records()).toEqual(before)
+    })
+  },
+  30_000,
+)
