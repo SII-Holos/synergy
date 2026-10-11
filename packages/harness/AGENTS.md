@@ -1,16 +1,16 @@
 # harness Package
 
-[Host connections](../../docs/architecture/host-connections.md) owns pairing. Primary names: `agent/primary-identity`.
+Own composition, lifecycle and exports. `context` owns pure attribution; `agent/primary-identity` maps primary names. [Host connections](../../docs/architecture/host-connections.md) owns pairing.
 
-- Keep domain tools, routes, configuration and migrations with their implementation.
+- Keep domain tools, routes, config and migrations with implementation.
 - Keep optional product schemas out of the harness. `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; workflow state and execution/recovery policy belong to their domain packages. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk and stay out of client output. Full product composition explicitly completes schema registration.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Supply Host, composition and owned or borrowed storage to `RuntimeHandle`. Registration is sealed for that instance before storage startup; imports cannot register capabilities. Use `run` for owned work and `bind` for native callbacks. Migration listings are detached snapshots. Test independent instances in one process and entrypoint behavior in isolated child processes.
-- Tests live under test/ and use explicit Runtime fixtures with isolated homes. Pure functions need no Runtime; migration mechanism tests use the explicit unsealed migration fixture.
+- Tests live under test/ with isolated Runtime fixtures. Pure functions need no Runtime; migration tests use the explicit unsealed fixture.
 
 Run typecheck, tests and package checks.
 
-- Keep concrete model SDK factories out of harness; hosts register `ProviderSdkSource`. An absent source must fail explicitly without installing SDKs.
+- Hosts register model SDKs and native image codecs through `ProviderSdkSource` and `AttachmentImageInput`. Keep absence explicit; verify `test/attachment/model-input.test.ts`.
 - Keep native PTYs, filesystem watchers and OS sandbox implementations in local-runtime. Harness owns permission policy and `SandboxHost`; missing host registration must fail closed for sandboxed execution.
 
 - Keep application-facing operations under the explicit session, scope, tools, context, lifecycle, config, persistence, rollout and usage entries. Host adapters may use individually declared contract leaves; never export processor, resolver, scheduler or journal implementations to production. Published manifests omit `test/` exports, and production sources must not import them. Within this package use relative owner imports, not public entry points.
@@ -30,4 +30,4 @@ Storage transfer callers use the public `storage/compat` convergence guard befor
 
 Session summaries compare Workspace checkpoints across all writers. Keep tool evidence separate. File restoration requires version-checked previews. Verify snapshots, summaries, history and Local Runtime's `test/workspace/change-attribution.test.ts`.
 
-Paused Session transfer uses `session/transfer` and `session/transfer-workspace`; verify `test/session/transfer.test.ts`.
+`session/transfer` and `session/transfer-workspace` own paused transfer; test `test/session/transfer.test.ts`.

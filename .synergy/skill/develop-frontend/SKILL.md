@@ -33,6 +33,8 @@ Run static gates after browser tests and builds finish; they mutate shared gener
 
 Read [the domain guidance](references/conversation.md#message-process-and-execution-details) when this area is affected.
 
+For request-context views, share one estimate/actual display projection across charts and source browsing. Keep actual-only API fields intact. Follow the last displayable request with its original identity until the next is ready; reset retention on Scope, Session or round changes and preserve explicit historical selection. Test both arrival orders, stale history responses, category-node identity and source-body fetch counts. Update values without adding lifecycle status text or remounting disclosures.
+
 ## Settings recovery
 
 Read [the domain guidance](references/state-and-recovery.md#settings-recovery) when this area is affected.

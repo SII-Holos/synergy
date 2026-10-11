@@ -11,6 +11,7 @@ import { ProviderCatalog } from "../provider/catalog"
 import { ProviderCatalogSource } from "../provider/catalog-source"
 import { RuntimeContext, type RuntimeHost } from "./context"
 import { SessionStaging } from "../session/staging"
+import { ContextUsageEstimator } from "../session/context-usage-estimator"
 import { StorageRecovery } from "../storage/recovery"
 import { Storage } from "../storage/storage"
 import type { ImportProgress } from "../storage/legacy-import"
@@ -173,6 +174,7 @@ export namespace RuntimeHandle {
     }
 
     function closeAdmission() {
+      ContextUsageEstimator.close()
       SessionManager.closeAdmission()
       AgentTurn.closeAdmission()
       PolicyWorker.closeAdmission()

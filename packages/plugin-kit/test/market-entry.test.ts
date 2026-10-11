@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs"
 import path from "path"
-import { PLUGIN_UI_6_BASE_SYNERGY_RANGE, PluginManifest } from "@ericsanchezok/synergy-plugin"
+import { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { buildPluginProject } from "../src/commands/build"
 import { packPluginProject } from "../src/commands/pack"
@@ -216,7 +216,10 @@ export default definePlugin({
       expect(entry.homepage).toBe("https://example.com/registry-entry")
       expect(entry.author).toEqual({ name: "Jane Doe", email: "jane@example.com" })
       expect(entry.keywords).toEqual(["beta", "synergy-plugin"])
-      expect(entry.compatibility).toEqual({ synergy: `${PLUGIN_UI_6_BASE_SYNERGY_RANGE} >=3.1.0` })
+      expect(Bun.semver.satisfies("3.1.0", entry.compatibility.synergy!)).toBe(true)
+      expect(Bun.semver.satisfies("3.0.25", entry.compatibility.synergy!)).toBe(false)
+      expect(Bun.semver.satisfies("1.1.26", entry.compatibility.synergy!)).toBe(false)
+      expect(Bun.semver.satisfies("1.1.27", entry.compatibility.synergy!)).toBe(false)
       expect(entry.verified).toBe(false)
       expect(entry.official).toBe(false)
       expect(entry.versions[0].apiVersion).toBe("4.0")

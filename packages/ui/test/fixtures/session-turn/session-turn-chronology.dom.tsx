@@ -329,6 +329,7 @@ globalThis.__chronologyHarness = {
     title?: string
     error?: string
     output?: string
+    sourceAttachment?: boolean
   }) =>
     batch(() => {
       const active = ["pending", "generating", "running"].includes(options.status)
@@ -352,6 +353,20 @@ globalThis.__chronologyHarness = {
                   title: options.title,
                   metadata: { render: "html", html: options.html },
                   time: { start: 1, end: 2 },
+                  attachments: options.sourceAttachment
+                    ? [
+                        {
+                          id: "visual-source",
+                          sessionID,
+                          messageID: assistantID,
+                          type: "attachment",
+                          mime: "application/vnd.synergy.visual+json",
+                          filename: "visual.synergy.json",
+                          url: "asset://0123456789abcdef.bin",
+                          presentation: { purpose: "deliverable", renderer: "file" },
+                        },
+                      ]
+                    : [],
                 }
       setStage(active ? 3 : 8)
       setExecutionState({

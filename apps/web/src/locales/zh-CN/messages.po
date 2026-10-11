@@ -11651,7 +11651,7 @@ msgstr "上下文加载失败，请重试。"
 
 #. js-lingui-explicit-id
 msgid "context.dashboard.estimated"
-msgstr "分类为估算归因，总量以供应商为准。"
+msgstr "分类为估算归因。"
 
 #. js-lingui-explicit-id
 msgid "context.dashboard.events"
@@ -12820,10 +12820,6 @@ msgstr "平均首个内容耗时"
 #. js-lingui-explicit-id
 msgid "execution.usage.generationRate"
 msgstr "平均生成"
-
-#. js-lingui-explicit-id
-msgid "execution.usage.observedCacheHit"
-msgstr "缓存命中（已测）"
 
 #. js-lingui-explicit-id
 msgid "execution.usage.reasoning"
@@ -17226,12 +17222,24 @@ msgid "session.execution.copyInput"
 msgstr "复制工具输入"
 
 #. js-lingui-explicit-id
+msgid "session.execution.copyLoaded"
+msgstr "复制已加载输出"
+
+#. js-lingui-explicit-id
 msgid "session.execution.copyOutput"
 msgstr "复制工具输出"
 
 #. js-lingui-explicit-id
+msgid "session.execution.detailViews"
+msgstr "执行详情视图"
+
+#. js-lingui-explicit-id
 msgid "session.execution.diagnostics"
 msgstr "参数与诊断"
+
+#. js-lingui-explicit-id
+msgid "session.execution.diagnosticsOnly"
+msgstr "诊断"
 
 #. js-lingui-explicit-id
 msgid "session.execution.duration"
@@ -17248,6 +17256,10 @@ msgstr "这次调用没有保存文件内容，下面显示已记录的工具输
 #. js-lingui-explicit-id
 msgid "session.execution.exit"
 msgstr "退出码：{code}"
+
+#. js-lingui-explicit-id
+msgid "session.execution.expandLoaded"
+msgstr "展开已加载部分"
 
 #. js-lingui-explicit-id
 msgid "session.execution.failed"
@@ -17278,8 +17290,20 @@ msgid "session.execution.lineRange"
 msgstr "第 {start}–{end} 行"
 
 #. js-lingui-explicit-id
+msgid "session.execution.loadedPortion"
+msgstr "仅加载了部分输出。复制和展开均仅限于已加载部分。"
+
+#. js-lingui-explicit-id
+msgid "session.execution.loadFailed"
+msgstr "无法加载执行详情。"
+
+#. js-lingui-explicit-id
 msgid "session.execution.loading"
 msgstr "正在加载工具结果…"
+
+#. js-lingui-explicit-id
+msgid "session.execution.noDiagnostics"
+msgstr "未记录其他诊断信息。"
 
 #. js-lingui-explicit-id
 msgid "session.execution.noOutput"
@@ -17302,20 +17326,16 @@ msgid "session.execution.signal"
 msgstr "终止信号：{signal}"
 
 #. js-lingui-explicit-id
+msgid "session.execution.taskStatus"
+msgstr "任务状态：{status}"
+
+#. js-lingui-explicit-id
 msgid "session.execution.toolOutput"
 msgstr "工具输出"
 
 #. js-lingui-explicit-id
-msgid "session.execution.truncated"
-msgstr "仅显示已捕获内容的一部分。"
-
-#. js-lingui-explicit-id
 msgid "session.execution.unavailable"
 msgstr "此工具结果已不可用。"
-
-#. js-lingui-explicit-id
-msgid "session.execution.views"
-msgstr "工具结果视图"
 
 #. js-lingui-explicit-id
 msgid "session.fork.confirm.action"
@@ -17781,16 +17801,36 @@ msgid "session.process.agentMessage"
 msgstr "代理消息"
 
 #. js-lingui-explicit-id
+msgid "session.process.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
 msgid "session.process.compactionDetail"
 msgstr "上下文压缩"
+
+#. js-lingui-explicit-id
+msgid "session.process.compactionFailure"
+msgstr "未能生成摘要。请在“诊断”中查看详情。"
 
 #. js-lingui-explicit-id
 msgid "session.process.completed"
 msgstr "已完成"
 
 #. js-lingui-explicit-id
+msgid "session.process.copyExecution"
+msgstr "复制执行过程"
+
+#. js-lingui-explicit-id
+msgid "session.process.copyOriginal"
+msgstr "复制原始输出"
+
+#. js-lingui-explicit-id
 msgid "session.process.copyResult"
 msgstr "复制结果"
+
+#. js-lingui-explicit-id
+msgid "session.process.execution"
+msgstr "执行过程"
 
 #. js-lingui-explicit-id
 msgid "session.process.failed"
@@ -17809,6 +17849,14 @@ msgid "session.process.loadFailed"
 msgstr "无法加载过程详情。"
 
 #. js-lingui-explicit-id
+msgid "session.process.mechanicalSummary"
+msgstr "此摘要由机械方式生成，局限说明见“诊断”。"
+
+#. js-lingui-explicit-id
+msgid "session.process.noReport"
+msgstr "未记录最终报告。"
+
+#. js-lingui-explicit-id
 msgid "session.process.openSource"
 msgstr "打开来源会话"
 
@@ -17821,12 +17869,20 @@ msgid "session.process.priorStop"
 msgstr "曾停止"
 
 #. js-lingui-explicit-id
+msgid "session.process.rawOutput"
+msgstr "原始输出"
+
+#. js-lingui-explicit-id
 msgid "session.process.records"
 msgstr "执行过程"
 
 #. js-lingui-explicit-id
 msgid "session.process.resultUnavailable"
 msgstr "完整任务结果暂不可用，当前显示原始通知。"
+
+#. js-lingui-explicit-id
+msgid "session.process.statistics"
+msgstr "{steps} 个步骤 · {calls} 次工具调用"
 
 #. js-lingui-explicit-id
 msgid "session.process.stopped"
@@ -20327,6 +20383,14 @@ msgstr "外观、行为和通知偏好设置。"
 #. js-lingui-explicit-id
 msgid "settings.general.page.title"
 msgstr "通用"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preferWorkBrief.description"
+msgstr "优先显示工具操作的目的说明；没有说明时，显示动作和目标。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preferWorkBrief.title"
+msgstr "优先显示操作说明"
 
 #. js-lingui-explicit-id
 msgid "settings.general.preventSleep.active"

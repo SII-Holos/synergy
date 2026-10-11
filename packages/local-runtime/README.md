@@ -12,6 +12,8 @@ Package entrypoint contracts are verified by `bun test test/component.test.ts te
 
 `registerLocalRuntime()` also registers bundled model SDK factories and the custom SDK loader. Agent worker bootstrap creates an explicit Runtime context, registers local capabilities, then starts the harness runner.
 
+Local Runtime registers the native processor for Harness's `AttachmentImageInput`. The codec loads only when a model request contains local image bytes. Original Assets stay immutable; model copies follow the shared image budget, and decoding failures become individual image placeholders. See [Assets and attachments](../../docs/architecture/session-and-messages.md#assets-and-attachments).
+
 Source workers launch this package’s `src/agent-worker.ts` through the harness worker-entry registration. The full product registers its own entry; compiled executables dispatch the same composition through `__agent-turn-runner`.
 
 Native execution belongs here: `process/pty`, `file/watcher`, and the macOS/Linux/Windows sandbox backends and helper sources. `registerLocalRuntime()` registers the sandbox host and the file-watcher startup contribution before commands or workers execute. Build sandbox helpers with `bun script/build-helper.ts`; Linux bwrap development setup uses `bash script/download-bwrap.sh`.

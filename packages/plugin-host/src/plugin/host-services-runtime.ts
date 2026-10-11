@@ -793,6 +793,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
     if (!input.limits) input.limits = await resolvePluginRuntimeLimits()
     const value = params(input)
     if (input.method.startsWith("host.connection.")) {
+      input.assertAuthority?.()
       if (HostConnection.remoteRequester())
         throw pluginHostServiceError(
           PluginHostServiceErrorCode.HOST_CONNECTION_LOCAL_REQUIRED,
@@ -806,7 +807,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       const request = z.object({ requestID: z.string().uuid() }).strict()
       switch (input.method) {
         case "host.connection.configure":
-          return HostConnection.configure(input.pluginId, HostConnection.Configure.parse(value))
+          return HostConnection.configure(input.pluginId, HostConnection.Configure.parse(value), input.assertAuthority)
         case "host.connection.probe":
           return HostConnection.probe(z.object({ url: z.string().url() }).strict().parse(value).url)
         case "host.connection.pair": {

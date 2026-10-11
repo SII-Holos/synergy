@@ -84,6 +84,7 @@ export function KanbanPane(props: {
   compact?: boolean
   activityDisplay: () => ActivityDisplayMode
   compactReasoning: () => boolean
+  preferWorkBrief?: () => boolean
   loadState?: () => BoardPaneLoadState | undefined
   onRetry?: () => void
   onSend: (text: string, options?: { agent?: string }) => Promise<void>
@@ -385,6 +386,7 @@ export function KanbanPane(props: {
                         lastUserMessageID={lastRoot()?.id}
                         activityDisplay={props.activityDisplay()}
                         compactReasoning={props.compactReasoning()}
+                        preferWorkBrief={props.preferWorkBrief?.()}
                         classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full" }}
                       />,
                     )

@@ -213,6 +213,10 @@ The frontend may mirror the value locally to choose a catalog before the server 
 
 The mode changes only activity presentation. It never hides permission requests, failures, or external-action and production communication receipts, and it never rewrites message parts or changes model context. Historical derived activity metadata is preserved in storage but ignored by presentation. Mode changes update already rendered turns reactively without remounting them.
 
+## Tool action descriptions
+
+Tool rows have an independent global General preference, `preferWorkBrief`, stored in `00-general.jsonc` and defaulting to `false`. Settings labels it **Prefer action descriptions**. When enabled, a non-empty `workBrief` supplies the row label; missing or whitespace-only intent retains the action-and-target label. All activity display modes, session views and Kanban use the same preference. It changes presentation only, preserves original messages and does not request generated summaries.
+
 ## Compact reasoning
 
 `compactReasoning` is a global General preference that keeps live reasoning output in a single-line view. It lives in `00-general.jsonc`:

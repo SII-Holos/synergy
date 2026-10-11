@@ -59,6 +59,21 @@ export function ContextUsageStats(props: { summary: ExecutionSummary; now: numbe
             (props.summary.accounting.calls || tokens().total.known ? number(tokens().total.known) : "—")
           }
           caption={_(D.accumulated)}
+          fitValue={{
+            alternatives: [
+              (tokens().total.unknown ? "≥ " : "") +
+                (props.summary.accounting.calls || tokens().total.known
+                  ? new Intl.NumberFormat(i18n().locale, { notation: "compact", maximumFractionDigits: 0 }).format(
+                      tokens().total.known,
+                    )
+                  : "—"),
+            ],
+            accessible:
+              (tokens().total.unknown ? "≥ " : "") +
+              (props.summary.accounting.calls || tokens().total.known
+                ? new Intl.NumberFormat(i18n().locale).format(tokens().total.known)
+                : "—"),
+          }}
           highlight={highlight()}
           onHighlight={setHighlight}
         />
@@ -116,7 +131,7 @@ function ContextMetrics(props: { summary: ExecutionSummary; now: number }) {
         </strong>
       </UsagePopover>
       <UsagePopover summary={props.summary} label={_(E.cacheHit)} class="context-metric">
-        <span>{_(props.summary.cache.ratio == null ? E.observedCacheHit : E.cacheHit)}</span>
+        <span>{_(E.cacheHit)}</span>
         <strong>
           {cache() == null
             ? "—"

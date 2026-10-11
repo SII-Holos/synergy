@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { CortexOutput } from "../../src/cortex/output"
+import { Trajectory } from "../../src/cortex/trajectory"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
@@ -88,6 +89,25 @@ async function writeAssistantText(sessionID: string, text: string) {
 }
 
 describe("CortexOutput", () => {
+  test("trajectory returns report Markdown once without promoting an excerpt to a heading", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await writeStructuredResult(session.id, { value: "Evidence collected" })
+          const report =
+            "## Result\nRead-only review completed.\n\n## Summary\n" + "Keep the task in context. ".repeat(30)
+          await writeAssistantText(session.id, report)
+          const output = await Trajectory.summarize(session.id)
+          expect(output.split("## Result")).toHaveLength(2)
+          expect(output.endsWith(report.trim() + "\n")).toBe(true)
+          expect(output).toContain("**Tool calls**: 1\n\n**Phases**:")
+        },
+      })
+    }))
+
   test("transportSchema wraps object, array, and union schemas with value", () =>
     runtime.run(() => {
       const objectWrapped = CortexOutput.transportSchema({ type: "object", properties: { ok: { type: "boolean" } } })

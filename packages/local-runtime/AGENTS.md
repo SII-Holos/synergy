@@ -1,17 +1,18 @@
 # local-runtime Package
 
-Own native execution, reload, CLI host adapters and public exports.
+Own native execution, reload, CLI adapters and exports.
 
-- Domain tools, routes, config and migrations stay with implementation.
-- Own configuration schemas, normalization, reference checks and secret handling in `src/config-schema.ts`; consumers use its typed reader and the host composes its registration.
+- Tools, routes, config and migrations stay with implementation.
+- Own config schemas, normalization, references and secrets in `src/config-schema.ts`; consumers use its typed reader and the host composes registration.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
-- Tests live under test/ and use isolated homes through the testing support package.
+- Tests live under test/; use isolated homes from testing support.
 
 Run typecheck, affected tests and root package/dependency checks.
 
 Lifecycle stays in Harness; local capabilities register here. Local Host snapshots home and environment; `createLocalClient` requires its Runtime Handle and explicit Scope selector. Workers export startup functions activated only at selected entrypoints. HTTP handlers and in-process clients share `session-api.ts`; preserve Scope ownership, durable Inbox scheduling and cancellation. Do not import CLI, HTTP-server or product implementations.
 
 - Own bundled model SDK factories and custom SDK loading in `src/provider/sdk-registry.ts`; register them through `registerLocalRuntime()` in host and agent workers.
+- Image decoding uses `AttachmentImageInput`; verify `test/attachment/image-input.test.ts` and Media's attachment suite.
 - Own native/Docker Environment providers, Executor transport and receipts. Reuse `OwnedProcess` and Workspace coordination; release durable claims only after saved output and files. Validate `bun test test/environment test/workspace/coordinator.test.ts` and the Docker integration described in the package README.
 - Own native PTY, Linux process ownership, filesystem watchers, OS sandbox backends, helper Rust sources and packaging assets. Published modules resolve native resources through platform optional dependencies. Build the native library with `bun script/build-pty.ts`; validate byte drainage and ownership with `bun test test/process/native-pty.test.ts test/process/pty.test.ts test/process/owned-process-linux.test.ts`. Register `SandboxHost` and the `file-watcher` Scope startup contribution explicitly; keep permission policy and generic wrapper types in harness.
 - Linux watcher preparation and release assets use `script/build-watcher.ts` and its pinned source patch. Validate the compiled binding and signal recovery; an unused C++ source edit does not fix the installed watcher.

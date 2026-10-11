@@ -104,7 +104,6 @@ export const E = {
   requestRate: { id: "execution.usage.requestRate", message: "Avg request throughput" },
   tokenRate: { id: "execution.usage.tokenRate", message: "{value} tok/s" },
   cacheHit: { id: "execution.usage.cacheHit", message: "Cache hit" },
-  observedCacheHit: { id: "execution.usage.observedCacheHit", message: "Cache hit (measured)" },
   requestMetrics: { id: "execution.usage.requestMetrics", message: "Requests and tools" },
   firstContent: { id: "execution.usage.firstContent", message: "Average first content" },
   requestDuration: { id: "execution.usage.requestDuration", message: "Average request time" },

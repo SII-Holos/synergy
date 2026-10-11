@@ -83,6 +83,7 @@ export function ToolResultBody(props: {
   hideDetails?: boolean
   defaultOpen?: boolean
   resultOnly?: boolean
+  showAttachments?: boolean
 }) {
   const state = () => props.part.state
   const throttledRaw = createThrottledValue(() => {
@@ -176,7 +177,7 @@ export function ToolResultBody(props: {
   )
 
   const attachmentsDisplay = () => (
-    <Show when={attachments().length > 0}>
+    <Show when={props.showAttachments !== false && attachments().length > 0}>
       <AttachmentGallery files={attachments()} serverUrl={props.serverUrl} />
     </Show>
   )

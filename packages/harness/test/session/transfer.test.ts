@@ -14,6 +14,7 @@ import { Asset } from "../../src/asset/asset"
 import { Truncate } from "../../src/tool/truncation"
 import { Identifier } from "../../src/id/id"
 import { SessionDrive } from "../../src/session/drive"
+import { ZipWriter, Uint8ArrayWriter, Uint8ArrayReader } from "@zip.js/zip.js"
 
 async function fixture() {
   const sourceHome = await tmpdir()
@@ -65,6 +66,74 @@ describe("paused Session transfer", () => {
     )
     await expect(f.inTarget(() => Session.get(f.session.id))).rejects.toThrow()
   })
+
+  test.each(["artifacts", "workspace", "objects"])(
+    "rejects repeated %s expansion before creating a receive reservation",
+    async (kind) => {
+      await using f = await fixture()
+      await f.inSource(() =>
+        SessionTransfer.prepare(f.session.id, { targetID: f.targetID, migrationID: crypto.randomUUID() }),
+      )
+      const blob = await f.inSource(() => SessionTransfer.archive(f.session.id))
+      await using archive = await SessionTransferArchive.open(blob)
+      const manifest = structuredClone(archive.manifest)
+      const bytes = new Uint8Array(kind === "objects" ? 1 : 1024 * 1024)
+      manifest.files.push({
+        path: "artifacts/shared.bin",
+        bytes: bytes.length,
+        sha256: SessionTransferArchive.hash(bytes),
+      })
+      if (kind === "workspace") {
+        const hash = SessionTransferArchive.hash(bytes)
+        manifest.workspace = {
+          info: {
+            id: "workspace_fixture",
+            scopeID: "home",
+            type: "directory",
+            revision: 1,
+            binding: { state: "bound", hostID: manifest.source.id, path: "/fixture", generation: 1 },
+            metadata: {},
+            sharedWritableWorkspaceIDs: [],
+            lifecycle: "active",
+            createdAt: 0,
+            updatedAt: 0,
+          },
+          chunks: [{ hash, file: "artifacts/shared.bin" }],
+          tree: {
+            version: 1,
+            entries: [
+              { path: "entry", kind: "directory", mode: 0o700 },
+              {
+                path: "entry/expanded",
+                kind: "file",
+                mode: 0o600,
+                size: 65 * bytes.length,
+                hash: "a".repeat(64),
+                chunks: Array.from({ length: 65 }, () => ({ hash, size: bytes.length })),
+              },
+            ],
+          },
+        }
+      } else {
+        for (let index = 0; index < (kind === "objects" ? 99_998 : 65); index++)
+          manifest.artifacts.push({
+            key: ["sessions", "home", f.session.id, "rollout", "blobs", `expanded-${index}`],
+            file: "artifacts/shared.bin",
+          })
+      }
+      const zip = new ZipWriter(new Uint8ArrayWriter(), { level: 0, useWebWorkers: false })
+      for (const file of archive.manifest.files)
+        await zip.add(file.path, new Uint8ArrayReader(await archive.bytes(file.path)))
+      await zip.add("artifacts/shared.bin", new Uint8ArrayReader(bytes))
+      await zip.add("manifest.json", new Uint8ArrayReader(Buffer.from(JSON.stringify(manifest))))
+      const expanded = new Blob([await zip.close()])
+      await expect(f.inTarget(() => SessionTransfer.stage(expanded))).rejects.toThrow("limit")
+      await expect(
+        f.inTarget(() => Storage.read(["session_transfer_reservation", manifest.sessionID])),
+      ).rejects.toThrow()
+      await expect(f.inTarget(() => SessionTransfer.destination(manifest.migrationID))).rejects.toThrow()
+    },
+  )
 
   test("stages privately, cuts over once and retains identity, pause and exact evidence", async () => {
     await using f = await fixture()

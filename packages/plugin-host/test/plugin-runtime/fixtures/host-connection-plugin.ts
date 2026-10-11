@@ -17,5 +17,16 @@ export default definePlugin({
         return context.hostConnection!.invite()
       },
     }),
+    operation({
+      id: "configure",
+      type: "command",
+      requires: ["host.connection.manage"],
+      input: z.object({ wait: z.boolean() }),
+      output: z.unknown(),
+      async handler(input, context) {
+        if (input.wait) await context.hostConnection!.pending()
+        return context.hostConnection!.configure({ enabled: true, name: "Fixture" })
+      },
+    }),
   ],
 })

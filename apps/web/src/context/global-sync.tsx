@@ -1025,6 +1025,8 @@ function createGlobalSync() {
 
     const globalPromises: Promise<unknown>[] = []
 
+    if (targets.has("config")) globalPromises.push(loadGlobalConfig())
+
     if (targets.has("config") || targets.has("provider")) {
       globalPromises.push(loadGlobalProviders())
     }

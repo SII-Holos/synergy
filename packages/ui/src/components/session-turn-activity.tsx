@@ -14,7 +14,6 @@ import {
   type ActivitySummaryState,
 } from "@ericsanchezok/synergy-util/activity"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
-import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
 import type { IconName } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { timelineItemStableKey, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
@@ -176,6 +175,7 @@ function groupState(steps: readonly ActivityStepProjection[]): ActivityGroupStat
 
 function timelineItemIdentity(item: SessionTurnTimelineItem): string {
   if (item.kind === "compaction") return `compaction:${item.message.id}`
+  if (item.kind === "tool-attachments") return `tool-attachments:${item.message.id}:${item.part.id}`
   return `${item.message.id}:${item.part.id}`
 }
 
@@ -316,7 +316,7 @@ export function projectAssistantActivityItems(input: {
   const visibleByIdentity = new Map(input.visibleItems.map((item) => [timelineItemIdentity(item), item]))
   const visibleIdentities = new Set(visibleByIdentity.keys())
   let pendingGroup: ActivityGroupItem | undefined
-  let pendingReasoning: { item: ActivityReasoningSummaryItem; identity: string; anchor?: string } | undefined
+  let pendingReasoning: { item: ActivityReasoningSummaryItem; anchor?: string } | undefined
 
   const flush = () => {
     if (!pendingGroup) return
@@ -335,9 +335,8 @@ export function projectAssistantActivityItems(input: {
           pendingReasoning = undefined
           continue
         }
-        const identity = reasoningItemKey(source.part.metadata)
         const anchor = input.reasoningAnchors?.[source.part.id]
-        if (identity && pendingReasoning?.identity === identity && pendingReasoning.anchor === anchor) {
+        if (pendingReasoning && pendingReasoning.anchor === anchor) {
           pendingReasoning.item.partIDs?.push(source.part.id)
           continue
         }
@@ -346,7 +345,7 @@ export function projectAssistantActivityItems(input: {
         item.partIDs = [source.part.id]
         item.continuation = anchor !== undefined && anchor !== source.part.id
         result.push(item)
-        pendingReasoning = identity ? { item, identity, anchor } : undefined
+        pendingReasoning = { item, anchor }
         continue
       }
       if (!visible) continue

@@ -37,6 +37,23 @@ export namespace HostConnection {
     for (const [id, callbacks] of watchers())
       if (!hostID || id === hostID) for (const callback of [...callbacks]) callback()
   }
+  export async function admit(hostID: string, pairID?: string) {
+    const controller = new AbortController()
+    const unwatch = watch(hostID, () => controller.abort(reject("Pairing authority was revoked or replaced")))
+    const assert = () => controller.signal.throwIfAborted()
+    try {
+      await configuration()
+      const stored = await optional(Storage.read(key("peers", hostID)))
+      if (!stored) throw reject("Pairing was revoked or replaced")
+      const peer = StoredPeer.parse(stored)
+      if (pairID && peer.pairID !== pairID) throw reject("Pairing was revoked or replaced")
+      assert()
+      return { pairID: peer.pairID, signal: controller.signal, assert, [Symbol.dispose]: unwatch }
+    } catch (error) {
+      unwatch()
+      throw error
+    }
+  }
   export const remoteRequester = () => remote.getStore()
   export const withRemote = <T>(hostID: string, fn: () => T) => remote.run(hostID, fn)
   export const Descriptor = HostIdentity.Info.extend({
@@ -85,11 +102,11 @@ export namespace HostConnection {
     .strict()
   export const Packet = z
     .object({
-      hostID: z.string(),
+      hostID: z.string().uuid(),
       pairID: z.string().uuid(),
       time: z.number().int(),
       nonce: z.string().uuid(),
-      signature: z.string().max(128),
+      signature: z.string().regex(/^[a-zA-Z0-9_-]{86}$/),
     })
     .strict()
   const Identity = z.object({ version: z.literal(1), privateKey: z.string(), publicKey: z.string() }).strict()
@@ -149,14 +166,16 @@ export namespace HostConnection {
     return Configuration.parse(config)
   }
 
-  export async function configure(pluginID: string, input: z.infer<typeof Configure>) {
+  export async function configure(pluginID: string, input: z.infer<typeof Configure>, assertAuthority?: () => void) {
     input = Configure.parse(input)
     if (input.url) input.url = address(input.url)
     using claim = await Lock.write("host-connection-configuration")
     const previous = await optional(Storage.read(key("gateway")))
     if (previous && Configuration.parse(previous).enabled && Configuration.parse(previous).pluginID !== pluginID)
       throw reject("Remote gateway belongs to another plugin")
+    assertAuthority?.()
     await Storage.write(key("gateway"), { version: 1, pluginID, ...input })
+    assertAuthority?.()
     if (input.enabled) active().add(pluginID)
     else {
       active().delete(pluginID)
@@ -181,6 +200,7 @@ export namespace HostConnection {
     if (!stored) return
     const config = Configuration.parse(stored)
     if (config.pluginID !== pluginID) return
+    if (!config.enabled && !active().has(pluginID)) return
     await Storage.write(key("gateway"), { ...config, enabled: false })
     active().delete(pluginID)
     disconnect()
@@ -427,6 +447,15 @@ export namespace HostConnection {
     })
   }
 
+  export async function preflight(input: z.infer<typeof Packet>) {
+    const packet = Packet.parse(input)
+    await configuration()
+    if (Math.abs(Date.now() - packet.time) > 30_000) throw reject("Remote request expired")
+    const stored = await optional(Storage.read(key("peers", packet.hostID)))
+    if (!stored || StoredPeer.parse(stored).pairID !== packet.pairID) throw reject("Requester Host is not paired")
+    return packet
+  }
+
   export async function authorize(
     input: z.infer<typeof Packet>,
     method: string,
@@ -434,7 +463,7 @@ export namespace HostConnection {
     contentType: string,
     bytes: Uint8Array,
   ) {
-    const packet = Packet.parse(input)
+    const packet = await preflight(input)
     const own = await describe()
     if (Math.abs(Date.now() - packet.time) > 30_000) throw reject("Remote request expired")
     const result = await Storage.transaction(async () => {
@@ -485,16 +514,22 @@ export namespace HostConnection {
     return url.origin
   }
 
-  export async function readBody(request: Request | Response, limit: number) {
+  export async function readBody(request: Request | Response, limit: number, signal?: AbortSignal) {
     const length = Number(request.headers.get("content-length"))
     if (length > limit) throw reject("Remote request or response is oversized")
     if (!request.body) return new Uint8Array()
     const reader = request.body.getReader()
     const chunks: Uint8Array[] = []
     let size = 0
+    const abort = () => {
+      void reader.cancel(signal?.reason).catch(() => {})
+    }
+    signal?.addEventListener("abort", abort, { once: true })
     try {
       while (true) {
+        signal?.throwIfAborted()
         const item = await reader.read()
+        signal?.throwIfAborted()
         if (item.done) break
         size += item.value.byteLength
         if (size > limit) throw reject("Remote request or response is oversized")
@@ -504,6 +539,7 @@ export namespace HostConnection {
       await reader.cancel().catch(() => {})
       throw error
     } finally {
+      signal?.removeEventListener("abort", abort)
       reader.releaseLock()
     }
     const result = new Uint8Array(size)

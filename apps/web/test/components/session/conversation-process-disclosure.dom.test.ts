@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { page, url, errors, frames, contentPage } from "../../support/conversation-process"
 
-test("a reasoning item has one keyboard disclosure across streaming growth and virtual body chunks", async () => {
+test("continuous reasoning with changing or missing item IDs has one keyboard disclosure across streaming growth and virtual body chunks", async () => {
   await page.goto(url)
   await page.evaluate(() => window.__conversationProcess.fragments(1))
   const trigger = page.locator('[data-slot="process-reasoning-trigger"]')

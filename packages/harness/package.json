@@ -295,6 +295,7 @@
     "./session/input-tools": "./src/session/input-tools.ts",
     "./cortex/workspace": "./src/cortex/workspace.ts",
     "./attachment/text-extraction": "./src/attachment/text-extraction.ts",
+    "./attachment/image-input": "./src/attachment/image-input.ts",
     "./agent/builtins": "./src/agent/builtins.ts",
     "./agent/builtin-context": "./src/agent/builtin-context.ts",
     "./util/server-defaults": "./src/util/server-defaults.ts",

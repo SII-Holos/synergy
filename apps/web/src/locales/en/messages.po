@@ -11651,7 +11651,7 @@ msgstr "Could not load context. Try again."
 
 #. js-lingui-explicit-id
 msgid "context.dashboard.estimated"
-msgstr "Categories are estimates; the total comes from the provider."
+msgstr "Categories are estimates."
 
 #. js-lingui-explicit-id
 msgid "context.dashboard.events"
@@ -12820,10 +12820,6 @@ msgstr "Average first content"
 #. js-lingui-explicit-id
 msgid "execution.usage.generationRate"
 msgstr "Avg generation"
-
-#. js-lingui-explicit-id
-msgid "execution.usage.observedCacheHit"
-msgstr "Cache hit (measured)"
 
 #. js-lingui-explicit-id
 msgid "execution.usage.reasoning"
@@ -17226,12 +17222,24 @@ msgid "session.execution.copyInput"
 msgstr "Copy tool input"
 
 #. js-lingui-explicit-id
+msgid "session.execution.copyLoaded"
+msgstr "Copy loaded output"
+
+#. js-lingui-explicit-id
 msgid "session.execution.copyOutput"
 msgstr "Copy tool output"
 
 #. js-lingui-explicit-id
+msgid "session.execution.detailViews"
+msgstr "Execution detail views"
+
+#. js-lingui-explicit-id
 msgid "session.execution.diagnostics"
 msgstr "Parameters and diagnostics"
+
+#. js-lingui-explicit-id
+msgid "session.execution.diagnosticsOnly"
+msgstr "Diagnostics"
 
 #. js-lingui-explicit-id
 msgid "session.execution.duration"
@@ -17248,6 +17256,10 @@ msgstr "Captured file content is unavailable for this invocation. The recorded t
 #. js-lingui-explicit-id
 msgid "session.execution.exit"
 msgstr "Exit code: {code}"
+
+#. js-lingui-explicit-id
+msgid "session.execution.expandLoaded"
+msgstr "Expand loaded portion"
 
 #. js-lingui-explicit-id
 msgid "session.execution.failed"
@@ -17278,8 +17290,20 @@ msgid "session.execution.lineRange"
 msgstr "Lines {start}–{end}"
 
 #. js-lingui-explicit-id
+msgid "session.execution.loadedPortion"
+msgstr "Only part of this output was loaded. Copy and expand apply to the loaded portion."
+
+#. js-lingui-explicit-id
+msgid "session.execution.loadFailed"
+msgstr "Unable to load execution details."
+
+#. js-lingui-explicit-id
 msgid "session.execution.loading"
 msgstr "Loading tool result…"
+
+#. js-lingui-explicit-id
+msgid "session.execution.noDiagnostics"
+msgstr "No additional diagnostics were recorded."
 
 #. js-lingui-explicit-id
 msgid "session.execution.noOutput"
@@ -17302,20 +17326,16 @@ msgid "session.execution.signal"
 msgstr "Termination signal: {signal}"
 
 #. js-lingui-explicit-id
+msgid "session.execution.taskStatus"
+msgstr "Task status: {status}"
+
+#. js-lingui-explicit-id
 msgid "session.execution.toolOutput"
 msgstr "Tool output"
 
 #. js-lingui-explicit-id
-msgid "session.execution.truncated"
-msgstr "Only part of this result is shown."
-
-#. js-lingui-explicit-id
 msgid "session.execution.unavailable"
 msgstr "This tool result is no longer available."
-
-#. js-lingui-explicit-id
-msgid "session.execution.views"
-msgstr "Tool activity views"
 
 #. js-lingui-explicit-id
 msgid "session.fork.confirm.action"
@@ -17781,16 +17801,36 @@ msgid "session.process.agentMessage"
 msgstr "Agent message"
 
 #. js-lingui-explicit-id
+msgid "session.process.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
 msgid "session.process.compactionDetail"
 msgstr "Context compaction"
+
+#. js-lingui-explicit-id
+msgid "session.process.compactionFailure"
+msgstr "The summary could not be created. See Diagnostics for details."
 
 #. js-lingui-explicit-id
 msgid "session.process.completed"
 msgstr "Work completed"
 
 #. js-lingui-explicit-id
+msgid "session.process.copyExecution"
+msgstr "Copy execution process"
+
+#. js-lingui-explicit-id
+msgid "session.process.copyOriginal"
+msgstr "Copy original output"
+
+#. js-lingui-explicit-id
 msgid "session.process.copyResult"
 msgstr "Copy result"
+
+#. js-lingui-explicit-id
+msgid "session.process.execution"
+msgstr "Execution process"
 
 #. js-lingui-explicit-id
 msgid "session.process.failed"
@@ -17809,6 +17849,14 @@ msgid "session.process.loadFailed"
 msgstr "Unable to load process details."
 
 #. js-lingui-explicit-id
+msgid "session.process.mechanicalSummary"
+msgstr "Mechanically generated summary. See Diagnostics for limitations."
+
+#. js-lingui-explicit-id
+msgid "session.process.noReport"
+msgstr "No final report was captured."
+
+#. js-lingui-explicit-id
 msgid "session.process.openSource"
 msgstr "Open source session"
 
@@ -17821,12 +17869,20 @@ msgid "session.process.priorStop"
 msgstr "Previously stopped"
 
 #. js-lingui-explicit-id
+msgid "session.process.rawOutput"
+msgstr "Original output"
+
+#. js-lingui-explicit-id
 msgid "session.process.records"
 msgstr "Process history"
 
 #. js-lingui-explicit-id
 msgid "session.process.resultUnavailable"
 msgstr "The full task result is not available. The original notification is shown."
+
+#. js-lingui-explicit-id
+msgid "session.process.statistics"
+msgstr "{steps} steps · {calls} tool calls"
 
 #. js-lingui-explicit-id
 msgid "session.process.stopped"
@@ -20327,6 +20383,14 @@ msgstr "Appearance, behavior, and notification preferences."
 #. js-lingui-explicit-id
 msgid "settings.general.page.title"
 msgstr "General"
+
+#. js-lingui-explicit-id
+msgid "settings.general.preferWorkBrief.description"
+msgstr "Show each tool action's purpose when available. Otherwise, show the action and target."
+
+#. js-lingui-explicit-id
+msgid "settings.general.preferWorkBrief.title"
+msgstr "Prefer action descriptions"
 
 #. js-lingui-explicit-id
 msgid "settings.general.preventSleep.active"

@@ -14,6 +14,8 @@ The provider plugin owns discovery, network installation and settings UI. Core s
 
 The target grants instance-wide task and file access to an explicitly paired Host. Pairing is independent from transferred Session permissions and execution admission. Core retains secrets, signs each forwarded request and rejects replay. Remote invocations cannot change connection authority. The plugin exposes the gateway path rather than the ordinary listener, and adding pairing capability requires the normal plugin grant review.
 
+Gateway shutdown follows the existing per-Scope plugin disposer. Removing one Scope retains an owner still enabled elsewhere; disposing the final Scope disables its gateway and closes watched connections. Global reload delegates to those bound disposers without reading or initializing an ambient Scope, so runtime-wide reload and approval cleanup work from Scope-free lifecycle contexts. The Host Service regression exercises two real Scope catalogs and a Scope-free reset; marketplace packaging verifies compatibility by admitted and rejected host versions rather than concatenating OR-range strings.
+
 ## Alternatives considered
 
 **Only list Tailscale peers in the migration dialog.** Reachability does not prove that Synergy is installed or that the device is authorized. The plugin presents network candidates and probes the selected address before pairing.

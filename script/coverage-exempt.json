@@ -1451,6 +1451,18 @@
           "reason": "test/components/workspace/execution-detail.dom.test.ts exercises the real result viewer, historical identity, cancellation, copy, large output and retained reading state in Chromium; Vite/browser execution is outside Bun source LCOV."
         },
         {
+          "glob": "src/components/workspace/execution-detail-layout.tsx",
+          "reason": "Shared execution detail shell is exercised by test/components/workspace/execution-detail.dom.test.ts for keyboard tabs, failure retry, retained evidence and invocation changes in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/workspace/execution-report.tsx",
+          "reason": "Shared report, trajectory and original-output views are exercised by test/components/workspace/execution-detail.dom.test.ts with production Markdown and real clipboard controllers in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/workspace/execution-code-block.tsx",
+          "reason": "Extracted from tool-execution-detail.tsx; test/components/workspace/execution-detail.dom.test.ts verifies independent copy actions, empty and large outputs, preview expansion and preserved reading state in Chromium. Vite/browser execution remains outside Bun source LCOV."
+        },
+        {
           "glob": "src/components/workspace/process-event-detail.tsx",
           "reason": "test/components/workspace/execution-detail.dom.test.ts verifies Agent result identity, summary loading, full copying, retry, cancellation and bounded previews in Chromium; Vite/browser execution is outside Bun source LCOV."
         },

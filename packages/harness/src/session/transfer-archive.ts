@@ -8,6 +8,41 @@ import { SessionTransferSchema as S } from "./transfer-schema"
 
 export namespace SessionTransferArchive {
   export const limit = 64 * 1024 * 1024
+  const objectLimit = 100_000
+  function validateExpansion(manifest: S.Manifest) {
+    const files = new Map(manifest.files.map((file) => [file.path, file]))
+    let expandedBytes = 0
+    let references =
+      manifest.files.length +
+      manifest.snapshots.roots.length +
+      (manifest.workspace ? manifest.workspace.tree.entries.length + manifest.workspace.chunks.length : 0)
+    const consume = (name: string, expectedBytes?: number) => {
+      const file = files.get(name)
+      if (!file || (expectedBytes !== undefined && file.bytes !== expectedBytes))
+        throw new S.Rejected({ message: "Invalid Session transfer object reference" })
+      expandedBytes += file.bytes
+      references++
+      if (expandedBytes > limit || references > objectLimit)
+        throw new S.Rejected({ message: "Session transfer expanded bytes or reference limit exceeded" })
+    }
+    for (const name of manifest.records) consume(name)
+    for (const artifact of manifest.artifacts) consume(artifact.file)
+    for (const name of manifest.snapshots.packs) consume(name)
+    if (manifest.workspace) {
+      const chunks = new Map(manifest.workspace.chunks.map((chunk) => [chunk.hash, chunk.file]))
+      if (chunks.size !== manifest.workspace.chunks.length)
+        throw new S.Rejected({ message: "Session transfer contains duplicate Workspace objects" })
+      for (const entry of manifest.workspace.tree.entries) {
+        if (entry.kind !== "file") continue
+        for (const chunk of entry.chunks) {
+          const name = chunks.get(chunk.hash)
+          if (!name) throw new S.Rejected({ message: "Missing Workspace transfer object" })
+          consume(name, chunk.size)
+        }
+      }
+    }
+    if (references > objectLimit) throw new S.Rejected({ message: "Session transfer object limit exceeded" })
+  }
   export const hash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex")
   export function directory(id: string) {
     return path.join(Global.Path.data, "session-transfers", S.ID.parse(id))
@@ -89,10 +124,9 @@ export namespace SessionTransferArchive {
         await zip.add(name, new Uint8ArrayReader(data))
         files.push(entry)
       })
-      await zip.add(
-        "manifest.json",
-        new Uint8ArrayReader(Buffer.from(JSON.stringify(S.Manifest.parse({ ...manifest, files })))),
-      )
+      const validated = S.Manifest.parse({ ...manifest, files })
+      validateExpansion(validated)
+      await zip.add("manifest.json", new Uint8ArrayReader(Buffer.from(JSON.stringify(validated))))
       await zip.close()
       await file.sync()
       await file.close()
@@ -157,6 +191,7 @@ export namespace SessionTransferArchive {
         declared.has("manifest.json")
       )
         throw new S.Rejected({ message: "Session transfer manifest entries do not match archive" })
+      validateExpansion(manifest)
       const bytes = async (name: string) => {
         const entry = declared.get(name)
         if (!entry) throw new S.Rejected({ message: "Session transfer contains an undeclared entry" })

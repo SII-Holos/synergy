@@ -2017,6 +2017,9 @@ function SessionPageContent() {
     get compactReasoning() {
       return () => sync.data.config.compactReasoning === true
     },
+    get preferWorkBrief() {
+      return () => sync.data.config.preferWorkBrief === true
+    },
     get turnStart() {
       return store.turnStart
     },

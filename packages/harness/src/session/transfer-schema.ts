@@ -56,17 +56,22 @@ export namespace SessionTransferSchema {
       activationHash: Hash,
       cancellationHash: Hash,
       scope: Scope.Runtime,
-      records: z.array(z.string()),
-      artifacts: z.array(z.object({ key: z.array(z.string().min(1)), file: z.string() }).strict()),
+      records: z.array(z.string()).max(100_000),
+      artifacts: z.array(z.object({ key: z.array(z.string().min(1)), file: z.string() }).strict()).max(100_000),
       workspace: z
         .object({
           info: WorkspaceCatalog.Info,
           tree: WorkspaceTree.Manifest,
-          chunks: z.array(z.object({ hash: WorkspaceTree.Hash, file: z.string() }).strict()),
+          chunks: z.array(z.object({ hash: WorkspaceTree.Hash, file: z.string() }).strict()).max(100_000),
         })
         .strict()
         .optional(),
-      snapshots: z.object({ roots: z.array(z.string().regex(/^[a-f0-9]{40}$/)), packs: z.array(z.string()) }).strict(),
+      snapshots: z
+        .object({
+          roots: z.array(z.string().regex(/^[a-f0-9]{40}$/)).max(100_000),
+          packs: z.array(z.string()).max(100_000),
+        })
+        .strict(),
       files: z.array(File).max(100_000),
     })
     .strict()

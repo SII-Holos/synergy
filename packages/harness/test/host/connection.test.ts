@@ -145,3 +145,51 @@ test("pairing codes are single-use and closing the gateway preserves local recor
   await expect(target.run(() => HostConnection.describe())).rejects.toThrow("disabled")
   await expect(target.run(() => HostConnection.approve(request.requestID))).rejects.toThrow("disabled")
 }, 30_000)
+
+test("pending admissions reject revocation, gateway replacement and an old pairing identity", async () => {
+  await using source = await testRuntime()
+  await using target = await testRuntime()
+  const descriptor = await target.run(() => HostConnection.configure("fixture", { enabled: true, name: "Target" }))
+  const requester = await source.run(() => HostConnection.configure("fixture", { enabled: true, name: "Source" }))
+  const pair = async () => {
+    const invitation = await target.run(() => HostConnection.invite())
+    const request = await source.run(() => HostConnection.pairRequest(descriptor, invitation.code))
+    await target.run(() => HostConnection.receivePair(request))
+    const receipt = await target.run(() => HostConnection.approve(request.requestID))
+    await source.run(() => HostConnection.acceptPair(descriptor, receipt))
+    return request.pairID
+  }
+  const first = await pair()
+  using revoked = await target.run(() => HostConnection.admit(requester.id, first))
+  await target.run(() => HostConnection.revoke(requester.id))
+  expect(() => revoked.assert()).toThrow()
+  const second = await pair()
+  await expect(target.run(() => HostConnection.admit(requester.id, first))).rejects.toThrow()
+  using replaced = await target.run(() => HostConnection.admit(requester.id, second))
+  await target.run(() => HostConnection.disableOwner("fixture"))
+  await target.run(() => HostConnection.configure("fixture", { enabled: true, name: "Target" }))
+  expect(() => replaced.assert()).toThrow()
+  expect((await target.run(() => HostConnection.peers())).map((peer) => peer.id)).toEqual([requester.id])
+}, 30_000)
+
+test("bounded body reads cancel a pending reader on an external abort", async () => {
+  let cancelled = false
+  const started = Promise.withResolvers<void>()
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull() {
+        started.resolve()
+      },
+      cancel() {
+        cancelled = true
+      },
+    },
+    { highWaterMark: 0 },
+  )
+  const controller = new AbortController()
+  const reading = HostConnection.readBody(new Response(body), 32768, controller.signal)
+  await started.promise
+  controller.abort(new Error("upload stopped"))
+  await expect(reading).rejects.toThrow("upload stopped")
+  expect(cancelled).toBe(true)
+})
