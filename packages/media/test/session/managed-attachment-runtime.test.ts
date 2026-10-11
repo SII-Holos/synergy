@@ -1,6 +1,7 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, expect, test } from "bun:test"
 import { pathToFileURL } from "node:url"
+import { deflateSync } from "node:zlib"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -28,6 +29,30 @@ const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS1kAAAAASUVORK5CYII=",
   "base64",
 )
+
+function largePng() {
+  const width = 3200
+  const height = 2048
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header[8] = 8
+  header[9] = 2
+  const chunk = (type: string, data: Buffer) => {
+    const result = Buffer.alloc(data.length + 12)
+    result.writeUInt32BE(data.length, 0)
+    result.write(type, 4)
+    data.copy(result, 8)
+    result.writeUInt32BE(Bun.hash.crc32(result.subarray(4, -4)), result.length - 4)
+    return result
+  }
+  return Buffer.concat([
+    png.subarray(0, 8),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(Buffer.alloc((width * 3 + 1) * height))),
+    chunk("IEND", Buffer.alloc(0)),
+  ])
+}
 
 type RequestBody = { model: string; messages: unknown[] }
 async function withProvider(body: (requests: RequestBody[]) => Promise<void>) {
@@ -140,6 +165,89 @@ test(
           expect(JSON.stringify(request!.messages)).toContain(`Reference: asset://${id}`)
           const saved = await MessageV2.get({ sessionID: session.id, messageID: message.info.id })
           expect(saved.parts.find((part) => part.type === "attachment")?.url).toBe(`asset://${id}`)
+        } finally {
+          await SessionInvoke.cancel(session.id)
+        }
+      }),
+    ),
+  60_000,
+)
+
+test(
+  "oversized uploads reach the real provider as bounded copies with the original reference retained",
+  () =>
+    runtime.run(() =>
+      withProvider(async (requests) => {
+        const original = largePng()
+        const id = await Asset.write(original, "image/png", "sheet.png")
+        const session = await Session.create({ workspace: null, title: "Bounded image transport" })
+        const message = await createUserMessage({
+          sessionID: session.id,
+          model: { providerID: model.providerID, modelID: "vision" },
+          parts: [{ type: "attachment", url: `asset://${id}`, mime: "image/png", filename: "sheet.png" }],
+        })
+        try {
+          await SessionInvoke.loop.force(session.id)
+          const request = requests.find((entry) => entry.model === "vision")
+          expect(request).toBeDefined()
+          const wire = JSON.stringify(request!.messages)
+          const encoded = wire.match(/data:image\/png;base64,([A-Za-z0-9+/=]+)/)?.[1]
+          expect(encoded).toBeDefined()
+          const sent = Buffer.from(encoded!, "base64")
+          expect(sent.equals(original)).toBe(false)
+          expect(sent.length).toBeLessThanOrEqual(4 * 1024 * 1024)
+          const width = sent.readUInt32BE(16)
+          const height = sent.readUInt32BE(20)
+          expect(Math.max(width, height)).toBeLessThanOrEqual(2048)
+          expect(Math.ceil(width / 32) * Math.ceil(height / 32)).toBeLessThanOrEqual(2500)
+          expect(wire).toContain(`Image resized from 3200×2048 to ${width}×${height}`)
+          expect(wire).toContain(`Reference: asset://${id}`)
+          const saved = await MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+          expect(saved.parts.find((part) => part.type === "attachment")?.url).toBe(`asset://${id}`)
+          expect(await (await Asset.read(id))!.bytes()).toEqual(new Uint8Array(original))
+        } finally {
+          await SessionInvoke.cancel(session.id)
+        }
+      }),
+    ),
+  60_000,
+)
+
+test(
+  "an unreadable image is omitted while the remaining conversation reaches the provider",
+  () =>
+    runtime.run(() =>
+      withProvider(async (requests) => {
+        const broken = Buffer.from("NOT_AN_IMAGE")
+        const id = await Asset.write(broken, "image/png", "broken.png")
+        const session = await Session.create({ workspace: null, title: "Invalid image recovery" })
+        const message = await createUserMessage({
+          sessionID: session.id,
+          model: { providerID: model.providerID, modelID: "vision" },
+          parts: [
+            { type: "text", text: "KEEP_THIS_REQUEST" },
+            { type: "attachment", url: `asset://${id}`, mime: "image/png", filename: "broken.png" },
+            { type: "attachment", url: `data:image/png;base64,${png.toString("base64")}`, mime: "image/png" },
+          ],
+        })
+        try {
+          await SessionInvoke.loop.force(session.id)
+          const request = requests.find((entry) => entry.model === "vision")
+          expect(request).toBeDefined()
+          const wire = JSON.stringify(request!.messages)
+          expect(wire).toContain("KEEP_THIS_REQUEST")
+          expect(wire).toContain("Image omitted")
+          expect(wire).not.toContain(broken.toString("base64"))
+          expect(wire).toContain(`data:image/png;base64,${png.toString("base64")}`)
+          expect(await (await Asset.read(id))!.bytes()).toEqual(new Uint8Array(broken))
+          const saved = await MessageV2.get({ sessionID: session.id, messageID: message.info.id })
+          expect(saved.parts.some((part) => part.type === "attachment" && part.url === `asset://${id}`)).toBe(true)
+          const messages = await Session.messages({ sessionID: session.id })
+          expect(
+            messages.some((entry) =>
+              entry.parts.some((part) => part.type === "text" && part.text.includes("ATTACHMENT_OK")),
+            ),
+          ).toBe(true)
         } finally {
           await SessionInvoke.cancel(session.id)
         }

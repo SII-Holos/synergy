@@ -59,6 +59,7 @@ export interface PluginConversationService {
   workspaceOpen?: Accessor<boolean>
   isWorking: Accessor<boolean>
   compactReasoning: Accessor<boolean>
+  preferWorkBrief?: Accessor<boolean>
   turnStart: number
   turnBatch: number
   onSetTurnStart: (start: number) => void

@@ -176,7 +176,7 @@ test("usage exposes token subsets, measured performance and nested keyboard dism
   const performance = page.locator(".execution-performance")
   expect(await performance.textContent()).toContain("25 tok/s")
   expect(await performance.textContent()).toContain("80%")
-  expect(await performance.textContent()).toContain("measured")
+  expect(await performance.locator("dt").allTextContents()).toEqual(["Avg generation", "Cache hit"])
   const trigger = page.getByRole("button", { name: "Token usage details", exact: true })
   await trigger.focus()
   await page.keyboard.press("Enter")

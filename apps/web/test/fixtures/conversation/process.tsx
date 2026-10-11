@@ -382,7 +382,7 @@ window.__conversationProcess = {
         (_, index) =>
           ({
             ...part("work", `summary-${index}`, "reasoning", `Summary paragraph ${index}`),
-            metadata: { "openai-codex": { itemId: "rs_shared" } },
+            metadata: index % 3 === 0 ? undefined : { "openai-codex": { itemId: `rs_${index}` } },
           }) as Part,
       ),
       part("work", "command-0", "tool"),

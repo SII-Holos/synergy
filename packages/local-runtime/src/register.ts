@@ -22,6 +22,7 @@ import { registerNativeEnvironment } from "./environment/native"
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 import { WorkspaceCoordinator } from "./workspace/coordinator"
 import { ResourceProfiles } from "./environment/profiles"
+import { registerImageInput } from "./attachment/image-input"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -35,6 +36,7 @@ export function registerLocalRuntime(
   registerLocalSandboxHelper()
   registerLocalNativeRuntime()
   registerLocalProviderSdks()
+  registerImageInput()
   if (options.workers !== false) {
     registerAgentWorkerEntrypoint(new URL("./agent-worker.ts", import.meta.url))
     registerPolicyWorkerEntrypoint(new URL("./policy-worker.ts", import.meta.url))

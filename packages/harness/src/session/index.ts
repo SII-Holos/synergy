@@ -1726,6 +1726,11 @@ export namespace Session {
         StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)),
         (draft) => {
           if (draft.role !== "assistant") throw new Error("Context Usage can only be attached to assistant messages")
+          if (
+            input.contextUsage.callID &&
+            (draft.accounting?.kind !== "rollout" || draft.accounting.callIDs.at(-1) !== input.contextUsage.callID)
+          )
+            return
           draft.contextUsage = input.contextUsage
         },
       )
