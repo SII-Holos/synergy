@@ -490,7 +490,7 @@ export namespace ExperienceEncoder {
       return { encoded: true, skipped: false, experienceID: userMessageID }
     } catch (err) {
       const userInfo = userMsg.info as MessageV2.User
-      const fallbackTurn = Turn.collectOne(msgs, userMessageID)
+      const fallbackTurn = Turn.collectOne(msgs, userMessageID, { skipSynthetic: true })
       const sourceAssistant = fallbackTurn?.assistants.at(-1)
       LibraryDB.Experience.insertFailed({
         id: userMessageID,

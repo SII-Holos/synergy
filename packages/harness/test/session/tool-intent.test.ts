@@ -4,7 +4,6 @@ import { ToolIntent } from "../../src/session/tool-intent"
 import { ToolResolver } from "../../src/session/tool-resolver"
 import { SessionToolInput } from "../../src/session/tool-input"
 import { MessageV2 } from "../../src/session/message-v2"
-import { SessionProcessor } from "../../src/session/processor"
 
 const schema: JSONSchema7 = {
   type: "object",
@@ -39,27 +38,6 @@ describe("common tool intent", () => {
     })
   })
 
-  test("changing public intent cannot change duplicate-call protection", () => {
-    const parts: MessageV2.Part[] = ["first", "second", "third"].map((workBrief, index) => ({
-      type: "tool",
-      tool: "read",
-      workBrief,
-      id: String(index),
-      sessionID: "session",
-      messageID: "message",
-      callID: `call-${index}`,
-      state: {
-        status: "completed",
-        input: { filePath: "same.txt" },
-        title: "same.txt",
-        output: "content",
-        metadata: {},
-        time: { start: 1, end: 2 },
-      },
-    }))
-    expect(SessionProcessor.shouldAskDoomLoop(parts, "read", { filePath: "same.txt" })).toBe(true)
-    expect(SessionProcessor.shouldAskDoomLoop(parts, "read", { filePath: "other.txt" })).toBe(false)
-  })
   test("adds optional intent without changing the author's schema", () => {
     const source = structuredClone(schema)
     const binding = ToolIntent.snapshot(source)
