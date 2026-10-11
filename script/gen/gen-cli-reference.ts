@@ -9,11 +9,9 @@ import ts from "typescript"
 
 import path from "node:path"
 import { readFile } from "node:fs/promises"
-import { findAssign, findBlock, isFresh, REPO_ROOT, writeGenerated, resolveWorkspaceModule } from "./shared"
+import { findAssign, findBlock, isFresh, REPO_ROOT, writeGenerated, createWorkspaceModuleResolver } from "./shared"
 import { FULL_COMPONENTS } from "../../packages/plugin-host/src/installation/catalog"
 
-const MAIN = path.join(REPO_ROOT, "packages/cli/src/cli/commands.ts")
-const RUNTIME_COMMANDS = path.join(REPO_ROOT, "packages/cli/src/cli/runtime-commands.ts")
 const OUT = path.join(REPO_ROOT, "docs/reference/cli.md")
 const GENERATOR = "gen-cli-reference.ts"
 
@@ -31,8 +29,6 @@ interface CliOption {
   describe: string | null
   type: string | null
 }
-
-const resolveModuleFile = resolveWorkspaceModule
 
 function moduleSpecifiers(node: ts.Node): string[] {
   const result = new Set<string>()
@@ -56,7 +52,10 @@ function moduleSpecifiers(node: ts.Node): string[] {
   return [...result]
 }
 
-export async function collectCommandSources(startFiles: string[]): Promise<string[]> {
+export async function collectCommandSources(
+  startFiles: string[],
+  resolveModuleFile = createWorkspaceModuleResolver(),
+): Promise<string[]> {
   const seen = new Set<string>()
   const queue = [...startFiles]
   while (queue.length > 0) {
@@ -99,14 +98,21 @@ export function parseCommandBlocks(source: string): CommandBlock[] {
   return blocks
 }
 
-async function commandRegistrations(): Promise<CliCommand[]> {
+async function commandRegistrations(
+  root: string,
+  resolveModuleFile: ReturnType<typeof createWorkspaceModuleResolver>,
+): Promise<CliCommand[]> {
   const commands = new Map<string, CliCommand>()
   const adapters: string[] = []
   for (const owner of FULL_COMPONENTS) {
-    const filename = path.join(REPO_ROOT, "packages", owner, "src/cli-adapter.ts")
+    const filename = path.join(root, "packages", owner, "src/cli-adapter.ts")
     if (await Bun.file(filename).exists()) adapters.push(filename)
   }
-  for (const registry of [MAIN, RUNTIME_COMMANDS, ...adapters]) {
+  for (const registry of [
+    path.join(root, "packages/cli/src/cli/commands.ts"),
+    path.join(root, "packages/cli/src/cli/runtime-commands.ts"),
+    ...adapters,
+  ]) {
     const main = await readFile(registry, "utf8")
     const source = ts.createSourceFile(registry, main, ts.ScriptTarget.Latest, true)
     const entries: Array<{ name: string; describe: string | null; specifiers: string[] }> = []
@@ -148,7 +154,7 @@ async function commandRegistrations(): Promise<CliCommand[]> {
         name: entry.name,
         describe: entry.describe,
         module: entry.name,
-        file: path.relative(REPO_ROOT, modulePath),
+        file: path.relative(root, modulePath),
         sources,
       })
     }
@@ -173,8 +179,9 @@ async function commandRegistrations(): Promise<CliCommand[]> {
   return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export async function generate(): Promise<string> {
-  const topLevel = await commandRegistrations()
+export async function generate(root = REPO_ROOT): Promise<string> {
+  const resolveModuleFile = createWorkspaceModuleResolver(root)
+  const topLevel = await commandRegistrations(root, resolveModuleFile)
 
   // Collect every command block reachable from the top-level modules. Blocks
   // are tracked globally (detail sections) and per top-level module (command
@@ -186,12 +193,12 @@ export async function generate(): Promise<string> {
   for (const command of topLevel) {
     if (!command.file || command.file === "(unresolved)") continue
     const own = new Map<string, CommandBlock>()
-    const sources = await collectCommandSources(command.sources)
+    const sources = await collectCommandSources(command.sources, resolveModuleFile)
     for (const file of sources) {
       const source = await readFile(file, "utf8").catch(() => "")
       for (const block of parseCommandBlocks(source)) {
         if (!own.has(block.name)) own.set(block.name, block)
-        if (!blocks.has(block.name) || file === path.join(REPO_ROOT, command.file)) blocks.set(block.name, block)
+        if (!blocks.has(block.name) || file === path.join(root, command.file)) blocks.set(block.name, block)
       }
     }
     blocksByModule.set(command.name, own)

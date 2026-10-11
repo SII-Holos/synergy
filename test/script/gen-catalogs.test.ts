@@ -1,11 +1,13 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import * as fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { generate as generateCli, parseCommandBlocks, collectCommandSources } from "../../script/gen/gen-cli-reference"
 import { generate as generateConfig, parseDefCall, parseDomainObject } from "../../script/gen/gen-config-reference"
 import { generate as generateTools, parseTaxonomy, schemaFields } from "../../script/gen/gen-tool-catalog"
 import {
+  createWorkspaceModuleResolver,
   findBlock,
   isFresh,
   matchClose,
@@ -48,6 +50,100 @@ describe("catalog determinism", () => {
     expect(skill).toContain("| `name` | string | yes |")
     expect(skill).toContain("| `reference` | string |  |")
     expect(skill).not.toContain("| `sha256`")
+  })
+})
+
+describe("workspace manifest reuse", () => {
+  test("one operation reads each manifest once for concurrent and repeated resolution", async () => {
+    const root = await fixture()
+    const cli = path.join(root, "cli")
+    await mkdir(cli)
+    await writeFile(path.join(root, "package.json"), JSON.stringify({ workspaces: { packages: ["cli"] } }))
+    await writeFile(
+      path.join(cli, "package.json"),
+      JSON.stringify({
+        name: "@fixture/cli",
+        exports: {
+          ".": { bun: "./command.ts", types: "./types.ts", import: "./import.ts" },
+          "./commands/*": "./*.ts",
+        },
+      }),
+    )
+    for (const name of ["command", "types", "import"]) await writeFile(path.join(cli, `${name}.ts`), "")
+    const reads = spyOn(fs, "readFile")
+    try {
+      const resolve = createWorkspaceModuleResolver(root)
+      expect(
+        await Promise.all([resolve(root, "@fixture/cli"), resolve(root, "@fixture/cli/commands/command")]),
+      ).toEqual([path.join(cli, "command.ts"), path.join(cli, "command.ts")])
+      expect(await resolve(root, "@fixture/cli")).toBe(path.join(cli, "command.ts"))
+      expect(await resolve(root, "@fixture/cli/missing")).toBeNull()
+      expect(await resolve(root, "node:fs")).toBeNull()
+      expect(await resolve(root, "external-package")).toBeNull()
+      for (const manifest of [path.join(root, "package.json"), path.join(cli, "package.json")])
+        expect(reads.mock.calls.filter(([file]) => file === manifest)).toHaveLength(1)
+    } finally {
+      reads.mockRestore()
+    }
+  })
+
+  test("independent CLI generations reread manifests while sharing registration and source discovery reads", async () => {
+    const root = await fixture()
+    const cli = path.join(root, "packages/cli/src/cli")
+    await mkdir(cli, { recursive: true })
+    const manifest = path.join(root, "packages/cli/package.json")
+    await writeFile(path.join(root, "package.json"), JSON.stringify({ workspaces: { packages: ["packages/cli"] } }))
+    await writeFile(
+      path.join(cli, "commands.ts"),
+      'export const commands = [{ command: "fixture", load: () => import("@fixture/cli/command") }]',
+    )
+    await writeFile(path.join(cli, "runtime-commands.ts"), "")
+    await writeFile(
+      path.join(cli, "first.ts"),
+      'import "@fixture/cli/nested"; export const Command = cmd({ command: "fixture", describe: "first generation" })',
+    )
+    await writeFile(
+      path.join(cli, "second.ts"),
+      'import "@fixture/cli/nested"; export const Command = cmd({ command: "fixture", describe: "second generation" })',
+    )
+    await writeFile(
+      path.join(cli, "nested.ts"),
+      'throw new Error("must remain static"); export const Nested = cmd({ command: "nested", describe: "nested command" })',
+    )
+    const exports = { "./command": "./src/cli/first.ts", "./nested": "./src/cli/nested.ts" }
+    await writeFile(manifest, JSON.stringify({ name: "@fixture/cli", exports }))
+    const reads = spyOn(fs, "readFile")
+    try {
+      const first = await generateCli(root)
+      expect(first).toContain("| `fixture` | first generation |")
+      expect(first).toContain("## nested")
+      await writeFile(
+        manifest,
+        JSON.stringify({ name: "@fixture/cli", exports: { ...exports, "./command": "./src/cli/second.ts" } }),
+      )
+      const second = await generateCli(root)
+      expect(second).toContain("| `fixture` | second generation |")
+      expect(second).not.toContain("first generation")
+      expect(second).toContain("## nested")
+      for (const file of [path.join(root, "package.json"), manifest])
+        expect(reads.mock.calls.filter(([filename]) => filename === file)).toHaveLength(2)
+    } finally {
+      reads.mockRestore()
+    }
+  })
+
+  test("manifest failures reject and a new operation observes repaired files", async () => {
+    const root = await fixture()
+    await writeFile(path.join(root, "package.json"), JSON.stringify({ workspaces: { packages: ["cli"] } }))
+    const resolve = createWorkspaceModuleResolver(root)
+    await expect(resolve(root, "external-package")).rejects.toMatchObject({ code: "ENOENT" })
+    await mkdir(path.join(root, "cli"))
+    const manifest = path.join(root, "cli/package.json")
+    await writeFile(manifest, "invalid JSON")
+    await expect(resolve(root, "external-package")).rejects.toMatchObject({ code: "ENOENT" })
+    await expect(createWorkspaceModuleResolver(root)(root, "external-package")).rejects.toBeInstanceOf(SyntaxError)
+    await writeFile(manifest, JSON.stringify({ name: "@fixture/cli" }))
+    expect(await createWorkspaceModuleResolver(root)(root, "@fixture/cli")).toBeNull()
   })
 })
 
