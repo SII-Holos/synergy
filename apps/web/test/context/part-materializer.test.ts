@@ -41,6 +41,64 @@ test("visible consumers share a body and releasing one preserves its successor",
   materializer.dispose()
 })
 
+for (const completed of [false, true]) {
+  test(`invalidation ${completed ? "after" : "before"} completion retires only the owned lease`, async () => {
+    const completions: Array<(response: { part: Part; version: string }) => void> = []
+    const signals: AbortSignal[] = []
+    const applied: string[] = []
+    const evicted: string[] = []
+    const memory = createContentBudget()
+    const materializer = createPartMaterializer({
+      memory,
+      read: async (_, signal) => {
+        signals.push(signal)
+        return new Promise((resolve) => completions.push(resolve))
+      },
+      apply: (part) => applied.push(part.id),
+      evict: (part) => evicted.push(part.id),
+    })
+    const original = materializer.retain(summary("a"))
+    const sibling = materializer.retain(summary("b"))
+    try {
+      expect(original.isCurrent()).toBe(true)
+      if (completed) {
+        completions[0]({ part: body("original"), version: "one" })
+        await original.ready
+        expect(memory.bytes).toBe(24)
+      }
+      materializer.invalidate("message", "a")
+      expect(original.isCurrent()).toBe(false)
+      expect(sibling.isCurrent()).toBe(true)
+      expect(signals[1].aborted).toBe(false)
+      expect(memory.bytes).toBe(0)
+      expect(evicted).toEqual(completed ? ["a"] : [])
+      if (!completed) expect(signals[0].aborted).toBe(true)
+      const successor = materializer.retain(summary("a"))
+      const shared = materializer.retain(summary("a"))
+      original.release()
+      expect(successor.isCurrent()).toBe(true)
+      expect(shared.isCurrent()).toBe(true)
+      expect(signals).toHaveLength(3)
+      completions[0]({ part: body("obsolete"), version: "one" })
+      completions[1]({ part: body("sibling"), version: "one" })
+      completions[2]({ part: body("successor"), version: "one" })
+      await Promise.all([original.ready, sibling.ready, successor.ready, shared.ready])
+      expect(applied).toEqual(completed ? ["original", "sibling", "successor"] : ["sibling", "successor"])
+      expect(memory.bytes).toBe(48)
+      successor.release()
+      expect(successor.isCurrent()).toBe(false)
+      expect(shared.isCurrent()).toBe(true)
+      shared.release()
+    } finally {
+      original.release()
+      sibling.release()
+      materializer.dispose()
+    }
+    expect(sibling.isCurrent()).toBe(false)
+    expect(memory.bytes).toBe(0)
+  })
+}
+
 test("obsolete content cannot publish after its version changes", async () => {
   const completions: ((value: { part: Part; version: string }) => void)[] = []
   const applied: Part[] = []
@@ -151,6 +209,45 @@ test("keeps the accepted body and its memory accounting until a newer version su
   next.release()
   materializer.dispose()
   expect(memory.bytes).toBe(0)
+})
+
+test("revalidation retires a cancelled same-version pending lease without evicting accepted siblings", async () => {
+  const completions: Array<(response: { part: Part; version: string }) => void> = []
+  const applied: string[] = []
+  const evicted: string[] = []
+  const signals: AbortSignal[] = []
+  const materializer = createPartMaterializer({
+    read: async (_, signal) => {
+      signals.push(signal)
+      return new Promise((resolve) => completions.push(resolve))
+    },
+    apply: (part) => applied.push(part.id),
+    evict: (part) => evicted.push(part.id),
+  })
+  const accepted = materializer.retain(summary("a"))
+  completions[0]({ part: body("accepted"), version: "one" })
+  await accepted.ready
+  const pending = materializer.retain(summary("b"))
+  try {
+    materializer.revalidate("message")
+    expect(accepted.isCurrent()).toBe(false)
+    expect(pending.isCurrent()).toBe(false)
+    expect(signals[1].aborted).toBe(true)
+    expect(evicted).toEqual([])
+    const successor = materializer.retain(summary("b"))
+    pending.release()
+    expect(signals).toHaveLength(3)
+    expect(successor.isCurrent()).toBe(true)
+    completions[1]({ part: body("obsolete"), version: "one" })
+    completions[2]({ part: body("successor"), version: "one" })
+    await Promise.all([pending.ready, successor.ready])
+    expect(applied).toEqual(["accepted", "successor"])
+    successor.release()
+  } finally {
+    accepted.release()
+    pending.release()
+    materializer.dispose()
+  }
 })
 
 test("revalidation cancels obsolete work while retaining accepted content until the new summary succeeds", async () => {

@@ -24,7 +24,7 @@ beforeAll(async () => {
         name: "composer-motion-fixture",
         configureServer(server) {
           server.middlewares.use((req, res, next) => {
-            if (req.url !== "/") return next()
+            if (req.url?.split("?")[0] !== "/") return next()
             res.setHeader("Content-Type", "text/html")
             res.end(
               '<meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div><script type="module" src="/composer-motion.tsx"></script>',
@@ -33,10 +33,15 @@ beforeAll(async () => {
         },
       },
     ],
-    resolve: { alias: { "@": path.resolve(import.meta.dir, "../../../src") } },
+    resolve: {
+      alias: {
+        "@": path.resolve(import.meta.dir, "../../../src"),
+        "lucide-solid": Bun.resolveSync("lucide-solid", path.resolve(import.meta.dir, "../../../../../packages/ui")),
+      },
+    },
     optimizeDeps: {
       noDiscovery: true,
-      include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid", "marked", "dompurify"],
+      include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid", "marked", "dompurify", "lucide-solid"],
     },
     server: {
       host: "127.0.0.1",
@@ -51,6 +56,9 @@ beforeAll(async () => {
   page.setDefaultTimeout(5000)
   page.setDefaultNavigationTimeout(40_000)
   page.on("pageerror", (error) => errors.push(error.message))
+  page.on("response", (response) => {
+    if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`)
+  })
   await page.goto(server.resolvedUrls!.local[0]!, { timeout: 40_000 })
   await page.getByRole("textbox", { name: "Message" }).waitFor()
   expect(errors).toEqual([])
@@ -62,6 +70,12 @@ afterAll(async () => {
 })
 
 async function toggleAndPause() {
+  await page
+    .locator(".session-composer")
+    .waitFor()
+    .catch((error: unknown) => {
+      throw new Error([String(error), ...errors].join("\n"))
+    })
   return page.evaluate(async () => {
     const root = document.querySelector<HTMLElement>(".session-composer")!
     const before = root.getBoundingClientRect().toJSON()
@@ -103,6 +117,61 @@ async function finish() {
   })
   await page.waitForFunction(() => !document.querySelector(".session-composer")?.hasAttribute("data-motion"))
 }
+
+test("the empty editor stays readable and can resize and expand inside conversation presentation", async () => {
+  await page.goto(`${server.resolvedUrls!.local[0]}?empty`)
+  const body = page.locator(".session-composer-editor")
+  await page.getByRole("textbox", { name: "Message" }).waitFor()
+  const initial = (await body.boundingBox())!
+  const placeholder = (await page.getByText("Describe a task", { exact: true }).boundingBox())!
+  expect(initial.height).toBe(64)
+  expect(placeholder.y).toBeGreaterThanOrEqual(initial.y)
+  expect(placeholder.y + placeholder.height).toBeLessThanOrEqual(initial.y + initial.height)
+
+  const handle = page.getByRole("separator", { name: "Resize editor" })
+  const grip = (await handle.boundingBox())!
+  const x = grip.x + grip.width / 2
+  const y = grip.y + grip.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x, y - 160, { steps: 8 })
+  await page.mouse.up()
+  expect((await body.boundingBox())!.height).toBe(initial.height + 160)
+
+  await page.getByRole("button", { name: "Expand editor" }).focus()
+  await page.keyboard.press("Enter")
+  await finish()
+  expect((await body.boundingBox())!.height).toBeGreaterThan(400)
+  const send = (await page.getByRole("button", { name: "Send", exact: true }).boundingBox())!
+  expect(send.y + send.height).toBeLessThanOrEqual(800)
+  await page.keyboard.press("Escape")
+  await finish()
+  expect((await body.boundingBox())!.height).toBe(initial.height + 160)
+  await page.goto(server.resolvedUrls!.local[0]!)
+})
+
+test("retaining an outgoing conversation does not replace the current header's height measurement", async () => {
+  await page.reload()
+  await page.getByRole("button", { name: "Switch conversation" }).click()
+  await page.locator("[data-conversation-retained] > div").waitFor()
+  await page.setViewportSize({ width: 960, height: 820 })
+  try {
+    await page.getByRole("button", { name: "Expand editor" }).focus()
+    await page.keyboard.press("Enter")
+    await finish()
+    const composer = (await page.locator(".session-composer").boundingBox())!
+    const header = (await page.locator("[data-conversation-current] [data-session-top-bar]").boundingBox())!
+    expect(composer.height).toBeGreaterThan(500)
+    expect(composer.y).toBeGreaterThanOrEqual(header.y + header.height)
+    expect(composer.y - header.y - header.height).toBeLessThan(20)
+    await page.getByRole("button", { name: "Admit conversation" }).click()
+    await page.waitForFunction(() => !document.querySelector("[data-conversation-retained]")?.childElementCount)
+    expect((await page.locator(".session-composer").boundingBox())!.height).toBe(composer.height)
+  } finally {
+    await page.setViewportSize({ width: 960, height: 800 })
+    await page.goto(server.resolvedUrls!.local[0]!)
+  }
+})
 
 test("expansion grows from the visible size, keeps its bottom anchor and smoothly shares width with preview", async () => {
   const editor = await page.getByRole("textbox", { name: "Message" }).elementHandle()

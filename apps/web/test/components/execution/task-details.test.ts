@@ -14,6 +14,7 @@ const task = {
   status: "unknown" as const,
   elapsedMs: null,
   elapsedActive: false,
+  elapsedLowerBound: false,
   tokens: { known: 0, unknown: 0, total: 0 },
   runs: [],
 }

@@ -57,6 +57,7 @@ const preferenceKeys = [
   "defaultSessionEnvironmentProfile",
   "activityDisplay",
   "compactReasoning",
+  "preferWorkBrief",
   "welcomeGames",
   "locale",
   "fullAccessAcknowledged",

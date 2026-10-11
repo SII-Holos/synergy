@@ -24,6 +24,46 @@ function createRoot() {
 }
 
 describe("createMarkdownStreamController", () => {
+  test("append settlement protects the DOM range without querying layout-dependent selection state", () => {
+    const root = createRoot()
+    document.body.append(root)
+    const animate = dom.window.HTMLElement.prototype.animate
+    const animations: Animation[] = []
+    dom.window.HTMLElement.prototype.animate = () => {
+      const animation = { cancel() {}, onfinish: null } as unknown as Animation
+      animations.push(animation)
+      return animation
+    }
+    const selection = document.getSelection()!
+    try {
+      const stream = createMarkdownStreamController(root)
+      stream.update("Original text. ")
+      const range = document.createRange()
+      range.setStart(root.querySelector("p")!.firstChild!, 0)
+      range.setEnd(root.querySelector("p")!.firstChild!, 8)
+      selection.addRange(range)
+      Object.defineProperty(selection, "isCollapsed", {
+        configurable: true,
+        get() {
+          throw new Error("Selection layout must not be queried during append settlement")
+        },
+      })
+      stream.update("Original text. newly streamed text. ")
+      expect(animations).toHaveLength(0)
+      for (const animation of animations)
+        animation.onfinish?.call(animation, new dom.window.Event("finish") as AnimationPlaybackEvent)
+      expect(selection.toString()).toBe("Original")
+      expect(root.textContent).toBe("Original text. newly streamed text.")
+      selection.removeAllRanges()
+      stream.end()
+    } finally {
+      Reflect.deleteProperty(selection, "isCollapsed")
+      selection.removeAllRanges()
+      dom.window.HTMLElement.prototype.animate = animate
+      root.remove()
+    }
+  })
+
   test("grapheme work stays incremental after a large settled prefix", () => {
     const root = createRoot()
     const animate = dom.window.HTMLElement.prototype.animate

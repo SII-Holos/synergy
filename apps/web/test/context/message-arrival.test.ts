@@ -33,3 +33,18 @@ test("arrival ownership excludes other servers, Scopes, Sessions and removed sub
   arrivals.remove(key, "message")
   expect(arrivals.take(key, "message")).toBe(false)
 })
+
+test("only a newly submitted message requests navigation, not receipt consumption or canonical handoff", () => {
+  const arrivals = createMessageArrivalState()
+  const owner = ["server", "scope", "session"]
+  expect(arrivals.submitted()).toBeUndefined()
+  arrivals.add(owner, "optimistic")
+  const intent = arrivals.submitted()
+  owner[2] = "changed"
+  expect(intent?.owner).toEqual(["server", "scope", "session"])
+  arrivals.take(intent!.owner, "optimistic")
+  arrivals.handoff(intent!.owner, "optimistic", "canonical")
+  expect(arrivals.submitted()).toBe(intent)
+  arrivals.add(intent!.owner, "next")
+  expect(arrivals.submitted()?.messageID).toBe("next")
+})

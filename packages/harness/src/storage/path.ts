@@ -141,6 +141,7 @@ export namespace StoragePath {
   export const rolloutRecoveryPending = () => ["meta", "rollout", "recovery-pending"]
   export const usageState = () => ["meta", "usage", "state"]
   export const usageRebuild = () => ["meta", "usage", "rebuild-v1"]
+  export const usageReplay = () => ["meta", "usage", "replay-v1"]
   export const usageOwner = (scopeID: string, owner: string) => ["usage", scopeID, owner]
   export const usageRun = (scopeID: string, owner: string, runID: string) => [...usageOwner(scopeID, owner), runID]
   export const usageRecord = (scopeID: string, owner: string, runID: string, kind: string, id: string) => [

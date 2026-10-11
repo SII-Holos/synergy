@@ -16,6 +16,13 @@ import { createLocalClient, type RuntimeClient } from "@ericsanchezok/synergy-lo
 import { openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 import { createRemoteClient } from "../remote-client"
 import { findRecordingError } from "@ericsanchezok/synergy-harness/session/rollout/error"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { z } from "zod"
+
+const InputUnavailableError = NamedError.create(
+  "InputUnavailableError",
+  z.object({ code: z.string(), message: z.string() }),
+)
 
 const TOOL: Record<string, [string, string]> = {
   todowrite: ["Todo", UI.Style.TEXT_WARNING_BOLD],
@@ -291,6 +298,11 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
             return (data.info.rootID ?? (data.info.role === "assistant" ? data.info.parentID : data.info.id)) === runID
           }
           if (descendants.has(id)) return true
+          const { data: progress } = await sdk.session.inputStatus(
+            { sessionID, messageID: runID },
+            { throwOnError: true },
+          )
+          if (!progress.canonical) return false
           const { data } = await sdk.session.runResult({ sessionID, runID }, { throwOnError: true })
           for (const snapshot of data.snapshots)
             if (snapshot.owner.kind === "session") descendants.add(snapshot.owner.sessionID)
@@ -455,8 +467,15 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
           while (true) {
             if (streamFailure) throw streamFailure
             if (cancellation) await cancellation
-            const { data: run } = await sdk.session.run({ sessionID, runID }, { throwOnError: true })
-            if (run.status !== "running") break
+            const { data: progress } = await sdk.session.inputStatus(
+              { sessionID, messageID: runID },
+              { throwOnError: true },
+            )
+            if (progress.state === "removed")
+              throw new InputUnavailableError({ code: "InputRemoved", message: "Input was removed before execution" })
+            if (progress.state === "failed" && !progress.canonical && progress.error)
+              throw new InputUnavailableError(progress.error)
+            if (["completed", "cancelled", "failed"].includes(progress.state)) break
             await Bun.sleep(250)
           }
           const { data: result } = await sdk.session.runResult({ sessionID, runID }, { throwOnError: true })
@@ -481,7 +500,7 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
           if (exitCode && args.format !== "json")
             UI.error(`Run ended: ${stopReason ?? result.run.status} (${result.run.recording} recording)`)
         } catch (error) {
-          if (runID) {
+          if (runID && !InputUnavailableError.isInstance(error)) {
             requestStop("cancelled")
             if (cancellation) await cancellation.catch(() => {})
           }

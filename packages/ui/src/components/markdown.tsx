@@ -21,6 +21,7 @@ import { sanitizeHtml } from "./markdown-sanitize"
 import { createMarkdownStreamController, type MarkdownStreamController } from "./markdown-stream"
 import { createMarkdownTerminalTransitionController } from "./markdown-terminal-transition"
 import { createMarkdownCache } from "./markdown-cache"
+import { readSelectionRanges } from "../utils/selection"
 
 type Entry = MarkdownRenderEntry
 
@@ -317,11 +318,10 @@ export function Markdown(
     interaction()
     if (rendered?.hash === appliedHash) return
     if (!rendered || !isCurrentMarkdownRender(rendered, local.text)) return
-    const selection = document.getSelection()
     if (
-      selection &&
-      !selection.isCollapsed &&
-      (container.contains(selection.anchorNode) || container.contains(selection.focusNode))
+      readSelectionRanges(document).some(
+        (range) => container.contains(range.startContainer) || container.contains(range.endContainer),
+      )
     )
       return
     if (document.activeElement !== document.body && container.contains(document.activeElement)) return

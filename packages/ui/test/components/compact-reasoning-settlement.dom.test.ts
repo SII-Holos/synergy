@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { JSDOM } from "jsdom"
 import { domFixture } from "../support/dom-fixtures"
+import type { TurnExecutionSummary } from "../../src/components/execution-completion"
 
 interface SettlementHarness {
   settle: () => void
@@ -9,6 +10,7 @@ interface SettlementHarness {
   clearStatus: () => void
   recoverAfterError: () => void
   setFollowing: (value: boolean) => void
+  setExecutionSummary: (value: TurnExecutionSummary) => void
 }
 
 let dom: JSDOM
@@ -141,14 +143,28 @@ describe("process settlement", () => {
     harness.settle()
     harness.clearStatus()
     await waitForUpdate()
-    expect(process().textContent).toContain("Worked for")
+    expect(process().textContent).toContain("Work completed")
+    expect(process().textContent).not.toContain("Worked for")
   })
   test("a recovered canonical reply settles the turn after an earlier assistant failure", async () => {
     harness.recoverAfterError()
     await waitForUpdate()
-    expect(process().textContent).toContain("Worked for")
+    expect(process().textContent).toContain("Work completed")
+    expect(process().textContent).not.toContain("Worked for")
     expect(document.querySelector('[data-component="error-card"]')).toBeNull()
     expect(document.querySelector('[data-kind="text"]')?.textContent).toContain("Here is the final answer")
     expect(document.body.textContent).toContain("Recovered answer.")
+  })
+  test("the process header shares the recorded execution duration and lower bound with the completion footer", async () => {
+    harness.reset()
+    harness.settle()
+    harness.setExecutionSummary({ status: "completed", elapsedMs: 2500 })
+    await waitForUpdate()
+    expect(process().textContent).toContain("Worked for 2 s")
+    expect(document.querySelector('[data-component="execution-completion"]')?.textContent).toContain("00:02")
+    harness.setExecutionSummary({ status: "completed", elapsedMs: 0, elapsedLowerBound: true })
+    await waitForUpdate()
+    expect(process().textContent).toContain("≥ 0")
+    expect(document.querySelector('[data-component="execution-completion"]')?.textContent).toContain("≥ 00:00")
   })
 })

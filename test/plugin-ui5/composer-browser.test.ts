@@ -15,9 +15,14 @@ test("custom composer submits once and a running response survives switching to 
   const provider = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
+    // The test owns the paused stream's lifetime across the workbench reload.
+    idleTimeout: 0,
     async fetch(request) {
       if (request.method === "GET")
-        return Response.json({ object: "list", data: [{ id: "fixture", object: "model", owned_by: "fixture" }] })
+        return Response.json({
+          object: "list",
+          data: ["fixture", "auxiliary"].map((id) => ({ id, object: "model", owned_by: "fixture" })),
+        })
       const input = await request.json()
       if (new URL(request.url).pathname.endsWith("/embeddings"))
         return Response.json({
@@ -47,10 +52,13 @@ test("custom composer submits once and a running response survives switching to 
                   `data: ${JSON.stringify({ id: "fixture-response", object: "chat.completion.chunk", created: 1, model: "fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`,
                 ),
               )
-            send({ role: "assistant", content: "Shared response" })
-            started.resolve()
-            await resume.promise
-            send({ content: " completed." })
+            const foreground = input.model === "fixture"
+            send({ role: "assistant", content: foreground ? "Shared response " : "Fixture title" })
+            if (foreground) {
+              started.resolve()
+              await resume.promise
+              send({ content: "completed." })
+            }
             send({}, "stop")
             controller.enqueue(encoder.encode("data: [DONE]\n\n"))
             controller.close()
@@ -83,7 +91,10 @@ test("custom composer submits once and a running response survives switching to 
                 npm: "@ai-sdk/openai-compatible",
                 env: [],
                 options: { baseURL: `${provider.url.origin}/v1`, apiKey: "fixture-only" },
-                models: { fixture: { name: "Fixture", tool_call: true, limit: { context: 128000, output: 4096 } } },
+                models: {
+                  fixture: { name: "Fixture", tool_call: true, limit: { context: 128000, output: 4096 } },
+                  auxiliary: { name: "Auxiliary", tool_call: true, limit: { context: 128000, output: 4096 } },
+                },
               },
             },
           },
@@ -94,7 +105,7 @@ test("custom composer submits once and a running response survives switching to 
     await preview.client.config.domain.update(
       {
         domain: "models",
-        configDomainUpdateInput: { config: { model: "fixture/fixture", nano_model: "fixture/fixture" } },
+        configDomainUpdateInput: { config: { model: "fixture/fixture", nano_model: "fixture/auxiliary" } },
       },
       { throwOnError: true },
     )
@@ -147,10 +158,16 @@ test("custom composer submits once and a running response survives switching to 
     }
     await page.waitForURL(/\/session\/ses_/)
     const sessionID = new URL(page.url()).pathname.split("/").at(-1)!
+    const runningReply = page
+      .locator('[data-component="session-turn"]')
+      .getByText(/^Shared\b/)
+      .first()
+    await runningReply.waitFor()
     const recovery = new URL(page.url())
     recovery.searchParams.set("safe-ui", "1")
     await page.goto(recovery.href)
     await page.locator("[data-component=prompt-input]").waitFor()
+    await runningReply.waitFor()
     resume.resolve()
     await page
       .locator('[data-component="session-turn"]')

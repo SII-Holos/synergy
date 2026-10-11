@@ -143,6 +143,9 @@ test.each(["message", "accepted-message"])(
       expect(await page.getByText("Inspect this project", { exact: true }).count()).toBe(1)
       expect(await page.locator("img").count()).toBe(1)
     }
+    await page.waitForFunction(() =>
+      document.querySelector('[role="status"]')?.textContent?.includes("Waiting for model response"),
+    )
     expect(await page.getByRole("status").textContent()).toContain("Waiting for model response")
     expect(await page.locator("[data-message-arrival]").count()).toBe(0)
     expect(errors).toEqual([])

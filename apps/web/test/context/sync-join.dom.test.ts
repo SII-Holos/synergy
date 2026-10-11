@@ -63,7 +63,7 @@ export const useGlobalSync = () => ({
   reconcileCortexFromSession: () => {},
   markActiveSession: () => {},
   partSnapshotAction: () => "apply",
-  partContentStore: { readThrough: (input) => input.read() },
+  partContentStore: { read: (_input, load) => load() },
   contentBudget: { remove: () => {} },
   data: { scope: [] },
 })

@@ -39,6 +39,7 @@ describe("capability metadata", () => {
 describe("permissionCapability", () => {
   test("maps registered permissions to their capability", () => {
     expect(permissionCapability("read")).toBe("file_read")
+    expect(permissionCapability("render")).toBe("session_state")
     expect(permissionCapability("bash")).toBe("shell")
     expect(permissionCapability("webfetch")).toBe("network_read")
     expect(permissionCapability("secrets")).toBe("secrets")

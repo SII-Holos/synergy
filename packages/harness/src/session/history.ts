@@ -10,6 +10,7 @@ import { fn } from "../util/fn"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
+import { SessionProgress } from "./progress"
 import { SessionMessageCache } from "./message-cache"
 import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
 import { SessionManager } from "./manager"
@@ -23,6 +24,7 @@ import { SnapshotRanges } from "./snapshot-ranges"
 import { SessionFileRestore } from "./file-restore"
 import type { Info } from "./types"
 import { prepareSessionMigrations } from "../migration"
+import { upgradeAccessRecord } from "../migration/import"
 
 const log = Log.create({ service: "session.history" })
 const PAGE_HYDRATION_CONCURRENCY = 16
@@ -121,9 +123,17 @@ export namespace SessionHistory {
     return { hidden, cut }
   }
 
-  async function requireDisplayMessage(session: Info, messageID: string) {
+  export async function requireDisplayMessage(session: Info, messageID: string) {
     const sessionID = session.id
-    await prepareSessionDisplay(session, { messageID })
+    if (!Storage.inTransaction() || Storage.inWriteTransaction())
+      await prepareSessionMigrations({ scopeID: session.scope.id, sessionID })
+    const key = StoragePath.messageInfo(
+      asScopeID(session.scope.id),
+      asSessionID(sessionID),
+      Identifier.asMessageID(messageID),
+    )
+    const info = MessageV2.canonicalMessage(upgradeAccessRecord(key, await Storage.read<MessageV2.Info>(key)))
+    await SessionHistoryDisplay.prepareWindow(session.scope.id, sessionID, [info])
     const [header, visibility] = await Promise.all([
       SessionHistoryDisplay.header(session.scope.id, sessionID, messageID),
       displayVisibility(session),
@@ -153,6 +163,35 @@ export namespace SessionHistory {
     const session = await SessionManager.requireSession(input.sessionID)
     await requireDisplayMessage(session, input.messageID)
     return SessionHistoryDisplay.messageDetails(input, session.scope.id)
+  }
+
+  export async function turnCompletion(sessionID: string, rootID: string, endedAt?: number) {
+    const session = await SessionManager.requireSession(sessionID)
+    const root = await requireDisplayMessage(session, rootID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    if (!root) return
+    return Storage.snapshot(async () => {
+      const visibility = await displayVisibility(session)
+      const end =
+        endedAt == null
+          ? undefined
+          : MessageV2.messageOrderMarker({ ...root.info, id: "\uffff", time: { created: endedAt } })
+      const orderTo = end && (!visibility.cut || end < visibility.cut) ? end : visibility.cut
+      for await (const info of MessageV2.readNewestInfos({
+        scopeID: asScopeID(session.scope.id),
+        sessionID: asSessionID(sessionID),
+        before: orderTo,
+      })) {
+        if (MessageV2.messageOrderMarker(info) < root.order) return
+        if (visibility.hidden.has(info.id)) continue
+        if (info.id !== rootID && info.rootID !== rootID) continue
+        if (info.role !== "assistant" || !SessionProgress.isTerminalAssistant(info) || info.time.completed == null)
+          return
+        return { completedAt: info.time.completed, failed: !!info.error }
+      }
+    })
   }
 
   export const SearchPage = z
@@ -190,7 +229,11 @@ export namespace SessionHistory {
     await prepareSessionDisplay(session)
     input.signal?.throwIfAborted()
     const release = UpgradeWork.priority(input.sessionID)
-    const preparation = await SessionHistorySearch.prepareBatch(session.scope.id, input.sessionID).finally(release)
+    const preparation = await SessionHistorySearch.prepareBatch(
+      session.scope.id,
+      input.sessionID,
+      input.signal,
+    ).finally(release)
     if (!preparation.ready) SessionHistorySearch.requestBackground(session.scope.id, input.sessionID)
     const fingerprint = new Bun.CryptoHasher("sha256")
       .update(
@@ -741,6 +784,34 @@ export namespace SessionHistory {
     const raw = await loadRawFromDisk(input.sessionID)
     const derived = MessageV2.deriveSemantics(raw)
     return sliceWithReferencedRoots(derived, input.limit)
+  }
+
+  export async function turnMessages(input: { sessionID: string; rootID: string; signal?: AbortSignal }) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    const root = await requireDisplayMessage(session, input.rootID)
+    const visibility = await displayVisibility(session)
+    const result: MessageV2.WithParts[] = []
+    let before = visibility.cut
+    for (;;) {
+      input.signal?.throwIfAborted()
+      const page = await Array.fromAsync(
+        MessageV2.readNewestInfos({
+          scopeID: asScopeID(session.scope.id),
+          sessionID: asSessionID(session.id),
+          before,
+          limit: 32,
+        }),
+      )
+      if (!page.length) break
+      for (const info of page) {
+        if (MessageV2.messageOrderMarker(info) < root.order) return MessageV2.deriveSemantics(result.reverse())
+        if (visibility.hidden.has(info.id) || (info.id !== input.rootID && info.rootID !== input.rootID)) continue
+        input.signal?.throwIfAborted()
+        result.push(await MessageV2.get({ sessionID: session.id, messageID: info.id }))
+      }
+      before = MessageV2.messageOrderMarker(page.at(-1)!)
+    }
+    return MessageV2.deriveSemantics(result.reverse())
   }
 
   export async function modelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {

@@ -426,7 +426,7 @@ export function SessionTopBar(props: {
 
   return (
     <>
-      <div ref={header} class="stb-root" data-compact={compact() ? "" : undefined}>
+      <div ref={header} class="stb-root" data-session-top-bar data-compact={compact() ? "" : undefined}>
         {/* Mobile layout */}
         <div class="md:hidden flex w-full items-center justify-between pointer-events-auto">
           <div class="flex items-center gap-1">

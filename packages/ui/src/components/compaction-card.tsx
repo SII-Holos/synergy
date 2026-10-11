@@ -7,7 +7,11 @@ import {
   type CompactionAttemptState,
 } from "./compaction-card-model"
 import { ProcessEventRow } from "./process-event-row"
-export { compactionErrorText } from "./compaction-card-model"
+export {
+  compactionErrorText,
+  resolveCompactionCardPresentation,
+  type CompactionAttemptState,
+} from "./compaction-card-model"
 
 export interface CompactionCardProps {
   part?: Part

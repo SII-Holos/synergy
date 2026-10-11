@@ -107,6 +107,8 @@ Important options:
 
 When `--scope` is omitted, `send` uses the launch directory (or `SYNERGY_CWD`). An existing directory is resolved and registered as a project Scope when needed, even if Synergy has not opened it before; a missing directory resolves to the home Scope. Pass `--scope` to select an already registered Scope without registering the launch directory. With `--attach`, the target runtime owns and validates the Scope ID.
 
+The command follows durable input status while a message is queued or preparing, then returns its settled execution result. Removal or preparation failure ends the command with an error; timeout and interruption cancel the accepted input even before execution starts.
+
 Piped stdin is appended to the prompt. The command subscribes to session events before prompting, renders completed tools and terminal text, and handles interactive `guarded` permission requests with allow-once or reject choices.
 
 ## Configuration, Providers, and Models

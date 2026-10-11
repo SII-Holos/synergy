@@ -171,11 +171,10 @@ export function startAgentWorker() {
 
   async function streamEvents(turn: ActiveTurn, stream: AsyncIterable<AgentSDKStreamPart>): Promise<void> {
     const coalescer = new AgentStreamEventCoalescer<AgentSDKStreamPart>()
-    for await (const value of stream) {
+    for await (const events of coalescer.batches(stream)) {
       turn.controller.signal.throwIfAborted()
-      await sendEvents(turn, coalescer.push(value))
+      await sendEvents(turn, events)
     }
-    await sendEvents(turn, coalescer.flush())
   }
 
   type Terminal =

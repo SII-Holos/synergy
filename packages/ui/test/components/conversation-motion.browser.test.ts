@@ -208,9 +208,10 @@ test("new stream suffixes fade without changing preceding text or paragraph iden
 test("a tool first received completed still enters while following", async () => {
   await move(3)
   await settled()
-  const result = await page.evaluate(() => {
+  const result = await page.evaluate(async () => {
     const harness = (window as unknown as { __chronologyHarness: Harness }).__chronologyHarness
     harness.fastTool()
+    await Promise.resolve()
     const tool = document.querySelector<HTMLElement>('[data-part-id="tool-fast"]')!
     const animation = tool.getAnimations()[0]
     animation?.pause()

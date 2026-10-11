@@ -109,6 +109,9 @@ export namespace RolloutTiming {
         value.headersMs = sent === undefined ? undefined : performance.now() - sent
         value.streaming = streaming
       },
+      streaming(streaming: boolean) {
+        value.streaming = streaming
+      },
       bytes() {
         if (value.firstByteAt !== undefined) return
         value.firstByteAt = Date.now()

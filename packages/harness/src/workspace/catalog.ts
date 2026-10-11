@@ -85,6 +85,7 @@ export namespace WorkspaceCatalog {
     path: string
     physicalID?: string
     metadata?: Record<string, unknown>
+    sharedWritableWorkspaceIDs?: string[]
   }
 
   const recordKey = StoragePath.workspace
@@ -280,6 +281,7 @@ export namespace WorkspaceCatalog {
       const existing = await findRegistration(candidate)
       if (existing) return existing
       await assertDirectoryAdmission(candidate)
+      candidate.sharedWritableWorkspaceIDs = await validateSharing(candidate, input.sharedWritableWorkspaceIDs ?? [])
       await Storage.write(recordKey(candidate.id), candidate)
       await Storage.write(scopeKey(candidate.scopeID, candidate.id), candidate.id)
       for (const key of locations(candidate)) await Storage.write(key, candidate.id)
@@ -565,23 +567,7 @@ export namespace WorkspaceCatalog {
         throw new BindingChanged({ message: "Workspace changed before sharing", workspaceID: id })
       if (previous.lifecycle !== "active" || previous.binding.state !== "bound")
         throw new Unavailable({ message: "Workspace has no active local binding", workspaceID: id })
-      const workspaceIDs = [...new Set(input.workspaceIDs)]
-      if (workspaceIDs.length > 64)
-        throw new Invalid({ message: "At most 64 shared Workspaces are allowed", workspaceID: id })
-      if (workspaceIDs.includes(id))
-        throw new Invalid({ message: "A Workspace cannot share with itself", workspaceID: id })
-      for (const targetID of workspaceIDs) {
-        const target = await get(targetID, input.scopeID)
-        if (
-          target.lifecycle !== "active" ||
-          target.binding.state !== "bound" ||
-          target.binding.hostID !== previous.binding.hostID
-        )
-          throw new Unavailable({
-            message: "Shared Workspace has no active binding on this host",
-            workspaceID: targetID,
-          })
-      }
+      const workspaceIDs = await validateSharing(previous, input.workspaceIDs)
       const next = Info.parse({
         ...previous,
         sharedWritableWorkspaceIDs: workspaceIDs,
@@ -591,6 +577,27 @@ export namespace WorkspaceCatalog {
       await Storage.write(recordKey(id), next)
       return next
     })
+  }
+
+  async function validateSharing(previous: Info, input: string[]) {
+    const workspaceIDs = [...new Set(input)]
+    if (workspaceIDs.length > 64)
+      throw new Invalid({ message: "At most 64 shared Workspaces are allowed", workspaceID: previous.id })
+    if (workspaceIDs.includes(previous.id))
+      throw new Invalid({ message: "A Workspace cannot share with itself", workspaceID: previous.id })
+    for (const targetID of workspaceIDs) {
+      const target = await get(targetID, previous.scopeID)
+      if (
+        target.lifecycle !== "active" ||
+        target.binding.state !== "bound" ||
+        target.binding.hostID !== previous.binding.hostID
+      )
+        throw new Unavailable({
+          message: "Shared Workspace has no active binding on this host",
+          workspaceID: targetID,
+        })
+    }
+    return workspaceIDs
   }
 
   export function projection(info: Info & { binding: { path: string } }): Workspace

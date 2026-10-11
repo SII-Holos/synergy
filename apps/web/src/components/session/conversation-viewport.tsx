@@ -54,9 +54,11 @@ export function ConversationViewport(props: {
             class="rounded-full! size-10 transition-colors"
             aria-label={_({ id: "session.conversation.latest", message: "Back to latest" })}
             onClick={() => {
-              props.autoScroll.forceScrollToBottom()
-              props.onScrolledUpChange(false)
-              props.onScrollToBottom?.()
+              if (props.onScrollToBottom) props.onScrollToBottom()
+              else {
+                props.autoScroll.forceScrollToBottom()
+                props.onScrolledUpChange(false)
+              }
             }}
           />
         </div>
@@ -88,10 +90,17 @@ export function ConversationViewport(props: {
             boundContentEl = el
             props.autoScroll.contentRef(el)
           }}
+          style={{ overflow: "clip" }}
           class={["min-w-0 w-full max-w-full", props.contentClass].filter(Boolean).join(" ")}
           classList={props.contentClassList}
         >
-          {props.children}
+          <div
+            data-conversation-motion
+            class="w-full min-w-0"
+            style={{ display: "inherit", "flex-direction": "inherit", "align-items": "inherit", gap: "inherit" }}
+          >
+            {props.children}
+          </div>
         </div>
       </div>
     </div>

@@ -3,7 +3,7 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
-import { RolloutSchema } from "@ericsanchezok/synergy-harness/session/rollout/schema"
+import { SessionInputProgress } from "@ericsanchezok/synergy-harness/session/input-progress"
 import { RolloutQuery } from "@ericsanchezok/synergy-harness/session/rollout/query"
 import type { SynergyClient } from "@ericsanchezok/synergy-sdk"
 import { RuntimeEvent, type RuntimeClient } from "@ericsanchezok/synergy-local-runtime/client"
@@ -51,7 +51,8 @@ export function createRemoteClient(sdk: SynergyClient): RuntimeClient {
           await sdk.session.list({}, { throwOnError: true }),
         ),
       message: async (input) => parsed(MessageV2.WithParts, await sdk.session.message(input, { throwOnError: true })),
-      run: async (input) => parsed(RolloutSchema.RunRecord, await sdk.session.run(input, { throwOnError: true })),
+      inputStatus: async (input) =>
+        parsed(SessionInputProgress.Info, await sdk.session.inputStatus(input, { throwOnError: true })),
       runResult: async (input) =>
         parsed(RolloutQuery.Result, await sdk.session.runResult(input, { throwOnError: true })),
       cancelRun: async (input) => {

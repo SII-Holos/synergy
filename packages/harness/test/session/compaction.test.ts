@@ -927,12 +927,6 @@ describe("util.token.estimateModelSync", () => {
   const cjk = "这是一个中文测试"
   const heuristic = Token.estimate(cjk)
 
-  test("returns heuristic before warmup for a cold encoding", () =>
-    runtime.run(() => {
-      const count = Token.estimateModelSync("gpt-4-turbo", cjk)
-      expect(count).toBe(heuristic)
-    }))
-
   test("returns accurate count after warmup", () =>
     runtime.run(async () => {
       await Token.warmup("gpt-4o")

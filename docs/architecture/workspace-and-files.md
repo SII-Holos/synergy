@@ -22,6 +22,8 @@ Owner-local migrations upgrade old embedded Session directories before navigatio
 
 Workbench project-folder responses preserve structured `WorkspaceUnavailable` reasons alongside availability and Git status. Unknown validation failures remain request errors. Git detection runs only after the binding validates. Folder confirmation uses revision-checked `workspace.rebind`, preserving Scope ownership, sharing and historical Worktree sources; it does not automatically adopt a mismatched legacy directory.
 
+Project-directory and embedded Session Workspace conversion reuse host-qualified catalog locations and retain their IDs, binding generations, physical identities and source metadata. Unregistered missing, inaccessible, non-directory or looping-symlink paths become unverified references. Default Workspace description uses the same historical conversion. Canonical path aliases contribute one folder; historical Worktrees retain their host and remain separate. Sharing is updated only between active bound records on the same host. Conversion does not require successful live directory validation; native access still does. See [historical binding migration](../decisions/implemented/bug-fix/2026-10-10-historical-project-binding-migration.md).
+
 Rebinding may release an obsolete native directory mount after its active users finish. Direct-directory detachment validates the immutable mount reference, holds lifecycle exclusion and only releases its watcher and receipt; it does not read, write or delete the directory. Materialized-mount detachment still verifies physical identity before removing its files. Unavailable identities continue to reject file access and execution until the new binding is committed.
 
 ## Storage backends and content
@@ -92,6 +94,8 @@ PTY WebSocket callbacks capture the upgrading request's Runtime and Scope contex
 Terminal startup resolves its native library before acquiring resource ownership. If supervisor preparation fails before taking over the process lease, the launcher releases that lease; missing assets and cancellation cannot leave unrelated filesystem operations blocked.
 
 ## Worktree Ownership
+
+New worktrees inherit only the selected source Workspace's direct shared-directory grants. Binding adoption validates physical identities, and catalog registration validates and publishes those grants with the first record revision. Repeated registration returns an existing record unchanged. Initial sharing does not require exclusive access to source-directory readers; changes to published sharing retain normal exclusion and revision checks. See [atomic sharing initialization](../decisions/implemented/bug-fix/2026-10-10-initialize-worktree-sharing-atomically.md).
 
 Worktrees have explicit owners such as a session, Cortex task, Blueprint workflow, or internal orchestration record. Creating or entering a worktree updates session workspace binding; leaving returns to the project checkout according to the worktree lifecycle.
 
@@ -339,6 +343,6 @@ Local Runtime records each Worktree's source Workspace and directory. Explicit s
 
 The owning migration runs through the central migration runner as a global catalog conversion at startup, without reading or rebinding historical Sessions. Project folders and sharing are ready before admission while unrelated Session history remains deferred. It distinguishes ordinary added folders from actual Git worktrees and catalogued historical worktrees, retaining source metadata and granting additional-folder access explicitly. A historical worktree is never promoted to a shared project folder merely because it appeared in the legacy sandbox list. The [product decision](../decisions/implemented/feature/2026-09-29-computer-project-main-folder-flow.md) records the rationale.
 
-Missing historical project directories remain catalogued and unavailable without blocking startup. Git discovery is optional when its working directory or command cannot be opened; catalogued Worktrees retain their identities, bindings and source metadata. Directory identity and storage errors still fail migration. See [unavailable project migration](../decisions/implemented/bug-fix/2026-10-01-unavailable-project-migration.md).
+Unavailable historical project directories remain catalogued without blocking startup. Git discovery is optional when its working directory or command cannot be opened; catalogued Worktrees retain their identities, bindings and source metadata. Unexpected identity-provider errors and storage failures still fail migration. See [unavailable project migration](../decisions/implemented/bug-fix/2026-10-01-unavailable-project-migration.md).
 
 Watcher recovery establishes the replacement subscription before reconciling the missed interval and reports active only after current-generation reconciliation succeeds. Failed reconciliation rejects the drain waiter and keeps recovery retryable. See [runtime recovery evidence](../decisions/implemented/bug-fix/2026-10-03-runtime-recovery-evidence.md).

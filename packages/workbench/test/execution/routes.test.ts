@@ -1,3 +1,4 @@
+import { RolloutExecution } from "@ericsanchezok/synergy-harness/rollout"
 import { afterAll, expect, spyOn, test } from "bun:test"
 import { Hono } from "hono"
 import { generateSpecs } from "hono-openapi"
@@ -13,10 +14,73 @@ import { ExecutionService } from "../../src/execution/service"
 import { ExecutionSchema } from "../../src/execution/schema"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { Usage } from "@ericsanchezok/synergy-harness/usage"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const app = new Hono().route("/session", ExecutionRoute())
+
+test("historical usage repair refreshes an already loaded task summary", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      const response = await RolloutArtifact.writeText(
+        call.owner,
+        'data: {"type":"response.completed","response":{"usage":{"input_tokens":1000,"input_tokens_details":{"cached_tokens":200},"output_tokens":500,"output_tokens_details":{"reasoning_tokens":0}}}}\n\n',
+        "application/octet-stream",
+      )
+      await RolloutLedger.writeAttempt({
+        version: 1,
+        id: crypto.randomUUID(),
+        owner: call.owner,
+        runID: rootID,
+        callID: call.id,
+        index: 0,
+        url: "https://fixture.invalid/responses",
+        method: "POST",
+        started: 1,
+        ended: 2,
+        status: "completed",
+        request: call.request,
+        response,
+        usageFinal: false,
+      })
+      await RolloutLedger.finishCall(call.owner, rootID, call.id, { status: "completed", transportCaptured: true })
+      await RolloutLedger.finishRun(call.owner, rootID, "completed")
+      expect((await ExecutionService.summary(session.id)).accounting.tokens.input.total).toBeNull()
+      await Usage.rebuild()
+      const stop = Usage.service()
+      try {
+        for (let i = 0; i < 500 && (await Usage.rebuildStatus())?.status !== "completed"; i++) await Bun.sleep(10)
+        expect((await Usage.rebuildStatus())?.status).toBe("completed")
+      } finally {
+        await stop()
+      }
+      const summary = await ExecutionService.summary(session.id)
+      expect(summary.accounting.tokens.input.total).toBe(1000)
+      expect(summary.accounting.apiEstimate.total).toBeCloseTo(0.0101)
+      expect(summary.cache.ratio).toBe(0.2)
+      expect((await ExecutionService.summary(session.id, rootID)).accounting).toEqual(summary.accounting)
+    }),
+  ))
+
+test("pausing a later round does not change the outcome of an earlier completed round", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      await complete(call)
+      await RolloutLedger.finishRun(call.owner, rootID, "completed")
+      const later = Identifier.ascending("message")
+      const segment = await RolloutLedger.beginSegment({ owner: call.owner, runID: later, input: {} })
+      await RolloutLedger.finishSegment(segment, "interrupted")
+      await Session.update(session.id, (draft) => {
+        draft.paused = { reason: "aborted", since: Date.now() }
+      })
+      const summary = await ExecutionService.summary(session.id)
+      expect(summary.status).toBe("paused")
+      expect(summary.rounds.find((round) => round.id === later)?.status).toBe("paused")
+      expect(summary.rounds.find((round) => round.id === rootID)?.status).toBe("completed")
+      expect((await ExecutionService.summary(session.id, rootID)).status).toBe("completed")
+    }),
+  ))
 
 test("task summaries expose persisted origin and delegation controls without changing accounting", () =>
   runtime.run(() =>
@@ -61,7 +125,7 @@ test("an unopened cancelled run does not invent an execution interval", () =>
         1,
       )
       const summary = await ExecutionService.summary(session.id)
-      expect(summary.status).toBe("cancelled")
+      expect(summary.status).toBe("unknown")
       expect(summary.elapsedMs).toBeNull()
       expect(summary.elapsedActive).toBe(false)
       await Session.remove(session.id)
@@ -91,6 +155,7 @@ test("execution summaries retain children, canonical usage and durable running s
         input: {},
         parent: { owner: call.owner, runID: rootID, messageID: rootID },
       })
+      await RolloutExecution.provide({ owner, runID: childRun }, () => RolloutExecution.start(segment))
       const childCall = await RolloutLedger.beginCall({
         owner,
         runID: childRun,
@@ -103,7 +168,7 @@ test("execution summaries retain children, canonical usage and durable running s
       const summary = await (await app.request("/session/" + session.id + "/execution/summary")).json()
       expect(summary.status).toBe("running")
       expect(summary.rounds[0].status).toBe("running")
-      expect(summary.elapsedActive).toBe(false)
+      expect(summary.elapsedActive).toBe(true)
       expect(summary.tasks).toHaveLength(1)
       expect(summary.tasks[0].title).toBe("Architecture review")
       expect(summary.tasks[0].nodeID).toBeString()
@@ -114,12 +179,20 @@ test("execution summaries retain children, canonical usage and durable running s
         status: "completed",
         sdkUsage: { inputTokens: 7, outputTokens: 3 },
       })
+      await RolloutExecution.stop(segment)
       await RolloutLedger.finishSegment(segment, "completed")
       await RolloutLedger.finishRun(owner, childRun, "completed")
       const next = await ExecutionService.summary(session.id)
       expect(next.status).toBe("completed")
       expect(next.tasks).toHaveLength(1)
       expect(next.accounting.tokens.total.known).toBe(530)
+      const detail = await ExecutionService.node(session.id, next.tasks[0].nodeID!)
+      expect(detail.execution).toMatchObject({
+        status: "completed",
+        elapsedMs: next.tasks[0].elapsedMs,
+        elapsedActive: false,
+        elapsedLowerBound: false,
+      })
     }),
   ))
 
@@ -152,12 +225,13 @@ test("children created during the initial snapshot are included before returning
         await ready
         const child = await Session.create({ parentID: session.id, title: "Concurrent analysis" })
         const owner = { kind: "session" as const, scopeID: child.scope.id, sessionID: child.id }
-        await RolloutLedger.beginSegment({
+        const segment = await RolloutLedger.beginSegment({
           owner,
           runID: Identifier.ascending("message"),
           input: {},
           parent: { owner: call.owner, runID: rootID, messageID: rootID },
         })
+        await RolloutExecution.provide({ owner, runID: segment.runID }, () => RolloutExecution.start(segment))
         release()
         const summary = await loading
         expect(summary.tasks.map((task) => task.sessionID)).toContain(child.id)
@@ -231,16 +305,16 @@ test("latest main-request context stays separate from cumulative usage and retai
         ...assistant,
         accounting: { kind: "rollout", callIDs: [primary.id] },
         contextUsage: {
-          version: 1,
+          version: 2,
           modelID: "test",
           providerID: "test",
           totalInput: 20,
-          categories: {
-            conversation: category(8),
-            toolActivity: category(5),
-            filesReferences: category(4),
-            instructions: category(2),
-          },
+          categories: [
+            { category: "userMessages", precision: "source", ...category(8) },
+            { category: "toolResults", precision: "source", ...category(5) },
+            { category: "attachments", precision: "source", ...category(4) },
+            { category: "systemInstructions", precision: "source", ...category(2) },
+          ],
           overhead: { attributedTokens: 1 },
           estimator: { kind: "model-tokenizer" },
           reconciliation: { mode: "residual", factor: 1 },
@@ -262,7 +336,9 @@ test("latest main-request context stays separate from cumulative usage and retai
       expect(summary.accounting.tokens.reasoning.known).toBe(200)
       expect(summary.accounting.tokens.total.known).toBe(1050)
       expect(summary.context?.inputTokens).toBe(20)
-      expect(summary.contextDistribution?.categories.conversation.attributedTokens).toBe(8)
+      expect(
+        summary.contextDistribution?.categories.find((entry) => entry.category === "userMessages")?.attributedTokens,
+      ).toBe(8)
     }),
   ))
 

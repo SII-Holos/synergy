@@ -6,8 +6,104 @@ type StreamEvent =
   | { type: "tool-input-delta"; id: string; delta: string }
   | { type: "tool-input-end"; id: string }
   | { type: "text-delta"; id: string; text: string; providerMetadata?: unknown }
+  | { type: "reasoning-delta"; id: string; text: string }
+  | { type: "text-end"; id: string }
+  | { type: "reasoning-end"; id: string }
 
 describe("AgentStreamEventCoalescer", () => {
+  test.each(["text-delta", "reasoning-delta"] as const)(
+    "delivers a held %s before the producer resumes",
+    async (type) => {
+      const resume = Promise.withResolvers<void>()
+      const event: StreamEvent = { type, id: "text_held", text: "visible prefix" }
+      const end: StreamEvent = { type: type === "text-delta" ? "text-end" : "reasoning-end", id: "text_held" }
+      const source = (async function* () {
+        yield event
+        await resume.promise
+        yield end
+      })()
+      const batches = new AgentStreamEventCoalescer<StreamEvent>().batches(source)
+      const first = batches.next()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        const delivered = await Promise.race([
+          first,
+          new Promise<undefined>((resolve) => {
+            timer = setTimeout(() => resolve(undefined), 250)
+          }),
+        ])
+        expect(delivered).toEqual({ done: false, value: [event] })
+        resume.resolve()
+        expect(await batches.next()).toEqual({ done: false, value: [end] })
+        expect((await batches.next()).done).toBe(true)
+      } finally {
+        clearTimeout(timer)
+        resume.resolve()
+        await first
+        await batches.return(undefined)
+      }
+    },
+  )
+
+  test("keeps one pending read under backpressure and closes the producer on cancellation", async () => {
+    const pending = Promise.withResolvers<IteratorResult<StreamEvent>>()
+    const event: StreamEvent = { type: "text-delta", id: "text_1", text: "visible" }
+    let reads = 0
+    let returns = 0
+    const source: AsyncIterable<StreamEvent> = {
+      [Symbol.asyncIterator]() {
+        return {
+          next() {
+            reads++
+            return reads === 1 ? Promise.resolve({ done: false as const, value: event }) : pending.promise
+          },
+          async return() {
+            returns++
+            return { done: true, value: undefined }
+          },
+        }
+      },
+    }
+    const coalescer = new AgentStreamEventCoalescer<StreamEvent>()
+    const batches = coalescer.batches(source)
+    try {
+      expect(await batches.next()).toEqual({ done: false, value: [event] })
+      await Bun.sleep(32)
+      expect(reads).toBe(2)
+      await batches.return(undefined)
+      expect(returns).toBe(1)
+      pending.resolve({ done: false, value: { ...event, text: "late" } })
+      expect((await batches.next()).done).toBe(true)
+      expect(coalescer.flush()).toEqual([])
+    } finally {
+      pending.resolve({ done: true, value: undefined })
+      await batches.return(undefined)
+    }
+  })
+
+  test("preserves an upstream failure when producer cleanup also fails", async () => {
+    const failure = new Error("provider failed")
+    const source: AsyncIterable<StreamEvent> = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => Promise.reject(failure),
+          return: () => Promise.reject(new Error("cleanup failed")),
+        }
+      },
+    }
+    await expect(new AgentStreamEventCoalescer<StreamEvent>().batches(source).next()).rejects.toBe(failure)
+  })
+
+  test("flushes the final delta at normal end without waiting for another event", async () => {
+    const event: StreamEvent = { type: "text-delta", id: "text_1", text: "complete" }
+    const source = (async function* () {
+      yield event
+    })()
+    const emitted: StreamEvent[] = []
+    for await (const batch of new AgentStreamEventCoalescer<StreamEvent>().batches(source)) emitted.push(...batch)
+    expect(emitted).toEqual([event])
+  })
+
   test("coalesces thousands of tool-input deltas for one call into one bounded frame", () => {
     const coalescer = new AgentStreamEventCoalescer<StreamEvent>()
     const frames: StreamEvent[][] = []

@@ -44,6 +44,7 @@
     "deps:check": "bun script/workspace-dependencies.ts && bun run --bun depcruise --config .dependency-cruiser.cjs --no-progress --output-type err packages/harness/src packages/local-runtime/src packages/cli/src packages/server/src packages/browser-runtime/src packages/library/src packages/note/src",
     "coverage:check": "bun turbo build --filter=@ericsanchezok/synergy-plugin && bun script/coverage-check.ts",
     "quality:quick": "bun script/gates.ts local",
+    "verify": "bun script/verify.ts",
     "quality": "bun run quality:quick && bun run release:test && bun turbo test",
     "typecheck": "bun turbo typecheck",
     "prepare": "husky",

@@ -1,0 +1,34 @@
+name: CI final metrics
+on:
+  # Read-only collector executes default-branch code and never consumes PR code or artifacts.
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: [CI]
+    types: [completed]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.4.2"
+      - name: Collect completed attempt metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_MEASURE_RUN: ${{ github.event.workflow_run.id }}
+          CI_MEASURE_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: bun script/ci/metrics.ts --run "$CI_MEASURE_RUN" --attempt "$CI_MEASURE_ATTEMPT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-final-metrics-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: .artifacts/ci/metrics.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30

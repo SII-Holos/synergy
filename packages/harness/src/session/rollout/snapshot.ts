@@ -5,6 +5,7 @@ import { Storage } from "../../storage/storage"
 import { RolloutArtifact } from "./artifact"
 import { RolloutJournal } from "./journal"
 import { RolloutSchema } from "./schema"
+import { prepareOwnerMigrations } from "../../migration"
 
 export namespace RolloutSnapshot {
   export const Info = z
@@ -15,6 +16,7 @@ export namespace RolloutSnapshot {
       gaps: z.array(z.number().int().positive()),
       runs: z.array(RolloutSchema.RunRecord),
       segments: z.array(RolloutSchema.ExecutionSegment),
+      intervals: z.array(RolloutSchema.ExecutionInterval).default([]),
       calls: z.array(RolloutSchema.CallRecord),
       attempts: z.array(RolloutSchema.AttemptRecord),
       tools: z.array(RolloutSchema.ToolExecutionRecord),
@@ -28,8 +30,25 @@ export namespace RolloutSnapshot {
     owner: RolloutSchema.Owner,
     options: { revision?: number; runID?: string; onProgress?: () => void } = {},
   ): Promise<Info> {
+    await RolloutJournal.prepare(owner)
     const revision = options.revision ?? (await RolloutJournal.head(owner)).committed
     return fold(owner, revision, options)
+  }
+
+  /** Current records share the journal commit; historical revisions still require strict replay. */
+  export async function projected(owner: RolloutSchema.Owner, runID: string): Promise<Info> {
+    await RolloutJournal.prepare(owner)
+    return Storage.snapshot(async () => {
+      const head = await RolloutJournal.head(owner)
+      if (head.allocated !== head.committed) throw new Error("Rollout owner requires recovery")
+      const base = RolloutArtifact.root(owner)
+      const records = new Map<string, { key: string[]; value: unknown }>()
+      for await (const row of Storage.records({ prefix: [...base, "runs", runID], limit: 128 })) {
+        const key = row.key.slice(base.length)
+        records.set(key.join("/"), { key, value: row.value })
+      }
+      return decode(empty(owner, head.committed), records)
+    })
   }
 
   const Checkpoint = z.object({ version: z.literal(1), boundary: z.string(), snapshot: Info }).strict()
@@ -47,6 +66,8 @@ export namespace RolloutSnapshot {
 
   /** Discardable presentation checkpoint; recovery and archives use strict read(). */
   export async function current(owner: RolloutSchema.Owner): Promise<Info> {
+    await RolloutJournal.prepare(owner)
+    await prepareOwnerMigrations(owner)
     const root = RolloutArtifact.root(owner)
     const key = [...root, "snapshot-v1"]
     const headKey = [...root, "journal", "head"]
@@ -82,18 +103,7 @@ export namespace RolloutSnapshot {
     options: { runID?: string; onProgress?: () => void } = {},
     seed?: Info,
   ): Promise<Info> {
-    const snapshot: Info = {
-      version: 1,
-      owner: RolloutSchema.Owner.parse(owner),
-      revision,
-      gaps: seed?.gaps.slice() ?? [],
-      runs: [],
-      segments: [],
-      calls: [],
-      attempts: [],
-      tools: [],
-      processes: [],
-    }
+    const snapshot = empty(owner, revision, seed?.gaps)
     const latest = new Map<string, { key: string[]; value: unknown }>()
     if (seed) {
       const add = (key: string[], value: unknown) =>
@@ -102,7 +112,7 @@ export namespace RolloutSnapshot {
           value,
         })
       for (const run of seed.runs) add(["runs", run.id, "info"], run)
-      for (const kind of ["segments", "calls", "tools", "processes"] as const)
+      for (const kind of ["segments", "intervals", "calls", "tools", "processes"] as const)
         for (const item of seed[kind]) add(["runs", item.runID, kind, item.id], item)
       for (const item of seed.attempts) add(["runs", item.runID, "attempts", item.callID, item.id], item)
     }
@@ -117,6 +127,26 @@ export namespace RolloutSnapshot {
         if (options.runID !== undefined && event.key[1] !== options.runID) continue
         latest.set(event.key.join("/"), event)
       }
+    return decode(snapshot, latest, options.onProgress)
+  }
+
+  function empty(owner: RolloutSchema.Owner, revision: number, gaps: number[] = []): Info {
+    return {
+      version: 1,
+      owner: RolloutSchema.Owner.parse(owner),
+      revision,
+      gaps: gaps.slice(),
+      runs: [],
+      segments: [],
+      intervals: [],
+      calls: [],
+      attempts: [],
+      tools: [],
+      processes: [],
+    }
+  }
+
+  function decode(snapshot: Info, latest: Map<string, { key: string[]; value: unknown }>, onProgress?: () => void) {
     function check(value: { owner: RolloutSchema.Owner; id: string; runID?: string }, key: string[]) {
       if (JSON.stringify(RolloutSchema.Owner.parse(value.owner)) !== JSON.stringify(snapshot.owner))
         throw new Error("Rollout record owner mismatch")
@@ -129,6 +159,10 @@ export namespace RolloutSnapshot {
         const run = RolloutSchema.RunRecord.parse(value)
         check(run, key)
         snapshot.runs.push(run)
+      } else if (key.length === 4 && key[2] === "intervals") {
+        const interval = RolloutSchema.ExecutionInterval.parse(value)
+        check(interval, key)
+        snapshot.intervals.push(interval)
       } else if (key.length === 4 && key[2] === "segments") {
         const segment = RolloutSchema.ExecutionSegment.parse(value)
         check(segment, key)
@@ -151,7 +185,7 @@ export namespace RolloutSnapshot {
         check(process, key)
         snapshot.processes.push(process)
       } else throw new Error("Unknown rollout journal record")
-      options.onProgress?.()
+      onProgress?.()
     }
     return snapshot
   }

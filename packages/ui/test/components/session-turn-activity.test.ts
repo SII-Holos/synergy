@@ -25,6 +25,7 @@ mock.module("@ericsanchezok/synergy-util/path", () => ({
   getFilename: (path: string) => path.slice(path.lastIndexOf("/") + 1),
 }))
 mock.module("@lingui/solid", () => ({
+  Trans: Empty,
   useLingui: () => ({ _: (descriptor: { message?: string; id: string }) => descriptor.message ?? descriptor.id }),
 }))
 mock.module("../../src/context", () => ({ useData: () => ({ store: {}, serverUrl: "" }) }))
@@ -55,6 +56,7 @@ mock.module("../../src/components/clipboard", () => ({
   }),
 }))
 mock.module("../../src/components/activity-trace", () => ({
+  AnimatedActivityCount: Empty,
   ActivityReasoningSummary: Empty,
   ActivityReceipt: Empty,
   ActivityTrace: Empty,
@@ -217,7 +219,7 @@ function activities(items: readonly ActivityTimelineItem[]) {
   return items.filter((item) => item.kind === "activity-group")
 }
 
-describe("reasoning item fragments", () => {
+describe("continuous reasoning fragments", () => {
   const fragment = (id: string, itemId = "rs_shared", provider = "openai-codex"): ReasoningPart =>
     ({
       ...reasoning(id),
@@ -239,19 +241,30 @@ describe("reasoning item fragments", () => {
     })
   })
 
-  test("tools, prose, other items and provider namespaces keep reasoning disclosures separate", () => {
-    for (const boundary of [
-      tool({ id: "read" }),
-      text("prose"),
-      fragment("other", "rs_other"),
-      fragment("provider", "rs_shared", "openai"),
-    ]) {
+  test("continuous reasoning ignores provider item boundaries and missing identities", () => {
+    const fragments = Array.from({ length: 27 }, (_, index) =>
+      fragment(`summary-${index}`, `rs_${Math.floor(index / 3)}`),
+    )
+    const parts = [
+      ...fragments,
+      fragment("other-provider", "rs_0", "openai"),
+      reasoning("unknown"),
+      { ...fragment("ambiguous"), metadata: { openai: { itemId: "a" }, other: { itemId: "b" } } },
+    ]
+    const original = structuredClone(parts)
+    const result = project({ parts })
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ partID: "summary-0", partIDs: parts.map((part) => part.id) })
+    expect(parts).toEqual(original)
+  })
+
+  test("tools, public prose and attachments end a reasoning disclosure", () => {
+    for (const boundary of [tool({ id: "read" }), text("prose"), attachment("file")]) {
       const result = project({ parts: [fragment("summary-0"), boundary, fragment("summary-1")] })
       const disclosures = result.filter((item) => item.kind === "activity-reasoning-summary")
-      expect(disclosures.length).toBe(boundary.type === "reasoning" ? 3 : 2)
+      expect(disclosures).toHaveLength(2)
       expect(disclosures.at(-1)?.partID).toBe("summary-1")
     }
-    expect(project({ parts: [reasoning("unknown-0"), reasoning("unknown-1")] })).toHaveLength(2)
   })
 })
 
@@ -520,6 +533,32 @@ describe("session turn activity projection", () => {
 
     expect(activities(items).map((group) => group.steps.map((step) => step.part.id))).toEqual([["read-a"], ["read-b"]])
     expect(items.some((item) => item.kind === "passthrough" && item.item.part?.id === "plugin")).toBe(true)
+  })
+
+  test.each(["render", "plugin_owned_tool"])("keeps %s content distinct from its source attachment", (name) => {
+    const completed = tool({ id: "visual", tool: name })
+    const file: AttachmentPart = {
+      id: "visual-source",
+      sessionID: completed.sessionID,
+      messageID: completed.messageID,
+      type: "attachment",
+      mime: "application/vnd.synergy.visual+json",
+      filename: "visual.synergy.json",
+      url: "asset://0123456789abcdef.bin",
+      presentation: { purpose: "deliverable", renderer: "file" },
+    }
+    if (completed.state.status === "completed") completed.state.attachments = [file]
+
+    const items = project({
+      parts: [completed],
+      isToolRenderBoundary: (tool) => tool === "plugin_owned_tool",
+    })
+
+    expect(items).toMatchObject([
+      { kind: "passthrough", item: { kind: "part", part: completed } },
+      { kind: "passthrough", item: { kind: "tool-attachments", part: completed, files: [file] } },
+    ])
+    expect(new Set(items.map(activityItemStableKey)).size).toBe(2)
   })
 
   test("computes boundaries before completed reasoning is hidden so group keys stay stable", () => {

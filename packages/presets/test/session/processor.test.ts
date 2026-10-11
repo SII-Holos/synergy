@@ -590,10 +590,14 @@ describe("SessionProcessor context usage persistence", () => {
     contextLimit: 100,
     usableInputLimit: 90,
     categories: {
-      conversation: { estimatedTokens: 4, items: 1 },
-      toolActivity: { estimatedTokens: 3, items: 1 },
-      filesReferences: { estimatedTokens: 2, items: 1 },
-      instructions: { estimatedTokens: 1, items: 1 },
+      userMessages: { estimatedTokens: 4, items: 1 },
+      toolResults: { estimatedTokens: 3, items: 1 },
+      attachments: { estimatedTokens: 2, items: 1 },
+      systemInstructions: { estimatedTokens: 1, items: 1 },
+      toolDefinitions: { estimatedTokens: 0, items: 0 },
+      assistantMessages: { estimatedTokens: 0, items: 0 },
+      skills: { estimatedTokens: 0, items: 0 },
+      injectedContext: { estimatedTokens: 0, items: 0 },
     },
     estimator: { kind: "model-tokenizer", encoding: "o200k_base" },
   }

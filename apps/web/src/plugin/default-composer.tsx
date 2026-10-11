@@ -56,8 +56,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
           .closest(".session-prompt-dock-content")
           ?.querySelector(".session-prompt-dock-footer")
           ?.getBoundingClientRect().height ?? 0
-      const topbar =
-        pane?.querySelector('[data-ui-part="conversation"]')?.firstElementChild?.getBoundingClientRect().height ?? 0
+      const topbar = pane?.querySelector("[data-conversation-current] [data-session-top-bar]")?.getBoundingClientRect()
       const request = outlet?.querySelector("[data-session-decision-stack]")
       const reserved = expanded()
         ? 0
@@ -73,8 +72,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
           rect?.bottom ?? window.innerHeight,
           viewport ? viewport.offsetTop + viewport.height : window.innerHeight,
         ) -
-          Math.max(rect?.top ?? 0, viewport?.offsetTop ?? 0) -
-          topbar -
+          Math.max(rect?.top ?? 0, topbar?.bottom ?? 0, viewport?.offsetTop ?? 0) -
           footer -
           reserved -
           dockSpacing -

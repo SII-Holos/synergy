@@ -1,6 +1,28 @@
 import { expect, test } from "bun:test"
 import { createPlan } from "../../script/ci/plan"
-import { inputArtifact, latestExecutions, workflowExecutions, type WorkflowJob } from "../../script/ci/github"
+import {
+  inputArtifact,
+  latestExecutions,
+  workflowExecutions,
+  reconcileExecutions,
+  type WorkflowJob,
+} from "../../script/ci/github"
+
+test("successful dependency evidence reconciles only the current running attempt, never failures or missing identities", () => {
+  const running = { unit: "case", attempt: "2", status: "in_progress", conclusion: null }
+  const success = { postgres: { result: "success" } }
+  expect(reconcileExecutions(plan, [running], success, "2")).toEqual([
+    { ...running, status: "completed", conclusion: "success" },
+  ])
+  expect(reconcileExecutions(plan, [running], success, "3")).toEqual([running])
+  expect(reconcileExecutions(plan, [running], {}, "2")).toEqual([running])
+  expect(reconcileExecutions(plan, [running], { postgres: { result: "failure" } }, "2")).toEqual([running])
+  expect(reconcileExecutions(plan, [], success, "2")).toEqual([])
+  for (const status of ["queued", "completed"]) {
+    const failed = { ...running, status, conclusion: "failure" }
+    expect(reconcileExecutions(plan, [failed], success, "2")).toEqual([failed])
+  }
+})
 
 const plan = createPlan({
   base: "base",

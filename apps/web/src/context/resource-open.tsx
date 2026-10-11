@@ -1,3 +1,4 @@
+import { useGlobalSDK } from "./global-sdk"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { catalogFileWorkspace } from "./file/workspace"
 import { buildWorkspaceFileBrowserUrl } from "@/utils/workspace-file-url"
@@ -111,6 +112,7 @@ export function ResourceOpenProvider(props: ParentProps) {
   const platform = usePlatform()
   let resourceRequest: AbortController | undefined
   const sdk = useSDK()
+  const globalSDK = useGlobalSDK()
   const sync = useSync()
   const canonicalView = createSessionDataView(sync.data)
   const transitions = useSessionTransition()
@@ -628,6 +630,54 @@ export function ResourceOpenProvider(props: ParentProps) {
         throw new Error(
           _({ id: "app.reference.invalid", message: "This reference has an invalid path, protocol or location." }),
         )
+      const source =
+        resource.kind === "asset" ? resource.url : resource.kind === "attachment" ? resource.file.url : undefined
+      if (source && /^asset:\/\/[a-f0-9]{16}\.bin$/.test(source) && params.id && globalSDK.capabilities.has("media")) {
+        const captured = ownerKey()
+        const reference = await sdk.client.render.find(
+          { sessionID: params.id, assetID: source.slice("asset://".length) },
+          { signal, throwOnError: true },
+        )
+        if (signal.aborted || ownerKey() !== captured) return { status: "cancelled" }
+        if (reference.data) {
+          const { RenderTool } = await import("@ericsanchezok/synergy-ui/render-tool")
+          if (signal.aborted || ownerKey() !== captured) return { status: "cancelled" }
+          const { target, descriptor } = reference.data
+          let flush: (() => Promise<void>) | undefined
+          const id = showResourceDialog(() => (
+            <div data-component="render-viewer">
+              <Dialog
+                title={descriptor.title}
+                size="content"
+                onCloseRequest={async () => {
+                  try {
+                    await flush?.()
+                    dialog.close(id)
+                  } catch {
+                    return
+                  }
+                }}
+              >
+                <RenderTool
+                  expanded
+                  onFlush={(value) => {
+                    flush = value
+                  }}
+                  onClose={() => dialog.close(id)}
+                  tool="render"
+                  status="completed"
+                  input={{ artifactTitle: descriptor.title }}
+                  metadata={{ visual: descriptor }}
+                  sessionId={target.sessionID}
+                  messageId={target.messageID}
+                  partId={target.partID}
+                />
+              </Dialog>
+            </div>
+          ))
+          return { status: "opened" }
+        }
+      }
       let opened = false
       if (resource.kind === "attachment")
         opened = await openAttachment(resource.file, { ...options, serverUrl: resource.serverUrl })

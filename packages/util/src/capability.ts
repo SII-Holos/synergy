@@ -395,7 +395,7 @@ export const SYNERGY_PERMISSION_CAPABILITY: Record<string, string> = {
   task_output: "file_read",
   question: "file_read",
   skill: "file_read",
-  render: "file_read",
+  render: "session_state",
   agenda_list: "file_read",
   agenda_logs: "file_read",
   session_list: "file_read",

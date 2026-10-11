@@ -46,6 +46,7 @@ export const primaryAgentMigration: Migration = {
   id: "20261002-session-primary-agent-identities",
   description: "Upgrade primary agent identities in Sessions, messages and pending input",
   scope: "session",
+  emptyInput: [["sessions"]],
   upgradeRecord,
   upSession(owner, progress) {
     return SessionMigrationTarget.provide(owner, () => upgradeRecords(progress))

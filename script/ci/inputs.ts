@@ -1,10 +1,10 @@
 import path from "node:path"
 import ts from "typescript"
-import type { RevisionSnapshot } from "./revision"
+import type { SourceSnapshot } from "./revision"
 import type { Task, TaskInputs, WorkspaceInput } from "./plan"
 export { selectionInputs } from "./selection-inputs"
 
-export async function taskInputs(snapshot: RevisionSnapshot, tasks: Task[], workspaces: WorkspaceInput[]) {
+export async function taskInputs(snapshot: SourceSnapshot, tasks: Task[], workspaces: WorkspaceInput[]) {
   const { files, inventory } = snapshot
   const read = (file: string) => snapshot.required(file)
   const owner = (file: string) => workspaces.find((entry) => file.startsWith(entry.directory + "/"))

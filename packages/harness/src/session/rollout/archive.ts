@@ -1,3 +1,4 @@
+import { RolloutExecutionMigration } from "./execution-migration"
 import { SessionStaging } from "../staging"
 import { SessionSchemaRegistry } from "../schema-registry"
 import { SessionExecutionContributions } from "../execution-contributions"
@@ -109,7 +110,7 @@ export namespace RolloutArchive {
       for (const snapshot of items.slice(1)) {
         merged.revision = Math.max(merged.revision, snapshot.revision)
         merged.gaps = [...new Set([...merged.gaps, ...snapshot.gaps])]
-        for (const key of ["runs", "segments", "calls", "attempts", "tools", "processes"] as const)
+        for (const key of ["runs", "segments", "intervals", "calls", "attempts", "tools", "processes"] as const)
           Object.assign(merged, {
             [key]: [...new Map([...merged[key], ...snapshot[key]].map((record) => [record.id, record])).values()],
           })
@@ -468,6 +469,7 @@ export namespace RolloutArchive {
         for (const records of [
           snapshot.runs,
           snapshot.segments,
+          snapshot.intervals,
           snapshot.calls,
           snapshot.attempts,
           snapshot.tools,
@@ -546,6 +548,7 @@ export namespace RolloutArchive {
         for (const records of [
           snapshot.runs,
           snapshot.segments,
+          snapshot.intervals,
           snapshot.calls,
           snapshot.attempts,
           snapshot.tools,
@@ -553,9 +556,16 @@ export namespace RolloutArchive {
         ]) {
           for (const record of records) {
             const value = remap(record, snapshot.owner) as typeof record
+            if ("clockID" in value && (value.status === "active" || value.status === "waiting")) {
+              if (value.status === "active") value.coverage = "partial"
+              value.status = value.status === "waiting" ? "closed" : "interrupted"
+              value.detectedAt = archive.manifest.exportedAt
+            }
             if (value.status === "running") {
               value.status = "interrupted"
-              value.ended = archive.manifest.exportedAt
+              if (records === snapshot.runs || records === snapshot.segments) {
+                Object.assign(value, { detectedAt: archive.manifest.exportedAt, ended: undefined })
+              } else value.ended = archive.manifest.exportedAt
             }
             const runID = "runID" in value ? value.runID : value.id
             let key: string[]
@@ -575,7 +585,9 @@ export namespace RolloutArchive {
                     ? "tools"
                     : records === snapshot.processes
                       ? "processes"
-                      : "segments"
+                      : records === snapshot.intervals
+                        ? "intervals"
+                        : "segments"
               key = [kind, value.id]
               if (kind === "calls")
                 Object.assign(value, {
@@ -651,6 +663,12 @@ export namespace RolloutArchive {
           }
         SessionSchemaRegistry.normalizeImport(data.info, "archive")
       }
+      for (const owner of owners.values())
+        await RolloutExecutionMigration.owner(
+          owner,
+          report.sessions.find((data) => owner.kind === "session" && sessionIDs.get(data.info.id) === owner.sessionID)
+            ?.messages,
+        )
       const result = await SessionImport.fromReport(report, { sessionIDs, rollout: true, stagingID })
       result.warnings.push(...archive.manifest.integrity.missing)
       if (!archive.manifest.integrity.complete) result.warnings.push("Imported rollout is a partial evidence snapshot.")

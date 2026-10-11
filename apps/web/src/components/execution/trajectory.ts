@@ -1,3 +1,4 @@
+import { newerExecutionSample } from "@/utils/execution-time"
 import { createEffect, createSignal, on, onCleanup, type Accessor } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import type { ExecutionSummary, ExecutionTrajectoryNode } from "@ericsanchezok/synergy-sdk/client"
@@ -143,7 +144,7 @@ export function createExecutionTrajectory(input: {
         !disposed &&
         input.sessionID() === sessionID &&
         input.runID() === runID &&
-        (!state.summary || response.data.revision >= state.summary.revision)
+        newerExecutionSample(state.summary, response.data, true)
       )
         setState("summary", reconcile(response.data))
     } catch {
@@ -228,7 +229,7 @@ export function createExecutionTrajectory(input: {
       return
     }
     const summary = input.runID() ? update.roundSummaries.find((value) => value.runID === input.runID()) : undefined
-    if (summary) setState("summary", reconcile(summary))
+    if (summary && newerExecutionSample(state.summary, summary)) setState("summary", reconcile(summary))
     const runs = input.runID()
       ? new Set([
           input.sessionID() + ":" + input.runID(),

@@ -111,10 +111,12 @@ export namespace RolloutTransport {
                   if (channel === "response") {
                     if (next.done) {
                       content?.finish()
+                      timing.streaming(content?.streaming ?? false)
                       timing.end()
                     } else if (next.value.byteLength) {
                       timing.bytes()
                       content?.append(next.value)
+                      timing.streaming(content?.streaming ?? false)
                     }
                   }
                   return next
@@ -327,7 +329,7 @@ export namespace RolloutTransport {
       const fetching = fetchFn(request, Object.keys(transportOptions).length ? transportOptions : undefined).then(
         (value) => {
           const mediaType = value.headers.get("content-type") ?? "application/octet-stream"
-          timing.headers(mediaType.includes("text/event-stream"))
+          timing.headers(false)
           content = RolloutUsageCapture.create("unknown", mediaType, undefined, undefined, timing.content)
           if (!value.body) timing.end()
           responseOK = value.ok

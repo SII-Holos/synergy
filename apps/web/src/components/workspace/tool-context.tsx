@@ -1,1 +1,1 @@
-export { ExecutionWorkbenchContent as ContextWorkbenchContent } from "@/components/execution/panel"
+export { ContextWorkbenchContent } from "../execution/context-dashboard"

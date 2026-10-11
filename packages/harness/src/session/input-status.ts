@@ -23,6 +23,10 @@ export namespace SessionInputStatus {
         ),
       ])
       const item = (await SessionInbox.list(session.id)).find((item) => item.messageID === input.messageID)
+      const removed =
+        !item && !message
+          ? (await SessionInbox.listRemoved(session.id)).find((item) => item.messageID === input.messageID)
+          : undefined
       const run = await RolloutLedger.getRun(
         RolloutLifecycle.owner(session),
         (message?.role === "user" ? message.rootID : undefined) ?? input.messageID,
@@ -30,28 +34,30 @@ export namespace SessionInputStatus {
         if (error instanceof Storage.NotFoundError) return
         throw error
       })
-      if (!item && !message && !run) throw new Storage.NotFoundError({ message: "Input was not found" })
+      if (!item && !message && !run && !removed) throw new Storage.NotFoundError({ message: "Input was not found" })
       const progress = SessionInputProgress.current(session.id, input.messageID)
       const terminal =
         run?.status === "completed" || run?.status === "cancelled" || run?.status === "failed" ? run.status : undefined
       const state =
         terminal ??
-        (item?.status === "failed" || (item && session.paused)
-          ? "failed"
-          : item
-            ? (progress?.state ?? "accepted")
-            : message?.role === "user" && !message.isRoot
-              ? "completed"
-              : run?.input || SessionManager.isRunning(session.id)
-                ? "running"
-                : "preparing")
+        (removed
+          ? "removed"
+          : item?.status === "failed" || (item && session.paused)
+            ? "failed"
+            : item
+              ? (progress?.state ?? "accepted")
+              : message?.role === "user" && !message.isRoot
+                ? "completed"
+                : run?.input || SessionManager.isRunning(session.id)
+                  ? "running"
+                  : "preparing")
       return {
         ...input,
         state,
         durable: true,
         canonical: Boolean(message),
         updatedAt: run?.ended ?? progress?.updatedAt ?? item?.time.updated ?? item?.time.created ?? run?.started ?? 0,
-        ...(item ? { itemID: item.id } : {}),
+        ...(item || removed ? { itemID: (item ?? removed)!.id } : {}),
         ...(item?.failReason
           ? { error: { code: "InputMaterializationError", message: item.failReason } }
           : item && session.paused

@@ -82,9 +82,9 @@ test.each(["text", "tool", "recovery"] as const)(
     const { RolloutArtifact } = await import(${JSON.stringify(path.join(harness, "session/rollout/artifact.ts"))});
     await using handle = await StorageMaintenance.open();
     if (handle.manifest.phase !== "active") throw new Error("Global authority did not activate");
-    if ((await SessionCompat.stats()).pending !== (restart || ${kind === "recovery"} ? 0 : 1)) throw new Error("Release upgrade waited for all history");
+    if ((await SessionCompat.stats()).pending !== (restart ? 0 : 1)) throw new Error("Release upgrade waited for all history");
     await ScopeContext.provide({ scope: Scope.home(), fn: () => Session.create({ title: "New work" }) });
-    if ((await SessionCompat.stats()).pending !== (restart || ${kind === "recovery"} ? 0 : 1)) throw new Error("Creating new work imported unrelated history");
+    if ((await SessionCompat.stats()).pending !== (restart ? 0 : 1)) throw new Error("Creating new work imported unrelated history");
     try {
       await SessionCompat.requireImported(${JSON.stringify(fixture.records[0].value.id)});
     } catch (error) {

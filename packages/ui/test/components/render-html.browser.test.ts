@@ -66,6 +66,7 @@ type RenderStreamState = {
   title?: string
   error?: string
   output?: string
+  sourceAttachment?: boolean
 }
 
 async function renderStream(options: RenderStreamState) {
@@ -89,6 +90,28 @@ async function executionDetails() {
     harness.setToolDetailFallback(true)
   })
 }
+
+test("keeps the inline visual and one source attachment through mode switches and remounts", async () => {
+  await renderStream({
+    status: "completed",
+    html: '<p id="visual-result">The visual content remains visible.</p>',
+    title: "Visual with source",
+    sourceAttachment: true,
+  })
+  for (const mode of ["full", "balanced", "minimal"]) {
+    await page.evaluate((mode) => {
+      const harness = (window as unknown as { __chronologyHarness: { setMode(mode: string): void; remount(): void } })
+        .__chronologyHarness
+      harness.setMode(mode)
+      harness.remount()
+    }, mode)
+    await page.frameLocator('[data-component="render-html"] iframe').locator("#visual-result").waitFor()
+    expect(await page.locator('[data-component="render-tool"]').count()).toBe(1)
+    const attachments = page.locator('[data-component="attachment-card"]')
+    expect(await attachments.count()).toBe(1)
+    expect(await attachments.innerText()).toContain("visual.synergy.json")
+  }
+})
 
 test("streams Render inline from pending arguments to the completed visual", async () => {
   await page.evaluate(() => {
@@ -198,21 +221,18 @@ test("fullbleed content fits the frame without clipping or double padding", asyn
     '<html><head><style>.visual { height:150px; width:100% }</style></head><body><div class="visual" data-render-fullbleed>Full width</div></body></html>',
   ]) {
     await visual(html)
-    const metrics = await frame().evaluate((element) => {
-      const iframe = element as HTMLIFrameElement
-      const root = iframe.contentDocument!.querySelector("[data-render-fullbleed]")!.getBoundingClientRect()
-      return {
-        left: root.left,
-        top: root.top,
-        width: root.width,
-        frame: iframe.clientWidth,
-        height: iframe.clientHeight,
-      }
-    })
+    const frameSize = await frame().boundingBox()
+    const metrics = await page
+      .frameLocator('[data-component="render-html"] iframe')
+      .locator("body")
+      .evaluate((body) => {
+        const root = body.querySelector("[data-render-fullbleed]")!.getBoundingClientRect()
+        return { left: root.left, top: root.top, width: root.width }
+      })
     expect(metrics.left).toBe(0)
     expect(metrics.top).toBe(0)
-    expect(metrics.width).toBe(metrics.frame)
-    expect(metrics.height).toBe(150)
+    expect(metrics.width).toBe(frameSize!.width)
+    expect(frameSize!.height).toBe(150)
   }
 })
 
@@ -220,28 +240,33 @@ test("theme updates repaint the existing document and retain native disclosure a
   await visual(
     '<details id="detail"><summary>More</summary><p>Retained detail</p></details><div style="height:900px">Long result</div>',
   )
-  await frame().evaluate((element) => {
-    const doc = (element as HTMLIFrameElement).contentDocument!
-    doc.querySelector("details")!.open = true
-    doc.scrollingElement!.scrollTop = 120
-    ;(element as HTMLIFrameElement & { retainedDocument: Document }).retainedDocument = doc
-  })
+  await page
+    .frameLocator('[data-component="render-html"] iframe')
+    .locator("body")
+    .evaluate((body) => {
+      const doc = body.ownerDocument
+      doc.querySelector("details")!.open = true
+      doc.scrollingElement!.scrollTop = 120
+      ;(doc.defaultView as Window & { retainedDocument?: Document }).retainedDocument = doc
+    })
   await page.evaluate(() => {
     document.documentElement.dataset.colorScheme = "dark"
     document.documentElement.style.setProperty("--text-base", "rgb(220, 230, 240)")
     document.dispatchEvent(new Event("synergy:theme-change"))
   })
   await page.waitForTimeout(150)
-  const retained = await frame().evaluate((element) => {
-    const iframe = element as HTMLIFrameElement & { retainedDocument: Document }
-    const doc = iframe.contentDocument!
-    return {
-      same: doc === iframe.retainedDocument,
-      open: doc.querySelector("details")!.open,
-      scroll: doc.scrollingElement!.scrollTop,
-      color: doc.defaultView!.getComputedStyle(doc.body).color,
-    }
-  })
+  const retained = await page
+    .frameLocator('[data-component="render-html"] iframe')
+    .locator("body")
+    .evaluate((body) => {
+      const doc = body.ownerDocument
+      return {
+        same: doc === (doc.defaultView as Window & { retainedDocument?: Document }).retainedDocument,
+        open: doc.querySelector("details")!.open,
+        scroll: doc.scrollingElement!.scrollTop,
+        color: doc.defaultView!.getComputedStyle(doc.body).color,
+      }
+    })
   expect(retained.same).toBe(true)
   expect(retained.open).toBe(true)
   expect(retained.scroll).toBe(120)
@@ -254,17 +279,23 @@ test("theme updates repaint the existing document and retain native disclosure a
   })
   await page.waitForTimeout(150)
   expect(
-    await frame().evaluate(
-      (element) =>
-        (element as HTMLIFrameElement).contentDocument ===
-        (element as HTMLIFrameElement & { retainedDocument: Document }).retainedDocument,
-    ),
+    await page
+      .frameLocator('[data-component="render-html"] iframe')
+      .locator("body")
+      .evaluate(
+        (body) =>
+          body.ownerDocument ===
+          (body.ownerDocument.defaultView as Window & { retainedDocument?: Document }).retainedDocument,
+      ),
   ).toBe(true)
-  const finalTheme = await frame().evaluate((element) => {
-    const doc = (element as HTMLIFrameElement).contentDocument!
-    const style = doc.defaultView!.getComputedStyle(doc.body)
-    return { color: style.color, font: style.fontFamily }
-  })
+  const finalTheme = await page
+    .frameLocator('[data-component="render-html"] iframe')
+    .locator("body")
+    .evaluate((body) => {
+      const doc = body.ownerDocument
+      const style = doc.defaultView!.getComputedStyle(doc.body)
+      return { color: style.color, font: style.fontFamily }
+    })
   expect(finalTheme.color).toBe("rgb(210, 220, 230)")
   expect(finalTheme.font).toContain("Georgia")
 })
@@ -285,11 +316,14 @@ test("theme and font updates during document loading use the latest host values"
     document.dispatchEvent(new Event("synergy:font-change"))
   })
   await page.frameLocator('[data-component="render-html"] iframe').locator("#loading-theme").waitFor()
-  const theme = await frame().evaluate((element) => {
-    const doc = (element as HTMLIFrameElement).contentDocument!
-    const style = doc.defaultView!.getComputedStyle(doc.body)
-    return { color: style.color, font: style.fontFamily }
-  })
+  const theme = await page
+    .frameLocator('[data-component="render-html"] iframe')
+    .locator("body")
+    .evaluate((body) => {
+      const doc = body.ownerDocument
+      const style = doc.defaultView!.getComputedStyle(doc.body)
+      return { color: style.color, font: style.fontFamily }
+    })
   expect(theme.color).toBe("rgb(120, 130, 140)")
   expect(theme.font).toContain("Georgia")
 })
@@ -351,20 +385,23 @@ test("keeps large visuals bounded and opens an accessible viewer with focus retu
   expect(await page.locator('[data-component="render-html"] iframe').count()).toBe(1)
 })
 
-test("blocks malformed-document resource loads and HTML/SVG/MathML navigation in both presentations", async () => {
-  const requests: string[] = []
-  const denied = /render-invalid\.example|render-denied/
-  await page.route(denied, async (route) => {
-    requests.push(route.request().url())
-    await route.abort()
-  })
-  const content = `<meta http-equiv="refresh" content="0;url=/render-denied/refresh"><script>parent.document.body.dataset.compromised = 'true'</script><img src="https://render-invalid.example/image"><style>@import url("https://render-invalid.example/style"); #safe { color: var(--render-text-strong); }</style><form action="/render-denied/form"><button>Submit</button></form><a id="html-link" href="/render-denied/link" tabindex="0" target="_self" ping="https://render-invalid.example/ping">Leave visual</a><svg width="240" height="70"><defs><rect id="shape" width="20" height="20" /></defs><use href="#shape" /><a href="https://render-invalid.example/svg"><text x="25" y="20">SVG link</text></a><a xlink:href="/render-denied/svg"><text x="25" y="40">SVG legacy</text><set attributeName="href" to="/render-denied/smil" /></a></svg><math href="https://render-invalid.example/math"><mi id="math-link" href="/render-denied/math" tabindex="0">x</mi><mo xlink:href="/render-denied/math-legacy">+</mo><mn>1</mn></math><details><summary>More</summary><p>Preserved native detail</p></details><p id="safe">Safe result</p>`
-  try {
-    for (const html of [
-      content,
-      `<!-- <head> -->${content}`,
-      `<html><img src="https://render-invalid.example/early"><head><style>p { font-weight: 500; }</style></head><body>${content}</body></html>`,
-    ]) {
+test.each(["fragment", "commented head", "misordered head"] as const)(
+  "blocks resource loads and HTML/SVG/MathML navigation in both presentations (%s)",
+  async (kind) => {
+    const requests: string[] = []
+    const denied = /render-invalid\.example|render-denied/
+    await page.route(denied, async (route) => {
+      requests.push(route.request().url())
+      await route.abort()
+    })
+    const content = `<meta http-equiv="refresh" content="0;url=/render-denied/refresh"><script>parent.document.body.dataset.compromised = 'true'</script><img src="https://render-invalid.example/image"><style>@import url("https://render-invalid.example/style"); #safe { color: var(--render-text-strong); }</style><form action="/render-denied/form"><button>Submit</button></form><a id="html-link" href="/render-denied/link" tabindex="0" target="_self" ping="https://render-invalid.example/ping">Leave visual</a><svg width="240" height="70"><defs><rect id="shape" width="20" height="20" /></defs><use href="#shape" /><a href="https://render-invalid.example/svg"><text x="25" y="20">SVG link</text></a><a xlink:href="/render-denied/svg"><text x="25" y="40">SVG legacy</text><set attributeName="href" to="/render-denied/smil" /></a></svg><math href="https://render-invalid.example/math"><mi id="math-link" href="/render-denied/math" tabindex="0">x</mi><mo xlink:href="/render-denied/math-legacy">+</mo><mn>1</mn></math><details><summary>More</summary><p>Preserved native detail</p></details><p id="safe">Safe result</p>`
+    try {
+      const html =
+        kind === "fragment"
+          ? content
+          : kind === "commented head"
+            ? `<!-- <head> -->${content}`
+            : `<html><img src="https://render-invalid.example/early"><head><style>p { font-weight: 500; }</style></head><body>${content}</body></html>`
       await visual(html)
       for (const expanded of [false, true]) {
         if (expanded) {
@@ -386,7 +423,7 @@ test("blocks malformed-document resource loads and HTML/SVG/MathML navigation in
         await current.locator("summary").click()
         expect((await current.locator("details").getAttribute("open")) !== null).toBe(open === null)
         expect(await current.locator("use").getAttribute("href")).toBe("#shape")
-        expect(await current.locator("form, script, meta[http-equiv=refresh], set").count()).toBe(0)
+        expect(await current.locator("form, script:not([nonce]), meta[http-equiv=refresh], set").count()).toBe(0)
         expect(await current.locator("#html-link").getAttribute("href")).toBeNull()
         expect(await current.locator("#safe").count()).toBe(1)
         if (expanded) {
@@ -394,13 +431,14 @@ test("blocks malformed-document resource loads and HTML/SVG/MathML navigation in
           await page.getByRole("dialog").waitFor({ state: "hidden" })
         }
       }
+      expect(await page.locator("body").getAttribute("data-compromised")).toBeNull()
+      expect(requests).toEqual([])
+    } finally {
+      await page.unroute(denied)
     }
-    expect(await page.locator("body").getAttribute("data-compromised")).toBeNull()
-    expect(requests).toEqual([])
-  } finally {
-    await page.unroute(denied)
-  }
-}, 20000)
+  },
+  20000,
+)
 
 test("narrow viewport and reduced motion keep the visual and viewer controls reachable", async () => {
   await page.setViewportSize({ width: 320, height: 600 })

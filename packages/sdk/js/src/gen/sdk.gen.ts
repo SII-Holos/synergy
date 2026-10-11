@@ -614,6 +614,13 @@ import type {
   RegistryPublishInput,
   RegistryRefreshErrors,
   RegistryRefreshResponses,
+  RenderFindErrors,
+  RenderFindResponses,
+  RenderGetErrors,
+  RenderGetResponses,
+  RenderStateWrite,
+  RenderUpdateErrors,
+  RenderUpdateResponses,
   ReviewCompareErrors,
   ReviewCompareResponses,
   ReviewFileErrors,
@@ -698,6 +705,12 @@ import type {
   SessionExecutionContentSearchResponses,
   SessionExecutionContentSectionsErrors,
   SessionExecutionContentSectionsResponses,
+  SessionExecutionContextHistoryErrors,
+  SessionExecutionContextHistoryResponses,
+  SessionExecutionContextItemsErrors,
+  SessionExecutionContextItemsResponses,
+  SessionExecutionContextSnapshotErrors,
+  SessionExecutionContextSnapshotResponses,
   SessionExecutionNodeErrors,
   SessionExecutionNodeResponses,
   SessionExecutionSummaryErrors,
@@ -2787,6 +2800,140 @@ export class Session extends HeyApiClient {
       ThrowOnError
     >({
       url: "/session/{sessionID}/execution/summary",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read context request history
+   */
+  public executionContextHistory<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      runID?: string
+      cursor?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "runID" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionContextHistoryResponses,
+      SessionExecutionContextHistoryErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/context/history",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read one context request snapshot
+   */
+  public executionContextSnapshot<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      callID: string
+      directory?: string
+      scopeID?: string
+      runID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "callID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "runID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionContextSnapshotResponses,
+      SessionExecutionContextSnapshotErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/context/snapshots/{callID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a bounded context source index
+   */
+  public executionContextItems<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      callID: string
+      directory?: string
+      scopeID?: string
+      runID?: string
+      cursor?: string
+      limit?: number
+      category?:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+      query?: string
+      version?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "callID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "runID" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "category" },
+            { in: "query", key: "query" },
+            { in: "query", key: "version" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionContextItemsResponses,
+      SessionExecutionContextItemsErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/context/snapshots/{callID}/items",
       ...options,
       ...params,
     })
@@ -15227,6 +15374,115 @@ export class Voice extends HeyApiClient {
   }
 }
 
+export class Render extends HeyApiClient {
+  /**
+   * Locate an owned visual source
+   */
+  public find<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      assetID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "assetID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<RenderFindResponses, RenderFindErrors, ThrowOnError>({
+      url: "/render/source/{sessionID}/{assetID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read an owned visual
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      partID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "path", key: "partID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<RenderGetResponses, RenderGetErrors, ThrowOnError>({
+      url: "/render/{sessionID}/{messageID}/{partID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Save visual state without invoking a model
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      partID: string
+      directory?: string
+      scopeID?: string
+      renderStateWrite?: RenderStateWrite
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "path", key: "partID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "renderStateWrite", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<RenderUpdateResponses, RenderUpdateErrors, ThrowOnError>({
+      url: "/render/{sessionID}/{messageID}/{partID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class App extends HeyApiClient {
   /**
    * Write log
@@ -16222,6 +16478,8 @@ export class SynergyClient extends HeyApiClient {
   registry = new Registry({ client: this.client })
 
   voice = new Voice({ client: this.client })
+
+  render = new Render({ client: this.client })
 
   app = new App({ client: this.client })
 

@@ -156,6 +156,7 @@ const BUILTIN_SETTINGS_COPY = {
       { id: "settings.general.monoFont.title", message: "Monospace font" },
       { id: "settings.general.language.title", message: "Interface language" },
       { id: "settings.general.activityDisplay.title", message: "Activity display" },
+      { id: "settings.general.preferWorkBrief.title", message: "Prefer action descriptions" },
       { id: "settings.general.workspace.title", message: "New task starting point" },
       { id: "settings.general.welcomeGames.title", message: "New task games" },
       { id: "settings.general.updates.title", message: "Product updates" },

@@ -721,7 +721,7 @@ describe("LatticeRunService v2", () => {
         const oldDeliveryKey = delivered.effect.deliveryKey
         const oldItem = (await SessionInbox.list(session.id)).find((item) => item.deliveryKey === oldDeliveryKey)
         if (!oldItem) throw new Error("expected queued prompt")
-        await SessionInbox.materializeItem(oldItem)
+        await SessionInbox.materializeItem(await SessionInbox.getStored(oldItem.sessionID, oldItem.id))
         await SessionInbox.remove({ sessionID: session.id, itemID: oldItem.id })
 
         const resumed = await LatticeRunService.resume(run.id)

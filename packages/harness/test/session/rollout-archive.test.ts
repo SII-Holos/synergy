@@ -1,17 +1,79 @@
 import { Storage } from "../../src/storage/storage"
 import { expect, test } from "bun:test"
 import { Uint8ArrayWriter, Uint8ArrayReader, ZipWriter, ZipReader } from "@zip.js/zip.js"
-import { fixture, complete } from "@ericsanchezok/synergy-harness/test/support/rollout"
+import { fixture, complete, contextDraft } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import { RolloutArchive } from "../../src/session/rollout/archive"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutSnapshot } from "../../src/session/rollout/snapshot"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { RolloutAccounting } from "../../src/session/rollout/accounting"
+import { RolloutExecution } from "../../src/session/rollout/execution"
 import { SessionImport } from "../../src/session/session-import"
 import { Session } from "../../src/session"
+import { reconcileContextUsage } from "../../src/session/context-usage-attribution"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+
+test("rollout import preserves confirmed execution time and cannot revive an exported open interval", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      const contextEstimate = { ...contextDraft(), version: 1 as const, capturedAt: Date.now() }
+      await RolloutLedger.updateContextEstimate(call.owner, rootID, call.id, contextEstimate)
+      const assistant = (await Session.messages({ sessionID: session.id, raw: true })).find(
+        (message) => message.info.role === "assistant",
+      )!.info
+      if (assistant.role !== "assistant") throw new Error("missing assistant")
+      await Session.updateMessage({
+        ...assistant,
+        accounting: { kind: "rollout", callIDs: [call.id] },
+        contextUsage: { ...reconcileContextUsage(contextEstimate, 1000), callID: call.id },
+      })
+      const segment = await RolloutLedger.beginSegment({ owner: call.owner, runID: rootID, input: {} })
+      const clockID = RolloutExecution.clock().clockID
+      for (const ended of [10000, undefined])
+        await RolloutExecution.write({
+          version: 1,
+          id: crypto.randomUUID(),
+          owner: call.owner,
+          runID: rootID,
+          segmentID: segment.id,
+          branchID: "main",
+          clockID,
+          started: ended === undefined ? 12000 : 0,
+          ended,
+          status: ended === undefined ? "active" : "closed",
+          coverage: "complete",
+        })
+      const writer = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+      const imported = await SessionImport.fromBuffer(await writer.getData())
+      try {
+        const owner = { ...call.owner, kind: "session" as const, sessionID: imported.rootSessionID }
+        const snapshot = await RolloutSnapshot.read(owner)
+        expect(snapshot.calls[0].contextEstimate).toEqual(contextEstimate)
+        const messages = await Session.messages({ sessionID: imported.rootSessionID, raw: true })
+        const restored = messages.find((message) => message.info.role === "assistant")!.info
+        expect(restored.role === "assistant" && restored.contextUsage?.callID).toBe(snapshot.calls[0].id)
+        expect(snapshot.calls[0].id).not.toBe(call.id)
+        expect(snapshot.intervals).toHaveLength(2)
+        expect(RolloutExecution.measure(snapshot.intervals)).toMatchObject({
+          elapsedMs: 10000,
+          elapsedActive: false,
+          elapsedLowerBound: true,
+        })
+        const interrupted = snapshot.intervals.find((value) => value.status === "interrupted")!
+        expect(interrupted.ended).toBeUndefined()
+        expect(interrupted.detectedAt).toBeNumber()
+        expect(snapshot.segments[0].ended).toBeUndefined()
+        expect(snapshot.segments[0].detectedAt).toBeNumber()
+        expect(snapshot.runs[0].ended).toBeUndefined()
+        expect(snapshot.intervals.every((value) => value.runID === snapshot.runs[0].id)).toBe(true)
+      } finally {
+        await Session.remove(imported.rootSessionID)
+      }
+    }),
+  ))
 
 test("large rollout inspection keeps timers responsive while validating every chunk", () =>
   runtime.run(async () => {

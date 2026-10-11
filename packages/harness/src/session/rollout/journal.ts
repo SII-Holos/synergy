@@ -34,6 +34,11 @@ export namespace RolloutJournal {
   ])
   export type Event = z.infer<typeof Event>
 
+  export async function prepare(owner: RolloutSchema.Owner) {
+    const { RolloutRecovery } = await import("./recovery")
+    await RolloutRecovery.ensure(owner)
+  }
+
   function root(owner: RolloutSchema.Owner) {
     return [...RolloutArtifact.root(owner), "journal"]
   }
@@ -107,6 +112,7 @@ export namespace RolloutJournal {
     publish?: () => Promise<void>,
   ) {
     return record(async () => {
+      await prepare(owner)
       const base = RolloutArtifact.root(owner)
       if (!base.every((segment, index) => key[index] === segment)) throw new Error("Rollout write escapes its owner")
       using lock = await Lock.write(lockKey(owner))

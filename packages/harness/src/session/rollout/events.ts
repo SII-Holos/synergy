@@ -18,6 +18,7 @@ export namespace RolloutEvents {
     .discriminatedUnion("kind", [
       z.object({ kind: z.literal("run"), value: RolloutSchema.RunRecord }),
       z.object({ kind: z.literal("segment"), value: RolloutSchema.ExecutionSegment }),
+      z.object({ kind: z.literal("interval"), value: RolloutSchema.ExecutionInterval }),
       z.object({ kind: z.literal("call"), value: RolloutSchema.CallRecord }),
       z.object({ kind: z.literal("attempt"), value: RolloutSchema.AttemptRecord }),
       z.object({ kind: z.literal("tool"), value: RolloutSchema.ToolExecutionRecord }),
@@ -35,17 +36,19 @@ export namespace RolloutEvents {
   )
 
   export function parse(key: string[], value: unknown) {
-    const kind = key.includes("attempts")
-      ? "attempt"
-      : key.includes("calls")
-        ? "call"
-        : key.includes("tools")
-          ? "tool"
-          : key.includes("processes")
-            ? "process"
-            : key.includes("segments")
-              ? "segment"
-              : "run"
+    const kind = key.includes("intervals")
+      ? "interval"
+      : key.includes("attempts")
+        ? "attempt"
+        : key.includes("calls")
+          ? "call"
+          : key.includes("tools")
+            ? "tool"
+            : key.includes("processes")
+              ? "process"
+              : key.includes("segments")
+                ? "segment"
+                : "run"
     return Record.parse({ kind, value })
   }
 }

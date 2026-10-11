@@ -98,3 +98,7 @@ Report the tool ID, registry/exposure, taxonomy and capabilities, UI registratio
 Run `bun test test/tools/coding-observation-probe.test.ts` from `packages/local-runtime` with `SYNERGY_OBSERVATION_REPORT` set to a new absolute JSON output path. The fixed-input probe exercises small reads, sparse edits, disjoint ranges and full-file search; existing reports are never overwritten. Use the identical probe with frozen source versions and retain its identity separately from the measured implementation. Its UTF-8 byte counts establish tool presentation differences only; use native task outcomes and reconciled provider usage for task-level token and latency comparisons.
 
 For Browser tools, require an explicit page ID except list/open and keep descriptions agent-native: operation, relevant evidence, and a concise next step for failure. UI selection is never an implicit target. Follow [change-browser-runtime](../change-browser-runtime/SKILL.md) for authorization, revocation and uncertain-outcome tests.
+
+## Interactive output ownership
+
+Generated visual content is untrusted. Keep its source immutable, attach evidence to the producing Part, and validate completed-call and effective-history ownership before granting a state bridge. Persist bounded semantic and UI state through canonical session records; never dispatch an agent input directly from the document. Exercise revision conflicts, duplicate writes, fork independence and rollback through real storage.

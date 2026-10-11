@@ -7,6 +7,7 @@ import type { MarkdownLayoutCache } from "./markdown-render"
 import { focusMarkdownHeading, markdownHeadings } from "./markdown-navigation"
 import { markdownReadingPoint } from "./markdown-reading"
 import { markdownScrollViewport } from "./markdown-scroll-viewport"
+import { readSelectionElements } from "../utils/selection"
 
 export function MarkdownDocumentView(props: {
   root: HTMLDivElement
@@ -70,26 +71,19 @@ export function MarkdownDocumentView(props: {
       virtual.restoreToIndex(index, point - root.getBoundingClientRect().top - anchor.offset)
     })
   }
-  const pin = () => {
+  const pin = (event?: Event) => {
     const selected = new Set<number>()
     const add = (node: Node | null) => {
       const element = node instanceof Element ? node : node?.parentElement
       const block = element?.closest<HTMLElement>("[data-markdown-block]")
       if (block && props.root.contains(block)) selected.add(Number(block.dataset.markdownBlock))
     }
-    add(document.activeElement)
-    const selection = document.getSelection()
-    if (selection && !selection.isCollapsed) {
-      add(selection.anchorNode)
-      add(selection.focusNode)
-      const indices = [...selected]
-      if (indices.length > 1)
-        for (const block of props.root.querySelectorAll<HTMLElement>("[data-markdown-block]")) {
-          const index = Number(block.dataset.markdownBlock)
-          if (index >= Math.min(...indices) && index <= Math.max(...indices)) selected.add(index)
-        }
-    }
-    setKept([...selected])
+    const focus = event?.type === "focusout" ? (event as FocusEvent).relatedTarget : document.activeElement
+    add(focus instanceof Node ? focus : null)
+    for (const block of readSelectionElements(props.root, "[data-markdown-block]")) add(block)
+    setKept((previous) =>
+      previous.length === selected.size && previous.every((index) => selected.has(index)) ? previous : [...selected],
+    )
   }
   onMount(() => {
     const measure = () => {

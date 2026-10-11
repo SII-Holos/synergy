@@ -1351,8 +1351,12 @@ describe.serial("SessionInvoke preflight compaction", () => {
       expect(compacted.find((msg) => msg.info.id === "msg_summary_2")?.info.includeInContext).toBeUndefined()
       expect(SessionCompaction.hasPendingCompaction(root.parts, compacted, root.info.id)).toBe(false)
       const projection = MessageV2.projectModelMessages(compacted)
-      expect(projection.provenance.categories.conversation).toEqual([{ text: "Implement the compact boundary fix." }])
-      expect(projection.provenance.categories.instructions).toEqual([{ text: "Continue if you have next steps" }])
+      expect(projection.provenance.categories.userMessages.map((item) => item.text)).toEqual([
+        "Implement the compact boundary fix.",
+      ])
+      expect(projection.provenance.categories.injectedContext.map((item) => item.text)).toEqual([
+        "Continue if you have next steps",
+      ])
       expect(JSON.stringify(projection.provenance)).not.toContain("Large pre-compaction trajectory.")
       expect(JSON.stringify(projection.provenance)).not.toContain("Large trajectory after the first compaction.")
     }))

@@ -35,6 +35,8 @@ AI agent work often outlives a single conversation. Synergy treats it as durable
 
 Choose **Atlas** for general assistance, **Forge** for coding, or **Pico** for lightweight work. Their CLI names are `atlas`, `forge`, and `pico`; for example, `synergy send --agent forge "Fix the failing test"`. Existing configurations and conversations [upgrade automatically](docs/migrations/primary-agent-identities.md).
 
+Historical conversations prepare when opened. Full history import and usage rebuilds require an explicit request; [storage admission](docs/architecture/agent-storage.md) documents upgrade and recovery behavior.
+
 Synergy runs as a standalone local workspace. Connecting a Holos agent adds account identity, messaging, and presence without replacing local projects, providers, sessions, or data.
 
 ## What makes Synergy different
@@ -45,6 +47,7 @@ Synergy runs as a standalone local workspace. Connecting a Holos agent adds acco
 - **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside Desktop browser pages with saved website logins without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
 - **Compute starts when needed** — Select native or Docker execution independently of durable Workspace files. API-only work allocates no container; local, S3 and OSS object stores preserve files across compute reclamation. See [resource configuration](docs/reference/configuration-layout.md).
 - **Knowledge compounds** — Retain reusable memory and learned experience in Library while authoring Notes and Blueprints as durable documents.
+- **Visual results stay interactive** — Explore charts, simulations, calendars and variants in the conversation, retain parameters, review changes with the agent and export interactive HTML. See [visual results](docs/architecture/visual-results.md).
 - **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins and Channels while keeping local ownership of projects and data.
 
 Read the [product overview](docs/product/overview.md) for the complete product model, including Lattice Pathways, Agenda, Channels, Library, Holos, and extension boundaries.
@@ -183,7 +186,8 @@ bun dev send "your message"
 Default local preflight:
 
 ```bash
-bun run quality:quick
+bun run verify plan
+bun run verify local --test test/script/dev-entrypoints.test.ts
 ```
 
 For Bun embedding, use `openAgentRuntime({ home, components })` from `packages/agent-runtime` and select optional component factories explicitly. For lower-level hosts, `packages/harness` exposes the execution and lifecycle APIs, and `packages/local-runtime` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command, with commands supplied by the selected components; the complete product composes optional capabilities in `packages/presets`. Hosts can compose independent Runtime instances in one process with explicit home, environment and storage ownership. Home sessions work without a local workspace. Node.js uses the managed HTTP SDK or attaches to an existing runtime. See [Embedding](docs/reference/embedding.md), [Installable packages](docs/reference/installable-packages.md), [Runtime and Scope](docs/architecture/runtime-and-scope.md) and the [package map](docs/reference/packages.md).

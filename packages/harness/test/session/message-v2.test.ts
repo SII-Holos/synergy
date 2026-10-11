@@ -128,8 +128,8 @@ describe("session.message-v2.toModelMessage", () => {
       expect(MessageV2.toModelMessage(input)).toStrictEqual([])
       const projection = MessageV2.projectModelMessages(input)
       expect(projection.messages).toStrictEqual([])
-      expect(projection.provenance.categories.conversation).toStrictEqual([])
-      expect(projection.provenance.items.conversation).toBe(0)
+      expect(projection.provenance.categories.userMessages).toStrictEqual([])
+      expect(projection.provenance.items.userMessages).toBe(0)
     }))
 
   test("includes synthetic text parts", () =>
@@ -337,10 +337,10 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ])
       const projection = MessageV2.projectModelMessages(input)
-      expect(projection.provenance.categories.filesReferences).toStrictEqual([
+      expect(projection.provenance.categories.attachments).toMatchObject([
         { text: "[Attachment: file.ts (text/plain)]" },
       ])
-      expect(projection.provenance.items.filesReferences).toBe(1)
+      expect(projection.provenance.items.attachments).toBe(1)
     }))
 
   test("valid asset images expose a reusable reference and retain provider-file input", () =>
@@ -748,11 +748,11 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ])
       const projection = MessageV2.projectModelMessages(input)
-      expect(projection.provenance.categories.toolActivity).toStrictEqual([
+      expect(projection.provenance.categories.assistantMessages).toMatchObject([
         { text: JSON.stringify({ path: "missing.txt" }) },
-        { text: "file not found" },
       ])
-      expect(projection.provenance.items.toolActivity).toBe(2)
+      expect(projection.provenance.categories.toolResults).toMatchObject([{ text: "file not found" }])
+      expect(projection.provenance.items.toolResults).toBe(1)
     }))
 
   test("replays encrypted Codex reasoning only for the producing profile and wire model", () =>
@@ -1001,8 +1001,8 @@ describe("session.message-v2.toModelMessage", () => {
       expect(MessageV2.toModelMessage(input)).toStrictEqual([])
       const projection = MessageV2.projectModelMessages(input)
       expect(projection.messages).toStrictEqual([])
-      expect(projection.provenance.categories.conversation).toStrictEqual([])
-      expect(projection.provenance.items.conversation).toBe(0)
+      expect(projection.provenance.categories.userMessages).toStrictEqual([])
+      expect(projection.provenance.items.userMessages).toBe(0)
     }))
 
   test("includes aborted assistant messages only when they have non-step-start/reasoning content", () =>
@@ -1158,9 +1158,11 @@ describe("session.message-v2.toModelMessage", () => {
       )
       expect(serialized).toContain("data:application/pdf;base64,JVBERi0xLjQ=")
       expect(serialized).not.toContain(staleSourcePath)
-      expect(projection.provenance.categories.filesReferences).toContainEqual({
-        text: `[Attachment: trace.bin (application/octet-stream). Reference: asset://${assetID}. Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
-      })
+      expect(projection.provenance.categories.attachments).toContainEqual(
+        expect.objectContaining({
+          text: `[Attachment: trace.bin (application/octet-stream). Reference: asset://${assetID}. Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
+        }),
+      )
     }))
 
   test("does not duplicate a fallback attachment path", () =>
@@ -1553,8 +1555,10 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
       const toolCalls = assistant.content.filter((part) => part.type === "tool-call")
       expect(toolCalls[0].input).toStrictEqual({ count: "42" })
       expect(toolCalls[1].input).toBeUndefined()
-      expect(projection!.provenance.categories.toolActivity).toContainEqual({ text: '{"count":"42"}' })
-      expect(projection!.provenance.categories.toolActivity).not.toContainEqual({
+      expect(projection!.provenance.categories.assistantMessages).toContainEqual(
+        expect.objectContaining({ text: '{"count":"42"}' }),
+      )
+      expect(projection!.provenance.categories.assistantMessages).not.toContainEqual({
         text: expect.stringContaining("self"),
       })
       expect(projection!.sanitization.converted).toBe(1)
@@ -1616,18 +1620,42 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
 
 describe("session.message-v2 context usage schema", () => {
   const contextUsage = {
-    version: 1 as const,
+    version: 2 as const,
     modelID: "model",
     providerID: "provider",
     totalInput: 15,
     contextLimit: 100,
     usableInputLimit: 90,
-    categories: {
-      conversation: { estimatedTokens: 4, attributedTokens: 4, items: 1 },
-      toolActivity: { estimatedTokens: 3, attributedTokens: 3, items: 1 },
-      filesReferences: { estimatedTokens: 2, attributedTokens: 2, items: 1 },
-      instructions: { estimatedTokens: 1, attributedTokens: 1, items: 1 },
-    },
+    categories: [
+      {
+        category: "userMessages" as const,
+        precision: "source" as const,
+        estimatedTokens: 4,
+        attributedTokens: 4,
+        items: 1,
+      },
+      {
+        category: "toolResults" as const,
+        precision: "source" as const,
+        estimatedTokens: 3,
+        attributedTokens: 3,
+        items: 1,
+      },
+      {
+        category: "attachments" as const,
+        precision: "source" as const,
+        estimatedTokens: 2,
+        attributedTokens: 2,
+        items: 1,
+      },
+      {
+        category: "systemInstructions" as const,
+        precision: "source" as const,
+        estimatedTokens: 1,
+        attributedTokens: 1,
+        items: 1,
+      },
+    ],
     overhead: { attributedTokens: 5 },
     estimator: { kind: "model-tokenizer" as const, encoding: "o200k_base" },
     reconciliation: { mode: "residual" as const, factor: 1 },

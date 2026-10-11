@@ -11,6 +11,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 
 const Params = z.object({ sessionID: Identifier.schema("session") })
+const ContextParams = Params.extend({ callID: z.string().min(1).max(4096) })
 const NodeParams = Params.extend({ nodeID: z.string().min(1).max(4096) })
 const ContentQuery = ExecutionContent.Query.extend({
   offset: z.coerce.number().int().nonnegative().safe().default(0),
@@ -113,6 +114,48 @@ export const ExecutionRoute = () =>
       async (c) => {
         const response = await result(() =>
           ExecutionService.summary(c.req.valid("param").sessionID, c.req.valid("query").runID),
+        )
+        return c.json(response.value, response.status)
+      },
+    )
+    .get(
+      "/:sessionID/execution/context/history",
+      metadata("session.executionContextHistory", "Read context request history", ExecutionSchema.ContextHistory),
+      validator("param", Params),
+      validator("query", ExecutionSchema.ContextQuery),
+      async (c) => {
+        const response = await result(() =>
+          ExecutionService.contextHistory(c.req.valid("param").sessionID, c.req.valid("query")),
+        )
+        return c.json(response.value, response.status)
+      },
+    )
+    .get(
+      "/:sessionID/execution/context/snapshots/:callID",
+      metadata(
+        "session.executionContextSnapshot",
+        "Read one context request snapshot",
+        ExecutionSchema.ContextSnapshot,
+      ),
+      validator("param", ContextParams),
+      validator("query", ExecutionSchema.ContextQuery.pick({ runID: true })),
+      async (c) => {
+        const { sessionID, callID } = c.req.valid("param")
+        const response = await result(() =>
+          ExecutionService.contextSnapshot(sessionID, callID, c.req.valid("query").runID),
+        )
+        return c.json(response.value, response.status)
+      },
+    )
+    .get(
+      "/:sessionID/execution/context/snapshots/:callID/items",
+      metadata("session.executionContextItems", "Read a bounded context source index", ExecutionSchema.ContextItems),
+      validator("param", ContextParams),
+      validator("query", ExecutionSchema.ContextItemsQuery),
+      async (c) => {
+        const { sessionID, callID } = c.req.valid("param")
+        const response = await result(() =>
+          ExecutionService.contextItems(sessionID, callID, c.req.valid("query"), c.req.raw.signal),
         )
         return c.json(response.value, response.status)
       },

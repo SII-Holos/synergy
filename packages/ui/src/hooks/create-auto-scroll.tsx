@@ -1,5 +1,6 @@
 import { createEffect, createSignal, on, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
+import { createScrollMotion } from "../utils/scroll-motion"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 
 export interface AutoScrollReadingAnchor {
@@ -8,6 +9,7 @@ export interface AutoScrollReadingAnchor {
 }
 
 export interface AutoScrollOptions {
+  motionTarget?: () => HTMLElement | undefined
   working: () => boolean
   onUserInteracted?: () => void
   /** Reports the distance from the bottom for content growth that fires no scroll event. */
@@ -30,8 +32,12 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let cleanup: (() => void) | undefined
   let readingAnchor: AutoScrollReadingAnchor | undefined
   let anchoredScrollTop: number | undefined
+  let movementOffset: number | undefined
   let resumeRequested = false
   let previousOffset = 0
+  let interactionVersion = 0
+  let smoothForce = false
+  const motion = createScrollMotion(() => options.motionTarget?.())
 
   const [store, setStore] = createStore({
     contentRef: undefined as HTMLElement | undefined,
@@ -44,6 +50,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     readingAnchor = undefined
     setReadingAnchorOwner(undefined)
     anchoredScrollTop = undefined
+    movementOffset = undefined
   }
   const preserveReadingAnchor = (target?: Element) => {
     if (!store.userScrolled) {
@@ -95,9 +102,12 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
     const bottom = scroll.scrollHeight
     const distance = bottom - scroll.clientHeight - scroll.scrollTop
-    if (distance < 2) return
+    if (Math.abs(distance) < 2 && !options.motionTarget) return
 
-    scroll.scrollTo({ top: bottom, behavior: "auto" })
+    const animate =
+      !!options.motionTarget && (!force || smoothForce) && !store.contentRef?.querySelector("[data-motion-resizing]")
+    motion.move(scroll, bottom, animate)
+    smoothForce = false
   }
 
   const scrollToBottom = (force: boolean) => {
@@ -118,6 +128,8 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const stop = (allowResume = false) => {
+    interactionVersion++
+    motion.interrupt(scroll)
     resumeRequested = allowResume
     followingLatest = false
     forceNextScroll = false
@@ -129,8 +141,13 @@ export function createAutoScroll(options: AutoScrollOptions) {
     options.onUserInteracted?.()
   }
 
-  const handleWheel = (e: WheelEvent) => {
+  const beginMovement = () => {
     anchoredScrollTop = undefined
+    movementOffset = scroll?.scrollTop
+  }
+
+  const handleWheel = (e: WheelEvent) => {
+    if (e.deltaY) beginMovement()
     if (e.deltaY < 0) stop()
     else if (e.deltaY > 0) resumeRequested = true
   }
@@ -141,7 +158,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handlePointerDown = () => {
-    anchoredScrollTop = undefined
+    beginMovement()
     if (followingLatest) stop()
     resumeRequested = true
     if (down) return
@@ -155,7 +172,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handleTouchStart = () => {
-    anchoredScrollTop = undefined
+    beginMovement()
     if (followingLatest) stop()
     resumeRequested = true
     if (down) return
@@ -168,12 +185,19 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]")) return
     if (event.key === " ") {
       if (event.target instanceof Element && event.target.closest("button, summary, [role=button]")) return
+      beginMovement()
       if (event.shiftKey) stop()
       else resumeRequested = true
       return
     }
-    if (["ArrowUp", "PageUp", "Home"].includes(event.key)) stop()
-    if (["ArrowDown", "PageDown", "End"].includes(event.key)) resumeRequested = true
+    if (["ArrowUp", "PageUp", "Home"].includes(event.key)) {
+      beginMovement()
+      stop()
+    }
+    if (["ArrowDown", "PageDown", "End"].includes(event.key)) {
+      beginMovement()
+      resumeRequested = true
+    }
   }
 
   const handleScroll = () => {
@@ -190,10 +214,14 @@ export function createAutoScroll(options: AutoScrollOptions) {
       return
     }
     if (!compensated && down) stop(resumeRequested)
-    if (!compensated) preserveReadingAnchor()
+    if (!compensated) {
+      movementOffset = undefined
+      preserveReadingAnchor()
+    }
   }
 
   const handleInteraction = (event?: Event) => {
+    movementOffset = undefined
     stop()
     preserveReadingAnchor(event && event.target instanceof Element ? event.target : undefined)
   }
@@ -211,9 +239,16 @@ export function createAutoScroll(options: AutoScrollOptions) {
         flushScrollToBottom()
         return
       }
+      if (movementOffset !== undefined && scroll && Math.abs(scroll.scrollTop - movementOffset) > 0.5) {
+        scheduleMeasure()
+        return
+      }
       readingAnchor?.restore()
-      if (readingAnchor && !readingAnchor.owner.isConnected) preserveReadingAnchor()
-      if (scroll && readingAnchor) anchoredScrollTop = scroll.scrollTop
+      if (!readingAnchor || !readingAnchor.owner.isConnected) preserveReadingAnchor()
+      if (scroll && readingAnchor) {
+        anchoredScrollTop = scroll.scrollTop
+        if (movementOffset !== undefined) movementOffset = scroll.scrollTop
+      }
       scheduleMeasure()
     },
   )
@@ -234,6 +269,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   )
 
   onCleanup(() => {
+    motion.dispose()
     followingLatest = false
     clearReadingAnchor()
     if (settleTimer) clearTimeout(settleTimer)
@@ -254,6 +290,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
         cleanup = undefined
       }
 
+      motion.settle()
       clearReadingAnchor()
       if (settleTimer) clearTimeout(settleTimer)
       settleTimer = undefined
@@ -298,8 +335,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
     handleInteraction,
     preserveReadingAnchor,
     readingAnchorOwner,
+    interactionVersion: () => interactionVersion,
     scrollToBottom: () => scrollToBottom(false),
-    forceScrollToBottom: (input?: { untilInteraction?: boolean }) => {
+    forceScrollToBottom: (input?: { untilInteraction?: boolean; smooth?: boolean }) => {
+      smoothForce = input?.smooth === true
       if (scroll && input?.untilInteraction) followingLatest = true
       scrollToBottom(true)
     },

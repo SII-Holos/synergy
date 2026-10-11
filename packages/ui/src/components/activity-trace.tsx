@@ -34,7 +34,7 @@ import type {
 } from "./session-turn-activity"
 import "./activity-trace.css"
 
-const TRANSITION_MS = 160
+const TRANSITION_MS = 180
 const ActivitySpecializedDetail = lazy(() =>
   import("./activity-specialized-detail").then((module) => ({ default: module.ActivitySpecializedDetail })),
 )
@@ -71,9 +71,17 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches
 }
 
-export function AnimatedActivityCount(props: { value: number; identity: string }) {
+export function AnimatedActivityCount(props: { value: number; identity: string; animate?: boolean }) {
+  const { i18n } = useLingui()
+  const format = (value: number) => i18n().number(value)
+  const reduced = typeof window !== "undefined" ? window.matchMedia?.("(prefers-reduced-motion: reduce)") : undefined
   const [state, setState] = createSignal<ActivityCountTransition>()
   let timer: ReturnType<typeof setTimeout> | undefined
+  let element: HTMLSpanElement | undefined
+  let widthMotion: Animation | undefined
+  const identity = createMemo(() => `${props.identity}:${i18n().locale}`)
+  const value = createMemo(() => props.value)
+  const animate = createMemo(() => props.animate !== false)
 
   const cancelTimer = () => {
     if (timer === undefined) return
@@ -82,39 +90,57 @@ export function AnimatedActivityCount(props: { value: number; identity: string }
   }
 
   createEffect(
-    on(
-      () => [props.identity, props.value] as const,
-      ([identity, value]) => {
-        cancelTimer()
-        const next = reduceActivityCountTransition(state(), {
-          identity,
-          value,
-          reducedMotion: prefersReducedMotion(),
+    on([identity, value, animate], ([identity, value]) => {
+      const width = element?.getBoundingClientRect().width
+      widthMotion?.cancel()
+      cancelTimer()
+      const next = reduceActivityCountTransition(state(), {
+        identity,
+        value,
+        reducedMotion: props.animate === false || prefersReducedMotion(),
+      })
+      setState(next)
+      if (!next.animating) return
+      const targetWidth = element?.getBoundingClientRect().width
+      if (width && targetWidth && width !== targetWidth && element?.animate) {
+        widthMotion = element.animate([{ width: `${width}px` }, { width: `${targetWidth}px` }], {
+          duration: TRANSITION_MS,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
         })
-        setState(next)
-        if (!next.animating) return
-        const revision = next.revision
-        timer = setTimeout(() => {
-          setState((current) => (current ? finishActivityCountTransition(current, revision) : current))
-          timer = undefined
-        }, TRANSITION_MS)
-      },
-    ),
+      }
+      const revision = next.revision
+      timer = setTimeout(() => {
+        setState((current) => (current ? finishActivityCountTransition(current, revision) : current))
+        timer = undefined
+      }, TRANSITION_MS)
+    }),
   )
 
-  onCleanup(cancelTimer)
+  const settle = () => {
+    if (!reduced?.matches) return
+    cancelTimer()
+    widthMotion?.cancel()
+    setState((current) => (current ? finishActivityCountTransition(current, current.revision) : current))
+  }
+  reduced?.addEventListener?.("change", settle)
+  onCleanup(() => {
+    cancelTimer()
+    widthMotion?.cancel()
+    reduced?.removeEventListener?.("change", settle)
+  })
 
   return (
     <span
+      ref={element}
       data-component="animated-activity-count"
       data-animating={state()?.animating ? "" : undefined}
-      aria-label={String(props.value)}
+      aria-label={format(props.value)}
     >
       <span data-slot="activity-count-grid" aria-hidden="true">
         <Show when={state()?.animating && state()?.previous !== undefined}>
-          <span data-slot="activity-count-old">{state()?.previous}</span>
+          <span data-slot="activity-count-old">{format(state()!.previous!)}</span>
         </Show>
-        <span data-slot="activity-count-new">{state()?.current ?? props.value}</span>
+        <span data-slot="activity-count-new">{format(state()?.current ?? props.value)}</span>
       </span>
     </span>
   )
@@ -185,10 +211,18 @@ function stateIcon(state: ActivityGroupState) {
   return getSemanticIcon("state.success")
 }
 
-function ActivityState(props: { state: ActivityGroupState; label: string }) {
+function ActivityState(props: { state: ActivityGroupState | "paused"; label: string }) {
   return (
     <span data-slot="activity-state" data-state={props.state}>
-      <Show when={props.state === "running"} fallback={<Icon name={stateIcon(props.state)} size="small" />}>
+      <Show
+        when={props.state === "running"}
+        fallback={
+          <Icon
+            name={props.state === "paused" ? getSemanticIcon("session.pause") : stateIcon(props.state)}
+            size="small"
+          />
+        }
+      >
         <Spinner />
       </Show>
       <span>{props.label}</span>
@@ -199,6 +233,7 @@ function ActivityState(props: { state: ActivityGroupState; label: string }) {
 function ActivityStep(props: {
   step: ActivityStepProjection
   serverUrl: string
+  preferWorkBrief?: boolean
   hidden?: boolean
   current?: boolean
   quiet?: boolean
@@ -248,15 +283,21 @@ function ActivityStep(props: {
   // Provenance: docs/decisions/implemented/feature/2026-10-04-semantic-process-disclosure.md
   // Local adaptation: registered targets lead; invocation identity still opens the existing result owner.
   const target = () => props.step.subtitle?.trim()
-  const object = () => (target() && !title().includes(target()!) ? target() : undefined)
+  const preferredBrief = () => (props.preferWorkBrief ? props.step.part.workBrief?.trim() : undefined)
+  const object = () => (!preferredBrief() && target() && !title().includes(target()!) ? target() : undefined)
   const label = () =>
-    object() ? `${title()} · ${object()}` : target() ? title() : props.step.part.workBrief?.trim() || title()
+    preferredBrief() ||
+    (object() ? `${title()} · ${object()}` : target() ? title() : props.step.part.workBrief?.trim() || title())
   const pathParts = () => {
     const value = object() ?? ""
     const index = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")) + 1
     return [value.slice(0, index), value.slice(index)]
   }
-  const stateLabel = createMemo(() => _(stateDescriptor(props.step.state)))
+  const paused = () =>
+    props.step.state === "running" && data.view.statusFor(props.step.part.sessionID)?.type === "paused"
+  const stateLabel = createMemo(() =>
+    paused() ? _({ id: "session.process.paused", message: "Paused" }) : _(stateDescriptor(props.step.state)),
+  )
   const approval = createMemo(() => {
     const metadata = props.step.part.state.metadata
     if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return undefined
@@ -275,9 +316,9 @@ function ActivityStep(props: {
       data-slot="activity-step"
       data-part-id={props.step.part.id}
       data-family={props.step.family}
-      data-state={props.step.state}
+      data-state={paused() ? "paused" : props.step.state}
       data-current={props.current ? "" : undefined}
-      data-working={props.current && props.step.state === "running" ? "" : undefined}
+      data-working={!paused() && props.current && props.step.state === "running" ? "" : undefined}
       ref={motionRef}
       onFocusIn={() => props.onFocus?.(props.step.part.id)}
       onFocusOut={(event) => {
@@ -361,7 +402,7 @@ function ActivityStep(props: {
           </span>
         </Show>
         <Show when={(!props.quiet && props.step.state === "running") || props.step.state === "waiting-approval"}>
-          <ActivityState state={props.step.state} label={stateLabel()} />
+          <ActivityState state={paused() ? "paused" : props.step.state} label={stateLabel()} />
         </Show>
       </button>
       <Show when={evidence().length > 0}>
@@ -435,6 +476,7 @@ export function ActivityReasoningSummary(props: { item: ActivityReasoningSummary
 export function ActivityTrace(props: {
   group: ActivityGroupItem
   serverUrl: string
+  preferWorkBrief?: boolean
   id?: string
   visibleSteps?: ReadonlySet<string>
   currentSteps?: ReadonlySet<string>
@@ -470,6 +512,7 @@ export function ActivityTrace(props: {
                     <ActivityStep
                       step={current()}
                       serverUrl={props.serverUrl}
+                      preferWorkBrief={props.preferWorkBrief}
                       hidden={props.visibleSteps !== undefined && !props.visibleSteps.has(key)}
                       current={props.currentSteps?.has(key)}
                       quiet={props.quiet}

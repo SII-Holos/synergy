@@ -62,6 +62,27 @@ test("a fresh complete suite passes; omitted files and stale reports cannot cont
     expect(verifyResults(plan, [result], ["success"])).toEqual([])
     const reports = path.join(root, ".artifacts/ci/results")
     expect((await verifyCoverage(root, reports, plan, [result])).errors).toEqual([])
+    await Bun.write(path.join(root, owner, "src/unmeasured.ts"), "export const missing = 1")
+    const unrelated: Task = {
+      id: "unrelated",
+      kind: "suite",
+      pool: "linux",
+      owners: ["packages/unrelated"],
+      package: "packages/unrelated",
+      needs: [],
+      seconds: 1,
+      files: ["test/example.test.ts"],
+    }
+    const diagnostics = await verifyCoverage(
+      root,
+      reports,
+      { ...plan, tasks: [...plan.tasks, unrelated], selected: [...plan.selected, unrelated.id] },
+      [result],
+      { diagnostic: true },
+    )
+    expect(diagnostics.verdicts.find((entry) => entry.package === owner)?.missing).toBe(1)
+    expect(diagnostics.incomplete).toContain("packages/unrelated")
+    await rm(path.join(root, owner, "src/unmeasured.ts"))
     const timing = result.reports.find((report) => report.kind === "timing")!
     const omitted = { ...result, reports: result.reports.filter((report) => report !== timing) }
     expect((await verifyCoverage(root, reports, plan, [omitted])).errors).toContain(

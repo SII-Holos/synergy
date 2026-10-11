@@ -387,6 +387,10 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
+          "glob": "src/components/session/conversation-presentation.tsx",
+          "reason": "test/components/session/conversation-presentation.dom.test.ts exercises retained outgoing frames, superseded navigation, Scope boundaries, admission continuity and reduced motion in Chromium. Composer and toolbar browser suites also compose this real presentation layer; Vite/browser execution does not contribute Bun source LCOV."
+        },
+        {
           "glob": "src/components/session/conversation-viewport.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
@@ -943,6 +947,10 @@
           "reason": "global context requires full app bootstrap"
         },
         {
+          "glob": "src/context/render.tsx",
+          "reason": "The real provider and shared dialog are exercised by test/context/render-confirmation.browser.test.ts for confirmation, draft preservation, stable Inbox retries, owner changes and canonical state updates. Vite/Chromium execution does not contribute to Bun source coverage."
+        },
+        {
           "glob": "src/context/resource-open.tsx",
           "reason": "global context requires full app bootstrap"
         },
@@ -1443,6 +1451,18 @@
           "reason": "test/components/workspace/execution-detail.dom.test.ts exercises the real result viewer, historical identity, cancellation, copy, large output and retained reading state in Chromium; Vite/browser execution is outside Bun source LCOV."
         },
         {
+          "glob": "src/components/workspace/execution-detail-layout.tsx",
+          "reason": "Shared execution detail shell is exercised by test/components/workspace/execution-detail.dom.test.ts for keyboard tabs, failure retry, retained evidence and invocation changes in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/workspace/execution-report.tsx",
+          "reason": "Shared report, trajectory and original-output views are exercised by test/components/workspace/execution-detail.dom.test.ts with production Markdown and real clipboard controllers in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/workspace/execution-code-block.tsx",
+          "reason": "Extracted from tool-execution-detail.tsx; test/components/workspace/execution-detail.dom.test.ts verifies independent copy actions, empty and large outputs, preview expansion and preserved reading state in Chromium. Vite/browser execution remains outside Bun source LCOV."
+        },
+        {
           "glob": "src/components/workspace/process-event-detail.tsx",
           "reason": "test/components/workspace/execution-detail.dom.test.ts verifies Agent result identity, summary loading, full copying, retry, cancellation and bounded previews in Chromium; Vite/browser execution is outside Bun source LCOV."
         }
@@ -1684,6 +1704,10 @@
         {
           "glob": "src/session/tool-resolver.ts",
           "reason": "session/LLM-loop runtime requires the full model pipeline"
+        },
+        {
+          "glob": "src/storage/blobs.ts",
+          "reason": "types-only immutable and reclaimable BlobStore contracts; concrete storage behavior is exercised by test/storage/object-artifacts.test.ts and Local Runtime's test/workspace/blob-store.test.ts"
         },
         {
           "glob": "src/storage/sql-contract.ts",
@@ -2098,6 +2122,14 @@
         {
           "glob": "src/components/render-tool.tsx",
           "reason": "The real SessionTurn Chromium fixture in test/components/render-html.browser.test.ts exercises inline visual lifecycle, viewer keyboard focus and dismissal, narrow layouts and readable fallback output. Solid TSX executed by Vite in Chromium does not contribute to Bun lcov coverage."
+        },
+        {
+          "glob": "src/components/render/library-chart.ts",
+          "reason": "Bundled iframe entrypoint exercised by test/components/render-interactive.browser.test.ts, which loads Chart through the real Vite asset pipeline and verifies the sandboxed Chart global. The emitted script executes in Chromium, outside Bun source coverage."
+        },
+        {
+          "glob": "src/components/render/library-d3.ts",
+          "reason": "Bundled iframe entrypoint exercised by test/components/render-interactive.browser.test.ts, which loads D3 through the real Vite asset pipeline and verifies the sandboxed selection API. The emitted script executes in Chromium, outside Bun source coverage."
         },
         {
           "glob": "src/components/session-review.tsx",

@@ -1,4 +1,5 @@
 import { ConfigReferenceMigration } from "./reference-migration"
+import { ConfigSource } from "./source"
 import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs/promises"
 import path from "path"
@@ -1382,6 +1383,13 @@ export const migrations: Migration[] = [
     up: ConfigReferenceMigration.up,
   },
 ]
+// An exclusive configuration source replaces files, not provider credentials.
+// Retain the credential upgrade under its existing durable domain and ID.
+const hostSourceMigrations = migrations.filter((migration) => migration.id === "20260625-provider-auth-v2")
+
 export function registerConfigMigrations() {
-  MigrationRegistry.register("config", migrations)
+  if (ConfigSource.get()) {
+    MigrationRegistry.unregister("config")
+    MigrationRegistry.register("config", hostSourceMigrations)
+  } else MigrationRegistry.register("config", migrations)
 }

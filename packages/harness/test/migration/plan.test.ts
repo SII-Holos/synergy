@@ -22,6 +22,13 @@ test("missing, duplicate and self-dependent registrations fail before work", () 
   expect(() => MigrationPlan.ordered(new Map([["a", [migration("one", ["one"])]]]))).toThrow("Cycle")
 })
 
+test("new migrations cannot silently inherit startup execution", () => {
+  expect(() =>
+    MigrationPlan.ordered(new Map([["a", [{ ...migration("20261008-history"), execution: undefined }]]])),
+  ).toThrow("execution policy")
+  expect(MigrationPlan.ordered(new Map([["a", [migration("20261008-history")]]]))).toHaveLength(1)
+})
+
 test("an unknown shared migration remains a barrier and deferred dependencies cannot admit startup", () => {
   expect(MigrationPlan.separable({ ...migration("unknown"), execution: undefined })).toBe(false)
   expect(() =>

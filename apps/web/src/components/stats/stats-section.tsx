@@ -11,7 +11,7 @@ import { RankList } from "./rank-list"
 import { CodeSummary } from "./code-summary"
 import { ActivityHeatmap } from "./hourly-heatmap"
 import "./stats.css"
-import { CostBreakdown } from "../execution/overview"
+import { CostBreakdown } from "../execution/cost-breakdown"
 import {
   buildOverviewMetrics,
   buildModelRows,

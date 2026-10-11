@@ -88,6 +88,7 @@ beforeAll(async () => {
       select(){workbench.surface("side").setActive("other");workbench.surface("side").open()},evidence(value){evidence=value},notes(value){notes=value}
     }
     export const attachWorkbench=value=>{workbench=value}
+    export const useGlobalSDK=()=>({capabilities:{has:()=>false}})
     export const useSDK=()=>({get url(){return server()},get scopeKey(){return scope()},get scopeID(){return scope()},client:{
       note:{async listMeta({archived}){reads.push("notes");return {data:notes.filter(group=>!!group.archived===(archived==="true"))}}},
       session:{async toolActivity(){reads.push("evidence");return {data:{part:evidence}}}}
@@ -137,6 +138,7 @@ beforeAll(async () => {
     plugins: [solid()],
     resolve: {
       alias: [
+        { find: "./global-sdk", replacement: bridge },
         { find: "lucide-solid", replacement: resolveUI.resolve("lucide-solid") },
         { find: "./browser-catalog", replacement: bridge },
         { find: "./platform", replacement: bridge },

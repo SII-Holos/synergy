@@ -38,7 +38,16 @@ export function bindPluginConversation(
           read()
           const lease = source.content!.retain(part)
           const release = access.own("session.read", () => lease.release)
-          return { ready: access.run("session.read", () => lease.ready), release }
+          return {
+            ready: access.run("session.read", () => lease.ready),
+            isCurrent: lease.isCurrent
+              ? () => {
+                  read()
+                  return lease.isCurrent!()
+                }
+              : undefined,
+            release,
+          }
         },
       }
     },
@@ -77,6 +86,7 @@ export function bindPluginConversation(
     workspaceOpen: () => read().workspaceOpen?.() ?? false,
     isWorking: () => read().isWorking(),
     compactReasoning: () => read().compactReasoning(),
+    preferWorkBrief: () => read().preferWorkBrief?.() ?? false,
     onSetTurnStart: (start) => read().onSetTurnStart(start),
     historyMore: () => read().historyMore(),
     historyLoading: () => read().historyLoading(),
@@ -111,7 +121,7 @@ export function bindPluginConversation(
       forceScrollToBottom: () => read().autoScroll.forceScrollToBottom(),
     },
     onClearHash: () => read().onClearHash(),
-    onScheduleScrollSpy: (container) => read().onScheduleScrollSpy(container),
+    onScheduleScrollSpy: (container, messageID) => read().onScheduleScrollSpy(container, messageID),
     setScrollRef(element, releaseOf) {
       if (!element && releaseOf !== undefined && releaseScrollElement !== releaseOf) return
       if (!element) {

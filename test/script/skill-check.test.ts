@@ -45,6 +45,21 @@ describe("repository Skill validation", () => {
     expect(await validateSkillRoot(root)).toEqual([])
   })
 
+  test("validates links inside nested reference documents", async () => {
+    const { root, skill } = await fixture()
+    const directory = path.join(skill, "references", "browser")
+    await mkdir(directory, { recursive: true })
+    await writeFile(
+      path.join(directory, "fixture.md"),
+      "Read [fixture](../../reference.md) and [missing](missing.md).\n",
+    )
+    expect(await validateSkillRoot(root)).toEqual([
+      expect.stringContaining("references/browser/fixture.md: broken relative link 'missing.md'"),
+    ])
+    await writeFile(path.join(directory, "missing.md"), "Read [entry](../../SKILL.md).\n")
+    expect(await validateSkillRoot(root)).toEqual([])
+  })
+
   test("reports name, link, and default-prompt violations together", async () => {
     const { root, skill } = await fixture()
     await writeFile(

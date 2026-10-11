@@ -1,3 +1,5 @@
+import { migrateContextUsage, upgradeContextUsageRecord } from "./context-usage-migration"
+import { RolloutExecutionMigration } from "./rollout/execution-migration"
 import { migrateReferenceContexts, upgradeReferenceContext } from "./reference-context"
 import { migrateAttachmentPurposes, upgradeAttachmentPresentation } from "./attachment-migration"
 import { primaryAgentMigration } from "./primary-agent-migration"
@@ -31,6 +33,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { Dag } from "./dag"
 import { SessionRootVariant } from "./root-variant"
 import { SessionWorkflowHold } from "./workflow-hold"
+import { SessionPauseRecovery } from "./pause-recovery"
 
 import { MigrationRegistry } from "../migration/registry"
 import { work } from "../util/queue"
@@ -1591,9 +1594,26 @@ async function migrateAttachmentDisplay(
 
 export const migrations: Migration[] = [
   {
+    id: "20261009-context-usage-categories",
+    scope: "session",
+    execution: "record",
+    description: "Preserve historical context attribution in the current category schema",
+    upgradeRecord: upgradeContextUsageRecord,
+    upSession: migrateContextUsage,
+    async up(progress) {
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID)) {
+          await migrateContextUsage({ scopeID, sessionID }, () => {})
+          progress(++done, 0)
+        }
+      progress(done, done)
+    },
+  },
+  {
     id: "20261008-resource-reference-context",
     scope: "session",
-    execution: "session",
+    execution: "record",
     domain: "session",
     dependsOn: ["20261007-attachment-resource-summaries"],
     description: "Retain recorded Workspace ownership for message references",
@@ -1614,7 +1634,7 @@ export const migrations: Migration[] = [
   {
     id: "20261007-media-cancellation-display",
     scope: "session",
-    execution: "session",
+    execution: "record",
     domain: "session",
     dependsOn: ["20261007-attachment-resource-summaries"],
     description: "Refresh display summaries to omit cancelled media generation",
@@ -1628,7 +1648,7 @@ export const migrations: Migration[] = [
   {
     id: "20261007-attachment-resource-summaries",
     scope: "session",
-    execution: "session",
+    execution: "record",
     domain: "session",
     dependsOn: ["20261007-attachment-presentation"],
     description: "Rebuild bounded managed resource summaries for attachment presentation",
@@ -1642,7 +1662,7 @@ export const migrations: Migration[] = [
   {
     id: "20261007-attachment-presentation",
     scope: "session",
-    execution: "session",
+    execution: "record",
     domain: "session",
     dependsOn: ["20261005-reasoning-display-identity"],
     description: "Record attachment purpose and rebuild bounded presentation summaries",
@@ -1665,7 +1685,7 @@ export const migrations: Migration[] = [
   {
     id: "20261005-reasoning-display-identity",
     scope: "session",
-    execution: "session",
+    execution: "record",
     domain: "session",
     dependsOn: ["20261005-session-reasoning-display"],
     description: "Rebuild bounded Part summaries with provider reasoning item identities on demand",
@@ -1679,7 +1699,7 @@ export const migrations: Migration[] = [
   {
     id: "20261005-session-reasoning-display",
     scope: "session",
-    execution: "session",
+    execution: "record",
     domain: "session",
     dependsOn: ["20261001-session-display-index"],
     description: "Refresh reasoning presentation summaries without changing canonical evidence",
@@ -1739,6 +1759,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20261003-session-turn-file-checkpoints",
+    emptyInput: [["sessions"]],
     scope: "session",
     dependsOn: ["20260923-session-operation-snapshot-cursor"],
     description: "Preserve recorded file versions as explicit legacy workspace checkpoints",
@@ -1756,6 +1777,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260411-session-endpoint-index",
+    emptyInput: [["sessions"]],
     description: "Backfill endpoint session index and remove legacy channel index",
     async up(progress) {
       const scopeIDs = await SessionMigrationTarget.scopes()
@@ -1794,6 +1816,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260411-holos-message-metadata-shape",
+    emptyInput: [["sessions"]],
     description: "Normalize legacy Holos message metadata into grouped fields",
     async up(progress) {
       const scopeIDs = await SessionMigrationTarget.scopes()
@@ -1841,6 +1864,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260423-session-page-index-and-last-exchange",
+    emptyInput: [["sessions"]],
     description: "Build session page index per scope and backfill lastExchange on session info",
     async up(progress) {
       const scopeIDs = await SessionMigrationTarget.scopes()
@@ -1943,6 +1967,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260423-session-page-index-parentid",
+    emptyInput: [["sessions"]],
     description: "Add parentID to session page index entries",
     async up(progress) {
       const scopeIDs = await SessionMigrationTarget.scopes()
@@ -1987,6 +2012,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260617-session-nav-v2-category",
+    emptyInput: [["sessions"], ["session_nav_v2"]],
     description: "Build session navigation v2 indexes and backfill session categories",
     async up(progress) {
       const scopeIDs: string[] = await SessionMigrationTarget.scopes()
@@ -2006,6 +2032,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260617-dag-node-result-field",
+    emptyInput: [["sessions"]],
     description: "Track DAG Node optional result field addition (schema-only, no data migration)",
     async up() {
       // Schema-only change: Node.result is optional and transparent to old data.
@@ -2014,6 +2041,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260619-session-repair-stale-pending-reply",
+    emptyInput: [["sessions"]],
     description: "Repair stale pendingReply flags on completed sessions",
     async up() {
       // Superseded by 20260920-session-pause-latch, which reads the same stale
@@ -2023,6 +2051,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260619-snapshot-per-session",
+    emptyInput: [["sessions"]],
     description:
       "Restructure snapshots from per-scope shared to per-session isolated repos with git alternates for backward hash resolution",
     async up(progress) {
@@ -2101,6 +2130,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260619-remove-home-endpoint",
+    emptyInput: [["sessions"]],
     description: "Strip endpoint from home-scope app-channel sessions and rebuild home nav index",
     async up(progress) {
       const scope = Identifier.asScopeID("home")
@@ -2130,6 +2160,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260624-session-home-nav-rebuild",
+    emptyInput: [["sessions"], ["session_nav_v2"]],
     description: "Rebuild home session navigation after global scope rename",
     async up(progress) {
       await SessionNav.buildNavIndex("home").catch((error) => {
@@ -2140,6 +2171,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260625-session-rollback-history",
+    emptyInput: [["sessions"]],
     description: "Migrate active session revert state into history-only rollback events",
     async up(progress) {
       await migrateActiveRevertState(progress)
@@ -2147,6 +2179,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260630-session-attachment-parts",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2158,6 +2191,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260630-session-tool-card-display",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2169,6 +2203,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260701-attachment-presentation-v2",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2180,6 +2215,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260701-bounded-session-data",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2191,6 +2227,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260702-session-child-index",
+    emptyInput: [["sessions"]],
     description: "Build parent-to-child session indexes for paginated child session lookup",
     async up(progress) {
       await migrateSessionChildIndex(progress)
@@ -2198,6 +2235,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260703-session-worktree-workspace",
+    emptyInput: [["sessions"]],
     description: "Normalize legacy route-directory worktree sessions into session workspace metadata",
     async up(progress) {
       await migrateSessionWorktreeWorkspace(progress)
@@ -2205,6 +2243,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260703-session-parent-pending-reply",
+    emptyInput: [["sessions"]],
     description: "Recompute session pendingReply using assistant parent links",
     async up() {
       // Superseded by 20260920-session-pause-latch, which re-derives the same
@@ -2213,6 +2252,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260703-session-completion-notice",
+    emptyInput: [["sessions"]],
     description: "Add normalized session completion notice state and rebuild nav entries",
     async up(progress) {
       await migrateSessionCompletionNotice(progress)
@@ -2226,6 +2266,7 @@ export const migrations: Migration[] = [
     // the read path computes. A new id ensures it applies even where the old one
     // already ran.
     id: "20260705-message-v2-semantics-derive",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2302,6 +2343,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260706-session-nav-channel-fields",
+    emptyInput: [["sessions"], ["session_nav_v2"]],
     description: "Rebuild session nav indexes to backfill channel grouping fields (chatId, chatName, chatType)",
     async up(progress) {
       const scopeIDs: string[] = await SessionMigrationTarget.scopes()
@@ -2321,6 +2363,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260707-cortex-task-output-contract",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2332,6 +2375,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260711-cortex-task-identity",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2343,6 +2387,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260715-retired-intent-analyst-dag-assign",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2354,6 +2399,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260716-bounded-diff-aggregate-preview",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2365,6 +2411,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260717-session-completion-unread-count",
+    emptyInput: [["sessions"]],
     description: "Backfill unread completion counts and rebuild session navigation indexes",
     async up(progress) {
       await migrateSessionCompletionNotice(progress)
@@ -2372,6 +2419,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260726-session-root-variant",
+    emptyInput: [["sessions"]],
     description: "Persist effective variants on legacy session task roots",
     async up(progress) {
       await migrateSessionRootVariants(progress)
@@ -2379,6 +2427,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260730-session-nav-channel-provider-fields",
+    emptyInput: [["sessions"], ["session_nav_v2"]],
     scope: "derived",
     async upSession(owner) {
       const { SessionCompat } = await import("./compat-import")
@@ -2391,6 +2440,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260828-session-nav-timestamps",
+    emptyInput: [["sessions"], ["session_nav_v2"]],
     scope: "derived",
     async upSession(owner) {
       const { SessionCompat } = await import("./compat-import")
@@ -2403,6 +2453,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260918-session-nav-identity",
+    emptyInput: [["sessions"], ["session_nav_v2"]],
     scope: "derived",
     async upSession(owner) {
       const { SessionCompat } = await import("./compat-import")
@@ -2416,6 +2467,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260921-session-nav-tags",
+    emptyInput: [["sessions"], ["session_nav_v2"]],
     scope: "derived",
     async upSession(owner) {
       const { SessionCompat } = await import("./compat-import")
@@ -2428,6 +2480,7 @@ export const migrations: Migration[] = [
   },
   RolloutMigration.migration,
   RolloutMigration.pricingMigration,
+  RolloutExecutionMigration.migration,
 
   {
     id: "20260907-snapshot-shared-store",
@@ -2458,6 +2511,15 @@ export const migrations: Migration[] = [
   {
     id: "20260914-transactional-session-indexes",
     scope: "derived",
+    emptyInput: [
+      ["sessions"],
+      ["session_index"],
+      ["endpoint_session"],
+      ["sessions_page_index"],
+      ["session_child_index"],
+      ["session_nav_v2"],
+      StoragePath.rolloutRecoveryPending(),
+    ],
     async upSession(owner) {
       const { SessionCompat } = await import("./compat-import")
       await SessionCompat.writeSessionIndexes(owner)
@@ -2472,6 +2534,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260914-inbox-delivery-receipts",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2520,6 +2583,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260918-index-continuation-recovery",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2537,6 +2601,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260919-settle-orphaned-tool-parts",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2544,6 +2609,23 @@ export const migrations: Migration[] = [
     description: "Settle tool parts left running on terminal assistant messages by an interrupted runtime",
     async up(progress) {
       await migrateOrphanedToolParts(progress)
+    },
+  },
+  {
+    id: "20261010-session-pause-recovery-candidates",
+    execution: "session",
+    onAccess: true,
+    scope: "session",
+    description: "Defer historical pause recovery until explicit Session access",
+    upSession: SessionPauseRecovery.defer,
+    async up(progress) {
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(Identifier.asScopeID(scopeID))) {
+          await SessionPauseRecovery.defer({ scopeID, sessionID })
+          progress(++done, 0)
+        }
+      progress(done, done)
     },
   },
   {
@@ -2566,6 +2648,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260920-session-pause-latch",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2577,6 +2660,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260920-session-blueprint-waiting-phase",
+    emptyInput: [["sessions"]],
     scope: "session",
     upSession(owner, progress) {
       return SessionMigrationTarget.provide(owner, () => this.up(progress))
@@ -2588,6 +2672,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260920-session-nav-blueprint-waiting-phase",
+    emptyInput: [["sessions"], ["session_nav_v2"]],
     scope: "derived",
     // The rebuild reads canonical records, so it must observe the converted
     // phase: rebuilding first would re-derive indexes from a record that still
@@ -2604,6 +2689,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260922-session-nav-workspace-binding",
+    emptyInput: [["sessions"], ["session_nav_v2"]],
     scope: "derived",
     dependsOn: ["20260921-session-workspace-binding"],
     description: "Rebuild session navigation after applying on-access workspace binding upgrades",
@@ -2639,6 +2725,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260923-session-nav-workspace-reference",
+    emptyInput: [["sessions"], ["session_nav_v2"]],
     scope: "derived",
     dependsOn: ["20260923-session-workspace-reference"],
     description: "Rebuild navigation from canonical Workspace references",
@@ -2656,6 +2743,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260923-session-operation-snapshot-cursor",
+    emptyInput: [["sessions"]],
     scope: "derived",
     description: "Upgrade snapshot summary cursors to preserve individual write operations",
     upSession: migrateOperationSnapshotCursor,
@@ -2672,6 +2760,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260923-session-model-selection",
+    emptyInput: [["sessions"]],
     scope: "session",
     description: "Preserve session models and root thinking choices in durable model selections",
     upSession(owner, progress) {

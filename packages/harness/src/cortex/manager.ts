@@ -1,3 +1,4 @@
+import { RolloutExecution } from "../session/rollout/execution"
 import { ExecutionCapacity } from "../session/execution-capacity"
 import { WorkspaceAccess } from "../workspace/access"
 import { RuntimeContext } from "../lifecycle/context"
@@ -1598,38 +1599,40 @@ export namespace Cortex {
     signal?.throwIfAborted()
     const task = instanceState.tasks.get(taskID)
     if (!task || (task.status !== "running" && task.status !== "queued")) return task
-    return WorkspaceAccess.handoff(
-      () =>
-        new Promise((resolve, reject) => {
-          let settled = false
-          const cleanup = () => {
-            clearTimeout(waiter.timeout)
-            signal?.removeEventListener("abort", abort)
-            const waiters = instanceState.taskWaiters.get(taskID)
-            waiters?.delete(waiter)
-            if (waiters?.size === 0) instanceState.taskWaiters.delete(taskID)
-          }
-          const finish = (value: CortexTypes.Task | undefined) => {
-            if (settled) return
-            settled = true
-            cleanup()
-            resolve(value)
-          }
-          const abort = () => {
-            if (settled) return
-            settled = true
-            cleanup()
-            reject(signal?.reason)
-          }
-          const waiter = {
-            resolve: finish,
-            timeout: setTimeout(() => finish(instanceState.tasks.get(taskID)), Math.max(0, timeoutSeconds * 1000)),
-          }
-          if (!instanceState.taskWaiters.has(taskID)) instanceState.taskWaiters.set(taskID, new Set())
-          instanceState.taskWaiters.get(taskID)!.add(waiter)
-          signal?.addEventListener("abort", abort, { once: true })
-          if (signal?.aborted) abort()
-        }),
+    return RolloutExecution.suspend(() =>
+      WorkspaceAccess.handoff(
+        () =>
+          new Promise((resolve, reject) => {
+            let settled = false
+            const cleanup = () => {
+              clearTimeout(waiter.timeout)
+              signal?.removeEventListener("abort", abort)
+              const waiters = instanceState.taskWaiters.get(taskID)
+              waiters?.delete(waiter)
+              if (waiters?.size === 0) instanceState.taskWaiters.delete(taskID)
+            }
+            const finish = (value: CortexTypes.Task | undefined) => {
+              if (settled) return
+              settled = true
+              cleanup()
+              resolve(value)
+            }
+            const abort = () => {
+              if (settled) return
+              settled = true
+              cleanup()
+              reject(signal?.reason)
+            }
+            const waiter = {
+              resolve: finish,
+              timeout: setTimeout(() => finish(instanceState.tasks.get(taskID)), Math.max(0, timeoutSeconds * 1000)),
+            }
+            if (!instanceState.taskWaiters.has(taskID)) instanceState.taskWaiters.set(taskID, new Set())
+            instanceState.taskWaiters.get(taskID)!.add(waiter)
+            signal?.addEventListener("abort", abort, { once: true })
+            if (signal?.aborted) abort()
+          }),
+      ),
     )
   }
 

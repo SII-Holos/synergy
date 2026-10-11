@@ -47,6 +47,16 @@ async function validateSkillDirectory(skillDir: string): Promise<string[]> {
   }
 
   await validateLinks(source, skillFile, errors)
+  const references = path.join(skillDir, "references")
+  if (
+    await stat(references)
+      .then((entry) => entry.isDirectory())
+      .catch(() => false)
+  ) {
+    for (const file of new Bun.Glob("**/*.md").scanSync({ cwd: references, absolute: true, onlyFiles: true })) {
+      await validateLinks(await Bun.file(file).text(), file, errors)
+    }
+  }
   await validateOpenAIYaml(skillDir, name, errors)
   return errors
 }

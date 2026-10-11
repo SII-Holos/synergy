@@ -193,8 +193,10 @@ describe("session.message-v2.toModelMessage image limit", () => {
     }
 
     const projection = MessageV2.projectModelMessages(msgs, { maxHistoryImages: 5 })
-    expect(projection.provenance.categories.filesReferences).toStrictEqual(placeholders.map((text) => ({ text })))
-    expect(projection.provenance.items.filesReferences).toBe(10)
+    expect(projection.provenance.categories.attachments.filter((entry) => entry.text)).toMatchObject(
+      placeholders.map((text) => ({ text })),
+    )
+    expect(projection.provenance.items.attachments).toBe(10)
   })
 
   test("replaces all images with placeholders when maxHistoryImages is 0", () => {
@@ -214,8 +216,10 @@ describe("session.message-v2.toModelMessage image limit", () => {
     expect(placeholders).toHaveLength(3)
 
     const projection = MessageV2.projectModelMessages(msgs, { maxHistoryImages: 0 })
-    expect(projection.provenance.categories.filesReferences).toStrictEqual(placeholders.map((text) => ({ text })))
-    expect(projection.provenance.items.filesReferences).toBe(3)
+    expect(projection.provenance.categories.attachments.filter((entry) => entry.text)).toMatchObject(
+      placeholders.map((text) => ({ text })),
+    )
+    expect(projection.provenance.items.attachments).toBe(3)
   })
 
   test("text files are not affected by image limit", () => {

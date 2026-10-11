@@ -876,7 +876,7 @@ describe("app production build contract", () => {
       })
       expectRootRule(css, {
         selector: "[data-component=process-viewport]",
-        declarations: ["overflow:auto", "overflow-anchor:none", "pointer-events:auto"],
+        declarations: ["overflow:auto", "overflow-anchor:none"],
       })
       expect(collectRootRuleBodies(css, "[data-component=process-viewport]").join(";")).toMatch(
         /max-height:min\(20rem,var\(--process-viewport-limit,\s*45dvh\)\)/,

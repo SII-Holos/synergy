@@ -10,7 +10,7 @@ import { Installation } from "../global/installation"
 import { SessionCompat } from "../session/compat-import"
 import { setActiveMigrationContext } from "./context"
 import { UpgradeWork } from "../storage/upgrade-work"
-import type { Migration, RunOptions, MigrationContext, MigrationSummary } from "./types"
+import type { Migration, MigrationOwner, RunOptions, MigrationContext, MigrationSummary } from "./types"
 
 export { upgradeImportedConfig, upgradeImportedRecord } from "./import"
 export type { Migration, RunOptions, RunResult, MigrationContext, MigrationSummary, MigrationReporter } from "./types"
@@ -201,6 +201,7 @@ async function runMigrationsWithAccess(options?: RunOptions): Promise<MigrationS
   const domains = collectByDomain({ targetDomain: options?.targetDomain })
   if (domains.size === 0) return emptySummary()
   let deferSessions = false
+  let hasHistoricalInputs = false
   if (!dryRun) {
     const status = await getMigrationStatus(options?.targetDomain)
     const pending = Object.entries(status)
@@ -213,6 +214,7 @@ async function runMigrationsWithAccess(options?: RunOptions): Promise<MigrationS
       ),
     )
     const active = await SessionCompat.isActive()
+    hasHistoricalInputs = active
     deferSessions = !barriers && active
     if (pending.length && barriers && active) {
       const migration: Migration = {
@@ -241,6 +243,7 @@ async function runMigrationsWithAccess(options?: RunOptions): Promise<MigrationS
       output,
       reporter: options?.reporter,
       deferSessions,
+      hasHistoricalInputs,
       maintenance: options?.maintenance ?? false,
     })
     if (!dryRun) await SessionCompat.migrationsCompleted([...domains.keys()])
@@ -258,6 +261,7 @@ async function runMigrationsInternal(
     output: NonNullable<RunOptions["output"]>
     reporter?: RunOptions["reporter"]
     deferSessions: boolean
+    hasHistoricalInputs: boolean
     maintenance: boolean
   },
 ): Promise<MigrationSummary> {
@@ -274,17 +278,22 @@ async function runMigrationsInternal(
   summary.totalDomains = domainNames.length
 
   try {
-    const logs = new Map<string, Record<string, number>>()
+    const logs = await loadDomainLogs(domainNames)
     for (const domain of domainNames) {
-      const data = await loadLogForDomain(domain)
-      logs.set(domain, data)
+      const data = logs.get(domain)!
       if (domains.get(domain)!.every((migration) => migration.id in data)) {
         upToDateDomains.push(domain)
         summary.upToDateDomains++
       }
     }
-    for (const { domain, migration } of MigrationPlan.ordered(collectByDomain())) {
+    const ordered = MigrationPlan.ordered(collectByDomain())
+    for (let index = 0; index < ordered.length; index++) {
+      const { domain, migration } = ordered[index]
       UpgradeWork.signal()?.throwIfAborted()
+      if (!dryRun && ["session", "owner", "record"].includes(migration.execution ?? "")) {
+        const key = [...cohortRoot, domain, migration.id]
+        if ((await Storage.readMany([key]))[0]) await Storage.remove(key)
+      }
       const logData = logs.get(domain)
       if (!logData || migration.id in logData) continue
       for (const dependency of migration.dependsOn ?? []) {
@@ -309,10 +318,12 @@ async function runMigrationsInternal(
           continue
         }
       }
-      const counts = await SessionCompat.stats()
-      if (migration.execution === "after-convergence" && counts.pending + counts.partial + counts.quarantined > 0) {
-        summary.deferred = (summary.deferred ?? 0) + 1
-        continue
+      if (migration.execution === "after-convergence") {
+        const counts = await SessionCompat.stats()
+        if (counts.pending + counts.partial + counts.quarantined > 0) {
+          summary.deferred = (summary.deferred ?? 0) + 1
+          continue
+        }
       }
       if (dryRun) {
         summary.dryRun++
@@ -322,9 +333,22 @@ async function runMigrationsInternal(
         continue
       }
 
+      // Only proven no-ops and on-access registrations may share
+      // completion. A normal migration remains a durable boundary; its external
+      // effects never enter a retryable database callback.
+      const completed = await completeVerifiedMigrations(ordered.slice(index), logs, options.hasHistoricalInputs)
+      if (completed.length) {
+        for (const entry of completed) {
+          logs.get(entry.domain)![entry.migration.id] = entry.completedAt
+          summary.completed++
+        }
+        continue
+      }
+
       try {
-        if (migration.onAccess || migration.execution === "session") {
-          if (!migration.upSession) throw new Error(`On-access migration ${domain}/${migration.id} requires upSession`)
+        if (MigrationPlan.onAccess(migration)) {
+          if (migration.execution !== "owner" && migration.execution !== "record" && !migration.upSession)
+            throw new Error(`On-access migration ${domain}/${migration.id} requires upSession`)
           await mergeDomainLog(domain, { [migration.id]: Date.now() })
           logData[migration.id] = Date.now()
           summary.completed++
@@ -405,9 +429,12 @@ async function runMigrationsInternal(
         }
         if (hasCohort) await Storage.write(cohortKey, { domain, id: migration.id, residentComplete: true })
         else {
-          logData[migration.id] = Date.now()
-          await saveLogForDomain(domain, logData)
-          await Storage.remove(cohortKey)
+          const completedAt = Date.now()
+          await Storage.transaction(async () => {
+            await mergeDomainLog(domain, { [migration.id]: completedAt })
+            await Storage.remove(cohortKey)
+          })
+          logData[migration.id] = completedAt
         }
         if (hasCohort) summary.deferred = (summary.deferred ?? 0) + 1
         else summary.completed++
@@ -435,6 +462,64 @@ async function runMigrationsInternal(
   }
 }
 
+async function completeVerifiedMigrations(
+  ordered: Array<{ domain: string; migration: Migration }>,
+  logs: Map<string, Record<string, number>>,
+  hasHistoricalInputs: boolean,
+) {
+  const candidates: typeof ordered = []
+  for (const entry of ordered) {
+    const log = logs.get(entry.domain)
+    if (!log || entry.migration.id in log) continue
+    const migration = entry.migration
+    const onAccess = MigrationPlan.onAccess(migration)
+    if (
+      migration.execution === "maintenance" ||
+      migration.execution === "after-convergence" ||
+      (!onAccess && ((!migration.emptyInput && !migration.isApplied) || hasHistoricalInputs)) ||
+      migration.dependsOn?.some((dependency) => dependency.includes("/") && !logs.has(dependency.split("/")[0]))
+    )
+      break
+    if ((migration.onAccess || migration.execution === "session") && !migration.upSession)
+      throw new Error(`On-access migration ${entry.domain}/${migration.id} requires upSession`)
+    candidates.push(entry)
+  }
+  if (!candidates.length) return []
+  return Storage.transaction(async (tx) => {
+    const cohorts = await tx.readMany(candidates.map(({ domain, migration }) => [...cohortRoot, domain, migration.id]))
+    const empty = new Map<string, boolean>()
+    let roots: Set<string> | undefined
+    const completed: Array<(typeof ordered)[number] & { completedAt: number }> = []
+    for (const [index, entry] of candidates.entries()) {
+      if (cohorts[index] !== undefined) break
+      const onAccess = MigrationPlan.onAccess(entry.migration)
+      const applied = !onAccess && entry.migration.isApplied ? await entry.migration.isApplied() : false
+      if (!onAccess && !applied && !entry.migration.emptyInput) break
+      let applicable = true
+      for (const prefix of onAccess || applied ? [] : entry.migration.emptyInput!) {
+        const key = JSON.stringify(prefix)
+        if (!empty.has(key)) {
+          roots ??= new Set(await tx.scan([]))
+          empty.set(key, !roots.has(prefix[0]) || !(await tx.queryKeys({ prefix, limit: 1 })).length)
+        }
+        if (!empty.get(key)) {
+          applicable = false
+          break
+        }
+      }
+      if (!applicable) break
+      completed.push({ ...entry, completedAt: Date.now() })
+    }
+    for (const domain of new Set(completed.map((entry) => entry.domain))) {
+      const entries = Object.fromEntries(
+        completed.filter((entry) => entry.domain === domain).map((entry) => [entry.migration.id, entry.completedAt]),
+      )
+      await mergeDomainLog(domain, entries)
+    }
+    return completed
+  })
+}
+
 function emptySummary(): MigrationSummary {
   return {
     totalDomains: 0,
@@ -449,6 +534,11 @@ async function loadLogForDomain(domain: string): Promise<Record<string, number>>
   return Storage.read<Record<string, number>>(StoragePath.metaMigrationLogDomain(domain)).catch(
     (error) => missingLog(error) ?? {},
   )
+}
+
+async function loadDomainLogs(domains: string[]): Promise<Map<string, Record<string, number>>> {
+  const values = await Storage.readMany<Record<string, number>>(domains.map(StoragePath.metaMigrationLogDomain))
+  return new Map(domains.map((domain, index) => [domain, values[index] === undefined ? {} : values[index]!]))
 }
 
 function missingLog(error: unknown): undefined {
@@ -556,10 +646,11 @@ export async function getMigrationStatus(
 ): Promise<Record<string, { completed: Migration[]; pending: Migration[] }>> {
   const domains = collectByDomain({ targetDomain: domain })
   const result: Record<string, { completed: Migration[]; pending: Migration[] }> = {}
+  const logs = await loadDomainLogs([...domains.keys()])
 
   for (const [d, migrations] of domains) {
     const ordered = orderMigrations(migrations)
-    const logData = await loadLogForDomain(d)
+    const logData = logs.get(d)!
     const completed = ordered.filter((m) => m.id in logData)
     const pending = ordered.filter((m) => !(m.id in logData))
     result[d] = { completed, pending }
@@ -598,17 +689,36 @@ export async function upgradeSessionRecords(owners: Array<{ scopeID: string; ses
 
 const sessionPreparations = Storage.state(() => new Map<string, Promise<void>>())
 export async function prepareSessionMigrations(owner: { scopeID: string; sessionID: string }) {
-  const key = JSON.stringify(owner)
+  return prepareMigrations({ kind: "session", ...owner }, "session")
+}
+
+export async function prepareOwnerMigrations(owner: MigrationOwner) {
+  return prepareMigrations(owner, "owner")
+}
+
+async function prepareMigrations(owner: MigrationOwner, execution: "session" | "owner") {
+  const key = JSON.stringify([
+    execution,
+    owner.kind,
+    owner.scopeID,
+    owner.kind === "session" ? owner.sessionID : owner.operationID,
+  ])
   const pending = sessionPreparations()
   if (pending.has(key)) return pending.get(key)!
   const task = (async () => {
-    const ownerKey = ["sessions", owner.scopeID, owner.sessionID, "info"]
+    const root =
+      owner.kind === "session"
+        ? ["sessions", owner.scopeID, owner.sessionID]
+        : ["operations", owner.scopeID, owner.operationID]
+    const ownerKey = [...root, ...(owner.kind === "session" ? ["info"] : ["rollout", "journal", "head"])]
     if (!(await Storage.readMany([ownerKey]))[0]) return
     for (const { domain, migration } of MigrationPlan.ordered(collectByDomain())) {
-      if (migration.execution !== "session") continue
-      const receipt = ["sessions", owner.scopeID, owner.sessionID, "migrations", domain, migration.id]
+      if (migration.execution !== execution) continue
+      UpgradeWork.signal()?.throwIfAborted()
+      const receipt = [...root, "migrations", domain, migration.id]
       if ((await Storage.readMany([receipt]))[0]) continue
-      await migration.upSession!(owner, () => {})
+      if (execution === "owner") await migration.upOwner!(owner, () => {})
+      else if (owner.kind === "session") await migration.upSession!(owner, () => {})
       await Storage.transaction(async () => {
         if ((await Storage.readMany([ownerKey]))[0]) await Storage.write(receipt, { completed: Date.now() })
       })

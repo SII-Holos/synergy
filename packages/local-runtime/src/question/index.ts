@@ -3,6 +3,7 @@ import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { SessionInteraction } from "@ericsanchezok/synergy-harness/session/interaction"
+import { RolloutExecution } from "@ericsanchezok/synergy-harness/rollout"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -119,6 +120,10 @@ export namespace Question {
     tool?: { messageID: string; callID: string }
     signal?: AbortSignal
   }): Promise<Answer[]> {
+    return RolloutExecution.wait(() => askPending(input))
+  }
+
+  async function askPending(input: Parameters<typeof ask>[0]): Promise<Answer[]> {
     input.signal?.throwIfAborted()
     const s = await state()
     const id = Identifier.ascending("question")

@@ -38,6 +38,8 @@ Native Workspace mount receipts live under `state/environments/<environment>/<al
 
 Removed user Inbox inputs and restoration receipts live at the logical keys `sessions/<scope>/<session>/inbox-removed/<item>`. They retain the complete domain input until Session deletion and never participate in ordinary queue discovery. See [Inbox removal and restoration](../architecture/session-and-messages.md#inbox-removal-and-restoration).
 
+Rollout stores execution intervals at `<owner>/rollout/runs/<run>/intervals/<interval>` alongside its existing run and segment evidence. Interval writes append through the Rollout journal; [execution evidence](../architecture/session-and-messages.md) defines timing, recovery and migration semantics.
+
 ## Agent database
 
 Installation generations retain code-version floors and explicit package selections independently of Agent storage. Running processes keep their verified generation until they exit. The `installation/20260926-installation-selection-v1` migration preserves the full Web backend for a home with existing data or configuration; fresh core homes retain a minimal selection. It neither rewrites API4 grants nor installs a second Desktop shell. Bootstrap and the central migration runner share this idempotent owner.
@@ -83,7 +85,7 @@ Global `config/synergy.d/130-storage.jsonc` selects storage. Omission selects SQ
 }
 ```
 
-Use `synergy data storage status` to inspect the active dataset, `verify` to check integrity and relationships, `resume` to finish interrupted upgrades or switches, and `migrate --target <config-file>` to change backend, namespace or SQLite location. These commands acquire the appropriate read-only or exclusive maintenance Handle. They do not stop the running Runtime.
+Use `synergy data storage status` to inspect the active dataset, `verify` to check integrity and relationships, `resume` to finish interrupted upgrades or switches and collect unreferenced artifact packs, and `migrate --target <config-file>` to change backend, namespace or SQLite location. These commands acquire the appropriate read-only or exclusive maintenance Handle. They do not stop the running Runtime.
 
 `verify` also checks every referenced binary artifact's bounds and hash. `restore-backup <backup> <destination>` verifies a sealed version 2 Home backup or a version 3/4 segmented backup and publishes a separate, new Home directory; the destination is the Home directory itself, not its parent. It rejects existing destinations and does not open the current database. An incomplete segmented backup also requires its original frozen source; restoration seals those remaining segments before publishing the restored Home. See [upgrade recovery](../migrations/transactional-agent-storage.md) for backup formats and downgrade limits.
 

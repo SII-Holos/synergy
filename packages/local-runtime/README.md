@@ -12,6 +12,8 @@ Package entrypoint contracts are verified by `bun test test/component.test.ts te
 
 `registerLocalRuntime()` also registers bundled model SDK factories and the custom SDK loader. Agent worker bootstrap creates an explicit Runtime context, registers local capabilities, then starts the harness runner.
 
+Local Runtime registers the native processor for Harness's `AttachmentImageInput`. The codec loads only when a model request contains local image bytes. Original Assets stay immutable; model copies follow the shared image budget, and decoding failures become individual image placeholders. See [Assets and attachments](../../docs/architecture/session-and-messages.md#assets-and-attachments).
+
 Source workers launch this package’s `src/agent-worker.ts` through the harness worker-entry registration. The full product registers its own entry; compiled executables dispatch the same composition through `__agent-turn-runner`.
 
 Native execution belongs here: `process/pty`, `file/watcher`, and the macOS/Linux/Windows sandbox backends and helper sources. `registerLocalRuntime()` registers the sandbox host and the file-watcher startup contribution before commands or workers execute. Build sandbox helpers with `bun script/build-helper.ts`; Linux bwrap development setup uses `bash script/download-bwrap.sh`.
@@ -27,6 +29,8 @@ Hosts opening a `NativeExecutor` directly supply a `WorkspaceCoordinator` from `
 `registerDockerEnvironment({ endpoint })` registers a managed Docker provider in the composing Runtime. Local Unix sockets and remote TLS Docker Engine endpoints use the same lifecycle. `ExecutionHost.listen` and `RemoteExecutor` expose the same Executor through authenticated Unix sockets or HTTPS. Build the separate execution image with `bun run build:execution-host`; run its real allocation test with `SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE=synergy-execution-host:development bun test test/environment/docker.test.ts`. Pass `--arch x64` or `--arch arm64` to build for a specific Linux target. The image contains a process supervisor, native ownership library, verified file watcher and Linux sandbox helper, without an Agent Runtime or Agent database. The Docker host must support unprivileged user namespaces and nested bubblewrap; incompatible kernel or security-module policies fail contained commands.
 
 `environment/docker` exports `dockerEnvironmentHostConfig()` for a privileged Engine broker to validate the exact confinement policy used by the provider. Hosts validate the image, allocation identity, resource limits and mount selection independently; the helper grants no Engine access.
+
+Trusted host composition can supply `engineTransport` and `executorTransport` to `dockerEnvironment`. Each receives the complete Request, including deadline, body, allocation target and authentication; it owns the authenticated network hop and must honor cancellation. Allocation, incarnation checks, credentials, Workspace save and release still belong to the provider. A failed custom transport never falls back to a direct Engine or Executor connection.
 
 On Docker hosts with AppArmor enabled, load the supplied `src/environment/vendor/synergy-execution.apparmor` using `sudo apparmor_parser -r <profile-file>` on the daemon host before allocation. Synergy selects its `synergy-execution-v1` profile automatically; a missing profile fails allocation. The policy permits the inner sandbox's mount operations while preserving Docker's other AppArmor restrictions. The runtime does not install host policies or disable AppArmor.
 

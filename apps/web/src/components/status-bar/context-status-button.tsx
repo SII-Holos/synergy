@@ -9,14 +9,14 @@ import { useWorkbenchPanels } from "@/context/workbench"
 import { useLocale } from "@/context/locale"
 import { statusBar as T } from "@/locales/messages"
 import {
-  buildContextPanelModel,
-  createContextPanelPresentation,
+  buildContextStatusModel,
+  createContextStatusPresentation,
   formatContextNumber,
   formatContextPercent,
 } from "@/components/workspace/context-model"
 import { contextStatusAriaLabel, openContextPanel } from "./context-status-model"
 
-function toneClass(tone: ReturnType<typeof buildContextPanelModel>["statusTone"]) {
+function toneClass(tone: ReturnType<typeof buildContextStatusModel>["statusTone"]) {
   if (tone === "critical") return "text-icon-critical-base"
   if (tone === "warning") return "text-icon-warning-base"
   if (tone === "progress") return "text-text-interactive-base"
@@ -35,14 +35,11 @@ export function ContextStatusButton() {
     Object.fromEntries(sync.data.provider.all.map((provider) => [provider.id, provider])),
   )
   const context = createMemo(() =>
-    buildContextPanelModel({
-      session: params.id ? sync.session.get(params.id) : undefined,
+    buildContextStatusModel({
       messages: messages(),
       latestMessage: params.id ? sync.session.latestContextMessage(params.id) : null,
       providers: providers(),
-      status: params.id ? view().statusFor(params.id) : undefined,
-      pendingItems: params.id ? view().inboxFor(params.id).length : 0,
-      presentation: createContextPanelPresentation(i18n, fmt),
+      presentation: createContextStatusPresentation(i18n),
     }),
   )
   const percentage = createMemo(() => context().usage.contextPercentage)

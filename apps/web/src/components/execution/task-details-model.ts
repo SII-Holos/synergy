@@ -4,6 +4,7 @@ export type TaskDetailsTask = ExecutionSummary["tasks"][number]
 export type TaskDetailsStatus = TaskDetailsTask["status"] | "queued"
 
 export function compactTaskStatus(task: TaskDetailsTask): TaskDetailsStatus {
+  if (task.status !== "unknown") return task.status
   const status = task.cortex?.status
   return status === "error" ? "failed" : (status ?? task.status)
 }

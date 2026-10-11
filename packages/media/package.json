@@ -32,6 +32,7 @@
     "@ai-sdk/openai": "2.0.111",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
     "@hono/standard-validator": "^0.2.0",
     "@zip.js/zip.js": "2.8.26",
     "ai": "catalog:",

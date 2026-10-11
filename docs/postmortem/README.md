@@ -1,32 +1,45 @@
 # Postmortems
 
-Failures, causes and guardrails.
+- [0061: Usage recovery](0061-streamed-usage-recovery.md)
 
-## When to write one
+## Criteria
 
-- **Subtle** — the mechanism requires careful investigation.
-- **Systemic** — a gap in tests, tooling, or conventions let the bug escape.
-- **Costly to rediscover** — rediscovery would repeat substantial debugging.
+- **Subtle** — needs investigation.
+- **Systemic** — safeguards missed it.
+- **Costly to rediscover**.
 
-Otherwise, add a tested fix.
+Otherwise, test the fix.
 
 ## Placement
 
-- Bugs and underlying process failures belong here.
-- Decisions, alternatives and rationale belong in `docs/decisions/`.
+- Bugs and process failures belong here.
+- Decisions and rationale belong in `docs/decisions/`.
 
 ## Format
 
-Use the next `NNNN-kebab-case-title.md`. Sections:
+Use `NNNN-kebab-case-title.md`. Sections:
 
-- **Executive summary** — one paragraph: what broke, its cause, why it escaped, and the durable lesson.
-- **Summary** — details of the failure.
+- **Executive summary** — what broke, why, how it escaped, and the durable lesson.
+- **Summary** — failure details.
 - **Timeline** — what was observed and when.
 - **Root cause** — the mechanism and missing safeguards.
 - **Guardrails added** — linked fixes: tests, doc updates, gate changes.
 - **Lessons** — the durable takeaways.
 
 ## Index
+
+- [0067: Isolated containment](0067-isolated-runtime-containment-gaps.md)
+
+- [0066: Completion settlement](0066-completion-waited-for-file-settlement.md)
+
+- [0065: Session navigation](0065-session-navigation-flashed-introduction.md)
+
+- [0064: History latency](0064-history-pages-scanned-authoritative-storage.md)
+
+- [0063: Startup replay](0063-history-replay-blocked-startup.md)
+
+- [0062: Historical project bindings](0062-project-migration-required-live-directory-identity.md)
+- [0061: Concurrent Workspace admission](0061-concurrent-workspace-admission.md)
 
 - [0059: Disclosure](0059-cold-process-disclosure-jank.md)
 

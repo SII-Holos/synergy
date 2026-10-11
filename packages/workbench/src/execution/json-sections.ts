@@ -56,9 +56,18 @@ export namespace ExecutionJson {
       parent.empty = false
       parent.index++
     }
+    const sectionBytes = (value: Section) =>
+      96 + value.path.reduce((sum, key) => sum + key.length * 4, 0) + value.preview.length * 4
     const section = (value: Section) => {
       if (value.path.length > 2) return
-      const bytes = 96 + value.path.reduce((sum, key) => sum + key.length * 4, 0) + value.preview.length * 4
+      const bytes = sectionBytes(value)
+      while (value.path.length <= 1 && (items.length >= 10_000 || indexBytes + bytes > 2 * 1024 * 1024)) {
+        const index = items.findLastIndex((item) => item.path.length > 1)
+        if (index < 0) break
+        indexBytes -= sectionBytes(items[index])
+        items.splice(index, 1)
+        truncated = true
+      }
       if (items.length >= 10_000 || indexBytes + bytes > 2 * 1024 * 1024) {
         truncated = true
         return

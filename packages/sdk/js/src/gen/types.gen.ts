@@ -518,6 +518,9 @@ export type UsageSummary = {
       phase: "indexes" | "sessions" | "operations" | "completed"
       after?: Array<string>
       ownerAfter?: Array<string>
+      requested?: boolean
+      lineageAfter?: Array<string>
+      lineageComplete?: boolean
       owners: number
       records: number
       updatedAt: number
@@ -3688,6 +3691,10 @@ export type ScopeUiPreferences = {
    */
   compactReasoning?: boolean
   /**
+   * Prefer a tool call's purpose description over its action and target when available (default: false)
+   */
+  preferWorkBrief?: boolean
+  /**
    * Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting.
    */
   welcomeGames?: boolean
@@ -6773,6 +6780,10 @@ export type Config = {
      */
     policyWorkers?: number
     /**
+     * Start isolated Policy workers during server startup instead of first classification (default: true)
+     */
+    policyWorkerPrewarm?: boolean
+    /**
      * Maximum queued Policy classifications waiting for a worker (default: 256)
      */
     policyQueueMax?: number
@@ -7138,6 +7149,10 @@ export type Config = {
    * Show a compact reasoning preview in the execution process (default: false)
    */
   compactReasoning?: boolean
+  /**
+   * Prefer a tool call's purpose description over its action and target when available (default: false)
+   */
+  preferWorkBrief?: boolean
   quick_switcher?: QuickSwitcherConfig
   /**
    * Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting.
@@ -8024,9 +8039,10 @@ export type ExecutionTask = {
   nodeID: string | null
   parentID: string | null
   title: string
-  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown" | "queued" | "paused" | "waiting"
   elapsedMs: number | null
   elapsedActive: boolean
+  elapsedLowerBound: boolean
   tokens: {
     known: number
     unknown: number
@@ -8122,9 +8138,12 @@ export type ExecutionSummary = {
   revision: number
   runID?: string
   computedAt: number
-  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+  clockID: string
+  sampledAt: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown" | "queued" | "paused" | "waiting"
   elapsedMs: number | null
   elapsedActive: boolean
+  elapsedLowerBound: boolean
   accounting: RolloutAccountingSummary
   cost: ExecutionCostPresentation
   own: RolloutAccountingSummary
@@ -8235,34 +8254,31 @@ export type ExecutionSummary = {
     observedAt: number
   } | null
   contextDistribution: {
-    version: 1
+    version: 2
+    callID?: string
     modelID: string
     providerID: string
     totalInput: number
     contextLimit?: number
     usableInputLimit?: number
-    categories: {
-      conversation: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      toolActivity: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      filesReferences: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      instructions: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-    }
+    categories: Array<{
+      category:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+        | "legacyConversation"
+        | "legacyTools"
+        | "legacyInstructions"
+      precision: "source" | "role" | "legacy"
+      estimatedTokens: number
+      attributedTokens: number
+      items?: number
+    }>
     overhead: {
       attributedTokens: number
     }
@@ -8287,8 +8303,19 @@ export type ExecutionSummary = {
     id: string
     title: string
     started: number
-    status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown"
+    status:
+      | "running"
+      | "completed"
+      | "failed"
+      | "cancelled"
+      | "interrupted"
+      | "unknown"
+      | "queued"
+      | "paused"
+      | "waiting"
     elapsedMs: number | null
+    elapsedActive: boolean
+    elapsedLowerBound: boolean
   }>
   coverage: {
     recorded: number
@@ -8315,6 +8342,144 @@ export type ExecutionSummary = {
   taskInstructions: number
 }
 
+export type ContextUsageEstimate = {
+  modelID: string
+  providerID: string
+  contextLimit?: number
+  usableInputLimit?: number
+  categories: {
+    [key: string]: {
+      estimatedTokens: number
+      items: number
+      precision?: "source" | "role"
+    }
+  }
+  estimator:
+    | {
+        kind: "model-tokenizer"
+        encoding?: string
+      }
+    | {
+        kind: "bounded-utf8"
+        sampledCharacters: number
+        truncated: boolean
+      }
+  version: 1
+  capturedAt: number
+}
+
+export type ExecutionContextSnapshot = {
+  sessionID: string
+  callID: string
+  nodeID: string
+  runID: string
+  started: number
+  requestNumber: number
+  roundNumber: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  modelID: string
+  providerID: string
+  inputTokens: number | null
+  contextLimit: number | null
+  outputTokens: number | null
+  cacheHit: number | null
+  elapsedMs: number | null
+  retries: number
+  usage: {
+    version: 2
+    callID?: string
+    modelID: string
+    providerID: string
+    totalInput: number
+    contextLimit?: number
+    usableInputLimit?: number
+    categories: Array<{
+      category:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+        | "legacyConversation"
+        | "legacyTools"
+        | "legacyInstructions"
+      precision: "source" | "role" | "legacy"
+      estimatedTokens: number
+      attributedTokens: number
+      items?: number
+    }>
+    overhead: {
+      attributedTokens: number
+    }
+    estimator:
+      | {
+          kind: "model-tokenizer"
+          encoding?: string
+        }
+      | {
+          kind: "bounded-utf8"
+          sampledCharacters: number
+          truncated: boolean
+        }
+    reconciliation: {
+      mode: "residual" | "scaled-down"
+      factor: number
+    }
+    capturedAt: number
+  } | null
+  estimate?: ContextUsageEstimate
+  compactedBefore: boolean
+  requestAvailable: boolean
+}
+
+export type ExecutionContextHistory = {
+  sessionID: string
+  revision: number
+  total: number
+  items: Array<ExecutionContextSnapshot>
+  nextCursor: string | null
+}
+
+export type ExecutionContextItem = {
+  category:
+    | "systemInstructions"
+    | "toolDefinitions"
+    | "userMessages"
+    | "injectedContext"
+    | "skills"
+    | "assistantMessages"
+    | "toolResults"
+    | "attachments"
+  path: Array<string>
+  selector?: Array<string>
+  range?: {
+    start: number
+    end: number
+  }
+  source: string
+  messageID?: string
+  partID?: string
+  characters: number
+  precision: "source" | "role"
+  id: string
+  offset: number
+  bytes: number
+}
+
+export type ExecutionContextItems = {
+  callID: string
+  nodeID: string
+  contentVersion: string | null
+  status: "available" | "legacy" | "unavailable"
+  items: Array<ExecutionContextItem>
+  total: number
+  nextCursor: string | null
+  truncated: boolean
+}
+
 export type ExecutionTrajectoryPage = {
   sessionID: string
   revision: number
@@ -8338,6 +8503,24 @@ export type RolloutArtifactRef = {
 
 export type ExecutionNodeDetail = {
   node: ExecutionTrajectoryNode
+  execution?: {
+    status:
+      | "running"
+      | "completed"
+      | "failed"
+      | "cancelled"
+      | "interrupted"
+      | "unknown"
+      | "queued"
+      | "paused"
+      | "waiting"
+    elapsedMs: number | null
+    elapsedActive: boolean
+    elapsedLowerBound: boolean
+    clockID: string
+    sampledAt: number
+    revision: number
+  }
   record: ExecutionJson | null
   sources: Array<{
     field: string
@@ -8872,6 +9055,10 @@ export type ExperimentSnapshotRuntime = {
      */
     policyWorkers?: number
     /**
+     * Start isolated Policy workers during server startup instead of first classification (default: true)
+     */
+    policyWorkerPrewarm?: boolean
+    /**
      * Maximum queued Policy classifications waiting for a worker (default: 256)
      */
     policyQueueMax?: number
@@ -9020,6 +9207,13 @@ export type RolloutRunRecord = {
     runID: string
   }
   cancelRequestedAt?: number
+  admissionOnly?: boolean
+  timingVersion?: 1
+  detectedAt?: number
+  execution?: {
+    status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+    at: number
+  }
   parent?: {
     owner:
       | {
@@ -9035,6 +9229,31 @@ export type RolloutRunRecord = {
     runID: string | null
     messageID: string
   }
+}
+
+export type RolloutExecutionInterval = {
+  version: 1
+  id: string
+  owner:
+    | {
+        kind: "session"
+        scopeID: string
+        sessionID: string
+      }
+    | {
+        kind: "operation"
+        scopeID: string
+        operationID: string
+      }
+  runID: string
+  segmentID: string
+  branchID: string
+  clockID: string
+  started: number
+  ended?: number
+  status: "active" | "waiting" | "closed" | "interrupted"
+  coverage: "complete" | "partial"
+  detectedAt?: number
 }
 
 export type RolloutCallRecord = {
@@ -9170,6 +9389,7 @@ export type RolloutCallRecord = {
   request: RolloutArtifactRef
   response?: RolloutArtifactRef
   sdkUsage: unknown | null
+  contextEstimate?: ContextUsageEstimate
   sdkEstimate?: {
     version: 1
     currency: "USD" | null
@@ -9427,8 +9647,10 @@ export type RolloutSnapshot = {
     runID: string
     started: number
     ended?: number
+    detectedAt?: number
     status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
   }>
+  intervals?: Array<RolloutExecutionInterval>
   calls: Array<RolloutCallRecord>
   attempts: Array<RolloutAttemptRecord>
   tools: Array<RolloutToolExecutionRecord>
@@ -9464,6 +9686,8 @@ export type RolloutResult = {
   snapshots: Array<RolloutSnapshot>
   accounting: RolloutAccountingSummary
   elapsedMs: number
+  elapsedActive: boolean
+  elapsedLowerBound: boolean
 }
 
 export type SessionChildCursor = {
@@ -9786,6 +10010,7 @@ export type SessionInputProgress = {
     | "retrying"
     | "completed"
     | "cancelled"
+    | "removed"
     | "failed"
   durable: boolean
   canonical: boolean
@@ -9904,6 +10129,10 @@ export type ExperimentRuntime = {
      * Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)
      */
     policyWorkers?: number
+    /**
+     * Start isolated Policy workers during server startup instead of first classification (default: true)
+     */
+    policyWorkerPrewarm?: boolean
     /**
      * Maximum queued Policy classifications waiting for a worker (default: 256)
      */
@@ -10252,34 +10481,31 @@ export type AssistantMessage = {
     }
   }
   contextUsage?: {
-    version: 1
+    version: 2
+    callID?: string
     modelID: string
     providerID: string
     totalInput: number
     contextLimit?: number
     usableInputLimit?: number
-    categories: {
-      conversation: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      toolActivity: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      filesReferences: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-      instructions: {
-        estimatedTokens: number
-        attributedTokens: number
-        items?: number
-      }
-    }
+    categories: Array<{
+      category:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+        | "legacyConversation"
+        | "legacyTools"
+        | "legacyInstructions"
+      precision: "source" | "role" | "legacy"
+      estimatedTokens: number
+      attributedTokens: number
+      items?: number
+    }>
     overhead: {
       attributedTokens: number
     }
@@ -13315,6 +13541,68 @@ export type VoicePreviewInput = {
   text: string
 }
 
+export type RenderTarget = {
+  sessionID: string
+  messageID: string
+  partID: string
+}
+
+export type RenderDescriptor = {
+  format: "synergy.visual"
+  version: 1
+  id: string
+  mode: "static" | "interactive"
+  title: string
+  layout: "normal" | "wide"
+  libraries: Array<"d3" | "chart" | "mermaid">
+  replaces?: string
+  source: string
+}
+
+export type RenderSource = {
+  format: "synergy.visual"
+  version: 1
+  id: string
+  mode: "static" | "interactive"
+  title: string
+  layout: "normal" | "wide"
+  libraries: Array<"d3" | "chart" | "mermaid">
+  html: string
+  replaces?: string
+}
+
+export type RenderContent = {
+  modelContent?: unknown
+  uiContent?: unknown
+}
+
+export type RenderState = {
+  revision: number
+  updatedAt: number
+  mutationID?: string
+  content: RenderContent
+}
+
+export type RenderSnapshot = {
+  descriptor: RenderDescriptor
+  source: RenderSource
+  state: RenderState
+}
+
+export type RenderConflict = {
+  name: "RenderConflict"
+  data: {
+    message: string
+    state: RenderState
+  }
+}
+
+export type RenderStateWrite = {
+  revision: number
+  mutationID: string
+  content: RenderContent
+}
+
 export type ModelRoleUsage = {
   name: string
   description?: string
@@ -13592,20 +13880,6 @@ export type EventConfigUpdated = {
   }
 }
 
-export type EventPermissionAsked = {
-  type: "permission.asked"
-  properties: PermissionRequest
-}
-
-export type EventPermissionReplied = {
-  type: "permission.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    reply: "once" | "session" | "always" | "reject"
-  }
-}
-
 export type EventUsageUpdated = {
   type: "usage.updated"
   properties: {
@@ -13654,8 +13928,13 @@ export type RolloutEvidenceRecord =
         runID: string
         started: number
         ended?: number
+        detectedAt?: number
         status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
       }
+    }
+  | {
+      kind: "interval"
+      value: RolloutExecutionInterval
     }
   | {
       kind: "call"
@@ -13713,6 +13992,20 @@ export type EventRolloutUpdated = {
         }
     revision: number
     record: RolloutEvidenceRecord
+  }
+}
+
+export type EventPermissionAsked = {
+  type: "permission.asked"
+  properties: PermissionRequest
+}
+
+export type EventPermissionReplied = {
+  type: "permission.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    reply: "once" | "session" | "always" | "reject"
   }
 }
 
@@ -14143,6 +14436,7 @@ export type EventExecutionUpdated = {
     revision: number
     summary: ExecutionSummary
     roundSummaries: Array<ExecutionSummary>
+    contextUpserts?: Array<ExecutionContextSnapshot>
     previousRevision?: number
     upserts: Array<ExecutionTrajectoryNode>
     processUpserts?: Array<ExecutionTrajectoryNode>
@@ -14316,10 +14610,10 @@ export type Event =
   | EventMessagePartRemoved
   | EventProviderAuthUpdated
   | EventConfigUpdated
-  | EventPermissionAsked
-  | EventPermissionReplied
   | EventUsageUpdated
   | EventRolloutUpdated
+  | EventPermissionAsked
+  | EventPermissionReplied
   | EventSessionExecutionUpdated
   | EventSessionToolActivity
   | EventSessionInputProgress
@@ -14392,6 +14686,8 @@ export type Event =
   | EventGlobalDisposed
   | EventRuntimeReloaded
   | EventReviewStateUpdated
+
+export type RenderTarget2 = string
 
 export type GlobalCapabilitiesData = {
   body?: never
@@ -14943,6 +15239,9 @@ export type GlobalStatsUsageRebuildResponses = {
     phase: "indexes" | "sessions" | "operations" | "completed"
     after?: Array<string>
     ownerAfter?: Array<string>
+    requested?: boolean
+    lineageAfter?: Array<string>
+    lineageComplete?: boolean
     owners: number
     records: number
     updatedAt: number
@@ -18737,6 +19036,146 @@ export type SessionExecutionSummaryResponses = {
 }
 
 export type SessionExecutionSummaryResponse = SessionExecutionSummaryResponses[keyof SessionExecutionSummaryResponses]
+
+export type SessionExecutionContextHistoryData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+    cursor?: string
+    limit?: number
+  }
+  url: "/session/{sessionID}/execution/context/history"
+}
+
+export type SessionExecutionContextHistoryErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContextHistoryError =
+  SessionExecutionContextHistoryErrors[keyof SessionExecutionContextHistoryErrors]
+
+export type SessionExecutionContextHistoryResponses = {
+  /**
+   * Read context request history
+   */
+  200: ExecutionContextHistory
+}
+
+export type SessionExecutionContextHistoryResponse =
+  SessionExecutionContextHistoryResponses[keyof SessionExecutionContextHistoryResponses]
+
+export type SessionExecutionContextSnapshotData = {
+  body?: never
+  path: {
+    sessionID: string
+    callID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+  }
+  url: "/session/{sessionID}/execution/context/snapshots/{callID}"
+}
+
+export type SessionExecutionContextSnapshotErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContextSnapshotError =
+  SessionExecutionContextSnapshotErrors[keyof SessionExecutionContextSnapshotErrors]
+
+export type SessionExecutionContextSnapshotResponses = {
+  /**
+   * Read one context request snapshot
+   */
+  200: ExecutionContextSnapshot
+}
+
+export type SessionExecutionContextSnapshotResponse =
+  SessionExecutionContextSnapshotResponses[keyof SessionExecutionContextSnapshotResponses]
+
+export type SessionExecutionContextItemsData = {
+  body?: never
+  path: {
+    sessionID: string
+    callID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    runID?: string
+    cursor?: string
+    limit?: number
+    category?:
+      | "systemInstructions"
+      | "toolDefinitions"
+      | "userMessages"
+      | "injectedContext"
+      | "skills"
+      | "assistantMessages"
+      | "toolResults"
+      | "attachments"
+    query?: string
+    version?: string
+  }
+  url: "/session/{sessionID}/execution/context/snapshots/{callID}/items"
+}
+
+export type SessionExecutionContextItemsErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionContextItemsError =
+  SessionExecutionContextItemsErrors[keyof SessionExecutionContextItemsErrors]
+
+export type SessionExecutionContextItemsResponses = {
+  /**
+   * Read a bounded context source index
+   */
+  200: ExecutionContextItems
+}
+
+export type SessionExecutionContextItemsResponse =
+  SessionExecutionContextItemsResponses[keyof SessionExecutionContextItemsResponses]
 
 export type SessionExecutionTrajectoryData = {
   body?: never
@@ -29673,6 +30112,132 @@ export type VoicePreviewResponses = {
 }
 
 export type VoicePreviewResponse = VoicePreviewResponses[keyof VoicePreviewResponses]
+
+export type RenderFindData = {
+  body?: never
+  path: {
+    sessionID: string
+    assetID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/render/source/{sessionID}/{assetID}"
+}
+
+export type RenderFindErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RenderFindError = RenderFindErrors[keyof RenderFindErrors]
+
+export type RenderFindResponses = {
+  /**
+   * Producing call, if available in this transcript
+   */
+  200: {
+    target: RenderTarget
+    descriptor: RenderDescriptor
+  } | null
+}
+
+export type RenderFindResponse = RenderFindResponses[keyof RenderFindResponses]
+
+export type RenderGetData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+    partID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/render/{sessionID}/{messageID}/{partID}"
+}
+
+export type RenderGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RenderGetError = RenderGetErrors[keyof RenderGetErrors]
+
+export type RenderGetResponses = {
+  /**
+   * Immutable source and current state
+   */
+  200: RenderSnapshot
+}
+
+export type RenderGetResponse = RenderGetResponses[keyof RenderGetResponses]
+
+export type RenderUpdateData = {
+  body?: RenderStateWrite
+  path: {
+    sessionID: string
+    messageID: string
+    partID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/render/{sessionID}/{messageID}/{partID}"
+}
+
+export type RenderUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Revision conflict
+   */
+  409: RenderConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RenderUpdateError = RenderUpdateErrors[keyof RenderUpdateErrors]
+
+export type RenderUpdateResponses = {
+  /**
+   * Committed state
+   */
+  200: RenderState
+}
+
+export type RenderUpdateResponse = RenderUpdateResponses[keyof RenderUpdateResponses]
 
 export type AppLogData = {
   body?: {

@@ -305,7 +305,10 @@ export namespace SessionNav {
     }
     entries.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id))
     const index: ScopeNavIndex = { version: 1, scopeID, updatedAt: Date.now(), entries }
-    await Storage.write(StoragePath.sessionNavIndex(sid), index)
+    const key = StoragePath.sessionNavIndex(sid)
+    // An empty namespace has no navigation to materialize. Existing indexes
+    // must still be replaced when their last Session disappeared.
+    if (entries.length || (await Storage.readMany([key]))[0] !== undefined) await Storage.write(key, index)
     return index
   }
 

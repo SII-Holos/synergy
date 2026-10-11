@@ -30,3 +30,5 @@ Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer test
 `markdown-assets` owns bounded managed-reference extraction using the Markdown lexer and deterministic attachment suppression. It performs no resource loading; callers decide which prose is the final answer and which files are deliverables. Verify parser boundaries, summary limits and both virtual and hydrated conversation placement.
 
 `resource-reference` owns the portable target parser, Workspace origin and location schemas. It never selects a current Workspace or probes files. Use it for every Markdown/resource ingress; ownership validation and opening belong to the host. Verify `test/resource-reference.test.ts` with affected message, composer and resource-opening tests.
+
+`render-artifact` owns [visual schemas](../../docs/architecture/visual-results.md); `json-value` validates nested JSON.

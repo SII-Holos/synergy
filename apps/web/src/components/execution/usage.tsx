@@ -10,7 +10,6 @@ export function ExecutionPerformance(props: { summary: ExecutionSummary }) {
   const rate = () => props.summary.rates.generation
   const cache = () => props.summary.cache
   const ratio = () => cache().ratio ?? cache().observedRatio
-  const observed = () => cache().ratio == null
   const rateText = () =>
     _({
       ...E.tokenRate,
@@ -29,7 +28,7 @@ export function ExecutionPerformance(props: { summary: ExecutionSummary }) {
         </Show>
         <Show when={ratio() != null}>
           <div>
-            <dt>{_(observed() ? E.observedCacheHit : E.cacheHit)}</dt>
+            <dt>{_(E.cacheHit)}</dt>
             <dd>{cacheText()}</dd>
           </div>
         </Show>
@@ -38,7 +37,12 @@ export function ExecutionPerformance(props: { summary: ExecutionSummary }) {
   )
 }
 
-export function UsagePopover(props: { summary: ExecutionSummary; class?: string; children: JSX.Element }) {
+export function UsagePopover(props: {
+  summary: ExecutionSummary
+  label?: string
+  class?: string
+  children: JSX.Element
+}) {
   const { _ } = useLingui()
   return (
     <Popover
@@ -46,7 +50,7 @@ export function UsagePopover(props: { summary: ExecutionSummary; class?: string;
       class="execution-usage-popover"
       placement="bottom-end"
       triggerAs={(trigger) => (
-        <button {...trigger} type="button" class={props.class} aria-label={_(E.usageDetails)}>
+        <button {...trigger} type="button" class={props.class} aria-label={props.label ?? _(E.usageDetails)}>
           {props.children}
         </button>
       )}

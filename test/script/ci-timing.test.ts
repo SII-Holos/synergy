@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import {
   batchKey,
+  batchKind,
   collectTimings,
   estimateBatch,
   recordTiming,
@@ -18,7 +19,32 @@ import { suiteSeconds } from "../../script/ci/suites"
 const profile = timingProfile("linux", "x64", "1.4.2")
 const empty = (): Timings => ({ version: 1, profiles: {} })
 
+test("browser weights follow a shared fixture while keeping ordinary isolated tests separate", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-browser-weight-"))
+  try {
+    await Bun.write(path.join(root, "test/browser.test.ts"), 'import { page } from "./support/browser"')
+    await Bun.write(path.join(root, "test/support/browser.ts"), 'import { chromium } from "playwright"')
+    await Bun.write(path.join(root, "test/unit.test.ts"), 'import { value } from "./support/value"')
+    await Bun.write(path.join(root, "test/support/value.ts"), "export const value = 1")
+    expect(batchKind(["test/browser.test.ts"], root)).toBe("browser")
+    await Bun.write(path.join(root, "test/browser.test.ts"), 'import { page } from "./support/browser.ts"')
+    expect(batchKind(["test/browser.test.ts"], root)).toBe("browser")
+    expect(batchKind(["test/unit.test.ts"], root)).toBe("isolated")
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test.each([
+  [
+    "apps/web",
+    [
+      "test/components/session/conversation-process.dom.test.ts",
+      "test/components/session/conversation-process-disclosure.dom.test.ts",
+      "test/components/session/conversation-process-reading.dom.test.ts",
+      "test/components/session/conversation-process-virtualization.dom.test.ts",
+    ],
+  ],
   [
     "apps/web",
     [
@@ -84,7 +110,7 @@ test("batch identity follows its files rather than its assigned partition", () =
   expect(batchKey("apps/web", ["a"])).not.toBe(batchKey("apps/web", ["b"]))
 })
 
-test("timings retain the latest ten distinct observations and use a median", () => {
+test("timings retain ten observations and react immediately to the latest slower batch", () => {
   const value = empty()
   for (let index = 0; index < 12; index++)
     recordTiming(value, profile, batchKey("apps/web", ["a"]), {
@@ -100,8 +126,8 @@ test("timings retain the latest ten distinct observations and use a median", () 
     sample: { id: "11", completed: new Date(11000).toISOString(), seconds: 12 },
   })
   expect(value.profiles[profile]![batchKey("apps/web", ["a"])]!.samples).toHaveLength(10)
-  expect(estimateBatch(value, profile, "apps/web", ["a"], "browser")).toBe(7.5)
-  expect(estimateBatch(value, profile, "apps/web", ["new"], "browser")).toBe(7.5)
+  expect(estimateBatch(value, profile, "apps/web", ["a"], "browser")).toBe(12)
+  expect(estimateBatch(value, profile, "apps/web", ["new"], "browser")).toBe(12)
   expect(estimateBatch(value, timingProfile("linux", "x64", "different"), "apps/web", ["a"], "browser")).toBe(30)
 })
 

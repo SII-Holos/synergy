@@ -81,6 +81,7 @@ jobs:
           PUSH_BASE: ${{ github.event.before }}
           CI_FORCE_FULL: ${{ vars.SYNERGY_CI_FORCE_FULL }}
           NODE_PATH: ${{ github.workspace }}/packages/testing/node_modules
+          GH_TOKEN: ${{ github.token }}
         run: |
           tested="$(git rev-parse HEAD)"
           base="${PR_BASE:-${PUSH_BASE:-}}"

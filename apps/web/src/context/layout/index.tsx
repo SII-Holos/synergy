@@ -54,6 +54,7 @@ import {
   planSessionViewportContent,
 } from "../session-viewport-content"
 import { createPartPageBatchReader } from "../part-page-batch"
+import type { ConversationReadingPosition } from "@/components/session/conversation-reading-anchor"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -190,6 +191,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const MAX_SESSION_KEYS = 50
     const meta = { active: undefined as string | undefined, pruned: false }
     const used = new Map<string, number>()
+    const conversationReading = new Map<
+      string,
+      { server: string; following: boolean; position?: ConversationReadingPosition }
+    >()
 
     const SESSION_STATE_KEYS = [
       { key: "prompt", legacy: "prompt", version: "v2" },
@@ -243,6 +248,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       )
 
       scroll.drop(drop)
+      for (const key of drop) conversationReading.delete(key)
       dropSessionState(drop)
 
       for (const key of drop) {
@@ -1083,13 +1089,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
               return cached ? Promise.resolve(cached) : readBatchedPartPages(sessionID, messageID, signal)
             },
             body: async (summary) =>
-              globalSync.partContentStore.readThrough({
-                url: globalSdk.url,
-                scopeKey,
-                partID: summary.id,
-                version: summary.content.version,
-                bytes: summary.content.bytes,
-                read: async () => {
+              globalSync.partContentStore.read(
+                {
+                  url: globalSdk.url,
+                  scopeKey,
+                  partID: summary.id,
+                  version: summary.content.version,
+                },
+                async (loadSignal) => {
                   const result = await globalSdk.client.session.partContent(
                     {
                       ...scopeRequest(scopeKey),
@@ -1098,12 +1105,13 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
                       partID: summary.id,
                       version: summary.content.version,
                     },
-                    { signal, throwOnError: true },
+                    { signal: loadSignal, throwOnError: true },
                   )
                   if (!result.data) throw new Error("Missing conversation content")
                   return result.data
                 },
-              }),
+                signal,
+              ),
           })
           if (prefetchToken.value !== token) return
           const viewport = planSessionViewportContent(content, (messageID) =>
@@ -1480,10 +1488,23 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       view(sessionKey: string) {
+        const server = globalSdk.url
         touch(sessionKey)
         scroll.seed(sessionKey)
         const s = createMemo(() => store.sessionView[sessionKey] ?? { scroll: {} })
         return {
+          conversation: {
+            get() {
+              const saved = conversationReading.get(sessionKey)
+              return saved?.server === server && server === globalSdk.url ? saved : undefined
+            },
+            set(value: { following: boolean; position?: ConversationReadingPosition }) {
+              conversationReading.delete(sessionKey)
+              conversationReading.set(sessionKey, { ...value, server })
+              while (conversationReading.size > MAX_SESSION_KEYS)
+                conversationReading.delete(conversationReading.keys().next().value!)
+            },
+          },
           activity: {
             getExpanded(key: string) {
               return s().activityOpen?.[key]

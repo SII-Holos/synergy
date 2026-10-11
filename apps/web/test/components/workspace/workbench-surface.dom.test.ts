@@ -97,6 +97,7 @@ beforeAll(async () => {
     import { DefaultSession } from ${JSON.stringify(`/@fs/${source}/plugin/default-session.tsx`)}
     import { DefaultShell } from ${JSON.stringify(`/@fs/${source}/plugin/default-shell.tsx`)}
     import { SessionTopBar } from ${JSON.stringify(`/@fs/${source}/components/top-bar/session-top-bar.tsx`)}
+    import { ConversationPresentation } from ${JSON.stringify(`/@fs/${source}/components/session/conversation-presentation.tsx`)}
     import { SessionWorkbenchChrome } from ${JSON.stringify(`/@fs/${source}/components/session/workbench-chrome.ts`)}
     import { MemoryRouter, Route, createMemoryHistory } from "@solidjs/router"
     import ${JSON.stringify(`/@fs/${source}/components/top-bar/session-top-bar.css`)}
@@ -154,7 +155,7 @@ beforeAll(async () => {
       if (location.search === "?toolbar") {
         const history = createMemoryHistory()
         history.set({ value: "/aG9tZQ/session/fixture" })
-        return <MemoryRouter history={history}><Route path="/:dir/session/:id" component={() => <div style="height:100dvh"><DefaultShell context={{ shell: { render: part => part === "navigation" && innerWidth >= 768 ? <aside class="sb-root sb-integrated sb-expanded" style="width:260px" /> : part === "route" ? <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <><SessionTopBar /><button>Conversation action</button></> : view === "composer" ? <input aria-label="Composer draft" /> : null } }} /> : null } }} /></div>} /></MemoryRouter>
+        return <MemoryRouter history={history}><Route path="/:dir/session/:id" component={() => <div style="height:100dvh"><DefaultShell context={{ shell: { render: part => part === "navigation" && innerWidth >= 768 ? <aside class="sb-root sb-integrated sb-expanded" style="width:260px" /> : part === "route" ? <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <ConversationPresentation owner={["server","home","fixture"]} ready><SessionTopBar /><div style="padding-top:58px"><button>Conversation action</button></div></ConversationPresentation> : view === "composer" ? <input aria-label="Composer draft" /> : null } }} /> : null } }} /></div>} /></MemoryRouter>
       }
       if (location.search === "?composed") return <div style="height:100dvh;display:flex;flex-direction:column">
         <DefaultShell context={{ shell: { render: part => part === "navigation" ?
@@ -310,6 +311,8 @@ test("session toolbar glyphs keep their compact size when the workspace opens an
     .locator(".stb-desktop .stb-icon-btn svg")
     .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().toJSON()))
   expect(headerIcons.every((icon) => icon.width === 16 && icon.height === 16)).toBe(true)
+  for (const icon of headerIcons)
+    expect(Math.abs(icon.y + icon.height / 2 - glyph.y - glyph.height / 2)).toBeLessThanOrEqual(1)
   expect(glyph.width).toBe(16)
   expect(glyph.height).toBe(16)
   await opener.focus()
@@ -366,6 +369,36 @@ test("mobile session toolbar keeps compact glyphs and reachable controls", async
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(errors).toEqual([])
 })
+
+for (const width of [1728, 1280, 960, 768, 767, 375]) {
+  test(`conversation presentation keeps all toolbar controls on one row at ${width}px`, async () => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.emulateMedia({ colorScheme: width % 2 ? "dark" : "light", reducedMotion: "reduce" })
+    await page.goto(baseUrl + "?toolbar")
+    await page.locator("[data-conversation-current] [data-session-top-bar]").waitFor()
+    const geometry = await page.evaluate(() => {
+      const controls = [
+        ...document.querySelectorAll<HTMLElement>(
+          "[data-conversation-current] .stb-root button, .session-workbench-controls button",
+        ),
+      ]
+        .map((element) => element.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0)
+      return {
+        centers: controls.map((rect) => rect.top + rect.height / 2),
+        width: document.documentElement.scrollWidth,
+        headerTop: document.querySelector("[data-conversation-current] [data-session-top-bar]")?.getBoundingClientRect()
+          .top,
+        sessionTop: document.querySelector("[data-default-session]")?.getBoundingClientRect().top,
+      }
+    })
+    expect(geometry.centers.length).toBeGreaterThan(2)
+    expect(Math.max(...geometry.centers) - Math.min(...geometry.centers)).toBeLessThanOrEqual(1)
+    expect(geometry.width).toBeLessThanOrEqual(width)
+    expect(geometry.headerTop).toBe(geometry.sessionTop)
+    expect(errors).toEqual([])
+  })
+}
 
 test("workspace controls preserve their bounds while closed, open, and throughout the reveal", async () => {
   await page.goto(baseUrl + "?composed")

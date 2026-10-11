@@ -27,7 +27,9 @@ export function isDefaultTitle(title: string) {
 export function registerTitleJob() {
   LoopJob.register({
     type: "ensure-title",
-    phase: "pre",
+    // Detached jobs still share model capacity. Admit the first conversation
+    // step before a title call can occupy the only available execution slot.
+    phase: "post",
     blocking: false,
     detached: true,
     collect(ctx) {

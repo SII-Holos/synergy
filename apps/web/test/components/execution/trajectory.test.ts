@@ -54,6 +54,8 @@ function summary(revision: number): ExecutionSummary {
   return {
     sessionID: "root",
     revision,
+    clockID: "test",
+    sampledAt: 0,
     computedAt: 0,
     cost: {
       state: "unrecorded",
@@ -68,6 +70,7 @@ function summary(revision: number): ExecutionSummary {
     humanInputs: 0,
     taskInstructions: 0,
     status: "running",
+    elapsedLowerBound: false,
     elapsedMs: 0,
     elapsedActive: true,
     accounting: accounting(),
