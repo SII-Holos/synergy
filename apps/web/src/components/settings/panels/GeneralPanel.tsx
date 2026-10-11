@@ -103,6 +103,14 @@ const copy = {
   activityFull: { id: "settings.general.activityDisplay.full", message: "Full" },
   activityBalanced: { id: "settings.general.activityDisplay.balanced", message: "Balanced" },
   activityMinimal: { id: "settings.general.activityDisplay.minimal", message: "Minimal" },
+  preferWorkBriefTitle: {
+    id: "settings.general.preferWorkBrief.title",
+    message: "Prefer action descriptions",
+  },
+  preferWorkBriefDescription: {
+    id: "settings.general.preferWorkBrief.description",
+    message: "Show each tool action's purpose when available. Otherwise, show the action and target.",
+  },
   workspaceTitle: { id: "settings.general.workspace.title", message: "New task starting point" },
   workspaceDescription: {
     id: "settings.general.workspace.description",
@@ -114,6 +122,11 @@ const copy = {
   compactReasoningDescription: {
     id: "settings.general.compactReasoning.description",
     message: "Preview the original reasoning in one line. Reasoning remains expandable when this is off.",
+  },
+  welcomeGamesTitle: { id: "settings.general.welcomeGames.title", message: "New task games" },
+  welcomeGamesDescription: {
+    id: "settings.general.welcomeGames.description",
+    message: "Show a playable mini game on the greeting of a new task. Turn off to keep a plain greeting.",
   },
   preventSleepTitle: { id: "settings.general.preventSleep.title", message: "Prevent sleep while running" },
   preventSleepDescription: {
@@ -423,12 +436,32 @@ export function GeneralPanel(props: {
             />
 
             <SettingRow
+              title={_(copy.preferWorkBriefTitle)}
+              description={_(copy.preferWorkBriefDescription)}
+              trailing={
+                <Switch
+                  checked={props.general.preferWorkBrief}
+                  onChange={(value) => props.onGeneralChange("preferWorkBrief", value)}
+                />
+              }
+            />
+            <SettingRow
               title={_(copy.compactReasoningTitle)}
               description={_(copy.compactReasoningDescription)}
               trailing={
                 <Switch
                   checked={props.general.compactReasoning}
                   onChange={(value) => props.onGeneralChange("compactReasoning", value)}
+                />
+              }
+            />
+            <SettingRow
+              title={_(copy.welcomeGamesTitle)}
+              description={_(copy.welcomeGamesDescription)}
+              trailing={
+                <Switch
+                  checked={props.general.welcomeGames}
+                  onChange={(value) => props.onGeneralChange("welcomeGames", value)}
                 />
               }
             />

@@ -17,31 +17,16 @@ export function ConversationPresentation(props: {
   let outgoing: HTMLElement | undefined
   let shown = false
   let generation = 0
-  let motion: Animation | undefined
   const [waiting, setWaiting] = createSignal(false)
   const [hint, setHint] = createSignal(false)
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)")
   const release = () => {
     outgoing?.remove()
     outgoing = undefined
   }
-  const settle = () => {
-    if (motion) motion.onfinish = null
-    motion?.cancel()
-    motion = undefined
-    release()
-  }
-  const changedPreference = () => {
-    if (reduced.matches && motion) settle()
-  }
-  reduced.addEventListener("change", changedPreference)
   createRenderEffect(
     on(owner, (_next, previous) => {
       generation++
       props.onLeave?.()
-      if (motion) motion.onfinish = null
-      motion?.cancel()
-      motion = undefined
       const before = previous ? (JSON.parse(previous) as string[]) : undefined
       const sameScope = before && before[0] === props.owner[0] && before[1] === props.owner[1]
       if (!sameScope) release()
@@ -95,26 +80,12 @@ export function ConversationPresentation(props: {
     const frame = requestAnimationFrame(() => {
       if (generation !== current || currentOwner !== owner() || !ready()) return
       shown = true
+      release()
       setWaiting(false)
-      if (!outgoing || reduced.matches) {
-        settle()
-        return
-      }
-      motion = live.animate([{ opacity: 0 }, { opacity: 1 }], {
-        duration: 180,
-        easing: "cubic-bezier(0.2, 0, 0, 1)",
-        fill: "both",
-      })
-      motion.onfinish = () => {
-        if (generation === current) settle()
-      }
     })
     onCleanup(() => cancelAnimationFrame(frame))
   })
-  onCleanup(() => {
-    settle()
-    reduced.removeEventListener("change", changedPreference)
-  })
+  onCleanup(release)
   return (
     <div
       data-ui-part="conversation"

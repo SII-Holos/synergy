@@ -85,7 +85,7 @@ for (const held of [false, true]) {
     const { SessionPreparingError } = await import(${JSON.stringify(path.join(harness, "storage/errors.ts"))});
     await using handle = await StorageMaintenance.open();
     if (handle.manifest.phase !== "active") throw new Error("Global authority did not activate");
-    if ((await SessionCompat.stats()).pending !== 1) throw new Error("Release upgrade waited for all history");
+    if ((await SessionCompat.stats()).pending !== ${held ? 2 : 1}) throw new Error("Release upgrade imported cold or held history");
     const folders = await handle.store.read(["project_directories", ${JSON.stringify(projectID)}]);
     if (folders?.version !== 1 || !folders.mainWorkspaceID || folders.additionalWorkspaceIDs.length !== 1)
       throw new Error("Project folders were not migrated before admission");
@@ -100,22 +100,24 @@ for (const held of [false, true]) {
       if (loop.status !== "running") throw new Error("Held loop was not migrated at startup");
     }
     await ScopeContext.provide({ scope: Scope.home(), fn: () => Session.create({ title: "New work" }) });
-    if ((await SessionCompat.stats()).pending !== 1) throw new Error("Creating new work imported unrelated history");
+    if ((await SessionCompat.stats()).pending !== ${held ? 2 : 1}) throw new Error("Creating new work imported unrelated history");
     try {
       await SessionCompat.requireImported(${JSON.stringify(fixture.records[0].value.id)});
     } catch (error) {
       if (!(error instanceof SessionPreparingError)) throw error;
       await SessionCompat.ensureImported(${JSON.stringify(fixture.records[0].value.id)});
     }
-    if ((await SessionCompat.stats()).imported !== ${held ? 2 : 1}) throw new Error("Requested history did not converge");
+    if ((await SessionCompat.stats()).imported !== 1) throw new Error("Requested history did not converge independently");
     const { SessionHistory } = await import(${JSON.stringify(path.join(harness, "session/history.ts"))});
     await SessionHistory.prepareDisplayOwner({ scopeID: "home", sessionID: ${JSON.stringify(fixture.records[0].value.id)} });
     const display = await handle.store.read(["sessions", "home", ${JSON.stringify(fixture.records[0].value.id)}, "display_state"]);
     if (!display.ready || display.count !== 1) throw new Error("Published history display index is incomplete");
     if (${held}) {
+      await SessionCompat.ensureImported(${JSON.stringify(heldSessionID)});
       const info = await handle.store.read(["sessions", "home", ${JSON.stringify(heldSessionID)}, "info"]);
       if (info.blueprint.phase !== "running" || info.blueprint.loopID !== ${JSON.stringify(loopID)} || info.paused?.reason !== "workflow")
         throw new Error("Deferred import did not preserve the workflow hold");
+      if ((await SessionCompat.stats()).pending !== 0) throw new Error("Selected held history did not converge");
     }
     if ((await handle.store.verify()).issues.length) throw new Error("Store verification failed");
     });

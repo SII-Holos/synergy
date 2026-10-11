@@ -52,6 +52,7 @@ test("the live queue follows Inbox identity, mode actions, delivery and session 
   const [items, setItems] = createSignal<SessionInboxItem[]>([item])
   const [rollback, setRollback] = createSignal(false)
   let release!: () => void
+  let rejectGuide!: (error: unknown) => void
   let guideCalls = 0
   dispose = render(
     () =>
@@ -68,8 +69,9 @@ test("the live queue follows Inbox identity, mode actions, delivery and session 
         hasCanonicalRoot: true,
         onGuide: async () => {
           guideCalls++
-          await new Promise<void>((resolve) => {
+          await new Promise<void>((resolve, reject) => {
             release = resolve
+            rejectGuide = reject
           })
         },
         onRemove: () => {
@@ -90,6 +92,16 @@ test("the live queue follows Inbox identity, mode actions, delivery and session 
   original.click()
   expect(guideCalls).toBe(1)
   expect(original.disabled).toBe(true)
+  original.click()
+  expect(guideCalls).toBe(1)
+  rejectGuide({ data: { message: "Guide unavailable" } })
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(root.querySelector('[role="alert"]')?.textContent).toContain("Guide unavailable")
+  expect(original.disabled).toBe(false)
+  original.click()
+  expect(guideCalls).toBe(2)
+  expect(original.disabled).toBe(true)
   setIdentity("session-two")
   setItems([{ ...item, id: "inb_other", sessionID: "session-two" }])
   expect(button()).not.toBe(original)
@@ -98,6 +110,7 @@ test("the live queue follows Inbox identity, mode actions, delivery and session 
   await Promise.resolve()
   await Promise.resolve()
   expect(button().disabled).toBe(false)
+  expect(root.querySelector('[role="alert"]')).toBeNull()
   setRollback(true)
   expect(root.querySelectorAll("button").length).toBe(0)
   setRollback(false)
@@ -108,5 +121,85 @@ test("the live queue follows Inbox identity, mode actions, delivery and session 
   setItems([item])
   expect(root.querySelector("section")).not.toBeNull()
   setIdentity("")
+  expect(root.querySelector("section")).toBeNull()
+})
+
+test("withdrawal recovery respects rollback and first-task locks", async () => {
+  const root = document.createElement("div")
+  document.body.append(root)
+  const [rollback, setRollback] = createSignal(false)
+  const [hasRoot, setHasRoot] = createSignal(true)
+  let removeCalls = 0
+  dispose = render(
+    () =>
+      createComponent(PendingComposerQueue, {
+        identity: "session-one",
+        items: [item],
+        get rollbackActive() {
+          return rollback()
+        },
+        get hasCanonicalRoot() {
+          return hasRoot()
+        },
+        onGuide: () => {},
+        onRemove: async () => {
+          removeCalls++
+          throw { message: "Withdrawal unavailable" }
+        },
+      }),
+    root,
+  )
+  const retry = () =>
+    Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Retry"),
+    )
+  Array.from(root.querySelectorAll<HTMLButtonElement>("button"))
+    .find((button) => button.textContent === "Withdraw")!
+    .click()
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(removeCalls).toBe(1)
+  expect(root.querySelector('[role="alert"]')?.textContent).toContain("Removal could not be confirmed")
+  expect(retry()).toBeDefined()
+  const retainedRetry = retry()!
+  setRollback(true)
+  retainedRetry.click()
+  expect(removeCalls).toBe(1)
+  expect(retry()).toBeUndefined()
+  setRollback(false)
+  setHasRoot(false)
+  expect(retry()).toBeUndefined()
+  setHasRoot(true)
+  retry()!.click()
+  expect(removeCalls).toBe(2)
+})
+
+test("removing one queued identity retains the other row and its focused control", () => {
+  const root = document.createElement("div")
+  document.body.append(root)
+  const other = { ...item, id: "inb_other", messageID: "message-other", summary: { title: "Other direction" } }
+  const [items, setItems] = createSignal([item, other])
+  dispose = render(
+    () =>
+      createComponent(PendingComposerQueue, {
+        identity: "session-one",
+        get items() {
+          return items()
+        },
+        rollbackActive: false,
+        hasCanonicalRoot: true,
+        onGuide: () => {},
+        onRemove: () => {},
+      }),
+    root,
+  )
+  const rows = root.querySelectorAll('[data-slot="pending-timeline-item"]')
+  const focused = rows[1]!.querySelector<HTMLButtonElement>("button")!
+  focused.focus()
+  setItems([other])
+  expect(root.querySelectorAll('[data-slot="pending-timeline-item"]').length).toBe(1)
+  expect(root.querySelector('[data-slot="pending-timeline-item"]')).toBe(rows[1])
+  expect(document.activeElement).toBe(focused)
+  setItems([])
   expect(root.querySelector("section")).toBeNull()
 })

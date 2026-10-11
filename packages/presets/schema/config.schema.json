@@ -274,6 +274,10 @@
           "exclusiveMinimum": 0,
           "maximum": 16
         },
+        "policyWorkerPrewarm": {
+          "description": "Start isolated Policy workers during server startup instead of first classification (default: true)",
+          "type": "boolean"
+        },
         "policyQueueMax": {
           "description": "Maximum queued Policy classifications waiting for a worker (default: 256)",
           "type": "integer",
@@ -3273,6 +3277,10 @@
       "description": "Show a compact reasoning preview in the execution process (default: false)",
       "type": "boolean"
     },
+    "preferWorkBrief": {
+      "description": "Prefer a tool call's purpose description over its action and target when available (default: false)",
+      "type": "boolean"
+    },
     "quick_switcher": {
       "description": "Quick switcher model visibility preferences",
       "ref": "QuickSwitcherConfig",
@@ -3299,6 +3307,10 @@
         }
       },
       "additionalProperties": false
+    },
+    "welcomeGames": {
+      "description": "Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting.",
+      "type": "boolean"
     },
     "layout": {
       "description": "@deprecated Always uses stretch layout.",

@@ -25,3 +25,5 @@ The owning Session identity migration depends on the empty-reasoning display mig
 ## Consequences
 
 One reasoning item has one stable entrance through streaming growth and virtual rendering. The optional summary field requires generated client updates and lazy historical index invalidation. Histories without trustworthy item identity retain separate disclosures. Regression tests cover identity ambiguity, paragraph order, tool/prose boundaries, bounded chunks, keyboard focus, expansion preference and canonical-content preservation. The current projection rules live in [sessions and messages](../../../architecture/session-and-messages.md#activity-presentation) and [frontend data sync](../../../architecture/frontend-data-sync.md#demand-driven-resources-and-content).
+
+[Continuous reasoning disclosure](2026-10-11-continuous-reasoning-disclosure.md) supersedes the item-ID grouping condition. This record retains the reasoning identity, canonical-content preservation and historical-summary migration rationale.

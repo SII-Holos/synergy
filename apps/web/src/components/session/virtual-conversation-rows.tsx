@@ -91,7 +91,13 @@ export function VirtualConversationRows(
     rootID === props.lastUserMessage()?.id && view.statusFor(props.sessionID)?.type === "paused"
   const owner = input.layoutOwner
   const layoutIdentity = () =>
-    JSON.stringify([...owner, "conversation", props.activityDisplay(), props.compactReasoning()])
+    JSON.stringify([
+      ...owner,
+      "conversation",
+      props.activityDisplay(),
+      props.compactReasoning(),
+      props.preferWorkBrief?.() ?? false,
+    ])
   const pending = new Set<symbol>()
   const [pendingCount, setPendingCount] = createSignal(0)
   const onRowReady = (owner: symbol, ready: boolean | undefined) => {
@@ -737,8 +743,11 @@ function ConversationDisplayRow(
       .then(() => {
         if (!alive || generation !== loadGeneration) return
         setLoadFailure(undefined)
-        for (const entry of retainedParts.values()) entry.lease.release()
-        retainedParts.clear()
+        for (const [partID, entry] of retainedParts) {
+          if (!partStates[partID]?.failed) continue
+          entry.lease.release()
+          retainedParts.delete(partID)
+        }
         setRetry((value) => value + 1)
       })
       .catch((error) => {
@@ -755,7 +764,7 @@ function ConversationDisplayRow(
     const wanted = new Set(current.parts.map((part) => part.id))
     for (const part of current.parts) {
       const previous = retainedParts.get(part.id)
-      if (previous?.version === part.content.version) continue
+      if (previous?.version === part.content.version && previous.lease.isCurrent?.() !== false) continue
       const lease = content.retain(part)
       retainedParts.set(part.id, { version: part.content.version, lease })
       previous?.lease.release()
@@ -974,6 +983,7 @@ function ConversationDisplayRow(
                     following={!props.scrolledUp()}
                     lastUserMessageID={props.lastUserMessage()?.id}
                     compactReasoning={props.compactReasoning()}
+                    preferWorkBrief={props.preferWorkBrief?.()}
                     onRewind={
                       props.canRewind(row().root as UserMessage)
                         ? () => props.onRewind?.(row().root as UserMessage)
@@ -1140,6 +1150,7 @@ function ConversationActivityBody(
       input.row().key,
       input.context.activityDisplay(),
       input.context.compactReasoning(),
+      input.context.preferWorkBrief?.() ?? false,
     ])
   const layout = createConversationLayoutBinding(layouts, {
     identity: () => untrack(layoutIdentity),

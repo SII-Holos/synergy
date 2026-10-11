@@ -75,5 +75,17 @@ describe("pending timeline item presentation", () => {
       metadata: { synergyClientOptimistic: { pending: true } },
     }
     expect(selectPendingTimelineItems([pending], [renderedOptimisticMessage])).toEqual([])
+    const steer = { ...pending, id: "inb_steer", messageID: "msg_steer", mode: "steer" as const }
+    const context = { ...pending, id: "inb_context", mode: "context" as const }
+    const hidden = { ...pending, id: "inb_hidden", message: { ...pending.message, visible: false } }
+    const agent = {
+      ...pending,
+      id: "inb_agent",
+      message: { ...pending.message, origin: { type: "agent" as const } },
+    }
+    const sourceOnly = { ...pending, id: "inb_source", messageID: "msg_source", message: undefined }
+    expect(
+      selectPendingTimelineItems([context, hidden, agent, steer, sourceOnly, pending], []).map((item) => item.id),
+    ).toEqual([steer.id, sourceOnly.id, pending.id])
   })
 })

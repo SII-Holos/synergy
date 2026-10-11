@@ -7,6 +7,30 @@ import { ensureInit } from "../../../../src/components/settings/hooks/useSetting
 import { defaultSettingsState } from "../../../../src/components/settings/types"
 
 describe("settings config patch", () => {
+  test("tool description preference defaults off and saves both toggle directions", () => {
+    for (const saved of [undefined, true, false]) {
+      const cfg = saved === undefined ? {} : { preferWorkBrief: saved }
+      const [state, setSettings] = createStore(defaultSettingsState("enter"))
+      ensureInit({
+        cfg,
+        setName: "global",
+        initialized: () => false,
+        initializedForSet: undefined,
+        refreshing: () => false,
+        sendShortcut: () => "enter",
+        colorScheme: () => "system",
+        setSettings,
+        setInitialized: () => {},
+        originalMcpsRef: { current: {} },
+        builtinMcps: [],
+      })
+      expect(state.general.preferWorkBrief).toBe(saved ?? false)
+      expect(buildPatch({ cfg, state, originalMcps: {} })).not.toHaveProperty("preferWorkBrief")
+      setSettings("general", "preferWorkBrief", !(saved ?? false))
+      expect(buildPatch({ cfg, state, originalMcps: {} }).preferWorkBrief).toBe(!(saved ?? false))
+    }
+  })
+
   test("an untouched configuration without explicit timeout overrides stays clean", () => {
     const [state, setSettings] = createStore(defaultSettingsState("enter", "system"))
     ensureInit({
@@ -795,6 +819,31 @@ describe("settings config patch", () => {
       muted: ["info", "success"],
       durationOverrides: { warning: 2000 },
     })
+  })
+
+  test("persists welcome games toggle on the general domain", () => {
+    const state = defaultSettingsState("enter")
+    state.general.welcomeGames = false
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).welcomeGames,
+    ).toBe(false)
+  })
+
+  test("does not emit welcome games patch when the preference is unchanged", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: { welcomeGames: true } as Config,
+        state,
+        originalMcps: {},
+      }).welcomeGames,
+    ).toBeUndefined()
   })
 
   test("unmuting the last toast type sends muted:[] so domain merge can clear it", () => {

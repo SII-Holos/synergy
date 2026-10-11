@@ -43,6 +43,21 @@ test("published viewport reading owners retain the conversation capability and l
   expect(() => conversation.autoScroll.readingAnchorOwner()).toThrow("disposed")
 })
 
+test("tool description preferences remain optional and capability checked", () => {
+  const owner = access(["session.read"])
+  let enabled = false
+  const source = fixture<PluginConversationService>({ preferWorkBrief: () => enabled })
+  const conversation = bindPluginConversation(source, owner.service)
+  expect(conversation.preferWorkBrief?.()).toBe(false)
+  enabled = true
+  expect(conversation.preferWorkBrief?.()).toBe(true)
+  const absent = fixture<PluginConversationService>({ preferWorkBrief: undefined })
+  expect(bindPluginConversation(absent, owner.service).preferWorkBrief?.()).toBe(false)
+  expect(() => bindPluginConversation(source, access([]).service).preferWorkBrief?.()).toThrow("session.read")
+  owner.lifetime.dispose()
+  expect(() => conversation.preferWorkBrief?.()).toThrow("disposed")
+})
+
 test("reading position hints pass through the capability and lifetime boundary unchanged", () => {
   const owner = access(["session.read"])
   const scheduled = mock((_container: HTMLDivElement, _messageID?: string) => {})
@@ -68,12 +83,13 @@ test("conversation content leases and the message locator belong to the presenta
   const pending = Promise.withResolvers<void>()
   const released = mock(() => {})
   const locatorReleased = mock(() => {})
+  let isCurrent = true
   const source = fixture<PluginConversationService>({
     content: {
       summaries: () => [],
       page: () => undefined,
       load: () => pending.promise,
-      retain: () => ({ ready: pending.promise, release: released }),
+      retain: () => ({ ready: pending.promise, isCurrent: () => isCurrent, release: released }),
     },
     registerMessageLocator: () => locatorReleased,
   })
@@ -86,8 +102,12 @@ test("conversation content leases and the message locator belong to the presenta
     preview: "",
     content: { version: "one", bytes: 1 },
   })
+  expect(lease.isCurrent?.()).toBe(true)
+  isCurrent = false
+  expect(lease.isCurrent?.()).toBe(false)
   const locate = conversation.registerMessageLocator!(async () => true)
   owner.lifetime.dispose()
+  expect(() => lease.isCurrent?.()).toThrow("disposed")
   pending.resolve()
   await expect(lease.ready).rejects.toThrow("disposed")
   expect(released).toHaveBeenCalledTimes(1)

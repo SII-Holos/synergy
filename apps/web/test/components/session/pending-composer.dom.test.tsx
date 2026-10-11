@@ -212,3 +212,20 @@ test("pending input preserves the Composer expansion and collapse motion", async
   await page.getByRole("region", { name: "Inbox", exact: true }).waitFor({ state: "visible" })
   expect(errors).toEqual([])
 })
+
+test("pane height changes during expansion invalidate captured Composer geometry", async () => {
+  await page.setViewportSize({ width: 1000, height: 800 })
+  await page.goto(server.url)
+  await page.getByRole("region", { name: "Inbox", exact: true }).waitFor()
+  await page.waitForFunction(() => Number(document.querySelector("[data-height]")?.getAttribute("data-height")) > 100)
+  const geometry = await page.evaluate(async () => {
+    ;(window as unknown as { fixture: Fixture }).fixture.expand()
+    document.querySelector<HTMLElement>(".session-workbench-pane")!.style.height = "500px"
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    const composer = document.querySelector<HTMLElement>(".session-composer")!
+    return { motion: composer.getAttribute("data-motion"), animations: composer.getAnimations().length }
+  })
+  expect(geometry.motion).toBeNull()
+  expect(geometry.animations).toBe(0)
+  expect(await page.locator(".session-composer").getAttribute("data-expanded")).not.toBeNull()
+})

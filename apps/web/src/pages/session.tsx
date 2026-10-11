@@ -980,11 +980,7 @@ function SessionPageContent() {
     if (!sessionID) return [] as SessionInboxItem[]
     return selectPendingTimelineItems(dataView().inboxFor(sessionID), messages())
   })
-  const isNewSession = createMemo(() => {
-    if (!params.id) return !submissionDraft()?.message
-    if (!isHomeScope(sdk.scopeKey)) return false
-    return (messages()?.length ?? 0) === 0 && pendingTimeline().length === 0 && visibleSessionTransition() === null
-  })
+  const isNewSession = createMemo(() => !params.id && !submissionDraft()?.message)
   const guidePending = async (item: SessionInboxItem) => {
     await sdk.client.session.inboxGuide({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
   }
@@ -2022,6 +2018,9 @@ function SessionPageContent() {
     get compactReasoning() {
       return () => sync.data.config.compactReasoning === true
     },
+    get preferWorkBrief() {
+      return () => sync.data.config.preferWorkBrief === true
+    },
     get turnStart() {
       return store.turnStart
     },
@@ -2193,7 +2192,6 @@ function SessionPageContent() {
         return (
           <>
             <NewSessionGreeting
-              interactive={!params.id}
               disabled={
                 !composer()?.input.ready() ||
                 composer()?.input.readOnly() ||

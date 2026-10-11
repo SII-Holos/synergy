@@ -141,6 +141,46 @@ test("reduced motion retains loading continuity and a Scope boundary removes the
   await page.emulateMedia({ reducedMotion: "no-preference" })
 })
 
+test("admission keeps one opaque transcript through immediate follow-up navigation", async () => {
+  await page.goto(base + "?presentation")
+  await page.getByText("Body A", { exact: true }).waitFor()
+  await frames()
+  await presentation("select", "B")
+  const admission = await page.evaluate(async () => {
+    const fixture = (window as unknown as { presentation: Presentation }).presentation
+    fixture.admit("B")
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    const live = document.querySelector<HTMLElement>("[data-conversation-current]")!
+    const animations = live.getAnimations()
+    for (const animation of animations) {
+      animation.pause()
+      animation.currentTime = Number(animation.effect!.getTiming().duration) / 2
+    }
+    return {
+      oldBody: document.querySelector("[data-conversation-retained]")!.textContent,
+      currentBody: live.textContent,
+      opacity: getComputedStyle(live).opacity,
+      inert: live.inert,
+    }
+  })
+  expect(admission.oldBody).toBe("")
+  expect(admission.currentBody).toContain("Body B")
+  expect(admission.opacity).toBe("1")
+  expect(admission.inert).toBe(false)
+  await presentation("select", "C")
+  expect(await page.locator("[data-conversation-retained]").textContent()).toContain("Body B")
+  expect(await page.locator("[data-conversation-retained]").textContent()).not.toContain("Body A")
+  await presentation("admit", "C")
+  await frames()
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await frames()
+  expect(await page.locator("[data-conversation-retained]").textContent()).toBe("")
+  expect(await page.locator("[data-conversation-current]").evaluate((el) => el.getAnimations().length)).toBe(0)
+  expect(await page.locator("[data-conversation-current]").textContent()).toContain("Body C")
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  expect(errors).toEqual([])
+})
+
 test("the motion layer fills a start-aligned flex conversation column without collapsing prose width", async () => {
   await page.goto(base + "?flow")
   const article = page.locator("#flow article")

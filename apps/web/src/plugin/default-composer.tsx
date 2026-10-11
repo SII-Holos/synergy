@@ -48,6 +48,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
     const outlet = dock?.querySelector("[data-session-decision-outlet]")
     const pending = dock?.querySelector("[data-prompt-pending]")
     let paneWidth: number | undefined
+    let previousUnreservedHeight: number | undefined
     measure = (transition = false) => {
       const viewport = window.visualViewport
       const rect = pane?.getBoundingClientRect()
@@ -68,24 +69,24 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
                 ...request.querySelectorAll(".decision-header, .decision-origin, .decision-footer, .decision-notice"),
               ].reduce((height, element) => height + element.getBoundingClientRect().height, 0) + 36
             : 0)
-      const height = Math.max(
-        64,
+      const unreservedHeight =
         Math.min(
           rect?.bottom ?? window.innerHeight,
           viewport ? viewport.offsetTop + viewport.height : window.innerHeight,
         ) -
-          Math.max(rect?.top ?? 0, topbar?.bottom ?? 0, viewport?.offsetTop ?? 0) -
-          footer -
-          reserved -
-          dockSpacing -
-          8,
-      )
+        Math.max(rect?.top ?? 0, topbar?.bottom ?? 0, viewport?.offsetTop ?? 0) -
+        footer -
+        dockSpacing -
+        8
+      const height = Math.max(64, unreservedHeight - reserved)
       if (
         (!transition && Math.abs(height - availableHeight()) > 0.5) ||
+        (previousUnreservedHeight !== undefined && Math.abs(unreservedHeight - previousUnreservedHeight) > 0.5) ||
         (paneWidth !== undefined && paneWidth !== rect?.width)
       )
         motion?.cancel()
       paneWidth = rect?.width
+      previousUnreservedHeight = unreservedHeight
       setAvailableHeight(height)
       const form = root.querySelector("form")
       const editor = root.querySelector(".session-composer-editor")

@@ -48,6 +48,8 @@ description: Add, modify, or review Synergy Plugin API 4 definitions, generated 
 
 Virtual conversation views can publish their accepted message identity through the optional second argument to `onScheduleScrollSpy`; preserve the existing one-argument materialized-view contract. Keep geometry ownership in the view rather than introducing another host-side measurement pass.
 
+Add conversation presentation preferences as optional accessors with documented defaults. Forward them through the capability-checked surface binding and every built-in renderer; keep existing custom views source-compatible.
+
 Viewport reference bindings must carry their acquired element through cleanup and permission disposal. Test both replacement within one surface and disposal after a successor surface has mounted; stale releases must not clear successor references.
 
 Moving a host view in the default layout does not retire its public render part. Exercise the old part through a packed custom layout and keep the host-owned behavior available, while separately verifying the default layout's new placement.

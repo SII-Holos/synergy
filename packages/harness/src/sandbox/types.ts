@@ -17,6 +17,7 @@ export interface PrepareWrapperOpts {
   command: string
   args: string[]
   workspace: string
+  originalCheckout?: string
   executionCwd?: string
   sandboxMode: SandboxMode
   forcePlatform?: string

@@ -20,6 +20,8 @@ import { SessionManager } from "../manager"
 import { RolloutRecordingError } from "../rollout/error"
 import { RolloutTransport } from "../rollout/transport"
 import { materializeAttachmentInput } from "../../attachment/model-input"
+import { ModelExecution } from "../../execution/model-execution"
+import { InProcessModelExecutor } from "./model-executor"
 
 export namespace AgentTurn {
   export type Input = AgentTurnInput
@@ -28,7 +30,7 @@ export namespace AgentTurn {
 
   const runtimeState = RuntimeContext.state(() => ({
     recovery: new ProviderRetryCoordinator(),
-    pool: undefined as AgentWorkerPool | undefined,
+    pool: undefined as AgentWorkerPool | InProcessModelExecutor | undefined,
     options: DEFAULT_AGENT_WORKER_POOL_OPTIONS,
     accepting: true,
     stopPromise: undefined as Promise<void> | undefined,
@@ -75,7 +77,7 @@ export namespace AgentTurn {
 
     if (!instanceState.accepting || instanceState.stopPromise || instanceState.inProcessStream) return
     try {
-      instanceState.pool ??= new AgentWorkerPool(instanceState.options)
+      instanceState.pool ??= createExecutor(instanceState.options)
     } catch (error) {
       // Option validation cannot succeed in any later attempt either; log it
       // and let the first turn surface the failure through lazy creation.
@@ -106,6 +108,15 @@ export namespace AgentTurn {
           ...turnInput,
           tools: ToolCatalog.modelTools(input.toolDefinitions ?? []),
         })
+    const requestTools = (input.toolDefinitions ?? []).filter(
+      (tool) => !input.activeToolIDs || input.activeToolIDs.includes(tool.id),
+    )
+    const provenance = contextUsageProvenance
+      ? ContextUsage.buildProvenance({
+          history: ContextUsage.remapProvenance(input.messages, contextUsageProvenance),
+          toolDefinitions: requestTools,
+        })
+      : undefined
     try {
       return await instanceState.recovery.stream(providerRetryKey(input.model, prepared?.provider), input.abort, () =>
         RolloutCall.stream(
@@ -128,15 +139,15 @@ export namespace AgentTurn {
                 messages: input.messages,
                 system: prepared?.system ?? input.system,
                 lateSystem: input.lateSystem,
-                contextSources: contextUsageProvenance
+                contextSources: provenance
                   ? ContextUsage.sourceIndex({
                       messages: input.messages,
                       system: prepared?.system ?? input.system,
                       lateSystem: input.lateSystem,
-                      provenance: contextUsageProvenance,
+                      provenance,
                     })
                   : undefined,
-                tools: input.toolDefinitions,
+                tools: requestTools,
                 toolChoice: input.toolChoice,
                 params: prepared
                   ? { temperature: prepared.params.temperature, topP: prepared.params.topP, topK: prepared.params.topK }
@@ -150,12 +161,14 @@ export namespace AgentTurn {
             if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
             if (instanceState.inProcessStream) {
               onPhase?.("waiting_model")
-              return RolloutTransport.provide(archive, () => instanceState.inProcessStream!(input))
+              return RolloutTransport.provide(archive, () =>
+                instanceState.inProcessStream!({ ...input, contextUsageProvenance: provenance }),
+              )
             }
-            instanceState.pool ??= new AgentWorkerPool(instanceState.options)
+            instanceState.pool ??= createExecutor(instanceState.options)
             onPhase?.("queued_agent")
             const result = await instanceState.pool.run({ ...turnInput, prepared: prepared!, archive, onPhase })
-            const contextUsageDraft = startContextUsageDraft(input, prepared!.system, contextUsageProvenance)
+            const contextUsageDraft = startContextUsageDraft(input, prepared!.system, provenance)
             return { ...result, contextUsageDraft }
           },
           () => {
@@ -216,5 +229,9 @@ export namespace AgentTurn {
     } finally {
       instanceState.stopPromise = undefined
     }
+  }
+
+  function createExecutor(options: AgentWorkerPoolOptions) {
+    return ModelExecution.mode() === "in-process" ? new InProcessModelExecutor(options) : new AgentWorkerPool(options)
   }
 }

@@ -128,7 +128,7 @@ export namespace MacBackend {
         approvedUnixSockets: [],
         ...(opts.dataDenyRoots ? { dataDenyRoots: opts.dataDenyRoots } : {}),
       })
-      const compiled = MacOSPolicy.compileExecution(policyProfile)
+      const compiled = MacOSPolicy.compileExecution(policyProfile, opts.originalCheckout)
       const tempPath = writeTempString(compiled.profile)
 
       const dArgs = Object.entries(compiled.params).flatMap(([key, value]) => ["-D", `${key}=${value}`])

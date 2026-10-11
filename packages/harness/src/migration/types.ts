@@ -1,3 +1,7 @@
+export type MigrationOwner =
+  | { kind: "session"; scopeID: string; sessionID: string }
+  | { kind: "operation"; scopeID: string; operationID: string }
+
 export interface Migration {
   id: string
   description: string
@@ -10,8 +14,12 @@ export interface Migration {
   domain?: string
   scope?: "global" | "scope" | "session" | "derived"
   onAccess?: true
+  /** All inputs are records below these prefixes; when all are empty, up has no effects. */
+  emptyInput?: string[][]
+  /** Read-only proof of the current state; startup proofs run inside the completion transaction. */
   isApplied?(): Promise<boolean>
-  execution?: "startup" | "session" | "after-convergence" | "maintenance"
+  execution?: "startup" | "session" | "owner" | "record" | "after-convergence" | "maintenance"
+  upOwner?(owner: MigrationOwner, progress: (current: number, total: number) => void): Promise<void>
   upSession?(
     owner: { scopeID: string; sessionID: string },
     progress: (current: number, total: number) => void,

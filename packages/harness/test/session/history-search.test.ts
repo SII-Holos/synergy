@@ -7,9 +7,68 @@ import { StoragePath } from "../../src/storage/path"
 import { Identifier } from "../../src/id/id"
 import { testRuntime } from "../support/runtime"
 import { tmpdir } from "../support/fixture"
+import { UpgradeWork } from "../../src/storage/upgrade-work"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
+
+test(
+  "explicit history search finishes selected indexing while background import is paused",
+  () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await UpgradeWork.control("pause")
+          const session = await Session.create({ title: "Requested search" })
+          const unrelated = await Session.create({ title: "Cold search" })
+          try {
+            const messageID = Identifier.ascending("message")
+            await Session.updateMessage({
+              id: messageID,
+              sessionID: session.id,
+              role: "user",
+              time: { created: 1 },
+              isRoot: true,
+              visible: true,
+              agent: "synergy",
+              model: { providerID: "test", modelID: "test" },
+            })
+            for (let index = 0; index < 40; index++)
+              await Session.updatePart({
+                id: Identifier.ascending("part"),
+                messageID,
+                sessionID: session.id,
+                type: "text",
+                text: `Question ${index}`,
+              })
+            const foreign = StoragePath.sessionTextState(unrelated.scope.id, unrelated.id)
+            const before = await Storage.readMany([foreign])
+            const first = await SessionHistory.search({ sessionID: session.id, query: "Question 39" })
+            expect(first.preparing).toBe(true)
+            const until = performance.now() + 5000
+            let ready = false
+            while (!ready && performance.now() < until) {
+              const [state] = await Storage.readMany<{ ready: boolean }>([
+                StoragePath.sessionTextState(session.scope.id, session.id),
+              ])
+              ready = state?.ready === true
+              if (!ready) await Bun.sleep(20)
+            }
+            expect(ready).toBe(true)
+            expect((await SessionHistory.search({ sessionID: session.id, query: "Question 39" })).items).toHaveLength(1)
+            expect(await Storage.readMany([foreign])).toEqual(before)
+            expect((await UpgradeWork.status()).paused).toBe(true)
+          } finally {
+            await Session.remove(session.id)
+            await Session.remove(unrelated.id)
+          }
+        },
+      })
+    }),
+  15000,
+)
 
 test("full conversation text reads one effective history snapshot while another input updates a Part", () =>
   runtime.run(async () => {

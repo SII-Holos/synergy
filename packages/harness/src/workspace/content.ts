@@ -8,10 +8,8 @@ import { WorkspaceErrors } from "./errors"
 import { WorkspaceProtocol } from "./protocol"
 import { SnapshotLink } from "../session/snapshot-link"
 
-export interface BlobStore {
-  put(hash: string, bytes: Uint8Array): Promise<void>
-  get(hash: string, maximumBytes: number): Promise<Uint8Array>
-}
+import type { BlobStore } from "../storage/blobs"
+export type { BlobStore } from "../storage/blobs"
 
 export namespace WorkspaceBlobs {
   type Factory = (settings: Record<string, unknown>) => BlobStore

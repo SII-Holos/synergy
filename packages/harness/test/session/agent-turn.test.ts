@@ -5,6 +5,7 @@ import { AgentWorkerPool } from "../../src/session/agent-turn/worker-pool"
 import { ContextUsage } from "../../src/session/context-usage"
 import { LLM } from "../../src/session/llm"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
+import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -16,6 +17,7 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
     const originalMeasureDraft = ContextUsage.measureDraft
     const started = Promise.withResolvers<AgentTurn.Stream>()
     let estimationStarts = 0
+    let measured: Parameters<typeof ContextUsage.measureDraft>[0] | undefined
     const operationID = crypto.randomUUID()
 
     try {
@@ -32,8 +34,9 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
         params: { options: {} },
       }))
       ;(AgentWorkerPool.prototype.run as any) = mock(() => started.promise)
-      ;(ContextUsage.measureDraft as any) = mock(async () => {
+      ;(ContextUsage.measureDraft as any) = mock(async (input: Parameters<typeof ContextUsage.measureDraft>[0]) => {
         estimationStarts++
+        measured = input
         return undefined
       })
 
@@ -49,9 +52,13 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
         },
         agent: { name: "synergy" },
         system: [],
-        messages: [],
+        messages: [{ role: "user", content: "final transformed input" }],
         abort: new AbortController().signal,
-        toolDefinitions: [],
+        toolDefinitions: [
+          { id: "visible", description: "visible tool", inputSchema: { type: "object" } },
+          { id: "hidden", description: "hidden tool", inputSchema: { type: "object" } },
+        ],
+        activeToolIDs: ["visible"],
         contextUsageProvenance: {
           categories: {
             userMessages: [{ text: "queued prompt" }],
@@ -90,6 +97,17 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
       expect(calls.map((call) => call.usageRole)).toEqual(["auxiliary"])
 
       expect(estimationStarts).toBe(1)
+      expect(measured?.provenance.categories.userMessages.map((entry) => entry.text)).toEqual([
+        "final transformed input",
+      ])
+      expect(measured?.provenance.items.toolDefinitions).toBe(1)
+      const chunks: Uint8Array[] = []
+      for await (const chunk of RolloutArtifact.read(calls[0].owner, calls[0].request.id)) chunks.push(chunk)
+      const recorded = JSON.parse(Buffer.concat(chunks).toString())
+      expect(recorded.tools.map((tool: { id: string }) => tool.id)).toEqual(["visible"])
+      expect(
+        recorded.contextSources.find((entry: { category: string }) => entry.category === "userMessages").characters,
+      ).toBe("final transformed input".length)
       expect(stream.contextUsageDraft).toBeDefined()
       await stream.contextUsageDraft
       await stream.dispose()

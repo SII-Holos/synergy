@@ -64,9 +64,15 @@ Report the capability and risk, classifier, profile decisions, bypassability, pe
 
 Sandbox helper preparation and discovery must use the canonical runtime home, including `SYNERGY_HOME` and test isolation. Verify copied assets and hash lookup together; do not change OS policy read/deny roots to the runtime home. Check source Cargo discovery separately from registered packaged assets.
 
+Metadata-name restrictions apply within each admitted writable root, not to its ancestors. Exercise real macOS writes from roots beneath `.codex` and `.agents`, additional roots, symlink resolution and path names containing regex punctuation or quotes. Ordinary writes must succeed while nested metadata and sibling writes remain denied. Do not validate a sandbox only with read commands or exit status; inspect its file effects.
+
+For worktree creation from a source with shared directories, retain a real source-directory use during creation. Initial grants belong in the new catalog registration; verify they are visible atomically and invalid grants publish no record. Repeated registration cannot change existing grants, and later sharing updates must still exclude active users. Never clear retained execution claims to make creation pass.
+
 Keep permission resolution and containment separate from resource coordination. Never convert a Sandbox write-footprint receipt, missing containment or `full_access` into host-wide exclusion. Test real concurrent commands in sibling and shared Workspaces, selected-resource lifetime, bounded managed mutations, and exact formatter preconditions. Changes to bindings still exclude active users. For saving retries, freeze the base version before capture and never reuse an old snapshot against a newer base.
 
 For native process ownership changes, test the preactivation barrier and recovery after both caller and supervisor death. Keep command exit, stream drainage and whole-tree exit distinct. Empty environments, double forks, detached sessions and closed inherited pipes must not release a live writer. Exercise unconfined commands that install their own sandbox, binary backpressure, unread-output cancellation, and source/core/full worker entrypoints. Verify ownership without borrowing another application's OS permission identity.
+
+For linked-worktree sandbox changes, run actual Git discovery and object reads with the checkout beneath an ancestor read deny. Keep metadata grants enumerated and read-only; verify sibling pointers, redirected files/directories, explicit child denies and common-store write refusal. Generic runtime read roots must not override credential denies.
 
 For Environment execution, also read [Environments](../../../docs/architecture/environments.md). Test lost allocation and execution acknowledgements, operation identity conflicts, old allocation generations, failed checkpoints and owner restart. A durable physical writer must remain occupied until saving is acknowledged; recovery cannot repeat the command or infer saving from process exit.
 

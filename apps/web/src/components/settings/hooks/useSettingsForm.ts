@@ -41,6 +41,8 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     colorScheme: params.colorScheme(),
     snapshot: cfg.snapshot ?? UI_DEFAULTS.snapshot,
     compactReasoning: cfg.compactReasoning ?? UI_DEFAULTS.compactReasoning,
+    preferWorkBrief: cfg.preferWorkBrief ?? UI_DEFAULTS.preferWorkBrief,
+    welcomeGames: cfg.welcomeGames ?? UI_DEFAULTS.welcomeGames,
     username: cfg.username ?? UI_DEFAULTS.username,
     theme: cfg.theme ?? UI_DEFAULTS.theme,
     locale: cfg.locale ?? UI_DEFAULTS.locale,

@@ -243,13 +243,15 @@ test("transient file reads remain retryable and do not quarantine the aggregate"
     })
   }))
 
-test("startup imports recovery-eligible sessions and leaves idle history deferred", () =>
+test("startup leaves paused and archived history deferred until selected", () =>
   runtime.run(async () => {
     await using active = await fixture()
     await active.write("info.json", { ...active.info, paused: { reason: "aborted", since: 2000 } })
     await active.catalog()
     await active.run(async () => {
       await SessionCompat.prepareRecovery()
+      expect((await StorageCompat.readLocator(active.store, active.id))?.status).toBe("pending")
+      await SessionCompat.requireImported(active.id)
       expect((await StorageCompat.readLocator(active.store, active.id))?.status).toBe("imported")
     })
     await using archived = await fixture()

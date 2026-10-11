@@ -7,7 +7,7 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
-for (const version of ["1.2.33", "2.4.4", "3.0.22"])
+for (const version of ["1.2.33", "2.0.0", "2.4.4", "3.0.21", "3.0.22"])
   for (const deferred of [false, true]) {
     test(
       `upgrades the v${version} JSON writer shape through the actual startup migration runner (deferred=${deferred})`,
@@ -15,7 +15,12 @@ for (const version of ["1.2.33", "2.4.4", "3.0.22"])
         runtime.run(async () => {
           await using tmp = await tmpdir()
           const root = path.join(tmp.path, ".synergy")
-          const fixture = (await Bun.file(new URL(`./fixtures/v${version}.json`, import.meta.url)).json()) as {
+          const fixture = JSON.parse(
+            (await Bun.file(new URL(`./fixtures/v${version}.json`, import.meta.url)).text()).replaceAll(
+              '"$HOME"',
+              JSON.stringify(tmp.path),
+            ),
+          ) as {
             records: Array<{ key: string[]; value: unknown }>
           }
           for (const record of fixture.records) {
@@ -50,10 +55,12 @@ for (const version of ["1.2.33", "2.4.4", "3.0.22"])
           if (!handle) throw new Error("Upgraded dataset is absent")
           try {
             const session = await handle.store.read<{ id: string; futureOwner: { retained: boolean } }>(
-              fixture.records[0].key,
+              fixture.records[0].key.map((part) => (part === "global" ? "home" : part)),
             )
             expect(session.futureOwner).toEqual({ retained: true })
-            expect(await handle.store.read(fixture.records[3].key)).toMatchObject({
+            expect(
+              await handle.store.read(fixture.records[3].key.map((part) => (part === "global" ? "home" : part))),
+            ).toMatchObject({
               text: "Keep the original transcript.",
             })
             expect(await handle.store.read(["session_index", session.id])).toMatchObject({ scopeID: "home" })

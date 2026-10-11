@@ -40,8 +40,42 @@ const Category = z.object({
   items: NonNegativeInteger.optional(),
 })
 
+const Estimator = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("model-tokenizer"), encoding: z.string().optional() }),
+  z.object({
+    kind: z.literal("bounded-utf8"),
+    sampledCharacters: NonNegativeInteger,
+    truncated: z.boolean(),
+  }),
+])
+
+export const ContextUsageDraftSchema = z.object({
+  modelID: z.string(),
+  providerID: z.string(),
+  contextLimit: NonNegativeInteger.optional(),
+  usableInputLimit: NonNegativeInteger.optional(),
+  categories: z.record(
+    z.enum(ContextCategoryKeys),
+    z.object({
+      estimatedTokens: NonNegativeInteger,
+      items: NonNegativeInteger,
+      precision: z.enum(["source", "role"]).optional(),
+    }),
+  ),
+  estimator: Estimator,
+})
+
+export const ContextUsageEstimateSchema = ContextUsageDraftSchema.extend({
+  version: z.literal(1),
+  capturedAt: NonNegativeInteger,
+}).meta({ ref: "ContextUsageEstimate" })
+
+export type ContextUsageDraft = z.infer<typeof ContextUsageDraftSchema>
+export type ContextUsageEstimate = z.infer<typeof ContextUsageEstimateSchema>
+
 export const ContextUsageSchema = z.object({
   version: z.literal(2),
+  callID: z.string().optional(),
   modelID: z.string(),
   providerID: z.string(),
   totalInput: NonNegativeInteger,
@@ -51,17 +85,7 @@ export const ContextUsageSchema = z.object({
   overhead: z.object({
     attributedTokens: NonNegativeInteger,
   }),
-  estimator: z.discriminatedUnion("kind", [
-    z.object({
-      kind: z.literal("model-tokenizer"),
-      encoding: z.string().optional(),
-    }),
-    z.object({
-      kind: z.literal("bounded-utf8"),
-      sampledCharacters: NonNegativeInteger,
-      truncated: z.boolean(),
-    }),
-  ]),
+  estimator: Estimator,
   reconciliation: z.object({
     mode: z.enum(["residual", "scaled-down"]),
     factor: z.number().nonnegative(),

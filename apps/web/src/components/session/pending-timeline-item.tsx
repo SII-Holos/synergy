@@ -30,7 +30,7 @@ export function PendingTimelineItem(props: {
     return part?.type === "text" ? part.text : (props.item.summary?.title ?? _(S.convPending))
   }
   const run = async (action: "guide" | "remove") => {
-    if (pending()) return
+    if (pending() || (action === "remove" ? !view().canWithdraw : !view().primaryAction)) return
     setPending(true)
     setFailure(undefined)
     try {
@@ -101,9 +101,9 @@ export function PendingTimelineItem(props: {
         {(failed) => (
           <div role="alert" class="flex flex-col gap-2 text-text-base">
             <span>{_(failed().action === "remove" ? S.inboxRemoveFailed : S.inboxGuideFailed)}</span>
-            <Show when={failed().action === "remove"}>
+            <Show when={failed().action === "remove" && view().canWithdraw}>
               <div>
-                <Button variant="secondary" onClick={() => void run("remove")}>
+                <Button variant="secondary" disabled={pending()} onClick={() => void run("remove")}>
                   {_(S.inboxRetryRemove)}
                 </Button>
               </div>

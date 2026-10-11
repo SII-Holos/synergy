@@ -6,6 +6,7 @@ import {
   type EventExecutionUpdated,
 } from "@ericsanchezok/synergy-sdk/client"
 import { createExecutionContext } from "../../src/context/execution-context"
+import type { ContextUsageEstimate } from "@ericsanchezok/synergy-sdk/client"
 
 const item = (callID: string, started: number): ExecutionContextSnapshot => ({
   sessionID: "session",
@@ -27,6 +28,121 @@ const item = (callID: string, started: number): ExecutionContextSnapshot => ({
   usage: null,
   compactedBefore: false,
   requestAvailable: true,
+})
+
+const estimate = (tokens: number): ContextUsageEstimate => ({
+  version: 1,
+  modelID: "model",
+  providerID: "provider",
+  capturedAt: 1,
+  estimator: { kind: "bounded-utf8", sampledCharacters: 40, truncated: false },
+  categories: {
+    systemInstructions: { estimatedTokens: 0, items: 0 },
+    toolDefinitions: { estimatedTokens: 0, items: 0 },
+    userMessages: { estimatedTokens: tokens, items: 1 },
+    injectedContext: { estimatedTokens: 0, items: 0 },
+    skills: { estimatedTokens: 0, items: 0 },
+    assistantMessages: { estimatedTokens: 0, items: 0 },
+    toolResults: { estimatedTokens: 0, items: 0 },
+    attachments: { estimatedTokens: 0, items: 0 },
+  },
+})
+
+test("automatic following keeps the last displayable request until the next estimate arrives and resets its scope", async () => {
+  const first = { ...item("first", 1), inputTokens: null, estimate: estimate(20) }
+  const client = createSynergyClient({
+    baseUrl: "http://fixture.test",
+    fetch: Object.assign(
+      async () => Response.json({ sessionID: "session", revision: 1, items: [first], total: 1, nextCursor: null }),
+      { preconnect: fetch.preconnect },
+    ),
+  })
+  const [selected, setSelected] = createSignal("")
+  const [runID, setRunID] = createSignal("")
+  let receive: (event: EventExecutionUpdated["properties"]) => void = () => {}
+  const setup = createRoot((dispose) => ({
+    dispose,
+    history: createExecutionContext({
+      client,
+      sessionID: () => "session",
+      runID,
+      active: () => true,
+      selected,
+      connectionVersion: () => 1,
+      subscribe: (callback) => {
+        receive = callback
+        return () => {}
+      },
+    }),
+  }))
+  const send = (revision: number, entry: ExecutionContextSnapshot) =>
+    receive({ sessionID: "session", revision, contextUpserts: [entry] } as EventExecutionUpdated["properties"])
+  try {
+    await Bun.sleep(0)
+    expect(setup.history.snapshot()?.callID).toBe("first")
+    const next = { ...item("second", 2), status: "running" as const, inputTokens: null }
+    send(2, next)
+    expect(setup.history.snapshot()?.callID).toBe("first")
+    send(3, { ...next, estimate: estimate(30) })
+    expect(setup.history.snapshot()?.callID).toBe("second")
+    setSelected("first")
+    send(4, { ...item("third", 3), estimate: estimate(50) })
+    expect(setup.history.snapshot()?.callID).toBe("first")
+    setSelected("")
+    expect(setup.history.snapshot()?.callID).toBe("third")
+    send(3, next)
+    expect(setup.history.snapshot()?.callID).toBe("third")
+    setRunID("different")
+    await Bun.sleep(0)
+    expect(setup.history.snapshot()).toBeUndefined()
+  } finally {
+    setup.dispose()
+  }
+})
+
+test("reconnect accepts a restarted revision stream while retaining classification during refresh", async () => {
+  const replies: ((response: Response) => void)[] = []
+  const client = createSynergyClient({
+    baseUrl: "http://fixture.test",
+    fetch: Object.assign(() => new Promise<Response>((resolve) => replies.push(resolve)), {
+      preconnect: fetch.preconnect,
+    }),
+  })
+  const [connection, setConnection] = createSignal(1)
+  let receive: (event: EventExecutionUpdated["properties"]) => void = () => {}
+  const setup = createRoot((dispose) => ({
+    dispose,
+    history: createExecutionContext({
+      client,
+      sessionID: () => "session",
+      runID: () => "",
+      active: () => true,
+      selected: () => "",
+      connectionVersion: connection,
+      subscribe: (callback) => {
+        receive = callback
+        return () => {}
+      },
+    }),
+  }))
+  try {
+    await Bun.sleep(0)
+    const first = { ...item("first", 1), estimate: estimate(20) }
+    replies[0](Response.json({ sessionID: "session", revision: 100, items: [first], total: 1, nextCursor: null }))
+    await Bun.sleep(0)
+    const retained = setup.history.snapshot()
+    setConnection(2)
+    await Bun.sleep(0)
+    expect(setup.history.snapshot()).toBe(retained)
+    const next = { ...item("second", 2), estimate: estimate(30) }
+    receive({ sessionID: "session", revision: 2, contextUpserts: [next] } as EventExecutionUpdated["properties"])
+    replies[1](Response.json({ sessionID: "session", revision: 1, items: [first], total: 1, nextCursor: null }))
+    await Bun.sleep(0)
+    expect(setup.history.snapshot()?.callID).toBe("second")
+    expect(setup.history.state.revision).toBe(2)
+  } finally {
+    setup.dispose()
+  }
 })
 
 test("changing the retained request and receiving a new latest request never rewrites other history entities", async () => {

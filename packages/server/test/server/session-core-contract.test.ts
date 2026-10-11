@@ -194,4 +194,69 @@ test("abort reports what it actually did instead of an unconditional success", (
     })
   }))
 
+test("POST /session/:id/part/pages refreshes a message window in a single request", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const create = await app.request("/session", json("POST", { title: "Part pages batch fixture" }))
+        const session = (await create.json()) as Session.Info
+        const messageIDs: string[] = []
+        const partIDs = new Map<string, string[]>()
+        for (let index = 0; index < 3; index++) {
+          const messageID = `msg_batch_${index.toString(16).padStart(21, "0")}`
+          messageIDs.push(messageID)
+          await Session.updateMessage({
+            id: messageID,
+            sessionID: session.id,
+            role: "user",
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+            time: { created: index + 1 },
+            isRoot: index === 0,
+            visible: true,
+          })
+          const parts = Array.from(
+            { length: index + 2 },
+            (_, part) => `prt_batch_${index.toString().padStart(2, "0")}_${part.toString().padStart(2, "0")}`,
+          )
+          partIDs.set(messageID, parts)
+          for (const [part, partID] of parts.entries())
+            await Session.updatePart({
+              id: partID,
+              messageID,
+              sessionID: session.id,
+              type: "text",
+              text: `batch m${index} p${part}`,
+            })
+        }
+        const response = await app.request(
+          `/session/${session.id}/part/pages`,
+          json("POST", { messageIDs, limit: 100 }),
+        )
+        expect(response.status).toBe(200)
+        const pages = (await response.json()) as Record<
+          string,
+          { items: { id: string; messageID: string }[]; hasMore: boolean; nextCursor: string | null }
+        >
+        expect(Object.keys(pages)).toEqual(messageIDs)
+        for (const messageID of messageIDs) {
+          expect(pages[messageID].items.map((part) => part.id)).toEqual(partIDs.get(messageID) ?? [])
+          expect(pages[messageID].hasMore).toBe(false)
+          expect(pages[messageID].nextCursor).toBeNull()
+        }
+        const invalid = await app.request(`/session/${session.id}/part/pages`, json("POST", { messageIDs: [] }))
+        expect(invalid.status).toBe(400)
+        const missing = await app.request(
+          `/session/${session.id}/part/pages`,
+          json("POST", { messageIDs: ["msg_0000000000000000000000000000"] }),
+        )
+        // Contract parity with the single-message part/page route: an unknown
+        // message surfaces as the same server-side error, not a silent 200.
+        expect(missing.status).toBe(500)
+      },
+    })
+  }))
+
 afterRuntimeTests(() => runtime.close())
