@@ -69,9 +69,22 @@ export namespace SecretVault {
   /** Panel/API view: every durable field except the secret value itself. */
   export type Entry = Omit<InternalEntry, "value">
 
-  interface Store {
+  export interface Store {
     schemaVersion: number
     entries: Record<string, InternalEntry>
+  }
+
+  export interface Persistence {
+    read(): Promise<Store>
+    mutate<T>(change: (store: Store) => Promise<T> | T): Promise<T>
+  }
+
+  const persistence = RuntimeContext.state(() => ({ backend: undefined as Persistence | undefined }))
+
+  export function registerStorage(backend: Persistence) {
+    RuntimeContext.assertCompositionOpen("Secret vault storage")
+    if (persistence().backend) throw new Error("Secret vault storage is already registered")
+    persistence().backend = backend
   }
 
   function filepath() {
@@ -112,6 +125,8 @@ export namespace SecretVault {
   }
 
   async function readStore(): Promise<Store> {
+    const backend = persistence().backend
+    if (backend) return backend.read()
     let raw: string
     try {
       raw = await readFileWithRetry(filepath())
@@ -154,6 +169,8 @@ export namespace SecretVault {
   }))
 
   async function mutate<T>(fn: (store: Store) => Promise<T> | T): Promise<T> {
+    const backend = persistence().backend
+    if (backend) return backend.mutate(fn)
     const instanceState = runtimeState()
 
     const previous = instanceState.locks.get("secret-vault") ?? Promise.resolve()

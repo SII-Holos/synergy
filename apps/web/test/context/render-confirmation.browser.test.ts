@@ -35,7 +35,7 @@ beforeAll(async () => {
     import {createSignal} from "solid-js"
     import {createStore} from "solid-js/store"
     const [session,setSession]=createSignal("ses_test"),[generation,setGeneration]=createSignal(0)
-    const state=revision=>({revision,updatedAt:revision,content:{modelContent:revision}})
+    const state=revision=>({revision,updatedAt:revision,content:{modelContent:{workers:revision},uiContent:{controls:{workers:String(revision)}}}})
     const [data,setData]=createStore({session:[{id:"ses_test"}],part:{msg_test:[{id:"prt_test",type:"tool",state:{status:"completed",metadata:{visualState:state(0)}}}]}})
     let failed=false,reads=0;const inputs=[],states=[]
     export const visual={format:"synergy.visual",version:1,id:"00000000-0000-4000-8000-000000000001",mode:"interactive",title:"Timing",layout:"normal",libraries:[],html:"<p>Timing</p>"}

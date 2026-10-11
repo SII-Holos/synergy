@@ -5,6 +5,7 @@ import type {
   SessionPartSummary,
 } from "@ericsanchezok/synergy-sdk/client"
 import type { SessionPartSnapshotAction } from "./session-part-snapshot-freshness"
+import type { PartSummaryPageState } from "./part-summary-loader"
 
 export type SessionViewportContent = {
   pages: Record<string, SessionPartPage>
@@ -73,16 +74,26 @@ export function planSessionViewportContent(
 /**
  * Replay a message's already-materialized first-page summaries as the
  * endpoint's page shape. Only usable when the window is complete
- * (`page.hasEarlier === false`): a partial window must keep flowing through
- * the batch endpoint so cursor state stays faithful.
+ * (fresh, unpaginated and covered by one accepted range): partial windows
+ * must keep flowing through the batch endpoint so cursor state stays faithful.
  */
 export function cachedPartPageSnapshot(
   items: readonly SessionPartSummary[] | undefined,
-  page: { hasEarlier: boolean } | undefined,
+  page: PartSummaryPageState | undefined,
 ): SessionPartPage | undefined {
-  if (!items?.length || page?.hasEarlier !== false) return undefined
+  if (!items?.length || !page || page.stale || page.hasEarlier || page.hasMore || page.ranges.length !== 1)
+    return undefined
+  const summaries = [...items].sort((a, b) => a.id.localeCompare(b.id))
+  const range = page.ranges[0]
+  if (
+    !range.end ||
+    range.count !== summaries.length ||
+    range.firstID !== summaries[0].id ||
+    range.lastID !== summaries.at(-1)!.id
+  )
+    return undefined
   return {
-    items: [...items].sort((a, b) => a.id.localeCompare(b.id)),
+    items: summaries,
     nextCursor: null,
     previousCursor: null,
     hasMore: false,

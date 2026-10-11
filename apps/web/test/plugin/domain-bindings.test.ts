@@ -43,6 +43,21 @@ test("published viewport reading owners retain the conversation capability and l
   expect(() => conversation.autoScroll.readingAnchorOwner()).toThrow("disposed")
 })
 
+test("tool description preferences remain optional and capability checked", () => {
+  const owner = access(["session.read"])
+  let enabled = false
+  const source = fixture<PluginConversationService>({ preferWorkBrief: () => enabled })
+  const conversation = bindPluginConversation(source, owner.service)
+  expect(conversation.preferWorkBrief?.()).toBe(false)
+  enabled = true
+  expect(conversation.preferWorkBrief?.()).toBe(true)
+  const absent = fixture<PluginConversationService>({ preferWorkBrief: undefined })
+  expect(bindPluginConversation(absent, owner.service).preferWorkBrief?.()).toBe(false)
+  expect(() => bindPluginConversation(source, access([]).service).preferWorkBrief?.()).toThrow("session.read")
+  owner.lifetime.dispose()
+  expect(() => conversation.preferWorkBrief?.()).toThrow("disposed")
+})
+
 test("reading position hints pass through the capability and lifetime boundary unchanged", () => {
   const owner = access(["session.read"])
   const scheduled = mock((_container: HTMLDivElement, _messageID?: string) => {})

@@ -112,6 +112,17 @@ export namespace EnvironmentResources {
     if (input.needs.workspace && !input.workspaceID)
       throw new WorkspaceCatalog.Unavailable({ workspaceID: "", message: "This operation requires a Workspace" })
     let workspace = input.workspaceID ? await WorkspaceCatalog.get(input.workspaceID, input.scopeID) : undefined
+    if (
+      workspace?.activeMount?.state === "preparing" &&
+      (!input.needs.execution || workspace.activeMount.target.environmentID === input.environmentID)
+    ) {
+      await WorkspaceMounts.waitForAttachment({
+        scopeID: input.scopeID,
+        workspaceID: workspace.id,
+        signal: input.signal,
+      })
+      workspace = await WorkspaceCatalog.get(workspace.id, input.scopeID)
+    }
     if (workspace) {
       virtualRoot(workspace)
       if (workspace.lifecycle !== "active" || workspace.binding.state !== "bound")

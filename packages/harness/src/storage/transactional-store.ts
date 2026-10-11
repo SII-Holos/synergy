@@ -68,6 +68,13 @@ export interface RecordQuery {
   orderFrom?: string
   orderTo?: string
 }
+export interface ChildKeyQuery {
+  prefix: string[]
+  after?: string
+  before?: string
+  limit?: number
+  descending?: boolean
+}
 export interface StoredRecord<T = unknown> {
   key: string[]
   value: T
@@ -683,12 +690,12 @@ export class StoreTransaction {
   async remove(key: string[]): Promise<void> {
     this.check(true)
     await this.assertAdmitted([key])
-    await this.connection.query(
-      "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id = ? AND body IS NOT NULL",
+    const removed = await this.connection.query(
+      "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id = ? AND body IS NOT NULL RETURNING key_text",
       [Date.now(), this.namespace, keyParameter(this.keys, key)],
     )
     // The tombstone stays; the node chain the removal emptied does not.
-    await this.cleanDanglingNodes([key])
+    if (removed.length) await this.cleanDanglingNodes([key])
   }
 
   async removeMany(keys: string[][]): Promise<void> {
@@ -696,11 +703,11 @@ export class StoreTransaction {
     await this.assertAdmitted(keys)
     for (let offset = 0; offset < keys.length; offset += 128) {
       const batch = keys.slice(offset, offset + 128)
-      await this.connection.query(
-        `UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (${batch.map(() => "?").join(",")}) AND body IS NOT NULL`,
+      const removed = await this.connection.query<SqlRow & { key_text: string }>(
+        `UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (${batch.map(() => "?").join(",")}) AND body IS NOT NULL RETURNING key_text`,
         [Date.now(), this.namespace, ...batch.map((key) => keyParameter(this.keys, key))],
       )
-      await this.cleanDanglingNodes(batch)
+      if (removed.length) await this.cleanDanglingNodes(removed.map((row) => JSON.parse(row.key_text) as string[]))
     }
   }
 
@@ -715,6 +722,34 @@ export class StoreTransaction {
       [this.namespace, keyParameter(this.keys, prefix), this.namespace, this.namespace],
     )
     return rows.map((row) => row.child).sort()
+  }
+
+  async childKeys(input: ChildKeyQuery): Promise<{ keys: string[][]; after?: string }> {
+    this.check()
+    const limit = input.limit ?? 100
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10000)
+      throw new StorageIntegrityError("Invalid storage page limit")
+    const conditions = ["namespace = ?", "parent_id = ?"]
+    const values: SqlValue[] = [this.namespace, keyParameter(this.keys, input.prefix)]
+    if (input.after !== undefined) {
+      conditions.push(`segment ${input.descending ? "<" : ">"} ?`)
+      values.push(input.after)
+    }
+    if (input.before !== undefined) {
+      conditions.push("segment < ?")
+      values.push(input.before)
+    }
+    const direction = input.descending ? "DESC" : "ASC"
+    // Materialize the node page before probing record bodies. Empty branches and
+    // tombstones still advance its cursor; they cannot end the live-key stream.
+    const rows = await this.connection.query<{ segment: string; key_text: string | null }>(
+      `WITH candidates AS MATERIALIZED (SELECT key_id, segment FROM storage_nodes WHERE ${conditions.join(" AND ")} ORDER BY segment ${direction} LIMIT ?) SELECT candidates.segment, record.key_text FROM candidates LEFT JOIN storage_records record ON record.namespace = ? AND record.key_id = candidates.key_id AND record.body IS NOT NULL${this.visibility("record")} ORDER BY candidates.segment ${direction}`,
+      [...values, limit, this.namespace],
+    )
+    return {
+      keys: rows.flatMap((row) => (row.key_text === null ? [] : [JSON.parse(row.key_text) as string[]])),
+      after: rows.length === limit ? rows.at(-1)!.segment : undefined,
+    }
   }
 
   async list(prefix: string[]): Promise<string[][]> {
@@ -961,6 +996,8 @@ export class StoreTransaction {
 
   private async queryRows<Row extends SqlRow>(input: RecordQuery, columns: string, count = false): Promise<Row[]> {
     this.check()
+    const subtree =
+      input.prefix?.length && input.kind === undefined && input.sessionID === undefined && input.messageID === undefined
     const conditions = ["namespace = ?", "body IS NOT NULL"]
     const values: SqlValue[] = [this.namespace]
     for (const [field, value] of [
@@ -978,7 +1015,9 @@ export class StoreTransaction {
     // an equality on the column alone does not imply `message_id <> ''`, and
     // without this the message-keyed page would fall back to a full scan.
     if (this.keys === "bytes" && input.messageID !== undefined) conditions.push("message_id <> ''")
-    if (input.prefix?.length) {
+    if (subtree) {
+      conditions.push("key_id = tree.node_id")
+    } else if (input.prefix?.length) {
       const key = JSON.stringify(input.prefix)
       const descendants = key.slice(0, -1) + ","
       conditions.push("(key_text = ? OR substr(key_text, 1, length(?)) = ?)")
@@ -1009,8 +1048,14 @@ export class StoreTransaction {
       throw new StorageIntegrityError("Invalid storage page limit")
     if (!count) values.push(limit)
     const direction = input.descending ? "DESC" : "ASC"
+    // A prefix without an owner/kind index must drive keyed probes from its
+    // existing node tree; a text predicate plus LIMIT still scans the namespace.
+    const traversal = subtree
+      ? "WITH RECURSIVE tree(node_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.node_id) "
+      : ""
+    if (subtree) values.unshift(this.namespace, keyParameter(this.keys, input.prefix!), this.namespace)
     return this.connection.query<Row>(
-      `SELECT ${columns} FROM storage_records WHERE ${conditions.join(" AND ")}${this.visibility()}${count ? "" : ` ORDER BY order_key ${direction}, key_id ${direction} LIMIT ?`}`,
+      `${traversal}SELECT ${columns} FROM ${subtree ? "tree CROSS JOIN " : ""}storage_records WHERE ${conditions.join(" AND ")}${this.visibility()}${count ? "" : ` ORDER BY order_key ${direction}, key_id ${direction} LIMIT ?`}`,
       values,
     )
   }
@@ -1285,6 +1330,16 @@ export class StoreTransaction {
 }
 
 export class TransactionalStore {
+  /** Explicit deployment/maintenance step, before opening any managed Runtime. */
+  static async preparePostgres(input: { url: string; maxConnections?: number }) {
+    const driver = await PostgresDriver.open(input.url, randomUUID(), input.maxConnections ?? 2)
+    try {
+      await driver.initializeSchema(schemaFor("postgres"))
+    } finally {
+      await driver.close()
+    }
+  }
+
   private readonly admission = { pending: true }
   hasUnpublishedOwners() {
     return this.admission.pending
@@ -1318,7 +1373,11 @@ export class TransactionalStore {
       store.unavailable = error
     })
     try {
-      if (!options.readonly && driver instanceof PostgresDriver) await driver.initializeSchema(schemaFor("postgres"))
+      if (!options.readonly && driver instanceof PostgresDriver) {
+        if (options.backend === "postgres" && options.schema === "verify")
+          await driver.verifySchema(schemaFor("postgres"))
+        else await driver.initializeSchema(schemaFor("postgres"))
+      }
       await driver.transaction(
         async (connection) => {
           if (!options.readonly && options.backend === "sqlite")

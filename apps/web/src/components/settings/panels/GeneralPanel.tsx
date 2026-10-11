@@ -103,6 +103,14 @@ const copy = {
   activityFull: { id: "settings.general.activityDisplay.full", message: "Full" },
   activityBalanced: { id: "settings.general.activityDisplay.balanced", message: "Balanced" },
   activityMinimal: { id: "settings.general.activityDisplay.minimal", message: "Minimal" },
+  preferWorkBriefTitle: {
+    id: "settings.general.preferWorkBrief.title",
+    message: "Prefer action descriptions",
+  },
+  preferWorkBriefDescription: {
+    id: "settings.general.preferWorkBrief.description",
+    message: "Show each tool action's purpose when available. Otherwise, show the action and target.",
+  },
   workspaceTitle: { id: "settings.general.workspace.title", message: "New task starting point" },
   workspaceDescription: {
     id: "settings.general.workspace.description",
@@ -427,6 +435,16 @@ export function GeneralPanel(props: {
               }
             />
 
+            <SettingRow
+              title={_(copy.preferWorkBriefTitle)}
+              description={_(copy.preferWorkBriefDescription)}
+              trailing={
+                <Switch
+                  checked={props.general.preferWorkBrief}
+                  onChange={(value) => props.onGeneralChange("preferWorkBrief", value)}
+                />
+              }
+            />
             <SettingRow
               title={_(copy.compactReasoningTitle)}
               description={_(copy.compactReasoningDescription)}

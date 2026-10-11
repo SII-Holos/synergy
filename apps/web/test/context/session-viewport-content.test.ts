@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import type { Message, SessionPartSummary } from "@ericsanchezok/synergy-sdk/client"
 import { planSessionViewportContent, readSessionViewportContent } from "../../src/context/session-viewport-content"
+import { partSummaryPageState } from "../../src/context/part-summary-loader"
 
 const message = (id: string, role: "user" | "assistant") => ({ id, role }) as Message
 const part = (messageID: string, id: string, bytes = 10): SessionPartSummary => ({
@@ -137,7 +138,16 @@ test("limits bodies by count and bytes and rejects superseded snapshots before p
 test("cachedPartPageSnapshot replays a complete materialized window and sorts by id", async () => {
   const { cachedPartPageSnapshot } = await import("../../src/context/session-viewport-content")
   const items = [part("root", "p2"), part("root", "p1"), part("root", "p3")]
-  const page = cachedPartPageSnapshot(items, { hasEarlier: false })
+  const page = cachedPartPageSnapshot(
+    items,
+    partSummaryPageState({
+      items: [items[1], items[0], items[2]],
+      nextCursor: null,
+      previousCursor: null,
+      hasMore: false,
+      hasEarlier: false,
+    }),
+  )
   expect(page).toEqual({
     items: [items[1], items[0], items[2]],
     nextCursor: null,
@@ -151,7 +161,25 @@ test("cachedPartPageSnapshot refuses incomplete windows so cursor state stays se
   const { cachedPartPageSnapshot } = await import("../../src/context/session-viewport-content")
   const items = [part("root", "p1")]
   expect(cachedPartPageSnapshot(undefined, undefined)).toBeUndefined()
-  expect(cachedPartPageSnapshot([], { hasEarlier: false })).toBeUndefined()
+  const page = partSummaryPageState({
+    items,
+    nextCursor: null,
+    previousCursor: null,
+    hasMore: false,
+    hasEarlier: false,
+  })
+  expect(cachedPartPageSnapshot([], page)).toBeUndefined()
   expect(cachedPartPageSnapshot(items, undefined)).toBeUndefined()
-  expect(cachedPartPageSnapshot(items, { hasEarlier: true })).toBeUndefined()
+  expect(cachedPartPageSnapshot(items, { ...page, hasEarlier: true })).toBeUndefined()
+  expect(cachedPartPageSnapshot(items, { ...page, hasMore: true, nextCursor: "next" })).toBeUndefined()
+  expect(cachedPartPageSnapshot(items, { ...page, stale: true })).toBeUndefined()
+  expect(
+    cachedPartPageSnapshot(items, {
+      ...page,
+      ranges: [
+        { firstID: "p1", lastID: "p1", count: 1, end: false },
+        { firstID: "p3", lastID: "p3", count: 1, end: true },
+      ],
+    }),
+  ).toBeUndefined()
 })

@@ -7,6 +7,30 @@ import { ensureInit } from "../../../../src/components/settings/hooks/useSetting
 import { defaultSettingsState } from "../../../../src/components/settings/types"
 
 describe("settings config patch", () => {
+  test("tool description preference defaults off and saves both toggle directions", () => {
+    for (const saved of [undefined, true, false]) {
+      const cfg = saved === undefined ? {} : { preferWorkBrief: saved }
+      const [state, setSettings] = createStore(defaultSettingsState("enter"))
+      ensureInit({
+        cfg,
+        setName: "global",
+        initialized: () => false,
+        initializedForSet: undefined,
+        refreshing: () => false,
+        sendShortcut: () => "enter",
+        colorScheme: () => "system",
+        setSettings,
+        setInitialized: () => {},
+        originalMcpsRef: { current: {} },
+        builtinMcps: [],
+      })
+      expect(state.general.preferWorkBrief).toBe(saved ?? false)
+      expect(buildPatch({ cfg, state, originalMcps: {} })).not.toHaveProperty("preferWorkBrief")
+      setSettings("general", "preferWorkBrief", !(saved ?? false))
+      expect(buildPatch({ cfg, state, originalMcps: {} }).preferWorkBrief).toBe(!(saved ?? false))
+    }
+  })
+
   test("an untouched configuration without explicit timeout overrides stays clean", () => {
     const [state, setSettings] = createStore(defaultSettingsState("enter", "system"))
     ensureInit({

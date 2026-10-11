@@ -233,6 +233,7 @@ function ActivityState(props: { state: ActivityGroupState | "paused"; label: str
 function ActivityStep(props: {
   step: ActivityStepProjection
   serverUrl: string
+  preferWorkBrief?: boolean
   hidden?: boolean
   current?: boolean
   quiet?: boolean
@@ -282,9 +283,11 @@ function ActivityStep(props: {
   // Provenance: docs/decisions/implemented/feature/2026-10-04-semantic-process-disclosure.md
   // Local adaptation: registered targets lead; invocation identity still opens the existing result owner.
   const target = () => props.step.subtitle?.trim()
-  const object = () => (target() && !title().includes(target()!) ? target() : undefined)
+  const preferredBrief = () => (props.preferWorkBrief ? props.step.part.workBrief?.trim() : undefined)
+  const object = () => (!preferredBrief() && target() && !title().includes(target()!) ? target() : undefined)
   const label = () =>
-    object() ? `${title()} · ${object()}` : target() ? title() : props.step.part.workBrief?.trim() || title()
+    preferredBrief() ||
+    (object() ? `${title()} · ${object()}` : target() ? title() : props.step.part.workBrief?.trim() || title())
   const pathParts = () => {
     const value = object() ?? ""
     const index = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")) + 1
@@ -473,6 +476,7 @@ export function ActivityReasoningSummary(props: { item: ActivityReasoningSummary
 export function ActivityTrace(props: {
   group: ActivityGroupItem
   serverUrl: string
+  preferWorkBrief?: boolean
   id?: string
   visibleSteps?: ReadonlySet<string>
   currentSteps?: ReadonlySet<string>
@@ -508,6 +512,7 @@ export function ActivityTrace(props: {
                     <ActivityStep
                       step={current()}
                       serverUrl={props.serverUrl}
+                      preferWorkBrief={props.preferWorkBrief}
                       hidden={props.visibleSteps !== undefined && !props.visibleSteps.has(key)}
                       current={props.currentSteps?.has(key)}
                       quiet={props.quiet}

@@ -3,6 +3,7 @@ import { expect, test } from "bun:test"
 import type { ExecutionContextSnapshot } from "@ericsanchezok/synergy-sdk/client"
 import { contextHistoryBars, contextSourceChanges } from "../../../src/components/execution/context-chart-model"
 import { mergeContextHistory } from "../../../src/context/execution-context"
+import { contextDisplay } from "../../../src/components/execution/context-display"
 
 const snapshot = (index: number, tokens: number | null, runID = "round-1"): ExecutionContextSnapshot => ({
   sessionID: "session",
@@ -56,6 +57,27 @@ test("history changes retain decreases and missing evidence instead of interpola
   expect(bars[1].values.find((value) => value.category === "userMessages")?.tokens).toBe(-10)
   expect(bars[2].gap).toBe(true)
   expect(bars[3].gap).toBe(true)
+})
+
+test("estimated history calibrates in place without changing actual-only fields and keeps compaction decreases", () => {
+  const original = snapshot(1, 40)
+  const next = snapshot(2, null)
+  next.estimate = {
+    version: 1,
+    modelID: "model",
+    providerID: "provider",
+    capturedAt: 2,
+    categories: { userMessages: { estimatedTokens: 25, items: 2 } },
+    estimator: { kind: "bounded-utf8", sampledCharacters: 100, truncated: false },
+  }
+  expect(contextDisplay(next)).toMatchObject({ total: 25, estimated: true })
+  expect(next.inputTokens).toBeNull()
+  expect(contextHistoryBars([original, next], "request", true)[1].total).toBe(-15)
+  const calibrated = { ...snapshot(2, 30), estimate: next.estimate }
+  const history = mergeContextHistory([original, next], [calibrated])
+  expect(history).toHaveLength(2)
+  expect(contextDisplay(history[0])).toMatchObject({ total: 30, estimated: false })
+  expect(contextDisplay(undefined)).toEqual({ total: null, rows: [], estimated: false })
 })
 test("round history selects the final request without adding prompt totals", () => {
   const bars = contextHistoryBars([snapshot(3, 30, "round-2"), snapshot(2, 25), snapshot(1, 10)], "round", false)

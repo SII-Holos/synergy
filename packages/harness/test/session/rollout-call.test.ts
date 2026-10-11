@@ -6,6 +6,11 @@ import { RolloutTransport } from "../../src/session/rollout/transport"
 import { Storage } from "../../src/storage/storage"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { contextDraft } from "../support/context-usage"
+import { Bus } from "../../src/bus"
+import { RolloutEvents } from "../../src/session/rollout/events"
+import { mkdtemp, rm } from "node:fs/promises"
+import path from "node:path"
 const runtime = await testRuntime()
 
 function input() {
@@ -20,6 +25,122 @@ function input() {
 }
 
 describe("rollout call stream", () => {
+  test("restart preserves optional estimates and accepts calls recorded without them", async () => {
+    const home = await mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "context-restart-"))
+    const args = input()
+    const contextEstimate = { ...contextDraft(), version: 1 as const, capturedAt: Date.now() }
+    try {
+      const writer = await testRuntime({ home })
+      const ids = await writer
+        .run(async () => {
+          const preview = await RolloutLedger.beginCall(args)
+          const legacy = await RolloutLedger.beginCall(args)
+          await RolloutLedger.updateContextEstimate(args.owner, args.runID, preview.id, contextEstimate)
+          for (const call of [preview, legacy])
+            await RolloutLedger.finishCall(args.owner, args.runID, call.id, { status: "completed" })
+          return { preview: preview.id, legacy: legacy.id }
+        })
+        .finally(() => writer.close())
+      await using reader = await testRuntime({ home })
+      await reader.run(async () => {
+        expect((await RolloutLedger.getCall(args.owner, args.runID, ids.preview)).contextEstimate).toEqual(
+          contextEstimate,
+        )
+        expect((await RolloutLedger.getCall(args.owner, args.runID, ids.legacy)).contextEstimate).toBeUndefined()
+      })
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+  test("late estimates preserve cancellation and failed enrichment cannot fail inference", () =>
+    runtime.run(async () => {
+      const args = input()
+      const draft = Promise.withResolvers<ReturnType<typeof contextDraft>>()
+      const saved = Promise.withResolvers<void>()
+      const unsubscribe = Bus.subscribeGlobal(RolloutEvents.Updated, (event) => {
+        const record = event.properties.record
+        if (record.kind === "call" && record.value.runID === args.runID && record.value.contextEstimate) saved.resolve()
+      })
+      const stream = await RolloutCall.stream(args, async () => ({
+        fullStream: (async function* () {})(),
+        usage: Promise.resolve(undefined),
+        contextUsageDraft: draft.promise,
+        async dispose() {},
+      }))
+      await stream.dispose()
+      const timer = setTimeout(() => saved.reject(new Error("Late estimate missing")), 1500)
+      try {
+        draft.resolve(contextDraft())
+        await saved.promise
+        expect((await RolloutLedger.calls(args.owner, args.runID))[0]).toMatchObject({
+          status: "cancelled",
+          sdkUsage: null,
+        })
+      } finally {
+        clearTimeout(timer)
+        unsubscribe()
+      }
+      using failure = spyOn(RolloutLedger, "updateContextEstimate").mockRejectedValue(
+        new Error("optional write failed"),
+      )
+      const healthy = await RolloutCall.stream(input(), async () => ({
+        fullStream: (async function* () {
+          yield { type: "text-delta" as const, id: "text", text: "ok" }
+        })(),
+        usage: Promise.resolve(undefined),
+        contextUsageDraft: Promise.resolve(contextDraft()),
+        async dispose() {},
+      }))
+      for await (const event of healthy.fullStream) expect(event.type).toBe("text-delta")
+      expect(failure).toHaveBeenCalled()
+      expect(
+        (await RolloutLedger.getCall(healthy.rollout!.owner, healthy.rollout!.runID, healthy.rollout!.callID)).status,
+      ).toBe("completed")
+    }))
+  test("publishes request estimates before stream completion and tool cleanup without recording actual usage", () =>
+    runtime.run(async () => {
+      const args = input()
+      const draft = Promise.withResolvers<ReturnType<typeof contextDraft>>()
+      const published = Promise.withResolvers<void>()
+      const unsubscribe = Bus.subscribeGlobal(RolloutEvents.Updated, (event) => {
+        const record = event.properties.record
+        if (record.kind === "call" && record.value.runID === args.runID && record.value.contextEstimate)
+          published.resolve()
+      })
+      let disposed = false
+      const stream = await RolloutCall.stream(args, async () => ({
+        fullStream: (async function* () {
+          yield { type: "text-delta" as const, id: "text", text: "hello" }
+        })(),
+        contextUsageDraft: draft.promise,
+        usage: Promise.resolve({ inputTokens: 100, outputTokens: 1, totalTokens: 101 }),
+        async dispose() {
+          disposed = true
+        },
+      }))
+      try {
+        draft.resolve(contextDraft())
+        await Promise.race([
+          published.promise,
+          Bun.sleep(1500).then(() => {
+            throw new Error("Estimate was not published during inference")
+          }),
+        ])
+        const [running] = await RolloutLedger.calls(args.owner, args.runID)
+        expect(running.status).toBe("running")
+        expect(running.sdkUsage).toBeNull()
+        expect(running.contextEstimate?.categories.userMessages.estimatedTokens).toBe(80)
+        expect(disposed).toBe(false)
+        for await (const event of stream.fullStream) void event
+        const [completed] = await RolloutLedger.calls(args.owner, args.runID)
+        expect(completed.contextEstimate).toEqual(running.contextEstimate)
+        expect(completed.sdkUsage).toMatchObject({ inputTokens: 100 })
+      } finally {
+        unsubscribe()
+        await stream.dispose()
+      }
+    }))
+
   test("rejects later calls in a run after recording fails even when storage recovers", () =>
     runtime.run(async () => {
       const args = input()

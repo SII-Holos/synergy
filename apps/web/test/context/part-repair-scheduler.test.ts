@@ -81,6 +81,34 @@ describe("createPartRepairScheduler", () => {
     expect(repairs.length).toBe(3)
   })
 
+  test("window-establishment deferrals preserve the budget for real repair attempts", () => {
+    const clock = manualClock()
+    let hasWindow = false
+    let repairs = 0
+    const scheduler = createPartRepairScheduler(
+      { delayMs: 1000, maxAttempts: 2, now: clock.now, schedule: clock.schedule },
+      (scopeKey, sessionID) => {
+        if (!hasWindow) {
+          scheduler.request(scopeKey, sessionID, { exempt: true })
+          return false
+        }
+        repairs++
+      },
+    )
+    scheduler.request("scope", "ses_a")
+    for (let attempt = 0; attempt < 5; attempt++) clock.advance(1100)
+    expect(repairs).toBe(0)
+    hasWindow = true
+    clock.advance(1100)
+    expect(repairs).toBe(1)
+    scheduler.request("scope", "ses_a")
+    clock.advance(1100)
+    expect(repairs).toBe(2)
+    scheduler.request("scope", "ses_a")
+    clock.advance(1100)
+    expect(repairs).toBe(2)
+  })
+
   test("resets the budget after the attempt window passes", () => {
     const clock = manualClock()
     const repairs: string[] = []

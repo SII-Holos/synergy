@@ -1,5 +1,14 @@
 import { createContext, useContext, type ParentProps } from "solid-js"
-import type { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
+import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
+
+export function readRenderState(metadata: unknown): RenderArtifact.State {
+  if (!metadata || typeof metadata !== "object" || !("visualState" in metadata)) return RenderArtifact.emptyState()
+  try {
+    return RenderArtifact.state({ visualState: JSON.parse(JSON.stringify(metadata.visualState)) })
+  } catch {
+    return RenderArtifact.emptyState()
+  }
+}
 
 export class RenderStateConflict extends Error {
   constructor(

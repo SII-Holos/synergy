@@ -6,6 +6,7 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionInteraction } from "@ericsanchezok/synergy-harness/session/interaction"
 import { CortexTypes } from "@ericsanchezok/synergy-harness/cortex/types"
 import { ExecutionPresentation } from "./presentation"
+import { ContextUsageEstimateSchema } from "@ericsanchezok/synergy-harness/context"
 
 export namespace ExecutionSchema {
   const Json = z.unknown().meta({ ref: "ExecutionJson" })
@@ -148,6 +149,7 @@ export namespace ExecutionSchema {
       elapsedMs: z.number().nonnegative().nullable(),
       retries: z.number().int().nonnegative(),
       usage: MessageV2.Assistant.shape.contextUsage.unwrap().nullable(),
+      estimate: ContextUsageEstimateSchema.optional(),
       compactedBefore: z.boolean(),
       requestAvailable: z.boolean(),
     })

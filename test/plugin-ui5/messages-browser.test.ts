@@ -62,8 +62,11 @@ describe("production conversation history", () => {
       await page.getByText("Answer 360", { exact: true }).waitFor()
       phase("initial answer")
       const roots = page.locator('.session-conversation-content [data-display-row][data-message-role="user"]')
-      expect(await roots.count()).toBeGreaterThan(0)
-      expect(await roots.count()).toBeLessThanOrEqual(30)
+      // Body, process and footer rows share one turn identity.
+      const rootCount = () =>
+        roots.evaluateAll((rows) => new Set(rows.map((row) => row.getAttribute("data-turn-root"))).size)
+      expect(await rootCount()).toBeGreaterThan(0)
+      expect(await rootCount()).toBeLessThanOrEqual(30)
       await page.waitForFunction(() => {
         const scroller = document.querySelector(".session-conversation-content")?.closest(".overflow-y-auto")
         return scroller && scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop < 10
@@ -112,7 +115,7 @@ describe("production conversation history", () => {
         await page.mouse.wheel(0, -100_000)
         await page.getByText(question.text, { exact: true }).waitFor()
         phase(`history page ${pageIndex + 1}`)
-        expect(await roots.count()).toBeLessThanOrEqual(30)
+        expect(await rootCount()).toBeLessThanOrEqual(30)
         expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
       }
       for (const activation of ["click", "Enter", "Space"]) {
@@ -126,7 +129,7 @@ describe("production conversation history", () => {
         await historySearch.waitFor({ state: "detached" })
         await page.getByText("Question 137", { exact: true }).waitFor()
         phase("search result")
-        expect(await roots.count()).toBeLessThanOrEqual(30)
+        expect(await rootCount()).toBeLessThanOrEqual(30)
         expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
         const returnLatest = page.getByRole("button", { name: "Return to latest", exact: true })
         if (activation === "click") await returnLatest.click()
@@ -162,7 +165,7 @@ describe("production conversation history", () => {
       await context.setOffline(false)
       await page.getByText("Answer 360 recovered after reconnect", { exact: true }).waitFor()
       phase("reconnected")
-      expect(await roots.count()).toBeLessThanOrEqual(30)
+      expect(await rootCount()).toBeLessThanOrEqual(30)
       await page.reload()
       await page.getByText("Answer 360 recovered after reconnect", { exact: true }).waitFor()
       phase("reloaded")
@@ -198,6 +201,53 @@ describe("production conversation history", () => {
       await browser.close()
     }
   }, 180000)
+
+  test("an existing Home session never becomes a new-task greeting while history is pending", async () => {
+    const browser = await chromium.launch({ headless: true })
+    let release = () => {}
+    let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
+    try {
+      const page = await browser.newPage()
+      page.setDefaultTimeout(20000)
+      diagnostics = await openPluginPreviewPage(preview, page)
+      const pending = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const requested = Promise.withResolvers<void>()
+      await page.route(`**/session/${conversation.id}/timeline/page*`, async (route) => {
+        requested.resolve()
+        await pending
+        await route.continue()
+      })
+      await page.goto(new URL("/aG9tZQ/session", preview.url).href)
+      await page.getByRole("heading", { name: "Bring your ideas to life.", exact: true }).waitFor()
+      await page.getByRole("button", { name: "History fixture", exact: true }).click()
+      await page.waitForURL(`**/session/${conversation.id}`)
+      await requested.promise
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      )
+      expect(await page.locator(".session-empty-view").count()).toBe(0)
+      expect(await page.getByRole("heading", { name: "What would you like to work on?", exact: true }).count()).toBe(0)
+      release()
+      await page.locator('[data-conversation-viewport][aria-hidden="false"]').waitFor()
+      const empty = (
+        await preview.client.session.create(
+          { scopeID: "home", title: "Empty existing session" },
+          { throwOnError: true },
+        )
+      ).data!
+      await page.getByRole("button", { name: "Empty existing session", exact: true }).click()
+      await page.waitForURL(`**/session/${empty.id}`)
+      await page.getByText("No messages yet", { exact: true }).waitFor()
+      expect(await page.locator(".session-empty-view").count()).toBe(0)
+      expect(diagnostics.errors.map((error) => error.message)).toEqual([])
+    } finally {
+      release()
+      diagnostics?.dispose()
+      await browser.close()
+    }
+  }, 60000)
 })
 
 test("conversation display and notification preferences survive a production-host reload", async () => {

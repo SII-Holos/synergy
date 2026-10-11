@@ -206,6 +206,7 @@ export function ActivityBatch(props: {
   statusAnimated?: boolean
   following: boolean
   reasoningPreview?: boolean
+  preferWorkBrief?: boolean
   view?: PluginConversationActivityView
   onInspect?: () => void
   onBeforeLayoutChange?: (event: Event) => void
@@ -338,6 +339,7 @@ export function ActivityBatch(props: {
           id={`${props.batch.key}:steps`}
           group={group()}
           serverUrl={props.serverUrl}
+          preferWorkBrief={props.preferWorkBrief}
           visibleSteps={visible()}
           currentSteps={new Set(current())}
           quiet

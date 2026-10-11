@@ -156,6 +156,7 @@ export namespace StorageMaintenance {
         await SessionCompat.prepareRecovery()
         if (pending.manifest.phase !== "active") await StorageRecovery.validate()
         await pending.activate()
+        if (options.recover) await Storage.collectArtifactGarbage({ scanOrphans: true })
         await StorageRecovery.recoverOwners()
       }
       if (options.migrate !== false) {

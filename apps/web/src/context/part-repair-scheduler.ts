@@ -35,7 +35,7 @@ type BucketState = {
 
 export function createPartRepairScheduler(
   options: PartRepairSchedulerOptions,
-  repair: (scopeKey: string, sessionID: string) => void,
+  repair: (scopeKey: string, sessionID: string) => unknown,
 ): PartRepairScheduler {
   const delayMs = options.delayMs ?? DEFAULT_DELAY_MS
   const windowMs = options.windowMs ?? DEFAULT_WINDOW_MS
@@ -73,8 +73,7 @@ export function createPartRepairScheduler(
       if (recentAttempts(bucket) >= maxAttempts && !options?.exempt) return
       bucket.cancel = schedule(() => {
         bucket.cancel = undefined
-        bucket.attempts.push(now())
-        repair(scopeKey, sessionID)
+        if (repair(scopeKey, sessionID) !== false) bucket.attempts.push(now())
       }, delayMs)
     },
     clear(scopeKey, sessionID) {

@@ -6,7 +6,11 @@ export { UsageSchema } from "../usage/schema"
 export namespace Usage {
   export const Summary = UsageQuery.Summary
   export const Page = UsageQuery.Page
-  export const summary = UsageQuery.summary
+  export async function summary(input: Parameters<typeof UsageQuery.summary>[0] = {}) {
+    if (input.scopeID && input.sessionID)
+      await UsageMigration.prepare({ kind: "session", scopeID: input.scopeID, sessionID: input.sessionID })
+    return UsageQuery.summary(input)
+  }
   export const records = UsageQuery.records
   export const collect = UsageQuery.collect
   export const summarize = UsageQuery.summarize

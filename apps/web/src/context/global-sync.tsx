@@ -1029,6 +1029,8 @@ function createGlobalSync() {
 
     const globalPromises: Promise<unknown>[] = []
 
+    if (targets.has("config")) globalPromises.push(loadGlobalConfig())
+
     if (targets.has("config") || targets.has("provider")) {
       globalPromises.push(loadGlobalProviders())
     }
@@ -1733,7 +1735,7 @@ function createGlobalSync() {
       // The first window load owns cold-load state; a competing reload here
       // restarts it through the supersede chain (cold-load fetch cascade).
       partRepairScheduler.request(scopeKey, sessionID, { exempt: true })
-      return
+      return false
     }
     reloadSessionWindow(scopeKey, sessionID)
   })
@@ -2307,8 +2309,7 @@ function createGlobalSync() {
         const metadata = store.messageWindow[sessionID]
         const messageLoaded =
           hasMessageWindowSnapshot(messages, metadata) && messages.some((message) => message.id === messageID)
-        if (source !== "replay" || hasMessageWindowSnapshot(messages, metadata))
-          partSnapshotFreshness.touch(scopeKey, sessionID, messageID, { requiresSnapshot: true })
+        partSnapshotFreshness.touch(scopeKey, sessionID, messageID, { requiresSnapshot: true })
         if (!messageLoaded) {
           if (hasMessageWindowSnapshot(messages, metadata) && metadata?.mode === "latest") {
             partRepairScheduler.request(scopeKey, sessionID)

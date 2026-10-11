@@ -25,7 +25,6 @@ export namespace Trajectory {
     step: number
     type: "pivot" | "discovery" | "setback"
     label: string
-    excerpt?: string
   }
 
   export async function summarize(sessionID: string): Promise<string> {
@@ -170,7 +169,6 @@ export namespace Trajectory {
           step: step.index,
           type: "discovery",
           label: `Content output (${step.textChars.toLocaleString()} chars)`,
-          excerpt: step.text.slice(0, 200),
         })
       }
     }
@@ -202,6 +200,7 @@ export namespace Trajectory {
     lines.push("## Execution Trajectory")
     lines.push("")
     lines.push(`**Steps**: ${steps.length} | **Tool calls**: ${totalTools}`)
+    lines.push("")
     lines.push(`**Phases**: ${phaseChain}`)
     lines.push("")
 
@@ -211,9 +210,6 @@ export namespace Trajectory {
       for (const e of events) {
         const icon = e.type === "pivot" ? "↺" : e.type === "discovery" ? "★" : "⚠"
         lines.push(`${icon} **Step ${e.step}**: ${e.label}`)
-        if (e.excerpt) {
-          lines.push(`   > ${e.excerpt.replace(/\n/g, " ")}...`)
-        }
         lines.push("")
       }
     }

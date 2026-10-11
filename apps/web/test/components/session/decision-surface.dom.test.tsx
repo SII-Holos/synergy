@@ -305,7 +305,7 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "scope-sync-stub.ts"),
       `export const SyncProvider = (props) => props.children
-       export const useSync = () => ({ ready: true, data: { ...globalThis.__DECISION_SURFACE_DATA, path: { directory: "/fixture" } }, session: { get: (id) => globalThis.__DECISION_SURFACE_DATA.session.find((session) => session.id === id) } })`,
+       export const useSync = () => ({ ready: true, data: { ...globalThis.__DECISION_SURFACE_DATA, path: { directory: "/fixture" } }, session: { get: (id) => globalThis.__DECISION_SURFACE_DATA.session.find((session) => session.id === id), sync: async () => {} } })`,
     ),
     Bun.write(
       path.join(fixtureDirectory, "layout-boundary-stub.ts"),

@@ -3,6 +3,7 @@ import { Identifier } from "../../src/id/id"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
+import { SessionHistory } from "../../src/session/history"
 import { SessionHistoryDisplay as Display } from "../../src/session/history-display"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Storage } from "../../src/storage/storage"
@@ -92,6 +93,49 @@ for (const backend of storageTestBackends()) {
       await runtime.run(() => ScopeContext.provide({ scope: Scope.home(), fn: body }))
     }
 
+    test("warm public history reads stay within a read-only snapshot without writer admission", () =>
+      run(async () => {
+        const fixture = await seed(1)
+        const timeline = await SessionHistory.timelinePage({ sessionID: fixture.sessionID })
+        const pages = await SessionHistory.partPages({
+          sessionID: fixture.sessionID,
+          messageIDs: fixture.messages.map(({ info }) => info.id),
+        })
+        let writers = 0
+        using observed = observeDriver(backend, (options) => {
+          if (!options?.readOnly) writers++
+        })
+        await Storage.snapshot(async () => {
+          expect(await SessionHistory.timelinePage({ sessionID: fixture.sessionID })).toEqual(timeline)
+          expect(
+            await SessionHistory.partPages({
+              sessionID: fixture.sessionID,
+              messageIDs: fixture.messages.map(({ info }) => info.id),
+            }),
+          ).toEqual(pages)
+        })
+        expect(await SessionHistory.text({ sessionID: fixture.sessionID })).toBe("canonical 0")
+        expect(writers).toBe(0)
+      }))
+    test("legacy ready Part state is upgraded atomically before entering the warm snapshot path", () =>
+      run(async () => {
+        const fixture = await seed(1)
+        const { part } = fixture.messages[0]
+        await Storage.write(fixture.stateKey(part.messageID), { ready: true, generation: 0 })
+        let writers = 0
+        using observed = observeDriver(backend, (options) => {
+          if (!options?.readOnly) writers++
+        })
+        const pages = await fixture.batch()
+        expect(pages[part.messageID].items).toEqual([Display.summarizePart(part)])
+        expect(await Storage.readMany([fixture.stateKey(part.messageID)])).toEqual([
+          expect.objectContaining({ version: 1, ready: true }),
+        ])
+        expect(writers).toBe(1)
+        writers = 0
+        expect(await fixture.batch()).toEqual(pages)
+        expect(writers).toBe(0)
+      }))
     ;(test("an ambient writer prepares its own wave while an external wave waits for that writer", () =>
       run(async () => {
         const fixture = await seed(1)
@@ -183,7 +227,11 @@ for (const backend of storageTestBackends()) {
             release.resolve()
             await guarded(writer)
             await guarded(external)
-            expect((await Display.header(fixture.scopeID, fixture.sessionID, infos[0].id))?.info).toEqual(updated)
+            expect((await Display.header(fixture.scopeID, fixture.sessionID, infos[0].id))?.info).toEqual({
+              ...updated,
+              referenceContext: { state: "unresolved" },
+            })
+            expect(await Storage.readMany([fixture.infoKey(updated)])).toEqual([updated])
             expect(await Display.header(fixture.scopeID, fixture.sessionID, infos[1].id)).toBeUndefined()
             expect(await Display.header(fixture.scopeID, fixture.sessionID, infos[2].id)).toBeDefined()
             expect(

@@ -57,6 +57,16 @@ const state = createStore({
   partVersion: {}, latestContextMessage: {}, session_diff: {}, inbox: {}, todo: {}, dag: {},
   workspaces: [],
 })
+const summary = id => ({ id: 'p_' + id, sessionID: 'ses_1', messageID: id, type: 'reasoning', preview: '', content: { version: 'v1', bytes: 1 } })
+for (const id of ['m1', 'm2']) {
+  state[1]('partSummary', id, [summary(id)])
+  state[1]('partPage', id, {
+    nextCursor: id === 'm1' ? 'next' : null, previousCursor: null,
+    hasMore: id === 'm1', hasEarlier: false, stale: id === 'm2',
+    ranges: [{ firstID: 'p_' + id, lastID: 'p_' + id, count: 1, end: id !== 'm1' }],
+  })
+}
+export const partBatchIDs = []
 let current = state
 const calls = { timeline: 0, partPages: 0, sessionGet: 0, volatile: 0, permission: 0 }
 const releases = {}
@@ -115,7 +125,7 @@ export const useSDK = () => ({
         }))
         options?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")))
       }),
-      partPages: () => { calls.partPages++; return gate("partPages").then(() => ({
+      partPages: ({ messageIDs }) => { partBatchIDs.push(messageIDs); calls.partPages++; return gate("partPages").then(() => ({
         data: {
           m1: { items: [], nextCursor: null, previousCursor: null, hasMore: false, hasEarlier: false },
           m2: { items: [], nextCursor: null, previousCursor: null, hasMore: false, hasEarlier: false },
@@ -134,12 +144,12 @@ export const releaseAll = () => { releaseGate("timeline"); releaseGate("partPage
 import { render } from "solid-js/web"
 import { useSync } from ${JSON.stringify(sync)}
 import DirectoryLayout from ${JSON.stringify(directoryLayout)}
-import { callsMade, releaseAll, insertSession, setRoute } from ${JSON.stringify(stub)}
+import { callsMade, releaseAll, insertSession, setRoute, partBatchIDs } from ${JSON.stringify(stub)}
 let api
 function Child() { api = useSync(); return <div>probe</div> }
 const dispose = render(() => <DirectoryLayout><Child /></DirectoryLayout>, document.getElementById("root"))
 const tick = () => new Promise((r) => setTimeout(r, 1))
-globalThis.syncJoinProbe = { api: () => api, dispose, callsMade, releaseAll, insertSession, setRoute, tick }
+globalThis.syncJoinProbe = { api: () => api, dispose, callsMade, releaseAll, insertSession, setRoute, tick, partBatchIDs }
     `,
   )
 
@@ -194,6 +204,7 @@ globalThis.syncJoinProbe = { api: () => api, dispose, callsMade, releaseAll, ins
           tick: () => Promise<void>
           insertSession: () => void
           setRoute: (id: string) => void
+          partBatchIDs: string[][]
         }
       }
     ).syncJoinProbe
@@ -214,6 +225,9 @@ globalThis.syncJoinProbe = { api: () => api, dispose, callsMade, releaseAll, ins
 
     expect(h.callsMade().timeline, "timelinePage must be single-flight").toBe(1)
     expect(h.callsMade().partPages, "partPages must be single-flight").toBe(1)
+    expect(h.partBatchIDs, "forward-paginated and stale accepted pages must still use the batch endpoint").toEqual([
+      ["m1", "m2"],
+    ])
     expect(h.callsMade().sessionGet, "only the trigger's metadata refresh may re-read").toBe(2)
     const settled = h.callsMade()
     h.insertSession()

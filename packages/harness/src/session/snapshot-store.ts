@@ -15,8 +15,38 @@ import { SnapshotLease } from "./snapshot-lease"
 import { SnapshotProtection } from "./snapshot-protection"
 import { Log } from "../util/log"
 import { ObservabilityMetrics } from "../observability/metrics"
+import { RuntimeContext } from "../lifecycle/context"
 
 export namespace SnapshotStore {
+  export interface Persistence {
+    retain(scopeID: string, sessionID: string, root: string, repository: string, signal?: AbortSignal): Promise<void>
+    restore(
+      scopeID: string,
+      sessionID: string,
+      roots: string[],
+      repository: string,
+      signal?: AbortSignal,
+    ): Promise<Set<string>>
+  }
+  const state = RuntimeContext.state(() => ({ backend: undefined as Persistence | undefined }))
+  export function registerStorage(backend: Persistence) {
+    RuntimeContext.assertCompositionOpen("Snapshot storage")
+    if (state().backend) throw new Error("Snapshot storage is already registered")
+    state().backend = backend
+  }
+  export function usesExternalStorage() {
+    return state().backend !== undefined
+  }
+  async function assertStorageMode(scopeID: string) {
+    const stored = await optional<unknown>(StoragePath.snapshotRepository(scopeID))
+    if (stored === undefined) return
+    const format = z
+      .object({ version: z.literal(2), objectFormat: z.literal("sha1"), content: z.literal("external-v1").optional() })
+      .parse(stored)
+    if ((format.content === "external-v1") !== usesExternalStorage())
+      throw new StorageError("Snapshot storage mode differs from its activated format; offline migration is required")
+  }
+
   const log = Log.create({ service: "snapshot-store" })
   export const Owner = z.object({ version: z.literal(2), backend: z.enum(["legacy", "shared", "deleted"]) })
   export type Owner = z.infer<typeof Owner>
@@ -93,6 +123,8 @@ export namespace SnapshotStore {
     const record = await owner(scopeID, sessionID)
     if (record?.backend === "deleted") throw new StorageError("Snapshot session has been permanently deleted")
     const backend = record?.backend ?? "shared"
+    if (backend === "legacy" && state().backend)
+      throw new StorageError("Historical snapshots require offline migration before durable storage activation")
     return {
       scopeID,
       sessionID,
@@ -250,15 +282,21 @@ export namespace SnapshotStore {
     const repo = repository(scopeID)
     const initialized = await optional<unknown>(StoragePath.snapshotRepository(scopeID))
     if (initialized !== undefined) {
-      z.object({ version: z.literal(2), objectFormat: z.literal("sha1") }).parse(initialized)
-      if (!(await SnapshotPath.exists(path.join(repo, "HEAD"))))
-        throw new StorageError("Snapshot object store is missing")
+      await assertStorageMode(scopeID)
+      if (!(await SnapshotPath.exists(path.join(repo, "HEAD")))) {
+        if (!state().backend) throw new StorageError("Snapshot object store is missing")
+        await initializeBareRepository(repo)
+      }
       await assertStandalone(repo)
       return
     }
     await assertStandalone(repo)
     await initializeBareRepository(repo)
-    await write(StoragePath.snapshotRepository(scopeID), { version: 2, objectFormat: "sha1" })
+    await write(StoragePath.snapshotRepository(scopeID), {
+      version: 2,
+      objectFormat: "sha1",
+      ...(usesExternalStorage() ? { content: "external-v1" } : {}),
+    })
   }
 
   export async function assertStandalone(repo: string) {
@@ -330,9 +368,14 @@ export namespace SnapshotStore {
 
   export async function owns(scopeID: string, sessionID: string, hash: string) {
     if (!OID.test(hash)) return false
+    await assertStorageMode(scopeID)
     const record = await owner(scopeID, sessionID)
     if (record?.backend === "deleted") return false
     const repo = record?.backend === "legacy" ? legacyRepository(scopeID, sessionID) : repository(scopeID)
+    if (state().backend) {
+      if (record?.backend === "legacy") throw new StorageError("Legacy snapshots have not been migrated")
+      return (await state().backend!.restore(scopeID, sessionID, [hash], repo)).has(hash)
+    }
     if (!(await SnapshotPath.exists(path.join(repo, "HEAD")))) return false
     const args =
       record?.backend === "legacy" ? ["cat-file", "-t", hash] : ["rev-parse", "--verify", reference(sessionID, hash)]
@@ -343,21 +386,37 @@ export namespace SnapshotStore {
   // Batched ownership check: one git subprocess answers the whole hash set
   // instead of one process per hash, so callers looping over fork or export
   // candidates stop paying spawn latency per snapshot step.
-  export async function ownsMany(scopeID: string, sessionID: string, hashes: string[]) {
+  export async function ownsMany(scopeID: string, sessionID: string, hashes: string[], signal?: AbortSignal) {
+    signal?.throwIfAborted()
     const owned = new Set<string>()
     const valid = hashes.filter((hash) => OID.test(hash))
     if (!valid.length) return owned
+    await assertStorageMode(scopeID)
     const record = await owner(scopeID, sessionID)
     if (record?.backend === "deleted") return owned
     const legacy = record?.backend === "legacy"
     const repo = legacy ? legacyRepository(scopeID, sessionID) : repository(scopeID)
+    if (state().backend) {
+      if (legacy) throw new StorageError("Legacy snapshots have not been migrated")
+      const roots = [...new Set(valid)]
+      for (let offset = 0; offset < roots.length; offset += 32)
+        for (const hash of await state().backend!.restore(
+          scopeID,
+          sessionID,
+          roots.slice(offset, offset + 32),
+          repo,
+          signal,
+        ))
+          owned.add(hash)
+      return owned
+    }
     if (!(await SnapshotPath.exists(path.join(repo, "HEAD")))) return owned
     if (legacy) {
       // Provenance: https://git-scm.com/docs/git-cat-file (BATCH OUTPUT).
       // A missing object reports as a "missing" batch line rather than an
       // error exit, and the type column carries the same answer as cat-file -t.
       const input = valid.map((hash) => `${hash}\n`).join("")
-      const text = await command(repo, ["cat-file", "--batch-check=%(objectname) %(objecttype)"], undefined, input)
+      const text = await command(repo, ["cat-file", "--batch-check=%(objectname) %(objecttype)"], signal, input)
       const types = new Map<string, string>()
       for (const line of text.split("\n")) {
         const [objectname, objecttype] = line.trim().split(" ")
@@ -368,7 +427,7 @@ export namespace SnapshotStore {
     }
     const prefix = `refs/synergy/snapshots/${component(sessionID)}/`
     const requested = new Set(valid)
-    const text = await command(repo, ["for-each-ref", "--format=%(refname) %(objectname)", prefix])
+    const text = await command(repo, ["for-each-ref", "--format=%(refname) %(objectname)", prefix], signal)
     for (const line of text.split("\n")) {
       const [ref, hash] = line.trim().split(" ")
       if (requested.has(hash) && ref === reference(sessionID, hash)) owned.add(hash)
@@ -379,6 +438,12 @@ export namespace SnapshotStore {
   export function ownsCurrent(hash: string) {
     const operation = current()
     return owns(operation.scopeID, operation.sessionID, hash)
+  }
+
+  export async function ownsCurrentRoots(hashes: string[], signal?: AbortSignal) {
+    const operation = current()
+    const owned = await ownsMany(operation.scopeID, operation.sessionID, hashes, signal)
+    return hashes.every((hash) => owned.has(hash))
   }
 
   // Provenance: https://docs.jj-vcs.dev/latest/technical/architecture/#gitbackend
@@ -395,18 +460,22 @@ export namespace SnapshotStore {
     )
     if (result.exitCode !== 0)
       log.warn("snapshot retention failed", { exitCode: result.exitCode, stderr: result.stderr })
+    if (result.exitCode === 0)
+      await state().backend?.retain(operation.scopeID, operation.sessionID, hash, operation.repository, signal)
     return result.exitCode === 0
   }
 
   // Batched retention write: one update-ref --stdin process records every
   // retained tree under the same refs as the single-hash retainCurrent path.
-  export async function retainMany(scopeID: string, sessionID: string, hashes: string[]) {
+  export async function retainMany(scopeID: string, sessionID: string, hashes: string[], signal?: AbortSignal) {
     const updates: string[] = []
     for (const hash of new Set(hashes)) {
       if (!OID.test(hash)) continue
       updates.push(`update ${reference(sessionID, hash)} ${hash}`)
     }
     if (!updates.length) return
-    await command(repository(scopeID), ["update-ref", "--stdin"], undefined, `${updates.join("\n")}\n`)
+    await command(repository(scopeID), ["update-ref", "--stdin"], signal, `${updates.join("\n")}\n`)
+    for (const hash of new Set(hashes))
+      if (OID.test(hash)) await state().backend?.retain(scopeID, sessionID, hash, repository(scopeID), signal)
   }
 }

@@ -45,6 +45,7 @@ for (const scenario of [
   "failed-history",
 ] as const) {
   const history = scenario.includes("history")
+  const warm = scenario.includes("warm")
   test(`a marked message uses targeted recovery with real timeline items (${scenario})`, async () => {
     const dir = await mkdtemp(path.join(import.meta.dir, ".sync-partial-"))
     const entry = path.join(dir, "main.tsx")
@@ -96,7 +97,7 @@ const part = (id, messageID, sessionID, version) => ({
 if (${scenario.includes("warm") || history}) {
   const summary = part("p2a", "m2", "ses_1", "v0")
   state[1]("partSummary", "m2", [summary])
-  state[1]("partPage", "m2", ${history} ? partSummaryPageState({ items: [summary], nextCursor: "parts-after", previousCursor: "parts-before", hasMore: true, hasEarlier: true }) : { nextCursor: null, previousCursor: null, hasMore: false, hasEarlier: false, ranges: [], stale: false })
+  state[1]("partPage", "m2", partSummaryPageState({ items: [summary], nextCursor: ${history} ? "parts-after" : null, previousCursor: ${history} ? "parts-before" : null, hasMore: ${history}, hasEarlier: ${history} }))
 }
 if (${history}) {
   state[1]("message", "ses_1", [${JSON.stringify(timeline.items[1].info)}])
@@ -119,7 +120,7 @@ export const useGlobalSync = () => ({
     const [, setState] = state
     for (const [messageID, page] of Object.entries(viewport.pages)) {
       setState("partSummary", messageID, page.items)
-      setState("partPage", messageID, { nextCursor: page.nextCursor, previousCursor: page.previousCursor, hasMore: page.hasMore, hasEarlier: page.hasEarlier, ranges: [], stale: false })
+      setState("partPage", messageID, partSummaryPageState(page))
     }
     for (const body of viewport.bodies) setState("part", body.part.messageID, (parts) => [...(parts ?? []).filter((p) => p.id !== body.part.id), body.part])
   },
@@ -154,8 +155,8 @@ export const useSDK = () => ({
         calls.partPage++
         rangeReads.push(input)
         await gate("partPages")
-        if (${history} && failures) { failures--; throw new Error("targeted summary unavailable") }
-        return { data: { items: [part(${history} ? "p2a" : "p2b", input.messageID, "ses_1", "v2")], nextCursor: null, previousCursor: null, hasMore: false, hasEarlier: false }, response: { headers: { get: () => undefined } } }
+        if (${history || warm} && failures) { failures--; throw new Error("targeted summary unavailable") }
+        return { data: { items: [part("p2a", input.messageID, "ses_1", "v2")], nextCursor: null, previousCursor: null, hasMore: false, hasEarlier: false }, response: { headers: { get: () => undefined } } }
       },
       timelinePage: (_input, options) => new Promise((resolve, reject) => {
         calls.timeline++
@@ -261,7 +262,7 @@ globalThis.partialProbe = { api: () => api, dispose, callsMade, releaseAll, mark
               partID: string
               limit: number
               cursor?: string
-              older: boolean
+              older?: boolean
             }[]
             snapshot: () => {
               message: Record<string, { id: string }[]>
@@ -318,8 +319,20 @@ globalThis.partialProbe = { api: () => api, dispose, callsMade, releaseAll, mark
         })
       } else {
         expect(h.callsMade().timeline, "the window must not restart").toBe(1)
-        expect(h.requestedIDs()).toEqual([["m1", ...(scenario.includes("warm") ? [] : ["m2"])], ["m2"]])
-        expect(h.callsMade().partPage, "first-page targeted reads must batch").toBe(0)
+        expect(h.requestedIDs()).toEqual(warm ? [["m1"]] : [["m1", "m2"], ["m2"]])
+        expect(h.requestedRanges()).toEqual(
+          warm
+            ? [
+                { sessionID: "ses_1", messageID: "m2", partID: "p2a", limit: 1, cursor: undefined, older: false },
+                ...(scenario.startsWith("failed")
+                  ? []
+                  : [{ sessionID: "ses_1", messageID: "m2", partID: "p2a", limit: 1 }]),
+              ]
+            : [],
+        )
+        expect(h.callsMade().partPage, "accepted ranges retain their refresh owner").toBe(
+          warm ? (scenario.startsWith("failed") ? 1 : 2) : 0,
+        )
         expect(h.snapshot().message.ses_1.map((message) => message.id)).toEqual(["m1", "m2"])
         expect(h.snapshot().partSummary.m1[0].content.version).toBe("v1")
         if (scenario.startsWith("failed")) {
@@ -328,8 +341,18 @@ globalThis.partialProbe = { api: () => api, dispose, callsMade, releaseAll, mark
             expect(h.snapshot().partPage.m2.stale).toBe(true)
           } else expect(h.snapshot().partPage.m2).toBeUndefined()
           await syncApi.session.content.summaries("ses_1", "m2")
-          expect(h.requestedIDs().at(-1)).toEqual(["m2"])
-          expect(h.callsMade().partPages).toBe(3)
+          if (warm) {
+            expect(h.requestedIDs()).toEqual([["m1"]])
+            expect(h.callsMade().partPage).toBe(3)
+            expect(h.requestedRanges()).toEqual([
+              { sessionID: "ses_1", messageID: "m2", partID: "p2a", limit: 1, cursor: undefined, older: false },
+              { sessionID: "ses_1", messageID: "m2", partID: "p2a", limit: 1, cursor: undefined, older: false },
+              { sessionID: "ses_1", messageID: "m2", partID: "p2a", limit: 1 },
+            ])
+          } else {
+            expect(h.requestedIDs().at(-1)).toEqual(["m2"])
+            expect(h.callsMade().partPages).toBe(3)
+          }
         }
         if (scenario !== "dispose") {
           expect(h.snapshot().partSummary.m2[0].content.version).toBe("v2")
