@@ -1,6 +1,7 @@
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { z } from "zod"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { reconcileContextUsage } from "@ericsanchezok/synergy-harness/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -257,8 +258,8 @@ export namespace ExecutionService {
   }
   function rememberContext(contexts: Data["contexts"], info: MessageV2.Info, changed?: Set<string>) {
     if (info.role !== "assistant" || !info.contextUsage || info.accounting?.kind !== "rollout") return
-    const callID = info.accounting.callIDs.at(-1)
-    if (callID) {
+    const callID = info.contextUsage.callID ?? info.accounting.callIDs.at(-1)
+    if (callID && info.accounting.callIDs.includes(callID)) {
       contexts.set(callID, info.contextUsage)
       changed?.add(nodeID(info.sessionID, "call", callID))
     }
@@ -979,13 +980,20 @@ export namespace ExecutionService {
           (entry) => entry.kind === "attempt" && entry.entityID === context?.attemptID,
         )
         const measured = attempt?.kind === "attempt" ? attempt.usage : undefined
+        const estimate =
+          call.contextEstimate?.modelID === call.model.modelID &&
+          call.contextEstimate.providerID === call.model.providerID
+            ? call.contextEstimate
+            : undefined
         const usage =
           candidate &&
           candidate.providerID === call.model.providerID &&
           candidate.modelID === call.model.modelID &&
           (context?.inputTokens == null || candidate.totalInput === context.inputTokens)
             ? candidate
-            : null
+            : estimate && context?.inputTokens != null
+              ? reconcileContextUsage(estimate, context.inputTokens, estimate.capturedAt)
+              : null
         const result = {
           sessionID: value.root.id,
           callID: call.id,
@@ -999,7 +1007,11 @@ export namespace ExecutionService {
           providerID: call.model.providerID,
           inputTokens: usage?.totalInput ?? context?.inputTokens ?? null,
           contextLimit:
-            usage?.usableInputLimit ?? usage?.contextLimit ?? (ModelLimit.usableInput(call.model.limits) || null),
+            usage?.usableInputLimit ??
+            usage?.contextLimit ??
+            estimate?.usableInputLimit ??
+            estimate?.contextLimit ??
+            (ModelLimit.usableInput(call.model.limits) || null),
           outputTokens: measured?.output.total ?? null,
           cacheHit:
             measured?.input.total && measured.input.cacheRead != null
@@ -1008,6 +1020,7 @@ export namespace ExecutionService {
           elapsedMs: call.ended == null ? null : Math.max(0, call.ended - call.started),
           retries: accounting.outcomes.retries,
           usage,
+          estimate,
           compactedBefore: compactions.some(
             (entry) => (entry.ended ?? entry.started) > previous && (entry.ended ?? entry.started) <= call.started,
           ),

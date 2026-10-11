@@ -1,7 +1,11 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
+import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
 import { LightLoopRuntime } from "@ericsanchezok/synergy-workflows/light-loop/runtime"
 import { LightLoopTerminalStore } from "@ericsanchezok/synergy-workflows/light-loop/terminal-hook"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -39,6 +43,51 @@ async function createPluginLightLoop(input?: { status?: "completed"; deliveredAt
 }
 
 describe("LightLoop terminal hook delivery", () => {
+  test("reattach selects indexed loops and pending hooks without loading unrelated or acknowledged owners", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const unrelated = await Session.create({})
+          const finished = await createPluginLightLoop()
+          const pending = await createPluginLightLoop()
+          const orphan = await createPluginLightLoop()
+          const active = await createPluginLightLoop()
+          const delivery = mock(async () => ({ status: "delivered" as const, handlerCount: 1 }))
+          ;(Plugin as any).deliverHookForPlugin = delivery
+          await LightLoopRuntime.setTerminalStatus(finished.id, "completed")
+          await LightLoopRuntime.setTerminalStatus(pending.id, "completed")
+          await LightLoopRuntime.setTerminalStatus(orphan.id, "completed")
+          for (const session of [pending, orphan]) {
+            const record = (await LightLoopTerminalStore.get(session))!
+            await LightLoopTerminalStore.put(session, { ...record, hookDeliveredAt: undefined })
+          }
+          await Storage.remove(
+            StoragePath.sessionInfo(Identifier.asScopeID(orphan.scope.id), Identifier.asSessionID(orphan.id)),
+          )
+          await SessionNav.removeNavEntry(orphan.scope.id, orphan.id)
+          await Session.update(active.id, (draft) => {
+            if (draft.workflow?.kind === "lightloop") draft.workflow.deadlineAt = Date.now() - 1
+          })
+          delivery.mockClear()
+          using gets = spyOn(Session, "get")
+          await LightLoopRuntime.reattachPluginTimers()
+          expect(gets.mock.calls.some(([id]) => id === unrelated.id || id === finished.id)).toBe(false)
+          try {
+            const deadline = Date.now() + 5000
+            while ((await LightLoopTerminalStore.get(active))?.hookDeliveredAt === undefined && Date.now() < deadline)
+              await Bun.sleep(10)
+            expect((await LightLoopTerminalStore.get(active))?.status).toBe("timed_out")
+            expect((await Session.get(active.id)).workflow).toBeUndefined()
+            expect(delivery).toHaveBeenCalledTimes(2)
+          } finally {
+            LightLoopRuntime.cancelDeadline(active.id)
+          }
+        },
+      })
+    }))
+
   test("clears ordinary LightLoop state and persists the authoritative terminal record", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

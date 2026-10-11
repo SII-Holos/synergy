@@ -54,4 +54,6 @@ A reading anchor must intersect the viewport, including its lower edge. A native
 
 ## Consequences
 
+The Session transcript crossfade is superseded by [Session navigation presentation](2026-10-10-session-navigation-presentation.md). Its bounded outgoing snapshot and reading ownership remain in use.
+
 Preparation, genuine history gaps, parallel work and confirmed completion retain distinct behavior. The regressions exercise a pending continuation followed by accepted tool content and conflicting pause, execution, projection and new-submission states. Existing bounded row and history-group tests remain applicable.

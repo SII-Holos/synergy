@@ -68,6 +68,8 @@ For user-owned loops, approval returns a completion notice to the execution sess
 
 ## Light Loop State
 
+Plugin startup/reload selects Light Loop candidates from the persisted navigation index and queries terminal records by their indexed storage kind. It reads canonical Session metadata only for those candidates and unacknowledged hooks; acknowledged records without a current loop need no owner hydration. The navigation index retains its existing repair and legacy-catalog rules. Recovery must not enumerate every Session and run its access migrations merely to discover whether a loop exists.
+
 Light Loop stores its instructions directly on the session workflow. A stop request first records the executor's summary, claimed completed work, evidence, limitations, and request identity without reviewer IDs.
 
 After the execution-session lease is released, the Light Loop continuation prepares a visible Cortex reviewer, durably binds its task and session IDs to the stop request, then starts it. The reviewer appears in the execution session's Task details on Workbench-enabled servers, while ordinary Cortex completion notification stays disabled because approve or reject owns workflow result delivery. Repeated `loop_stop` calls are idempotent while either the unbound stop intent or bound review is pending.

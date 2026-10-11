@@ -45,11 +45,11 @@ describe("ToolResolver availability reuse", () => {
   test("collects tool definitions once when the caller supplies the availability it already resolved", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
-      const originalTools = ToolRegistry.tools
+      const originalTools = ToolRegistry.catalog
       let collections = 0
 
       try {
-        ;(ToolRegistry.tools as any) = mock(async () => {
+        ;(ToolRegistry.catalog as any) = mock(async () => {
           collections++
           return []
         })
@@ -85,18 +85,18 @@ describe("ToolResolver availability reuse", () => {
           },
         })
       } finally {
-        ;(ToolRegistry.tools as any) = originalTools
+        ;(ToolRegistry.catalog as any) = originalTools
       }
     }))
 
   test("collects its own definitions when no availability is supplied", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
-      const originalTools = ToolRegistry.tools
+      const originalTools = ToolRegistry.catalog
       let collections = 0
 
       try {
-        ;(ToolRegistry.tools as any) = mock(async () => {
+        ;(ToolRegistry.catalog as any) = mock(async () => {
           collections++
           return []
         })
@@ -119,7 +119,7 @@ describe("ToolResolver availability reuse", () => {
           },
         })
       } finally {
-        ;(ToolRegistry.tools as any) = originalTools
+        ;(ToolRegistry.catalog as any) = originalTools
       }
     }))
 })

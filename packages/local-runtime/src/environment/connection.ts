@@ -7,15 +7,15 @@ export interface ExecutorConnection {
   token: string
   unix?: string
   tls?: Bun.TLSOptions
+  transport?: (request: Request) => Promise<Response>
 }
 
 export class ExecutionConnection {
   constructor(private readonly connection: ExecutorConnection) {}
   async send(method: string, route: string, body?: unknown, binary = false, signal?: AbortSignal) {
-    const response = await fetch(new URL(route, this.connection.url), {
+    const url = new URL(route, this.connection.url)
+    const init = {
       method,
-      unix: this.connection.unix,
-      tls: this.connection.tls,
       headers: {
         authorization: `Bearer ${this.connection.token}`,
         "x-synergy-target": JSON.stringify(this.connection.target),
@@ -28,8 +28,11 @@ export class ExecutionConnection {
             ? new Uint8Array(body)
             : JSON.stringify(body),
       signal: AbortSignal.any([AbortSignal.timeout(30_000), ...(signal ? [signal] : [])]),
-      redirect: "error",
-    })
+      redirect: "error" as const,
+    }
+    const response = this.connection.transport
+      ? await this.connection.transport(new Request(url, init))
+      : await fetch(url, { ...init, unix: this.connection.unix, tls: this.connection.tls })
     if (response.status === 404) return undefined
     if (!response.ok) {
       const reader = response.body?.getReader()

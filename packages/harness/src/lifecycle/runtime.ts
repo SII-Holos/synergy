@@ -11,6 +11,7 @@ import { ProviderCatalog } from "../provider/catalog"
 import { ProviderCatalogSource } from "../provider/catalog-source"
 import { RuntimeContext, type RuntimeHost } from "./context"
 import { SessionStaging } from "../session/staging"
+import { ContextUsageEstimator } from "../session/context-usage-estimator"
 import { StorageRecovery } from "../storage/recovery"
 import { Storage } from "../storage/storage"
 import type { ImportProgress } from "../storage/legacy-import"
@@ -18,6 +19,7 @@ import { SessionCompat } from "../session/compat-import"
 import { StorageRetention } from "../storage/retention"
 import { StorageReclamation } from "../storage/format-reclamation"
 import { ConfigExtensions } from "../config/extensions"
+import { registerConfigMigrations } from "../config/migration"
 import { MigrationRegistry } from "../migration/registry"
 import { ensureMigrations, type MigrationReporter, type RunOptions } from "../migration/index"
 import { ServerProcessLock } from "../util/server-process-lock"
@@ -172,6 +174,7 @@ export namespace RuntimeHandle {
     }
 
     function closeAdmission() {
+      ContextUsageEstimator.close()
       SessionManager.closeAdmission()
       AgentTurn.closeAdmission()
       PolicyWorker.closeAdmission()
@@ -286,6 +289,7 @@ export namespace RuntimeHandle {
       options.signal?.throwIfAborted()
       registerHarness()
       options.composition.register()
+      registerConfigMigrations()
       ScopeStartup.plan()
       services = options.composition.services?.() ?? {}
       ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
@@ -374,11 +378,10 @@ export namespace RuntimeHandle {
         liveSessionIDs: () => SessionManager.liveSessionIDs(),
       })
       if (options.mode === "server") {
-        // First-message latency: warm the execution pools and tokenizer while
-        // transport and resident services initialize, so the first turn or
-        // classification finds a ready worker instead of paying cold start.
+        // Compositions choose whether to reserve classification workers before
+        // a tool needs them. Lazy startup retains the same isolated pool.
         AgentTurn.prewarm()
-        PolicyWorker.prewarm()
+        if (config.execution?.policyWorkerPrewarm !== false) PolicyWorker.prewarm()
         void ScopeContext.provide({
           scope: Scope.home(),
           fn: async () => {

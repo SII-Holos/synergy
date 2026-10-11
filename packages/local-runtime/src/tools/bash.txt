@@ -11,7 +11,7 @@ Before executing the command:
 - For unattended work, use the command's supported non-interactive options or explicit inputs when their values are known and authorized. An acceptance flag may not cover every prompt. Use script entry points for scripts; do not accidentally start a REPL. Keep diagnostic output accessible.
 - Run validation commands directly when their exit status matters. Filtered or clipped output is useful for diagnosis, but a pipeline's zero exit does not prove an earlier command or test passed.
 
-User-visible artifacts: when creating an image, chart or document for the user, print a Markdown image/link to the completed file in the command output (for example `![Chart](./chart.png)` or `[Report](./report.pdf)`). Files inside the current Workspace are captured as immutable attachments, and the tool result supplies their resource references for your response. Include only the requested results; intermediate files and unrelated outputs need no delivery. Use the available image-inspection tool when visual validation is needed.
+${artifactGuidance}
 
 Usage notes:
 - `command` is required. Use `workdir` to select the working directory.

@@ -25,6 +25,8 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     export const replays = []
     export const lists = []
     export const inboxRequests = []
+    let preferWorkBrief = false
+    export const setPreference = value => { preferWorkBrief = value }
     let inboxReady
     export const inboxArrived = new Promise(resolve=>inboxReady=resolve)
     let listener
@@ -33,7 +35,8 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     export const seedStatuses = () => Promise.resolve({data:{"remote-runner":{type:"busy"},"remote-paused":{type:"paused",reason:"aborted",since:1}},response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
     export function createSynergyClient(options) {
       return {
-        scope: { bootstrapCore: () => (options.scopeID === "home" || options.scopeID.startsWith("background.")) ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve})) },
+        scope: { bootstrapCore: () => (options.scopeID === "home" || options.scopeID.startsWith("background.")) ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{preferWorkBrief}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve})) },
+        command: {list:()=>ok([])},
         provider:{modelsById:()=>new Promise(resolve=>modelRequests.push(resolve)),catalogPage:()=>new Promise(resolve=>modelRequests.push(resolve))},
         permission: {list:()=>ok([])}, question: {list:()=>ok([])},
         event:{replay:()=>new Promise(resolve=>replays.push(resolve))},
@@ -42,7 +45,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     }
     export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>false},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>{optionalRequests.push("agenda");return ok([])}}},
-      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:seedStatuses},
+      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:seedStatuses},cortex:{list:()=>ok([])},
     }})
     export const LocaleConfigReconciler=()=>null
     export const FatalErrorPage=()=> <div>failure</div>
@@ -65,14 +68,14 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     import { setupI18n } from "@lingui/core"
     import { createPartMaterializer } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/context/part-materializer.ts"))}
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
-    import { requests, modelRequests, replays, lists, emit, inboxRequests, inboxArrived, optionalRequests, connect } from ${JSON.stringify(stub)}
+    import { requests, modelRequests, replays, lists, emit, inboxRequests, inboxArrived, optionalRequests, connect, setPreference } from ${JSON.stringify(stub)}
     const bodyLifetimes=[]
     export function mount(root) {
       let api, ready
       const started = new Promise(resolve=>ready=resolve)
-      function Child(){api=useGlobalSync();ready();return <div>ready</div>}
+      function Child(){api=useGlobalSync();ready();return <output>{String(api.data.config.preferWorkBrief)}</output>}
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
-      return {started,dispose,requests,modelRequests,emit,replays,lists,inboxRequests,inboxArrived,optionalRequests,connect,api:()=>api,
+      return {started,dispose,requests,modelRequests,emit,replays,lists,inboxRequests,inboxArrived,optionalRequests,connect,setPreference,api:()=>api,
         seedInbox(key) {api.ensureScopeState(key)[1]("inbox","fixture-session",[{id:"pending"}])},
         seedWindow(key) {api.ensureScopeState(key)[1]("message","session",[{id:"message",sessionID:"session",role:"user",time:{created:1}}])},
         bodyLifetimes,
@@ -133,7 +136,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     type State = [
       {
         status: string
-        config: { version?: string }
+        config: { version?: string; preferWorkBrief?: boolean }
         session: unknown[]
         latestContextMessage: Record<string, unknown>
         part: Record<string, SessionViewportContent["bodies"][number]["part"][]>
@@ -143,6 +146,8 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       unknown,
     ]
     type API = {
+      data: { config: { preferWorkBrief?: boolean } }
+      refreshTargeted(targets: string[]): Promise<void>
       retainScopeState(key: string): { state: State; release(): void }
       peekScopeState(key: string): State | undefined
       ensureScopeState(key: string): State
@@ -170,6 +175,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         modelRequests: Array<(value: unknown) => void>
         emit(key: string, seq: number): void
         connect(): void
+        setPreference(value: boolean): void
         seedInbox(key: string): void
         seedWindow(key: string): void
         bodyLifetimes: AbortSignal[]
@@ -206,6 +212,21 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       await waitForIndex("remote-runner")
       expect(api.sessionStatus["remote-runner"]).toEqual({ type: "busy" })
       expect(api.sessionStatus["remote-paused"]).toEqual({ type: "paused", reason: "aborted", since: 1 })
+      expect(api.peekScopeState("home")).toBeUndefined()
+      expect(api.data.config.preferWorkBrief).toBe(false)
+      h.setPreference(true)
+      await api.refreshTargeted(["config"])
+      expect(api.data.config.preferWorkBrief).toBe(true)
+      expect(root.querySelector("output")?.textContent).toBe("true")
+      const preferences = api.retainScopeState("home")
+      await h.waitComplete(preferences.state)
+      expect(preferences.state[0].config.preferWorkBrief).toBe(true)
+      h.setPreference(false)
+      await api.refreshTargeted(["config"])
+      expect(api.data.config.preferWorkBrief).toBe(false)
+      expect(preferences.state[0].config.preferWorkBrief).toBe(false)
+      expect(root.querySelector("output")?.textContent).toBe("false")
+      preferences.release()
       let eviction = 0
       const evictInactive = async () => {
         for (let i = 0; i < 9; i++) api.ensureScopeState(`background.eviction.${eviction++}`)

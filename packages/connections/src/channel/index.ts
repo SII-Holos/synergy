@@ -1003,7 +1003,18 @@ export namespace Channel {
                     } else {
                       // If the response failed but tools completed successfully, build a
                       // degraded fallback so the user still receives tool outputs.
-                      const fallbackText = hasError ? buildDegradedFallback(toolProgress) : undefined
+                      const segmentToolIDs = new Set(
+                        rootAssistants
+                          ?.filter((message) => segmentIDs.has(message.info.id))
+                          .flatMap((message) =>
+                            message.parts.filter((part) => part.type === "tool").map((part) => part.id),
+                          ),
+                      )
+                      const fallbackText = hasError
+                        ? buildDegradedFallback(
+                            new Map(Array.from(toolProgress).filter(([id]) => segmentToolIDs.has(id))),
+                          )
+                        : undefined
                       if (isFinalTerminal) await streaming.close(responseText || fallbackText, hasError)
                       else if (!isBossRoute)
                         await deliverForegroundTaskTerminal({

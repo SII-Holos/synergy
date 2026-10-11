@@ -780,5 +780,23 @@ const migrations: Migration[] = [
 ]
 
 export function registerObservabilityMigrations() {
-  MigrationRegistry.register("observability", migrations)
+  MigrationRegistry.register(
+    "observability",
+    migrations.map((migration) => ({ ...migration, isApplied: noHistoricalTelemetry })),
+  )
+}
+
+/** A later first write creates the current schema; only existing files need these transforms. */
+async function noHistoricalTelemetry() {
+  for (const filename of [ObservabilityStore.pathName(), ObservabilityStore.legacyPerformancePath()]) {
+    for (const suffix of ["", "-wal", "-shm"]) {
+      try {
+        await fs.lstat(filename + suffix)
+        return false
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+      }
+    }
+  }
+  return true
 }

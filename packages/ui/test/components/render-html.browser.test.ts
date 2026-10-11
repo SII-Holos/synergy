@@ -66,6 +66,7 @@ type RenderStreamState = {
   title?: string
   error?: string
   output?: string
+  sourceAttachment?: boolean
 }
 
 async function renderStream(options: RenderStreamState) {
@@ -89,6 +90,28 @@ async function executionDetails() {
     harness.setToolDetailFallback(true)
   })
 }
+
+test("keeps the inline visual and one source attachment through mode switches and remounts", async () => {
+  await renderStream({
+    status: "completed",
+    html: '<p id="visual-result">The visual content remains visible.</p>',
+    title: "Visual with source",
+    sourceAttachment: true,
+  })
+  for (const mode of ["full", "balanced", "minimal"]) {
+    await page.evaluate((mode) => {
+      const harness = (window as unknown as { __chronologyHarness: { setMode(mode: string): void; remount(): void } })
+        .__chronologyHarness
+      harness.setMode(mode)
+      harness.remount()
+    }, mode)
+    await page.frameLocator('[data-component="render-html"] iframe').locator("#visual-result").waitFor()
+    expect(await page.locator('[data-component="render-tool"]').count()).toBe(1)
+    const attachments = page.locator('[data-component="attachment-card"]')
+    expect(await attachments.count()).toBe(1)
+    expect(await attachments.innerText()).toContain("visual.synergy.json")
+  }
+})
 
 test("streams Render inline from pending arguments to the completed visual", async () => {
   await page.evaluate(() => {

@@ -8,6 +8,7 @@ export function startContextUsageDraft(
 ): Promise<ContextUsage.Draft | undefined> | undefined {
   if (!provenance) return undefined
   return ContextUsage.measureDraft({
+    sessionID: input.sessionID,
     modelID: input.model.id,
     providerID: input.model.providerID,
     limits: input.model.limit,

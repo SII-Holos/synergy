@@ -37,6 +37,28 @@ test("missing stable volume evidence reports unverified identity and never downg
 })
 
 describe("Workspace catalog", () => {
+  test("initial sharing is atomic, validated and cannot overwrite an existing registration", async () => {
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      const common = { scopeID: "project", type: "directory", hostID: "host" }
+      const shared = await WorkspaceCatalog.register({ ...common, path: "/shared" })
+      const foreign = await WorkspaceCatalog.register({ ...common, hostID: "other", path: "/foreign" })
+      const input = { ...common, path: "/new", sharedWritableWorkspaceIDs: [shared.id, shared.id] }
+      const [first, second] = await Promise.all([WorkspaceCatalog.register(input), WorkspaceCatalog.register(input)])
+      expect(first.sharedWritableWorkspaceIDs).toEqual([shared.id])
+      expect(second).toEqual(first)
+      expect(first.revision).toBe(1)
+      expect(await WorkspaceCatalog.register({ ...input, sharedWritableWorkspaceIDs: [] })).toEqual(first)
+      await expect(
+        WorkspaceCatalog.register({ ...common, path: "/invalid", sharedWritableWorkspaceIDs: [foreign.id] }),
+      ).rejects.toMatchObject({ name: "WorkspaceUnavailable" })
+      await expect(
+        WorkspaceCatalog.register({ ...common, path: "/missing", sharedWritableWorkspaceIDs: ["missing"] }),
+      ).rejects.toMatchObject({ name: "NotFoundError" })
+      expect(await WorkspaceCatalog.list(common.scopeID)).toHaveLength(3)
+    })
+  })
+
   test("an existing registration remains readable while the writer is occupied", async () => {
     await using runtime = await testRuntime()
     await runtime.run(async () => {

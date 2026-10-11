@@ -62,6 +62,7 @@ export namespace RolloutLifecycle {
     status: Parameters<typeof RolloutLedger.finishSegment>[1],
   ) {
     await RolloutExecution.stop(segment)
+    const completed = await RolloutLedger.finishSegment(segment, status)
     if (segment.owner.kind === "session") {
       const { SessionFileChanges } = await import("../file-changes")
       await SessionFileChanges.finish(
@@ -69,7 +70,7 @@ export namespace RolloutLifecycle {
         { deferSummary: true },
       )
     }
-    return RolloutLedger.finishSegment(segment, status)
+    return completed
   }
 
   export async function configuration(

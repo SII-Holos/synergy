@@ -36,7 +36,7 @@ export function ContextHistoryChart(props: {
   )
   const timingMaximum = createMemo(() => Math.max(1, ...bars().map((bar) => bar.snapshot.elapsedMs ?? 0)))
   const timingPath = createMemo(() => {
-    let previous: { x: number; y: number } | undefined
+    let previous: { x: number; y: number; ordinal: number; sessionID: string } | undefined
     return bars()
       .map((bar, index) => {
         const elapsed = bar.snapshot.elapsedMs
@@ -44,7 +44,15 @@ export function ContextHistoryChart(props: {
           previous = undefined
           return ""
         }
-        const point = { x: ((index + 0.5) / bars().length) * 100, y: 100 - (elapsed / timingMaximum()) * 94 }
+        const ordinal = props.grouping === "request" ? bar.snapshot.requestNumber : bar.snapshot.roundNumber
+        if (previous && (previous.ordinal + 1 !== ordinal || previous.sessionID !== bar.snapshot.sessionID))
+          previous = undefined
+        const point = {
+          x: ((index + 0.5) / bars().length) * 100,
+          y: 100 - (elapsed / timingMaximum()) * 94,
+          ordinal,
+          sessionID: bar.snapshot.sessionID,
+        }
         const mid = previous ? (previous.x + point.x) / 2 : point.x
         const segment = previous
           ? `C${mid},${previous.y} ${mid},${point.y} ${point.x},${point.y}`
@@ -132,7 +140,10 @@ export function ContextHistoryChart(props: {
                     <span class="context-chart-tooltip">
                       <strong>{label(index())}</strong>
                       <span>
-                        {_(D.input)} {bar().snapshot.inputTokens == null ? "—" : number(bar().snapshot.inputTokens!)}
+                        {_(D.input)}{" "}
+                        {bar().display.total == null
+                          ? "—"
+                          : (bar().display.estimated ? "≈" : "") + number(bar().display.total!)}
                       </span>
                       <span>
                         {_(E.elapsed)}{" "}
@@ -151,7 +162,7 @@ export function ContextHistoryChart(props: {
                     aria-label={
                       label(index()) +
                       " · " +
-                      (bar().total == null ? _(D.unavailable) : number(bar().total!)) +
+                      (bar().total == null ? "—" : (bar().display.estimated ? "≈" : "") + number(bar().total!)) +
                       (bar().snapshot.compactedBefore ? " · " + _(D.compaction) : "")
                     }
                     onMouseEnter={() => {
@@ -177,12 +188,19 @@ export function ContextHistoryChart(props: {
                     }}
                   >
                     <span class="context-bar-positive" aria-hidden="true">
-                      <For each={bar().values.filter((value) => value.tokens > 0)}>
-                        {(value) => (
+                      <For
+                        each={bar()
+                          .values.filter((value) => value.tokens > 0)
+                          .map((value) => value.category)}
+                      >
+                        {(category) => (
                           <span
                             style={{
-                              height: (value.tokens / maximum()) * 100 + "%",
-                              background: value.color,
+                              height:
+                                ((bar().values.find((value) => value.category === category)?.tokens ?? 0) / maximum()) *
+                                  100 +
+                                "%",
+                              background: bar().values.find((value) => value.category === category)?.color,
                             }}
                           />
                         )}
@@ -190,12 +208,20 @@ export function ContextHistoryChart(props: {
                     </span>
                     <Show when={props.delta}>
                       <span class="context-bar-negative" aria-hidden="true">
-                        <For each={bar().values.filter((value) => value.tokens < 0)}>
-                          {(value) => (
+                        <For
+                          each={bar()
+                            .values.filter((value) => value.tokens < 0)
+                            .map((value) => value.category)}
+                        >
+                          {(category) => (
                             <span
                               style={{
-                                height: (-value.tokens / maximum()) * 100 + "%",
-                                background: value.color,
+                                height:
+                                  (-(bar().values.find((value) => value.category === category)?.tokens ?? 0) /
+                                    maximum()) *
+                                    100 +
+                                  "%",
+                                background: bar().values.find((value) => value.category === category)?.color,
                               }}
                             />
                           )}
@@ -262,7 +288,11 @@ export function ContextHistoryChart(props: {
               <dl class="context-request-metrics">
                 <div>
                   <dt>{_(E.input)}</dt>
-                  <dd>{bar().snapshot.inputTokens == null ? "—" : number(bar().snapshot.inputTokens!)}</dd>
+                  <dd>
+                    {bar().display.total == null
+                      ? "—"
+                      : (bar().display.estimated ? "≈" : "") + number(bar().display.total!)}
+                  </dd>
                 </div>
                 <div>
                   <dt>{_(E.output)}</dt>

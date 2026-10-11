@@ -423,6 +423,8 @@ test("cost details retain reported currencies and distinguish estimated ranges f
 
 test("snapshots cannot overwrite newer events, and reconnect cancels the previous request", async () => {
   mount()
+  expect(pending).toHaveLength(0)
+  void execution.refresh()
   expect(pending).toHaveLength(1)
   const first = pending[0]!
   emit(summary(3))
@@ -446,6 +448,8 @@ test("snapshots cannot overwrite newer events, and reconnect cancels the previou
 
 test("navigation clears the old round, ignores its late response, and disposal aborts work", async () => {
   mount()
+  expect(pending).toHaveLength(0)
+  void execution.refresh()
   const first = pending[0]!
   emit(summary())
   setSessionID("next")
@@ -454,6 +458,8 @@ test("navigation clears the old round, ignores its late response, and disposal a
   first.resolve(summary(8))
   await flush()
   expect(execution.state.summary).toBeUndefined()
+  expect(pending).toHaveLength(1)
+  void execution.refresh()
   const next = pending[1]!
   next.resolve(summary(2, "next"))
   await flush()
@@ -473,10 +479,11 @@ test("task details remain reachable without execution support; supported summari
   expect(pending).toHaveLength(0)
   expect(document.querySelector(".execution-trigger")).not.toBeNull()
   setEnabled(true)
+  expect(pending).toHaveLength(0)
+  document.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
+  await flush()
   expect(pending).toHaveLength(1)
   pending[0]!.resolve(summary())
-  await flush()
-  document.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
   await flush()
   expect(document.querySelector(".execution-popover")?.textContent).toContain("US$0.0076")
   expect(document.querySelector(".execution-task-row")?.textContent).toContain("Read project notes")
@@ -493,13 +500,13 @@ test("task details remain reachable without execution support; supported summari
 
 test("summary load failures expose a working retry rather than a success placeholder", async () => {
   mount(() => createComponent(TaskDetailsPopover, {}))
-  pending[0]!.reject(new Error("fixture unavailable"))
-  await flush()
-  expect(execution.state.error).toBe(true)
+  expect(pending).toHaveLength(0)
   document.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
   await flush()
+  expect(pending).toHaveLength(1)
   pending.at(-1)!.reject(new Error("fixture unavailable"))
   await flush()
+  expect(execution.state.error).toBe(true)
   const retry = document.querySelector<HTMLButtonElement>(".execution-feedback button")!
   expect(retry).not.toBeNull()
   retry.click()
@@ -562,11 +569,13 @@ test("task details retain direct inbox ownership while navigating history and su
       },
     }),
   )
-  pending[0]!.reject(new Error("summary unavailable"))
-  await flush()
+  expect(pending).toHaveLength(0)
   const trigger = document.querySelector<HTMLButtonElement>(".execution-trigger")!
   expect(trigger.querySelector(".execution-trigger-count")?.textContent).toBe("2")
   trigger.click()
+  await flush()
+  expect(pending).toHaveLength(1)
+  pending[0]!.reject(new Error("summary unavailable"))
   await flush()
   expect(states.map((active) => active())).toEqual([true, true])
   expect(document.querySelector(".execution-popover")?.textContent).toContain("Project workspace")

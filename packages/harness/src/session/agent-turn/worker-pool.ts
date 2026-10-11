@@ -36,7 +36,10 @@ export type AgentTurnWorkerInput = Omit<
   prepared: LLM.PreparedTurn
 }
 
-type AgentTurnPoolInput = Omit<AgentTurnInput, "contextUsageProvenance" | "recording" | "usageRole" | "retryIndex"> & {
+export type AgentTurnPoolInput = Omit<
+  AgentTurnInput,
+  "contextUsageProvenance" | "recording" | "usageRole" | "retryIndex"
+> & {
   prepared: LLM.PreparedTurn
   archive?: RolloutTransportSchema.Sink
 }

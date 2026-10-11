@@ -269,37 +269,67 @@ export namespace ToolRegistry {
     return result
   }
 
-  export async function tools(providerID: string, agent?: Agent.Info, workspaceID?: string | null) {
+  export type Initialized = Omit<Tool.Info, "init" | "catalogDescription"> & Awaited<ReturnType<Tool.Info["init"]>>
+  export type Deferred = Pick<
+    Initialized,
+    "id" | "requiresWorkspace" | "requiresExecution" | "exposure" | "display" | "source"
+  > & {
+    description: string
+    resolve(): Promise<Initialized>
+  }
+  export type CatalogEntry = Initialized | Deferred
+
+  export async function catalog(
+    providerID: string,
+    agent?: Agent.Info,
+    workspaceID?: string | null,
+  ): Promise<CatalogEntry[]> {
     const allTools = await all()
     const tools = (
       await Promise.all(allTools.map(async (tool) => ((await enabled(tool, workspaceID)) ? tool : undefined)))
     ).filter((tool): tool is Tool.Info => Boolean(tool))
-    // Use allSettled to avoid one tool's init failure blocking all tools
-    const initResults = await Promise.allSettled(
-      tools.map(async (t) => {
-        const def = await t.init({ agent })
-        return {
+    const results = await Promise.allSettled(
+      tools.map(async (t): Promise<CatalogEntry> => {
+        const metadata = {
           id: t.id,
           requiresWorkspace: t.requiresWorkspace ?? false,
           requiresExecution: t.requiresExecution,
           exposure: ToolExposure.deferredExposure(t.id, ToolExposure.normalize(t.id, t.exposure), agent?.deferredTools),
           display: t.display,
           source: t.source,
-          inputSchema: t.inputSchema,
-          ...def,
         }
+        const resolve = async (): Promise<Initialized> => ({
+          ...metadata,
+          inputSchema: t.inputSchema,
+          ...(await t.init({ agent })),
+        })
+        return t.catalogDescription === undefined
+          ? resolve()
+          : { ...metadata, description: t.catalogDescription, resolve }
       }),
     )
+    return successful(tools, results)
+  }
 
-    const result = []
-    for (let i = 0; i < initResults.length; i++) {
-      const item = initResults[i]
-      if (item.status === "fulfilled") {
-        result.push(item.value)
-      } else {
-        log.warn("tool skipped due to init failure", { tool: tools[i]?.id, error: String(item.reason) })
-      }
+  export async function tools(
+    providerID: string,
+    agent?: Agent.Info,
+    workspaceID?: string | null,
+  ): Promise<Initialized[]> {
+    const entries = await catalog(providerID, agent, workspaceID)
+    return successful(
+      entries,
+      await Promise.allSettled(entries.map((item) => ("resolve" in item ? item.resolve() : Promise.resolve(item)))),
+    )
+  }
+
+  function successful<T>(tools: { id: string }[], results: PromiseSettledResult<T>[]): T[] {
+    const values: T[] = []
+    for (let i = 0; i < results.length; i++) {
+      const item = results[i]
+      if (item.status === "fulfilled") values.push(item.value)
+      else log.warn("tool skipped due to init failure", { tool: tools[i]?.id, error: String(item.reason) })
     }
-    return result
+    return values
   }
 }

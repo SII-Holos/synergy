@@ -35,7 +35,13 @@ const QUEUED_TOPIC = "om_queued_topic"
 const FOREGROUND_TEXT = "Foreground text must remain private."
 const QUEUED_TEXT = "Queued answer belongs only to B."
 const ORDINARY_ANSWER = "answer42"
-type Scenario = "queued-answer" | "queued-error" | "same-root-steer" | "ordinary-no-answer"
+type Scenario =
+  | "queued-answer"
+  | "queued-error"
+  | "same-root-steer"
+  | "reaction-steer-error"
+  | "ordinary-no-answer"
+  | "ordinary-tool-error"
 type ReactionTransport = "acknowledged" | "applied-then-timeout"
 
 function stream(chunks: StreamPart[]): StreamResult {
@@ -142,9 +148,9 @@ async function runScenario(
             modelStarted.resolve()
             await releaseForeground.promise
             if (scenario === "same-root-steer") return stream([...textChunks(ORDINARY_ANSWER), finish()])
-            if (scenario === "ordinary-no-answer")
+            if (scenario === "ordinary-no-answer" || scenario === "ordinary-tool-error")
               return stream([
-                ...textChunks(ORDINARY_ANSWER),
+                ...(scenario === "ordinary-no-answer" ? textChunks(ORDINARY_ANSWER) : []),
                 {
                   type: "tool-call",
                   toolCallId: "artifact_a",
@@ -158,6 +164,8 @@ async function runScenario(
             return stream(reactionChunks())
           }
           if (call === 2 && scenario === "queued-error") throw new Error("Queued model failure")
+          if (call === 2 && scenario === "reaction-steer-error") throw new Error("Continuation model failure")
+          if (call === 2 && scenario === "ordinary-tool-error") throw new Error("Ordinary model failure")
           if (call === 2 && scenario === "same-root-steer") return stream(reactionChunks())
           if (call === 2 && scenario === "ordinary-no-answer") return stream([finish("length")])
           if (call === 2)
@@ -403,7 +411,7 @@ async function runScenario(
         try {
           await Channel.init()
           const host = await connected.promise
-          if (scenario === "same-root-steer") {
+          if (scenario === "same-root-steer" || scenario === "reaction-steer-error") {
             let injected = false
             unsubscribeSteer = Bus.subscribe(MessageV2.Event.Updated, async (event) => {
               const info = event.properties.info
@@ -442,7 +450,7 @@ async function runScenario(
             expect(streamingStarts).toBe(1)
             expect(activeStreaming).toBe(streamingEnabled)
           }
-          if (scenario !== "same-root-steer" && scenario !== "ordinary-no-answer") {
+          if (scenario === "queued-answer" || scenario === "queued-error") {
             const queued = await host.conversations.receive(inbound(QUEUED_INBOUND, QUEUED_TOPIC, "Answer B."))
             expect(queued.accepted).toBe(true)
             if (!queued.accepted) throw new Error("Expected queued acceptance")
@@ -550,6 +558,28 @@ async function runScenario(
             expect(pushes).toEqual([])
             return
           }
+          if (scenario === "ordinary-tool-error") {
+            const assistants = messages.filter((message) => message.info.role === "assistant")
+            expect(assistants).toHaveLength(2)
+            expect(assistants[0].info).toMatchObject({ finish: "tool-calls" })
+            expect(assistants[1].info).toMatchObject({ finish: "error", error: expect.anything() })
+            expect(closes).toEqual([
+              { replyToMessageId: FOREGROUND_TOPIC, finalText: expect.stringContaining("artifact-A.txt"), error: true },
+            ])
+            expect(replies[0].parts).toEqual([{ type: "text", text: closes[0].finalText! }])
+            expect(replies[1].parts).toEqual([
+              {
+                type: "file",
+                path: Asset.resolvePath(artifacts.get("A")!),
+                filename: "artifact-A.txt",
+                contentType: "text/plain",
+              },
+            ])
+            expect(replies).toHaveLength(2)
+            expect(pushes).toEqual([])
+            expect(reactions.some((reaction) => reaction.emoji === "SILENT")).toBe(false)
+            return
+          }
           if (scenario === "ordinary-no-answer") {
             expect(cleanups).toEqual([])
             const assistants = messages.filter((message) => message.info.role === "assistant")
@@ -572,6 +602,29 @@ async function runScenario(
             expect(reactions.filter((reaction) => reaction.emoji === "SILENT" || reaction.emoji === "ERROR")).toEqual(
               [],
             )
+            return
+          }
+          if (scenario === "reaction-steer-error") {
+            expect(steerFailure).toBeUndefined()
+            expect(steerMessageID).toBeDefined()
+            const steer = messages.find((message) => message.info.id === steerMessageID)!
+            expect(steer.info).toMatchObject({ role: "user", isRoot: false, rootID: rootA.info.id })
+            const terminals = messages.filter(
+              (message) =>
+                message.info.role === "assistant" &&
+                message.info.rootID === rootA.info.id &&
+                (message.info.finish === "stop" || message.info.finish === "error"),
+            )
+            expect(terminals).toHaveLength(2)
+            expect(terminals[1].info).toMatchObject({ finish: "error", error: expect.anything() })
+            expect(returned).toEqual([])
+            expect(invokeErrors).toHaveLength(1)
+            expect(artifacts.get("A")).toBeDefined()
+            expect(replies).toEqual([])
+            expect(pushes).toEqual([])
+            expect(closes).toEqual([{ replyToMessageId: FOREGROUND_TOPIC, finalText: undefined, error: true }])
+            expect(reactions.filter((reaction) => reaction.emoji === "SILENT")).toHaveLength(1)
+            expect(rootA.info.metadata?.channelOutboundAttachmentUrls).toBeUndefined()
             return
           }
           if (scenario === "same-root-steer") {
@@ -828,17 +881,35 @@ async function runScenario(
           expect(reactions.filter((reaction) => reaction.emoji === "SILENT")).toHaveLength(1)
         } finally {
           releaseForeground.resolve()
-          await foreground?.execution
-          unsubscribeSteer?.()
-          invoke.mockRestore()
-          history.mockRestore()
-          await Channel.stopAll()
-          globalThis.fetch = originalFetch
+          try {
+            await foreground?.execution
+          } finally {
+            unsubscribeSteer?.()
+            invoke.mockRestore()
+            history.mockRestore()
+            try {
+              await Channel.stopAll()
+            } finally {
+              globalThis.fetch = originalFetch
+            }
+          }
         }
       },
     }),
   )
 }
+
+test(
+  "errored ordinary generation retains completed tool fallback and attachment delivery from its own segment",
+  () => runScenario("ordinary-tool-error"),
+  20_000,
+)
+
+test(
+  "errored same-root continuation never posts completed tool titles from an earlier reaction-only segment",
+  () => runScenario("reaction-steer-error"),
+  20_000,
+)
 
 test(
   "foreground reaction-only stays on A when its real invoke drains queued B last",

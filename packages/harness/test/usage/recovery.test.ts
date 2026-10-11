@@ -169,7 +169,7 @@ test("recovery preserves explicit clears, pruned responses, damaged bodies and p
   })
 }, 20_000)
 
-test("versioned automatic recovery schedules completed old jobs and resumes after restart with concurrent capture", async () => {
+test("versioned recovery remains deferred until requested and resumes after restart with concurrent capture", async () => {
   await using directory = await tmpdir()
   const home = path.join(directory.path, "home")
   await using first = await testRuntime({ home, register: UsageMigration.register })
@@ -198,9 +198,12 @@ test("versioned automatic recovery schedules completed old jobs and resumes afte
     expect(
       (await Storage.read<Record<string, number>>(StoragePath.metaMigrationLogDomain("usage")))[recoveryID],
     ).toBeGreaterThan(0)
-    await UsageMigration.batch()
-    await UsageMigration.batch()
-    const progress = await UsageMigration.batch()
+    expect((await UsageMigration.status())?.requested).toBe(false)
+    await UsageMigration.start()
+    let progress = await UsageMigration.batch()
+    for (let batch = 0; progress.records === 0 && progress.status === "running" && batch < 8; batch++)
+      progress = await UsageMigration.batch()
+    expect(progress.requested).toBe(true)
     expect(progress.status).toBe("running")
     expect(progress.records).toBe(128)
     await fixture({ owner: value.owner, knownUsage: true })

@@ -1,6 +1,7 @@
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import DESCRIPTION from "./bash.txt"
+import { AttachmentDelivery } from "@ericsanchezok/synergy-harness/attachment/delivery"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Truncate } from "@ericsanchezok/synergy-harness/tool/truncation"
 import { LocalBashBackend } from "./bash/local"
@@ -53,6 +54,7 @@ export const BashTool = Tool.define<typeof parameters, BashMetadata>(
       )
         .replaceAll("${maxLines}", String(Truncate.MAX_LINES))
         .replaceAll("${maxBytes}", String(Truncate.MAX_BYTES))
+        .replaceAll("${artifactGuidance}", () => AttachmentDelivery.guidance().execution)
     },
     parameters,
     async execute(params, ctx) {

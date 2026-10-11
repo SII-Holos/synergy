@@ -1,3 +1,5 @@
 export { ScopeContext } from "../scope/context"
 export { SessionContextContributions } from "../session/context-contributions"
 export { SessionExecutionContributions } from "../session/execution-contributions"
+export { reconcileContextUsage } from "../session/context-usage-attribution"
+export { ContextUsageEstimateSchema, type ContextUsageEstimate } from "../session/context-usage-schema"
