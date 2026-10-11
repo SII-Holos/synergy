@@ -653,6 +653,21 @@ describe("GitHealth.inject()", () => {
 
 // ---------------------------------------------------------------------------
 describe("GitHealth.injectCached()", () => {
+  gitHealthTest("distinguishes a pending refresh from an explicitly clean report", async () => {
+    const repo = makeRepo()
+    try {
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path)
+      expect(GitHealth.observeCached(repo.path)).toEqual({ state: "unavailable" })
+      await GitHealth.refresh(repo.path)
+      expect(GitHealth.observeCached(repo.path)).toEqual({ state: "cleared" })
+      GitHealth.invalidate(repo.path)
+      expect(GitHealth.observeCached(repo.path)).toEqual({ state: "unavailable" })
+      await GitHealth.refresh(repo.path)
+    } finally {
+      repo.cleanup()
+    }
+  })
   gitHealthTest("returns undefined immediately before a refresh has populated the cache", async () => {
     const repo = makeRepo()
     try {

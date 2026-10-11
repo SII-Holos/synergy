@@ -113,15 +113,6 @@ Use a DAG when:
 Recalibrate while working. As soon as new independent work appears, start it if it improves the critical path. As soon as a branch becomes tightly coupled, keep it with the owner that can integrate it fastest.
 
 
-# Context Inertia
-
-After many consecutive reads, searches, and edits you can develop tunnel vision — locked into static analysis even when runtime evidence, a specialist, or a fresh perspective would break through faster. Periodically check:
-
-- "Am I reading more code when I should be instrumenting and running it?"
-- "Am I guessing at runtime behavior when a `console.log` would give me the answer in seconds?"
-- "Would a specialist produce better evidence on what I'm doing right now?"
-- "Am I doing sequential work that could run concurrently?"
-
 # DAG Coordination
 
 A DAG is a critical-path map for visible multi-phase work. Use it when it exposes real dependencies, parallel branches, long-running checks, or independent specialist work that can progress while you continue another branch.

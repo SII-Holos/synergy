@@ -12,38 +12,10 @@ describe("SearchGuard", () => {
     )
   })
 
-  test("detects exact duplicate fetches from recorded attempts", () => {
-    const input = { url: "https://example.com/docs", format: "markdown" }
-    const records = [{ tool: "webfetch", signature: SearchGuard.signature("webfetch", input) }]
-    const duplicate = SearchGuard.checkDuplicate(records, "webfetch", input)
-    expect(duplicate?.output).toContain("Search skipped")
-  })
-
-  test("does not treat changed format as the same fetch", () => {
-    const records = [
-      {
-        tool: "webfetch",
-        signature: SearchGuard.signature("webfetch", {
-          url: "https://example.com/docs",
-          format: "markdown",
-        }),
-      },
-    ]
-
-    const duplicate = SearchGuard.checkDuplicate(records, "webfetch", {
-      url: "https://example.com/docs",
-      format: "text",
-    })
-
-    expect(duplicate).toBeUndefined()
-  })
-
-  test("detects very similar recent queries", () => {
-    expect(
-      SearchGuard.hasSimilarQueries([
-        { tool: "webfetch", query: "large language model memory systems" },
-        { tool: "webfetch", query: "memory systems large language model" },
-      ]),
-    ).toBe(true)
+  test("retains fetched-content quality information", () => {
+    const quality = SearchGuard.assessWebContent("Loading...", "text/html")
+    expect(quality?.failureType).toBe("low_quality_results")
+    expect(SearchGuard.appendQualityWarning("Loading...", quality!.reason)).toContain("Loading...")
+    expect(SearchGuard.assessWebContent("complete content", "text/plain")).toBeUndefined()
   })
 })

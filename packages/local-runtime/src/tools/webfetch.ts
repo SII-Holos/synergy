@@ -38,20 +38,6 @@ export const WebFetchTool = Tool.define("webfetch", {
       throw new Error("URL must start with http:// or https://")
     }
 
-    const duplicate = await SearchGuard.checkDuplicateForContext(ctx, "webfetch", params)
-    if (duplicate) {
-      return {
-        output: duplicate.output,
-        title: `Web fetch skipped: ${params.url}`,
-        metadata: {
-          searchFailureType: "duplicate_query" as const,
-          url: params.url,
-          contentType: "",
-          contentLength: 0,
-        } as any,
-      }
-    }
-
     await ctx.ask({
       permission: "webfetch",
       patterns: [params.url],

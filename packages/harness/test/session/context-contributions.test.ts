@@ -57,10 +57,38 @@ test("disabled context contributors do not invoke their callback", () =>
       },
     })
     try {
-      expect(await SessionContextContributions.collect(input())).toBeUndefined()
+      expect((await SessionContextContributions.collect(input()))?.observations).toEqual([
+        { id: "disabled-test", state: "cleared" },
+      ])
       expect(calls).toBe(0)
     } finally {
       unregister()
+    }
+  }))
+
+test("unavailable context is distinct from an explicit empty contribution", () =>
+  runtime.run(async () => {
+    const unregisterEmpty = SessionContextContributions.register("empty-test", {
+      async contribute() {
+        return undefined
+      },
+    })
+    const unregisterFailed = SessionContextContributions.register("failed-test", {
+      async contribute() {
+        throw new Error("Temporary recall failure")
+      },
+    })
+    try {
+      const result = await SessionContextContributions.collect(input())
+      expect(result?.observations).toEqual([
+        { id: "empty-test", state: "cleared" },
+        { id: "failed-test", state: "unavailable" },
+      ])
+      expect(result?.sources).toEqual([])
+      expect(SessionContextContributions.combine(result)?.observations).toEqual(result?.observations)
+    } finally {
+      unregisterEmpty()
+      unregisterFailed()
     }
   }))
 
