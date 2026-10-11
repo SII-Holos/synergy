@@ -44,6 +44,7 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
         createExecutionContext({
           ...options,
           client: sdk.client,
+          scopeID: () => sdk.scopeID,
           sessionID: () => params.id,
           connectionVersion,
           subscribe: (receive) => sdk.event.on("execution.updated", (event) => receive(event.properties)),

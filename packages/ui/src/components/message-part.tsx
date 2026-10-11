@@ -133,6 +133,7 @@ export interface MessagePartProps {
   message: MessageType
   hideDetails?: boolean
   defaultOpen?: boolean
+  showAttachments?: boolean
 }
 
 export type PartComponent = Component<MessagePartProps>
@@ -1397,6 +1398,7 @@ export function Part(props: MessagePartProps) {
               message={props.message}
               hideDetails={props.hideDetails}
               defaultOpen={props.defaultOpen}
+              showAttachments={props.showAttachments}
             />
           </ToolExpansionIdentity>
         </ResourceReferenceProvider>
@@ -1506,6 +1508,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
           messageId={props.message.id}
           hideDetails={props.hideDetails}
           defaultOpen={props.defaultOpen}
+          showAttachments={props.showAttachments}
         />
       </div>
     </div>

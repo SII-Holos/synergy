@@ -86,6 +86,7 @@ export function bindPluginConversation(
     workspaceOpen: () => read().workspaceOpen?.() ?? false,
     isWorking: () => read().isWorking(),
     compactReasoning: () => read().compactReasoning(),
+    preferWorkBrief: () => read().preferWorkBrief?.() ?? false,
     onSetTurnStart: (start) => read().onSetTurnStart(start),
     historyMore: () => read().historyMore(),
     historyLoading: () => read().historyLoading(),

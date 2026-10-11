@@ -1,4 +1,4 @@
-import { createEffect, createMemo, on, onCleanup, type Accessor } from "solid-js"
+import { batch, createEffect, createMemo, on, onCleanup, type Accessor } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import type { ExecutionContextSnapshot, EventExecutionUpdated, SynergyClient } from "@ericsanchezok/synergy-sdk/client"
 
@@ -16,6 +16,7 @@ export function mergeContextHistory(
 export function createExecutionContext(input: {
   client: SynergyClient
   sessionID: Accessor<string | undefined>
+  scopeID?: Accessor<string>
   runID: Accessor<string>
   active: Accessor<boolean>
   connectionVersion: Accessor<number>
@@ -25,6 +26,7 @@ export function createExecutionContext(input: {
   const [state, setState] = createStore<{
     items: ExecutionContextSnapshot[]
     latest?: ExecutionContextSnapshot
+    displayedLatest?: ExecutionContextSnapshot
     retained?: ExecutionContextSnapshot
     revision: number
     total: number
@@ -37,13 +39,15 @@ export function createExecutionContext(input: {
   let selectionAbort: AbortController | undefined
   let pendingUpdates = new Map<string, ExecutionContextSnapshot>()
   let browsingEarlier = false
+  let connection = input.connectionVersion()
+  const scopeID = () => input.scopeID?.()
   const snapshot = createMemo(() =>
     input.selected()
       ? (state.items.find((entry) => entry.callID === input.selected()) ??
         (state.retained?.callID === input.selected() ? state.retained : undefined))
-      : state.latest,
+      : state.displayedLatest,
   )
-  const setSnapshot = (slot: "latest" | "retained", next: ExecutionContextSnapshot) => {
+  const setSnapshot = (slot: "latest" | "retained" | "displayedLatest", next: ExecutionContextSnapshot) => {
     if (state[slot]?.callID === next.callID) {
       setState(slot, reconcile(next))
       return
@@ -57,11 +61,23 @@ export function createExecutionContext(input: {
   const retain = (entries: ExecutionContextSnapshot[]) => {
     const selected = entries.find((entry) => entry.callID === input.selected())
     if (selected) setSnapshot("retained", selected)
-    const latest = entries.reduce<ExecutionContextSnapshot | undefined>(
-      (result, entry) => (!result || entry.started >= result.started ? entry : result),
-      undefined,
+    const ordered = [...entries].sort((a, b) => b.started - a.started || b.callID.localeCompare(a.callID))
+    const latest = ordered[0]
+    if (
+      latest &&
+      (!state.latest ||
+        latest.started > state.latest.started ||
+        (latest.started === state.latest.started && latest.callID >= state.latest.callID))
     )
-    if (latest && (!state.latest || latest.started >= state.latest.started)) setSnapshot("latest", latest)
+      setSnapshot("latest", latest)
+    const displayable = ordered.find((entry) => entry.usage || entry.estimate)
+    if (
+      displayable &&
+      (!state.displayedLatest ||
+        displayable.started > state.displayedLatest.started ||
+        (displayable.started === state.displayedLatest.started && displayable.callID >= state.displayedLatest.callID))
+    )
+      setSnapshot("displayedLatest", displayable)
   }
   const load = async (older = false, reset = false) => {
     const sessionID = input.sessionID()
@@ -85,7 +101,19 @@ export function createExecutionContext(input: {
       )
       if (current !== request || controller.signal.aborted) return
       const page = response.data
-      const incoming = mergeContextHistory(page.items, [...updates.values()])
+      const scoped = page.items.filter(
+        (entry) => entry.sessionID === sessionID && (!input.runID() || entry.runID === input.runID()),
+      )
+      const fresh =
+        page.revision < state.revision
+          ? [
+              ...state.items,
+              ...[state.latest, state.retained, state.displayedLatest].filter(
+                (entry): entry is ExecutionContextSnapshot => !!entry,
+              ),
+            ]
+          : []
+      const incoming = mergeContextHistory(mergeContextHistory(scoped, fresh), [...updates.values()])
       retain(incoming)
       browsingEarlier = !reset && (older || browsingEarlier)
       const known = new Set(state.items.map((entry) => entry.callID))
@@ -109,7 +137,7 @@ export function createExecutionContext(input: {
     }
   }
   createEffect(
-    on([input.sessionID, input.runID], () => {
+    on([scopeID, input.sessionID, input.runID], () => {
       request++
       abort?.abort()
       selectionAbort?.abort()
@@ -117,6 +145,7 @@ export function createExecutionContext(input: {
       setState({
         items: [],
         latest: undefined,
+        displayedLatest: undefined,
         retained: undefined,
         revision: -1,
         nextCursor: null,
@@ -126,7 +155,11 @@ export function createExecutionContext(input: {
     }),
   )
   createEffect(
-    on([input.sessionID, input.runID, input.active, input.connectionVersion], () => {
+    on([scopeID, input.sessionID, input.runID, input.active, input.connectionVersion], () => {
+      if (connection !== input.connectionVersion()) {
+        connection = input.connectionVersion()
+        setState("revision", -1)
+      }
       if (input.active()) void load()
       else {
         request++
@@ -165,25 +198,29 @@ export function createExecutionContext(input: {
       }
     }),
   )
-  const unsubscribe = input.subscribe((event) => {
-    if (!input.active() || event.sessionID !== input.sessionID() || event.revision <= state.revision) return
-    const updates = (event.contextUpserts ?? []).filter((entry) => !input.runID() || entry.runID === input.runID())
-    if (state.loading) for (const entry of updates) pendingUpdates.set(entry.callID, entry)
-    const added = updates.filter((entry) => !state.latest || entry.started > state.latest.started).length
-    retain(updates)
-    const known = new Set(state.items.map((entry) => entry.callID))
-    setState(
-      "items",
-      reconcile(
-        mergeContextHistory(
-          state.items,
-          browsingEarlier ? updates.filter((entry) => known.has(entry.callID)) : updates,
+  const unsubscribe = input.subscribe((event) =>
+    batch(() => {
+      if (!input.active() || event.sessionID !== input.sessionID() || event.revision <= state.revision) return
+      const updates = (event.contextUpserts ?? []).filter(
+        (entry) => entry.sessionID === input.sessionID() && (!input.runID() || entry.runID === input.runID()),
+      )
+      if (state.loading) for (const entry of updates) pendingUpdates.set(entry.callID, entry)
+      const added = updates.filter((entry) => !state.latest || entry.started > state.latest.started).length
+      retain(updates)
+      const known = new Set(state.items.map((entry) => entry.callID))
+      setState(
+        "items",
+        reconcile(
+          mergeContextHistory(
+            state.items,
+            browsingEarlier ? updates.filter((entry) => known.has(entry.callID)) : updates,
+          ),
+          { key: "callID" },
         ),
-        { key: "callID" },
-      ),
-    )
-    setState({ revision: event.revision, total: state.total + added })
-  })
+      )
+      setState({ revision: event.revision, total: state.total + added })
+    }),
+  )
   onCleanup(() => {
     request++
     abort?.abort()
