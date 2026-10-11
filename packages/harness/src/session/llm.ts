@@ -178,6 +178,7 @@ export namespace LLM {
     system: string[]
     systemCacheBreakpoint?: number
     lateSystem?: string[]
+    promptSuffix?: string
     abort: AbortSignal
     messages: ModelMessage[]
     small?: boolean
@@ -185,7 +186,7 @@ export namespace LLM {
     activeToolIDs?: string[]
     retries?: number
     maxOutputTokens?: number
-    toolChoice?: { type: "tool"; toolName: string }
+    toolChoice?: "none" | { type: "tool"; toolName: string }
     /** Codex remote-compaction replay plan for this turn (fetch-layer splice). */
     codexReplay?: CodexReplayPlan
     memoryTurn?: LLMTurnMemory.Handle
@@ -204,6 +205,7 @@ export namespace LLM {
     system: string[]
     lateSystem?: string[]
     messages: ModelMessage[]
+    promptSuffix?: string
   }
 
   interface PromptLayoutMetadata {
@@ -225,6 +227,7 @@ export namespace LLM {
   }
 
   export function promptMessages(input: PromptLayoutInput): ModelMessage[] {
+    const suffix: ModelMessage[] = input.promptSuffix ? [{ role: "user", content: input.promptSuffix }] : []
     const systemMessages = input.system.map(
       (content): ModelMessage => ({
         role: "system",
@@ -232,7 +235,7 @@ export namespace LLM {
       }),
     )
     const lateSystem = (input.lateSystem ?? []).filter((content) => content.length > 0)
-    if (lateSystem.length === 0) return [...systemMessages, ...input.messages]
+    if (lateSystem.length === 0) return [...systemMessages, ...input.messages, ...suffix]
 
     if (PromptCachePolicy.layout(input.model, input.profileID) === "system") {
       return [
@@ -244,6 +247,7 @@ export namespace LLM {
           }),
         ),
         ...input.messages,
+        ...suffix,
       ]
     }
 
@@ -254,6 +258,7 @@ export namespace LLM {
         role: "user",
         content: formatLateUserContext(lateSystem),
       },
+      ...suffix,
     ]
   }
 
@@ -436,6 +441,7 @@ export namespace LLM {
     // per-turn projection and the late-system strings before any downstream
     // consumer (prepare, plugin hooks, serialization) observes them.
     await SecretMask.maskMessages(input.messages as unknown[], input.lateSystem)
+    if (input.promptSuffix) input.promptSuffix = await SecretMask.apply(input.promptSuffix)
     const l = log
       .clone()
       .tag("providerID", input.model.providerID)
@@ -558,6 +564,7 @@ export namespace LLM {
           system,
           lateSystem: input.lateSystem,
           messages: input.messages,
+          promptSuffix: input.promptSuffix,
         }),
         // System messages are embedded in the message array on purpose so the
         // provider transform can place cache breakpoints across system parts.

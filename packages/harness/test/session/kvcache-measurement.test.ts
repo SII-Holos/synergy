@@ -3,7 +3,7 @@ import type { ModelMessage } from "ai"
 import type { Provider } from "../../src/provider/provider"
 import { LLM } from "../../src/session/llm"
 
-function createModel(provider: "openai" | "anthropic" | "deepseek" = "openai"): Provider.Model {
+function createModel(provider: "openai" | "anthropic" | "deepseek" | "google-vertex" = "openai"): Provider.Model {
   const model = {
     openai: {
       id: "openai/gpt-5",
@@ -16,6 +16,10 @@ function createModel(provider: "openai" | "anthropic" | "deepseek" = "openai"): 
     deepseek: {
       id: "deepseek/deepseek-v4-flash",
       api: { id: "deepseek-v4-flash", url: "https://api.deepseek.com", npm: "@ai-sdk/openai-compatible" },
+    },
+    "google-vertex": {
+      id: "google-vertex/gemini-test",
+      api: { id: "gemini-test", url: "https://provider.invalid", npm: "@ai-sdk/google-vertex" },
     },
   }[provider]
 
@@ -92,6 +96,48 @@ function namedDeepSeekMessages(turn: "a" | "b") {
 }
 
 describe("KV-cache measurement prompt-shape harness", () => {
+  test("appends prompt suffix after late user context without changing the full prompt prefix", () => {
+    const input: LLM.PromptLayoutInput = {
+      model: createModel("openai"),
+      system: stableSystem,
+      lateSystem: lateSystem("a"),
+      messages: history,
+    }
+    const normalPrompt = LLM.promptMessages(input)
+    const promptSuffix = "COMPACTION: summarize this conversation without calling tools"
+    const suffixedPrompt = LLM.promptMessages({ ...input, promptSuffix })
+
+    expect(normalPrompt.map((message) => message.role)).toEqual([
+      "system",
+      "system",
+      "system",
+      "user",
+      "assistant",
+      "user",
+    ])
+    expect(String(normalPrompt.at(-1)?.content)).toContain("<runtime-context>")
+    expect(suffixedPrompt).toEqual([...normalPrompt, { role: "user", content: promptSuffix }])
+  })
+
+  test("appends prompt suffix after system-layout history without changing the full prompt prefix", () => {
+    const input: LLM.PromptLayoutInput = {
+      model: createModel("google-vertex"),
+      system: stableSystem,
+      lateSystem: lateSystem("a"),
+      messages: history,
+    }
+    const normalPrompt = LLM.promptMessages(input)
+    const promptSuffix = "COMPACTION: summarize this conversation without calling tools"
+    const suffixedPrompt = LLM.promptMessages({ ...input, promptSuffix })
+
+    expect(normalPrompt).toEqual([
+      ...stableSystem.map((content): ModelMessage => ({ role: "system", content })),
+      ...lateSystem("a").map((content): ModelMessage => ({ role: "system", content })),
+      ...history,
+    ])
+    expect(suffixedPrompt).toEqual([...normalPrompt, { role: "user", content: promptSuffix }])
+  })
+
   test("production OpenAI-style layout preserves stable prefix through reusable history", () => {
     const first = openAIMessages("a")
     const second = openAIMessages("b")

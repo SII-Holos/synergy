@@ -70,6 +70,10 @@ describe("ToolResolver availability reuse", () => {
             expect(collections).toBe(1)
             expect(availability.visible.map((item) => item.id)).toEqual(["ephemeral_probe"])
             expect(availability.autoExpandable.size).toBe(0)
+            const nativeDefinitions = ToolResolver.modelDefinitions(availability)
+            expect(nativeDefinitions.map((item) => item.id)).toEqual(["ephemeral_probe"])
+            expect(nativeDefinitions[0].inputSchema).toEqual(ephemeralTool.inputSchema)
+            expect(collections).toBe(1)
 
             const resolved = await ToolResolver.resolveWithAvailability(
               { ...input, processor: processor() },
@@ -78,6 +82,7 @@ describe("ToolResolver availability reuse", () => {
 
             expect(collections).toBe(1)
             expect(resolved.definitions.map((item) => item.id)).toEqual(["ephemeral_probe"])
+            expect(resolved.definitions).toEqual(nativeDefinitions)
             expect(resolved.activeToolIDs).toEqual(["ephemeral_probe"])
             expect(Object.keys(resolved.executionTools)).toEqual(["ephemeral_probe"])
             expect(resolved.executorKinds).toEqual({ ephemeral_probe: "control_plane" })

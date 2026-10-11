@@ -68,7 +68,9 @@ async function run(
     | "reasoning-only"
     | "tools"
     | "tools-stop"
-    | "length",
+    | "length"
+    | "tools-forbidden"
+    | "tool-start-forbidden",
 ) {
   await using tmp = await tmpdir({ git: true })
   return ScopeContext.provide({
@@ -106,6 +108,7 @@ async function run(
       let calls = 0
       let effects = 0
       let disposed = 0
+      let modelCompletions = 0
       spyOn(SessionRetry, "delay").mockReturnValue(0)
       if (mode === "cancel")
         spyOn(SessionRetry, "sleep").mockImplementation(async () => {
@@ -148,8 +151,15 @@ async function run(
                 yield { type: "finish" as const }
                 return
               }
-              if (mode === "tools" || mode === "tools-stop") {
+              if (
+                mode === "tools" ||
+                mode === "tools-stop" ||
+                mode === "tools-forbidden" ||
+                mode === "tool-start-forbidden"
+              ) {
                 yield { type: "start-step" as const }
+                if (mode === "tool-start-forbidden")
+                  yield { type: "tool-input-start" as const, id: `call-${attempt}`, toolName: "probe" }
                 yield {
                   type: "tool-call" as const,
                   toolCallId: `call-${attempt}`,
@@ -232,6 +242,7 @@ async function run(
           probe: {
             inputSchema: z.object({}),
             async execute(input: unknown, options) {
+              expect(modelCompletions).toBe(1)
               effects++
               const output = { output: "done", title: "probe", metadata: {} }
               processor.beginExecution(options.toolCallId).complete(input, output)
@@ -240,6 +251,8 @@ async function run(
           },
         },
         executorKinds: { probe: "control_plane" },
+        ...(mode === "tools-forbidden" || mode === "tool-start-forbidden" ? { toolChoice: "none" as const } : {}),
+        onModelStreamSettled: () => modelCompletions++,
       })
       const recordedCalls = await RolloutLedger.calls(owner, user.info.id)
       const artifacts = await Promise.all(
@@ -255,6 +268,7 @@ async function run(
         calls,
         effects,
         disposed,
+        modelCompletions,
         message: await MessageV2.get({ sessionID: session.id, messageID: assistant.id }),
       }
     },
@@ -268,6 +282,7 @@ test(
     expect(result.calls).toBe(2)
     expect(result.effects).toBe(1)
     expect(result.disposed).toBe(2)
+    expect(result.modelCompletions).toBe(1)
     expect(
       result.message.parts
         .filter((part) => part.type === "tool")
@@ -294,6 +309,7 @@ test(
     expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
     expect(result.effects).toBe(0)
     expect(result.disposed).toBe(result.calls)
+    expect(result.modelCompletions).toBe(1)
     expect(result.message.info).toMatchObject({ finish: "error", error: { name: "APIError" } })
   }),
 )
@@ -455,6 +471,21 @@ test(
     expect(result.message.info.error).toBeUndefined()
   }),
 )
+
+for (const mode of ["tools-forbidden", "tool-start-forbidden"] as const) {
+  test(
+    `toolChoice none rejects ${mode} before scheduling or execution`,
+    runtime.bind(async () => {
+      const dispatch = spyOn(ToolScheduler, "dispatch")
+      const result = await run(mode)
+      expect(result.calls).toBe(1)
+      expect(result.effects).toBe(0)
+      expect(dispatch).not.toHaveBeenCalled()
+      expect(result.message.parts.filter((part) => part.type === "tool")).toHaveLength(0)
+      expect(result.message.info).toMatchObject({ finish: "error" })
+    }),
+  )
+}
 
 test(
   "finishing a reply does not drain unrelated session writes",

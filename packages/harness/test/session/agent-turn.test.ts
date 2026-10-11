@@ -7,6 +7,9 @@ import { LLM } from "../../src/session/llm"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { RolloutArtifact } from "../../src/session/rollout/artifact"
+import { SecretVault } from "../../src/secrets/vault"
+import { SecretMask } from "../../src/secrets/mask"
 const runtime = await testRuntime()
 
 test("starts Context Usage estimation only after the Agent worker starts", () =>
@@ -100,6 +103,95 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
       AgentTurn.setInProcessStream(runInProcessStream)
       await AgentTurn.stop()
       AgentTurn.configure()
+    }
+  }))
+
+test("reuses a prepared request without rerunning final prompt or parameter hooks", () =>
+  runtime.run(async () => {
+    const originalPrepare = LLM.prepare
+    const originalRun = AgentWorkerPool.prototype.run
+    const operationID = crypto.randomUUID()
+    const secret = `fixture-${crypto.randomUUID()}`
+    const entry = await SecretVault.register(secret, { kind: "user" })
+    let receivedSuffix: string | undefined
+    const prepared: LLM.PreparedTurn = {
+      system: ["stable final system"],
+      baseSystemLength: 1,
+      provider: { options: {}, timeouts: { ttfbMs: 1_000, idleMs: false, wallMs: false } },
+      params: { temperature: 0.7, options: { reasoningEffort: "high" } },
+    }
+    let received: unknown
+    const prepare = mock(async () => {
+      throw new Error("Final preparation must not run twice")
+    })
+    try {
+      await AgentTurn.stop()
+      AgentTurn.configure({ minIdle: 0 })
+      AgentTurn.setInProcessStream(undefined)
+      LLM.prepare = prepare
+      AgentWorkerPool.prototype.run = mock(async (input) => {
+        received = input.prepared
+        receivedSuffix = input.promptSuffix
+        return { fullStream: (async function* () {})(), usage: Promise.resolve(undefined), async dispose() {} }
+      })
+      const stream = await AgentTurn.stream({
+        user: {
+          id: "msg_user",
+          sessionID: "ses_test",
+          role: "user",
+          time: { created: 0 },
+          agent: "synergy",
+          model: { providerID: "test-provider", modelID: "test-model" },
+        },
+        sessionID: "ses_test",
+        recording: { owner: { kind: "operation", scopeID: "home", operationID }, runID: operationID, purpose: "test" },
+        model: {
+          id: "test-model",
+          providerID: "test-provider",
+          api: { id: "test-model", url: "https://fixture.invalid", npm: "@ai-sdk/openai" },
+          limit: { context: 4096, output: 1024 },
+          name: "Fixture",
+          status: "active",
+          options: {},
+          headers: {},
+          release_date: "2026-01-01",
+          capabilities: {
+            temperature: true,
+            reasoning: false,
+            attachment: false,
+            toolcall: true,
+            input: { text: true, image: false, audio: false, video: false, pdf: false },
+            output: { text: true, image: false, audio: false, video: false, pdf: false },
+            interleaved: false,
+          },
+          cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+        },
+        agent: { name: "synergy", mode: "primary", permission: [], options: {} },
+        system: ["caller system"],
+        messages: [{ role: "user", content: "summarize" }],
+        abort: new AbortController().signal,
+        toolDefinitions: [],
+        prepared,
+        promptSuffix: `Summary instructions ${secret}`,
+      })
+      expect(prepare).not.toHaveBeenCalled()
+      expect(received).toBe(prepared)
+      expect(receivedSuffix).toBe(`Summary instructions ${SecretMask.token(entry.id)}`)
+      const owner = { kind: "operation" as const, scopeID: "home", operationID }
+      const [call] = await RolloutLedger.calls(owner, operationID)
+      const chunks: Uint8Array[] = []
+      for await (const chunk of RolloutArtifact.read(owner, call.request.id)) chunks.push(chunk)
+      const evidence = Buffer.concat(chunks).toString()
+      expect(evidence).not.toContain(secret)
+      expect(evidence).toContain(SecretMask.token(entry.id))
+      await stream.dispose()
+    } finally {
+      LLM.prepare = originalPrepare
+      AgentWorkerPool.prototype.run = originalRun
+      AgentTurn.setInProcessStream(runInProcessStream)
+      await AgentTurn.stop()
+      AgentTurn.configure()
+      await SecretVault.remove(entry.id)
     }
   }))
 

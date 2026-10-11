@@ -133,6 +133,7 @@ export namespace SessionProcessor {
     autoExpandable?: Set<string>
     resolverInput?: Omit<ToolResolver.Input, "processor">
     intentBindings?: ReadonlyMap<string, ToolIntent.Binding>
+    onModelStreamSettled?: (error?: MessageV2.Assistant["error"]) => void
   }
 
   export function shouldAskDoomLoop(parts: MessageV2.Part[], toolName: string, input: unknown) {
@@ -1042,6 +1043,12 @@ export namespace SessionProcessor {
             (part) => part.id,
           ),
         )
+        let modelStreamSettled = false
+        function settleModelStream(error?: MessageV2.Assistant["error"]) {
+          if (modelStreamSettled) return
+          modelStreamSettled = true
+          streamInput.onModelStreamSettled?.(error)
+        }
         try {
           while (true) {
             let streamAborted = false
@@ -1095,6 +1102,7 @@ export namespace SessionProcessor {
                 autoExpandable: _autoExpandable,
                 resolverInput: _resolverInput,
                 intentBindings: _intentBindings,
+                onModelStreamSettled: _onModelStreamSettled,
                 ...agentTurnInput
               } = streamInput
               retryEligible = true
@@ -1187,6 +1195,13 @@ export namespace SessionProcessor {
                 if (rollout) await Session.updateMessage(input.assistantMessage)
                 for await (const value of stream.fullStream) {
                   input.abort.throwIfAborted()
+                  if (
+                    streamInput.toolChoice === "none" &&
+                    (value.type === "tool-input-start" || value.type === "tool-call")
+                  ) {
+                    retryEligible = false
+                    throw new Error("Tool calls are prohibited for this model request")
+                  }
                   switch (value.type) {
                     case "start":
                       ObservabilityMetrics.record({
@@ -1780,6 +1795,9 @@ export namespace SessionProcessor {
                   await Session.updateMessage(input.assistantMessage)
                 }
               }
+              settleModelStream()
+              streamInput.prepared = undefined
+              agentTurnInput.prepared = undefined
               agentTurnInput.system?.splice(0)
               agentTurnInput.lateSystem?.splice(0)
               agentTurnInput.messages?.splice(0)
@@ -1939,6 +1957,7 @@ export namespace SessionProcessor {
                 await SessionRetry.sleep(delay, input.abort).catch(() => {})
                 continue
               }
+              settleModelStream(error)
               // A user stop pauses the session; it does not fail it. Writing the
               // turn's terminal record here — `finish:"error"` plus
               // `time.completed` below — is what destroys the breakpoint

@@ -2354,6 +2354,14 @@ export namespace ToolResolver {
     } as AITool
   }
 
+  export function modelDefinitions(input: Availability): Definition[] {
+    return input.visible.map(({ id, description, inputSchema }) => ({
+      id,
+      description,
+      inputSchema: input.intentBindings?.get(id)?.nativeSchema ?? inputSchema,
+    }))
+  }
+
   /**
    * Resolve execution tools from an availability result. Callers that already
    * hold one for this round (the turn loop resolves definitions while it
@@ -2391,11 +2399,7 @@ export namespace ToolResolver {
     }
 
     return {
-      definitions: availabilityResult.visible.map(({ id, description, inputSchema }) => ({
-        id,
-        description,
-        inputSchema: availabilityResult.intentBindings?.get(id)?.nativeSchema ?? inputSchema,
-      })),
+      definitions: modelDefinitions(availabilityResult),
       executionTools,
       executorKinds,
       activeToolIDs,

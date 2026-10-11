@@ -37,6 +37,25 @@ import { RolloutRecordingError } from "./rollout/error"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
+import { AgentTurn } from "./agent-turn"
+import { LLM } from "./llm"
+import COMPACTION_PROMPT from "../agent/prompt/compaction/base.txt"
+import { TimeoutConfig } from "../util/timeout-config"
+
+type CompactionRequest = Pick<
+  AgentTurn.Input,
+  | "user"
+  | "model"
+  | "modelSelection"
+  | "agent"
+  | "system"
+  | "systemCacheBreakpoint"
+  | "lateSystem"
+  | "messages"
+  | "toolDefinitions"
+  | "activeToolIDs"
+  | "codexReplay"
+> & { prepared?: LLM.PreparedTurn }
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -53,6 +72,26 @@ export namespace SessionCompaction {
   export const PRUNE_MINIMUM = 20_000
   export const PRUNE_PROTECT = 40_000
   const OUTPUT_BUDGET = 32_000
+  export type Request = CompactionRequest
+
+  export function captureRequest(
+    input: AgentTurn.Input & { prepared: LLM.PreparedTurn },
+  ): Request & { prepared: LLM.PreparedTurn } {
+    return {
+      user: input.user,
+      model: input.model,
+      modelSelection: input.modelSelection,
+      agent: input.agent,
+      system: [...input.system],
+      systemCacheBreakpoint: input.systemCacheBreakpoint,
+      lateSystem: input.lateSystem ? [...input.lateSystem] : undefined,
+      messages: [...input.messages],
+      toolDefinitions: [...input.toolDefinitions],
+      activeToolIDs: input.activeToolIDs ? [...input.activeToolIDs] : undefined,
+      codexReplay: input.codexReplay,
+      prepared: { ...input.prepared, system: [...input.prepared.system] },
+    }
+  }
 
   const PRUNE_PROTECTED_TOOLS = ["skill"]
   type CompactionAttemptState = "running" | "committed" | "failed" | "empty"
@@ -268,8 +307,10 @@ export namespace SessionCompaction {
   async function writeMechanicalSummary(
     msg: MessageV2.Assistant,
     input: { messages: MessageV2.WithParts[]; sessionID: string },
+    abort?: AbortSignal,
   ): Promise<string> {
     const summary = buildMechanicalSummary(input.messages, input.sessionID)
+    abort?.throwIfAborted()
     await Session.updatePart({
       id: Identifier.ascending("part"),
       messageID: msg.id,
@@ -279,6 +320,7 @@ export namespace SessionCompaction {
       origin: "system",
       time: { start: Date.now(), end: Date.now() },
     })
+    abort?.throwIfAborted()
     await Session.updatePart({
       id: Identifier.ascending("part"),
       messageID: msg.id,
@@ -288,6 +330,7 @@ export namespace SessionCompaction {
       mechanical: true,
       validated: false,
     })
+    abort?.throwIfAborted()
     setAttemptState(msg, "committed")
     msg.error = undefined
     msg.finish = "stop"
@@ -447,11 +490,14 @@ export namespace SessionCompaction {
     }
     msg.error = sanitizeVisibleError(msg.error)
     setAttemptState(msg, "failed")
+    msg.summary = undefined
     msg.visible = true
     msg.includeInContext = false
     msg.finish = "error"
     if (!msg.time.completed) msg.time.completed = Date.now()
-    await Session.updateMessage(msg)
+    const failedAttempt = structuredClone(msg)
+    await Session.updateMessage(failedAttempt)
+    return failedAttempt
   }
 
   const REMOTE_COMPACTION_TIMEOUT_MS = 90_000
@@ -503,22 +549,31 @@ export namespace SessionCompaction {
     apiModelID: string
     agentName: string
     maxHistoryImages: number
+    signal: AbortSignal
   }): Promise<CodexResponseItem[] | undefined> {
     const session = await SessionManager.requireSession(input.sessionID)
+    input.signal.throwIfAborted()
     const prior = newestSameModelRemoteArtifact(input.messages, input.providerID, input.profileID, input.apiModelID)
     const base = prior ? input.messages.slice(prior.index + 1) : input.messages
     // Shallow copies isolate the transform hook's mutations (invoke.ts does
     // the same before triggering the hook).
     const sessionMessages = base.map((m) => ({ ...m, parts: [...m.parts] }))
     try {
-      await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
+      await Plugin.trigger(
+        "experimental.chat.messages.transform",
+        {},
+        { messages: sessionMessages },
+        { sessionId: input.sessionID, signal: input.signal },
+      )
     } catch (error) {
+      input.signal.throwIfAborted()
       log.warn("codex remote compaction: message transform hook failed; skipping remote track", {
         sessionID: input.sessionID,
         error,
       })
       return undefined
     }
+    input.signal.throwIfAborted()
     const projected = WorkflowUserWrapper.projectMessages({
       messages: sessionMessages,
       session,
@@ -556,16 +611,6 @@ export namespace SessionCompaction {
     cancel: AbortSignal
     abort: AbortSignal
   }): Promise<Omit<CodexRemoteCompactionMetadata, "summaryText"> | undefined> {
-    const config = await Config.current()
-    if (config.compaction?.codexRemote !== true) return undefined
-    const maxHistoryImages = config.compaction?.maxHistoryImages ?? 8
-    const [provider, resolvedModel] = await Promise.all([
-      Provider.getProvider(input.providerID).catch(() => undefined),
-      Provider.getModel(input.providerID, input.modelID).catch(() => undefined),
-    ])
-    if (provider?.profileID !== CodexProvider.PROVIDER_ID || !resolvedModel?.api.id) return undefined
-    const profileID = provider.profileID
-    const apiModelID = resolvedModel.api.id
     // The remote timeout must abort only the remote request. Reusing the
     // shared session signal would dispatch "abort" onto the local summary
     // processor too (the withTimeout implementation dispatches rather than
@@ -585,21 +630,46 @@ export namespace SessionCompaction {
       )
     }, REMOTE_COMPACTION_TIMEOUT_MS)
     timeout.unref?.()
+    const cancelled = Promise.withResolvers<never>()
+    cancelled.promise.catch(() => {})
+    const onRemoteAbort = () => cancelled.reject(remoteAbort.signal.reason)
+    remoteAbort.signal.addEventListener("abort", onRemoteAbort, { once: true })
+    async function prepare<T>(operation: Promise<T>): Promise<T> {
+      remoteAbort.signal.throwIfAborted()
+      const result = await Promise.race([operation, cancelled.promise])
+      remoteAbort.signal.throwIfAborted()
+      return result
+    }
     try {
-      input.abort.throwIfAborted()
-      const items = await buildRemoteCompactionItems({
-        sessionID: input.sessionID,
-        messages: input.messages,
-        providerID: input.providerID,
-        modelID: input.modelID,
-        profileID,
-        apiModelID,
-        agentName: input.agentName,
-        maxHistoryImages,
-      })
+      remoteAbort.signal.throwIfAborted()
+      const config = await prepare(Config.current())
+      if (config.compaction?.codexRemote !== true) return undefined
+      const maxHistoryImages = config.compaction?.maxHistoryImages ?? 8
+      const [provider, resolvedModel] = await prepare(
+        Promise.all([
+          Provider.getProvider(input.providerID).catch(() => undefined),
+          Provider.getModel(input.providerID, input.modelID).catch(() => undefined),
+        ]),
+      )
+      if (provider?.profileID !== CodexProvider.PROVIDER_ID || !resolvedModel?.api.id) return undefined
+      const profileID = provider.profileID
+      const apiModelID = resolvedModel.api.id
+      const items = await prepare(
+        buildRemoteCompactionItems({
+          sessionID: input.sessionID,
+          messages: input.messages,
+          providerID: input.providerID,
+          modelID: input.modelID,
+          profileID,
+          apiModelID,
+          agentName: input.agentName,
+          maxHistoryImages,
+          signal: remoteAbort.signal,
+        }),
+      )
       if (!items || items.length === 0) return undefined
-      const index = await Storage.read<{ scopeID: string }>(
-        StoragePath.sessionIndex(Identifier.asSessionID(input.sessionID)),
+      const index = await prepare(
+        Storage.read<{ scopeID: string }>(StoragePath.sessionIndex(Identifier.asSessionID(input.sessionID))),
       )
       const result = await RolloutCall.execute(
         {
@@ -619,6 +689,7 @@ export namespace SessionCompaction {
           request: JSON.parse(JSON.stringify({ model: apiModelID, input: items })),
         },
         async () => {
+          remoteAbort.signal.throwIfAborted()
           const value = await CodexProvider.requestRemoteCompactionV2({
             providerID: input.providerID,
             modelID: apiModelID,
@@ -661,6 +732,7 @@ export namespace SessionCompaction {
       clearTimeout(timeout)
       input.abort.removeEventListener("abort", onSessionAbort)
       input.cancel.removeEventListener("abort", onCancelAbort)
+      remoteAbort.signal.removeEventListener("abort", onRemoteAbort)
     }
   }
 
@@ -728,21 +800,20 @@ export namespace SessionCompaction {
     sessionID: string
     abort: AbortSignal
     auto: boolean
+    request?: Request
+    assistantMessageID?: string
   }) {
     const userMessage = input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User
-    const agent = await Agent.get("compaction")
-    const agentModel = await Agent.getAvailableModel(agent)
-    const model = agentModel
-      ? await Provider.getModel(agentModel.providerID, agentModel.modelID)
-      : await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
+    const agent = input.request?.agent ?? (await Agent.get("compaction"))
+    const agentModel = input.request ? undefined : await Agent.getAvailableModel(agent)
+    const model =
+      input.request?.model ??
+      (agentModel
+        ? await Provider.getModel(agentModel.providerID, agentModel.modelID)
+        : await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID))
 
-    const session = await SessionManager.requireSession(input.sessionID)
-    const directory = session.workspace?.path ?? null
-    const modelMessages = MessageV2.toModelMessage(input.messages)
-
-    const producingProvider = await Provider.getProvider(model.providerID)
-    const msg = (await Session.updateMessage({
-      id: Identifier.ascending("message"),
+    let msg: MessageV2.Assistant = {
+      id: input.assistantMessageID ?? Identifier.ascending("message"),
       role: "assistant",
       parentID: input.parentID,
       rootID: input.parentID,
@@ -755,8 +826,8 @@ export namespace SessionCompaction {
         compactionAttempt: { state: "running" },
       },
       path: {
-        cwd: directory,
-        root: directory,
+        cwd: null,
+        root: null,
       },
       cost: 0,
       tokens: {
@@ -767,45 +838,114 @@ export namespace SessionCompaction {
       },
       modelID: model.id,
       providerID: model.providerID,
-      ...(producingProvider?.profileID ? { profileID: producingProvider.profileID } : {}),
-      ...(model.api.id ? { apiModelID: model.api.id } : {}),
       time: {
         created: Date.now(),
       },
-    })) as MessageV2.Assistant
-    // Codex remote-compaction v2 track: started in parallel with the local
-    // summarization. Both calls settle before the compaction job completes. The conversation model (the root user
-    // message's model) drives the request — the artifact is only replayable
-    // on later turns of that same model.
+    }
     const remoteCancellation = new AbortController()
-    const remoteCompactionPromise = runRemoteCompaction({
-      sessionID: input.sessionID,
-      rootID: userMessage.rootID ?? input.parentID,
-      messages: input.messages,
-      providerID: userMessage.model.providerID,
-      modelID: userMessage.model.modelID,
-      agentName: userMessage.agent,
-      cancel: remoteCancellation.signal,
-      abort: input.abort,
-    }).then(
-      (value) => ({ value, error: undefined }),
-      (error: unknown) => ({ value: undefined, error }),
-    )
+    let remoteCompactionPromise:
+      | Promise<{
+          value: Omit<CodexRemoteCompactionMetadata, "summaryText"> | undefined
+          error?: unknown
+        }>
+      | undefined
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let removeAbortListener: (() => void) | undefined
+    let summaryCommitted = false
+    let attemptFailed = false
+    let processing: Promise<unknown> | undefined
+    let processorSettled = false
     try {
+      let abort = input.abort
+      const cancellation = Promise.withResolvers<never>()
+      cancellation.promise.catch(() => {})
+      const onAbort = () => cancellation.reject(abort.reason)
+      if (input.request) {
+        const { invokeMs } = await TimeoutConfig.resolve()
+        const deadline = new AbortController()
+        abort = AbortSignal.any([input.abort, deadline.signal])
+        if (invokeMs !== 0) {
+          timer = setTimeout(() => {
+            deadline.abort(new DOMException(`Compaction timed out after ${invokeMs}ms`, "AbortError"))
+          }, invokeMs)
+          timer.unref?.()
+        }
+        abort.addEventListener("abort", onAbort, { once: true })
+        removeAbortListener = () => abort.removeEventListener("abort", onAbort)
+      }
+      function awaitLocal<T>(operation: Promise<T>): Promise<T> {
+        return input.request ? Promise.race([operation, cancellation.promise]) : operation
+      }
+      async function finalizeLocal<T>(commit: () => Promise<T>): Promise<T> {
+        if (!input.request) return commit()
+        return Storage.transaction(async () => {
+          abort.throwIfAborted()
+          const committed = await commit()
+          abort.throwIfAborted()
+          return committed
+        })
+      }
+      abort.throwIfAborted()
+      const session = await awaitLocal(SessionManager.requireSession(input.sessionID))
+      const directory = session.workspace?.path ?? null
+      msg.path = { cwd: directory, root: directory }
+      msg = (await Session.updateMessage(msg)) as MessageV2.Assistant
+      abort.throwIfAborted()
+      const modelMessages = input.request?.messages ?? MessageV2.toModelMessage(input.messages)
+      const producingProvider = await awaitLocal(Provider.getProvider(model.providerID))
+      if (producingProvider?.profileID) msg.profileID = producingProvider.profileID
+      if (model.api.id) msg.apiModelID = model.api.id
+      // Remote work remains optional, but the native operation deadline also
+      // bounds its wait and continuation. A committed summary stays authoritative.
+      remoteCompactionPromise = runRemoteCompaction({
+        sessionID: input.sessionID,
+        rootID: userMessage.rootID ?? input.parentID,
+        messages: input.messages,
+        providerID: userMessage.model.providerID,
+        modelID: userMessage.model.modelID,
+        agentName: userMessage.agent,
+        cancel: remoteCancellation.signal,
+        abort: input.abort,
+      }).then(
+        (value) => ({ value, error: undefined }),
+        (error: unknown) => ({ value: undefined, error }),
+      )
+      const request = input.request
+        ? input.request.prepared
+          ? { ...input.request, prepared: input.request.prepared }
+          : captureRequest(
+              await awaitLocal(
+                AgentTurn.prepare({
+                  ...input.request,
+                  sessionID: input.sessionID,
+                  abort,
+                  toolChoice: "none",
+                }),
+              ),
+            )
+        : undefined
+      abort.throwIfAborted()
       const processor = SessionProcessor.create({
         assistantMessage: msg,
         sessionID: input.sessionID,
         model,
-        abort: input.abort,
+        abort,
       })
-      const compacting = await Plugin.trigger(
-        "experimental.session.compacting",
-        { sessionID: input.sessionID },
-        { context: [], prompt: undefined },
+      const compacting = await awaitLocal(
+        Plugin.trigger(
+          "experimental.session.compacting",
+          { sessionID: input.sessionID },
+          { context: [], prompt: undefined },
+          input.request ? { sessionId: input.sessionID, signal: abort } : undefined,
+        ),
       )
+      abort.throwIfAborted()
       const defaultPrompt = [
         "Write the compaction continuation summary now.",
-        "Strictly follow the compaction system prompt and its required Markdown section headers.",
+        COMPACTION_PROMPT.replace(
+          "No tools are available in compaction mode.",
+          "Tool schemas are retained for prefix continuity only; execution is prohibited.",
+        ),
         "Only summarize the prior conversation for a future session; do not continue the user's task or answer pending requests.",
         "Do not call tools. Do not emit tool-call-shaped text, DSML/XML tool blocks, JSON-RPC requests, shell transcripts, patches, file writes, or structured tool arguments.",
         "Preserve exact observed facts, including user requests, decisions, constraints, file paths, commands already run, results already observed, completed work, current state, and pending work.",
@@ -819,60 +959,114 @@ export namespace SessionCompaction {
       // estimation margin. Compaction does not need the model's full long-output
       // allowance, and requesting it can make the recovery call reject itself.
       const contextLimit = model.limit?.context ?? 0
-      const promptCost = (await Token.estimateModel(model.id, promptText)) + 200
+      const fixedEnvelope = request
+        ? await awaitLocal(
+            PromptBudgeter.measure(
+              {
+                system: request.prepared.system,
+                lateSystem: request.lateSystem,
+                messages: [{ role: "user", content: promptText }],
+                toolDefinitions: request.toolDefinitions.filter(
+                  (definition) => !request.activeToolIDs || request.activeToolIDs.includes(definition.id),
+                ),
+              },
+              model.id,
+            ),
+          )
+        : undefined
+      const promptCost = (fixedEnvelope?.total ?? (await awaitLocal(Token.estimateModel(model.id, promptText)))) + 200
       const configuredOutput = model.limit?.output && model.limit.output > 0 ? model.limit.output : OUTPUT_BUDGET
       const outputBudget = Math.min(configuredOutput, OUTPUT_BUDGET)
       const margin = PromptBudgeter.outputMargin(contextLimit)
       const messageBudget = contextLimit > 0 ? contextLimit - promptCost - outputBudget - margin : Infinity
       const safeMessages = isFinite(messageBudget)
-        ? await trimMessagesForContext(modelMessages, messageBudget, model.id)
-        : modelMessages
+        ? await awaitLocal(trimMessagesForContext(request?.messages ?? modelMessages, messageBudget, model.id))
+        : (request?.messages ?? modelMessages)
+      const historyCost =
+        request && isFinite(messageBudget)
+          ? await awaitLocal(
+              PromptBudgeter.measure({ system: [], messages: safeMessages, toolDefinitions: [] }, model.id),
+            )
+          : undefined
+      let contextBudgetExceeded = false
 
       try {
-        await processor.process({
+        abort.throwIfAborted()
+        if (request && (messageBudget <= 0 || (historyCost && historyCost.total > messageBudget)))
+          throw new PromptBudgeter.ContextBudgetExceededError()
+        processing = processor.process({
           usageRole: "compaction",
-          user: { ...userMessage, variant: undefined, thinking: undefined },
+          user: request?.user ?? { ...userMessage, variant: undefined, thinking: undefined },
+          modelSelection: request?.modelSelection,
           agent,
-          abort: input.abort,
+          abort,
           sessionID: input.sessionID,
-          toolDefinitions: [],
+          toolDefinitions: request?.toolDefinitions ?? [],
+          activeToolIDs: request?.activeToolIDs,
+          toolChoice: "none",
           executionTools: {},
           executorKinds: {},
-          system: [],
-          messages: [
-            ...safeMessages,
-            {
-              role: "user" as const,
-              content: [
+          system: request?.system ?? [],
+          systemCacheBreakpoint: request?.systemCacheBreakpoint,
+          lateSystem: request?.lateSystem,
+          prepared: request?.prepared,
+          codexReplay: request?.codexReplay,
+          promptSuffix: request ? promptText : undefined,
+          messages: request
+            ? safeMessages
+            : [
+                ...safeMessages,
                 {
-                  type: "text" as const,
-                  text: promptText,
+                  role: "user" as const,
+                  content: [
+                    {
+                      type: "text" as const,
+                      text: promptText,
+                    },
+                  ],
                 },
               ],
-            },
-          ],
           maxOutputTokens: outputBudget,
           model,
         })
+        void processing.then(
+          () => {
+            processorSettled = true
+          },
+          () => {
+            processorSettled = true
+          },
+        )
+        await awaitLocal(processing)
       } catch (error) {
-        await settleFailedAttempt(msg, error)
-        remoteCancellation.abort()
-        throw error
+        if (error instanceof PromptBudgeter.ContextBudgetExceededError) {
+          contextBudgetExceeded = true
+          msg.error = MessageV2.fromError(error, { providerID: model.providerID, modelID: model.id })
+        } else {
+          throw error
+        }
       }
 
-      // If the LLM call failed due to context limits (e.g. bad token estimation
-      // or model-reported limits don't match reality), fall back to a
+      if (abort.aborted) {
+        await settleFailedAttempt(msg, abort.reason)
+        attemptFailed = true
+        remoteCancellation.abort()
+        return "stop"
+      }
+      abort.throwIfAborted()
       let usedMechanicalFallback = false
       let committedSummaryText: string | undefined
       if (processor.message.error) {
-        if (isContextExceeded(processor.message.error)) {
+        if (contextBudgetExceeded || isContextExceeded(processor.message.error)) {
           log.warn("compaction LLM context exceeded, using mechanical fallback", {
             sessionID: input.sessionID,
           })
-          committedSummaryText = await writeMechanicalSummary(msg, input)
+          committedSummaryText = await finalizeLocal(() => writeMechanicalSummary(msg, input, abort))
+          summaryCommitted = true
           usedMechanicalFallback = true
         } else {
           await settleFailedAttempt(msg)
+          attemptFailed = true
           remoteCancellation.abort()
           return "stop"
         }
@@ -880,6 +1074,7 @@ export namespace SessionCompaction {
 
       if (!usedMechanicalFallback) {
         const msgParts = await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id })
+        abort.throwIfAborted()
         const textParts = msgParts.filter((p): p is MessageV2.TextPart => p.type === "text")
         const allText = textParts.map((p) => p.text).join("\n")
         if (!allText.trim()) {
@@ -890,24 +1085,35 @@ export namespace SessionCompaction {
         }
         committedSummaryText = allText
 
-        await Session.updatePart({
-          id: Identifier.ascending("part"),
-          messageID: msg.id,
-          sessionID: input.sessionID,
-          type: "compaction_recovery",
-          summary: allText,
-          mechanical: false,
-          validated: true,
+        if (abort.aborted || msgParts.some((part) => part.type === "tool")) {
+          await settleFailedAttempt(msg, abort.reason ?? new Error("Compaction emitted a prohibited tool call"))
+          attemptFailed = true
+          remoteCancellation.abort()
+          return "stop"
+        }
+        await finalizeLocal(async () => {
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: msg.id,
+            sessionID: input.sessionID,
+            type: "compaction_recovery",
+            summary: allText,
+            mechanical: false,
+            validated: true,
+          })
+          abort.throwIfAborted()
+          if (!msg.finish) msg.finish = "stop"
+          if (!msg.time.completed) msg.time.completed = Date.now()
+          setAttemptState(msg, "committed")
+          msg.summary = true
+          msg.visible = true
+          msg.includeInContext = true
+          await Session.updateMessage(msg)
         })
-        if (!msg.finish) msg.finish = "stop"
-        if (!msg.time.completed) msg.time.completed = Date.now()
-        setAttemptState(msg, "committed")
-        msg.summary = true
-        msg.visible = true
-        msg.includeInContext = true
-        await Session.updateMessage(msg)
       }
-      const remote = await remoteCompactionPromise
+      summaryCommitted = true
+      const remote = await awaitLocal(remoteCompactionPromise)
+      abort.throwIfAborted()
       if (remote.error) throw remote.error
       if (committedSummaryText && remote.value && !input.abort.aborted) {
         await Session.mergeMessageMetadata({
@@ -927,44 +1133,25 @@ export namespace SessionCompaction {
       }
 
       if (input.auto) {
+        abort.throwIfAborted()
         const anchor = resolveAnchor(input.messages, input.parentID)
-        const continueMsg = await Session.updateMessage({
-          id: Identifier.ascending("message"),
-          role: "user",
-          sessionID: input.sessionID,
-          time: {
-            created: Date.now(),
-          },
-          agent: userMessage.agent,
-          model: userMessage.model,
-          origin: { type: "compaction", detail: "auto_continue" },
-          isRoot: false,
-          rootID: input.parentID,
-          visible: false,
-          summary: { title: "Compaction complete", diffs: [] },
-        })
-        const now = Date.now()
-        await Session.updatePart({
-          id: Identifier.ascending("part"),
-          messageID: continueMsg.id,
-          sessionID: input.sessionID,
-          type: "text",
-          synthetic: true,
-          origin: "system",
-          text: "Continue if you have next steps",
-          time: { start: now, end: now },
-        })
-        await Session.updatePart({
-          id: Identifier.ascending("part"),
-          messageID: continueMsg.id,
-          sessionID: input.sessionID,
-          type: "text",
-          synthetic: true,
-          origin: "system",
-          text: buildRecoveryHint({ sessionID: input.sessionID, summaryMessageID: msg.id }),
-          time: { start: now, end: now },
-        })
-        if (anchor) {
+        await finalizeLocal(async () => {
+          const continueMsg = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "user",
+            sessionID: input.sessionID,
+            time: {
+              created: Date.now(),
+            },
+            agent: userMessage.agent,
+            model: userMessage.model,
+            origin: { type: "compaction", detail: "auto_continue" },
+            isRoot: false,
+            rootID: input.parentID,
+            visible: false,
+            summary: { title: "Compaction complete", diffs: [] },
+          })
+          const now = Date.now()
           await Session.updatePart({
             id: Identifier.ascending("part"),
             messageID: continueMsg.id,
@@ -972,17 +1159,71 @@ export namespace SessionCompaction {
             type: "text",
             synthetic: true,
             origin: "system",
-            text: formatAnchor(anchor.text),
+            text: "Continue if you have next steps",
             time: { start: now, end: now },
           })
-        }
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: continueMsg.id,
+            sessionID: input.sessionID,
+            type: "text",
+            synthetic: true,
+            origin: "system",
+            text: buildRecoveryHint({ sessionID: input.sessionID, summaryMessageID: msg.id }),
+            time: { start: now, end: now },
+          })
+          if (anchor) {
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              messageID: continueMsg.id,
+              sessionID: input.sessionID,
+              type: "text",
+              synthetic: true,
+              origin: "system",
+              text: formatAnchor(anchor.text),
+              time: { start: now, end: now },
+            })
+          }
+        })
       }
       Bus.publish(Event.Compacted, { sessionID: input.sessionID })
       return input.auto ? "continue" : "stop"
+    } catch (error) {
+      const shouldRestoreFailure = processing && !processorSettled
+      let failedAttempt: MessageV2.Assistant | undefined
+      if (!summaryCommitted && !attemptFailed) {
+        failedAttempt = await settleFailedAttempt(msg, error)
+        attemptFailed = true
+      }
+      if (attemptFailed && shouldRestoreFailure && processing) {
+        const terminalFailure = failedAttempt ?? structuredClone(msg)
+        // Only preparation and model work are raced. A late processor may still
+        // write accounting, so restore terminal fields without discarding usage.
+        const restoreFailure = () => {
+          msg.error = terminalFailure.error
+          msg.summary = undefined
+          msg.visible = true
+          msg.includeInContext = false
+          msg.finish = "error"
+          msg.time.completed = terminalFailure.time.completed
+          setAttemptState(msg, "failed")
+          return Session.updateMessage(msg)
+        }
+        void processing.then(restoreFailure, restoreFailure).catch((restoreError) => {
+          log.error("failed to restore timed-out compaction attempt", {
+            sessionID: input.sessionID,
+            error: restoreError,
+          })
+        })
+      }
+      if (input.request && input.abort.aborted && !RolloutRecordingError.isInstance(error)) return "stop"
+      throw error
     } finally {
+      clearTimeout(timer)
+      removeAbortListener?.()
       remoteCancellation.abort()
       const remote = await remoteCompactionPromise
-      if (RolloutRecordingError.isInstance(remote.error)) throw remote.error
+      if (RolloutRecordingError.isInstance(remote?.error)) throw remote.error
     }
   }
 
