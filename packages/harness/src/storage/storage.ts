@@ -21,6 +21,7 @@ import {
   type StoreTransaction,
   type TransactionOptions,
   type RecordQuery,
+  type ChildKeyQuery,
   type StoredEvent,
 } from "./transactional-store"
 import { measureStorageOperation } from "./measure"
@@ -254,6 +255,10 @@ export namespace Storage {
 
   export function queryKeys(input: RecordQuery) {
     return snapshot((tx) => tx.queryKeys(input), { singleStatement: true })
+  }
+
+  export function childKeys(input: ChildKeyQuery) {
+    return snapshot((tx) => tx.childKeys(input), { singleStatement: true })
   }
 
   export function count(input: Omit<RecordQuery, "limit" | "after" | "descending">) {

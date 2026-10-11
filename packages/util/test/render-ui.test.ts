@@ -45,3 +45,30 @@ test("arithmetic failures are explicit and fallback includes computed initial co
     RenderUI.fallback(RenderUI.Spec.parse({ nodes: [{ id: "x", type: "text", text: "<script>alert(1)</script>" }] })),
   ).not.toContain("<script>")
 })
+
+test("catalog rejects nonnumeric computation and chart bindings before storing an unusable source", () => {
+  for (const binding of ["N/A", true, { ref: "label" }]) {
+    expect(
+      RenderUI.Spec.safeParse({
+        state: { label: "N/A" },
+        nodes: [{ id: "bar", type: "bar", label: "Comparison", items: [{ label: "Current", value: binding }] }],
+      }).success,
+    ).toBe(false)
+    expect(
+      RenderUI.Spec.safeParse({
+        state: { label: "N/A" },
+        computed: [{ id: "total", op: "add", inputs: [binding, 1] }],
+        nodes: [{ id: "total", type: "metric", label: "Total", value: { ref: "total" } }],
+      }).success,
+    ).toBe(false)
+  }
+  const numeric = RenderUI.Spec.parse({
+    state: { base: 2 },
+    computed: [
+      { id: "subtotal", op: "add", inputs: [{ ref: "base" }, 3] },
+      { id: "total", op: "multiply", inputs: [{ ref: "subtotal" }, 4] },
+    ],
+    nodes: [{ id: "bar", type: "bar", label: "Comparison", items: [{ label: "Current", value: { ref: "total" } }] }],
+  })
+  expect(RenderUI.evaluate(numeric, numeric.state).total).toBe(20)
+})

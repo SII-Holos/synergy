@@ -23,10 +23,10 @@ export namespace SnapshotStore {
     restore(
       scopeID: string,
       sessionID: string,
-      root: string,
+      roots: string[],
       repository: string,
       signal?: AbortSignal,
-    ): Promise<boolean>
+    ): Promise<Set<string>>
   }
   const state = RuntimeContext.state(() => ({ backend: undefined as Persistence | undefined }))
   export function registerStorage(backend: Persistence) {
@@ -374,7 +374,7 @@ export namespace SnapshotStore {
     const repo = record?.backend === "legacy" ? legacyRepository(scopeID, sessionID) : repository(scopeID)
     if (state().backend) {
       if (record?.backend === "legacy") throw new StorageError("Legacy snapshots have not been migrated")
-      return state().backend!.restore(scopeID, sessionID, hash, repo)
+      return (await state().backend!.restore(scopeID, sessionID, [hash], repo)).has(hash)
     }
     if (!(await SnapshotPath.exists(path.join(repo, "HEAD")))) return false
     const args =
@@ -386,7 +386,8 @@ export namespace SnapshotStore {
   // Batched ownership check: one git subprocess answers the whole hash set
   // instead of one process per hash, so callers looping over fork or export
   // candidates stop paying spawn latency per snapshot step.
-  export async function ownsMany(scopeID: string, sessionID: string, hashes: string[]) {
+  export async function ownsMany(scopeID: string, sessionID: string, hashes: string[], signal?: AbortSignal) {
+    signal?.throwIfAborted()
     const owned = new Set<string>()
     const valid = hashes.filter((hash) => OID.test(hash))
     if (!valid.length) return owned
@@ -397,8 +398,16 @@ export namespace SnapshotStore {
     const repo = legacy ? legacyRepository(scopeID, sessionID) : repository(scopeID)
     if (state().backend) {
       if (legacy) throw new StorageError("Legacy snapshots have not been migrated")
-      for (const hash of new Set(valid))
-        if (await state().backend!.restore(scopeID, sessionID, hash, repo)) owned.add(hash)
+      const roots = [...new Set(valid)]
+      for (let offset = 0; offset < roots.length; offset += 32)
+        for (const hash of await state().backend!.restore(
+          scopeID,
+          sessionID,
+          roots.slice(offset, offset + 32),
+          repo,
+          signal,
+        ))
+          owned.add(hash)
       return owned
     }
     if (!(await SnapshotPath.exists(path.join(repo, "HEAD")))) return owned
@@ -407,7 +416,7 @@ export namespace SnapshotStore {
       // A missing object reports as a "missing" batch line rather than an
       // error exit, and the type column carries the same answer as cat-file -t.
       const input = valid.map((hash) => `${hash}\n`).join("")
-      const text = await command(repo, ["cat-file", "--batch-check=%(objectname) %(objecttype)"], undefined, input)
+      const text = await command(repo, ["cat-file", "--batch-check=%(objectname) %(objecttype)"], signal, input)
       const types = new Map<string, string>()
       for (const line of text.split("\n")) {
         const [objectname, objecttype] = line.trim().split(" ")
@@ -418,7 +427,7 @@ export namespace SnapshotStore {
     }
     const prefix = `refs/synergy/snapshots/${component(sessionID)}/`
     const requested = new Set(valid)
-    const text = await command(repo, ["for-each-ref", "--format=%(refname) %(objectname)", prefix])
+    const text = await command(repo, ["for-each-ref", "--format=%(refname) %(objectname)", prefix], signal)
     for (const line of text.split("\n")) {
       const [ref, hash] = line.trim().split(" ")
       if (requested.has(hash) && ref === reference(sessionID, hash)) owned.add(hash)
@@ -429,6 +438,12 @@ export namespace SnapshotStore {
   export function ownsCurrent(hash: string) {
     const operation = current()
     return owns(operation.scopeID, operation.sessionID, hash)
+  }
+
+  export async function ownsCurrentRoots(hashes: string[], signal?: AbortSignal) {
+    const operation = current()
+    const owned = await ownsMany(operation.scopeID, operation.sessionID, hashes, signal)
+    return hashes.every((hash) => owned.has(hash))
   }
 
   // Provenance: https://docs.jj-vcs.dev/latest/technical/architecture/#gitbackend

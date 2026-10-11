@@ -203,7 +203,7 @@ for (const backend of ["legacy", "shared"] as const) {
     await fs.rm(f.target.artifactDirectory, { recursive: true, force: true })
     await f.run(f.target, async () => {
       const repo = SnapshotStore.repository(scope)
-      expect(await storedSnapshots().restore(scope, session, tree, repo)).toBe(true)
+      expect(await storedSnapshots().restore(scope, session, [tree], repo)).toEqual(new Set([tree]))
       expect(await SnapshotStore.command(repo, ["show", `${tree}:file.txt`])).toBe("retained snapshot text")
       expect(await SnapshotStore.owner(scope, session)).toEqual({ version: 2, backend: "shared" })
     })

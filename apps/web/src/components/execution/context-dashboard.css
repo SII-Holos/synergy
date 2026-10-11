@@ -1042,7 +1042,33 @@
   font-weight: 550;
 }
 .context-usage-stats .context-ring strong {
-  font-size: 24px;
+  font-size: 18px;
+}
+.context-ring[data-fit="true"] > div > strong {
+  position: absolute;
+  top: 43%;
+  transform: translateY(-50%);
+}
+.context-ring[data-fit="true"] > div > span {
+  position: absolute;
+  top: 55%;
+}
+.context-ring[data-fit="true"] strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.context-ring .context-ring-measure {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: clip;
+  visibility: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.context-ring .context-ring-measure strong {
+  display: inline-block;
+  font-size: 18px;
 }
 .context-source-caption {
   display: flex;
@@ -1070,9 +1096,6 @@
   .context-usage-body {
     grid-template-columns: 80px minmax(0, 1fr);
     gap: 10px;
-  }
-  .context-usage-stats .context-ring strong {
-    font-size: 21px;
   }
   .context-section-heading > [data-component="menu-field"] {
     max-width: 100%;

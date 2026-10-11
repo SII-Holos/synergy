@@ -8,6 +8,7 @@ import { SnapshotStore } from "./snapshot-store"
 import { SnapshotTransfer } from "./snapshot-transfer"
 import { SnapshotGit } from "./snapshot-git"
 import { SnapshotLease } from "./snapshot-lease"
+import { SnapshotPath } from "./snapshot-path"
 
 const chunkBytes = 4 * 1024 * 1024
 const Chunk = z.object({
@@ -52,11 +53,11 @@ export function storedSnapshots(options: { maxBytes?: number } = {}): SnapshotSt
       await fs.rm(directory, { recursive: true, force: true })
     }
   }
-  async function cachedTree(repository: string, root: string, signal?: AbortSignal) {
+  async function cachedTrees(repository: string, roots: string[], signal?: AbortSignal) {
     try {
       for await (const object of SnapshotGit.lines(
         repository,
-        ["rev-list", "--objects", "--missing=print", "--no-object-names", root, "--"],
+        ["rev-list", "--objects", "--missing=print", "--no-object-names", ...roots, "--"],
         { signal },
       ))
         if (object.startsWith("?")) return false
@@ -118,52 +119,66 @@ export function storedSnapshots(options: { maxBytes?: number } = {}): SnapshotSt
         }
       })
     },
-    async restore(scopeID, sessionID, root, repository, signal) {
+    async restore(scopeID, sessionID, roots, repository, signal) {
       signal?.throwIfAborted()
-      const manifest = await read(scopeID, sessionID, root)
-      if (!manifest) return false
+      const manifests = new Map<string, z.infer<typeof Manifest>>()
+      for (const root of new Set(roots)) {
+        const manifest = await read(scopeID, sessionID, root)
+        if (manifest) manifests.set(root, manifest)
+      }
+      if (!manifests.size) return new Set()
       return withFileLock(
         { directory: SnapshotLease.directory(), key: `snapshot-init:${repository}`, signal },
         async () => {
-          await SnapshotStore.initializeBareRepository(repository)
-          const reference = SnapshotStore.reference(sessionID, root)
-          const cached = await SnapshotGit.run(
-            ["git", "--git-dir", repository, "rev-parse", "--verify", reference],
-            path.dirname(repository),
-            undefined,
-            signal,
+          if (!(await SnapshotPath.exists(path.join(repository, "HEAD"))))
+            await SnapshotStore.initializeBareRepository(repository)
+          const references = new Map(
+            [...manifests.keys()].map((root) => [SnapshotStore.reference(sessionID, root), root]),
           )
-          if (cached.exitCode === 0 && cached.text.trim() === root && (await cachedTree(repository, root, signal)))
-            return true
-          await temporary(scopeID, async (directory) => {
-            for (const [packIndex, pack] of manifest.packs.entries()) {
-              const file = path.join(directory, `${packIndex}.pack`)
-              const output = await fs.open(file, "wx", 0o600)
-              try {
-                for (const [chunkIndex, chunk] of pack.chunks.entries()) {
-                  signal?.throwIfAborted()
-                  const bytes = await Storage.readBinary(
-                    [...key(scopeID, sessionID, root), "packs", String(packIndex), String(chunkIndex)],
-                    { maxBytes: chunk.bytes },
-                  )
-                  if (
-                    bytes.byteLength !== chunk.bytes ||
-                    createHash("sha256").update(bytes).digest("hex") !== chunk.sha256
-                  )
-                    throw new Error("Snapshot chunk verification failed")
-                  await output.writeFile(bytes)
-                }
-                await output.sync()
-              } finally {
-                await output.close()
-              }
-              await SnapshotGit.checked(repository, ["index-pack", "--stdin", "--strict"], { signal, input: file })
-            }
-            if ((await SnapshotGit.checked(repository, ["cat-file", "-t", root], { signal })) !== "tree")
-              throw new Error("Durable snapshot root is not a tree")
-            await SnapshotGit.checked(repository, ["update-ref", reference, root], { signal })
+          const refs = await SnapshotGit.checked(
+            repository,
+            ["for-each-ref", "--format=%(refname) %(objectname)", ...references.keys()],
+            { signal },
+          )
+          const cached = refs.split("\n").flatMap((line) => {
+            const [ref, root] = line.split(" ")
+            return root && references.get(ref) === root ? [root] : []
           })
-          return true
+          const complete = cached.length > 0 && (await cachedTrees(repository, cached, signal))
+          for (const [root, manifest] of manifests) {
+            if (cached.includes(root) && (complete || (await cachedTrees(repository, [root], signal)))) continue
+            await temporary(scopeID, async (directory) => {
+              for (const [packIndex, pack] of manifest.packs.entries()) {
+                const file = path.join(directory, `${packIndex}.pack`)
+                const output = await fs.open(file, "wx", 0o600)
+                try {
+                  for (const [chunkIndex, chunk] of pack.chunks.entries()) {
+                    signal?.throwIfAborted()
+                    const bytes = await Storage.readBinary(
+                      [...key(scopeID, sessionID, root), "packs", String(packIndex), String(chunkIndex)],
+                      { maxBytes: chunk.bytes },
+                    )
+                    if (
+                      bytes.byteLength !== chunk.bytes ||
+                      createHash("sha256").update(bytes).digest("hex") !== chunk.sha256
+                    )
+                      throw new Error("Snapshot chunk verification failed")
+                    await output.writeFile(bytes)
+                  }
+                  await output.sync()
+                } finally {
+                  await output.close()
+                }
+                await SnapshotGit.checked(repository, ["index-pack", "--stdin", "--strict"], { signal, input: file })
+              }
+              if ((await SnapshotGit.checked(repository, ["cat-file", "-t", root], { signal })) !== "tree")
+                throw new Error("Durable snapshot root is not a tree")
+              await SnapshotGit.checked(repository, ["update-ref", SnapshotStore.reference(sessionID, root), root], {
+                signal,
+              })
+            })
+          }
+          return new Set(manifests.keys())
         },
       )
     },

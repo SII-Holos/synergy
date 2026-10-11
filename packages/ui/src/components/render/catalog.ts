@@ -121,8 +121,10 @@ export function installRenderCatalog(root: HTMLElement, evaluate: typeof RenderU
           button.type = "button"
           button.addEventListener("click", () => {
             const current = spec.nodes.find((item) => item.id === node.id)
-            if (current?.type === "button" && !options.disabled)
-              options.followUp?.(`${current.text}\n\nParameters: ${JSON.stringify(state)}`)
+            if (current?.type === "button" && !options.disabled) {
+              const summary = `${current.text}\n\nParameters: ${JSON.stringify(state)}`
+              options.followUp?.(summary.length <= 8000 ? summary : current.text)
+            }
           })
           element.append(button)
         }

@@ -3691,6 +3691,10 @@ export type ScopeUiPreferences = {
    */
   compactReasoning?: boolean
   /**
+   * Prefer a tool call's purpose description over its action and target when available (default: false)
+   */
+  preferWorkBrief?: boolean
+  /**
    * Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting.
    */
   welcomeGames?: boolean
@@ -7107,6 +7111,10 @@ export type Config = {
    * Show a compact reasoning preview in the execution process (default: false)
    */
   compactReasoning?: boolean
+  /**
+   * Prefer a tool call's purpose description over its action and target when available (default: false)
+   */
+  preferWorkBrief?: boolean
   quick_switcher?: QuickSwitcherConfig
   /**
    * Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting.
@@ -8209,6 +8217,7 @@ export type ExecutionSummary = {
   } | null
   contextDistribution: {
     version: 2
+    callID?: string
     modelID: string
     providerID: string
     totalInput: number
@@ -8295,6 +8304,32 @@ export type ExecutionSummary = {
   taskInstructions: number
 }
 
+export type ContextUsageEstimate = {
+  modelID: string
+  providerID: string
+  contextLimit?: number
+  usableInputLimit?: number
+  categories: {
+    [key: string]: {
+      estimatedTokens: number
+      items: number
+      precision?: "source" | "role"
+    }
+  }
+  estimator:
+    | {
+        kind: "model-tokenizer"
+        encoding?: string
+      }
+    | {
+        kind: "bounded-utf8"
+        sampledCharacters: number
+        truncated: boolean
+      }
+  version: 1
+  capturedAt: number
+}
+
 export type ExecutionContextSnapshot = {
   sessionID: string
   callID: string
@@ -8314,6 +8349,7 @@ export type ExecutionContextSnapshot = {
   retries: number
   usage: {
     version: 2
+    callID?: string
     modelID: string
     providerID: string
     totalInput: number
@@ -8356,6 +8392,7 @@ export type ExecutionContextSnapshot = {
     }
     capturedAt: number
   } | null
+  estimate?: ContextUsageEstimate
   compactedBefore: boolean
   requestAvailable: boolean
 }
@@ -9314,6 +9351,7 @@ export type RolloutCallRecord = {
   request: RolloutArtifactRef
   response?: RolloutArtifactRef
   sdkUsage: unknown | null
+  contextEstimate?: ContextUsageEstimate
   sdkEstimate?: {
     version: 1
     currency: "USD" | null
@@ -10406,6 +10444,7 @@ export type AssistantMessage = {
   }
   contextUsage?: {
     version: 2
+    callID?: string
     modelID: string
     providerID: string
     totalInput: number

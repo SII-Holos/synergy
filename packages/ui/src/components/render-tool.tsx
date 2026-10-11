@@ -3,7 +3,7 @@ import { createEffect, createMemo, createResource, createSignal, onCleanup, Show
 import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
 import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
 import { useDialog } from "../context/dialog"
-import { RenderStateConflict, useRenderHost } from "../context/render"
+import { readRenderState, RenderStateConflict, useRenderHost } from "../context/render"
 import { BasicTool } from "./basic-tool"
 import { Button } from "./button"
 import { Dialog } from "./dialog"
@@ -119,7 +119,7 @@ export function RenderTool(
   })
   const state = createMemo(() =>
     [
-      RenderArtifact.state(props.metadata),
+      readRenderState(props.metadata),
       acknowledgedKey() === key() ? acknowledged() : RenderArtifact.emptyState(),
       loaded()?.state ?? RenderArtifact.emptyState(),
     ].reduce((newest, next) => (next.revision > newest.revision ? next : newest)),
@@ -142,7 +142,7 @@ export function RenderTool(
     const captured = untrack(key),
       destination = target(),
       epoch = writeEpoch
-    writes = writes
+    const write = writes
       .catch(() => state())
       .then(async () => {
         if (disposed || key() !== captured || epoch !== writeEpoch || !host) throw new Error(_(renderLabels.closed))
@@ -153,12 +153,16 @@ export function RenderTool(
         } catch (error) {
           if (!disposed && key() === captured) {
             writeEpoch++
-            if (error instanceof RenderStateConflict) setAcknowledged(error.state)
+            if (error instanceof RenderStateConflict) {
+              setAcknowledged(error.state)
+              writes = Promise.resolve(error.state)
+            }
           }
           throw error
         }
       })
-    return writes
+    writes = write
+    return write
   }
   const followUp = (input: RenderArtifact.FollowUp) => {
     if (!host || !loaded()) return Promise.reject(new Error(_(renderLabels.unavailable)))

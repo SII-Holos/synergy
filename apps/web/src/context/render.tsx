@@ -3,7 +3,12 @@ import { createEffect, createRoot, createSignal, onCleanup, Show, untrack, type 
 import { useParams } from "@solidjs/router"
 import { useLingui } from "@lingui/solid"
 import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
-import { RenderProvider, RenderStateConflict, type RenderHost } from "@ericsanchezok/synergy-ui/context/render"
+import {
+  readRenderState,
+  RenderProvider,
+  RenderStateConflict,
+  type RenderHost,
+} from "@ericsanchezok/synergy-ui/context/render"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -59,7 +64,7 @@ export function SessionRenderProvider(props: ParentProps) {
             return
           }
           if (part?.type === "tool" && part.state.status === "completed") {
-            const state = RenderArtifact.state(part.state.metadata)
+            const state = readRenderState(part.state.metadata)
             untrack(() => update(state))
           }
         })

@@ -19,7 +19,7 @@ export function renderNativeDocument(
 ) {
   const safe = (value: unknown) => JSON.stringify(value).replaceAll("<", "\\u003c")
   const parameters = readParameters(spec, content)
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>${catalogStyle}\n${themeCss.replaceAll("--render-", "--")}</style></head><body><div data-component="render-native" id="visual"></div><script>const spec=${safe(spec)};let state=${safe(parameters)};const catalog=(${installRenderCatalog.toString()})(document.getElementById('visual'),(${RenderUI.evaluate.toString()}));function draw(){catalog.update(spec,state,{locale:${safe(locale)},disabled:false,change(key,value){state={...state,[key]:value};draw()}})}draw();</script></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>${catalogStyle}\n${themeCss.replaceAll("--render-", "--")}\nhtml{color-scheme:var(--color-scheme,light);background:var(--background-base);color:var(--text-base)}body{margin:0}</style></head><body><div data-component="render-native" id="visual"></div><script>const spec=${safe(spec)};let state=${safe(parameters)};const catalog=(${installRenderCatalog.toString()})(document.getElementById('visual'),(${RenderUI.evaluate.toString()}));function draw(){catalog.update(spec,state,{locale:${safe(locale)},disabled:false,change(key,value){state={...state,[key]:value};draw()}})}draw();</script></body></html>`
 }
 
 function readParameters(spec: RenderUI.Spec, content: RenderArtifact.Content) {
@@ -116,6 +116,11 @@ export function RenderNative(props: {
           const saved = await props.onState(content, generateUUID(), revision)
           if (owner !== epoch) return
           revision = Math.max(revision, saved.revision)
+          if (!dirty && props.state.revision > revision) {
+            values = readParameters(spec!, props.state.content)
+            revision = props.state.revision
+            draw()
+          }
           touched.clear()
         } catch (failure) {
           if (owner !== epoch) return
@@ -167,12 +172,11 @@ export function RenderNative(props: {
       props.onReady?.(flush)
       if (!candidate) return
       try {
-        if (state.revision > revision || !spec) {
+        if (!pending && (state.revision > revision || !spec)) {
           const restored = readParameters(candidate, state.content)
-          if (!pending)
-            values = dirty
-              ? { ...restored, ...Object.fromEntries([...touched].map((key) => [key, values[key]])) }
-              : restored
+          values = dirty
+            ? { ...restored, ...Object.fromEntries([...touched].map((key) => [key, values[key]])) }
+            : restored
           revision = Math.max(revision, state.revision)
         }
         draw(candidate)

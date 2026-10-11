@@ -484,6 +484,7 @@ function SessionConversationView(input: SessionConversationProps) {
                       onRestoreChanges={(messageID) => void restoreFiles({ messageID })}
                       lastUserMessageID={props.lastUserMessage()?.id}
                       compactReasoning={props.compactReasoning()}
+                      preferWorkBrief={props.preferWorkBrief?.()}
                       onRewind={props.canRewind(rootMessage()) ? () => props.onRewind?.(rootMessage()) : undefined}
                       rollbackActive={props.rollbackActive}
                       onReviewChanges={props.onReviewChanges}

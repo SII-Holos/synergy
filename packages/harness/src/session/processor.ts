@@ -1048,6 +1048,7 @@ export namespace SessionProcessor {
             let retryEligible = false
             let contextUsageEnrichment:
               | {
+                  callID?: string
                   draft: Promise<ContextUsage.Draft | undefined>
                   totalInput: number
                 }
@@ -1633,6 +1634,7 @@ export namespace SessionProcessor {
                         exactProviderInputTotal != null
                       ) {
                         contextUsageEnrichment = {
+                          callID: rollout?.callID,
                           draft: stream.contextUsageDraft,
                           totalInput: exactProviderInputTotal,
                         }
@@ -1985,7 +1987,7 @@ export namespace SessionProcessor {
             // provider error, abort) never fires the terminal part write that
             // normally flushes, so without this the persisted/finalized parts
             // would be missing the last streamed content (issue #327).
-            await Session.flushPartWrites()
+            await Session.flushPartWrites(input.sessionID)
             SessionMemoryPressure.probe("processor.after_flush_part_writes", {
               sessionID: input.sessionID,
               messageID: input.assistantMessage.id,
@@ -2088,6 +2090,7 @@ export namespace SessionProcessor {
   function persistContextUsage(input: {
     sessionID: string
     messageID: string
+    callID?: string
     draft: Promise<ContextUsage.Draft | undefined>
     totalInput: number
   }) {
@@ -2097,7 +2100,7 @@ export namespace SessionProcessor {
         await Session.updateAssistantContextUsage({
           sessionID: input.sessionID,
           messageID: input.messageID,
-          contextUsage: ContextUsage.reconcile(draft, input.totalInput),
+          contextUsage: { ...ContextUsage.reconcile(draft, input.totalInput), callID: input.callID },
         })
       })
       .catch((error) => {

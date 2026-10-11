@@ -7,6 +7,7 @@ import { RolloutLedger } from "./ledger"
 import { RolloutRecordingError } from "./error"
 import { RolloutTransportRecorder } from "./transport-recorder"
 import type { RolloutTransportSchema } from "./transport-schema"
+import { RuntimeContext } from "../../lifecycle/context"
 
 export namespace RolloutCall {
   type Input = Parameters<typeof RolloutLedger.beginCall>[0]
@@ -94,6 +95,18 @@ export namespace RolloutCall {
       }).catch(rejectRecording)
       throw error
     }
+
+    const runtime = RuntimeContext.current()
+    void source.contextUsageDraft
+      ?.then(async (draft) => {
+        if (!draft || RuntimeContext.tryCurrent() !== runtime) return
+        await RolloutLedger.updateContextEstimate(input.owner, input.runID, call.id, {
+          ...draft,
+          version: 1,
+          capturedAt: Date.now(),
+        })
+      })
+      .catch(() => {})
 
     let disposal: Promise<void> | undefined
     let closed = false

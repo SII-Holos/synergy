@@ -33,6 +33,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { Dag } from "./dag"
 import { SessionRootVariant } from "./root-variant"
 import { SessionWorkflowHold } from "./workflow-hold"
+import { SessionPauseRecovery } from "./pause-recovery"
 
 import { MigrationRegistry } from "../migration/registry"
 import { work } from "../util/queue"
@@ -2608,6 +2609,23 @@ export const migrations: Migration[] = [
     description: "Settle tool parts left running on terminal assistant messages by an interrupted runtime",
     async up(progress) {
       await migrateOrphanedToolParts(progress)
+    },
+  },
+  {
+    id: "20261010-session-pause-recovery-candidates",
+    execution: "session",
+    onAccess: true,
+    scope: "session",
+    description: "Defer historical pause recovery until explicit Session access",
+    upSession: SessionPauseRecovery.defer,
+    async up(progress) {
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(Identifier.asScopeID(scopeID))) {
+          await SessionPauseRecovery.defer({ scopeID, sessionID })
+          progress(++done, 0)
+        }
+      progress(done, done)
     },
   },
   {

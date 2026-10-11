@@ -202,16 +202,14 @@ export function buildConversationRows(input: {
       const bodyBytes = (part: SessionPartSummary) =>
         message.role === "user" && part.type === "attachment" ? 0 : (part.content?.bytes ?? 0)
       const reasoningAnchors: Record<string, string> = {}
-      let previousReasoning: { identity: string; anchor: string } | undefined
+      let reasoningAnchor: string | undefined
       for (const part of parts) {
         if (part.type !== "reasoning") {
-          previousReasoning = undefined
+          reasoningAnchor = undefined
           continue
         }
-        const anchor =
-          part.reasoningKey && part.reasoningKey === previousReasoning?.identity ? previousReasoning.anchor : part.id
-        reasoningAnchors[part.id] = anchor
-        previousReasoning = part.reasoningKey ? { identity: part.reasoningKey, anchor } : undefined
+        reasoningAnchor ??= part.id
+        reasoningAnchors[part.id] = reasoningAnchor
       }
       for (let offset = 0; offset < parts.length; ) {
         const first = offset++

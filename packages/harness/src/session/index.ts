@@ -1,3 +1,4 @@
+import { SessionPauseRecovery } from "./pause-recovery"
 import { Workspace } from "./workspace-schema"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { WorkspaceBinding } from "../workspace/binding"
@@ -1697,6 +1698,7 @@ export namespace Session {
       // than its scan start).
       await SessionSearchIndex.markDirty(scopeID, asSessionID(canonical.sessionID))
       await MessageV2.writeInfo({ scopeID, info: canonical })
+      await SessionPauseRecovery.mark({ scopeID, sessionID: canonical.sessionID })
       SessionMessageCache.upsertMessage(canonical.sessionID, canonical)
       // Flip the rollback projection before publishing the replacement root: the
       // frontend prefix-cut hides everything after the cut while canUnrollback is
@@ -1723,6 +1725,11 @@ export namespace Session {
         StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)),
         (draft) => {
           if (draft.role !== "assistant") throw new Error("Context Usage can only be attached to assistant messages")
+          if (
+            input.contextUsage.callID &&
+            (draft.accounting?.kind !== "rollout" || draft.accounting.callIDs.at(-1) !== input.contextUsage.callID)
+          )
+            return
           draft.contextUsage = input.contextUsage
         },
       )
@@ -1972,6 +1979,8 @@ export namespace Session {
         Storage.transaction(async (tx) => {
           await assertPartOwner(tx, key)
           await Storage.write(key, value)
+          if (value.type === "tool" && MessageV2.isUnsettledToolState(value.state))
+            await SessionPauseRecovery.mark({ scopeID, sessionID: value.sessionID })
           await SessionHistoryDisplay.partWritten(scopeID, value)
           if (value.type === "text" || value.type === "tool" || value.type === "attachment")
             await SessionSearchIndex.markDirty(scopeID, asSessionID(value.sessionID))

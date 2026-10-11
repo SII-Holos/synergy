@@ -1,23 +1,33 @@
-import { createEffect, createMemo, createResource, createSignal, onCleanup, Show } from "solid-js"
+import { createMemo, createResource, onCleanup, Show, Switch, Match } from "solid-js"
 import { useLingui } from "@lingui/solid"
+import type { MessageDescriptor } from "@lingui/core"
+import type { SessionCortexDelegation } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
 import { requestErrorMessage } from "@/utils/error"
+import { translateDescriptor } from "@/locales/translate"
 import type { ExecutionDetailState } from "@/components/session/execution-detail-model"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { useData } from "@ericsanchezok/synergy-ui/context/data"
-import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
-import { ErrorCard } from "@ericsanchezok/synergy-ui/error-card"
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
-import { compactionErrorText } from "@ericsanchezok/synergy-ui/compaction-card"
+import {
+  compactionErrorText,
+  resolveCompactionCardPresentation,
+  type CompactionAttemptState,
+} from "@ericsanchezok/synergy-ui/compaction-card"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { ExecutionCodeBlock } from "./execution-code-block"
+import { ExecutionDetailLayout } from "./execution-detail-layout"
+import { ExecutionReport, ExecutionTrajectory, ExecutionOriginal } from "./execution-report"
+import { processTaskOutput, toolTaskOutput, type ProcessTaskOutput } from "./process-task-output"
 
-export function processTaskOutputText(output: unknown): string | undefined {
-  if (!output || typeof output !== "object") return
-  const saved = output as { mode?: unknown; value?: unknown }
-  if ((saved.mode === "summary" || saved.mode === "final_response") && typeof saved.value === "string")
-    return saved.value
-  if (saved.mode === "structured" && "value" in saved) return JSON.stringify(saved.value, null, 2)
+export const taskStatuses: Record<string, MessageDescriptor> = {
+  queued: { id: "session.execution.pending", message: "Pending" },
+  running: { id: "session.execution.running", message: "Running" },
+  completed: { id: "session.execution.completed", message: "Completed" },
+  error: { id: "session.execution.failed", message: "Failed" },
+  cancelled: { id: "session.process.cancelled", message: "Cancelled" },
+  interrupted: { id: "session.process.interrupted", message: "Interrupted" },
 }
 
 export function ProcessEventDetailWorkbenchContent(
@@ -26,8 +36,7 @@ export function ProcessEventDetailWorkbenchContent(
   const sdk = useSDK()
   const view = useSessionDataView()
   const data = useData()
-  const { _ } = useLingui()
-  const [expanded, setExpanded] = createSignal(false)
+  const { _, i18n } = useLingui()
   let controller: AbortController | undefined
   const identity = () =>
     `${props.state.server}:${props.state.scope}:${props.state.sessionID}:${props.state.messageID}:${props.state.kind}`
@@ -64,7 +73,8 @@ export function ProcessEventDetailWorkbenchContent(
           _({ id: "session.process.unavailable", message: "This process record is no longer available." }),
         )
       const message = result.data.info
-      let output: string | undefined
+      let output: ProcessTaskOutput | undefined
+      let cortex: SessionCortexDelegation | undefined
       if (
         target.kind === "agent-delivery" &&
         message.role === "user" &&
@@ -78,8 +88,10 @@ export function ProcessEventDetailWorkbenchContent(
         if (
           child?.data?.cortex?.taskID === message.origin.taskID &&
           child.data.cortex.parentSessionID === target.sessionID
-        )
-          output = processTaskOutputText(child.data.cortex.output)
+        ) {
+          cortex = child.data.cortex
+          output = processTaskOutput(cortex.output)
+        }
       }
       if (
         current.signal.aborted ||
@@ -88,15 +100,11 @@ export function ProcessEventDetailWorkbenchContent(
         sdk.scopeKey !== target.scope
       )
         throw new DOMException("Aborted", "AbortError")
-      return { ...result.data, output, identity: target.identity }
+      return { ...result.data, output, cortex, identity: target.identity }
     },
     { initialValue: undefined },
   )
   onCleanup(() => controller?.abort())
-  createEffect(() => {
-    identity()
-    setExpanded(false)
-  })
   const saved = createMemo<(typeof snapshot)["latest"]>((previous) => {
     const owner = identity()
     if (snapshot.error) return previous?.identity === owner ? previous : undefined
@@ -120,8 +128,8 @@ export function ProcessEventDetailWorkbenchContent(
           part.state.metadata.taskId !== task
         )
           continue
-        const text = processTaskOutputText(part.state.metadata.output)
-        if (text !== undefined) return text
+        const result = toolTaskOutput(part)
+        if (result) return { output: result.report, status: result.status }
       }
     }
   })
@@ -135,23 +143,56 @@ export function ProcessEventDetailWorkbenchContent(
     const current = message()
     return current?.role === "assistant" ? compactionErrorText(current.error) : undefined
   }
-  const result = () => recovery()?.summary ?? captured() ?? saved()?.output ?? raw()
+  const report = createMemo<ProcessTaskOutput>(() => {
+    const summary = recovery()?.summary
+    if (summary !== undefined) return { raw: summary, text: summary }
+    return captured()?.output ?? saved()?.output ?? { raw: raw(), text: raw() }
+  })
+  const compaction = createMemo(() => {
+    const current = message()
+    if (props.state.kind !== "compaction" || current?.role !== "assistant") return
+    return resolveCompactionCardPresentation({
+      attemptState: (current.metadata?.compactionAttempt as { state?: CompactionAttemptState } | undefined)?.state,
+      error: current.error,
+      hasRecovery: !!recovery(),
+      messageCompleted: current.time.completed != null,
+      hasSummary: !!recovery()?.summary,
+    })
+  })
+  const status = () => {
+    const compact = compaction()?.status
+    const value = compact
+      ? compact === "complete"
+        ? "completed"
+        : compact === "failed"
+          ? "error"
+          : "running"
+      : (captured()?.status ?? saved()?.cortex?.status)
+    return typeof value === "string" && taskStatuses[value]
+      ? translateDescriptor(taskStatuses[value], i18n())
+      : undefined
+  }
+  const duration = () => {
+    const task = saved()?.cortex
+    const current = message()
+    const time = props.state.kind === "compaction" && current?.role === "assistant" ? current.time : undefined
+    const start = time?.created ?? task?.startedAt
+    const end = time?.completed ?? task?.completedAt
+    if (start === undefined || end === undefined) return
+    return _({
+      id: "session.execution.duration",
+      message: "{seconds} s",
+      values: {
+        seconds: new Intl.NumberFormat(i18n().locale, { maximumFractionDigits: 1 }).format(
+          Math.max(0, end - start) / 1000,
+        ),
+      },
+    })
+  }
   const title = () =>
     props.state.kind === "compaction"
       ? _({ id: "session.process.compactionDetail", message: "Context compaction" })
       : _({ id: "session.process.agentDetail", message: "Agent result" })
-  const copy = createCopyController({
-    text: result,
-    get copyLabel() {
-      return _({ id: "session.process.copyResult", message: "Copy result" })
-    },
-    get copiedLabel() {
-      return _({ id: "session.execution.copied", message: "Copied" })
-    },
-    get failedLabel() {
-      return _({ id: "session.execution.copyFailed", message: "Copy failed" })
-    },
-  })
   const sourceID = () => {
     const current = message()
     return current?.role === "user" ? current.origin?.sessionID : undefined
@@ -161,10 +202,32 @@ export function ProcessEventDetailWorkbenchContent(
     return current?.role === "user" ? current.origin?.label : undefined
   }
   return (
-    <div data-component="execution-detail" data-kind={props.state.kind} aria-busy={snapshot.loading}>
-      <header data-slot="execution-detail-heading">
-        <h2>{title()}</h2>
-        <Show when={sourceLabel()}>{(label) => <p>{label()}</p>}</Show>
+    <ExecutionDetailLayout
+      identity={identity()}
+      id={props.tab.id}
+      kind={props.state.kind}
+      title={sourceLabel() || title()}
+      icon={getSemanticIcon(props.state.kind === "compaction" ? "settings.compaction" : "agent.identity")}
+      loading={snapshot.loading}
+      error={snapshot.error}
+      retry={refetch}
+      views={
+        props.state.kind === "compaction"
+          ? ["result", "diagnostics"]
+          : report().trajectory
+            ? ["result", "process"]
+            : ["result"]
+      }
+      meta={
+        <>
+          <Show when={sourceLabel()}>
+            <span>{title()}</span>
+          </Show>
+          <Show when={status()}>{(label) => <span data-slot="execution-status">{label()}</span>}</Show>
+          <Show when={duration()}>{(label) => <span>{label()}</span>}</Show>
+        </>
+      }
+      actions={
         <Show when={sourceID()}>
           {(id) => (
             <Button variant="ghost" size="small" onClick={() => data.navigateToSession?.(id())}>
@@ -172,73 +235,90 @@ export function ProcessEventDetailWorkbenchContent(
             </Button>
           )}
         </Show>
-      </header>
-      <div data-slot="execution-detail-toolbar">
-        <Button
-          variant="ghost"
-          size="small"
-          icon={copy.icon()}
-          aria-label={copy.tooltip()}
-          disabled={!result() || copy.disabled()}
-          onClick={() => void copy.copy()}
-        />
-        <span role="status">{copy.state() === "idle" ? "" : copy.tooltip()}</span>
-      </div>
-      <div data-slot="execution-detail-body">
-        <Show when={snapshot.error && snapshot.error.name !== "AbortError"}>
-          <ErrorCard
-            error={requestErrorMessage(
-              snapshot.error,
-              _({ id: "session.process.loadFailed", message: "Unable to load process details." }),
-            )}
-            actions={
-              <Button
-                variant="ghost"
-                size="small"
-                disabled={snapshot.loading}
-                onClick={() => void Promise.resolve(refetch()).catch(() => undefined)}
-              >
-                {_({ id: "session.content.retry", message: "Retry loading content" })}
-              </Button>
-            }
-          />
-        </Show>
-        <Show when={error()}>{(text) => <ErrorCard error={text()} />}</Show>
-        <Show
-          when={
-            props.state.kind === "compaction" &&
-            (message()?.metadata?.compactionAttempt as { state?: unknown } | undefined)?.state === "running"
-          }
-        >
-          <p role="status">
-            {_({ id: "ui.compaction.preparing", message: "Preparing a compact continuation summary" })}
-          </p>
-        </Show>
-        <Show when={recovery()?.mechanical}>
-          <p>
-            {_({
-              id: "ui.compaction.mechanicalWarning",
-              message: "This summary was mechanically generated due to context limits. Some detail may be missing.",
-            })}
-          </p>
-        </Show>
-        <Show when={result()}>
-          <Markdown text={expanded() ? result() : result().slice(0, 16000)} />
-        </Show>
-        <Show when={result().length > 16000 && !expanded()}>
-          <Button variant="ghost" onClick={() => setExpanded(true)}>
-            {_({ id: "session.execution.fullContent", message: "Show full content" })}
-          </Button>
-        </Show>
-        <Show when={taskID() && captured() === undefined && saved()?.output === undefined}>
-          <p>
-            {_({
-              id: "session.process.resultUnavailable",
-              message: "The full task result is not available. The original notification is shown.",
-            })}
-          </p>
-        </Show>
-      </div>
-    </div>
+      }
+    >
+      {(view) => (
+        <Switch>
+          <Match when={view() === "diagnostics"}>
+            <Show
+              when={error()}
+              fallback={
+                <Show when={!recovery()?.mechanical}>
+                  <p data-slot="execution-evidence-gap">
+                    {_({ id: "session.execution.noDiagnostics", message: "No additional diagnostics were recorded." })}
+                  </p>
+                </Show>
+              }
+            >
+              {(text) => (
+                <ExecutionCodeBlock
+                  identity={identity()}
+                  slot="execution-error"
+                  label={_({ id: "session.execution.errorDetails", message: "Error details" })}
+                  copyLabel={_({ id: "session.execution.copyError", message: "Copy error details" })}
+                  text={text()}
+                />
+              )}
+            </Show>
+            <Show when={recovery()?.mechanical}>
+              <p data-slot="execution-evidence-gap">
+                {_({
+                  id: "ui.compaction.mechanicalWarning",
+                  message: "This summary was mechanically generated due to context limits. Some detail may be missing.",
+                })}
+              </p>
+            </Show>
+          </Match>
+          <Match when={view() === "process"}>
+            <ExecutionTrajectory identity={identity()} report={report()} />
+            <ExecutionOriginal identity={identity()} text={report().raw} />
+          </Match>
+          <Match when={view() === "result"}>
+            <Show
+              when={saved()}
+              fallback={
+                <Show when={!snapshot.error}>
+                  <p data-slot="execution-evidence-gap">
+                    {_({ id: "session.execution.loading", message: "Loading tool result…" })}
+                  </p>
+                </Show>
+              }
+            >
+              <Switch fallback={<ExecutionReport identity={identity()} report={report()} />}>
+                <Match when={compaction()?.status === "running"}>
+                  <p role="status" data-slot="execution-evidence-gap">
+                    {_({ id: "ui.compaction.preparing", message: "Preparing a compact continuation summary" })}
+                  </p>
+                </Match>
+                <Match when={compaction()?.status === "failed"}>
+                  <p role="status" data-slot="execution-evidence-gap">
+                    {_({
+                      id: "session.process.compactionFailure",
+                      message: "The summary could not be created. See Diagnostics for details.",
+                    })}
+                  </p>
+                </Match>
+              </Switch>
+              <Show when={recovery()?.mechanical}>
+                <p data-slot="execution-evidence-gap">
+                  {_({
+                    id: "session.process.mechanicalSummary",
+                    message: "Mechanically generated summary. See Diagnostics for limitations.",
+                  })}
+                </p>
+              </Show>
+              <Show when={taskID() && captured() === undefined && saved()?.output === undefined}>
+                <p data-slot="execution-evidence-gap">
+                  {_({
+                    id: "session.process.resultUnavailable",
+                    message: "The full task result is not available. The original notification is shown.",
+                  })}
+                </p>
+              </Show>
+            </Show>
+          </Match>
+        </Switch>
+      )}
+    </ExecutionDetailLayout>
   )
 }

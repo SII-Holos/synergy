@@ -72,6 +72,9 @@ const inline = () => page.frameLocator('[data-component="render-tool"] iframe').
 
 test("interactive source runs in an opaque frame and preserves parameters through the shared viewer", async () => {
   await setup()
+  expect(await page.locator('[data-component="render-tool"]').count()).toBe(1)
+  expect(await page.locator('[data-component="attachment-card"]').count()).toBe(1)
+  expect(await page.locator('[data-component="attachment-card"]').innerText()).toContain("visual.synergy.json")
   expect(await page.locator("iframe").getAttribute("sandbox")).toBe("allow-scripts")
   await inline().getByRole("slider", { name: "Workers" }).fill("4")
   await inline().getByRole("slider", { name: "Workers" }).dispatchEvent("change")
@@ -589,4 +592,118 @@ test("native state adopts conflicts and standalone exports retain controls witho
   } finally {
     await exported.close()
   }
+})
+
+test("native dark exports preserve page polarity and native control color scheme", async () => {
+  await native()
+  await page.evaluate(() => document.documentElement.setAttribute("data-color-scheme", "dark"))
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export interactive HTML" }).click(),
+  ])
+  const file = await download.path()
+  const exported = await browser.newPage()
+  try {
+    await exported.setContent(await Bun.file(file!).text())
+    await exported.getByRole("slider", { name: "Seats" }).waitFor()
+    const colors = await exported.evaluate(() => {
+      const canvas = getComputedStyle(document.documentElement)
+      const native = getComputedStyle(document.querySelector('[data-component="render-native"]')!)
+      const probe = document.createElement("div")
+      probe.style.background = "var(--background-base)"
+      document.body.append(probe)
+      return {
+        scheme: canvas.colorScheme,
+        background: canvas.backgroundColor,
+        expected: getComputedStyle(probe).backgroundColor,
+        foreground: native.color,
+      }
+    })
+    expect(colors.scheme).toBe("dark")
+    expect(colors.background).toBe(colors.expected)
+    expect(colors.background).not.toBe("rgba(0, 0, 0, 0)")
+    expect(colors.foreground).not.toBe(colors.background)
+  } finally {
+    await exported.close()
+    await page.evaluate(() => document.documentElement.setAttribute("data-color-scheme", "light"))
+  }
+})
+
+test("native state adopts canonical updates received while a save response is pending", async () => {
+  await native()
+  await page.evaluate(() => (window as unknown as { __renderTest: { holdWrites(): void } }).__renderTest.holdWrites())
+  const slider = page.getByRole("slider", { name: "Seats" })
+  try {
+    await slider.fill("9")
+    await page.waitForFunction(
+      () =>
+        (window as unknown as { __renderTest: { stats(): { state: { revision: number } } } }).__renderTest.stats().state
+          .revision === 1,
+    )
+    await page.evaluate(() =>
+      (window as unknown as { __renderTest: { remote(content: RenderArtifact.Content): void } }).__renderTest.remote({
+        modelContent: { parameters: { seats: 12 } },
+      }),
+    )
+    await page.evaluate(() =>
+      (window as unknown as { __renderTest: { releaseWrites(): void } }).__renderTest.releaseWrites(),
+    )
+    await page.waitForFunction(
+      () => document.querySelector<HTMLInputElement>('[data-render-node="seats"] input')?.value === "12",
+    )
+    await page.getByRole("button", { name: "Expand visual" }).click()
+    const viewer = page.locator('[data-component="render-viewer"]')
+    expect(await slider.inputValue()).toBe("12")
+    expect(await viewer.getByRole("slider", { name: "Seats" }).inputValue()).toBe("12")
+    await viewer.getByRole("button", { name: "Close dialog" }).click()
+  } finally {
+    await page.evaluate(() =>
+      (window as unknown as { __renderTest: { releaseWrites(): void } }).__renderTest.releaseWrites(),
+    )
+  }
+})
+
+test("native conflict recovery can export canonical values without requiring another edit", async () => {
+  await native()
+  await page.evaluate(() =>
+    (window as unknown as { __renderTest: { conflictWrites(): void } }).__renderTest.conflictWrites(),
+  )
+  await page.getByRole("slider", { name: "Seats" }).fill("11")
+  await page.getByRole("alert").filter({ hasText: "Another view" }).waitFor()
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export interactive HTML" }).click(),
+  ])
+  const file = await download.path()
+  const exported = await browser.newPage()
+  try {
+    await exported.setContent(await Bun.file(file!).text())
+    await exported.getByText("$348", { exact: true }).waitFor()
+  } finally {
+    await exported.close()
+  }
+})
+
+test("native saved parameters restore after unmount without leaking into a different source", async () => {
+  await native()
+  await page.getByRole("slider", { name: "Seats" }).fill("14")
+  await page.waitForFunction(
+    () =>
+      (
+        window as unknown as {
+          __renderTest: { stats(): { state: { content: { modelContent: { parameters: { seats: number } } } } } }
+        }
+      ).__renderTest.stats().state.content.modelContent?.parameters?.seats === 14,
+  )
+  await page.evaluate(() =>
+    (window as unknown as { __renderTest: { visible(visible: boolean): void } }).__renderTest.visible(false),
+  )
+  expect(await page.locator('[data-component="render-tool"]').count()).toBe(0)
+  await page.evaluate(() =>
+    (window as unknown as { __renderTest: { visible(visible: boolean): void } }).__renderTest.visible(true),
+  )
+  await page.getByText("$406", { exact: true }).waitFor()
+  expect(await page.getByRole("slider", { name: "Seats" }).inputValue()).toBe("14")
+  await native()
+  expect(await page.getByRole("slider", { name: "Seats" }).inputValue()).toBe("8")
 })

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { JSDOM } from "jsdom"
 import { RenderUI } from "@ericsanchezok/synergy-util/render-ui"
+import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
 import { installRenderCatalog } from "../../../src/components/render/catalog"
 
 test("the native catalog paints safe keyed content, retains focus and dispatches only declared interactions", () => {
@@ -69,5 +70,22 @@ test("the native catalog paints safe keyed content, retains focus and dispatches
   expect(slider.disabled).toBe(true)
   catalog.dispose()
   expect(root.childElementCount).toBe(0)
+  dom.window.close()
+})
+
+test("schema-valid buttons keep follow-ups within the host text limit without truncating parameter JSON", () => {
+  const dom = new JSDOM('<div id="root"></div>')
+  const root = dom.window.document.getElementById("root")!
+  const catalog = installRenderCatalog(root, RenderUI.evaluate)
+  const text = "Review this estimate".padEnd(4000, "!")
+  const spec = RenderUI.Spec.parse({
+    state: Object.fromEntries(Array.from({ length: 5 }, (_, index) => [`field${index}`, "x".repeat(2000)])),
+    nodes: [{ id: "next", type: "button", label: "Review", text }],
+  })
+  const requests: string[] = []
+  catalog.update(spec, spec.state, { locale: "en", disabled: false, followUp: (text) => requests.push(text) })
+  root.querySelector("button")!.click()
+  expect(RenderArtifact.FollowUp.safeParse({ requestID: "followup", text: requests[0] }).success).toBe(true)
+  expect(requests[0]).toBe(text)
   dom.window.close()
 })

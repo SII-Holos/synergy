@@ -82,14 +82,18 @@ export namespace RenderUI {
         ctx.addIssue({ code: "custom", message: "Initial state exceeds 12 KiB" })
       const values = new Set(Object.keys(spec.state))
       if (values.size > 32) ctx.addIssue({ code: "custom", message: "At most 32 state values" })
-      function binding(value: Binding) {
+      const numericValues = new Set(Object.keys(spec.state).filter((key) => typeof spec.state[key] === "number"))
+      function binding(value: Binding, numeric = false) {
         if (typeof value === "object" && !values.has(value.ref))
           ctx.addIssue({ code: "custom", message: `Unknown value: ${value.ref}` })
+        else if (numeric && (typeof value === "object" ? !numericValues.has(value.ref) : typeof value !== "number"))
+          ctx.addIssue({ code: "custom", message: "Computations and chart values must be numeric" })
       }
       for (const computed of spec.computed) {
         if (values.has(computed.id)) ctx.addIssue({ code: "custom", message: `Duplicate value: ${computed.id}` })
-        computed.inputs.forEach(binding)
+        computed.inputs.forEach((value) => binding(value, true))
         values.add(computed.id)
+        numericValues.add(computed.id)
       }
       const nodes = new Map<string, Node>()
       for (const node of spec.nodes) {
@@ -111,7 +115,7 @@ export namespace RenderUI {
             ctx.addIssue({ code: "custom", message: `Invalid control state: ${node.id}` })
         }
         if (node.type === "metric") binding(node.value)
-        if (node.type === "bar") node.items.forEach((item) => binding(item.value))
+        if (node.type === "bar") node.items.forEach((item) => binding(item.value, true))
         nodes.set(node.id, node)
       }
     })

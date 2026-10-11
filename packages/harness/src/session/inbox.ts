@@ -1,3 +1,4 @@
+import { SessionPauseRecovery } from "./pause-recovery"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import z from "zod"
 import { ModelSelection } from "./model-selection-schema"
@@ -282,6 +283,7 @@ export namespace SessionInbox {
           StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(item.sessionID), item.id),
           item,
         )
+        await SessionPauseRecovery.mark({ scopeID, sessionID: item.sessionID })
       }
       await publish(item.sessionID)
       return item
