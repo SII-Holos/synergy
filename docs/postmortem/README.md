@@ -19,7 +19,7 @@ Otherwise, test the fix.
 
 Use `NNNN-kebab-case-title.md`. Sections:
 
-- **Executive summary** — what broke, why, how it escaped, and the durable lesson.
+- **Executive summary** — failure, cause, escape, and durable lesson.
 - **Summary** — failure details.
 - **Timeline** — what was observed and when.
 - **Root cause** — the mechanism and missing safeguards.
@@ -40,6 +40,7 @@ Use `NNNN-kebab-case-title.md`. Sections:
 
 - [0062: Historical project bindings](0062-project-migration-required-live-directory-identity.md)
 - [0061: Concurrent Workspace admission](0061-concurrent-workspace-admission.md)
+- [0061: Ownership](0061-conversation-scroll-ownership.md)
 
 - [0059: Disclosure](0059-cold-process-disclosure-jank.md)
 

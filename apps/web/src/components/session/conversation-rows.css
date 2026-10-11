@@ -27,7 +27,3 @@
 .conversation-display-row[hidden] {
   display: none;
 }
-
-[data-component="conversation-activity"] > [data-slot="activity-batch-content"] {
-  min-width: 0;
-}

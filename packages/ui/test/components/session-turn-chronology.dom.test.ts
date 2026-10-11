@@ -8,6 +8,9 @@ let harness: {
   setMode: (mode: "balanced" | "full" | "minimal") => void
   setPreview: (preview: boolean) => void
   setSegmented: (value: boolean) => void
+  setSelectedActivityBody: (enabled: boolean) => void
+  setAssistantVisible: (visible: boolean) => void
+  toolSelection: () => unknown
   addCompaction: (state?: "committed" | "running" | "failed") => void
   selection: () => unknown
   reset: () => void
@@ -257,5 +260,59 @@ test.each(["running", "failed"] as const)(
     const cards = document.querySelectorAll('[data-component="compaction-card"]')
     expect(cards).toHaveLength(1)
     expect(cards[0].getAttribute("data-status")).toBe(state)
+  },
+)
+
+test.each(
+  ["initially hidden", "visible-to-hidden"].flatMap((visibility) =>
+    ["tool", "reasoning"].map((kind) => [visibility, kind] as const),
+  ),
+)("selected-Part activity bodies omit hidden messages (%s %s)", async (visibility, kind) => {
+  harness.move(8)
+  if (visibility === "initially hidden") harness.setAssistantVisible(false)
+  harness.setSelectedActivityBody(true)
+  await waitForUpdate()
+  const body = document.querySelector("[data-activity-body]")!
+  expect(body).not.toBeNull()
+  const hasHiddenContent = () =>
+    kind === "tool"
+      ? !!body.querySelector('[data-part-id="tool-1"]')
+      : body.textContent!.includes("Initial private reasoning")
+  if (visibility === "visible-to-hidden") {
+    expect(hasHiddenContent()).toBe(true)
+    harness.setAssistantVisible(false)
+    await waitForUpdate()
+    expect(document.querySelector("[data-activity-body]")).toBe(body)
+  }
+  expect(hasHiddenContent()).toBe(false)
+  expect(body.textContent).not.toContain("Initial private reasoning")
+  expect(body.querySelector('[data-part-id="tool-2"]')).not.toBeNull()
+  expect(body.textContent).toContain("Later private reasoning")
+  body.querySelector<HTMLButtonElement>('[data-part-id="tool-2"] [data-slot="activity-step-trigger"]')!.click()
+  expect(harness.toolSelection()).toEqual({
+    sessionID: "session-activity-switch",
+    messageID: "assistant-activity-switch-second",
+    partID: "tool-2",
+    callID: "call-activity-switch",
+  })
+})
+
+test.each(["committed", "running", "failed"] as const)(
+  "selected-Part activity bodies preserve the hidden %s compaction display rule",
+  async (state) => {
+    harness.addCompaction(state)
+    harness.setAssistantVisible(false)
+    await waitForUpdate()
+    const expectedCount = state === "committed" ? 0 : 1
+    const ordinaryCards = document.querySelectorAll('[data-component="compaction-card"]')
+    expect(ordinaryCards).toHaveLength(expectedCount)
+    if (state !== "committed") expect(ordinaryCards[0].getAttribute("data-status")).toBe(state)
+    harness.setSelectedActivityBody(true)
+    await waitForUpdate()
+    const body = document.querySelector("[data-activity-body]")!
+    expect(body).not.toBeNull()
+    const cards = body.querySelectorAll('[data-component="compaction-card"]')
+    expect(cards).toHaveLength(expectedCount)
+    if (state !== "committed") expect(cards[0].getAttribute("data-status")).toBe(state)
   },
 )

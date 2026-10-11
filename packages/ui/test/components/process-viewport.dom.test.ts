@@ -460,6 +460,274 @@ test("a detached default local anchor survives live body growth without a revisi
   expect(result.sameParagraph).toBe(true)
   expect(result.latest).toBe(false)
 })
+test("fractional bottom Space has no native movement and does not suspend later reading restoration", async () => {
+  await load("local")
+  const viewport = page.locator('[data-component="process-viewport"]')
+  await viewport.evaluate(async (element) => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    harness.pause()
+    element.style.zoom = "1.25"
+    element.style.maxHeight = "315.4px"
+    await harness.frames()
+  })
+  await viewport.focus()
+  const before = await viewport.evaluate(async (element) => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    element.scrollTop = element.scrollHeight
+    await harness.frames()
+    Object.assign(window, { boundaryScrolls: 0 })
+    element.addEventListener("scroll", () => (window as unknown as { boundaryScrolls: number }).boundaryScrolls++)
+    const paragraph = element.querySelector<HTMLElement>('[data-part-id="part-26"] p')!
+    return {
+      top: element.scrollTop,
+      remaining: element.scrollHeight - element.clientHeight - element.scrollTop,
+      offset: paragraph.getBoundingClientRect().top - element.getBoundingClientRect().top,
+    }
+  })
+  expect(before.remaining).toBeGreaterThan(0)
+  expect(before.remaining).toBeLessThan(1)
+  await viewport.press("Space")
+  const result = await viewport.evaluate(async (element) => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    await harness.frames()
+    const nativeTop = element.scrollTop
+    const nativeScrolls = (window as unknown as { boundaryScrolls: number }).boundaryScrolls
+    const height = element.scrollHeight
+    harness.growCharacterData("above")
+    await harness.frames()
+    const paragraph = element.querySelector<HTMLElement>('[data-part-id="part-26"] p')!
+    return {
+      nativeTop,
+      nativeScrolls,
+      grew: element.scrollHeight > height,
+      offset: paragraph.getBoundingClientRect().top - element.getBoundingClientRect().top,
+    }
+  })
+  expect(result.nativeTop).toBe(before.top)
+  expect(result.nativeScrolls).toBe(0)
+  expect(result.grew).toBe(true)
+  expect(Math.abs(result.offset - before.offset)).toBeLessThanOrEqual(1)
+})
+
+for (const input of ["cancelled", "Control", "Meta", "Alt"] as const) {
+  test(`${input} trusted Space leaves later body growth on the normal reading owner`, async () => {
+    await load("local")
+    const viewport = page.locator('[data-component="process-viewport"]')
+    await viewport.evaluate(async (element, cancelDefault: boolean) => {
+      const harness = (window as unknown as FixtureWindow).processViewportFixture
+      harness.pause()
+      await harness.positionReading()
+      if (cancelDefault) element.addEventListener("keydown", (event) => event.preventDefault(), { once: true })
+    }, input === "cancelled")
+    await viewport.focus()
+    const before = await viewport.evaluate(async (element) => {
+      await (window as unknown as FixtureWindow).processViewportFixture.frames()
+      return {
+        top: element.scrollTop,
+        height: element.scrollHeight,
+        offset:
+          document.getElementById("reading-paragraph")!.getBoundingClientRect().top -
+          element.getBoundingClientRect().top,
+      }
+    })
+    await viewport.press(input === "cancelled" ? "Space" : `${input}+Space`)
+    const result = await viewport.evaluate(async (element) => {
+      const harness = (window as unknown as FixtureWindow).processViewportFixture
+      await harness.frames()
+      const nativeTop = element.scrollTop
+      harness.growCharacterData("above")
+      await harness.frames()
+      return {
+        nativeTop,
+        height: element.scrollHeight,
+        offset:
+          document.getElementById("reading-paragraph")!.getBoundingClientRect().top -
+          element.getBoundingClientRect().top,
+      }
+    })
+    expect(result.nativeTop).toBe(before.top)
+    expect(result.height).toBeGreaterThan(before.height)
+    expect(Math.abs(result.offset - before.offset)).toBeLessThanOrEqual(1)
+  })
+}
+
+test.each(["native", "withheld"] as const)("native Space %s scrolls settle body growth", async (delivery) => {
+  await load("local")
+  const viewport = page.locator('[data-component="process-viewport"]')
+  await viewport.evaluate(async () => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    harness.pause()
+    await harness.positionReading()
+  })
+  await viewport.focus()
+  await viewport.evaluate(() => (window as unknown as FixtureWindow).processViewportFixture.frames())
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 12 })
+  try {
+    const before = await viewport.evaluate((element, delivery) => {
+      const paragraph = document.getElementById("reading-paragraph")!
+      const paging = { ended: false, writesBeforeEnd: 0, offsetAtEnd: 0, topAtEnd: 0, withheldScrolls: 0 }
+      Object.assign(window, { processSpacePaging: paging })
+      const startTop = element.scrollTop
+      let deliveredTop = startTop
+      const withholdScroll = (event: Event) => {
+        if (deliveredTop - startTop <= 100) {
+          deliveredTop = element.scrollTop
+          return
+        }
+        paging.withheldScrolls++
+        event.stopImmediatePropagation()
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop")!
+      Object.defineProperty(element, "scrollTop", {
+        get() {
+          return descriptor.get!.call(this)
+        },
+        set(top: number) {
+          if (!paging.ended) paging.writesBeforeEnd++
+          descriptor.set!.call(this, top)
+        },
+      })
+      element.addEventListener(
+        "scrollend",
+        () => {
+          paging.ended = true
+          element.removeEventListener("scroll", withholdScroll, { capture: true })
+          paging.offsetAtEnd = paragraph.getBoundingClientRect().top - element.getBoundingClientRect().top
+          paging.topAtEnd = element.scrollTop
+        },
+        { once: true },
+      )
+      element.addEventListener(
+        "keydown",
+        () => {
+          element.addEventListener(
+            "scroll",
+            () => {
+              ;(window as unknown as FixtureWindow).processViewportFixture.growCharacterData("above")
+              if (delivery === "withheld") element.addEventListener("scroll", withholdScroll, { capture: true })
+            },
+            { once: true },
+          )
+        },
+        { once: true },
+      )
+      return {
+        top: element.scrollTop,
+        remaining: element.scrollHeight - element.clientHeight - element.scrollTop,
+        height: element.scrollHeight,
+        offset: paragraph.getBoundingClientRect().top - element.getBoundingClientRect().top,
+      }
+    }, delivery)
+    expect(before.remaining).toBeGreaterThan(1000)
+    await viewport.press("Space")
+    for (let frame = 0; frame < 12; frame++)
+      await page.evaluate(() => (window as unknown as FixtureWindow).processViewportFixture.frames(2))
+    const after = await viewport.evaluate((element) => ({
+      height: element.scrollHeight,
+      offset:
+        document.getElementById("reading-paragraph")!.getBoundingClientRect().top - element.getBoundingClientRect().top,
+      paging: (
+        window as unknown as {
+          processSpacePaging: {
+            ended: boolean
+            writesBeforeEnd: number
+            offsetAtEnd: number
+            topAtEnd: number
+            withheldScrolls: number
+          }
+        }
+      ).processSpacePaging,
+    }))
+    expect(after.paging.ended).toBe(true)
+    if (delivery === "withheld") expect(after.paging.withheldScrolls).toBeGreaterThan(0)
+    else expect(after.paging.withheldScrolls).toBe(0)
+    expect(after.paging.writesBeforeEnd).toBe(0)
+    expect(after.paging.topAtEnd - before.top).toBeGreaterThan(100)
+    expect(after.paging.offsetAtEnd - after.offset).toBeGreaterThan(100)
+    expect(after.height).toBeGreaterThan(before.height)
+    expect(before.offset - after.offset).toBeGreaterThan(100)
+    expect(Math.abs(after.offset - (before.offset - (after.paging.topAtEnd - before.top)))).toBeLessThanOrEqual(1)
+    const result = await viewport.evaluate(async () => {
+      const harness = (window as unknown as FixtureWindow).processViewportFixture
+      const element = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+      const bounds = element.getBoundingClientRect()
+      const visible = [...element.querySelectorAll<HTMLElement>('[data-slot="activity-step"]')].find((part) => {
+        const rect = part.getBoundingClientRect()
+        return rect.bottom > bounds.top && rect.top < bounds.bottom
+      })!
+      const paragraph = [...visible.querySelectorAll<HTMLElement>("p")].find(
+        (paragraph) => paragraph.getBoundingClientRect().bottom > bounds.top,
+      )!
+      const visibleIndex = Number(visible.dataset.partId!.slice("part-".length))
+      const between = element.querySelector<HTMLElement>(`[data-part-id="part-${visibleIndex - 1}"] p`)!
+      const offset = paragraph.getBoundingClientRect().top - bounds.top
+      const height = element.scrollHeight
+      ;(between.firstChild as Text).appendData(" Intermediate growth after native paging completes.".repeat(24))
+      await harness.frames()
+      return {
+        visibleIndex,
+        grew: element.scrollHeight > height,
+        displacement: paragraph.getBoundingClientRect().top - element.getBoundingClientRect().top - offset,
+      }
+    })
+    expect(result.visibleIndex).toBeGreaterThan(13)
+    expect(result.grew).toBe(true)
+    expect(Math.abs(result.displacement)).toBeLessThanOrEqual(1)
+  } finally {
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
+    await cdp.detach()
+  }
+})
+
+test("accepted compensation retains the reading anchor through consecutive growth before scrollend", async () => {
+  await load("local")
+  const viewport = page.locator('[data-component="process-viewport"]')
+  const before = await viewport.evaluate((element) => {
+    element.addEventListener("scrollend", (event) => event.stopImmediatePropagation(), { capture: true })
+    return element.scrollTop
+  })
+  await viewport.hover()
+  await page.mouse.wheel(0, -20)
+  await page.waitForFunction(
+    (before) => document.querySelector<HTMLElement>('[data-component="process-viewport"]')!.scrollTop < before,
+    before,
+  )
+  const result = await page.evaluate(async () => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    const viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+    const paragraph = document.getElementById("reading-paragraph")!
+    await harness.frames()
+    const offset = paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top
+    const height = viewport.scrollHeight
+    let firstHeight = height
+    let grewAgain = false
+    viewport.addEventListener(
+      "scroll",
+      () => {
+        firstHeight = viewport.scrollHeight
+        grewAgain = true
+        harness.growChildList("above")
+      },
+      { once: true },
+    )
+    harness.growCharacterData("above")
+    await harness.frames()
+    return {
+      grewAgain,
+      height,
+      firstHeight,
+      finalHeight: viewport.scrollHeight,
+      displacement: paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top - offset,
+      sameParagraph: document.getElementById("reading-paragraph") === paragraph,
+    }
+  })
+  expect(result.grewAgain).toBe(true)
+  expect(result.firstHeight).toBeGreaterThan(result.height)
+  expect(result.finalHeight).toBeGreaterThan(result.firstHeight)
+  expect(Math.abs(result.displacement)).toBeLessThanOrEqual(1)
+  expect(result.sameParagraph).toBe(true)
+})
 
 test("consumer root identity excludes direct child mount and unmount but preserves nested body mutations", async () => {
   const result = await page.evaluate(async () => {

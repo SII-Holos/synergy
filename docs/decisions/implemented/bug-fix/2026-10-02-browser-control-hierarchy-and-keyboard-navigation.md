@@ -14,6 +14,8 @@ Attach Browser navigation styling to the shared icon buttons, keep their bounds 
 
 Move keyboard focus through visible enabled menu controls and exclude collapsed disclosure descendants explicitly: Chromium can still report their layout rectangles. Address suggestions expose a combobox and listbox, retain input focus during selection, and navigate only on explicit submission. Composing Enter cannot navigate, and Escape dismisses suggestions without collapsing the Workspace. Blank pages keep print and zoom shortcuts inactive, matching the available menu actions.
 
+Escape focus restoration remains owned by the shared Popover. Its close autofocus follows focus-scope disposal, waits for remaining content animations and then an animation frame before returning to the connected, closed trigger. Content becoming hidden or detached does not establish that focus restoration has finished. The rendered Browser regression waits for the exact durable trigger to own focus within the same two-second bound used by the adjacent settings regression, then retains its strict focus and overlapping native-blocker assertions.
+
 The new-tab search and import footer live in a small shared view so rendered interaction tests cover the shipped entry. Its import button uses a quiet secondary affordance while the source-picker dialog retains the explicit Import operation.
 
 Initialize presentation from metadata in the shared catalog before opening its transport. Native page panels consume that state without resetting it; subsequent WebSocket updates remain authoritative. Reading metadata does not attach or allocate a native view. Mounting a page or switching peer resources attaches the existing page and preserves the catalog's current presentation.
@@ -25,6 +27,8 @@ Initialize presentation from metadata in the shared catalog before opening its t
 **Keeping the default titled popover and painting an inner menu** retains duplicate surfaces and unnecessary dismissal controls. The existing menu variant already supplies portal ownership, dismissal, motion and focus restoration.
 
 **Checking layout rectangles alone for keyboard targets** fails for collapsed details. Explicit disclosure visibility preserves access to expanded diagnostics without sending focus to hidden controls.
+
+**Treating hidden content as completed focus restoration or restoring focus synchronously in Browser controls** races the shared focus-scope cleanup. Waiting for the observable final focus preserves the existing owner and still rejects missing, replaced or permanently unfocused triggers; larger suite timeouts and retries would not establish that outcome.
 
 ## Consequences
 

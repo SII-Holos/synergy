@@ -107,6 +107,7 @@ const [submission, setSubmission] = createSignal<{ activity?: SessionActivity; f
 const [reading, setReading] = createSignal(false)
 const [connected, setConnected] = createSignal(true)
 const [mode, setMode] = createSignal<"balanced" | "full" | "minimal">("balanced")
+const [preferWorkBrief, setPreferWorkBrief] = createSignal(false)
 const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
 const [scroll, setScroll] = createSignal<HTMLDivElement>()
 const [versions, setVersions] = createStore<Record<string, string>>({})
@@ -328,6 +329,7 @@ const context: Partial<PluginConversationService> = {
   isWorking: () => status() === "running",
   scrolledUp: reading,
   compactReasoning: () => false,
+  preferWorkBrief,
   canRewind: () => false,
   anchor: (id) => "message-" + id,
   onFirstTurnMounted() {},
@@ -373,7 +375,10 @@ const context: Partial<PluginConversationService> = {
   },
 }
 let toolCaseSequence = 0
+let statusReads = 0
 window.__conversationProcess = {
+  statusReads: () => statusReads,
+  preferWorkBrief: setPreferWorkBrief,
   fragments(count: number) {
     setData("message", "session", [root, work])
     setData("part", "work", [
@@ -625,8 +630,10 @@ window.__conversationProcess = {
   contentPageLoads: () => pageLoads,
 }
 const runtime = {
-  statusFor: (): SessionStatus =>
-    status() === "running" || status() === "approval" ? { type: "busy", activity: activity() } : { type: "idle" },
+  statusFor: (): SessionStatus => {
+    statusReads++
+    return status() === "running" || status() === "approval" ? { type: "busy", activity: activity() } : { type: "idle" }
+  },
   permissionsFor: () => [],
   questionsFor: () => [],
   cortexTasks: () => [],
@@ -665,6 +672,7 @@ function Scroller(props: ParentProps) {
       onScroll={() => autoScroll?.handleScroll()}
       style="height:600px;overflow:auto;width:700px;max-width:100%"
       data-scroller
+      tabIndex={0}
     >
       <div ref={(element) => autoScroll?.contentRef(element)}>{props.children}</div>
       <button type="button" data-outside-control>

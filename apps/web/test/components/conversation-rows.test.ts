@@ -553,7 +553,7 @@ test("Render receipts split bounded activity chunks without changing their ident
   }
 })
 
-test("virtualized processes have one entrance and bounded batches without hiding the final answer", () => {
+test("virtualized processes admit each tool by its own identity without hiding the final answer", () => {
   const answer = { ...parts[0], id: "answer", type: "text" } as SessionPartSummary
   const input = {
     timeline: [root],
@@ -565,8 +565,10 @@ test("virtualized processes have one entrance and bounded batches without hiding
   const open = buildConversationRows(input)
   expect(open.filter((row) => row.kind === "process")).toHaveLength(1)
   const groups = open.filter((row) => row.kind === "body")
-  expect(Math.max(...groups.map((row) => row.parts.length))).toBeLessThanOrEqual(6)
-  expect(groups.some((row) => row.parts.length > 1)).toBe(true)
+  expect(groups.every((row) => row.parts.length === 1)).toBe(true)
+  expect(groups.filter((row) => row.parts[0].type === "tool").map((row) => row.key)).toEqual(
+    parts.map((part) => `${reply.id}:${part.id}`),
+  )
   expect(groups.flatMap((row) => row.parts.map((part) => part.id))).toEqual([...parts, answer].map((part) => part.id))
   const collapsed = buildConversationRows({ ...input, process: () => ({ open: false, working: false }) })
   expect(collapsed.filter((row) => row.kind === "process")).toHaveLength(1)
