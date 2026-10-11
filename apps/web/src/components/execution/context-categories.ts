@@ -42,7 +42,16 @@ export const contextCategories = {
   },
 } as const
 export type ContextCategory = keyof typeof contextCategories
-export function contextRows(usage: AssistantMessage["contextUsage"]) {
+export type ContextRow = {
+  category: ContextCategory
+  precision: "source" | "role" | "legacy"
+  estimatedTokens: number
+  attributedTokens: number
+  items?: number
+  label: (typeof contextCategories)[ContextCategory]["label"]
+  color: string
+}
+export function contextRows(usage: AssistantMessage["contextUsage"]): ContextRow[] {
   if (!usage) return []
   return [
     ...usage.categories.map((entry) => ({ ...entry, ...contextCategories[entry.category] })),
@@ -73,7 +82,7 @@ export const D = {
   remaining: { id: "context.dashboard.remaining", message: "{tokens} remaining" },
   estimated: {
     id: "context.dashboard.estimated",
-    message: "Categories are estimates; the total comes from the provider.",
+    message: "Categories are estimates.",
   },
   unavailable: {
     id: "context.dashboard.unavailable",

@@ -7,6 +7,7 @@ import { RolloutUsage } from "./usage"
 import z from "zod"
 import { Experiment } from "../../config/experiment"
 import { RolloutTiming } from "./timing"
+import { ContextUsageEstimateSchema } from "../context-usage-schema"
 
 export namespace RolloutSchema {
   const Segment = z.string().regex(/^[a-zA-Z0-9_-]+$/)
@@ -189,6 +190,7 @@ export namespace RolloutSchema {
       request: ArtifactRef,
       response: ArtifactRef.optional(),
       sdkUsage: JsonValue.nullable(),
+      contextEstimate: ContextUsageEstimateSchema.optional(),
       sdkEstimate: ProviderPricing.Estimate.optional(),
       transportCaptured: z.boolean(),
       error: z.string().optional(),
