@@ -25,6 +25,8 @@ Cross project-folder changes with the scheduled janitor: retain a dirty bound ta
 
 In DOM fixtures, give browser navigation a separate bounded budget from interaction assertions. The test-framework budget must cover first-load module preparation on shared CI runners without weakening the component's behavior assertions. For throttled interaction controls, load the fixture before applying CPU throttling; retain throttling throughout the state changes and assertions under test.
 
+Static Vite fixtures disable file watching and finish the first browser load in their bounded setup phase. Concurrent package fixtures can create unrelated TypeScript configurations that otherwise trigger full reloads and destroy the current browser execution context. Keep hot reload enabled only when it is the behavior under test, and retain fresh pages plus the original interaction deadlines for each scenario.
+
 Tests that replace global DOM objects and load DOM-bound modules must use the owning runner's process-isolation list. Restoring globals or closing a JSDOM window does not rebind cached libraries such as DOMPurify; verify resource rendering and sanitization in their isolated batches.
 
 Await returned Solid navigation transitions before simulating later canonical admission in browser fixtures, matching the production submit order. Give production-host startup and history import their own bounded setup lifecycle; retain separate interaction deadlines, dataset size, CPU throttling and behavior assertions, and close that fixture before another host starts. Record elapsed time for long sequential browser scenarios; size their aggregate deadline for all stages on the shared runner without extending the deadline of an individual interaction.

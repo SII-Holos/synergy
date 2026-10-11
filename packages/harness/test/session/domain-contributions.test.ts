@@ -66,7 +66,7 @@ test("an explicitly registered workflow shares session persistence, execution ow
         expect(await SessionExecutionContributions.archive(enabled)).toEqual({ experiment: "saved evidence" })
         expect(
           await SessionExecutionContributions.advisory(enabled.id, enabled.scope.id, new AbortController().signal),
-        ).toEqual(["experiment advisory"])
+        ).toEqual([{ id: kind, text: "experiment advisory" }])
         await expect(
           SessionExecutionContributions.advisory(enabled.id, enabled.scope.id, AbortSignal.abort()),
         ).rejects.toThrow()
