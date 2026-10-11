@@ -707,3 +707,84 @@ test("native saved parameters restore after unmount without leaking into a diffe
   await native()
   expect(await page.getByRole("slider", { name: "Seats" }).inputValue()).toBe("8")
 })
+
+test("native preview options cannot persist after the immutable source changes their values", async () => {
+  const preview = {
+    state: { plan: "Free" },
+    computed: [],
+    nodes: [
+      { id: "heading", type: "heading", text: "Team estimate" },
+      { id: "plan", type: "select", label: "Plan", state: "plan", options: ["Free", "Pro"] },
+    ],
+  }
+  await native(preview, true)
+  const select = page.getByRole("combobox", { name: "Plan" })
+  await select.selectOption("Pro")
+  const before = await page.evaluate(
+    () => (window as unknown as { __renderTest: { stats(): { writes: number } } }).__renderTest.stats().writes,
+  )
+  await stream(
+    { ...preview, nodes: [preview.nodes[0], { ...preview.nodes[1], options: ["Free", "Professional"] }] },
+    true,
+  )
+  await page.getByRole("alert").filter({ hasText: "Invalid control state: plan" }).waitFor()
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)))
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __renderTest: { stats(): { writes: number } } }).__renderTest.stats().writes,
+    ),
+  ).toBe(before)
+  expect(await select.inputValue()).toBe("Pro")
+  await page.getByRole("button", { name: "Expand visual" }).click()
+  expect(await page.locator('[data-component="render-viewer"]').count()).toBe(0)
+  const downloads: string[] = []
+  const onDownload = () => downloads.push("download")
+  page.on("download", onDownload)
+  try {
+    await page.getByRole("button", { name: "Export interactive HTML" }).click()
+    await page.getByRole("alert").filter({ hasText: "Invalid control state: plan" }).first().waitFor()
+    expect(downloads).toEqual([])
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { __renderTest: { stats(): { writes: number } } }).__renderTest.stats().writes,
+      ),
+    ).toBe(before)
+  } finally {
+    page.off("download", onDownload)
+  }
+  await select.selectOption("Free")
+  await page.waitForFunction(
+    () =>
+      (
+        window as unknown as {
+          __renderTest: { stats(): { state: { content: { modelContent: { parameters: { plan: string } } } } } }
+        }
+      ).__renderTest.stats().state.content.modelContent?.parameters?.plan === "Free",
+  )
+  expect(await select.locator("option").allTextContents()).toEqual(["Free", "Professional"])
+  await page.evaluate(() =>
+    (window as unknown as { __renderTest: { visible(visible: boolean): void } }).__renderTest.visible(false),
+  )
+  expect(await page.locator('[data-component="render-tool"]').count()).toBe(0)
+  await page.evaluate(() =>
+    (window as unknown as { __renderTest: { visible(visible: boolean): void } }).__renderTest.visible(true),
+  )
+  await select.waitFor()
+  expect(await select.inputValue()).toBe("Free")
+  expect(await select.locator("option").allTextContents()).toEqual(["Free", "Professional"])
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export interactive HTML" }).click(),
+  ])
+  const exported = await browser.newPage()
+  try {
+    await exported.setContent(await Bun.file((await download.path())!).text())
+    const exportedSelect = exported.getByRole("combobox", { name: "Plan" })
+    expect(await exportedSelect.inputValue()).toBe("Free")
+    await exportedSelect.selectOption("Professional")
+    expect(await exportedSelect.inputValue()).toBe("Professional")
+  } finally {
+    await exported.close()
+  }
+})

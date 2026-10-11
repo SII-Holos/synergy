@@ -112,6 +112,7 @@ export function RenderNative(props: {
       while (dirty && props.persistent && owner === epoch) {
         dirty = false
         try {
+          draw(RenderUI.Spec.parse(JSON.parse(JSON.stringify(props.input))))
           const content = RenderArtifact.Content.parse({ ...props.state.content, modelContent: { parameters: values } })
           const saved = await props.onState(content, generateUUID(), revision)
           if (owner !== epoch) return
