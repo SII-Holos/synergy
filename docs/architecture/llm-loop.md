@@ -131,18 +131,20 @@ SmartAllow remains in the sessionless family and calls `AgentCall.text()` with c
 
 Prompt assembly is ordered from stable to volatile to maximize provider cache reuse.
 
-| Layer                       | Content                                                                                             |
-| --------------------------- | --------------------------------------------------------------------------------------------------- |
-| Agent base                  | Agent prompt or provider fallback prompt, always first.                                             |
-| Static project instructions | Discovered instruction files and explicit instruction additions.                                    |
-| Permission context          | Effective control profile, sandbox/workspace boundaries, and execution guidance.                    |
-| Cortex context              | Parent task and delegated execution context.                                                        |
-| Workflow context            | Plan, Lattice, Light Loop, or BlueprintLoop execution/audit contract.                               |
-| Recall                      | Loop-stable Library memory and experience context.                                                  |
-| Environment                 | Scope, workspace, platform, date, session, endpoint, and worktree facts.                            |
-| Diagnostics and reminders   | Git health, coauthor reminder, Agenda wake-ups, Cortex status, planning reminder, and elapsed time. |
+| Layer                       | Content                                                                          |
+| --------------------------- | -------------------------------------------------------------------------------- |
+| Agent base                  | Agent prompt or provider fallback prompt, always first.                          |
+| Static project instructions | Discovered instruction files and explicit instruction additions.                 |
+| Permission context          | Effective control profile, sandbox/workspace boundaries, and execution guidance. |
+| Cortex context              | Parent task and delegated execution context.                                     |
+| Workflow context            | Plan, Lattice, Light Loop, or BlueprintLoop execution/audit contract.            |
+| Recall                      | Loop-stable Library memory and experience context.                               |
+| Environment                 | Scope, workspace, platform, date, session, endpoint, and worktree facts.         |
+| Diagnostics and reminders   | Git health, coauthor reminder, Agenda wake-ups, Cortex status, and elapsed time. |
 
-Stable system content and a cache breakpoint remain early. Volatile advisory context is placed according to provider prompt-cache policy: either as later system content or as a final `<runtime-context>` user message. The policy uses the resolved runtime profile identity for named account connections, so an account retains its canonical provider's proven cache layout even when its connection ID and generic SDK transport do not identify that provider.
+Stable system content and a cache breakpoint remain early. For the resolved `openai-codex` profile, SessionInvoke persists advisory observations as hidden, non-root user messages before the associated assistant output. Each source retains its complete text, original user permission role, Scope/workspace identity, version and content revision. Initial observations include all sources; later observations append changed sources in full and distinguish explicit removal from temporary unavailability. Earlier observations remain historical. A repeated preparation with unchanged observations adds no event. Other profiles retain their prompt-cache policy: later system content or a final `<runtime-context>` user message. Named connections resolve through their canonical profile identity.
+
+Advisory message identity is reserved before the assistant placeholder. The message and its system-origin text part commit atomically after prompt admission and before model dispatch. Stored history and first-request projection use the same message representation and order. Context contributors receive history without advisory observations, so memory queries and visual-state selection continue to use the actual user input. Compaction that removes observation events causes the next preparation to emit all effective sources again. A content hash detects plugin changes to a retained event and requires a complete current observation before trusting source revisions again. Reopening and forking retain events; forks remap both parent and root identities. Switching away from Codex omits its stored advisory events from the temporary prompt projection and supplies the destination provider's current context snapshot; the durable events remain available when switching back. Workflow, permission and other system/developer instructions retain their authority. See the [advisory history decision](../decisions/implemented/architecture/2026-10-11-durable-advisory-context.md).
 
 Some managed-inference providers reject requests that lack a per-conversation request header the AI SDK never sends. The per-request header gate (`ProviderSessionHeader`) covers this at the two live call surfaces — the `AgentTurn` `streamText` call and the setup live probe. It resolves the effective endpoint (model options beat provider options, and the catalog API URL is only the fallback, mirroring SDK construction) and adds `x-opencode-session` with the Synergy session id only when that resolved endpoint is the OpenCode Go endpoint or the provider id is `opencode-go`; probes without a session send a one-shot UUID. The endpoint is parsed and compared on host and path, so lookalike hosts never receive the id, and a user-pinned header of any casing replaces the generated value instead of duplicating it. Headers must stay per-call: language-model instances are cached, so headers baked into provider options would leak one conversation id across every session sharing the cached instance. When another provider adds a per-conversation header requirement, extend this gate instead of baking headers into provider options.
 
@@ -171,18 +173,18 @@ Tool definitions are filtered for agent visibility and current workflow before p
 `SessionProcessor` owns streamed tool state:
 
 - tool input can move through generating, pending, and running states;
-- streamed raw argument deltas are transport/progress data used for incremental bounds and diagnostics, while the AI SDK `tool-call.input` is the canonical input for final bounds, persistence, loop guards, permission evaluation, and execution;
+- streamed raw argument deltas are transport/progress data used for incremental bounds and diagnostics, while the AI SDK `tool-call.input` is the canonical input for final bounds, persistence, permission evaluation, and execution;
 - each provider call ID owns one runtime execution promise, so replayed AI SDK callbacks reuse the original result or error instead of repeating tool side effects;
 - each execution has a settlement slot keyed by provider call ID;
 - completed output, attachments, metadata, timing, and errors are persisted on the original tool part;
 - settlement is terminal for that provider call ID, so late or replayed stream events cannot allocate a second tool part;
 - more than one tool execution can settle without losing original message-part order;
 - unresolved tools are completed with explicit abort or settlement errors;
-- repeated identical calls can trigger loop protection or permission review.
+- repeated identical calls receive ordinary permission and execution checks.
 
 Model tool-call repair is narrow: known tool names can be case-folded, and syntactically truncated JSON can be repaired only when native parsing fails and the resolved tool exists. Semantic schema errors and hallucinated tools are not rewritten into plausible calls.
 
-## Loop Jobs and Guards
+## Loop Jobs
 
 `LoopJob` is the pre/post step extension point. Jobs can be blocking or non-blocking and can react to registered signals.
 
@@ -192,13 +194,8 @@ Current loop-level behavior includes:
 - asynchronous old-tool-output pruning
 - title, body, and turn diff summary generation
 - Library experience chronicling
-- repeated successful tool-call warnings
-- repeated same-class tool-error stopping
-- tool-category failure analysis and escalation
 
-Each registered tool-failure analyzer owns its declared tool set. Completed and errored parts from that set enter the analyzer even when their tool names are absent from the built-in search category. Registration snapshots the tool and Agent sets before Runtime startup and rejects late changes. Classification preserves explicit failure metadata and errored-part diagnostics.
-
-Search duplicate admission and failure escalation read the active root's authoritative message chronology and ToolParts. Context compaction and Runtime reopening do not remove that evidence. Steers remain in the same root; another root ends the segment. Set-valued filters have canonical ordering, and changed filters or case-sensitive URL paths remain distinct. Storage and malformed-record failures stop admission instead of permitting another external request. Search admission derives the root from the persisted assistant, so caller extra fields cannot select a different task. No separate in-memory attempt ledger is retained.
+Tool repetition and consecutive failures do not append reminders to an earlier user message or stop the loop. Web fetch permits repeated requests while retaining permissions, transport retries, response-size limits, cancellation and content-quality diagnostics. The versioned Session upgrade retires only system-injected legacy loop-guard notices; user-authored text and retained rollout evidence remain intact.
 
 A blocking job can return `continue` to restart the loop after changing history or `stop` to finish without another model call. Non-blocking jobs capture detached payloads and cannot hold the critical execution path. By default every captured payload runs independently; a job opts into latest-pending coalescing only by defining a stable `key()`. Each background execution receives an abort signal and a finite timeout, so consumers must propagate cancellation through history reads, model calls, child-session work, and other long-running operations.
 

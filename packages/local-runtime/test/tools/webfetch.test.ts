@@ -189,7 +189,7 @@ test("preserves non-HTML bodies and labels empty content quality", () =>
     expect(empty.metadata.searchFailureType).toBe("low_quality_results")
     expect(empty.metadata.contentLength).toBe(0)
   }))
-test("rejects invalid URLs before approval and avoids repeat network requests", () =>
+test("rejects invalid URLs before approval and permits fresh repeated requests", () =>
   runtime.run(async () => {
     const { ctx, permissions } = await context()
     await expect(tool.execute({ url: "file:///private/file", format: "text" }, ctx)).rejects.toThrow(
@@ -199,9 +199,9 @@ test("rejects invalid URLs before approval and avoids repeat network requests", 
     await tool.execute({ url: url("/plain"), format: "text" }, ctx)
     const requestCount = requests.length
     const duplicate = await tool.execute({ url: url("/plain"), format: "text" }, ctx)
-    expect(duplicate.metadata.searchFailureType).toBe("duplicate_query")
-    expect(requests.length).toBe(requestCount)
-    expect(permissions).toHaveLength(1)
+    expect(duplicate.output).toContain("Independent observations")
+    expect(requests.length).toBe(requestCount + 1)
+    expect(permissions).toHaveLength(2)
   }))
 test("classifies upstream failures and enforces declared and streamed response limits", () =>
   runtime.run(async () => {
