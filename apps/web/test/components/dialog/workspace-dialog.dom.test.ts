@@ -81,9 +81,14 @@ beforeAll(async () => {
       solid(),
       tailwind(),
     ],
-    resolve: { alias: { "@": appSrc } },
+    resolve: {
+      alias: {
+        "@": appSrc,
+        "lucide-solid": Bun.resolveSync("lucide-solid", path.resolve(appSrc, "../../../packages/ui")),
+      },
+    },
     optimizeDeps: {
-      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid"],
+      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid", "lucide-solid"],
       noDiscovery: true,
     },
     server: {

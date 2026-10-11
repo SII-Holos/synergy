@@ -71,11 +71,14 @@ export namespace SessionTransferGate {
             prefix[0] === "session_index" ||
             (["sessions", "snapshot-v2"].includes(prefix[0]) && (!prefix[1] || prefix[1] === scopeID)),
         )
+      const fences = broad
+        ? []
+        : await tx.readMany(owners.flatMap((sessionID) => [reservationKey(sessionID), key(sessionID)]))
       const reserved = broad
         ? (await tx.query({ kind: "session_transfer_reservation" }))
             .map((record) => record.value as { migrationID: string; scopeID: string })
             .filter((record) => affected(record.scopeID))
-        : await tx.readMany<{ migrationID: string }>(owners.map(reservationKey))
+        : (fences.filter((_, index) => index % 2 === 0) as Array<{ migrationID: string } | undefined>)
       const active = activation.getStore()
       for (const [index, record] of reserved.entries())
         if (record && (active?.runtime !== RuntimeContext.current() || active.migrationID !== record.migrationID))
@@ -88,7 +91,7 @@ export namespace SessionTransferGate {
         ? (await tx.query({ kind: "session_transfer_gate" }))
             .map((record) => Info.parse(record.value))
             .filter((record) => affected(record.scopeID))
-        : await tx.readMany<z.infer<typeof Info>>(owners.map(key))
+        : fences.filter((_, index) => index % 2 === 1)
       const first = gates.find(Boolean)
       if (!first) return
       const gate = Info.parse(first)
