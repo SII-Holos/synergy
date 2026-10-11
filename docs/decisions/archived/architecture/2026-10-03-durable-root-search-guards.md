@@ -1,6 +1,7 @@
 # Decision Record: Derive search protection from durable root history
 
 Status: implemented
+Archived: 2026-10-11
 
 ## Problem
 

@@ -484,6 +484,13 @@ export namespace GitHealth {
   }
 
   export function injectCached(cwd?: string): string | undefined {
+    const observation = observeCached(cwd)
+    return observation.state === "present" ? observation.text : undefined
+  }
+
+  export function observeCached(
+    cwd?: string,
+  ): { state: "present"; text: string } | { state: "cleared" | "unavailable" } {
     const instanceState = runtimeState()
 
     const dir = normalizeDir(cwd ?? process.cwd())
@@ -492,9 +499,10 @@ export namespace GitHealth {
     if (!cached || Date.now() - cached.ts >= CACHE_TTL_MS) {
       refresh(dir).catch(() => {})
     }
-    if (!cached) return undefined
+    if (!cached) return { state: "unavailable" }
     instanceState._lastDir = key
-    return render(cached.issues)
+    const text = render(cached.issues)
+    return text ? { state: "present", text } : { state: "cleared" }
   }
 
   export function lastReport(): Issue[] | undefined {

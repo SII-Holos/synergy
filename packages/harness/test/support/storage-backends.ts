@@ -9,7 +9,6 @@ export const POSTGRES_TEST_FILES = [
   "test/snapshot/persistence.test.ts",
   "test/asset/persistence.test.ts",
   "test/secrets/encrypted-store.test.ts",
-  "test/tool/search-guard-durable.test.ts",
   "test/workspace/catalog-retirement.test.ts",
   "test/environment/provider-request-maintenance.test.ts",
   "test/storage/artifact-pack.test.ts",

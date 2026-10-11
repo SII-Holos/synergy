@@ -2,12 +2,10 @@ import { RuntimeContext } from "../lifecycle/context"
 export namespace SessionProjectHealth {
   export interface Provider {
     isGitRepo(cwd?: string): Promise<boolean>
-    /** Cached git-health diagnostics block for the environment prompt;
-     * undefined when no report is cached yet (refreshes in the background
-     * like the product implementation). */
-    injectCachedGitHealth(cwd?: string): string | undefined
+    observeGitHealth(cwd?: string): Observation
     invalidateGitHealth(cwd?: string): void
   }
+  export type Observation = { state: "present"; text: string } | { state: "cleared" | "unavailable" }
 
   const runtimeState = RuntimeContext.state(() => ({
     provider: undefined as Provider | undefined,
@@ -34,10 +32,10 @@ export namespace SessionProjectHealth {
     return instanceState.provider?.isGitRepo(cwd) ?? Promise.resolve(false)
   }
 
-  export function injectCachedGitHealth(cwd?: string): string | undefined {
+  export function observeGitHealth(cwd?: string): Observation {
     const instanceState = runtimeState()
 
-    return instanceState.provider?.injectCachedGitHealth(cwd)
+    return instanceState.provider?.observeGitHealth(cwd) ?? { state: "unavailable" }
   }
 
   export function invalidateGitHealth(cwd?: string): void {

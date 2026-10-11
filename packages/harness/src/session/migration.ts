@@ -34,6 +34,7 @@ import { Dag } from "./dag"
 import { SessionRootVariant } from "./root-variant"
 import { SessionWorkflowHold } from "./workflow-hold"
 import { SessionPauseRecovery } from "./pause-recovery"
+import { migrateLoopGuardNotices } from "./loop-guard-migration"
 
 import { MigrationRegistry } from "../migration/registry"
 import { work } from "../util/queue"
@@ -1593,6 +1594,19 @@ async function migrateAttachmentDisplay(
 }
 
 export const migrations: Migration[] = [
+  {
+    id: "20261011-session-retire-loop-guard-notices",
+    execution: "session",
+    onAccess: true,
+    scope: "session",
+    description: "Retire injected tool-loop guard notices while retaining user-authored context",
+    upSession: migrateLoopGuardNotices,
+    async up(progress) {
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID))
+          await migrateLoopGuardNotices({ scopeID, sessionID }, progress)
+    },
+  },
   {
     id: "20261009-context-usage-categories",
     scope: "session",

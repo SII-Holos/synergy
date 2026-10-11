@@ -10,7 +10,6 @@ import { registerSummaryJob } from "../session/summary"
 import { registerTitleJob } from "../session/title"
 import { registerLoopSignals } from "../session/loop-signals"
 import { SessionCompaction } from "../session/compaction"
-import { registerSearchFailureAnalyzer } from "../tool/search-guard"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { RuntimeContext } from "./context"
 import { UsageMigration } from "../usage/migration"
@@ -43,7 +42,6 @@ export function registerHarness() {
   registerTitleJob()
   registerLoopSignals()
   SessionCompaction.registerJobs()
-  registerSearchFailureAnalyzer()
   ObservabilityMetrics.register()
   state.complete = true
 }
