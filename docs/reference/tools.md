@@ -171,19 +171,17 @@ Create a recurring task that runs in its own separate session, isolated from thi
 | `agendaTitle` | string | yes | Task title |
 | `agendaDescription` | string |  | Description of the scheduled item; omit when its title is sufficient |
 | `executionInstructions` | string | yes | Instruction for the agent to execute when triggered. Write as a complete brief — the executing agent has no access to this conversation. |
-| `trigger` | AgendaTypes.ScheduleTrigger.describe | yes |  |
+| `trigger` | AgendaTypes.ScheduleTrigger.describe | yes | Schedule trigger. One of: {type:'cron', expr:'0 9 * * *', tz?:'Asia/Shanghai'}, {type:'every', interval:'30m'}, {type:'at', at:1742569200000}, {type:'delay', delay:'2h'}, {type:'session', sessionID:'ses_xxx', event:'turn.end', agent?:'research', finish?:'stop', once?:true}, {type:'github', resource:'pr'\|'issue'\|'workflow'\|'check', repository:'owner/repo', number?:123, interval?:'5m', states?:['merged','failure']} |
 | `tags` | array |  | Tags for organization and filtering |
 | `global` | boolean |  | If true, visible from all scopes. Default: false (current project only) |
 | `wake` | boolean |  | If true, wake this session's agent when execution completes. Default: true |
 | `silent` | boolean |  | If true, suppress result delivery entirely. Default: false |
 | `agent` | string |  | Agent to use, defaults to configured default |
 | `model` | object |  | Model override |
-| `controlProfile` | AgendaTypes.ControlProfile.optional |  |  |
+| `controlProfile` | AgendaTypes.ControlProfile.optional |  | Control profile for sessions created by this agenda item: guarded, autonomous, or full_access |
 | `timeoutSeconds` | number |  | Execution timeout in seconds; omit to use the default |
 | `sessionMode` | "ephemeral" \| "persistent" |  | Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports. |
 | `sessionRefs` | array |  | Sessions whose content is relevant context for execution |
-| `sessionID` | string | yes | Session ID to reference |
-| `hint` | string |  | What to focus on in this session |
 
 ## agenda_trigger
 
@@ -214,12 +212,10 @@ Update an existing agenda item. Only provided fields are changed — omitted fie
 | `silent` | boolean |  | Whether to suppress result delivery |
 | `agent` | string |  | Agent to use, defaults to configured default |
 | `model` | object |  | Model override |
-| `controlProfile` | AgendaTypes.ControlProfile.optional |  |  |
+| `controlProfile` | AgendaTypes.ControlProfile.optional |  | Control profile for sessions created by this agenda item: guarded, autonomous, or full_access |
 | `timeoutSeconds` | number |  | Execution timeout in seconds; omit to use the default |
 | `sessionMode` | "ephemeral" \| "persistent" |  | Session mode override. Set 'ephemeral' to create a fresh session on every fire. |
 | `sessionRefs` | array |  | Sessions whose content is relevant context for execution |
-| `sessionID` | string | yes | Session ID to reference |
-| `hint` | string |  | What to focus on in this session |
 
 ## agenda_watch
 
@@ -234,15 +230,7 @@ Set a one-time wake-up in THIS session. When the watch fires, you receive the pr
 | `executionInstructions` | string | yes | Instruction you'll receive when woken up. Write it for yourself — you'll see it with full conversation history. |
 | `delay` | string |  | How long to wait before waking you, e.g. '30m', '2h', '1d' |
 | `onSessionEnd` | object |  | Wake when another session ends a turn instead of after a delay |
-| `sessionID` | string | yes | Session to watch — wake when it ends a turn |
-| `agent` | string |  | Only wake when the turn's agent matches |
-| `finish` | string |  | Only wake when the turn's finish state matches (e.g. 'stop', 'error') |
 | `onGithub` | object |  | Wake when a GitHub PR / issue / workflow / check changes state instead of after a delay |
-| `resource` | "pr" \| "issue" \| "workflow" \| "check" | yes | GitHub resource kind to watch |
-| `repository` | string | yes | Repository in owner/repo form |
-| `number` | number |  | PR/issue number or workflow run id. Omit for repository-wide pr/issue watch. For checks this is the commit's latest run set |
-| `ref` | string |  | Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows |
-| `states` | array |  | Only wake on transitions into these states (e.g. ['merged'], ['failure'], ['completed']) |
 | `global` | boolean |  | If true, visible from all scopes. Default: false (current project only) |
 
 ## agent_config
@@ -549,7 +537,7 @@ List or open browser pages; navigate, inspect or recover a page by pageId. Pages
 | --- | --- | --- | --- |
 | `action` | "list" \| "open" \| "goto" \| "back" \| "forward" \| "reload" \| "stop" \| "resume" \| "close" \| "current" | yes |  |
 | `pageId` | BrowserPageIdSchema.optional |  | Required except for list and open. |
-| `profileId` | BrowserProfileIdSchema.optional |  |  |
+| `profileId` | BrowserProfileIdSchema.optional |  | Identity for a new page; defaults to Personal. List shows available identities. |
 | `url` | string |  |  |
 | `ignoreCache` | boolean |  |  |
 | `settleMode` | "networkquiet" \| "load" \| "none" |  | Navigation defaults to load (15s). |
@@ -680,11 +668,6 @@ Kind: `communication.deliver`
 
 End the turn with only a reaction on the user's inbound message: add that reaction and send no text, card, attachment, or other message. Use this only when the message needs no answer at all — a pure acknowledgement, a "seen" or "working on it" signal, or a lightweight confirmation. Anything the user must read — an answer, a question, an error, a decision, or a status they need to act on — must be delivered as a normal reply instead. Call this tool at most once per turn (one call per user message). After calling it, stop immediately: produce no answer text and make no further tool calls. Calling it again or adding a reply could deliver a reaction AND a text message for the same turn, breaking the reaction-only promise. This is available only on Feishu accounts with reactionOnlyReply.enabled and streaming disabled; other accounts never offer the tool. The reaction is fixed by the account's reactionOnlyReply.forceReaction setting — you cannot choose one. The reaction is recorded as this turn's terminal intent and the Channel runtime delivers it, so do not also send a reply.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
 
 ## clarus_extend_task
 
@@ -694,14 +677,9 @@ Extend the current Clarus assignment deadline. The current session supplies assi
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `sessionID` | ctx.sessionID | yes |  |
-| `payload` | params | yes |  |
-| `signal` | ctx.abort | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `disposition` | failure.disposition | yes |  |
-| `requestID` | failure.requestID | yes |  |
+| `extend_seconds` | number | yes | How many seconds to add to the current Clarus assignment deadline, from 60 through 3600. |
+| `progress` | string |  | Optional concise progress update for Clarus. |
+| `payload` | record |  | Optional bounded structured extension metadata. |
 
 ## clarus_submit_task_result
 
@@ -711,30 +689,12 @@ Submit the current Clarus assignment result. The current session supplies assign
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `sessionID` | ctx.sessionID | yes |  |
-| `signal` | ctx.abort | yes |  |
-| `payload` | - | yes |  |
-| `success` | params.success | yes |  |
-| `output` | params.output | yes |  |
-| `artifacts` | - | yes |  |
-| `artifactID` | artifact.artifact_id | yes |  |
-| `name` | artifact.name | yes |  |
-| `parts` | artifact.parts.map | yes |  |
-| `type` | part.type | yes |  |
-| `format` | part.format | yes |  |
-| `role` | part.role | yes |  |
-| `contentKind` | part.content_kind | yes |  |
-| `name` | part.name | yes |  |
-| `content` | part.content | yes |  |
-| `evidenceRefs` | params.evidence_refs | yes |  |
-| `notaryRefs` | params.notary_refs | yes |  |
-| `error` | params.error | yes |  |
-| `submittedBy` | ctx.agent | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `disposition` | failure.disposition | yes |  |
-| `requestID` | failure.requestID | yes |  |
+| `success` | boolean | yes | Whether the Clarus assignment completed successfully. |
+| `output` | string | yes | Concise result summary; put reusable content in artifacts. |
+| `artifacts` | array |  |  |
+| `evidence_refs` | array |  |  |
+| `notary_refs` | array |  |  |
+| `error` | string |  | Required when success is false. |
 
 ## computer_action
 
@@ -777,7 +737,7 @@ Lightweight update for DAG nodes. Use this instead of `dagwrite` when you only n
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `nodes` | array |  | Nodes to update |
+| `nodes` | array | yes | Nodes to update |
 | `id` | string | yes | Node ID to update |
 | `status` | string |  | New status: completed, blocked, failed, cancelled, or pending (for retry) |
 | `task_id` | string |  | Background task ID to associate with this node |
@@ -826,13 +786,6 @@ Read emails from an IMAP inbox. Use this tool when the user asks to check email,
 | `action` | "search" \| "summaries" \| "read" \| "markSeen" | yes | What to do: search for UIDs, get summaries, read full email, or mark as seen |
 | `uids` | array |  | Email UIDs to fetch or mark as seen |
 | `search` | object |  | Search criteria for finding emails |
-| `from` | string |  | Filter by sender email address |
-| `subject` | string |  | Filter by subject keyword |
-| `text` | string |  | Filter by keyword in the message body |
-| `since` | dateString.optional |  | Emails received on or after this date (ISO 8601) |
-| `before` | dateString.optional |  | Emails received before this date (ISO 8601) |
-| `unseen` | boolean |  | Only unread emails |
-| `flagged` | boolean |  | Only flagged/starred emails |
 | `limit` | number |  | Maximum results to return (default 20) |
 
 ## email_send
@@ -881,16 +834,9 @@ Deliver a locally committed fix as a GitHub pull request. The current session su
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `sessionID` | ctx.sessionID | yes |  |
-| `branch` | params.branch | yes |  |
-| `title` | params.title | yes |  |
-| `body` | params.body | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `pullRequestURL` | result.pullRequestURL | yes |  |
-| `pullNumber` | result.pullNumber | yes |  |
-| `headBranch` | result.headBranch | yes |  |
+| `branch` | string | yes | Local branch name containing the committed fix (e.g. synergy/fix/issue-123-slug). |
+| `title` | string | yes | Concise pull request title. |
+| `body` | string | yes | Pull request body: what was wrong, what changed, and the test results. |
 
 ## glob
 
@@ -993,29 +939,11 @@ Edit an existing memory by ID. Replaces the title, content, `category`, `recallM
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `id` | params.memoryId | yes |  |
-| `title` | params.memoryTitle | yes |  |
-| `content` | params.memoryContent | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `memoryId` | params.memoryId | yes |  |
-| `memoryTitle` | params.memoryTitle | yes |  |
-| `memoryContent` | params.memoryContent | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
-| `metadata` | - | yes |  |
-| `id` | params.memoryId | yes |  |
-| `title` | params.memoryTitle | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
+| `memoryId` | string | yes | The memory ID to edit |
+| `memoryTitle` | string | yes | New title (10 words max) |
+| `memoryContent` | string | yes | New content to replace the existing memory |
+| `category` | z.enum | yes | Memory category: user, self, relationship, interaction, workflow, coding, writing, asset, insight, knowledge, personal, or general |
+| `recallMode` | z.enum | yes | Memory recall mode: always, contextual, or search_only |
 
 ## memory_get
 
@@ -1025,18 +953,7 @@ Retrieve the full content of one or more memories by their IDs. Returns the titl
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `memoryId` | r.id | yes |  |
-| `memoryTitle` | r.title | yes |  |
-| `memoryContent` | r.content | yes |  |
-| `category` | r.category | yes |  |
-| `recallMode` | r.recall_mode | yes |  |
-| `createdAt` | formatLocalDateTime | yes |  |
-| `metadata` | - | yes |  |
+| `memoryIds` | array | yes | List of memory IDs to retrieve |
 
 ## memory_search
 
@@ -1046,24 +963,10 @@ Search stored memories by semantic similarity. Returns the top-k most relevant m
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `query` | params.query | yes |  |
-| `topK` | params.limit | yes |  |
-| `categories` | params.categories | yes |  |
-| `recallModes` | params.recallModes | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `memoryId` | r.id | yes |  |
-| `memoryTitle` | r.title | yes |  |
-| `category` | r.category | yes |  |
-| `recallMode` | r.recallMode | yes |  |
-| `similarity` | r.similarity | yes |  |
-| `createdAt` | formatLocalDateTime | yes |  |
-| `metadata` | - | yes |  |
+| `query` | string | yes | Search query |
+| `limit` | number |  | Maximum memories to return, from 1 to 100; defaults to 5 |
+| `categories` | array |  | Optional category filters |
+| `recallModes` | array |  | Optional recall mode filters |
 
 ## memory_write
 
@@ -1073,21 +976,10 @@ Persist a piece of knowledge as long-term memory. Provide a concise title, conte
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | params.memoryTitle | yes |  |
-| `content` | params.memoryContent | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `memoryId` | id | yes |  |
-| `memoryTitle` | params.memoryTitle | yes |  |
-| `memoryContent` | params.memoryContent | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
-| `metadata` | - | yes |  |
+| `memoryTitle` | string | yes | A concise title summarizing the memory (10 words max) |
+| `memoryContent` | string | yes | The memory content to persist |
+| `category` | z.enum | yes | Memory category: user, self, relationship, interaction, workflow, coding, writing, asset, insight, knowledge, personal, or general |
+| `recallMode` | z.enum | yes | Memory recall mode: always, contextual, or search_only |
 
 ## note_archive
 
@@ -1198,21 +1090,12 @@ Edit or transform existing images with a text prompt and save the result to outp
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `method` | - | yes |  |
-| `headers` | - | yes |  |
-| `Accept` | - | yes |  |
-| `body` | JSON.stringify | yes |  |
-| `images` | inputImages.map | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `background` | params.background | yes |  |
-| `model` | OPENAI_IMAGE_MODEL | yes |  |
-| `quality` | params.quality | yes |  |
-| `size` | params.size | yes |  |
-| `operation` | - | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `inputImages` | inputImages.map | yes |  |
-| `requested` | - | yes |  |
-| `display` | openAIImageEditDisplay | yes |  |
+| `prompt` | string | yes | Image edit prompt, 1–12000 characters. Sent as-is. |
+| `input_paths` | array | yes | Required source image paths, 1–5 PNG/JPEG/WebP files. Relative paths resolve under the current workspace. |
+| `output_path` | string | yes | Required PNG output path. Relative paths resolve under the current workspace; absolute paths are used as provided. |
+| `size` | string |  | Image size. Defaults to "auto". Custom values must satisfy the gpt-image-2 WIDTHxHEIGHT constraints. |
+| `quality` | "auto" \| "low" \| "medium" \| "high" |  |  |
+| `background` | "auto" \| "opaque" |  |  |
 
 ## openai_image_gen
 
@@ -1222,19 +1105,11 @@ Generate a new image from a text prompt and save it to output_path. Use it when 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `method` | - | yes |  |
-| `headers` | - | yes |  |
-| `Accept` | - | yes |  |
-| `body` | JSON.stringify | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `background` | params.background | yes |  |
-| `model` | OPENAI_IMAGE_MODEL | yes |  |
-| `quality` | params.quality | yes |  |
-| `size` | params.size | yes |  |
-| `operation` | - | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `requested` | - | yes |  |
-| `display` | openAIImageGenDisplay | yes |  |
+| `prompt` | string | yes | Image generation prompt, 1–12000 characters. Sent as-is. |
+| `output_path` | string | yes | Required PNG output path. Relative paths resolve under the current workspace; absolute paths are used as provided. |
+| `size` | string |  | Image size. Defaults to "auto". Custom values must satisfy the gpt-image-2 WIDTHxHEIGHT constraints. |
+| `quality` | "auto" \| "low" \| "medium" \| "high" |  |  |
+| `background` | "auto" \| "opaque" |  |  |
 
 ## parse_code
 
@@ -1443,14 +1318,14 @@ Control a target session remotely — inspect its state and perform actions as i
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `target` | string |  | Target session ID (ses_xxx). Required for every action except create. |
-| `action` | Action.describe | yes | The control action to perform on the target session. |
+| `action` | "create" \| "status" \| "compact" \| "abort" \| "worktree_enter" \| "worktree_leave" \| "set_agent" \| "set_model" \| "set_mode" \| "set_control_profile" \| "question_reply" \| "question_reject" \| "permission_reply" | yes | The control action to perform on the target session. |
 | `title` | string |  | Title for create, or an updated title when supported by future actions. |
 | `initialMessage` | string |  | Initial user message to enqueue after create. The new session processes it asynchronously. |
 | `scopeID` | string |  | Scope ID for create. Defaults to the current scope. |
 | `directory` | string |  | Project directory for create when scopeID is not provided. |
-| `workspace` | WorkspaceSelection.optional |  | Workspace selection for create. |
+| `workspace` | union |  | Workspace selection for create. |
 | `agent` | string |  | Agent name for create or set_agent. |
-| `model` | ModelRef.optional |  | Model override for create or set_model. |
+| `model` | object |  | Model override for create or set_model. |
 | `mode` | SessionInteraction.Mode.optional |  | Interaction mode for create or set_mode. |
 | `modeSource` | string |  | Optional source label for set_mode; defaults to session_control. |
 | `controlProfile` | "guarded" \| "autonomous" \| "full_access" |  | Control profile for create or set_control_profile. |
@@ -1560,11 +1435,8 @@ Delegate one coherent deliverable to a specialist agent. Available agent types: 
 | `dag_node_id` | string |  | DAG node ID to auto-update when this task completes |
 | `background` | boolean |  | Run task in background (async). Returns immediately with taskId. Use for parallel exploration or long-running tasks. Default: false (sync) |
 | `category` | string |  | Category preset to override model and inject context: Default: none (uses subagent's original model and prompt) |
-| `output` | CortexTypes.OutputConfig.optional |  |  |
+| `output` | CortexTypes.OutputConfig.optional |  | Optional output contract for the delegated task. Use structured mode with a JSON Schema when the caller needs machine-readable output. |
 | `worktree` | object |  |  |
-| `create` | literal | yes |  |
-| `name` | string |  |  |
-| `baseRef` | "current" \| "fresh" |  |  |
 
 ## task_cancel
 

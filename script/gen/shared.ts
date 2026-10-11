@@ -205,7 +205,7 @@ export function zodTypeOf(expr: string): string | null {
 }
 
 export function inlineDescribe(expr: string): string | null {
-  const marker = owningDescribe(expr)
+  const marker = owningCall(expr, "describe")
   if (marker < 0) return null
   const openIndex = expr.indexOf("(", marker)
   const closeIndex = matchClose(expr, openIndex, "(", ")")
@@ -221,7 +221,7 @@ export function inlineDescribe(expr: string): string | null {
 // field. A describe nested inside an object literal documents the nested
 // property, so taking the last match would attribute a child's text to the
 // parent.
-function owningDescribe(expr: string) {
+function owningCall(expr: string, name: string) {
   let depth = 0
   let quote: string | null = null
   let marker = -1
@@ -235,13 +235,13 @@ function owningDescribe(expr: string) {
     if (char === '"' || char === "'" || char === "`") quote = char
     else if (char === "(" || char === "{" || char === "[") depth++
     else if (char === ")" || char === "}" || char === "]") depth--
-    else if (depth === 0 && char === "." && expr.startsWith(".describe(", i)) marker = i
+    else if (depth === 0 && char === "." && expr.startsWith(`.${name}(`, i)) marker = i
   }
   return marker
 }
 
 export function isOptionalExpr(expr: string): boolean {
-  return /\.optional\(\)/.test(expr) || /\.default\(/.test(expr) || /\.optional\s*$/.test(expr)
+  return owningCall(expr, "optional") >= 0 || owningCall(expr, "default") >= 0 || /\.optional\s*$/.test(expr)
 }
 
 export interface ObjectField {

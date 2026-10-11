@@ -89,6 +89,8 @@ Use an isolated development instance for an end-to-end model/tool call. Check th
 
 Update product or architecture docs when the tool introduces a user-visible concept or durable boundary. Update `AGENTS.md` only for a reusable repository rule. Do not copy the tool registry into documentation.
 
+Regenerate the tool reference after changing a tool definition, then inspect its parameter table against the declared input schema. Include an output-level regression for empty or named/imported input schemas; freshness alone cannot detect execution request or return fields misidentified as inputs. Keep generation static and repair the owning parser rather than hand-editing the generated reference.
+
 ## Handoff
 
 Report the tool ID, registry/exposure, taxonomy and capabilities, UI registrations, denial/cancellation behavior, migrations, tests, and end-to-end result.

@@ -21,12 +21,14 @@ Nothing failed while this was wrong. The generator is freshness-gated, so a stal
 The reference generators read a field's own schema chain and nothing else.
 
 - `parseObjectFields` ends a continuation by indentation rather than by a line count: a line whose indentation stops the chain and that does not begin with `.` terminates the expression, and so does a balanced line that ends in a comma. A chained call on a deeper continuation never terminates it, and neither does an interior brace that closes a nested object, so a large object body reaches its own trailing modifiers.
-- `inlineDescribe` resolves the describe that the field itself owns. `owningDescribe` walks the expression tracking nesting depth and string state, and records a `.describe(` only at depth zero, so a describe inside an object literal documents the nested property and never the parent.
+- `inlineDescribe` and `isOptionalExpr` resolve only modifiers the field itself owns. `owningCall` walks the expression tracking nesting depth and string state, and records a chained call only at depth zero, so descriptions and optional/default modifiers inside an object literal cannot alter the parent field.
 - `zodTypeOf` anchors each probe to the head of the expression. A field's type is its outermost constructor: an object that contains a `z.enum` is an object, and a union of string and array is a union.
 
 Continuation detection also follows a leading dot after a namespace-qualified builder such as `z.coerce`. Coercion retains the constructor's public type. Formatting the read tool's numeric limit across lines therefore preserves its number type, optionality and description in the generated catalog.
 
 `test/script/gen-catalogs.test.ts` covers the three invariants directly, including a 40-property object that exceeds the old bound and a parent whose describe chains after a nested child's.
+
+The tool catalog resolves both imported and module-local named input schemas from their declarations. Object extensions retain inherited fields and overrides; field aliases retain their own optional/default modifiers and descriptions, including imported aliases and `.shape` references. An empty input object produces no parameter table. Execution request objects and returned `{ title, output, metadata }` values cannot supply substitute input fields when a named schema is empty or unresolved. The generated-catalog regressions cover the empty reaction-only input, Clarus extension fields and image parameter defaults alongside imported computer schemas.
 
 ## Alternatives considered
 

@@ -16,18 +16,25 @@ import { ToolIntent } from "../../packages/harness/src/session/tool-intent"
 import {
   findAssign,
   findBlock,
+  inlineDescribe,
+  isOptionalExpr,
   isFresh,
   mdCell,
   parseObjectFields,
   REPO_ROOT,
   resolveIdentifier,
   stringLiteral,
+  zodTypeOf,
   writeGenerated,
 } from "./shared"
 
-async function schemaFields(file: string, name: string, seen = new Set<string>()): Promise<ToolEntry["parameters"]> {
+async function schemaInitializer(
+  file: string,
+  name: string,
+  seen: Set<string>,
+): Promise<{ file: string; source: ts.SourceFile; expression: ts.Expression } | null> {
   const key = `${file}:${name}`
-  if (seen.has(key)) return []
+  if (seen.has(key)) return null
   seen.add(key)
   const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true)
   for (const statement of source.statements) {
@@ -37,34 +44,86 @@ async function schemaFields(file: string, name: string, seen = new Set<string>()
       const binding = bindings.elements.find((item) => item.name.text === name)
       if (!binding) continue
       const imported = Bun.resolveSync(statement.moduleSpecifier.text, path.dirname(file))
-      return schemaFields(imported, binding.propertyName?.text ?? name, seen)
+      return schemaInitializer(imported, binding.propertyName?.text ?? name, seen)
     }
     if (!ts.isVariableStatement(statement)) continue
     const declaration = statement.declarationList.declarations.find((item) => item.name.getText(source) === name)
-    if (!declaration?.initializer) continue
-    if (ts.isIdentifier(declaration.initializer)) return schemaFields(file, declaration.initializer.text, seen)
-    let expression = declaration.initializer
-    while (ts.isCallExpression(expression) && ts.isPropertyAccessExpression(expression.expression)) {
-      const callee = expression.expression
-      const shape = expression.arguments[0]
-      if (callee.expression.getText(source) === "z" && ["object", "strictObject"].includes(callee.name.text)) {
-        if (!shape || !ts.isObjectLiteralExpression(shape)) return []
-        return shape.properties.flatMap((property) => {
-          if (!ts.isPropertyAssignment(property)) return []
-          const initializer = property.initializer
-          const alias = ts.isIdentifier(initializer)
-            ? source.statements
-                .filter(ts.isVariableStatement)
-                .flatMap((item) => [...item.declarationList.declarations])
-                .find((item) => item.name.getText(source) === initializer.text)?.initializer
-            : undefined
-          return parseObjectFields(`${property.name.getText(source)}: ${(alias ?? initializer).getText(source)}`)
-        })
-      }
-      expression = callee.expression
-    }
+    if (declaration?.initializer) return { file, source, expression: declaration.initializer }
   }
-  return []
+  return null
+}
+
+async function schemaExpression(
+  file: string,
+  expression: ts.Expression,
+  source: ts.SourceFile,
+  seen: Set<string>,
+): Promise<string> {
+  if (ts.isIdentifier(expression)) {
+    const next = new Set(seen)
+    const resolved = await schemaInitializer(file, expression.text, next)
+    if (resolved) return schemaExpression(resolved.file, resolved.expression, resolved.source, next)
+  }
+  if (ts.isCallExpression(expression) && ts.isPropertyAccessExpression(expression.expression)) {
+    const callee = expression.expression
+    const base = await schemaExpression(file, callee.expression, source, new Set(seen))
+    return `${base}.${callee.name.text}(${expression.arguments.map((argument) => argument.getText(source)).join(", ")})`
+  }
+  if (
+    ts.isPropertyAccessExpression(expression) &&
+    ts.isPropertyAccessExpression(expression.expression) &&
+    expression.expression.name.text === "shape" &&
+    ts.isIdentifier(expression.expression.expression)
+  ) {
+    const fields = await schemaFields(file, expression.expression.expression.text, new Set(seen))
+    const field = fields.find((field) => field.name === expression.name.text)
+    if (field) return field.expr
+  }
+  return expression.getText(source)
+}
+
+async function objectSchemaFields(
+  file: string,
+  expression: ts.Expression,
+  source: ts.SourceFile,
+  seen: Set<string>,
+): Promise<ReturnType<typeof parseObjectFields>> {
+  if (ts.isIdentifier(expression)) return schemaFields(file, expression.text, new Set(seen))
+  if (!ts.isCallExpression(expression) || !ts.isPropertyAccessExpression(expression.expression)) return []
+  const callee = expression.expression
+  const shape = expression.arguments[0]
+  const object = callee.expression.getText(source) === "z" && ["object", "strictObject"].includes(callee.name.text)
+  if (object || callee.name.text === "extend") {
+    const inherited = object ? [] : await objectSchemaFields(file, callee.expression, source, new Set(seen))
+    if (!shape || !ts.isObjectLiteralExpression(shape)) return inherited
+    const fields = await Promise.all(
+      shape.properties.map(async (property) => {
+        if (!ts.isPropertyAssignment(property)) return []
+        const initializer = await schemaExpression(file, property.initializer, source, new Set(seen))
+        return [
+          {
+            name: property.name.getText(source),
+            expr: initializer,
+            type: zodTypeOf(initializer),
+            description: inlineDescribe(initializer),
+            optional: isOptionalExpr(initializer),
+          },
+        ]
+      }),
+    )
+    return [...new Map([...inherited, ...fields.flat()].map((field) => [field.name, field])).values()]
+  }
+  return objectSchemaFields(file, callee.expression, source, seen)
+}
+
+export async function schemaFields(
+  file: string,
+  name: string,
+  seen = new Set<string>(),
+): Promise<ReturnType<typeof parseObjectFields>> {
+  const resolved = await schemaInitializer(file, name, seen)
+  if (!resolved) return []
+  return objectSchemaFields(resolved.file, resolved.expression, resolved.source, seen)
 }
 
 const REGISTRY = path.join(REPO_ROOT, "packages/harness/src/tool/registry.ts")
@@ -252,15 +311,10 @@ async function parseToolFile(
 
   let parameters: Array<{ name: string; type: string | null; description: string | null; optional: boolean }> = []
   const identifier = body.match(/parameters\s*:\s*(\w+)\s*,/)?.[1]
-  const importedSchema = identifier && source.match(new RegExp(`import\\s*\\{[^}]*\\b${identifier}\\b[^}]*\\}\\s*from`))
-  if (importedSchema && identifier) {
+  if (identifier) {
     parameters = await schemaFields(file, identifier)
   } else if (/parameters\s*,/.test(body)) {
-    const moduleParams = source.match(/const\s+parameters\s*=\s*z[\s\S]*?\.object\(\{/)
-    if (moduleParams) {
-      const objectBlock = findBlock(source.slice(moduleParams.index), "const parameters", "{", "}")
-      if (objectBlock) parameters = parseObjectFields(objectBlock)
-    }
+    parameters = await schemaFields(file, "parameters")
   } else {
     const paramsBlock = findBlock(body, "parameters", "{", "}")
     if (paramsBlock) parameters = parseObjectFields(paramsBlock)
