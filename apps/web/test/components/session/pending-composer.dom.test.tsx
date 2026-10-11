@@ -73,7 +73,7 @@ beforeAll(async () => {
       return <I18nProvider i18n={i18n}><MarkedProvider><div style={{height:"100dvh"}} data-height={height()}>
         <DefaultSession context={{layout:{minimumWidth:()=>undefined,promptHeight:height,render:part=>part === "composer" ? renderDock() : part === "conversation" ?
           <ConversationPresentation owner={["server","scope",session()]} ready={true}><div class="flex-1 min-h-0 flex flex-col">
-            <ConversationViewport scrolledUp={autoScroll.userScrolled()} onScrolledUpChange={()=>{}} autoScroll={autoScroll} setScrollRef={autoScroll.scrollRef}>
+            <ConversationViewport scrolledUp={autoScroll.userScrolled()} onScrolledUpChange={()=>{}} autoScroll={autoScroll} setScrollRef={autoScroll.scrollRef} contentClass="session-conversation-content session-content-column flex flex-col items-start justify-start gap-5 pb-6 md:pb-[calc(var(--prompt-height,10rem)+32px)]">
               <For each={replies()}>{reply=><p style={{height:"48px",margin:"0"}}>{reply}</p>}</For>
             </ConversationViewport>
           </div></ConversationPresentation> : null}}} />
@@ -252,71 +252,94 @@ test("pane height changes during expansion invalidate captured Composer geometry
   expect(await page.locator(".session-composer").getAttribute("data-expanded")).not.toBeNull()
 })
 
-test("late pending input preserves latest following in the narrow Session flex layout", async () => {
-  await page.setViewportSize({ width: 375, height: 640 })
-  await page.goto(server.url + "?scroll")
-  await page.locator("[data-conversation-viewport]").waitFor()
-  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.latest())
-  const viewport = page.locator("[data-conversation-viewport]")
-  await page.waitForFunction(() => {
-    const el = document.querySelector("[data-conversation-viewport]")!
-    return el.scrollHeight - el.clientHeight - el.scrollTop < 2
-  })
-  const clientHeight = await viewport.evaluate((el) => el.clientHeight)
-  const geometry = await page.evaluate(async () => {
-    const f = (window as unknown as { fixture: Fixture }).fixture
-    f.setItems(12)
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-    const el = document.querySelector("[data-conversation-viewport]")!
-    return {
-      clientHeight: el.clientHeight,
-      gap: el.scrollHeight - el.clientHeight - el.scrollTop,
-      reading: f.reading(),
+for (const width of [375, 1000]) {
+  test(`late pending input preserves settled latest following at ${width}px`, async () => {
+    await page.setViewportSize({ width, height: 640 })
+    await page.goto(server.url + "?scroll")
+    await page.locator("[data-conversation-viewport]").waitFor()
+    await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.latest())
+    const viewport = page.locator("[data-conversation-viewport]")
+    await page.waitForFunction(() => {
+      const el = document.querySelector("[data-conversation-viewport]")!
+      return el.scrollHeight - el.clientHeight - el.scrollTop < 2
+    })
+    await page.waitForTimeout(1100)
+    const before = await viewport.evaluate((el) => {
+      const content = el.querySelector<HTMLElement>(".session-conversation-content")!
+      const padding = Number.parseFloat(getComputedStyle(content).paddingBottom)
+      return {
+        padding,
+        contentHeight: content.getBoundingClientRect().height - padding,
+        rows: content.firstElementChild!.childElementCount,
+      }
+    })
+    const clientHeight = await viewport.evaluate((el) => el.clientHeight)
+    const geometry = await page.evaluate(async () => {
+      const f = (window as unknown as { fixture: Fixture }).fixture
+      f.setItems(12)
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+      const el = document.querySelector("[data-conversation-viewport]")!
+      const content = el.querySelector<HTMLElement>(".session-conversation-content")!
+      const padding = Number.parseFloat(getComputedStyle(content).paddingBottom)
+      return {
+        clientHeight: el.clientHeight,
+        gap: el.scrollHeight - el.clientHeight - el.scrollTop,
+        reading: f.reading(),
+        padding,
+        contentHeight: content.getBoundingClientRect().height - padding,
+        rows: content.firstElementChild!.childElementCount,
+      }
+    })
+    if (width < 768) expect(geometry.clientHeight).toBeLessThan(clientHeight)
+    else {
+      expect(geometry.clientHeight).toBe(clientHeight)
+      expect(geometry.padding).toBeGreaterThan(before.padding)
+      expect(geometry.contentHeight).toBeCloseTo(before.contentHeight, 0)
     }
+    expect(geometry.rows).toBe(before.rows)
+    expect(geometry.gap).toBeLessThan(2)
+    expect(geometry.reading).toBe(false)
+    await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.append())
+    await page.waitForFunction(() => {
+      const el = document.querySelector("[data-conversation-viewport]")!
+      return el.scrollHeight - el.clientHeight - el.scrollTop < 2
+    })
+    expect(await viewport.count()).toBe(1)
+    expect(await viewport.locator("[data-slot=pending-timeline-item]").count()).toBe(0)
   })
-  expect(geometry.clientHeight).toBeLessThan(clientHeight)
-  expect(geometry.gap).toBeLessThan(2)
-  expect(geometry.reading).toBe(false)
-  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.append())
-  await page.waitForFunction(() => {
-    const el = document.querySelector("[data-conversation-viewport]")!
-    return el.scrollHeight - el.clientHeight - el.scrollTop < 2
-  })
-  expect(await viewport.count()).toBe(1)
-  expect(await viewport.locator("[data-slot=pending-timeline-item]").count()).toBe(0)
-})
 
-test("a native scroll-away remains reading through narrow queue mount and delivery", async () => {
-  await page.setViewportSize({ width: 375, height: 640 })
-  await page.goto(server.url + "?scroll")
-  await page.locator("[data-conversation-viewport]").waitFor()
-  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.latest())
-  await page.waitForFunction(() => {
-    const el = document.querySelector("[data-conversation-viewport]")!
-    return el.scrollHeight - el.clientHeight - el.scrollTop < 2
+  test(`a native scroll-away remains reading through queue mount and delivery at ${width}px`, async () => {
+    await page.setViewportSize({ width, height: 640 })
+    await page.goto(server.url + "?scroll")
+    await page.locator("[data-conversation-viewport]").waitFor()
+    await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.latest())
+    await page.waitForFunction(() => {
+      const el = document.querySelector("[data-conversation-viewport]")!
+      return el.scrollHeight - el.clientHeight - el.scrollTop < 2
+    })
+    const viewport = page.locator("[data-conversation-viewport]")
+    const box = (await viewport.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, -320)
+    await page.waitForFunction(() => {
+      const el = document.querySelector("[data-conversation-viewport]")!
+      return el.scrollHeight - el.clientHeight - el.scrollTop > 200
+    })
+    const offset = await viewport.evaluate((el) => el.scrollTop)
+    const reading = await page.evaluate(async () => {
+      const f = (window as unknown as { fixture: Fixture }).fixture
+      f.setItems(12)
+      f.append()
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+      return f.reading()
+    })
+    expect(reading).toBe(true)
+    expect(await viewport.evaluate((el) => el.scrollTop)).toBeCloseTo(offset, 0)
+    await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.deliver())
+    await page.getByRole("region", { name: "Inbox", exact: true }).waitFor({ state: "detached" })
+    expect(await viewport.evaluate((el) => el.scrollTop)).toBeCloseTo(offset, 0)
   })
-  const viewport = page.locator("[data-conversation-viewport]")
-  const box = (await viewport.boundingBox())!
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-  await page.mouse.wheel(0, -320)
-  await page.waitForFunction(() => {
-    const el = document.querySelector("[data-conversation-viewport]")!
-    return el.scrollHeight - el.clientHeight - el.scrollTop > 200
-  })
-  const offset = await viewport.evaluate((el) => el.scrollTop)
-  const reading = await page.evaluate(async () => {
-    const f = (window as unknown as { fixture: Fixture }).fixture
-    f.setItems(12)
-    f.append()
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-    return f.reading()
-  })
-  expect(reading).toBe(true)
-  expect(await viewport.evaluate((el) => el.scrollTop)).toBeCloseTo(offset, 0)
-  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.deliver())
-  await page.getByRole("region", { name: "Inbox", exact: true }).waitFor({ state: "detached" })
-  expect(await viewport.evaluate((el) => el.scrollTop)).toBeCloseTo(offset, 0)
-})
+}
 
 for (const lock of ["rollback", "first-task"] as const) {
   test(`keyboard-only scrolling reaches the last frozen queue message during ${lock}`, async () => {

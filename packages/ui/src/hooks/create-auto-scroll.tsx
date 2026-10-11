@@ -1,7 +1,7 @@
 import { createEffect, createSignal, on, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createScrollMotion } from "../utils/scroll-motion"
-import { createResizeObserver } from "@solid-primitives/resize-observer"
+import { makeResizeObserver } from "@solid-primitives/resize-observer"
 
 export interface AutoScrollReadingAnchor {
   owner: HTMLElement
@@ -227,8 +227,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     preserveReadingAnchor(event && event.target instanceof Element ? event.target : undefined)
   }
 
-  createResizeObserver(
-    () => [store.contentRef, store.viewportRef].filter((element): element is HTMLElement => !!element),
+  const resizeObserver = makeResizeObserver(
     () => {
       // While pinned-follow, resizes only re-pin (and extend an active settle
       // window). Otherwise content grows without scroll events, so report the
@@ -252,7 +251,16 @@ export function createAutoScroll(options: AutoScrollOptions) {
       }
       scheduleMeasure()
     },
+    { box: "border-box" },
   )
+
+  createEffect(() => {
+    const targets = new Set([store.contentRef, store.viewportRef])
+    for (const target of targets) if (target) resizeObserver.observe(target)
+    onCleanup(() => {
+      for (const target of targets) if (target) resizeObserver.unobserve(target)
+    })
+  })
 
   createEffect(
     on(options.working, (working) => {
