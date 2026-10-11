@@ -1158,7 +1158,7 @@ function SessionTurnAssistantActivityBody(props: SessionTurnProps) {
     { equals: same },
   )
   const items = createMemo(() =>
-    props.messages.flatMap((message) =>
+    filterMessagesForTurnDisplay(props.messages).flatMap((message) =>
       message.role === "assistant"
         ? projectActivityMessage(
             message,

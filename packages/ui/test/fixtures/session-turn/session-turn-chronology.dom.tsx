@@ -1,5 +1,5 @@
 import { I18nProvider } from "@lingui/solid"
-import { batch, createSignal, For } from "solid-js"
+import { batch, createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { render } from "solid-js/web"
 import { DataProvider } from "../../../src/context/data.tsx"
@@ -9,6 +9,7 @@ import { MarkedProvider } from "../../../src/context/marked.tsx"
 import { ResourceOpenProvider } from "../../../src/context/resource-open.tsx"
 import { SessionTurn } from "../../../src/components/session-turn.tsx"
 import { ConversationMotionProvider } from "../../../src/components/conversation-motion.tsx"
+import { ConversationFlowProvider } from "../../../src/components/conversation-flow.tsx"
 import { setupI18n } from "../../../src/testing/i18n.tsx"
 import { setExternalMessageSlotLookup } from "../../../src/components/message-slots.tsx"
 
@@ -133,6 +134,7 @@ const [mount, setMount] = createSignal(0)
 const [following, setFollowing] = createSignal(true)
 const [mode, setMode] = createSignal("balanced")
 const [segmented, setSegmented] = createSignal(false)
+const [selectedActivityBody, setSelectedActivityBody] = createSignal(false)
 const [preview, setPreview] = createSignal(false)
 const [stage, setStage] = createSignal(0)
 const [expanded, setExpanded] = createStore({})
@@ -157,7 +159,42 @@ render(
             <DiffComponentProvider component={EmptyDiff}>
               <DataProvider data={data} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
                 <ConversationMotionProvider takeArrival={(id) => partArrivals.delete(id)}>
-                  <For each={segmented() ? ["header", "first", "second", "answer", "footer"] : [`whole-${mount()}`]}>
+                  <Show when={selectedActivityBody()}>
+                    <ConversationFlowProvider>
+                      <SessionTurn
+                        sessionID={sessionID}
+                        messageID={rootID}
+                        rootMessage={rootMessage}
+                        messages={data.message[sessionID].filter((message) => message.role === "assistant")}
+                        lastUserMessageID={rootID}
+                        activityDisplay="full"
+                        segment={{
+                          user: false,
+                          footer: false,
+                          before: false,
+                          after: false,
+                          activityBody: true,
+                          parts: [assistantID, secondAssistantID].flatMap((messageID) =>
+                            data.part[messageID].filter((part) => part.type !== "text"),
+                          ),
+                          process: { hasContent: true, hasTurnContent: true, working: false, open: true },
+                        }}
+                        activityView={{
+                          getExpanded: (key) => expanded[key],
+                          setExpanded: (key, value) => setExpanded(key, value),
+                        }}
+                      />
+                    </ConversationFlowProvider>
+                  </Show>
+                  <For
+                    each={
+                      selectedActivityBody()
+                        ? []
+                        : segmented()
+                          ? ["header", "first", "second", "answer", "footer"]
+                          : [`whole-${mount()}`]
+                    }
+                  >
                     {(segment) => (
                       <SessionTurn
                         segment={
@@ -392,6 +429,9 @@ globalThis.__chronologyHarness = {
       setData("part", secondAssistantID, [])
     }),
   setSegmented,
+  setSelectedActivityBody,
+  setAssistantVisible: (visible: boolean) => setData("message", sessionID, 1, "visible", visible),
+  toolSelection: () => openedTools.at(-1),
   addCompaction: (state = "committed") => {
     move(8)
     setData("message", sessionID, 1, {
@@ -424,6 +464,7 @@ globalThis.__chronologyHarness = {
   reset: () => {
     setExecutionSummary(undefined)
     for (const key of Object.keys(expanded)) setExpanded(key, undefined)
+    setSelectedActivityBody(false)
     setSegmented(false)
     setMode("balanced")
     setPreview(false)

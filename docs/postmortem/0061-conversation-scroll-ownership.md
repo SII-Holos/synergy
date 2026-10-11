@@ -26,6 +26,8 @@ Native heap inspection then found departed conversation viewports reachable thro
 
 Integration with the action-description preference exposed a missing prop in the selected-Part fast path. A real browser regression switched the preference but still observed `Execute commandpwd` instead of the recorded intent. Forwarding the preference to the shared timeline renderer makes both toggle directions pass while the original message, Part and call remain the inspector target; no nested process viewport is introduced.
 
+The selected-Part fast path also bypassed the full-turn display filter. Raw lifecycle members intentionally include hidden assistants, so both initial hidden tool/reasoning content and a visible-to-hidden update leaked into activity bodies; hidden committed compaction likewise appeared. A conversation-flow rendering regression failed for all five cases while running/failed compaction controls passed. Reusing the existing display filter makes those regressions pass, preserves the compaction exceptions and keeps visible tool inspector identities unchanged.
+
 ## Root cause
 
 The group owned presentation semantics and an independent reading system at the same time. Shared turn rendering also implicitly allocated a reader per segment. Neither a single mount flag nor an animation deadline can establish that asynchronous content, local virtual dimensions and the outer reader have accepted the same state. Rendering chunks coupled the demand for six tools to the visibility of one row. Fixed compact estimates transferred that same assumption into long prose; animated measured heights required continuous virtual layout publication.
