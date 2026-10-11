@@ -103,7 +103,7 @@ async function runScenario(
   scenario: Scenario,
   reactionTransport: ReactionTransport = "acknowledged",
   compensationFails = false,
-  enumerationFails = false,
+  enumerationFails: boolean | "terminal-task" = false,
   streamingEnabled = false,
   closeRejects = false,
   cardFailure?: "settings-rejection" | "oversize" | "terminal",
@@ -123,6 +123,7 @@ async function runScenario(
   let primaryCalls = 0
   let failHistoryRead = false
   let historyFailures = 0
+  let successfulPostInvokeHistoryReads = 0
   let activeStreaming = false
   let streamingStarts = 0
   const originalFetch = globalThis.fetch
@@ -378,6 +379,11 @@ async function runScenario(
           Object.assign(
             async (input: Parameters<typeof realMessages>[0]) => {
               if (failHistoryRead && input.sessionID === sessionID) {
+                if (enumerationFails === "terminal-task" && successfulPostInvokeHistoryReads === 0) {
+                  const messages = await realMessages(input)
+                  successfulPostInvokeHistoryReads += 1
+                  return messages
+                }
                 failHistoryRead = false
                 historyFailures += 1
                 throw new Error("Post-invoke history read failed")
@@ -400,7 +406,7 @@ async function runScenario(
               expect(cardRequests.some((request) => request.url.includes("/elements/"))).toBe(true)
             }
             cardRequestsAfterInvoke = cardRequests.length
-            failHistoryRead = enumerationFails
+            failHistoryRead = Boolean(enumerationFails)
             return result
           } catch (error) {
             invokeErrors.push(error)
@@ -474,6 +480,7 @@ async function runScenario(
           expect(rootA).toBeDefined()
           if (enumerationFails) {
             expect(historyFailures).toBe(1)
+            expect(successfulPostInvokeHistoryReads).toBe(enumerationFails === "terminal-task" ? 1 : 0)
             expect(returned).toHaveLength(1)
             if (!streamingEnabled)
               expect(
@@ -589,6 +596,14 @@ async function runScenario(
             expect(assistants[0].info.finish).toBe("tool-calls")
             expect(assistants[1].info.finish).toBe("length")
             expect(assistants[1].parts.filter((part) => part.type === "text")).toEqual([])
+            if (closeRejects) {
+              expect(closes).toEqual([{ replyToMessageId: FOREGROUND_TOPIC, finalText: ORDINARY_ANSWER, error: false }])
+              expect(activeStreaming).toBe(false)
+              expect(replies).toEqual([])
+              expect(pushes).toEqual([])
+              expect(ChannelOutbound.isForeground(sessionID, rootA.info.id)).toBe(false)
+              return
+            }
             expect(closes).toEqual([{ replyToMessageId: FOREGROUND_TOPIC, finalText: ORDINARY_ANSWER, error: false }])
             expect(replies[0].parts).toEqual([{ type: "text", text: ORDINARY_ANSWER }])
             expect(replies[1].parts).toEqual([
@@ -975,3 +990,15 @@ for (const cardFailure of ["settings-rejection", "oversize", "terminal"] as cons
     () => runScenario("ordinary-no-answer", "acknowledged", false, true, true, false, cardFailure),
     30_000,
   )
+
+test(
+  "real Feishu card closes without delivery when terminal enumeration succeeds but task history reread fails",
+  () => runScenario("ordinary-no-answer", "acknowledged", false, "terminal-task", true, false, "settings-rejection"),
+  30_000,
+)
+
+test(
+  "rejected normal terminal close never starts no-delivery cleanup again",
+  () => runScenario("ordinary-no-answer", "acknowledged", false, false, true, true),
+  30_000,
+)

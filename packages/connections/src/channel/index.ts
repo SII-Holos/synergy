@@ -942,6 +942,7 @@ export namespace Channel {
                 let reactionSelected = false
                 for (const result of results) {
                   const isFinalTerminal = result === results.at(-1)
+                  let hasStartedTerminalClose = false
                   try {
                     const hasError = result.info.role === "assistant" && result.info.error != null
 
@@ -985,7 +986,10 @@ export namespace Channel {
 
                     if (reactionOnlyIntent) {
                       reactionSelected = true
-                      if (isFinalTerminal) await streaming.close(undefined, false)
+                      if (isFinalTerminal) {
+                        hasStartedTerminalClose = true
+                        await streaming.close(undefined, false)
+                      }
                       const outcome = await executeReactionOnlyDelivery({
                         sessionID,
                         rootID,
@@ -1015,8 +1019,10 @@ export namespace Channel {
                             new Map(Array.from(toolProgress).filter(([id]) => segmentToolIDs.has(id))),
                           )
                         : undefined
-                      if (isFinalTerminal) await streaming.close(responseText || fallbackText, hasError)
-                      else if (!isBossRoute)
+                      if (isFinalTerminal) {
+                        hasStartedTerminalClose = true
+                        await streaming.close(responseText || fallbackText, hasError)
+                      } else if (!isBossRoute)
                         await deliverForegroundTaskTerminal({
                           provider,
                           accountId: ctx.accountId,
@@ -1075,6 +1081,14 @@ export namespace Channel {
                       messageID: result.info.id,
                       error,
                     })
+                    if (isFinalTerminal && !hasStartedTerminalClose)
+                      await streaming.closeWithoutDelivery().catch((closeError) =>
+                        log.warn("streaming card terminal failure finalization failed", {
+                          sessionID,
+                          messageID: result.info.id,
+                          error: closeError,
+                        }),
+                      )
                   }
                 }
                 if (drainFailure)
