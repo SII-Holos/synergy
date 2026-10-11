@@ -796,6 +796,7 @@ export namespace Session {
             ...(msg.info.role === "assistant" ? { accounting: MessageV2.copyAccounting(msg.info, "inherited") } : {}),
             sessionID,
             id: messageMap.get(msg.info.id)!,
+            ...(msg.info.rootID ? { rootID: messageMap.get(msg.info.rootID) ?? msg.info.rootID } : {}),
             ...("parentID" in msg.info && typeof msg.info.parentID === "string"
               ? { parentID: messageMap.get(msg.info.parentID) ?? msg.info.parentID }
               : {}),

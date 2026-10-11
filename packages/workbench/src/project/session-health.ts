@@ -4,7 +4,7 @@ import { GitHealth } from "./git-health"
 export function registerProjectSessionHealth() {
   SessionProjectHealth.register({
     isGitRepo: (cwd) => GitHealth.isGitRepo(cwd),
-    injectCachedGitHealth: (cwd) => GitHealth.injectCached(cwd),
+    observeGitHealth: (cwd) => GitHealth.observeCached(cwd),
     invalidateGitHealth: (cwd) => GitHealth.invalidate(cwd),
   })
 }
