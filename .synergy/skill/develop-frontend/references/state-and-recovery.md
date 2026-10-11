@@ -9,6 +9,8 @@ Read only sections relevant to the current change. Search the headings and domai
 
 ## Settings recovery
 
+When a setting changes the configuration contract, regenerate the shipped core and full config schemas with `generateSchema()` from `script/release/shared/build-runtime.ts` and run `bun test --config /dev/null test/script/release/runtime-schema.test.ts`. SDK/OpenAPI and configuration-reference generation do not update those artifacts.
+
 After saving a shared display preference, verify both global consumers such as Kanban and Scope-owned session views without navigation or reload. Exercise the targeted configuration refresh with and without a retained Home Scope; refreshing a Scope snapshot alone cannot update consumers of the global store.
 
 Theme and color-scheme selections apply immediately, while fonts, locale and other staged preferences use the footer Save/Cancel flow. Verify both boundaries rather than assuming every appearance setting shares one commit policy. Test same-mode theme changes on already-mounted content and portals. Exercise concurrent Desktop skin persistence with real temporary files: all accepted writes must settle in order, the final stored skin must match the latest request, and a failed replacement must clean up without blocking the next save.

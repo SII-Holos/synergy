@@ -26,4 +26,6 @@ Readers can choose purpose-oriented labels while older calls remain readable. Th
 
 Behavior coverage extends the settings patch tests and real SessionTurn fixture to cover both toggle directions, all display modes, absent and blank intent, accessible failures, retained rows and unchanged result targets.
 
+The shipped full configuration schema includes the preference; the core profile remains unchanged. The runtime-schema contract test compares both generated build schemas with their checked-in artifacts.
+
 The mounted GlobalSync regression also changes the saved preference in both directions, with and without a retained Home Scope, and checks reactive global consumers and the Scope snapshot. Integrated browser acceptance saves the setting while Kanban is mounted and verifies that labels update without a page reload.
