@@ -16,6 +16,8 @@ The page keeps the existing user-origin, task/steer, visibility and materialized
 
 Recovery controls obey the same current first-task and rollback restrictions as ordinary queue actions. Withdrawal retry is hidden while frozen, and every activation rechecks eligibility as well as the in-flight operation lock so a retained control cannot bypass a later state change.
 
+Latest following stays owned by the conversation scroll controller. It observes both content and viewport size: on narrow screens, the relative Dock shrinks the viewport before Dock height delivery, so the page must not infer follow intent from the resulting bottom gap. Native reading input retains its existing cancellation and anchor protection. The bounded queue has an explicitly named keyboard scroll target and visible canonical focus outline even when rollback or the first-task lock removes every action.
+
 Provenance: The user's Codex queue screenshots supplied for this task show pending input attached immediately above the Composer. The public [Codex application features](https://developers.openai.com/codex/app/features/) page provides workflow context, not verification of that queue layout.
 
 Local adaptation: Adopt the attached pending-input placement and quiet row hierarchy, while preserving Synergy's server-owned Inbox modes, controls, delivery deduplication and measured Dock. No upstream code or visual assets are copied, and no new pause/resume state is inferred from the screenshots.
@@ -35,3 +37,5 @@ Pending input stays beside the draft and its controls remain reachable independe
 Existing selector and recovery tests retain their lifecycle coverage. The real Dock/Composer browser regression adds placement, empty-state height, editing-space reservation, stable mode updates, async session isolation, first-task/rollback restrictions, narrow geometry and expanded-editor motion coverage. Direct component tests retain focused sibling rows during withdrawal and verify recovery action restrictions. Whole-page acceptance uses an isolated production Web origin and synthetic inference with the real backend and SDK; it does not establish native IME behavior or model quality.
 
 Recovery browser fixtures hold request completion explicitly while asserting disabled controls, then release the operation to verify failure, retry and restored eligibility. They do not depend on observing a short timer window.
+
+The narrow browser fixture composes the production Session layout, conversation presentation, viewport, scroll controller and Dock. Late queue mounting must keep an accepted latest intent at the bottom; a native upward wheel control must retain reading through mount and delivery. Frozen keyboard cases reach the final row with Tab and End. Chromium's implicit scroll-container focusability passes without an explicit target, while WebKit skips the same frozen list; both are checked without custom key handlers.

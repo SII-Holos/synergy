@@ -41,6 +41,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const [store, setStore] = createStore({
     contentRef: undefined as HTMLElement | undefined,
+    viewportRef: undefined as HTMLElement | undefined,
     userScrolled: false,
   })
   const [readingAnchorOwner, setReadingAnchorOwner] = createSignal<HTMLElement>()
@@ -227,7 +228,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   createResizeObserver(
-    () => store.contentRef,
+    () => [store.contentRef, store.viewportRef].filter((element): element is HTMLElement => !!element),
     () => {
       // While pinned-follow, resizes only re-pin (and extend an active settle
       // window). Otherwise content grows without scroll events, so report the
@@ -303,6 +304,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
       measureFrame = undefined
       forceNextScroll = false
       scroll = el
+      setStore("viewportRef", el)
       down = false
       resumeRequested = false
       previousOffset = el?.scrollTop ?? 0

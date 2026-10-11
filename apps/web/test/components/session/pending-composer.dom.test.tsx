@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
-import { chromium, type Browser, type Page } from "playwright"
+import { chromium, webkit, type Browser, type Page } from "playwright"
 import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
@@ -26,7 +26,7 @@ beforeAll(async () => {
     path.join(directory, "main.tsx"),
     `
     import { render } from "solid-js/web"
-    import { createMemo, createSignal, onCleanup } from "solid-js"
+    import { For, createMemo, createSignal, onCleanup } from "solid-js"
     import { I18nProvider } from "@lingui/solid"
     import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
     import { i18n } from "./locale"
@@ -34,16 +34,22 @@ beforeAll(async () => {
     import { PendingComposerQueue } from "@/components/session/pending-composer-queue"
     import { selectPendingTimelineItems } from "@/components/session/conversation-pending"
     import { createPromptDockHeight } from "@/components/session/prompt-dock-height"
+    import { DefaultSession } from "@/plugin/default-session"
+    import { ConversationPresentation } from "@/components/session/conversation-presentation"
+    import { ConversationViewport } from "@/components/session/conversation-viewport"
+    import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
     import { ComposerPresentation, bindComposerPresentation } from "@/components/prompt-input/composer-presentation"
     import "@ericsanchezok/synergy-ui/styles"
     import "@/index.css"
     const make = (id, mode = "task") => ({id, sessionID:"s1", messageID:"m-"+id, mode, summary:{title:"Queued "+id}, message:{origin:{type:"user"},parts:[{type:"text",text:"Queued "+id}]}, time:{created:1},orderKey:id})
-    const [items, setItems] = createSignal([make("one")])
+    const scrolling = location.search === "?scroll"
+    const [items, setItems] = createSignal(scrolling ? [] : [make("one")])
     const [messages, setMessages] = createSignal([])
     const [rollback, setRollback] = createSignal(false)
     const [root, setRoot] = createSignal(true)
     const [session, setSession] = createSignal("s1")
     const [height, setHeight] = createSignal(0)
+    const [replies, setReplies] = createSignal(Array.from({length:40}, (_,i) => "Reply "+i))
     const visible = createMemo(() => selectPendingTimelineItems(items(), messages()))
     const presentation = new ComposerPresentation()
     const input = {
@@ -53,13 +59,26 @@ beforeAll(async () => {
       editor: {label: () => "Composer", mount: () => () => {}, placeholder: () => "Write a message", completion: () => undefined},
     }
     onCleanup(bindComposerPresentation(input, {state:presentation, preview: () => ({text:"",references:[]})}))
-    window.fixture = {setItems: (count) => setItems(Array.from({length:count}, (_,i) => make(String(i)))), deliver: () => setMessages(items().map(item => ({id:item.messageID}))), rollback:setRollback, root:setRoot, mode: mode => setItems(items().map(item => ({...item,mode}))), fail: () => setItems(items().map(item => ({...item,status:"failed"}))), expand: () => presentation.expand(), collapse: () => presentation.collapse(), switch: () => {setSession("s2");setItems([make("other")]);setMessages([])}, guideCalls:0, removeCalls:0, hold:false}
+    window.fixture = {setItems: (count) => setItems(Array.from({length:count}, (_,i) => make(String(i)))), deliver: () => setMessages(items().map(item => ({id:item.messageID}))), rollback:setRollback, root:setRoot, mode: mode => setItems(items().map(item => ({...item,mode}))), fail: () => setItems(items().map(item => ({...item,status:"failed"}))), expand: () => presentation.expand(), collapse: () => presentation.collapse(), switch: () => {setSession("s2");setItems([make("other")]);setMessages([])}, append: () => setReplies([...replies(), "New output"]), guideCalls:0, removeCalls:0, hold:false}
     const guide = async () => {window.fixture.guideCalls++; if(window.fixture.hold) await new Promise(resolve => window.fixture.finish = resolve)}
     const dock = createPromptDockHeight(setHeight)
-    render(() => <I18nProvider i18n={i18n}><MarkedProvider><div class="session-workbench-pane" style={{height:"100dvh",position:"relative"}} data-height={height()}>
-      <div data-conversation-current><div data-session-top-bar style={{height:"48px"}} /><p>Current answer</p></div>
-      <PromptDock context={{input:()=>input,mount:dock.mount,ready:()=>true,readOnly:()=>false,links:()=>[],render:()=>null}} pending={<PendingComposerQueue identity={session()} items={visible()} rollbackActive={rollback()} hasCanonicalRoot={root()} onGuide={guide} onRemove={async item => {window.fixture.removeCalls++;setItems(items().filter(value=>value.id!==item.id))}} />} />
-    </div></MarkedProvider></I18nProvider>, document.querySelector("#root"))
+    const renderDock = () => <PromptDock context={{input:()=>input,mount:dock.mount,ready:()=>true,readOnly:()=>false,links:()=>[],render:()=>null}} pending={<PendingComposerQueue identity={session()} items={visible()} rollbackActive={rollback()} hasCanonicalRoot={root()} onGuide={guide} onRemove={async item => {window.fixture.removeCalls++;setItems(items().filter(value=>value.id!==item.id))}} />} />
+    render(() => {
+      if (!scrolling) return <I18nProvider i18n={i18n}><MarkedProvider><div class="session-workbench-pane" style={{height:"100dvh",position:"relative"}} data-height={height()}>
+        <div data-conversation-current><div data-session-top-bar style={{height:"48px"}} /><p>Current answer</p></div>{renderDock()}
+      </div></MarkedProvider></I18nProvider>
+      const autoScroll = createAutoScroll({working:()=>false})
+      window.fixture.latest = () => autoScroll.forceScrollToBottom({untilInteraction:true})
+      window.fixture.reading = autoScroll.userScrolled
+      return <I18nProvider i18n={i18n}><MarkedProvider><div style={{height:"100dvh"}} data-height={height()}>
+        <DefaultSession context={{layout:{minimumWidth:()=>undefined,promptHeight:height,render:part=>part === "composer" ? renderDock() : part === "conversation" ?
+          <ConversationPresentation owner={["server","scope",session()]} ready={true}><div class="flex-1 min-h-0 flex flex-col">
+            <ConversationViewport scrolledUp={autoScroll.userScrolled()} onScrolledUpChange={()=>{}} autoScroll={autoScroll} setScrollRef={autoScroll.scrollRef}>
+              <For each={replies()}>{reply=><p style={{height:"48px",margin:"0"}}>{reply}</p>}</For>
+            </ConversationViewport>
+          </div></ConversationPresentation> : null}}} />
+      </div></MarkedProvider></I18nProvider>
+    }, document.querySelector("#root"))
   `,
   )
   server = await createBrowserFixture({
@@ -71,7 +90,7 @@ beforeAll(async () => {
       { find: "@", replacement: source },
     ],
   })
-  browser = await chromium.launch({ headless: true })
+  browser = await (process.env.SYNERGY_TEST_BROWSER === "webkit" ? webkit : chromium).launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 1000, height: 800 } })
   page.on("pageerror", (error) => errors.push(error.message))
 }, 120_000)
@@ -92,6 +111,9 @@ interface Fixture {
   expand(): void
   collapse(): void
   switch(): void
+  append(): void
+  latest(): void
+  reading(): boolean
   guideCalls: number
   removeCalls: number
   hold: boolean
@@ -229,3 +251,109 @@ test("pane height changes during expansion invalidate captured Composer geometry
   expect(geometry.animations).toBe(0)
   expect(await page.locator(".session-composer").getAttribute("data-expanded")).not.toBeNull()
 })
+
+test("late pending input preserves latest following in the narrow Session flex layout", async () => {
+  await page.setViewportSize({ width: 375, height: 640 })
+  await page.goto(server.url + "?scroll")
+  await page.locator("[data-conversation-viewport]").waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.latest())
+  const viewport = page.locator("[data-conversation-viewport]")
+  await page.waitForFunction(() => {
+    const el = document.querySelector("[data-conversation-viewport]")!
+    return el.scrollHeight - el.clientHeight - el.scrollTop < 2
+  })
+  const clientHeight = await viewport.evaluate((el) => el.clientHeight)
+  const geometry = await page.evaluate(async () => {
+    const f = (window as unknown as { fixture: Fixture }).fixture
+    f.setItems(12)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    const el = document.querySelector("[data-conversation-viewport]")!
+    return {
+      clientHeight: el.clientHeight,
+      gap: el.scrollHeight - el.clientHeight - el.scrollTop,
+      reading: f.reading(),
+    }
+  })
+  expect(geometry.clientHeight).toBeLessThan(clientHeight)
+  expect(geometry.gap).toBeLessThan(2)
+  expect(geometry.reading).toBe(false)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.append())
+  await page.waitForFunction(() => {
+    const el = document.querySelector("[data-conversation-viewport]")!
+    return el.scrollHeight - el.clientHeight - el.scrollTop < 2
+  })
+  expect(await viewport.count()).toBe(1)
+  expect(await viewport.locator("[data-slot=pending-timeline-item]").count()).toBe(0)
+})
+
+test("a native scroll-away remains reading through narrow queue mount and delivery", async () => {
+  await page.setViewportSize({ width: 375, height: 640 })
+  await page.goto(server.url + "?scroll")
+  await page.locator("[data-conversation-viewport]").waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.latest())
+  await page.waitForFunction(() => {
+    const el = document.querySelector("[data-conversation-viewport]")!
+    return el.scrollHeight - el.clientHeight - el.scrollTop < 2
+  })
+  const viewport = page.locator("[data-conversation-viewport]")
+  const box = (await viewport.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.wheel(0, -320)
+  await page.waitForFunction(() => {
+    const el = document.querySelector("[data-conversation-viewport]")!
+    return el.scrollHeight - el.clientHeight - el.scrollTop > 200
+  })
+  const offset = await viewport.evaluate((el) => el.scrollTop)
+  const reading = await page.evaluate(async () => {
+    const f = (window as unknown as { fixture: Fixture }).fixture
+    f.setItems(12)
+    f.append()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    return f.reading()
+  })
+  expect(reading).toBe(true)
+  expect(await viewport.evaluate((el) => el.scrollTop)).toBeCloseTo(offset, 0)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.deliver())
+  await page.getByRole("region", { name: "Inbox", exact: true }).waitFor({ state: "detached" })
+  expect(await viewport.evaluate((el) => el.scrollTop)).toBeCloseTo(offset, 0)
+})
+
+for (const lock of ["rollback", "first-task"] as const) {
+  test(`keyboard-only scrolling reaches the last frozen queue message during ${lock}`, async () => {
+    await page.setViewportSize({ width: 375, height: 640 })
+    await page.goto(server.url)
+    await page.getByRole("region", { name: "Inbox", exact: true }).waitFor()
+    await page.evaluate((lock) => {
+      const f = (window as unknown as { fixture: Fixture }).fixture
+      f.setItems(12)
+      if (lock === "rollback") f.rollback(true)
+      else f.root(false)
+    }, lock)
+    const list = page.locator(".pending-composer-list")
+    expect(await list.locator("button").count()).toBe(0)
+    expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+    await page.keyboard.press("Tab")
+    expect(await list.evaluate((el) => el === document.activeElement)).toBe(true)
+    expect(await list.getAttribute("role")).toBe("group")
+    expect(await list.getAttribute("aria-label")).toBe("Inbox")
+    expect(await list.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe("solid")
+    await page.keyboard.press("End")
+    await page.waitForFunction(() => {
+      const el = document.querySelector(".pending-composer-list")!
+      return el.scrollHeight - el.clientHeight - el.scrollTop < 1
+    })
+    const end = await list.evaluate((el) => {
+      const bounds = el.lastElementChild!.querySelector(".pending-composer-label")!.getBoundingClientRect()
+      const viewport = el.getBoundingClientRect()
+      return {
+        gap: el.scrollHeight - el.clientHeight - el.scrollTop,
+        top: bounds.top - viewport.top,
+        bottom: viewport.bottom - bounds.bottom,
+      }
+    })
+    expect(end.gap).toBeLessThan(1)
+    expect(end.top).toBeGreaterThanOrEqual(0)
+    expect(end.bottom).toBeGreaterThanOrEqual(0)
+    expect(await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.removeCalls)).toBe(0)
+  })
+}

@@ -1547,16 +1547,7 @@ function SessionPageContent() {
   const dockHeight = createPromptDockHeight((next) => {
     if (next === store.promptHeight) return
 
-    const el = scroller
-    const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 : false
-
     setStore("promptHeight", next)
-
-    if (stick && el) {
-      requestAnimationFrame(() => {
-        el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
-      })
-    }
   })
 
   const updateHash = (id: string) => {
