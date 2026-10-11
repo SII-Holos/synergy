@@ -331,6 +331,8 @@ import type {
   HolosThreadGetResponses,
   HolosVerifyErrors,
   HolosVerifyResponses,
+  HostConnectionPeersErrors,
+  HostConnectionPeersResponses,
   LatticeRunApproveErrors,
   LatticeRunApproveResponses,
   LatticeRunCancelErrors,
@@ -818,9 +820,13 @@ import type {
   SessionTransferArchiveResponses,
   SessionTransferCancelErrors,
   SessionTransferCancellation,
+  SessionTransferCancellationsErrors,
+  SessionTransferCancellationsResponses,
   SessionTransferCancelResponses,
   SessionTransferCommitErrors,
   SessionTransferCommitResponses,
+  SessionTransferCompleteCancellationErrors,
+  SessionTransferCompleteCancellationResponses,
   SessionTransferCompleteErrors,
   SessionTransferCompleteResponses,
   SessionTransferDestinationErrors,
@@ -1012,6 +1018,18 @@ class HeyApiRegistry<T> {
 
   set(value: T, key?: string): void {
     this.instances.set(key ?? this.defaultKey, value)
+  }
+}
+
+export class HostConnection extends HeyApiClient {
+  /**
+   * List paired remote Hosts
+   */
+  public peers<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<HostConnectionPeersResponses, HostConnectionPeersErrors, ThrowOnError>({
+      url: "/host-connection/peers",
+      ...options,
+    })
   }
 }
 
@@ -10321,6 +10339,76 @@ export class SessionTransfer extends HeyApiClient {
   }
 
   /**
+   * Session transfer cancellations
+   */
+  public cancellations<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionTransferCancellationsResponses,
+      SessionTransferCancellationsErrors,
+      ThrowOnError
+    >({
+      url: "/session-transfer/{sessionID}/cancellations",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Session transfer completeCancellation
+   */
+  public completeCancellation<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      migrationID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "migrationID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionTransferCompleteCancellationResponses,
+      SessionTransferCompleteCancellationErrors,
+      ThrowOnError
+    >({
+      url: "/session-transfer/{sessionID}/cancellations/{migrationID}/complete",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Session transfer stage
    */
   public stage<ThrowOnError extends boolean = false>(
@@ -16827,6 +16915,8 @@ export class SynergyClient extends HeyApiClient {
     super(args)
     SynergyClient.__registry.set(this, args?.key)
   }
+
+  hostConnection = new HostConnection({ client: this.client })
 
   global = new Global({ client: this.client })
 

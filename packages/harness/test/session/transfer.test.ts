@@ -120,6 +120,29 @@ describe("paused Session transfer", () => {
     await expect(f.inTarget(() => Session.get(f.session.id))).rejects.toThrow()
   })
 
+  test("keeps old-target cancellation evidence after retargeting and restart until cleanup is acknowledged", async () => {
+    await using f = await fixture()
+    await using third = await testRuntime()
+    const oldID = crypto.randomUUID()
+    await f.inSource(() => SessionTransfer.prepare(f.session.id, { targetID: f.targetID, migrationID: oldID }))
+    const archive = await f.inSource(() => SessionTransfer.archive(f.session.id))
+    await f.inTarget(() => SessionTransfer.stage(archive))
+    const proof = await f.inSource(() => SessionTransfer.cancel(f.session.id))
+    const thirdID = (await third.run(() => SessionTransfer.host())).id
+    await f.inSource(() =>
+      SessionTransfer.prepare(f.session.id, { targetID: thirdID, migrationID: crypto.randomUUID() }),
+    )
+    await f.reopen()
+    expect(await f.inSource(() => SessionTransfer.cancellations(f.session.id))).toEqual([proof])
+    await expect(
+      f.inSource(() => SessionTransfer.completeCancellation(f.session.id, crypto.randomUUID())),
+    ).rejects.toThrow("another Session")
+    await f.inTarget(() => SessionTransfer.discard(proof))
+    await f.inSource(() => SessionTransfer.completeCancellation(f.session.id, oldID))
+    expect(await f.inSource(() => SessionTransfer.cancellations(f.session.id))).toEqual([])
+    await expect(f.inTarget(() => SessionTransfer.destination(oldID))).rejects.toThrow()
+  })
+
   test("rejects unpaused sessions and a receipt for another destination", async () => {
     await using f = await fixture()
     await f.inSource(() => SessionLifecycle.clear(f.session.id))
@@ -309,11 +332,18 @@ describe("paused Session transfer", () => {
             input: { command: "expensive computation", outputPath: "/requested/workspace/result.txt" },
             output: "saved result",
             title: "Compute",
-            metadata: { outputPath: output, asset: `asset://${asset}` },
+            metadata: { outputPath: output },
             time: { start: 1, end: 2 },
           },
         }
         await Session.updatePart(part)
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID,
+          sessionID: f.session.id,
+          type: "text",
+          text: `Result: ![diagram](asset://${asset})`,
+        })
         return { output, asset, part }
       })
       await f.inSource(() =>

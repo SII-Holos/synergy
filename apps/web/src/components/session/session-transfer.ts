@@ -7,6 +7,31 @@ async function required<T>(request: Promise<{ data?: T }>): Promise<NonNullable<
   return response.data
 }
 
+export async function cleanupCancelledTransfers(input: {
+  source: SynergyClient
+  target: SynergyClient
+  sessionID: string
+  scopeID: string
+}) {
+  const host = await required(input.target.sessionTransfer.host({}, { signal: AbortSignal.timeout(3000) }))
+  const proofs = await required(
+    input.source.sessionTransfer.cancellations({ sessionID: input.sessionID, scopeID: input.scopeID }),
+  )
+  for (const proof of proofs) {
+    if (proof.targetID !== host.id) continue
+    await required(
+      input.target.sessionTransfer.discard({ migrationID: proof.migrationID, sessionTransferCancellation: proof }),
+    )
+    await required(
+      input.source.sessionTransfer.completeCancellation({
+        sessionID: input.sessionID,
+        scopeID: input.scopeID,
+        migrationID: proof.migrationID,
+      }),
+    )
+  }
+}
+
 export async function migratePausedSession(input: {
   source: SynergyClient
   target: SynergyClient

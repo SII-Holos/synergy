@@ -1,6 +1,6 @@
 # harness Package
 
-Own exports. Public `agent/primary-identity` maps primary names.
+[Host connections](../../docs/architecture/host-connections.md) owns pairing. Primary names: `agent/primary-identity`.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Keep optional product schemas out of the harness. `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; workflow state and execution/recovery policy belong to their domain packages. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk and stay out of client output. Full product composition explicitly completes schema registration.

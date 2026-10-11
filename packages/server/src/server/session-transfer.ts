@@ -42,6 +42,28 @@ async function own(sessionID: string) {
 export const SessionTransferRoute = () =>
   new Hono()
     .get("/host", metadata("host", SessionTransfer.Host), (c) => result(c, () => SessionTransfer.host()))
+    .get(
+      "/:sessionID/cancellations",
+      metadata("cancellations", z.array(SessionTransfer.Cancellation)),
+      validator("param", Params),
+      (c) =>
+        result(c, async () => {
+          const { sessionID } = c.req.valid("param")
+          await own(sessionID)
+          return SessionTransfer.cancellations(sessionID)
+        }),
+    )
+    .post(
+      "/:sessionID/cancellations/:migrationID/complete",
+      metadata("completeCancellation", z.boolean()),
+      validator("param", Params.merge(Migration)),
+      (c) =>
+        result(c, async () => {
+          const { sessionID, migrationID } = c.req.valid("param")
+          await own(sessionID)
+          return SessionTransfer.completeCancellation(sessionID, migrationID)
+        }),
+    )
     .post("/stage", metadata("stage", SessionTransfer.Receipt), validator("form", z.object({ file: z.file() })), (c) =>
       result(c, () => SessionTransfer.stage(c.req.valid("form").file)),
     )

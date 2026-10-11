@@ -2,7 +2,7 @@ import { SessionTransferState } from "./transfer-state"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { z } from "zod"
 import { Scope } from "../scope"
-import { RuntimeComponents } from "../lifecycle/components"
+import { HostIdentity } from "../host/identity"
 import { WorkspaceTree } from "../workspace/tree"
 import { WorkspaceCatalog } from "../workspace/catalog"
 
@@ -10,9 +10,7 @@ export namespace SessionTransferSchema {
   export const Rejected = NamedError.create("SessionTransferRejected", z.object({ message: z.string() }))
   export const ID = z.string().uuid()
   export const Hash = z.string().regex(/^[a-f0-9]{64}$/)
-  export const Host = z
-    .object({ id: ID, version: z.string(), platform: z.string(), components: z.array(RuntimeComponents.Info) })
-    .meta({ ref: "SessionTransferHost" })
+  export const Host = HostIdentity.Info.clone().meta({ ref: "SessionTransferHost" })
   export const Prepare = z.object({ migrationID: ID, targetID: ID }).strict().meta({ ref: "SessionTransferPrepare" })
   export const Receipt = z
     .object({

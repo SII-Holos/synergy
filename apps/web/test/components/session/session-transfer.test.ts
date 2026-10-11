@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { createSynergyClient, type SessionTransferState } from "@ericsanchezok/synergy-sdk/client"
-import { migratePausedSession } from "../../../src/components/session/session-transfer"
+import { cleanupCancelledTransfers, migratePausedSession } from "../../../src/components/session/session-transfer"
 
 test("a lost activation response retries the same handoff without exporting or executing again", async () => {
   const calls: string[] = []
@@ -126,4 +126,47 @@ test("a cancelled receive is discarded before retrying the same destination", as
   expect(discards).toBe(2)
   expect(prepares).toBe(1)
   expect(phase).toBe("completed")
+})
+
+test("old-target cleanup waits for discard success and survives a newer destination", async () => {
+  let proofs = [{ migrationID: crypto.randomUUID(), sessionID: "ses_fixture", targetID: "target-a", secret: "fixture" }]
+  let offline = true
+  let discards = 0
+  let acknowledgements = 0
+  const client = (host: string) =>
+    createSynergyClient({
+      baseUrl: `http://${host}`,
+      throwOnError: true,
+      fetch: Object.assign(
+        async (request: RequestInfo | URL) => {
+          const url = new URL(request instanceof Request ? request.url : String(request))
+          if (url.pathname.endsWith("/host")) return Response.json({ id: host })
+          if (url.pathname.endsWith("/cancellations")) return Response.json(proofs)
+          if (url.pathname.endsWith("/discard")) {
+            discards++
+            return offline ? Response.json({}, { status: 503 }) : Response.json(true)
+          }
+          if (url.pathname.endsWith("/complete")) {
+            acknowledgements++
+            proofs = []
+            return Response.json(true)
+          }
+          throw new Error(`Unexpected cleanup operation ${url.pathname}`)
+        },
+        { preconnect: globalThis.fetch.preconnect },
+      ),
+    })
+  const source = client("source")
+  await cleanupCancelledTransfers({ source, target: client("target-b"), sessionID: "ses_fixture", scopeID: "home" })
+  expect(discards).toBe(0)
+  await expect(
+    cleanupCancelledTransfers({ source, target: client("target-a"), sessionID: "ses_fixture", scopeID: "home" }),
+  ).rejects.toBeDefined()
+  expect(acknowledgements).toBe(0)
+  expect(proofs).toHaveLength(1)
+  offline = false
+  await cleanupCancelledTransfers({ source, target: client("target-a"), sessionID: "ses_fixture", scopeID: "home" })
+  expect(discards).toBe(2)
+  expect(acknowledgements).toBe(1)
+  expect(proofs).toHaveLength(0)
 })

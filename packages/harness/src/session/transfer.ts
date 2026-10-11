@@ -1,14 +1,12 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import { randomBytes, randomUUID } from "node:crypto"
+import { randomBytes } from "node:crypto"
 import { z } from "zod"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { Storage } from "../storage/storage"
 import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
 import { Lock } from "../util/lock"
-import { Installation } from "../global/installation"
-import { RuntimeComponents } from "../lifecycle/components"
 import { Bus } from "../bus"
 import { SessionEvent } from "./event"
 import { Session } from "."
@@ -32,6 +30,7 @@ import { MessageV2 } from "./message-v2"
 import { WorkspaceBinding } from "../workspace/binding"
 import { WorkspaceTree } from "../workspace/tree"
 import { WorkspaceCatalog } from "../workspace/catalog"
+import { HostIdentity } from "../host/identity"
 
 export namespace SessionTransfer {
   export const Rejected = S.Rejected
@@ -62,18 +61,7 @@ export namespace SessionTransfer {
     })
 
   export async function host() {
-    return Storage.transaction(async () => {
-      const key = ["session_transfer_host", "identity"]
-      const previous = await optional(Storage.read<{ version: 1; id: string }>(key))
-      const id = previous?.id ?? randomUUID()
-      if (!previous) await Storage.write(key, { version: 1, id })
-      return Host.parse({
-        id,
-        version: Installation.VERSION,
-        platform: process.platform,
-        components: RuntimeComponents.selected(),
-      })
-    })
+    return Host.parse(await HostIdentity.describe())
   }
 
   async function publish(sessionID: string) {
@@ -611,13 +599,16 @@ export namespace SessionTransfer {
           const receipt = await Gate.activating(proof.migrationID, () =>
             Storage.transaction(async () => {
               if (scope.type === "project" && !(await Scope.fromID(scope.id))) await Scope.registerProject(scope)
-              const workspace = workspacePath ? await WorkspaceBinding.register(scope.id, workspacePath) : undefined
+              const workspace = workspacePath
+                ? await WorkspaceBinding.register(scope.id, workspacePath, m.workspace!.info.binding.generation)
+                : undefined
               const mappings = new Map(m.workspace && workspace ? [[m.workspace.info.id, workspace.id]] : [])
               await Session.create({
                 id: proof.sessionID,
                 scope,
                 workspaceID: workspace?.id ?? null,
                 workspace: workspace ? WorkspaceCatalog.projection(workspace) : null,
+                environmentID: null,
               })
               for (const entry of entries) {
                 let value = WorkspaceTransfer.record(entry.key, entry.value, (reference) => {
@@ -716,5 +707,24 @@ export namespace SessionTransfer {
     await Archive.cleanPayload(proof.migrationID)
     await publish(sessionID)
     return proof
+  }
+
+  export async function cancellations(sessionID: string) {
+    if ((await Session.get(sessionID)).scope.id !== ScopeContext.current.scope.id)
+      throw new Rejected({ message: "Cancellation belongs to another Scope" })
+    const result: z.infer<typeof Cancellation>[] = []
+    for await (const { value } of Storage.records<{ version: 1; proof: z.infer<typeof Cancellation> }>({
+      prefix: ["session_transfer_cancellation"],
+    })) {
+      if (value.proof.sessionID === sessionID) result.push(Cancellation.parse(value.proof))
+    }
+    return result
+  }
+
+  export async function completeCancellation(sessionID: string, migrationID: string) {
+    const proof = (await cancellations(sessionID)).find((proof) => proof.migrationID === migrationID)
+    if (!proof) throw new Rejected({ message: "Cancellation belongs to another Session or Scope" })
+    await Storage.remove(["session_transfer_cancellation", proof.migrationID])
+    return true
   }
 }

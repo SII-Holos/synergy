@@ -14,6 +14,7 @@ import { SnapshotStore } from "@ericsanchezok/synergy-harness/session/snapshot-s
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { SessionTransferArchive } from "../../../harness/src/session/transfer-archive"
 import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
 
 test("transfers dirty files, binaries, modes and links to a new private Workspace", async () => {
   await using source = await testRuntime()
@@ -27,7 +28,13 @@ test("transfers dirty files, binaries, modes and links to a new private Workspac
   const inSource = <T>(fn: () => Promise<T>) =>
     source.run(() => directory.scope().then((scope) => ScopeContext.provide({ scope, fn })))
   const session = await inSource(async () => {
-    const workspace = await WorkspaceBinding.register(ScopeContext.current.scope.id, directory.path)
+    let workspace = await WorkspaceBinding.register(ScopeContext.current.scope.id, directory.path)
+    for (let i = 0; i < 2; i++)
+      workspace = await WorkspaceBinding.rebind(workspace.id, {
+        scopeID: workspace.scopeID,
+        path: directory.path,
+        expectedRevision: workspace.revision,
+      })
     const session = await Session.create({ workspaceID: workspace.id })
     await SessionLifecycle.pause({ sessionID: session.id, reason: "interrupted" })
     return session
@@ -82,6 +89,14 @@ test("transfers dirty files, binaries, modes and links to a new private Workspac
   expect(await inSource(() => Bun.file(SessionTransferArchive.filename(proof.migrationID)).exists())).toBe(false)
   expect(await target.run(() => Bun.file(SessionTransferArchive.filename(proof.migrationID)).exists())).toBe(false)
   expect(moved.workspaceID).not.toBe(session.workspaceID)
+  expect(moved.workspace?.generation).toBe(3)
+  await expect(
+    target.run(() => WorkspaceBinding.validate(moved.workspaceID!, moved.scope.id, 3)),
+  ).resolves.toMatchObject({ id: moved.workspaceID })
+  await expect(target.run(() => WorkspaceBinding.validate(moved.workspaceID!, moved.scope.id, 1))).rejects.toThrow(
+    "binding changed",
+  )
+  expect(await target.run(() => Environment.list(session.scope.id))).toEqual([])
   expect(moved.workspace?.path).not.toBe(directory.path)
   expect(moved.paused?.reason).toBe("interrupted")
   const root = moved.workspace!.path

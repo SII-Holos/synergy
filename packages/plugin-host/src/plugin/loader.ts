@@ -1,4 +1,5 @@
 import { Global } from "@ericsanchezok/synergy-harness/global"
+import { HostConnection } from "@ericsanchezok/synergy-harness/host/connection"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { PluginEvent } from "./event"
@@ -334,6 +335,7 @@ export async function disablePlugin(input: {
   const plugin = current.loaded.find((item) => item.id === input.pluginId)
   if (plugin) {
     plugin.enabledScopes.delete(current.scopeId)
+    if (plugin.enabledScopes.size === 0) await HostConnection.disableOwner(plugin.id)
     current.loaded = current.loaded.filter((item) => item.id !== input.pluginId)
   }
   const record = disabled({
@@ -437,6 +439,10 @@ export async function ensureRuntime(plugin: LoadedPlugin) {
 }
 
 export async function resetAllPluginState() {
+  const plugins = await state()
+    .then((value) => value.loaded)
+    .catch(() => [])
+  for (const plugin of plugins) await HostConnection.disableOwner(plugin.id)
   await state.resetAll()
 }
 

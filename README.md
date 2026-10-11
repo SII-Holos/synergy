@@ -255,6 +255,8 @@ synergy-plugin validate --runtime-discovery
 
 UI API 6 supports replaceable workbenches, typed frontend services and structured Skins. `synergy-plugin preview` runs an isolated production host for authoring.
 
+Approved connection providers can discover and pair devices for [manual paused-task migration](docs/architecture/session-transfer.md), with [Core-owned device authorization](docs/architecture/host-connections.md).
+
 Start with the [plugin documentation](docs/plugins/README.md) and the [`@ericsanchezok/synergy-plugin` API reference](packages/plugin/README.md).
 
 ## Documentation

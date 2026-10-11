@@ -47,6 +47,16 @@ export type PluginHostServiceMethod =
   | "asset.create"
   | "shell.run"
   | "runtime.endpoint.get"
+  | "host.connection.endpoint"
+  | "host.connection.configure"
+  | "host.connection.probe"
+  | "host.connection.invite"
+  | "host.connection.pair"
+  | "host.connection.pending"
+  | "host.connection.approve"
+  | "host.connection.finish"
+  | "host.connection.peers"
+  | "host.connection.revoke"
 
 export type HostToPlugin =
   | { type: "activate"; input: RuntimeActivationData }

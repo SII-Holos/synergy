@@ -10988,6 +10988,14 @@ export type SessionTransferHost = {
   components: Array<RuntimeComponentInfo>
 }
 
+export type SessionTransferCancellation = {
+  migrationID: string
+  sessionID: string
+  sourceID: string
+  targetID: string
+  secret: string
+}
+
 export type SessionTransferReceipt = {
   migrationID: string
   sessionID: string
@@ -11004,14 +11012,6 @@ export type SessionTransferActivation = {
   targetID: string
   digest: string
   phase: "prepared"
-  secret: string
-}
-
-export type SessionTransferCancellation = {
-  migrationID: string
-  sessionID: string
-  sourceID: string
-  targetID: string
   secret: string
 }
 
@@ -14661,6 +14661,41 @@ export type Event =
   | EventReviewStateUpdated
 
 export type RenderTarget2 = string
+
+export type HostConnectionPeersData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/host-connection/peers"
+}
+
+export type HostConnectionPeersErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HostConnectionPeersError = HostConnectionPeersErrors[keyof HostConnectionPeersErrors]
+
+export type HostConnectionPeersResponses = {
+  /**
+   * Paired devices
+   */
+  200: Array<{
+    id: string
+    version: string
+    platform: string
+    components: Array<RuntimeComponentInfo>
+    name: string
+    publicKey: string
+    url?: string
+    pairedAt: number
+    connectionPath: string
+  }>
+}
+
+export type HostConnectionPeersResponse = HostConnectionPeersResponses[keyof HostConnectionPeersResponses]
 
 export type GlobalCapabilitiesData = {
   body?: never
@@ -22567,6 +22602,101 @@ export type SessionTransferHostResponses = {
 }
 
 export type SessionTransferHostResponse = SessionTransferHostResponses[keyof SessionTransferHostResponses]
+
+export type SessionTransferCancellationsData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/{sessionID}/cancellations"
+}
+
+export type SessionTransferCancellationsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
+}
+
+export type SessionTransferCancellationsError =
+  SessionTransferCancellationsErrors[keyof SessionTransferCancellationsErrors]
+
+export type SessionTransferCancellationsResponses = {
+  /**
+   * Session transfer result
+   */
+  200: Array<SessionTransferCancellation>
+}
+
+export type SessionTransferCancellationsResponse =
+  SessionTransferCancellationsResponses[keyof SessionTransferCancellationsResponses]
+
+export type SessionTransferCompleteCancellationData = {
+  body?: never
+  path: {
+    sessionID: string
+    migrationID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session-transfer/{sessionID}/cancellations/{migrationID}/complete"
+}
+
+export type SessionTransferCompleteCancellationErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
+}
+
+export type SessionTransferCompleteCancellationError =
+  SessionTransferCompleteCancellationErrors[keyof SessionTransferCompleteCancellationErrors]
+
+export type SessionTransferCompleteCancellationResponses = {
+  /**
+   * Session transfer result
+   */
+  200: boolean
+}
+
+export type SessionTransferCompleteCancellationResponse =
+  SessionTransferCompleteCancellationResponses[keyof SessionTransferCompleteCancellationResponses]
 
 export type SessionTransferStageData = {
   body?: {

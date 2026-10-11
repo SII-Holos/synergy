@@ -8,9 +8,13 @@ import { createSynergyClient, type SessionTransferState } from "@ericsanchezok/s
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { useServer, serverDisplayName } from "@/context/server"
+import { useServer } from "@/context/server"
 import { usePlatform } from "@/context/platform"
-import { migratePausedSession, type TransferProgress } from "@/components/session/session-transfer"
+import {
+  migratePausedSession,
+  cleanupCancelledTransfers,
+  type TransferProgress,
+} from "@/components/session/session-transfer"
 import "./dialog-session-export.css"
 
 export const transferCopy = {
@@ -57,7 +61,7 @@ export function DialogSessionTransfer(props: { sessionID: string; scopeID: strin
   const source = useGlobalSDK().client
   const dialog = useDialog()
   const navigate = useNavigate()
-  const destinations = () => server.list.filter((url) => url !== server.url)
+  const destinations = () => server.connections.filter((url) => url !== server.url)
   const [selected, setSelected] = createSignal("")
   const [state, setState] = createSignal<SessionTransferState | null>()
   const [busy, setBusy] = createSignal(false)
@@ -68,7 +72,14 @@ export function DialogSessionTransfer(props: { sessionID: string; scopeID: strin
   const refresh = async () => setState((await source.sessionTransfer.status(props)).data)
   onMount(async () => {
     try {
+      await server.refreshConnections()
       await refresh()
+      await Promise.all(
+        destinations().map(async (url) => {
+          const target = createSynergyClient({ baseUrl: url, fetch: platform.fetch, throwOnError: true })
+          await cleanupCancelledTransfers({ source, target, ...props }).catch(() => {})
+        }),
+      )
       if (state() && state()!.phase !== "cancelled") {
         const matches = await Promise.all(
           destinations().map(async (url) => {
@@ -158,7 +169,7 @@ export function DialogSessionTransfer(props: { sessionID: string; scopeID: strin
           class="rounded-md border border-border-base bg-background-base p-2 text-text-base"
         >
           <option value="">{_(transferCopy.select)}</option>
-          <For each={destinations()}>{(url) => <option value={url}>{serverDisplayName(url)}</option>}</For>
+          <For each={destinations()}>{(url) => <option value={url}>{server.displayName(url)}</option>}</For>
         </select>
         <Show when={!destinations().length}>
           <p>{_(transferCopy.empty)}</p>

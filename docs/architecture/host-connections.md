@@ -1,0 +1,27 @@
+# Host Connections
+
+## Ownership
+
+Harness owns persistent Host identity, Ed25519 keys, pairing grants and request authorization. Server owns the authenticated gateway and local HTTP/WebSocket proxy. The public optional `hostConnection` Plugin Host Service lets an approved plugin publish a gateway, probe devices and manage pairing. A provider plugin owns its network client, discovery, login, Serve configuration and settings UI. Core does not depend on Tailscale or import provider code.
+
+Plugin API4 and IPC9 remain unchanged. `host.connection.manage` is required in both the plugin manifest and the invoking contribution. Agent calls and invocations originating through the remote gateway cannot manage connections. Existing `runtime.endpoint.read` keeps its credential-free listener contract. The new `endpoint()` returns the loopback gateway path, without a bearer token or private key.
+
+## Pairing and authorization
+
+The destination generates a one-use, 48-bit pairing code valid for five minutes. Five incorrect attempts invalidate it. A requester signs its Host identity and pairing UUID; possession of the code creates only a pending request. The destination user confirms the requester, and the requester validates the signed approval before publishing its peer connection. Host identity and public key are pinned together. Reapproving a revoked or replaced receipt cannot restore authority. A new pairing needs a new code and confirmation.
+
+The gateway exposes only descriptor, pairing request and signed pairing-status endpoints anonymously. `/api/*` requires a paired identity and an Ed25519 signature over the protocol marker, both Host IDs, pairing UUID, timestamp, nonce, method, path with query, content type and SHA-256 body digest. Requests tolerate 30 seconds of clock difference. Nonces are persisted before dispatch, reject replay across restart and are periodically pruned after expiry. Discovery/pairing responses are capped at 32 KiB; forwarded request bodies are capped at 72 MiB, including multipart overhead. Redirects are rejected. Remote origins require HTTPS; loopback HTTP is supported for isolated fixtures.
+
+Gateway credentials authorize access to the target instance's ordinary task and file APIs, rather than a single Scope. They do not bypass Session permissions, Workspace admission or execution containment. Remote connection-management routes cannot be forwarded, and the remote invocation marker survives Plugin Host callbacks through the runtime manager's captured async context. The target injects its own managed-server credential only inside the trusted route adapter.
+
+Web uses the source's authenticated `/host-connection/peers/<id>/proxy` connection through the generated peer inventory. The proxy signs each forwarded request; the browser and plugin never receive signing keys or target bearer credentials. The regular SPA CSP stays restricted to its own HTTP origin. WebSocket upgrades retain Bun's original native request, preserve the target's normal protocol and close on peer revocation, gateway disable or transport loss. Host-owned connections enforce send backpressure and a bounded connection handshake; initial browser subscription frames wait in a bounded queue until the upstream socket opens.
+
+## Lifecycle and availability
+
+Identity and pairing survive restart. A persisted enabled gateway remains inactive until its approved owner activates in the current Runtime. Disabling the last enabled owner, uninstalling it or reloading its runtime closes gateway access. Pairing records remain available for subsequent activation. Revocation removes the local grant and outbound proxy and closes their active streams. The other Host retains its own record; revoke on the destination to withdraw its admission of a peer, or on both devices to remove both records. An unrelated plugin cannot disable or replace an active gateway owner.
+
+There is no coordinator, automatic failover or continuous Workspace replication. [Paused Session transfer](session-transfer.md) uses these connections to perform the existing manual handoff. After handoff the target executes independently. The source proxy needs the source online to provide remote UI access; when it is offline, the user opens Synergy on the destination device. The first version does not give a browser an independent device identity.
+
+## Implementation provenance
+
+Ed25519 uses the runtime's native crypto implementation, following [RFC 8032](https://www.rfc-editor.org/rfc/rfc8032) and the [Node crypto signing contract](https://nodejs.org/api/crypto.html#cryptosignalgorithm-data-key-callback). The request envelope is Synergy's versioned protocol, not an implementation of a generic HTTP-signature standard. Provider integration uses [Tailscale Serve's HTTP reverse proxy](https://tailscale.com/docs/reference/tailscale-cli/serve); Tailscale ACLs provide network admission and Synergy pairing provides application admission. The protocol implementation does not copy upstream cryptographic code.

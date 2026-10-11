@@ -44,6 +44,8 @@ Rollout stores execution intervals at `<owner>/rollout/runs/<run>/intervals/<int
 
 `data/session-transfers/<migration UUID>/` owns frozen `payload.zip`, transient capture chunks and receive files. On a destination, `workspace/` becomes the published private native Workspace after activation and remains there when temporary payloads are cleaned. Migration states, proof hashes/secrets, gates, receiving reservations, cancellation proofs and native Workspace validation receipts live in the agent database under `session_transfer_*` namespaces. See [Session transfer](../architecture/session-transfer.md) for retention, cancellation and recovery semantics.
 
+`host_connection` stores version 1 signing identity, gateway owner, invitations, pairing grants and request nonces. Signing keys and proof data are sensitive Host authority and never enter a Session transfer. [Host connections](../architecture/host-connections.md) owns their lifecycle.
+
 ## Agent database
 
 Installation generations retain code-version floors and explicit package selections independently of Agent storage. Running processes keep their verified generation until they exit. The `installation/20260926-installation-selection-v1` migration preserves the full Web backend for a home with existing data or configuration; fresh core homes retain a minimal selection. It neither rewrites API4 grants nor installs a second Desktop shell. Bootstrap and the central migration runner share this idempotent owner.

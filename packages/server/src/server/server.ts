@@ -37,6 +37,7 @@ import { upgradeWebSocket, websocket } from "hono/bun"
 import { errors, RuntimeShuttingDownError, StorageServiceError } from "./error"
 import { QuestionRoute } from "./question"
 import { SessionTransferRoute } from "./session-transfer"
+import { HostConnectionRoute } from "./host-connection"
 import { SessionExportRoute } from "./session-export"
 import { CortexRoute } from "./cortex"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
@@ -161,7 +162,7 @@ export namespace Server {
   // third-party components that dynamically create scripts (e.g., Ghostty Web).
 
   export function spaCsp(_nonce?: string): string {
-    return CSP_BASELINE.replace("connect-src 'self'", "connect-src 'self' http: https:")
+    return CSP_BASELINE
   }
 
   export function cspMiddleware(): MiddlewareHandler {
@@ -602,7 +603,8 @@ export namespace Server {
             err instanceof Session.ForkPointMissingError ||
             err.name === "SessionModelSelectionConflictError" ||
             err.name === "SessionTransferBlocked" ||
-            err.name === "SessionTransferRejected"
+            err.name === "SessionTransferRejected" ||
+            err.name === "HostConnectionRejected"
           )
             status = 409
           else if (err instanceof Environment.Unavailable) status = 503
@@ -664,7 +666,7 @@ export namespace Server {
       )
       .use(async (c, next) => {
         const token = RuntimeContext.current().host.env.SYNERGY_SERVER_TOKEN
-        if (token) {
+        if (token && !c.req.path.startsWith("/host-connection/gateway/")) {
           const expected = Buffer.from(`Bearer ${token}`)
           const actual = Buffer.from(c.req.header("authorization") ?? "")
           if (actual.length !== expected.length || !timingSafeEqual(actual, expected))
@@ -801,6 +803,13 @@ export namespace Server {
           },
         )
       })
+      .route(
+        "/host-connection",
+        HostConnectionRoute({
+          forward: async (request, env) => App().fetch(request, env),
+          originAllowed: (origin, url) => globalEventOriginAllowed(origin, url, [...instanceState._corsWhitelist]),
+        }),
+      )
       .use(compress({ encoding: "gzip" }))
       .use(provideRequestScope)
       .use(cspMiddleware())

@@ -2,6 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
+import { markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
 import { Asset } from "../asset/asset"
 import { Storage } from "../storage/storage"
 import { Truncate } from "../tool/truncation"
@@ -24,6 +25,7 @@ export namespace SessionTransferDependencies {
       if (typeof value === "string") {
         const asset = AssetReference.parse(value)
         if (asset) assets.add(asset.id)
+        for (const reference of markdownAssetReferences(value)) assets.add(AssetReference.parse(reference)!.id)
         if (value.startsWith("tool-output://")) outputs.add(value)
       } else if (value && typeof value === "object") {
         const part = value as { type?: unknown; state?: { metadata?: { outputPath?: unknown } } }

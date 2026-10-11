@@ -27,6 +27,7 @@ beforeAll(async () => {
     const transport=async request=>{
       const url=new URL(request.url), body=request.method==="POST"&&request.headers.get("content-type")?.includes("json") ? await request.json():undefined
       h.calls.push({path:url.pathname,host:url.hostname,body})
+      if(url.pathname.endsWith("/cancellations"))return Response.json([])
       if(url.pathname.endsWith("/host"))return Response.json({id:targetID})
       if(url.pathname==="/session-transfer/ses_fixture")return Response.json(h.phase ? {...receipt,phase:h.phase}:null)
       if(url.pathname.endsWith("/prepare")){h.phase="prepared";return Response.json({...receipt,phase:h.phase})}
@@ -42,7 +43,7 @@ beforeAll(async () => {
     }
     export const useGlobalSDK=()=>({client:createSynergyClient({baseUrl:"http://source",fetch:transport,throwOnError:true})})
     export const usePlatform=()=>({fetch:transport})
-    export const useServer=()=>({url:"http://source",list:["http://source","http://target"],setActive:url=>h.active=url})
+    export const useServer=()=>({url:"http://source",connections:["http://source","http://target"],displayName:url=>url,refreshConnections:async()=>{},setActive:url=>h.active=url})
     export const serverDisplayName=url=>url
     export const useNavigate=()=>url=>h.route=url
   `,
