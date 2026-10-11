@@ -224,6 +224,10 @@ export namespace WorkspaceAccess {
     return current()?.sessionID === sessionID
   }
 
+  export function ambientSessionID() {
+    return current()?.sessionID
+  }
+
   export function transition<T>(
     sessionID: string,
     workspace: Workspace | null,
