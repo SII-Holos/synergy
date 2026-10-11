@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from "bun:test"
+import { afterAll, expect, spyOn, test } from "bun:test"
 import sharp from "sharp"
 import { randomBytes } from "node:crypto"
 import { AttachmentImageInput } from "@ericsanchezok/synergy-harness/attachment/image-input"
@@ -148,6 +148,19 @@ test("cancellation during native preparation and queued work remains cancellatio
     expect((await prepared(bytes)).result.ok).toBe(true)
   }))
 
+test("failed native preparation can retry the same bytes within the same Runtime", () =>
+  runtime.run(async () => {
+    const bytes = await blank(37, 19).png().toBuffer()
+    {
+      using native = spyOn(sharp.prototype, "toBuffer").mockRejectedValueOnce(new Error("processing timeout"))
+      expect(await AttachmentImageInput.prepare(bytes, signal())).toEqual({ ok: false, reason: "invalid" })
+      expect(native).toHaveBeenCalledTimes(1)
+    }
+    const retried = await prepared(bytes)
+    expect(retried.output.equals(bytes)).toBe(true)
+    expect(await AttachmentImageInput.prepare(bytes, signal())).toBe(retried.result)
+  }))
+
 test("cached results remain deterministic and are isolated between Runtimes", () =>
   runtime.run(async () => {
     const bytes = await blank(2050, 16).png().toBuffer()
@@ -161,7 +174,16 @@ test("cached results remain deterministic and are isolated between Runtimes", ()
       AttachmentImageInput.prepare(bytes, AbortSignal.abort(new Error("cancel cached image"))),
     ).rejects.toThrow("cancel cached image")
     for (let index = 0; index < 32; index++) {
-      await AttachmentImageInput.prepare(Buffer.from(`invalid ${index}`), signal())
+      expect(
+        (
+          await AttachmentImageInput.prepare(
+            await blank(64 + index, 16)
+              .png()
+              .toBuffer(),
+            signal(),
+          )
+        ).ok,
+      ).toBe(true)
     }
     const evicted = await AttachmentImageInput.prepare(bytes, signal())
     expect(evicted).toEqual(first)

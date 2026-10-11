@@ -112,7 +112,7 @@ export function registerImageInput() {
       }
       const result = await processImage(bytes, signal)
       signal.throwIfAborted()
-      if (!result.ok && result.reason === "unavailable") return result
+      if (!result.ok) return result
       current.cache.set(key, Object.freeze(result))
       current.bytes += size(result)
       while (current.cache.size > 32 || current.bytes > CACHE_BYTES) {
