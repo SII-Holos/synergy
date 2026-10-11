@@ -40,6 +40,7 @@ test("asset references become provider bytes only in the transient model request
           { type: "image", image: new URL(reference), mediaType: "image/png" },
           { type: "file", data: new URL(reference), mediaType: "image/png", filename: "chart.png" },
           { type: "image", image: new URL("https://example.org/remote.png") },
+          { type: "file", data: new URL("https://example.org/remote-file.png"), mediaType: "image/png" },
         ],
       },
     ]
@@ -50,6 +51,7 @@ test("asset references become provider bytes only in the transient model request
     expect(JSON.stringify(result)).toContain(`data:image/png;base64,${bytes.toString("base64")}`)
     expect(JSON.stringify(result)).toContain(`Show ![chart](${reference})`)
     expect(JSON.stringify(result)).toContain("https://example.org/remote.png")
+    expect(JSON.stringify(result)).toContain("https://example.org/remote-file.png")
     expect(await (await Asset.read(id))!.bytes()).toEqual(new Uint8Array(bytes))
   }))
 
@@ -142,6 +144,7 @@ test("bad image data is replaced individually without losing text, other images 
                 value: [
                   { type: "text", text: "Tool result retained" },
                   { type: "media", data: "!!!!", mediaType: "image/png" },
+                  { type: "media", data: "https://example.org/not-base64.png", mediaType: "image/png" },
                 ],
               },
             },
@@ -151,13 +154,14 @@ test("bad image data is replaced individually without losing text, other images 
       new AbortController().signal,
     )
     const wire = JSON.stringify(result)
-    expect(wire.match(/Image omitted/g)).toHaveLength(5)
+    expect(wire.match(/Image omitted/g)).toHaveLength(6)
     expect(wire).toContain("Keep the conversation")
     expect(wire).toContain(bytes.toString("base64"))
     expect(wire).toContain("PDF_DATA")
     expect(wire).toContain("Tool result retained")
     expect(wire).toContain("call_1")
     expect(wire).not.toContain("!!!!")
+    expect(wire).not.toContain("https://example.org/not-base64.png")
   }))
 
 test("a Runtime without an image processor continues with an explicit image placeholder", async () => {
