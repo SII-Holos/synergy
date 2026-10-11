@@ -1,7 +1,8 @@
 import { createMemo, For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { ExecutionContextSnapshot } from "@ericsanchezok/synergy-sdk/client"
-import { contextCategories, contextRows, D } from "./context-categories"
+import { contextCategories, D } from "./context-categories"
+import { contextDisplay } from "./context-display"
 
 export function ContextComposition(props: {
   snapshot?: ExecutionContextSnapshot
@@ -11,10 +12,11 @@ export function ContextComposition(props: {
   onCategory: (value: string) => void
 }) {
   const { _, i18n } = useLingui()
-  const rows = createMemo(() => contextRows(props.snapshot?.usage ?? undefined))
+  const display = createMemo(() => contextDisplay(props.snapshot))
+  const rows = () => display().rows
   const number = (value: number) =>
     new Intl.NumberFormat(i18n().locale, { notation: "compact", maximumFractionDigits: 1 }).format(value)
-  const total = () => props.snapshot?.inputTokens
+  const total = () => display().total
   const emphasized = () => props.highlight || props.category
   const limit = () => props.snapshot?.contextLimit
   const ratio = () => (total() == null || !limit() ? null : total()! / limit()!)
@@ -32,7 +34,7 @@ export function ContextComposition(props: {
         </div>
       </div>
       <div class="context-current-total">
-        <strong>{total() == null ? "—" : number(total()!)}</strong>
+        <strong>{total() == null ? "—" : (display().estimated ? "≈" : "") + number(total()!)}</strong>
         <span>
           / {limit() ? number(limit()!) : "—"} {_(D.tokenUnit)}
         </span>
@@ -47,20 +49,23 @@ export function ContextComposition(props: {
         aria-valuenow={ratio() == null ? undefined : Math.min(100, ratio()! * 100)}
         aria-valuetext={ratio() == null ? "—" : percent(ratio()!)}
       >
-        <For each={rows()}>
-          {(row) => (
+        <For each={rows().map((row) => row.category)}>
+          {(category) => (
             <span
-              style={{ width: (limit() ? (row.attributedTokens / limit()!) * 100 : 0) + "%", background: row.color }}
+              style={{
+                width:
+                  (limit()
+                    ? ((rows().find((row) => row.category === category)?.attributedTokens ?? 0) / limit()!) * 100
+                    : 0) + "%",
+                background: contextCategories[category].color,
+              }}
             />
           )}
         </For>
       </div>
       <div class="context-composition-body">
         <div class="context-legend">
-          <Show
-            when={rows().length}
-            fallback={<p class="context-note">{_(props.snapshot ? D.unavailable : D.noRequests)}</p>}
-          >
+          <Show when={rows().length}>
             <For each={rows().map((row) => row.category)}>
               {(category) => {
                 const row = () => rows().find((entry) => entry.category === category)!
