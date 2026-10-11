@@ -10,7 +10,7 @@ Own composition, lifecycle and exports. Public `agent/primary-identity` maps res
 
 Run `bun run typecheck`, affected tests, and root package/dependency checks.
 
-- Keep concrete model SDK factories out of harness; hosts register `ProviderSdkSource`. An absent source must fail explicitly without installing SDKs.
+- Hosts register model SDKs and native image codecs through `ProviderSdkSource` and `AttachmentImageInput`. Keep absence explicit; verify `test/attachment/model-input.test.ts`.
 - Keep native PTYs, filesystem watchers and OS sandbox implementations in local-runtime. Harness owns permission policy and `SandboxHost`; missing host registration must fail closed for sandboxed execution.
 
 - Keep application-facing operations under the explicit session, scope, tools, context, lifecycle, config, persistence, rollout and usage entries. Host adapters may use individually declared contract leaves; never export processor, resolver, scheduler or journal implementations to production. Published manifests omit `test/` exports, and production sources must not import them. Within this package use relative owner imports, not public entry points.
