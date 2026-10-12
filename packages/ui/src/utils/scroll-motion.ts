@@ -18,7 +18,7 @@ export function createScrollMotion(target: () => HTMLElement | undefined) {
   }
   reduced?.addEventListener?.("change", preference)
   return {
-    move(viewport: HTMLElement, top: number, animate: boolean) {
+    move(viewport: HTMLElement, top: number, animate: boolean, preserveDeadline = false) {
       const next = target()
       const carry = next === element ? offset() : 0
       const maximum = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
@@ -31,6 +31,12 @@ export function createScrollMotion(target: () => HTMLElement | undefined) {
       const previous = clamped ? position!.top : viewport.scrollTop
       const destination = Math.max(0, Math.min(top, maximum))
       if (animate && next === element && Math.abs(destination - previous) < 0.5) return
+      // Child disclosure resizes must carry the painted offset without extending
+      // the following transition on every height sample.
+      const remaining =
+        preserveDeadline && animation && next === element
+          ? Math.max(0, Number(animation.effect?.getComputedTiming().endTime) - Number(animation.currentTime))
+          : undefined
       cancel()
       element = next
       viewport.scrollTo({ top, behavior: "auto" })
@@ -45,7 +51,8 @@ export function createScrollMotion(target: () => HTMLElement | undefined) {
           ? [{ opacity: 0.65 }, { opacity: 1 }]
           : [{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }],
         {
-          duration: duration ? parseFloat(duration) * (duration.endsWith("ms") ? 1 : 1000) : distant ? 180 : 240,
+          duration:
+            remaining ?? (duration ? parseFloat(duration) * (duration.endsWith("ms") ? 1 : 1000) : distant ? 180 : 240),
           easing: style.getPropertyValue("--motion-ease-standard").trim() || "cubic-bezier(0.2, 0, 0, 1)",
           fill: "both",
         },

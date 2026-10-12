@@ -216,6 +216,107 @@ describe("production conversation history", () => {
     }
   }, 180000)
 
+  test("paging inside a long completed turn never replaces its readable answer with transient load rows", async () => {
+    const seed = await importPreviewConversation(preview, { title: "Dense history", turns: 1 })
+    const { data: info } = await preview.client.session.get(
+      { scopeID: "home", sessionID: seed.id },
+      { throwOnError: true },
+    )
+    const root = seed.messages[0]
+    const answer = seed.messages[1]
+    const messages = [
+      root,
+      ...Array.from({ length: 240 }, (_, index) => {
+        const id = `msg_dense_${String(index).padStart(6, "0")}`
+        return {
+          info: {
+            ...answer.info,
+            id,
+            finish: index === 239 ? "stop" : "tool-calls",
+            time: { created: Date.now() + index, completed: Date.now() + index + 1 },
+          },
+          parts: [
+            {
+              ...answer.parts[0],
+              id: `prt_dense_${index}`,
+              messageID: id,
+              type: "text",
+              text: index === 239 ? "Retained final answer." : `Progress step ${index}.`,
+            },
+          ],
+        }
+      }),
+    ]
+    const file = new File([JSON.stringify({ info, messages })], "dense.json", { type: "application/json" })
+    const { data: imported } = await preview.client.session.import({ scopeID: "home", file }, { throwOnError: true })
+    if (!imported) throw new Error("Dense conversation missing")
+    const browser = await chromium.launch({ headless: true })
+    try {
+      const page = await browser.newPage({ viewport: { width: 1100, height: 950 } })
+      await openPluginPreviewPage(preview, page)
+      await page.goto(new URL(`/aG9tZQ/session/${imported.rootSessionID}`, preview.url).href)
+      await page.getByText("Retained final answer.", { exact: true }).waitFor()
+      await page.waitForFunction(
+        () => !document.querySelector("[data-markdown-pending]") && !document.getAnimations().length,
+      )
+      let bodyReads = 0
+      page.on("request", (request) => {
+        if (new URL(request.url()).pathname.endsWith("/content")) bodyReads++
+      })
+      let summaryReads = 0
+      await page.route("**/session/**/part/pages", async (route) => {
+        summaryReads++
+        await new Promise((resolve) => setTimeout(resolve, 350))
+        await route.continue()
+      })
+      const timelineResponse = page.waitForResponse((response) => {
+        const url = new URL(response.url())
+        return (
+          url.pathname === `/session/${imported.rootSessionID}/timeline/page` &&
+          url.searchParams.has("cursor") &&
+          response.ok()
+        )
+      })
+      const samples = await page.getByText("Retained final answer.", { exact: true }).evaluate(async (answer) => {
+        const row = answer.closest<HTMLElement>("[data-display-row]")!
+        const top = row.getBoundingClientRect().top
+        const viewport = row.closest("[data-conversation-viewport]")!
+        const button = [...document.querySelectorAll("button")].find(
+          (button) => button.textContent === "Load earlier messages",
+        )!
+        button.click()
+        const samples = []
+        let settled = 0
+        for (let frame = 0; frame < 600 && settled < 20; frame++) {
+          await new Promise(requestAnimationFrame)
+          settled = button.disabled ? 0 : settled + 1
+          samples.push({
+            connected: answer.isConnected,
+            drift: row.getBoundingClientRect().top - top,
+            loads: viewport.querySelectorAll('[data-row-kind="load"]').length,
+            pending: button.disabled,
+          })
+        }
+        return samples
+      })
+      const timeline = (await (await timelineResponse).json()) as SessionTimelinePage
+      expect(timeline.items.length).toBeGreaterThan(0)
+      expect(summaryReads).toBeGreaterThan(0)
+      expect(samples.some((sample) => sample.pending)).toBe(true)
+      expect(samples.at(-1)?.pending).toBe(false)
+      expect(
+        samples.every((sample) => sample.connected),
+        JSON.stringify(samples),
+      ).toBe(true)
+      expect(Math.max(...samples.map((sample) => Math.abs(sample.drift)))).toBeLessThanOrEqual(1)
+      expect(Math.max(...samples.map((sample) => sample.loads))).toBe(0)
+      expect(bodyReads).toBe(0)
+      await page.getByRole("button", { name: "Load earlier messages", exact: true }).waitFor()
+    } finally {
+      await browser.close()
+    }
+  }, 60000)
+
   test("cold navigation keeps the target shell operable through preparation and warms the original transcript", async () => {
     const target = await importPreviewConversation(preview, { title: "Cold navigation target", turns: 2 })
     const browser = await chromium.launch({ headless: true })

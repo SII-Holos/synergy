@@ -373,6 +373,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             latest.data?.items.map((entry) => entry.info) ?? [],
           )
         }
+        if (input?.mode === "history" && response.data) {
+          // A page can start inside a turn. Publishing its headers before the
+          // summaries inserts temporary load rows ahead of the retained answer.
+          const loaded = new Set(store.message[sessionID]?.map((message) => message.id))
+          await Promise.allSettled(
+            [...response.data.referencedRoots, ...response.data.items]
+              .filter(({ info }) => !loaded.has(info.id))
+              .map(({ info }) => loadPartSummaries(sessionID, info.id, false, false, { signal })),
+          )
+          signal.throwIfAborted()
+        }
         return { response, request, contextProjectionRevision, partSnapshotRequest, latestContextMessage }
       },
       apply: (sessionID, result, input) => {
