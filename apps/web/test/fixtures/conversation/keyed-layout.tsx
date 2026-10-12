@@ -37,7 +37,7 @@ render(() => {
       style="height:600px;width:700px;overflow:auto;overflow-anchor:none;position:relative"
     >
       <div ref={autoScroll?.contentRef}>
-        <div ref={motion}>
+        <div ref={motion} data-follow-motion>
           <Virtualizer
             ref={(value) => {
               if (value) virtual = value

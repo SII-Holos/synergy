@@ -13,6 +13,8 @@ For startup or migration changes, seed an isolated installed database with cold 
 
 Read [Development reference](../../../docs/reference/development.md) before choosing a mode.
 
+Check both `bun --version` and the executable selected by the current version manager against `package.json`. Invoke the pinned runtime with its directory on `PATH` so nested package scripts also use it; selecting an absolute parent executable alone does not pin `bun` commands inside those scripts. `bun dev` rejects incompatible parent or `BUN_BIN` runtimes before preparation or startup. Do not treat dependency installation as a runtime upgrade, and do not restart a shared running instance to apply a version change.
+
 ## Prepare an Isolated Home
 
 1. Choose a dedicated parent directory and explicit free ports. Check listeners with `lsof -nP -iTCP -sTCP:LISTEN` or the platform equivalent; do not assume `4097` and `3001` are free.

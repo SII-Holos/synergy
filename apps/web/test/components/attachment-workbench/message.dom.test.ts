@@ -316,6 +316,25 @@ test.each(["data", "blob"])("%s Markdown images load and open the shared preview
   }
 })
 
+test("terminal Markdown retains resource controls through internal focus and settles after focus leaves", async () => {
+  await visit("?markdown&inline")
+  await page.evaluate(() =>
+    (window as unknown as { fixture: { setMarkdown(value: string): void } }).fixture.setMarkdown(
+      "[First.txt](asset://1111111111111111.txt)\n\n[Second.txt](asset://2222222222222222.txt)",
+    ),
+  )
+  await page.getByRole("button", { name: "First.txt", exact: true }).focus()
+  const second = await page.getByRole("button", { name: "Second.txt", exact: true }).elementHandle()
+  await page.evaluate("window.fixture.setStreaming(false)")
+  await page.waitForFunction(() => !document.querySelector("[data-markdown-pending]"))
+  await page.keyboard.press("Tab")
+  expect(await second!.evaluate((element) => element.isConnected && document.activeElement === element)).toBe(true)
+  await page.getByRole("button", { name: "Open portrait.svg", exact: true }).focus()
+  await page.waitForFunction((element) => !element!.isConnected, second)
+  expect(await page.getByRole("button", { name: "Second.txt", exact: true }).count()).toBe(1)
+  expect(errors).toEqual([])
+})
+
 test("streamed and completed Markdown references open the shared image preview and document reader", async () => {
   await page.route("**/asset/1111111111111111.png", (route) =>
     route.fulfill({
