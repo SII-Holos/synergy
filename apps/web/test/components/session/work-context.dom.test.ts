@@ -455,8 +455,8 @@ async function openRecovery() {
     .getByRole("dialog", { name: "Worktrees", exact: true })
     .getByRole("button", { name: /New Worktree/ })
     .click()
-  const dialog = page.getByRole("dialog", { name: "Confirm project folders", exact: true })
-  await dialog.getByRole("button", { name: "Confirm and restore", exact: true }).waitFor()
+  const dialog = page.getByRole("dialog", { name: "Restore project folders", exact: true })
+  await dialog.getByRole("button", { name: /^Continue using (this folder|these folders)$/ }).waitFor()
   return dialog
 }
 
@@ -467,7 +467,7 @@ test("an unavailable main without Worktrees offers confirmation and cancellation
   await patch({ available: false, git: false, emptyTrees: true, gen: 2 })
   const dialog = await openRecovery()
   expect(await dialog.getByText("/projects/main-folder", { exact: true }).isVisible()).toBe(true)
-  expect(await dialog.getByRole("button", { name: "Choose folder", exact: true }).count()).toBe(0)
+  expect(await dialog.getByRole("button", { name: "Choose another folder", exact: true }).count()).toBe(1)
   expect(
     (await page.evaluate<string[]>("window.fixture.requests")).filter((value) => value.startsWith("rebind:")),
   ).toEqual([])
@@ -493,7 +493,7 @@ test("recovery keeps partial success, blocks duplicate confirmation and selects 
   })
   const dialog = await openRecovery()
   await dialog
-    .getByRole("button", { name: "Confirm and restore", exact: true })
+    .getByRole("button", { name: "Continue using these folders", exact: true })
     .evaluate((button: HTMLButtonElement) => {
       button.click()
       button.click()
@@ -507,7 +507,7 @@ test("recovery keeps partial success, blocks duplicate confirmation and selects 
   expect(await dialog.getByText("Ready", { exact: true }).isVisible()).toBe(true)
   expect(await page.evaluate("window.fixture.selection")).toBeUndefined()
   await patch({ failExtra: false, holdExtra: false })
-  await dialog.getByRole("button", { name: "Confirm and restore", exact: true }).click()
+  await dialog.getByRole("button", { name: "Continue using this folder", exact: true }).click()
   await dialog.waitFor({ state: "detached" })
   expect(await page.evaluate<SessionWorkspaceSelection>("window.fixture.selection")).toEqual({
     mode: "create",
@@ -527,7 +527,7 @@ test("switching projects during recovery cancels the old operation and leaves th
   await open()
   await patch({ available: false, extraAvailable: false, shared: true, holdExtra: true })
   const dialog = await openRecovery()
-  await dialog.getByRole("button", { name: "Confirm and restore", exact: true }).click()
+  await dialog.getByRole("button", { name: "Continue using these folders", exact: true }).click()
   await page.waitForFunction("window.fixture.requests.includes('rebind:extra')")
   await patch({ scopeID: "other-project" })
   await dialog.waitFor({ state: "detached" })

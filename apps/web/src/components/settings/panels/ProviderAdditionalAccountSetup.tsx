@@ -1,7 +1,8 @@
 import { useLingui } from "@lingui/solid"
-import { Button } from "@ericsanchezok/synergy-ui/button"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
-import { createSignal, onCleanup, Show } from "solid-js"
+import { createSignal, onCleanup } from "solid-js"
 import { ProviderConnectionFlow } from "@/components/provider/ProviderConnectionFlow"
 import { nextProviderAccountName, type ProviderSetupDrafts } from "@/components/provider/provider-setup-drafts"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -9,28 +10,35 @@ import { useGlobalSync } from "@/context/global-sync"
 import { createProviderAccountCommand, saveProviderAccount } from "./provider-account-operations"
 import type { ProviderConnectionSummary } from "./ProvidersPanel"
 
-export function ProviderAdditionalAccountSetup(props: {
+export function ProviderAccountSetup(props: {
   source: ProviderConnectionSummary
   summaries: ProviderConnectionSummary[]
+  additional: boolean
   drafts: ProviderSetupDrafts
-  onCancel: () => void
   onComplete: (providerID: string) => void
 }) {
   const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
-  const key = `additional:${props.source.id}`
-  const draft = props.drafts.get(key)
+  const key = `setup:${props.source.id}`
+  const additional = props.additional
+  const serviceName = () => props.source.profile?.displayName ?? props.source.profile?.name ?? props.source.name
+  const draft = props.drafts.get(key, {
+    name: !additional && props.source.name !== serviceName() ? props.source.name : "",
+    endpoint: !additional ? (props.source.endpoint ?? "") : "",
+  })
   const [busy, setBusy] = createSignal(false)
   let active = true
   onCleanup(() => {
     active = false
   })
   const automaticName = () =>
-    nextProviderAccountName(
-      props.summaries.filter((item) => item.profileID === props.source.profileID).map((item) => item.name),
-      (number) => _({ id: "settings.providers.account.numbered", message: "Account {number}", values: { number } }),
-    )
+    additional
+      ? nextProviderAccountName(
+          props.summaries.filter((item) => item.profileID === props.source.profileID).map((item) => item.name),
+          (number) => _({ id: "settings.providers.account.numbered", message: "Account {number}", values: { number } }),
+        )
+      : serviceName()
   const command = createProviderAccountCommand(
     async () => {
       if (draft.targetID) {
@@ -41,21 +49,33 @@ export function ProviderAdditionalAccountSetup(props: {
         if (refreshed) return refreshed
         throw new Error("Provider account could not be loaded")
       }
-      const connection = await saveProviderAccount(globalSDK.client.provider.connection, {
-        mode: "create",
-        id: draft.id,
-        profileID: props.source.profileID,
-        name: draft.name.trim() || automaticName(),
-        ...(draft.endpoint.trim() ? { endpoint: draft.endpoint.trim() } : {}),
-        enabled: true,
-      })
+      const name = draft.name.trim() || automaticName()
+      const endpoint = draft.endpoint.trim()
+      const connection = additional
+        ? await saveProviderAccount(globalSDK.client.provider.connection, {
+            mode: "create",
+            id: draft.id,
+            profileID: props.source.profileID,
+            name,
+            ...(endpoint ? { endpoint } : {}),
+            enabled: true,
+          })
+        : name !== props.source.name || endpoint !== (props.source.endpoint ?? "")
+          ? await saveProviderAccount(globalSDK.client.provider.connection, {
+              mode: "update",
+              providerID: props.source.id,
+              ...(name !== props.source.name ? { name } : {}),
+              ...(endpoint !== (props.source.endpoint ?? "") ? { endpoint: endpoint || null } : {}),
+            })
+          : props.source
       if (active) props.drafts.update(key, { targetID: connection.id, name: connection.name })
       return connection
     },
     async () => {
-      if (active) await globalSync.refreshProviders()
+      if (active && additional) await globalSync.refreshProviders()
     },
     async () => {
+      if (!additional) return
       await globalSync.refreshProviders()
       const connection = globalSync.data.provider.connections[draft.id]
       if (connection?.profileID !== props.source.profileID) return
@@ -64,25 +84,7 @@ export function ProviderAdditionalAccountSetup(props: {
     },
   )
   return (
-    <section
-      class="providers-account-setup"
-      aria-label={_({ id: "settings.providers.account.connectAnother", message: "Connect another account" })}
-    >
-      <div class="providers-setup-heading">
-        <h2 class="provider-flow-heading">
-          {_({ id: "settings.providers.account.connectAnother", message: "Connect another account" })}
-        </h2>
-        <Button type="button" variant="ghost" size="small" onClick={props.onCancel}>
-          {_({ id: "settings.providers.account.cancel", message: "Cancel" })}
-        </Button>
-      </div>
-      <p class="providers-connect-copy">
-        {_({
-          id: "settings.providers.account.connectAnother.description",
-          message:
-            "Give this account an optional remark, then choose how to connect. Interrupted connections can be continued from your account list.",
-        })}
-      </p>
+    <section class="providers-account-setup">
       <TextField
         autofocus
         label={_({ id: "settings.providers.account.remark", message: "Account remark (optional)" })}
@@ -92,25 +94,18 @@ export function ProviderAdditionalAccountSetup(props: {
         maxLength={80}
         onChange={(name) => props.drafts.update(key, { name })}
       />
-      <Show when={draft.targetID && !draft.credentialsSaved}>
-        <p class="providers-connect-copy" role="status">
-          {_({
-            id: "settings.providers.account.finishSetup",
-            message: "Account added. Finish connecting below, or continue later from your account list.",
-          })}
-        </p>
-      </Show>
       <ProviderConnectionFlow
         providerID={props.source.id}
         providerName={props.source.profile?.displayName ?? props.source.name}
         iconID={props.source.profileID}
         compact
-        skipAutoAdvance
+        skipAutoAdvance={additional && globalSync.data.provider_auth[props.source.id]?.[0]?.type !== "api"}
         connectedOverride={false}
         draft={draft}
         onDraftChange={(value) => props.drafts.update(key, value)}
         prepareConnection={async () => {
           setBusy(true)
+          props.drafts.update(key, { credentialsStarted: true })
           try {
             return (await command.run()).id
           } finally {
@@ -119,7 +114,10 @@ export function ProviderAdditionalAccountSetup(props: {
         }}
         apiOptions={
           <details class="providers-advanced">
-            <summary>{_({ id: "settings.providers.account.advanced", message: "Advanced settings" })}</summary>
+            <summary>
+              <Icon name={getSemanticIcon("navigation.expand")} size="small" />
+              {_({ id: "settings.providers.account.advanced", message: "Advanced settings" })}
+            </summary>
             <TextField
               label={_({ id: "settings.providers.account.endpoint", message: "API endpoint" })}
               description={_({

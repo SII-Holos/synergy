@@ -19,9 +19,9 @@ export interface ProviderConnectionClient {
     input: {
       providerID: string
       providerConnectionUpdateInput: {
-        name: string
-        endpoint: string | null
-        enabled: boolean
+        name?: string
+        endpoint?: string | null
+        enabled?: boolean
       }
     },
     options: { throwOnError: true },
@@ -41,9 +41,9 @@ export type SaveProviderAccountInput =
   | {
       mode: "update"
       providerID: string
-      name: string
-      endpoint: string | null
-      enabled: boolean
+      name?: string
+      endpoint?: string | null
+      enabled?: boolean
     }
 
 export function canAddProviderAccount(connection: Pick<ProviderConnection, "canCreateSibling">) {
@@ -90,9 +90,9 @@ export async function saveProviderAccount(
           {
             providerID: input.providerID,
             providerConnectionUpdateInput: {
-              name: input.name,
-              endpoint: input.endpoint,
-              enabled: input.enabled,
+              ...(input.name !== undefined ? { name: input.name } : {}),
+              ...(input.endpoint !== undefined ? { endpoint: input.endpoint } : {}),
+              ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
             },
           },
           { throwOnError: true },

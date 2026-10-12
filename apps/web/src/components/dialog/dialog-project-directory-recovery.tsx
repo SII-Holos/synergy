@@ -101,11 +101,18 @@ export function DialogProjectDirectoryRecovery(props: {
   }
   onMount(() => void load())
   async function choose(folder: ProjectFolder) {
-    if (pending() || picking() || loading()) return
+    if (pending() || picking() || loading() || controller.signal.aborted) return
     setPicking(true)
     try {
       const result = await picker.pickProjectDirectories({ title: _(copy.chooseFolder), multiple: false })
-      if (result && !controller.signal.aborted) setPaths(folder.workspaceID, result.directoryPaths[0]!)
+      if (!result || controller.signal.aborted) return
+      setPaths(folder.workspaceID, result.directoryPaths[0]!)
+      setError("")
+      setDetails("")
+    } catch (failure) {
+      if (controller.signal.aborted) return
+      setError(_(copy.chooseFolderFailed))
+      setDetails(requestErrorMessage(failure, ""))
     } finally {
       if (!controller.signal.aborted) setPicking(false)
     }
@@ -137,14 +144,21 @@ export function DialogProjectDirectoryRecovery(props: {
       if (!controller.signal.aborted) setPending(false)
     }
   }
-  const guidance = (folder: ProjectFolder) =>
-    folder.available
-      ? copy.recovered
-      : folder.unavailable?.data.reason === "directory_unavailable"
-        ? copy.folderMissing
-        : folder.unavailable?.data.reason === "binding_unavailable"
-          ? copy.folderUnbound
-          : copy.confirmFolder
+  function guidance(folder: ProjectFolder) {
+    if (folder.available) return _(copy.recovered)
+    switch (folder.unavailable?.data.reason) {
+      case "directory_unavailable":
+        return _(copy.folderMissing)
+      case "binding_unavailable":
+        return _(copy.folderUnbound)
+      case "identity_changed":
+        return _(copy.folderChanged)
+      case "identity_unverified":
+        return _(copy.folderUnverified)
+      default:
+        return folder.unavailable?.data.message || _(copy.recoverUnavailable)
+    }
+  }
   return (
     <Dialog
       title={_(copy.recoverTitle)}
@@ -166,13 +180,22 @@ export function DialogProjectDirectoryRecovery(props: {
             disabled={loading() || pending() || picking()}
             onClick={() => void restore()}
           >
-            {_(loading() ? copy.loading : pending() ? copy.recovering : !plan() ? copy.retry : copy.recoverAction)}
+            {_(
+              loading()
+                ? copy.loading
+                : pending()
+                  ? copy.recovering
+                  : !plan()
+                    ? copy.retry
+                    : rows.items.filter((folder) => !folder.available).length > 1
+                      ? copy.recoverFoldersAction
+                      : copy.recoverAction,
+            )}
           </Button>
         </div>
       }
     >
       <div class="project-form">
-        <p class="project-inline-note">{_(copy.recoverDescription)}</p>
         <div class="project-recovery-folders" aria-busy={loading() || pending()}>
           <For each={rows.items}>
             {(folder) => (
@@ -180,16 +203,17 @@ export function DialogProjectDirectoryRecovery(props: {
                 <strong>
                   {_(folder.workspaceID === expected.mainWorkspaceID ? copy.main : copy.additionalFolder)}
                 </strong>
-                <span class="project-recovery-path">{paths[folder.workspaceID] ?? folder.path}</span>
-                <p class="project-inline-note">{_(guidance(folder))}</p>
+                <p class="project-recovery-reason">{guidance(folder)}</p>
+                <span class="project-recovery-path">
+                  {folder.available ? (paths[folder.workspaceID] ?? folder.path) : folder.path}
+                </span>
                 <Show
-                  when={
-                    !folder.available &&
-                    (!folder.path ||
-                      folder.unavailable?.data.reason === "directory_unavailable" ||
-                      folder.unavailable?.data.reason === "binding_unavailable")
-                  }
+                  when={!folder.available && paths[folder.workspaceID] && paths[folder.workspaceID] !== folder.path}
                 >
+                  <span class="project-inline-note">{_(copy.selectedFolder)}</span>
+                  <span class="project-recovery-path">{paths[folder.workspaceID]}</span>
+                </Show>
+                <Show when={!folder.available}>
                   <Button
                     size="small"
                     variant="secondary"
@@ -203,6 +227,7 @@ export function DialogProjectDirectoryRecovery(props: {
             )}
           </For>
         </div>
+        <p class="project-inline-note">{_(copy.recoverDescription)}</p>
         <Show when={error()}>
           <div class="project-inline-error" role="alert">
             <p>{error()}</p>

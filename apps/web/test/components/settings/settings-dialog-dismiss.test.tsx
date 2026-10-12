@@ -39,6 +39,7 @@ beforeAll(async () => {
         import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
         import { SettingsChoices } from "/@fs/${path.resolve(import.meta.dir, "../../../src/components/settings/components/SettingsChoices.tsx")}"
         import { locateSettingsField } from "/@fs/${path.resolve(import.meta.dir, "../../../src/components/settings/settings-search.ts")}"
+        import { createProviderSetupDrafts } from "/@fs/${path.resolve(import.meta.dir, "../../../src/components/provider/provider-setup-drafts.ts")}"
         function Settings() {
           const dialog = useDialog()
           const confirm = useConfirm()
@@ -54,20 +55,27 @@ beforeAll(async () => {
           }
           const [draft, setDraft] = createSignal("")
           const [saved, setSaved] = createSignal("")
+          const accountDrafts = createProviderSetupDrafts()
+          const account = accountDrafts.get("edit:service")
           const save = useSettingsSave({
             serverPatch: () => draft() === saved() ? {} : { username: draft() },
             serverDraft: draft,
             domainSummaries: () => [{ id: "general", ownedKeys: ["username"] }],
             hasAnyChanges: () => draft() !== saved(),
+            hasUnsavedResources: () => accountDrafts.dirty(),
+            closeBlocked: () => accountDrafts.pending(),
             editingLabel: () => "General",
             refreshAfterConfigChange: async (_fields, value) => setSaved(value),
-            discardChanges: () => setDraft(saved()),
+            discardChanges: () => { setDraft(saved()); accountDrafts.clear() },
             closeDialog: () => dialog.close(),
             showConfirm: confirm.show,
           })
           return <SettingsDialogFrame ariaLabel="Settings" onRequestClose={save.closeWithGuard}>
             <input aria-label="Draft" value={draft()} onInput={e => setDraft(e.currentTarget.value)} />
             <input aria-label="Inline editor" on:keydown={event => { if (event.key === "Escape") event.preventDefault() }} />
+            <input aria-label="Account remark" value={account.name} onInput={e => accountDrafts.update("edit:service", { name: e.currentTarget.value })} />
+            <button onClick={() => accountDrafts.update("edit:service", { pending: true })}>Begin account save</button>
+            <button onClick={() => accountDrafts.update("edit:service", { pending: false })}>Finish account save</button>
             <button onClick={save.closeWithGuard}>Close settings</button>
             <button onClick={save.closeWithGuard}>Cancel settings</button>
             <button onClick={() => void save.saveServerChanges()}>Save settings</button>
@@ -173,6 +181,35 @@ async function loadSettings() {
 afterEach(() => expect(errors).toEqual([]))
 
 describe("Settings dialog dismissal", () => {
+  test.each(["escape", "Close settings", "Cancel settings"])(
+    "account drafts guard %s independently of preference save",
+    async (action) => {
+      await loadSettings()
+      await page.getByRole("textbox", { name: "Account remark", exact: true }).fill("Unsaved account")
+      if (action === "escape") await page.keyboard.press("Escape")
+      else await page.getByRole("button", { name: action, exact: true }).click()
+      const confirmation = page.getByRole("dialog", { name: "Discard unsaved changes?", exact: true })
+      await confirmation.getByRole("button", { name: "Keep Editing", exact: true }).click()
+      await confirmation.waitFor({ state: "detached" })
+      expect(await page.getByRole("textbox", { name: "Account remark", exact: true }).inputValue()).toBe(
+        "Unsaved account",
+      )
+      await page.getByRole("button", { name: "Cancel settings", exact: true }).click()
+      await confirmation.getByRole("button", { name: "Discard", exact: true }).click()
+      await page.getByRole("dialog", { name: "Settings", exact: true }).waitFor({ state: "detached" })
+    },
+  )
+
+  test("account writes block dismissal until the request settles", async () => {
+    await loadSettings()
+    await page.getByRole("button", { name: "Begin account save", exact: true }).click()
+    await page.getByRole("button", { name: "Cancel settings", exact: true }).click()
+    expect(await page.getByRole("dialog", { name: "Settings", exact: true }).count()).toBe(1)
+    await page.getByRole("button", { name: "Finish account save", exact: true }).click()
+    await page.keyboard.press("Escape")
+    await page.getByRole("dialog", { name: "Settings", exact: true }).waitFor({ state: "detached" })
+  })
+
   test("Escape consumed by an inline control never requests Settings dismissal", async () => {
     await loadSettings()
     await page.getByRole("textbox", { name: "Inline editor" }).press("Escape")
@@ -220,6 +257,13 @@ describe("Settings dialog dismissal", () => {
     expect(
       await confirmation.getByRole("button", { name: "Close Discard unsaved changes?", exact: true }).count(),
     ).toBe(1)
+    await page.waitForFunction(() => {
+      const dialog = document.querySelector(".confirm-dialog")
+      const keepEditing = [...(dialog?.querySelectorAll("button") ?? [])].find(
+        (button) => button.textContent === "Keep Editing",
+      )
+      return keepEditing !== undefined && document.activeElement === keepEditing
+    })
     expect(
       await confirmation
         .getByRole("button", { name: "Keep Editing", exact: true })

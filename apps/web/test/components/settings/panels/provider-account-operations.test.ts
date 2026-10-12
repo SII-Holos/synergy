@@ -154,6 +154,15 @@ describe("provider account operations", () => {
     ])
   })
 
+  test("a remark-only update leaves endpoint and enabled settings untouched", async () => {
+    const { client, calls } = mockClient()
+    await saveProviderAccount(client, { mode: "update", providerID: "deepseek", name: "Personal" })
+    expect(calls[0].input).toStrictEqual({
+      providerID: "deepseek",
+      providerConnectionUpdateInput: { name: "Personal" },
+    })
+  })
+
   test("rejects an empty generated client response", async () => {
     const { client } = mockClient()
     client.create = async () => ({})
