@@ -112,6 +112,10 @@ export namespace Session {
   export type Info = InfoType
   export type StatusInfo = StatusInfoType
 
+  export function publicInfo(info: Info): Info {
+    return Info.parse(structuredClone(info))
+  }
+
   export const EndpointScopeMismatchError = NamedError.create(
     "SessionEndpointScopeMismatchError",
     z.object({
@@ -518,7 +522,7 @@ export namespace Session {
   ) {
     const instanceState = runtimeState()
 
-    const info = await withRuntimeInfo(session)
+    const info = publicInfo(await withRuntimeInfo(session))
     const key = publishCompareKey(info)
     const now = Date.now()
     const prev = instanceState.lastPublish.get(session.id)
@@ -1614,7 +1618,10 @@ export namespace Session {
           SessionManager.forgetSession(id)
           SessionMessageCache.disable(id)
         })
-        await ScopeContext.provide({ scope, fn: () => Bus.publish(SessionEvent.Deleted, { info: session }) })
+        await ScopeContext.provide({
+          scope,
+          fn: () => Bus.publish(SessionEvent.Deleted, { info: publicInfo(session) }),
+        })
         removed.push(session)
       }
       await removeTree(sessionID)

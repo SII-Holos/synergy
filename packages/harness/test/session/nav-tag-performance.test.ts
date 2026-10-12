@@ -4,6 +4,7 @@ const runtime = await testRuntime()
 import { describe, expect, test } from "bun:test"
 import { ScopeContext } from "../../src/scope/context"
 import { SessionNav } from "../../src/session/nav"
+import { SessionSchemaRegistry } from "../../src/session/schema-registry"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { tmpdir } from "../support/fixture"
@@ -49,6 +50,7 @@ describe("SessionNav tag performance", () => {
 
             await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id)), {
               version: 1,
+              composition: SessionSchemaRegistry.projectionKey(),
               scopeID: scope.id,
               updatedAt: now,
               entries,

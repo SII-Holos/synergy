@@ -15,8 +15,6 @@ import { AgentCall } from "./call"
 import { buildGeneralPrompt } from "./prompt/general/builder"
 import { buildCodingPrompt } from "./prompt/coding/builder"
 import { buildLightweightPrompt } from "./prompt/lightweight/builder"
-import { buildSupervisorPrompt } from "./prompt/supervisor/builder"
-import { buildLightLoopReviewerPrompt } from "./prompt/lightloop-reviewer/builder"
 
 import { PermissionNext } from "../permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
@@ -222,7 +220,7 @@ export namespace Agent {
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
 
-    const builtinContext = { defaults, user, role }
+    const builtinContext = { defaults, user: [], role }
     const result: Record<string, Info> = {
       ...(AgentBuiltins.enabled("primary") ? createBuiltinPrimaryAgents(builtinContext) : {}),
       ...(AgentBuiltins.enabled("legacy") ? createBuiltinLegacySubagents(builtinContext) : {}),
@@ -230,8 +228,25 @@ export namespace Agent {
       ...(AgentBuiltins.enabled("internal") ? createBuiltinInternalAgents(builtinContext) : {}),
       ...AgentBuiltins.collect(builtinContext),
     }
-    for (const item of Object.values(result)) {
+    const identities = new WeakMap<Info, AgentPermissionContributions.Identity>()
+    const configuredPermissions = new WeakMap<Info, PermissionNext.Ruleset>()
+    for (const [registrationKey, item] of Object.entries(result)) {
       item.source ??= "builtin"
+      const owner = AgentBuiltins.owner(item) ?? "harness"
+      const identity = {
+        registrationKey,
+        owner,
+        source: item.source,
+        subagentProfile: AgentBuiltins.profile(item),
+        primaryRole:
+          owner === "harness"
+            ? PrimaryAgentIdentity.roles.find((role) => PrimaryAgentIdentity.names[role] === registrationKey)
+            : undefined,
+      }
+      identities.set(item, identity)
+      configuredPermissions.set(item, user)
+      await AgentPermissionContributions.apply(item, identity, "base")
+      item.permission = PermissionNext.merge(item.permission, user)
     }
 
     for (const [key, value] of Object.entries(cfg.agent ?? {})) {
@@ -244,11 +259,18 @@ export namespace Agent {
         item = result[key] = {
           name: key,
           mode: "all",
-          permission: PermissionNext.merge(defaults, user),
+          permission: defaults,
           options: {},
           native: false,
           source: "config",
         }
+      if (!identities.has(item)) {
+        const identity = { registrationKey: key, owner: "config", source: "config" as const }
+        identities.set(item, identity)
+        configuredPermissions.set(item, user)
+        await AgentPermissionContributions.apply(item, identity, "base")
+        item.permission = PermissionNext.merge(item.permission, user)
+      }
       if (value.modelRole) {
         item.modelRole = value.modelRole
         item.model = role(value.modelRole)
@@ -271,7 +293,9 @@ export namespace Agent {
       item.color = value.color ?? item.color
       item.steps = value.steps ?? item.steps
       item.options = mergeDeep(item.options, value.options ?? {})
-      item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
+      const permissions = PermissionNext.fromConfig(value.permission ?? {})
+      configuredPermissions.set(item, PermissionNext.merge(configuredPermissions.get(item) ?? [], permissions))
+      item.permission = PermissionNext.merge(item.permission, permissions)
       item.defaultVariant = value.defaultVariant ?? item.defaultVariant
       if (value.controlProfile !== undefined) item.controlProfile = value.controlProfile as Agent.Info["controlProfile"]
     }
@@ -292,7 +316,7 @@ export namespace Agent {
         description: agent.description,
         prompt: agent.prompt,
         mode: agent.mode ?? "all",
-        permission: PermissionNext.merge(defaults, user, PermissionNext.fromConfig(agent.permission ?? {})),
+        permission: defaults,
         options: {},
         native: false,
         source: "plugin",
@@ -308,6 +332,12 @@ export namespace Agent {
         delegationGroups: agent.delegationGroups,
         color: agent.color,
       }
+      const identity = { registrationKey: agent.name, owner: agent.pluginId, source: "plugin" as const }
+      identities.set(registered, identity)
+      await AgentPermissionContributions.apply(registered, identity, "base")
+      const permissions = PermissionNext.merge(user, PermissionNext.fromConfig(agent.permission ?? {}))
+      configuredPermissions.set(registered, permissions)
+      registered.permission = PermissionNext.merge(registered.permission, permissions)
       result[agent.name] = registered
       pluginOwners.set(registered, {
         pluginId: agent.pluginId,
@@ -315,7 +345,10 @@ export namespace Agent {
       })
     }
 
-    for (const item of Object.values(result)) await AgentPermissionContributions.apply(item)
+    for (const item of Object.values(result)) {
+      await AgentPermissionContributions.apply(item, identities.get(item)!)
+      item.permission = PermissionNext.merge(item.permission, configuredPermissions.get(item) ?? [])
+    }
 
     // Ensure Truncate.directory() is allowed unless explicitly configured
 
@@ -363,25 +396,20 @@ export namespace Agent {
       }
     }
 
-    const agentInfos = Object.values(result).map((agent) => ({
-      name: agent.name,
-      description: agent.description ?? "",
-      mode: agent.mode,
-      hidden: agent.hidden,
-      visibleTo: agent.visibleTo,
-      delegationGroups: agent.delegationGroups,
-    }))
-    if (result[PrimaryAgentIdentity.names.general])
+    AgentBuiltins.buildPrompts(
+      result,
+      new Set(
+        Object.entries(cfg.agent ?? {})
+          .filter(([, value]) => value.prompt !== undefined)
+          .map(([key]) => key),
+      ),
+    )
+    if (result[PrimaryAgentIdentity.names.general] && !cfg.agent?.[PrimaryAgentIdentity.names.general]?.prompt)
       result[PrimaryAgentIdentity.names.general].prompt = buildGeneralPrompt()
-    if (result[PrimaryAgentIdentity.names.coding])
+    if (result[PrimaryAgentIdentity.names.coding] && !cfg.agent?.[PrimaryAgentIdentity.names.coding]?.prompt)
       result[PrimaryAgentIdentity.names.coding].prompt = buildCodingPrompt()
-    if (result[PrimaryAgentIdentity.names.lightweight])
+    if (result[PrimaryAgentIdentity.names.lightweight] && !cfg.agent?.[PrimaryAgentIdentity.names.lightweight]?.prompt)
       result[PrimaryAgentIdentity.names.lightweight].prompt = buildLightweightPrompt()
-    if (result.supervisor) result.supervisor.prompt = buildSupervisorPrompt(agentInfos)
-    if (result["lightloop-reviewer"]) {
-      result["lightloop-reviewer"].prompt = buildLightLoopReviewerPrompt(agentInfos)
-    }
-
     // Cross-agent reference lint: visibleTo entries that match no agent name
     // or declared delegation group silently restrict nothing — surface them
     // so a typo does not hide behind an agent that is never visible.

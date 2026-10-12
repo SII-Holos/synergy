@@ -27,16 +27,17 @@ describe("coding subagents", () => {
   test("all max subagents receive the base utility tool bundle", () =>
     runtime.run(() => {
       for (const agent of Object.values(agents)) {
-        for (const permission of ["bash", "process", "skill", "webfetch", "look_at", "glob", "list"]) {
+        for (const permission of ["bash", "process", "skill", "webfetch", "glob", "list"]) {
           expect(action(agent, permission)).toBe("allow")
         }
+        expect(action(agent, "look_at")).toBe("deny")
       }
     }))
 
   test("deferred permissions stay within the owning subagent profiles", () =>
     runtime.run(() => {
       const readOnly = agents["code-cartographer"]
-      expect(action(readOnly, "note_read")).toBe("allow")
+      expect(action(readOnly, "note_read")).toBe("deny")
       expect(action(readOnly, "note_write")).toBe("deny")
       expect(action(readOnly, "note_edit")).toBe("deny")
       expect(action(readOnly, "memory_get")).toBe("deny")
@@ -50,11 +51,11 @@ describe("coding subagents", () => {
       expect(action(historian, "session_send")).toBe("deny")
 
       for (const name of ["docs-researcher", "research-scout", "literature-searcher", "literature-analyst"]) {
-        expect(action(agents[name], "mcp__any_server__any_tool"), name).toBe("allow")
+        expect(action(agents[name], "mcp__any_server__any_tool"), name).toBe("deny")
       }
     }))
 
-  test("all max subagents can discover, expand, and use deferred Browser tools", () =>
+  test("max subagents retain discovery without granting absent Browser tools", () =>
     runtime.run(() => {
       for (const [name, agent] of Object.entries(agents)) {
         for (const permission of [
@@ -64,7 +65,9 @@ describe("coding subagents", () => {
           "browser_action",
           "browser_upload",
         ]) {
-          expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
+          expect(action(agent, permission), `${name}:${permission}`).toBe(
+            permission.startsWith("browser_") ? "deny" : "allow",
+          )
         }
       }
     }))
@@ -87,7 +90,7 @@ describe("coding subagents", () => {
         expect(agent, name).toBeDefined()
         expect(action(agent, "view_file")).toBe("allow")
         expect(action(agent, "scan_files")).toBe("allow")
-        expect(action(agent, "parse_code")).toBe("allow")
+        expect(action(agent, "parse_code")).toBe("deny")
         expect(action(agent, "revise_file")).toBe("ask")
         expect(action(agent, "resolve_conflicts")).toBe("ask")
         expect(action(agent, "save_file")).toBe("ask")
@@ -127,7 +130,7 @@ describe("coding subagents", () => {
         expect(agent, name).toBeDefined()
         expect(action(agent, "read")).toBe("allow")
         expect(action(agent, "grep")).toBe("allow")
-        expect(action(agent, "ast_grep")).toBe("allow")
+        expect(action(agent, "ast_grep")).toBe("deny")
         expect(action(agent, "view_file")).toBe("deny")
         expect(action(agent, "scan_files")).toBe("deny")
         expect(action(agent, "parse_code")).toBe("deny")
@@ -139,16 +142,12 @@ describe("coding subagents", () => {
       }
     }))
 
-  test("recursive coordinator profiles allow task and DAG tools while ordinary subagents do not", () =>
+  test("recursive reviewers are absent and ordinary subagents cannot coordinate recursively", () =>
     runtime.run(() => {
       const coordinatorTools = ["task", "task_list", "task_output", "task_cancel", "dagwrite", "dagread", "dagpatch"]
 
       for (const name of ["supervisor", "lightloop-reviewer"]) {
-        const agent = agents[name]
-        expect(agent, name).toBeDefined()
-        for (const permission of coordinatorTools) {
-          expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
-        }
+        expect(agents[name], name).toBeUndefined()
       }
 
       const ordinary = agents["implementation-engineer"]
@@ -162,7 +161,7 @@ describe("coding subagents", () => {
 describe("synergy subagents", () => {
   const agents = runtime.run(() => createBuiltinLegacySubagents(ctx))
 
-  test("all classic subagents can discover, expand, and use deferred Browser tools", () =>
+  test("classic subagents retain discovery without granting absent Browser tools", () =>
     runtime.run(() => {
       for (const [name, agent] of Object.entries(agents)) {
         for (const permission of [
@@ -172,7 +171,9 @@ describe("synergy subagents", () => {
           "browser_action",
           "browser_upload",
         ]) {
-          expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
+          expect(action(agent, permission), `${name}:${permission}`).toBe(
+            permission.startsWith("browser_") ? "deny" : "allow",
+          )
         }
       }
     }))

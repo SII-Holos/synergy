@@ -2734,6 +2734,45 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Set session workflow
+   *
+   * Enable or clear a workflow registered in this Runtime.
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      workflowSetInput?: WorkflowSetInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "workflowSetInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<WorkflowSessionSetResponses, WorkflowSessionSetErrors, ThrowOnError>({
+      url: "/workflow/session/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Get session agenda wakeups
    *
    * Retrieve agenda items that can wake the specified session.
@@ -4287,7 +4326,7 @@ export class Session extends HeyApiClient {
   /**
    * Submit session input
    *
-   * Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input queues durable passive materialization without model execution.
+   * Persist input before scheduling it. Input on a paused session with an available existing task steers and resumes it; ordinary input starts a new task when the saved task's owner is absent. Idle no-reply input queues durable passive materialization without model execution.
    */
   public input<ThrowOnError extends boolean = false>(
     parameters: {
@@ -5361,81 +5400,6 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Get the current Lattice Run for a Session
-   *
-   * Returns the current Run pointer projection, or null when the Session has no Lattice history.
-   */
-  public getRun<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<
-      LatticeSessionGetRunResponses,
-      LatticeSessionGetRunErrors,
-      ThrowOnError
-    >({
-      url: "/lattice/session/{id}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Set session workflow
-   *
-   * Enable or clear the mutually exclusive session workflow.
-   */
-  public set<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-      workflowSetInput?: WorkflowSetInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { key: "workflowSetInput", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).put<WorkflowSessionSetResponses, WorkflowSessionSetErrors, ThrowOnError>({
-      url: "/workflow/session/{id}",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
    * Update Light Loop instructions
    *
    * Update the instructions for an active Light Loop. The next model step uses the new instructions.
@@ -5612,6 +5576,42 @@ export class Session extends HeyApiClient {
     })
   }
 
+  /**
+   * Get the current Lattice Run for a Session
+   *
+   * Returns the current Run pointer projection, or null when the Session has no Lattice history.
+   */
+  public getRun<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      LatticeSessionGetRunResponses,
+      LatticeSessionGetRunErrors,
+      ThrowOnError
+    >({
+      url: "/lattice/session/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
   files = new Files({ client: this.client })
 
   export = new Export({ client: this.client })
@@ -5701,7 +5701,7 @@ export class Global extends HeyApiClient {
   /**
    * Get runtime capabilities
    *
-   * List the components selected for this running instance. Installed changes apply after restart.
+   * List active services with HTTP adapters and selected components. Installed changes apply after restart.
    */
   public capabilities<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalCapabilitiesResponses, GlobalCapabilitiesErrors, ThrowOnError>({
@@ -8319,6 +8319,10 @@ export class Scope extends HeyApiClient {
   runtime = new Runtime({ client: this.client })
 }
 
+export class Workflow extends HeyApiClient {
+  session = new Session({ client: this.client })
+}
+
 export class Pty extends HeyApiClient {
   /**
    * List PTY sessions
@@ -8702,11 +8706,12 @@ export class Domain extends HeyApiClient {
         | "skills"
         | "worktree"
         | "library"
-        | "plugins"
+        | "anima"
         | "channels"
         | "holos"
-        | "email"
         | "github"
+        | "email"
+        | "plugins"
         | "mcp"
         | "voice"
       directory?: string
@@ -8753,11 +8758,12 @@ export class Domain extends HeyApiClient {
         | "skills"
         | "worktree"
         | "library"
-        | "plugins"
+        | "anima"
         | "channels"
         | "holos"
-        | "email"
         | "github"
+        | "email"
+        | "plugins"
         | "mcp"
         | "voice"
       directory?: string
@@ -8811,11 +8817,12 @@ export class Domain extends HeyApiClient {
         | "skills"
         | "worktree"
         | "library"
-        | "plugins"
+        | "anima"
         | "channels"
         | "holos"
-        | "email"
         | "github"
+        | "email"
+        | "plugins"
         | "mcp"
         | "voice"
       directory?: string
@@ -9070,11 +9077,12 @@ export class Config extends HeyApiClient {
         | "skills"
         | "worktree"
         | "library"
-        | "plugins"
+        | "anima"
         | "channels"
         | "holos"
-        | "email"
         | "github"
+        | "email"
+        | "plugins"
         | "mcp"
         | "voice"
         | Array<
@@ -9090,11 +9098,12 @@ export class Config extends HeyApiClient {
             | "skills"
             | "worktree"
             | "library"
-            | "plugins"
+            | "anima"
             | "channels"
             | "holos"
-            | "email"
             | "github"
+            | "email"
+            | "plugins"
             | "mcp"
             | "voice"
           >
@@ -12226,6 +12235,608 @@ export class Environment extends HeyApiClient {
   }
 }
 
+export class Note extends HeyApiClient {
+  /**
+   * List note metadata grouped by scope
+   *
+   * List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content. Returns active notes by default; pass ?archived=true to show only archived notes.
+   */
+  public listMeta<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      archived?: "true" | "false"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "archived" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<NoteListMetaResponses, NoteListMetaErrors, ThrowOnError>({
+      url: "/note/meta",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List all notes grouped by scope
+   *
+   * List all notes across all scopes, grouped by scope ID. Returns active notes by default; pass ?archived=true to show only archived notes.
+   */
+  public listAll<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      archived?: "true" | "false"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "archived" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<NoteListAllResponses, NoteListAllErrors, ThrowOnError>({
+      url: "/note/all",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Export note
+   *
+   * Export a note as Markdown or HTML.
+   */
+  public export<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      format?: "md" | "html"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "format" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<NoteExportResponses, NoteExportErrors, ThrowOnError>({
+      url: "/note/export/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List notes
+   *
+   * List all notes for the current scope, including global notes. Returns active notes by default; pass ?archived=true to show only archived notes.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      archived?: "true" | "false"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "archived" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<NoteListResponses, NoteListErrors, ThrowOnError>({
+      url: "/note",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create note
+   *
+   * Create a new note in the current scope.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      noteCreateInput?: NoteCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "noteCreateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<NoteCreateResponses, NoteCreateErrors, ThrowOnError>({
+      url: "/note",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete note
+   *
+   * Permanently delete a note. Only archived notes can be deleted. Active notes must be archived first.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<NoteRemoveResponses, NoteRemoveErrors, ThrowOnError>({
+      url: "/note/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get note
+   *
+   * Get a specific note by ID.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<NoteGetResponses, NoteGetErrors, ThrowOnError>({
+      url: "/note/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update note
+   *
+   * Update a note's content or metadata.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      notePatchInput?: NotePatchInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "notePatchInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<NoteUpdateResponses, NoteUpdateErrors, ThrowOnError>({
+      url: "/note/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Batch archive or delete notes
+   *
+   * Archive or permanently delete notes in bulk. Notes must be archived before they can be deleted.
+   */
+  public batch<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      ids?: Array<string>
+      action?: "archive" | "unarchive" | "delete"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "ids" },
+            { in: "body", key: "action" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<NoteBatchResponses, NoteBatchErrors, ThrowOnError>({
+      url: "/note/batch",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Loop extends HeyApiClient {
+  /**
+   * List BlueprintLoops
+   *
+   * List all BlueprintLoops for the current scope.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<BlueprintLoopListResponses, BlueprintLoopListErrors, ThrowOnError>({
+      url: "/blueprint/loop",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create BlueprintLoop
+   *
+   * Create a new BlueprintLoop in the current scope. Returns armed status.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      blueprintLoopCreateInput?: BlueprintLoopCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "blueprintLoopCreateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopCreateResponses, BlueprintLoopCreateErrors, ThrowOnError>(
+      {
+        url: "/blueprint/loop",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Complete BlueprintLoop
+   *
+   * Mark a BlueprintLoop as completed.
+   */
+  public complete<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BlueprintLoopCompleteResponses,
+      BlueprintLoopCompleteErrors,
+      ThrowOnError
+    >({
+      url: "/blueprint/loop/{id}/complete",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Cancel BlueprintLoop
+   *
+   * Cancel a BlueprintLoop.
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopCancelResponses, BlueprintLoopCancelErrors, ThrowOnError>(
+      {
+        url: "/blueprint/loop/{id}/cancel",
+        ...options,
+        ...params,
+      },
+    )
+  }
+
+  /**
+   * Get BlueprintLoop
+   *
+   * Get a specific BlueprintLoop by ID.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<BlueprintLoopGetResponses, BlueprintLoopGetErrors, ThrowOnError>({
+      url: "/blueprint/loop/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Bind session to BlueprintLoop
+   *
+   * Bind the current session to a BlueprintLoop so the session drives loop execution.
+   */
+  public bind<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      sessionID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "sessionID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<BlueprintLoopBindResponses, BlueprintLoopBindErrors, ThrowOnError>({
+      url: "/blueprint/loop/{id}/bind",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Start BlueprintLoop (armed → running)
+   *
+   * Transition a BlueprintLoop from armed to running.
+   */
+  public start<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      userPrompt?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "userPrompt" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BlueprintLoopStartResponses, BlueprintLoopStartErrors, ThrowOnError>({
+      url: "/blueprint/loop/{id}/start",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get BlueprintLoop activity
+   *
+   * Get derived activity metrics for a BlueprintLoop (derived from session state).
+   */
+  public activity<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      BlueprintLoopActivityResponses,
+      BlueprintLoopActivityErrors,
+      ThrowOnError
+    >({
+      url: "/blueprint/loop/{id}/activity",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Blueprint extends HeyApiClient {
+  loop = new Loop({ client: this.client })
+}
+
 export class Embedding extends HeyApiClient {
   /**
    * Get embedding status
@@ -13058,606 +13669,8 @@ export class Library extends HeyApiClient {
   memory = new Memory({ client: this.client })
 }
 
-export class Note extends HeyApiClient {
-  /**
-   * List note metadata grouped by scope
-   *
-   * List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content. Returns active notes by default; pass ?archived=true to show only archived notes.
-   */
-  public listMeta<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      archived?: "true" | "false"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "archived" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<NoteListMetaResponses, NoteListMetaErrors, ThrowOnError>({
-      url: "/note/meta",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * List all notes grouped by scope
-   *
-   * List all notes across all scopes, grouped by scope ID. Returns active notes by default; pass ?archived=true to show only archived notes.
-   */
-  public listAll<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      archived?: "true" | "false"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "archived" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<NoteListAllResponses, NoteListAllErrors, ThrowOnError>({
-      url: "/note/all",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Export note
-   *
-   * Export a note as Markdown or HTML.
-   */
-  public export<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-      format?: "md" | "html"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "format" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<NoteExportResponses, NoteExportErrors, ThrowOnError>({
-      url: "/note/export/{id}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * List notes
-   *
-   * List all notes for the current scope, including global notes. Returns active notes by default; pass ?archived=true to show only archived notes.
-   */
-  public list<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      archived?: "true" | "false"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "archived" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<NoteListResponses, NoteListErrors, ThrowOnError>({
-      url: "/note",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Create note
-   *
-   * Create a new note in the current scope.
-   */
-  public create<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      noteCreateInput?: NoteCreateInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { key: "noteCreateInput", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<NoteCreateResponses, NoteCreateErrors, ThrowOnError>({
-      url: "/note",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Delete note
-   *
-   * Permanently delete a note. Only archived notes can be deleted. Active notes must be archived first.
-   */
-  public remove<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).delete<NoteRemoveResponses, NoteRemoveErrors, ThrowOnError>({
-      url: "/note/{id}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get note
-   *
-   * Get a specific note by ID.
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<NoteGetResponses, NoteGetErrors, ThrowOnError>({
-      url: "/note/{id}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Update note
-   *
-   * Update a note's content or metadata.
-   */
-  public update<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-      notePatchInput?: NotePatchInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { key: "notePatchInput", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).put<NoteUpdateResponses, NoteUpdateErrors, ThrowOnError>({
-      url: "/note/{id}",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Batch archive or delete notes
-   *
-   * Archive or permanently delete notes in bulk. Notes must be archived before they can be deleted.
-   */
-  public batch<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      ids?: Array<string>
-      action?: "archive" | "unarchive" | "delete"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "ids" },
-            { in: "body", key: "action" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<NoteBatchResponses, NoteBatchErrors, ThrowOnError>({
-      url: "/note/batch",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-}
-
-export class Loop extends HeyApiClient {
-  /**
-   * List BlueprintLoops
-   *
-   * List all BlueprintLoops for the current scope.
-   */
-  public list<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<BlueprintLoopListResponses, BlueprintLoopListErrors, ThrowOnError>({
-      url: "/blueprint/loop",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Create BlueprintLoop
-   *
-   * Create a new BlueprintLoop in the current scope. Returns armed status.
-   */
-  public create<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      blueprintLoopCreateInput?: BlueprintLoopCreateInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { key: "blueprintLoopCreateInput", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BlueprintLoopCreateResponses, BlueprintLoopCreateErrors, ThrowOnError>(
-      {
-        url: "/blueprint/loop",
-        ...options,
-        ...params,
-        headers: {
-          "Content-Type": "application/json",
-          ...options?.headers,
-          ...params.headers,
-        },
-      },
-    )
-  }
-
-  /**
-   * Complete BlueprintLoop
-   *
-   * Mark a BlueprintLoop as completed.
-   */
-  public complete<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      BlueprintLoopCompleteResponses,
-      BlueprintLoopCompleteErrors,
-      ThrowOnError
-    >({
-      url: "/blueprint/loop/{id}/complete",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Cancel BlueprintLoop
-   *
-   * Cancel a BlueprintLoop.
-   */
-  public cancel<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BlueprintLoopCancelResponses, BlueprintLoopCancelErrors, ThrowOnError>(
-      {
-        url: "/blueprint/loop/{id}/cancel",
-        ...options,
-        ...params,
-      },
-    )
-  }
-
-  /**
-   * Get BlueprintLoop
-   *
-   * Get a specific BlueprintLoop by ID.
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<BlueprintLoopGetResponses, BlueprintLoopGetErrors, ThrowOnError>({
-      url: "/blueprint/loop/{id}",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Bind session to BlueprintLoop
-   *
-   * Bind the current session to a BlueprintLoop so the session drives loop execution.
-   */
-  public bind<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-      sessionID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "sessionID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).put<BlueprintLoopBindResponses, BlueprintLoopBindErrors, ThrowOnError>({
-      url: "/blueprint/loop/{id}/bind",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Start BlueprintLoop (armed → running)
-   *
-   * Transition a BlueprintLoop from armed to running.
-   */
-  public start<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-      userPrompt?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "userPrompt" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BlueprintLoopStartResponses, BlueprintLoopStartErrors, ThrowOnError>({
-      url: "/blueprint/loop/{id}/start",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Get BlueprintLoop activity
-   *
-   * Get derived activity metrics for a BlueprintLoop (derived from session state).
-   */
-  public activity<ThrowOnError extends boolean = false>(
-    parameters: {
-      id: string
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "id" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<
-      BlueprintLoopActivityResponses,
-      BlueprintLoopActivityErrors,
-      ThrowOnError
-    >({
-      url: "/blueprint/loop/{id}/activity",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class Blueprint extends HeyApiClient {
-  loop = new Loop({ client: this.client })
+export class Boss extends HeyApiClient {
+  session = new Session({ client: this.client })
 }
 
 export class Run extends HeyApiClient {
@@ -13879,14 +13892,6 @@ export class Lattice extends HeyApiClient {
   session = new Session({ client: this.client })
 
   run = new Run({ client: this.client })
-}
-
-export class Workflow extends HeyApiClient {
-  session = new Session({ client: this.client })
-}
-
-export class Boss extends HeyApiClient {
-  session = new Session({ client: this.client })
 }
 
 export class Asset extends HeyApiClient {
@@ -16411,6 +16416,8 @@ export class SynergyClient extends HeyApiClient {
 
   scope = new Scope({ client: this.client })
 
+  workflow = new Workflow({ client: this.client })
+
   pty = new Pty({ client: this.client })
 
   config = new Config({ client: this.client })
@@ -16453,17 +16460,15 @@ export class SynergyClient extends HeyApiClient {
 
   environment = new Environment({ client: this.client })
 
-  library = new Library({ client: this.client })
-
   note = new Note({ client: this.client })
 
   blueprint = new Blueprint({ client: this.client })
 
-  lattice = new Lattice({ client: this.client })
-
-  workflow = new Workflow({ client: this.client })
+  library = new Library({ client: this.client })
 
   boss = new Boss({ client: this.client })
+
+  lattice = new Lattice({ client: this.client })
 
   asset = new Asset({ client: this.client })
 

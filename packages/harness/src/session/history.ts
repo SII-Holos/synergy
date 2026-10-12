@@ -900,6 +900,7 @@ export namespace SessionHistory {
   }): Promise<MessagePage> {
     const session = await SessionManager.requireSession(input.sessionID)
     const scopeID = session.scope.id
+    await prepareSessionMigrations({ scopeID, sessionID: session.id })
     const [infos, events] = await Promise.all([readMessageInfo(input.sessionID), readEvents(input.sessionID)])
     const loadedParts = new Map<string, MessageV2.Part[]>()
     const loadParts = async (messageID: string) => {

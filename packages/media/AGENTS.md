@@ -4,6 +4,7 @@ Document extraction, speech, audio and image processing capabilities. Load heavy
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Own configuration schemas, normalization, reference checks and secret handling in `src/config-schema.ts`; consumers use its typed reader and the host composes its registration.
+- Own evidence-tool grants for selected built-in agents, including workflow reviewers, using their stable registration identity. Render guidance only for available and permitted tools; user denials take precedence.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Tests live under test/ and use isolated homes through the testing support package.
 

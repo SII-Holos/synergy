@@ -383,8 +383,14 @@
     "./config/reload-contributions": "./src/config/reload-contributions.ts",
     "./agent/primary-identity": "./src/agent/primary-identity.ts",
     "./agent/primary-identity-upgrade": "./src/agent/primary-identity-upgrade.ts",
+    "./config/legacy-execution": "./src/config/legacy-execution.ts",
     "./config/reference-migration": "./src/config/reference-migration.ts",
-    "./session/tool-intent": "./src/session/tool-intent.ts"
+    "./session/tool-intent": "./src/session/tool-intent.ts",
+    "./agent/prompt/agent-table": "./src/agent/prompt/agent-table.ts",
+    "./agent/prompt/types": "./src/agent/prompt/types.ts",
+    "./agent/prompt-contributions": "./src/agent/prompt-contributions.ts",
+    "./observability/resource-sources": "./src/observability/resource-sources.ts",
+    "./session/execution-owners": "./src/session/execution-owners.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

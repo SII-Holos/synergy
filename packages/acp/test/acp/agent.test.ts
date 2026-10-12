@@ -70,6 +70,7 @@ function makeSdk(
     messageData?: unknown
     requestPermission?: AgentSideConnection["requestPermission"]
     sessionUpdate?: AgentSideConnection["sessionUpdate"]
+    features?: string[]
     providers?: Array<Record<string, unknown>>
   } = {},
 ) {
@@ -104,6 +105,7 @@ function makeSdk(
     { name: TEST_AGENT_NAME, mode: "primary", description: "Primary agent", hidden: false },
   ]
   const sdk = {
+    global: { capabilities: async () => ({ data: { apiVersion: 1, features: options.features ?? ["mcp"] } }) },
     controlProfile: {
       effective: async () => ({ data: {} }),
     },
@@ -169,6 +171,7 @@ async function runAgent(
     messageData?: unknown
     requestPermission?: AgentSideConnection["requestPermission"]
     sessionUpdate?: AgentSideConnection["sessionUpdate"]
+    features?: string[]
     providers?: Array<Record<string, unknown>>
   },
   fn: (agent: ACP.Agent, harness: AgentHarness) => Promise<void>,
@@ -224,6 +227,20 @@ describe("ACP agent lifecycle", () => {
         expect(terminal.authMethods![0]?._meta).toEqual({
           "terminal-auth": { command: "synergy", args: ["auth", "login"], label: "Synergy Login" },
         })
+      })
+    }))
+
+  test("MCP absence is advertised and rejects descriptors before creating a session", () =>
+    runtime.run(async () => {
+      await runAgent({ features: [] }, async (agent, harness) => {
+        const initialized = await agent.initialize({ protocolVersion: 1 })
+        expect(initialized.agentCapabilities?.mcpCapabilities).toEqual({ http: false, sse: false })
+        const servers = [{ name: "missing", type: "http" as const, url: "https://example.invalid/mcp", headers: [] }]
+        await expect(agent.newSession({ cwd: "/tmp/acp", mcpServers: servers })).rejects.toThrow("MCP is not available")
+        await expect(
+          agent.loadSession({ cwd: "/tmp/acp", sessionId: "existing", mcpServers: servers }),
+        ).rejects.toThrow("MCP is not available")
+        expect(harness.calls.sessionCreate).toEqual([])
       })
     }))
 
