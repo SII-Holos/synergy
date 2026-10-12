@@ -153,6 +153,7 @@ for (const [scheme, color] of [
   test(`${scheme}: Full Access stays distinct and readable at rest, hover and in the menu`, async () => {
     await page.getByRole("button", { name: scheme, exact: true }).click()
     const trigger = page.locator(".prompt-input-toolbar-button")
+    const restingBackground = await trigger.evaluate((element) => getComputedStyle(element).backgroundImage)
     const label = ".prompt-input-toolbar-button > span"
     const icon = '.prompt-input-toolbar-button [data-slot="icon-svg"]'
     expect((await appearance(label)).color).toEqual([...color])
@@ -201,7 +202,10 @@ for (const [scheme, color] of [
     await page.keyboard.press("Escape")
     await rows.last().waitFor({ state: "detached" })
     await page.waitForFunction(() => document.activeElement?.classList.contains("prompt-input-toolbar-button"))
-    expect(await trigger.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("solid")
+    expect(await trigger.evaluate((element) => element.matches(":focus-visible"))).toBe(true)
+    expect(await trigger.evaluate((element) => getComputedStyle(element).backgroundImage)).not.toBe(restingBackground)
+    expect(await trigger.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("none")
+    expect(await trigger.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
     expect(errors).toEqual([])
     if (process.env.SYNERGY_VISUAL_OUTPUT) {
       await trigger.click()

@@ -108,7 +108,10 @@ async function open(query = "") {
   await page.evaluate(() => (window as unknown as { controls: Controls }).controls.latest())
   await page.waitForFunction(() => {
     const outer = document.querySelector("[data-conversation-viewport]")!
-    return outer.scrollHeight - outer.clientHeight - outer.scrollTop < 2
+    return (
+      outer.scrollHeight - outer.clientHeight - outer.scrollTop < 2 &&
+      !document.querySelector("[data-conversation-latest]")
+    )
   })
 }
 const outer = () => page.locator("[data-conversation-viewport]")
@@ -138,6 +141,7 @@ test("reading the inner process at the outer bottom does not show the conversati
   await latest().waitFor()
   await latest().focus()
   await latest().press("Enter")
+  await latest().waitFor({ state: "detached" })
   await page.waitForFunction(() => {
     const outer = document.querySelector("[data-conversation-viewport]")!
     return outer.scrollHeight - outer.clientHeight - outer.scrollTop < 2
@@ -189,6 +193,7 @@ test("narrow screens keep latest reachable above the stacked dock", async () => 
   await page.setViewportSize({ width: 375, height: 812 })
   await open()
   await outer().evaluate((el) => {
+    el.dispatchEvent(new WheelEvent("wheel", { deltaY: -240, bubbles: true }))
     el.scrollTop -= 240
   })
   await latest().waitFor()
@@ -204,6 +209,7 @@ test("narrow screens keep latest reachable above the stacked dock", async () => 
 test("latest clears a pending decision above the composer", async () => {
   await open("?request")
   await outer().evaluate((el) => {
+    el.dispatchEvent(new WheelEvent("wheel", { deltaY: -240, bubbles: true }))
     el.scrollTop -= 240
   })
   await latest().waitFor()

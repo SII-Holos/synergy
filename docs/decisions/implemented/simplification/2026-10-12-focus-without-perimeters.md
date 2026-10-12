@@ -12,6 +12,8 @@ Synergy-owned controls do not add or recolor borders, outlines, rings or shadows
 
 The [browser regression](../../../../apps/web/test/testing/focus-presentation.browser.test.ts) checks authored CSS, compiled utility classes and computed perimeters before and after focus, plus the complete input surface during hover, press, click and keyboard focus. It discovers stylesheet files instead of maintaining a page allowlist, and proves that newly introduced outline, shadow and border rules fail regardless of color. Shared buttons, text inputs, composite choices, menus, native controls and the Agenda/Composer surfaces receive light/dark interaction coverage.
 
+Settings, permission, directory, activity-row and Desktop startup regressions retain keyboard selection, focus return and geometry checks, asserting the current surface or text cue instead of retired perimeter highlights. CSS fixtures preserve production cascade layers, and animated cues are measured after their actual transition settles.
+
 ## Alternatives considered
 
 **Change the focus color.** Rejected because a neutral or translucent perimeter still introduces the unwanted frame.
