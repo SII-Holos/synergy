@@ -26,4 +26,6 @@ The compact layout retains the loading and dismissal contract: closing or cleari
 
 ## Consequences
 
+Hover disclosure is superseded by [task detail disclosure and navigation](2026-10-12-task-detail-disclosure.md); the flat sections, list bounds and resource ownership remain in effect.
+
 The surface is smaller and queued input becomes directly visible. Paths, aggregate explanations and uncommon actions require hover, focus or a detail interaction. The read model gains additive optional metadata without persistence migration or accounting changes. Recording limits remain visible in Review and available to evidence consumers. Behavioral, update and real browser tests cover metadata, recovery, scrolling, keyboard controls, narrow layouts and independent resource failures. The extracted Agenda renderers preserve the existing Vite/Chromium instrumentation boundary with exact-file entries in the [coverage manifest](../../../../script/coverage-exempt.json); directly testable task filtering and accounting presentation remain measured by Bun.

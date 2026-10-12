@@ -1,3 +1,4 @@
+import { untrack } from "solid-js"
 import { pluginPreviewChanged, pluginPreviewEnabled } from "./preview"
 import { pluginExtensionTarget } from "./extension-diagnostics"
 import { createExtensionOutlets, ExtensionOutletsProvider } from "@ericsanchezok/synergy-ui/context/extension-outlet"
@@ -43,13 +44,14 @@ import {
 } from "@ericsanchezok/synergy-plugin"
 import type { ToolProps } from "@ericsanchezok/synergy-ui/message-part"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { createPluginGenerations, type PreparedPluginUI } from "./generations"
+import { createPluginGenerations, createPluginScopeVersions, type PreparedPluginUI } from "./generations"
 import { createPluginEnvironment } from "./environment"
 import { PluginComponentMount } from "./component-mount"
 import { createPluginSurfaceAccess } from "./surface-access"
 import { bindPluginWorkbench } from "./surface-workbench"
 import { createWorkbenchService } from "./workbench-service"
 import { useWorkbenchPanels } from "@/context/workbench"
+import { useViewActivity } from "@/context/view-residency"
 import { bindPluginInput, bindPluginSession } from "./surface-session"
 import { bindPluginConversation } from "./surface-conversation"
 import { bindPluginComposerLayout } from "./surface-composer-layout"
@@ -112,6 +114,7 @@ interface PluginHostValue {
     pluginId: string,
   ): Array<{ id: string; outlet: import("@ericsanchezok/synergy-plugin").PluginExtensionId; mounted: boolean }>
   plugins: () => PluginContribution[]
+  scopeGeneration(scope: string): string
   status: () => Map<string, PluginUIStatus>
   loadedPluginIds: () => string[]
   errors: () => PluginUIError[]
@@ -141,6 +144,8 @@ function surfaceContext(input: {
     console.error(`Plugin ${pluginId} surface cleanup failed`, error)
   })
   onCleanup(lifetime.dispose)
+  const active = useViewActivity()
+  createEffect(() => lifetime.setActive(active()))
   const access = createPluginSurfaceAccess({
     lifetime: lifetime.context,
     capabilities: input.contribution.capabilities,
@@ -290,7 +295,9 @@ async function preparePluginSurfaces(input: {
           plugin.uiArtifact?.sha256,
         )
         const Wrapper: Component<Props> = (props) => {
-          const identity = createMemo(() => JSON.stringify([session(props), resource(props)?.id]))
+          const captured = untrack(() => session(props))
+          const sessionID = () => (item.kind === "ui.workbenchPanel" ? captured : session(props))
+          const identity = createMemo(() => JSON.stringify([sessionID(), resource(props)?.id]))
           return (
             <Show when={identity()} keyed>
               {(_identity) => {
@@ -302,7 +309,7 @@ async function preparePluginSurfaces(input: {
                   client: input.client,
                   events: input.events,
                   scopeKey: input.scopeKey,
-                  sessionId: session(props),
+                  sessionId: sessionID(),
                   resource: resource(props),
                   environment: input.environment,
                   commands: input.commands,
@@ -468,6 +475,8 @@ async function preparePluginSurfaces(input: {
             surface: item.surface,
             cardinality: item.cardinality,
             requiresSession: item.requiresSession,
+            retention: item.retention,
+            generation: JSON.stringify([input.serverUrl, input.scopeKey, plugin.generation, plugin.capabilities, item]),
             pluginId: plugin.pluginId,
             loader,
             defaultResource: item.defaultResource
@@ -867,6 +876,7 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
     },
   }
   const scopeKey = props.scopeKey
+  const scopeVersions = createPluginScopeVersions()
   let reloadGeneration = 0
   let reloadController: AbortController | undefined
   let owner = ""
@@ -969,9 +979,12 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
     reloadController?.abort()
     const controller = new AbortController()
     reloadController = controller
+    const requestedServer = server.url,
+      requestedScope = scopeKey()
     try {
-      const discovered = await fetchUIContributions(server.url, scopeKey(), controller.signal)
+      const discovered = await fetchUIContributions(requestedServer, requestedScope, controller.signal)
       if (revision !== reloadGeneration) return
+      scopeVersions.accept(requestedServer, requestedScope, discovered)
       setPlugins(discovered)
       setStatus(
         (current) =>
@@ -1016,12 +1029,14 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
     reloadGeneration++
     reloadController?.abort()
     generations.dispose()
+    scopeVersions.clear()
   })
   return (
     <ExtensionOutletsProvider value={outlets}>
       <PluginHostContext.Provider
         value={{
           plugins,
+          scopeGeneration: (scope) => scopeVersions.get(server.url, scope),
           extensions: (pluginId) =>
             loaded()
               .find((plugin) => plugin.pluginId === pluginId)

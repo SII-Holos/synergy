@@ -164,12 +164,6 @@
 .note-resource-row[aria-pressed="true"] {
   background: var(--surface-raised-base-hover);
 }
-.note-resource-row:focus-visible,
-.note-resource-group button:focus-visible,
-.note-list-search input:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
-}
 .note-resource-time {
   flex-shrink: 0;
   color: var(--text-weak);
@@ -325,12 +319,6 @@
 }
 .note-document-error button {
   flex-shrink: 0;
-}
-.note-workspace-toolbar button:focus-visible,
-.note-navigation-list button:focus-visible,
-.note-toolbar-menu button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 1px;
 }
 @media (hover: none) {
   .note-navigation-row > button:last-child:not(:first-child) {
@@ -657,7 +645,6 @@
 .note-detail-action:focus-visible,
 .note-detail-icon-button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--border-strong-base) 34%, transparent);
 }
 
 .note-detail-action:disabled,
@@ -756,7 +743,6 @@
 
 .note-blueprint-session-link:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--border-strong-base) 34%, transparent);
 }
 
 .note-run-menu {
@@ -817,7 +803,6 @@
 
 .note-run-option:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--border-strong-base) 30%, transparent);
 }
 
 .note-run-option--disabled {
@@ -926,7 +911,6 @@
 
 .note-run-model-run:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--border-strong-base) 38%, transparent);
 }
 
 .note-run-model-run:disabled {

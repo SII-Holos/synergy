@@ -12,7 +12,7 @@ Do not restart or stop the Web app or server carrying the current task. Inspect 
 
 Read [Frontend data sync](../../docs/architecture/frontend-data-sync.md) before changing contexts, session loading, composer intent, events, or reconnect behavior.
 
-- Use a store for coherent keyed collections and targeted updates; use signals for genuinely independent scalar state.
+- Use stores for collections and updates; signals for independent scalars.
 - Apply entity writes with `reconcile` or a targeted `setStore(..., reconcile(value))`. Do not replace an entity object when one field changes.
 - Read entities by stable key so reactive consumers subscribe only to the row they use.
 - Preserve composer resolution layers: explicit draft → session default → fallback. A derived/historical value must not write back into the user's draft. Existing-session selector choices persist through revisioned `modelSelection`; `modelOverride` is its legacy projection.
@@ -67,3 +67,5 @@ bun run localization:check
 ```
 
 Use the existing app or an isolated second instance for interaction checks. Verify both themes, keyboard/focus, loading/error states, session switching/reconnect when relevant, and the Desktop path for native Browser or Electron behavior. Do not bypass hooks or claim unrun checks.
+
+Retained descendants require owner-bound routing.

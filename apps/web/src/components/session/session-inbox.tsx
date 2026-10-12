@@ -97,7 +97,6 @@ function CompactInboxRow(props: InboxRowProps) {
           class="execution-icon-action"
           disabled={props.disabled}
           aria-label={props.item.status === "failed" ? _(S.inboxRetry) : guideLabel()}
-          title={props.item.status === "failed" ? _(S.inboxRetry) : guideLabel()}
           onClick={() => (props.item.status === "failed" ? props.onRetry(props.item) : props.onGuide(props.item))}
         >
           <Icon
@@ -115,7 +114,6 @@ function CompactInboxRow(props: InboxRowProps) {
           type="button"
           class="execution-icon-action"
           aria-label={_(S.inboxRemove)}
-          title={_(S.inboxRemove)}
           disabled={props.disabled}
           onClick={() => {
             setOpen(false)
@@ -140,12 +138,7 @@ function CompactInboxRow(props: InboxRowProps) {
         placement="top-start"
         class="session-inbox-row-tooltip"
         triggerAs={(trigger) => (
-          <button
-            {...trigger}
-            type="button"
-            class="execution-row-main"
-            title={props.item.summary.preview || props.item.summary.title}
-          >
+          <button {...trigger} type="button" class="execution-row-main">
             <Icon
               name={getSemanticIcon(
                 props.item.status === "failed"
@@ -163,7 +156,6 @@ function CompactInboxRow(props: InboxRowProps) {
         )}
       >
         <InboxDetail item={props.item} i18n={props.i18n} />
-        <div class="session-inbox-detail-actions">{actions()}</div>
       </Popover>
       <div class="execution-row-actions">{actions()}</div>
     </div>
@@ -237,7 +229,7 @@ function InboxRow(props: InboxRowProps) {
                 type="button"
                 class="session-inbox-send-now"
                 aria-label={_(S.inboxRetry)}
-                title={props.item.failReason ?? _(S.inboxFailed)}
+                aria-description={props.item.failReason ?? _(S.inboxFailed)}
                 onClick={(event) => {
                   event.stopPropagation()
                   props.onRetry(props.item)
@@ -251,7 +243,7 @@ function InboxRow(props: InboxRowProps) {
               type="button"
               class="session-inbox-send-now"
               aria-label={guideLabel()}
-              title={guideTitle()}
+              aria-description={guideTitle()}
               onClick={(event) => {
                 event.stopPropagation()
                 props.onGuide(props.item)

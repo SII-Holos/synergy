@@ -4,7 +4,7 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 export namespace GlobalEventClients {
   const log = Log.create({ service: "server.global-event-clients" })
 
-  export type Mode = "full" | "delta" | "projection"
+  export type Mode = "full" | "delta" | "projection" | "projection-v2"
   export type SendResult = "sent" | "backpressured" | "dropped" | "closed" | "error"
 
   export interface ClientState {
@@ -25,6 +25,7 @@ export namespace GlobalEventClients {
     /** If raw.bufferedAmount exceeds this, treat as backpressure. */
     bufferedAmountLimit?: number
     now?: () => number
+    onRemove?: (key: unknown) => void
   }
 
   export interface Registry {
@@ -34,7 +35,7 @@ export namespace GlobalEventClients {
     reply(ws: WSContext, data: string): SendResult
     broadcast(
       encode: (mode: Mode) => string,
-      project?: (client: ClientState) => string | undefined,
+      project?: (client: ClientState) => string | null | undefined,
     ): {
       clients: number
       sent: number
@@ -94,6 +95,7 @@ export namespace GlobalEventClients {
       const client = clients.get(key)
       if (!client) return false
       clients.delete(key)
+      options.onRemove?.(key)
       const readyState = rawReadyState(client)
       if (readyState === undefined || readyState === 1) close(client.ws, "websocket subscription removed")
       return true
@@ -165,16 +167,19 @@ export namespace GlobalEventClients {
     function maybeEvict(key: unknown, client: ClientState, result: SendResult): boolean {
       if (result === "closed") {
         clients.delete(key)
+        options.onRemove?.(key)
         return true
       }
       if (result === "error" || result === "dropped") {
         clients.delete(key)
+        options.onRemove?.(key)
         close(client.ws, `websocket send ${result}`)
         log.warn("evicted websocket client after send failure", { result, mode: client.mode })
         return true
       }
       if (result === "backpressured" && client.consecutiveBackpressure >= maxConsecutiveBackpressure) {
         clients.delete(key)
+        options.onRemove?.(key)
         close(client.ws, "websocket backpressure")
         log.warn("evicted websocket client under backpressure", {
           consecutiveBackpressure: client.consecutiveBackpressure,
@@ -186,7 +191,7 @@ export namespace GlobalEventClients {
       return false
     }
 
-    function broadcast(encode: (mode: Mode) => string, project?: (client: ClientState) => string | undefined) {
+    function broadcast(encode: (mode: Mode) => string, project?: (client: ClientState) => string | null | undefined) {
       let sent = 0
       let dropped = 0
       let removed = 0
@@ -203,7 +208,9 @@ export namespace GlobalEventClients {
       }
 
       for (const [key, client] of clients) {
-        const result = send(client, project?.(client) ?? payloadFor(client.mode))
+        const projected = project?.(client)
+        if (projected === null) continue
+        const result = send(client, projected ?? payloadFor(client.mode))
         if (result === "sent") sent++
         else dropped++
         if (maybeEvict(key, client, result)) removed++

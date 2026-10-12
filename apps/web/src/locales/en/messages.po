@@ -247,10 +247,6 @@ msgid "app.agenda.action.submittedHint"
 msgstr "Check History for the execution result."
 
 #. js-lingui-explicit-id
-msgid "app.agenda.activity.description"
-msgstr "Review actual executions, results and related sessions, newest first."
-
-#. js-lingui-explicit-id
 msgid "app.agenda.activity.loaded"
 msgstr "{shown} of {total} executions loaded"
 
@@ -329,10 +325,6 @@ msgid "app.agenda.arrangements.count"
 msgstr "{count, plural, one {# upcoming trigger} other {# upcoming triggers}}"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.arrangements.description"
-msgstr "See when your enabled tasks are expected to run. Select a date to change the displayed range."
-
-#. js-lingui-explicit-id
 msgid "app.agenda.arrangements.empty"
 msgstr "No upcoming arrangements in this range"
 
@@ -363,10 +355,6 @@ msgstr "This period is in the past. History contains actual executions."
 #. js-lingui-explicit-id
 msgid "app.agenda.arrangements.predicted"
 msgstr "Expected trigger times · {timezone}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.arrangements.relative"
-msgstr "Some interval or delayed tasks depend on activation and execution times; only their known next trigger is shown."
 
 #. js-lingui-explicit-id
 msgid "app.agenda.arrangements.weekRange"
@@ -906,14 +894,6 @@ msgid "app.agenda.runStatus.skipped"
 msgstr "Skipped"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.scope.all"
-msgstr "All Scopes"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.scope.filter"
-msgstr "Scope"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.search.clear"
 msgstr "Clear search"
 
@@ -952,10 +932,6 @@ msgstr "Finished"
 #. js-lingui-explicit-id
 msgid "app.agenda.tasks.count"
 msgstr "{count, plural, one {# task} other {# tasks}}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.tasks.description"
-msgstr "Manage all task rules, including manual, event-triggered, disabled and archived tasks."
 
 #. js-lingui-explicit-id
 msgid "app.agenda.tasks.empty"
@@ -17086,10 +17062,6 @@ msgid "session.conversation.moveToQueueTitle"
 msgstr "Move back to queue"
 
 #. js-lingui-explicit-id
-msgid "session.conversation.newMessagesReturnLatest"
-msgstr "New messages — Return to latest"
-
-#. js-lingui-explicit-id
 msgid "session.conversation.paused"
 msgstr "Paused"
 
@@ -17116,10 +17088,6 @@ msgstr "Remove pending message"
 #. conversation.tsx
 msgid "session.conversation.renderEarlier"
 msgstr "Render earlier messages"
-
-#. js-lingui-explicit-id
-msgid "session.conversation.returnLatest"
-msgstr "Return to latest"
 
 #. js-lingui-explicit-id
 msgid "session.conversation.withdraw"

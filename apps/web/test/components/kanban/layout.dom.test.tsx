@@ -1,18 +1,14 @@
 import { renderedTextContrast } from "../../testing/rendered-text-contrast"
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test, setDefaultTimeout } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solidPlugin from "vite-plugin-solid"
-import tailwindcss from "@tailwindcss/vite"
-import { lingui } from "@lingui/vite-plugin"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 setDefaultTimeout(30000)
 let browser: Browser
 let page: Page
-let server: ViteDevServer
+let fixture: BrowserFixture
 let directory: string
 let url: string
 const source = path.resolve(import.meta.dir, "../../../src")
@@ -39,6 +35,10 @@ beforeAll(async () => {
     import {I18nProvider} from "@lingui/solid"
     import {Markdown} from "@ericsanchezok/synergy-ui/markdown"
     import {MarkedProvider} from "@ericsanchezok/synergy-ui/context/marked"
+    import {ThemeProvider} from "@ericsanchezok/synergy-ui/theme"
+    import {MenuField} from "@ericsanchezok/synergy-ui/menu-field"
+    import {IconButton} from "@ericsanchezok/synergy-ui/icon-button"
+    import {getSemanticIcon} from "@ericsanchezok/synergy-ui/semantic-icon"
     import {AppPanel} from "/@fs/${source}/components/app-panel.tsx"
     import {KanbanReorderMenu} from "/@fs/${source}/components/kanban/pane/reorder-menu.tsx"
     import {FlipPanes} from "/@fs/${source}/components/kanban/flip.tsx"
@@ -62,6 +62,20 @@ beforeAll(async () => {
       const [result,setResult]=createSignal("")
       return <><KanbanPaneComposer sessionID="fixture" agents={[{name:"synergy",mode:"primary",hidden:false}]} session={{controlProfile:"guarded"}} onSend={async text=>{setResult(text);throw new Error("Controlled send failure")}} onUpdateProfile={async()=>{}} onSetWorkflow={async()=>{}} /><output>{result()}</output></>
     }
+    function PresentationFixture() {
+      return <ThemeProvider><main class="synergy-workbench-canvas" style="padding:16px;max-width:720px">
+        <button id="presentation-start">Start</button>
+        <section data-main-composer class="prompt-input-shell" style="padding:16px">
+          <button class="prompt-input-toolbar-button">Reference choice</button>
+          <IconButton aria-label="Reference send" disabled icon={getSemanticIcon("prompt.submitArrow")} variant="primary" class="prompt-input-submit size-[34px] rounded-full!"/>
+        </section>
+        <div class="kanban-panel" style="height:auto">
+          <div class="kanban-grid-config"><For each={["Columns","Rows"]}>{label=><MenuField ariaLabel={label} value="2" triggerClass="menu-field-trigger kanban-grid-select" options={[{value:"2",label:"2"},{value:"3",label:"3"}]} onChange={()=>{}}/>}</For></div>
+          {pane(()=>panes[0],"grid")}
+          <div class="kanban-pane" style="height:auto"><ComposerFixture/></div>
+        </div>
+      </main></ThemeProvider>
+    }
     function ReorderFixture() {
       const [order,setOrder]=createSignal("initial")
       const disabled=location.search.includes("locked")
@@ -72,26 +86,18 @@ beforeAll(async () => {
       const [entries,setEntries]=createSignal([{key:"a"},{key:"b"},{key:"c"}])
       return <><button onClick={()=>setEntries(current=>[...current].reverse())}>Reverse panels</button><FlipPanes entries={entries()} style={{display:"flex","flex-direction":"column",height:"400px"}}><For each={entries()}>{entry=><div data-pane-key={entry.key} style="height:100px;flex:none">{entry.key}</div>}</For></FlipPanes></>
     }
-    render(()=> <I18nProvider i18n={i18n}>{location.search.includes("reading") ? <ReadingFixture/> : location.search.includes("refresh") ? <RefreshFixture/> : location.search.includes("motion") ? <MotionFixture/> : location.search.includes("reorder") ? <ReorderFixture/> : location.search.includes("composer") ? <ComposerFixture /> : <div class="kanban-panel" style="height:100dvh"><output>4 columns, 2 rows</output><div class="kanban-body">{location.search.includes("focus") ? <KanbanFocus panes={panes} renderPane={pane} railWidth={()=>300} onRailResize={()=>{}} /> : <KanbanGrid panes={panes} cols={4} rows={2} renderPane={pane} onReorder={()=>{}} />}</div></div>}</I18nProvider>,document.getElementById("root"))
+    render(()=> <I18nProvider i18n={i18n}>{location.search.includes("presentation") ? <PresentationFixture/> : location.search.includes("reading") ? <ReadingFixture/> : location.search.includes("refresh") ? <RefreshFixture/> : location.search.includes("motion") ? <MotionFixture/> : location.search.includes("reorder") ? <ReorderFixture/> : location.search.includes("composer") ? <ComposerFixture /> : <div class="kanban-panel" style="height:100dvh"><output>4 columns, 2 rows</output><div class="kanban-body">{location.search.includes("focus") ? <KanbanFocus panes={panes} renderPane={pane} railWidth={()=>300} onRailResize={()=>{}} /> : <KanbanGrid panes={panes} cols={4} rows={2} renderPane={pane} onReorder={()=>{}} />}</div></div>}</I18nProvider>,document.getElementById("root"))
   `,
   )
-  server = await createServer({
-    configFile: false,
+  fixture = await createBrowserFixture({
     root: directory,
-    cacheDir: path.join(directory, "cache"),
-    plugins: [solidPlugin(), tailwindcss(), ...lingui()],
-    resolve: {
-      alias: [
-        { find: "@/context/locale", replacement: path.join(directory, "locale.ts") },
-        { find: "@", replacement: source },
-      ],
-    },
-    optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid"] },
-    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
+    styled: true,
+    aliases: [
+      { find: "@/context/locale", replacement: path.join(directory, "locale.ts") },
+      { find: "@", replacement: source },
+    ],
   })
-  await server.listen()
-  await server.warmupRequest("/main.tsx")
-  url = server.resolvedUrls!.local[0]!
+  url = fixture.url
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   page.setDefaultTimeout(10000)
@@ -99,7 +105,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await browser?.close()
-  await server?.close()
+  await fixture?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
 })
 
@@ -195,13 +201,115 @@ test("board composer has one native focus entry per selector and names its send 
   )
 })
 
-test("pane context stays readable over a completion status surface", async () => {
+test("pane context stays readable over its header surface", async () => {
   await page.goto(url)
   const scope = page.locator(".kanban-pane-scope").first()
   await scope.waitFor()
   expect(await renderedTextContrast(scope)).toBeGreaterThanOrEqual(4.5)
   expect(await renderedTextContrast(page.locator(".kanban-pane-time").first())).toBeGreaterThanOrEqual(4.5)
 })
+
+for (const mode of ["light", "dark"] as const) {
+  test(`board headers stay neutral across session states in ${mode} mode`, async () => {
+    await page.emulateMedia({ colorScheme: mode })
+    await page.goto(`${url}?presentation`)
+    const header = page.locator(".kanban-pane-head")
+    await header.waitFor()
+    const surface = await page
+      .locator("[data-main-composer]")
+      .evaluate((element) => getComputedStyle(element).backgroundColor)
+    for (const status of ["working", "waiting", "completed", ""]) {
+      await header.evaluate((element, status) => element.setAttribute("data-status", status), status)
+      expect(await header.evaluate((element) => getComputedStyle(element).backgroundColor), status).toBe(surface)
+      expect(await renderedTextContrast(page.locator(".kanban-pane-scope"))).toBeGreaterThanOrEqual(4.5)
+      expect(await renderedTextContrast(page.locator(".kanban-pane-time"))).toBeGreaterThanOrEqual(4.5)
+    }
+    const follow = page.getByRole("button", { name: "Follow 0", exact: true })
+    await follow.evaluate((element) => element.setAttribute("data-active", ""))
+    expect(await follow.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+  })
+
+  test(`board composer shares the main session surfaces without input interaction effects in ${mode} mode`, async () => {
+    await page.emulateMedia({ colorScheme: mode })
+    await page.setViewportSize({ width: 720, height: 900 })
+    await page.goto(`${url}?presentation`)
+    const input = page.getByRole("textbox", { name: "Message this session", exact: true })
+    await input.waitFor()
+    const surface = await page
+      .locator("[data-main-composer]")
+      .evaluate((element) => getComputedStyle(element).backgroundColor)
+    expect(
+      await page.locator(".kanban-pane-composer").evaluate((element) => getComputedStyle(element).backgroundColor),
+    ).toBe(surface)
+    const appearance = () =>
+      input.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return {
+          background: style.background,
+          border: style.border,
+          shadow: style.boxShadow,
+          outline: style.outlineStyle,
+          color: style.color,
+        }
+      })
+    const resting = await appearance()
+    expect(await input.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+    expect(await input.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+    expect(await input.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+    await input.hover()
+    expect(await appearance()).toEqual(resting)
+    await page.mouse.down()
+    expect(await appearance()).toEqual(resting)
+    await page.mouse.up()
+    expect(await appearance()).toEqual(resting)
+    await page.locator("#presentation-start").focus()
+    await input.focus()
+    expect(await appearance()).toEqual(resting)
+    await page.mouse.move(0, 0)
+    await page.locator("#presentation-start").focus()
+    const controls = page.locator(".kanban-grid-select, .kanban-composer-chip")
+    expect(await controls.count()).toBe(5)
+    const choice = await page
+      .getByRole("button", { name: "Reference choice" })
+      .evaluate((element) => getComputedStyle(element).backgroundColor)
+    for (const control of await controls.all()) {
+      expect(await control.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(choice)
+      expect(await control.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+    }
+    const send = page.getByRole("button", { name: "Send message", exact: true })
+    const referenceSend = page.getByRole("button", { name: "Reference send", exact: true })
+    const sendSurface = (element: Element) => {
+      const style = getComputedStyle(element)
+      return { background: style.backgroundColor, shadow: style.boxShadow }
+    }
+    expect(await send.evaluate(sendSurface)).toEqual(await referenceSend.evaluate(sendSurface))
+    expect(
+      await send.evaluate((element) => {
+        const bounds = element.getBoundingClientRect()
+        const radius = getComputedStyle(element).borderRadius
+        const pixels = parseFloat(radius) * (radius.endsWith("%") ? bounds.width / 100 : 1)
+        return bounds.width === bounds.height && pixels >= bounds.width / 2
+      }),
+    ).toBe(true)
+    await input.fill("A retained board draft")
+    await referenceSend.evaluate((element) => element.removeAttribute("disabled"))
+    expect(await send.evaluate(sendSurface)).toEqual(await referenceSend.evaluate(sendSurface))
+    for (const width of [720, 375]) {
+      await page.setViewportSize({ width, height: 900 })
+      const inputBounds = (await input.boundingBox())!
+      const toolbarBounds = (await page.locator(".kanban-pane-composer-toolbar").boundingBox())!
+      expect(inputBounds.y + inputBounds.height).toBeLessThanOrEqual(toolbarBounds.y)
+      for (const control of await page.locator(".kanban-composer-chip, .kanban-pane-send").all()) {
+        const bounds = (await control.boundingBox())!
+        expect(bounds.x).toBeGreaterThanOrEqual(0)
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(width)
+        if (width === 375) expect(bounds.height).toBeGreaterThanOrEqual(44)
+      }
+    }
+    expect(await input.inputValue()).toBe("A retained board draft")
+    await page.emulateMedia({ colorScheme: "light" })
+  })
+}
 
 test("panel ordering works inside the workbench scroll container and returns keyboard focus", async () => {
   await page.goto(`${url}?reorder`)

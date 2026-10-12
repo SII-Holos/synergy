@@ -75,7 +75,6 @@
 
       &:focus-visible {
         outline: none;
-        box-shadow: var(--shadow-xs-border-focus);
       }
     }
 

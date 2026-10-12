@@ -1,3 +1,4 @@
+import { projectionContent } from "./projection-content"
 import { SessionActivity } from "@ericsanchezok/synergy-harness/session/activity"
 import { TurnExecutionState } from "@ericsanchezok/synergy-harness/session/turn-execution-state"
 import {
@@ -1434,6 +1435,26 @@ export const SessionRoute = () =>
       },
     )
     .post(
+      "/:sessionID/display/manifest",
+      describeRoute({
+        summary: "Validate loaded message and Part page versions without returning content",
+        operationId: "session.displayManifest",
+        responses: {
+          200: {
+            description: "Changed, deleted, unchanged and recovery states for the loaded window",
+            content: { "application/json": { schema: resolver(SessionHistory.DisplayManifest) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator("json", SessionHistory.DisplayManifestInput),
+      async (c) => {
+        await Session.flushPartWrites(c.req.valid("param").sessionID)
+        return c.json(await SessionHistory.displayManifest({ ...c.req.valid("param"), ...c.req.valid("json") }))
+      },
+    )
+    .post(
       "/:sessionID/part/pages",
       describeRoute({
         summary: "Get presentation summaries for a batch of messages' Parts",
@@ -1490,8 +1511,19 @@ export const SessionRoute = () =>
           partID: Identifier.schema("part"),
         }),
       ),
-      validator("query", z.object({ version: z.string().optional() })),
+      validator("query", z.object({ version: z.string().optional(), projection: z.string().uuid().optional() })),
       async (c) => {
+        const projection = c.req.valid("query").projection
+        if (projection) {
+          const param = c.req.valid("param")
+          const session = await Session.get(param.sessionID)
+          if (session.scope.id !== ScopeContext.current.scope.id)
+            throw new Storage.NotFoundError({ message: "Content belongs to another Scope" })
+          const page = await SessionHistory.partPage({ ...param, limit: 1 })
+          if (!page.items.some((part) => part.id === param.partID))
+            throw new Storage.NotFoundError({ message: "Content checkpoint is no longer visible" })
+          return c.json(await projectionContent().read({ ...param, scopeID: session.scope.id }, projection))
+        }
         await Session.flushPartWrites(c.req.valid("param").sessionID)
         try {
           return c.json(await SessionHistory.partContent({ ...c.req.valid("param"), ...c.req.valid("query") }))

@@ -110,6 +110,8 @@ const [mode, setMode] = createSignal<"balanced" | "full" | "minimal">("balanced"
 const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
 const [scroll, setScroll] = createSignal<HTMLDivElement>()
 const [versions, setVersions] = createStore<Record<string, string>>({})
+const [historyMore, setHistoryMore] = createSignal(true)
+const historyControls = new URL(location.href).searchParams.has("history-controls")
 const [hasPage, setHasPage] = createSignal(true)
 const [pageStale, setPageStale] = createSignal(false)
 const [mounted, setMounted] = createSignal(true)
@@ -431,8 +433,8 @@ window.__conversationProcess = {
     setData("part", "final", [part("final", "answer", "text", "Final answer stays mounted.")])
     setData("message", "session", [root, final])
   },
-  stream() {
-    setData("part", "final", [part("final", "answer", "text", "Final answer stays mounted.")])
+  stream(text = "Final answer stays mounted.") {
+    setData("part", "final", [part("final", "answer", "text", text)])
     setData("message", "session", [root, work, more, final])
   },
   terminal() {
@@ -519,7 +521,7 @@ window.__conversationProcess = {
   latest() {
     context.autoScroll?.forceScrollToBottom()
   },
-  prependTurns(count: number) {
+  prependTurns(count: number, more = false) {
     context.autoScroll?.handleInteraction(new Event("history-load"))
     const older = Array.from(
       { length: count },
@@ -533,6 +535,7 @@ window.__conversationProcess = {
     for (const message of older)
       setData("part", message.id, [part(message.id, `${message.id}-text`, "text", `Earlier turn ${message.id}`)])
     setData("message", "session", (messages) => [...older, ...messages])
+    setHistoryMore(more)
   },
   prepend(count: number) {
     setData("part", "more", [
@@ -663,10 +666,28 @@ function Scroller(props: ParentProps) {
     <div
       ref={setScroll}
       onScroll={() => autoScroll?.handleScroll()}
+      onClick={(event) => autoScroll?.handleInteraction(event)}
       style="height:600px;overflow:auto;width:700px;max-width:100%"
       data-scroller
     >
-      <div ref={(element) => autoScroll?.contentRef(element)}>{props.children}</div>
+      <div ref={(element) => autoScroll?.contentRef(element)}>
+        <Show when={historyControls && historyMore()}>
+          <button
+            type="button"
+            style="height:40px;display:block;margin-bottom:20px"
+            onClick={async () => {
+              await Promise.resolve()
+              window.__conversationProcess.prependTurns(
+                120,
+                new URL(location.href).searchParams.has("keep-history-control"),
+              )
+            }}
+          >
+            Load earlier messages
+          </button>
+        </Show>
+        {props.children}
+      </div>
       <button type="button" data-outside-control>
         Outside conversation
       </button>

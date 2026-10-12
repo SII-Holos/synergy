@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createResource, createSignal, onCleanup } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useSDK } from "@/context/sdk"
 import { useFile } from "@/context/file"
 import { useSync } from "@/context/sync"

@@ -86,7 +86,6 @@
 
 .holos-agent-switch-row:focus-visible {
   outline: none;
-  box-shadow: var(--dialog-focus-ring);
 }
 
 .holos-agent-switch-row[data-active="true"] {

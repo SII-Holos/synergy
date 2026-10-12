@@ -113,6 +113,7 @@ beforeAll(async () => {
         "@/context/platform": path.join(directory, "platform.ts"),
         "@/context/workbench": path.join(directory, "workbench.ts"),
         "@solidjs/router": path.join(directory, "router.ts"),
+        "@/context/session-route": path.join(directory, "router.ts"),
         "./browser-ws": path.join(directory, "transport.ts"),
         "./browser-draft": path.join(directory, "draft.ts"),
         "@": source,

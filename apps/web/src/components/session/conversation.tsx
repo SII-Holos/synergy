@@ -1,3 +1,4 @@
+import { useViewActivity } from "@/context/view-residency"
 import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
 import { useSessionPreparation } from "./session-preparation"
 import { isOptimisticMessagePending } from "@/context/session-optimistic-message"
@@ -61,13 +62,13 @@ export function SessionConversation(input: SessionConversationProps) {
 }
 
 function SessionConversationView(input: SessionConversationProps) {
+  const active = useViewActivity()
   const transitions = useSessionTransition()
   const props = input.context
-  const [contentReady, setContentReady] = createSignal(false)
   const [admitted, setAdmitted] = createSignal(!input.initialScrollSettled)
   createEffect(() => {
     if (!input.initialScrollSettled || admitted()) return
-    if (!input.initialScrollSettled() || (props.content && !contentReady())) return
+    if (!active() || !input.initialScrollSettled()) return
     let frame = requestAnimationFrame(() => {
       frame = requestAnimationFrame(() => {
         input.onAdmitted?.(props.sessionID)
@@ -100,7 +101,7 @@ function SessionConversationView(input: SessionConversationProps) {
   })
   const takePartArrival = (partID: string) => {
     const arrival = arrivalView()?.take(partID) ?? false
-    return document.visibilityState === "visible" && arrival
+    return active() && document.visibilityState === "visible" && arrival
   }
   const takeUserArrival = (messageID: string) =>
     transitions.messageArrival.take([sdk.url, sdk.scopeKey, props.sessionID], messageID)
@@ -118,7 +119,7 @@ function SessionConversationView(input: SessionConversationProps) {
   let stateRequest: AbortController | undefined
   const executionRequest = createMemo(
     () => {
-      if (!preparation.ready() || !data().sessionFor(props.sessionID)) return undefined
+      if (!active() || !preparation.ready() || !data().sessionFor(props.sessionID)) return undefined
       const roots = (props.timeline() ?? []).filter((message) => message.role === "user").map((message) => message.id)
       const latest = props.lastUserMessage()
       const last = latest ? props.turnProjection().turnMessagesFor(latest).at(-1) : undefined
@@ -338,6 +339,7 @@ function SessionConversationView(input: SessionConversationProps) {
         ready={admitted()}
         animateAdmission={animateAdmission && !input.onAdmitted}
         scrolledUp={props.scrolledUp()}
+        hasUnseenLatest={props.historyPendingLatest() || sync.data.messageWindow[props.sessionID]?.tailMissingLatest}
         onScrolledUpChange={props.onScrolledUpChange}
         autoScroll={props.autoScroll}
         setScrollRef={(element, releaseOf) => {
@@ -370,33 +372,17 @@ function SessionConversationView(input: SessionConversationProps) {
             </Button>
           </div>
         </Show>
-        <Show when={props.historyMore() || props.historyMode() === "history" || props.historyPendingLatest()}>
-          <div class="w-full flex flex-wrap justify-center gap-2">
-            <Show when={props.historyMore()}>
-              <Button
-                variant="ghost"
-                size="large"
-                class="text-12-medium opacity-50"
-                disabled={props.historyLoading()}
-                onClick={props.onLoadMore}
-              >
-                {props.historyLoading() ? _(S.convLoadingEarlier) : _(S.convLoadEarlier)}
-              </Button>
-            </Show>
-            <Show when={props.historyMode() === "history" || props.historyPendingLatest()}>
-              <Button
-                variant="secondary"
-                size="large"
-                class="text-12-medium"
-                disabled={props.historyLoading()}
-                onClick={(event: MouseEvent) => {
-                  event.stopPropagation()
-                  props.onReturnLatest()
-                }}
-              >
-                {props.historyPendingLatest() ? _(S.convNewMessagesReturnLatest) : _(S.convReturnLatest)}
-              </Button>
-            </Show>
+        <Show when={props.historyMore()}>
+          <div class="w-full flex justify-center">
+            <Button
+              variant="ghost"
+              size="large"
+              class="text-12-medium opacity-50"
+              disabled={props.historyLoading()}
+              onClick={props.onLoadMore}
+            >
+              {props.historyLoading() ? _(S.convLoadingEarlier) : _(S.convLoadEarlier)}
+            </Button>
           </div>
         </Show>
         <Show
@@ -505,7 +491,6 @@ function SessionConversationView(input: SessionConversationProps) {
         >
           <VirtualConversationRows
             layoutOwner={[sdk.url, sdk.scopeKey, props.sessionID]}
-            onReady={setContentReady}
             onReadingMessage={(messageID) => {
               const element = scrollRef()
               if (element && props.isDesktop()) props.onScheduleScrollSpy(element, messageID)

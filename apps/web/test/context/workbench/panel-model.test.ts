@@ -404,11 +404,13 @@ describe("workbench tab updates", () => {
 
   test("keeps panel content mounted while tab metadata changes", () => {
     const before = { id: "notes:1", panelId: "notes", resourceId: "note_a", source: "/repo" }
-    const after = { ...before, resourceId: "notes:list" }
+    const after = { ...before, title: "Renamed note", dirty: true }
 
     expect(workbenchPanelMountKey(after)).toBe(workbenchPanelMountKey(before))
     expect(workbenchPanelMountKey({ id: "notes:2", panelId: "notes" })).not.toBe(workbenchPanelMountKey(before))
     expect(workbenchPanelMountKey({ ...before, panelId: "resource-home" })).not.toBe(workbenchPanelMountKey(before))
+    expect(workbenchPanelMountKey({ ...before, resourceId: "note_b" })).not.toBe(workbenchPanelMountKey(before))
+    expect(workbenchPanelMountKey({ ...before, source: "another-scope" })).not.toBe(workbenchPanelMountKey(before))
   })
 
   test("moves a tab to the requested stable index", () => {
