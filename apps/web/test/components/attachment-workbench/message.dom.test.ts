@@ -16,7 +16,7 @@ beforeAll(async () => {
     localized: false,
     aliases: [
       { find: "./global-sdk", replacement: host },
-      { find: /^@\/context\/(layout|locale|file|sdk|platform|sync)$/, replacement: host },
+      { find: /^@\/context\/(layout|locale|file|sdk|platform|sync|global-sdk)$/, replacement: host },
       { find: "../layout", replacement: host },
       { find: "./platform", replacement: host },
       { find: "@/plugin/host", replacement: host },

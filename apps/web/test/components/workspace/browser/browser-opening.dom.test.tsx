@@ -53,7 +53,8 @@ beforeAll(async () => {
     export const i18n=setupI18n({locale:"en",messages:{en:messages}})
     export const useLocale=() => ({i18n})
     export const useConfirm=() => ({ask:async () => true})
-    export const useGlobalSDK=() => ({capabilities:{has:() => true}})
+    const selection={features:["browser"]}
+    export const useGlobalSDK=() => ({capabilities:{current:() => selection,has:id => selection.features.includes(id)}})
     const surfaces=new Map()
     export function surface(key,name) {
       const id=key+":"+name

@@ -54,15 +54,16 @@ beforeAll(async () => {
   await Bun.write(
     path.join(directory, "services.ts"),
     `
-    import { createSignal } from "solid-js"
+    import { createMemo, createSignal } from "solid-js"
     import { setupI18n } from "@lingui/core"
     import { messages as en } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     export const i18n = setupI18n({ locale: "en", messages: { en } })
     export const useLocale = () => ({ i18n })
     export const useConfirm = () => ({ ask: async () => true })
     const [features, setFeatures] = createSignal(["note", "workbench", "lattice", "boss", "browser", "blueprint"])
+    const selection = createMemo(() => features() ? { features: features() } : undefined)
     export { setFeatures }
-    export const useGlobalSDK = () => ({ capabilities: { has: id => features()?.includes(id) ?? false } })
+    export const useGlobalSDK = () => ({ capabilities: { current: selection, has: id => selection()?.features.includes(id) ?? false } })
     const surfaces = new Map()
     function surface(key, name) {
       const identity = key + ":" + name
