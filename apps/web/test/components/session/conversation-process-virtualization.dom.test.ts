@@ -73,6 +73,48 @@ test.each(["index.mjs", "index.jsx"] as const)(
   30000,
 )
 
+test.each(["index.mjs", "index.jsx"] as const)(
+  "following a newly appended short row never rebounds after accepting its size (%s)",
+  async (entry) => {
+    const alternate = entry === "index.jsx" ? await fixtureServer(entry) : undefined
+    const target = alternate ? await browser.newPage() : page
+    try {
+      await target.goto(`${alternate?.url ?? url}keyed.html?following`)
+      await target.waitForFunction(() => {
+        const view = window.keyedLayout?.viewport()
+        return view && view.scrollTop > 1000 && view.scrollHeight - view.clientHeight - view.scrollTop < 1
+      })
+      await target.waitForFunction(() => !document.getAnimations().length)
+      const result = await target.evaluate(async () => {
+        const anchor = document.querySelector('[data-row="history-11"]')!
+        const y = () => anchor.getBoundingClientRect().top
+        const before = y()
+        window.keyedLayout.append()
+        const samples = []
+        for (let frame = 0; frame < 35; frame++) {
+          await new Promise(requestAnimationFrame)
+          samples.push(y())
+        }
+        return { before, samples }
+      })
+      expect(result.samples.at(-1)).toBeCloseTo(result.before - 33, 0)
+      for (let index = 0; index < result.samples.length; index++) {
+        expect(result.samples[index], JSON.stringify(result)).toBeGreaterThanOrEqual(result.before - 34)
+        expect(
+          result.samples[index] - (result.samples[index - 1] ?? result.before),
+          JSON.stringify(result),
+        ).toBeLessThanOrEqual(1)
+      }
+    } finally {
+      if (alternate) {
+        await target.close()
+        await alternate.close()
+      }
+    }
+  },
+  30000,
+)
+
 test("focus outside a large conversation does not reread its summaries", async () => {
   await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
@@ -446,8 +488,14 @@ test("a finished process can reach the end while retaining its outer conversatio
   })
   const outerOffset = await page.locator("[data-scroller]").evaluate((element) => element.scrollTop)
   await viewport.press("End")
-  await frames()
-  await page.locator('[data-part-id="many-61"]').waitFor()
+  await page.waitForFunction(() => {
+    const item = document.querySelector('[data-part-id="many-61"]')
+    const viewport = item?.closest('[data-component="process-viewport"]')
+    if (!item || !viewport) return false
+    const bounds = viewport.getBoundingClientRect()
+    const rect = item.getBoundingClientRect()
+    return rect.bottom > bounds.top && rect.top < bounds.bottom
+  })
   expect(await page.locator("[data-scroller]").evaluate((element) => element.scrollTop)).toBe(outerOffset)
   expect(
     await page.locator('[data-part-id="many-61"]').evaluate((element) => {

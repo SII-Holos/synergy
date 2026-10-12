@@ -1,4 +1,5 @@
-import { createSignal } from "solid-js"
+import { createSignal, onMount } from "solid-js"
+import { createAutoScroll, createDisclosureMotionRef } from "@ericsanchezok/synergy-ui/hooks"
 import { render } from "solid-js/web"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
 
@@ -10,37 +11,66 @@ const process = [
 ]
 const answer = { id: "answer", height: 2034.75 }
 const footer = { id: "footer", height: 40 }
-const [rows, setRows] = createSignal([prefix, header, ...process, answer, footer])
+const following = new URL(location.href).searchParams.has("following")
+const [rows, setRows] = createSignal(
+  following
+    ? Array.from({ length: 12 }, (_, index) => ({ id: `history-${index}`, height: 212 }))
+    : [prefix, header, ...process, answer, footer],
+)
 const [shift, setShift] = createSignal(false)
 let viewport!: HTMLDivElement
 let virtual!: VirtualizerHandle
 
-render(
-  () => (
-    <div ref={viewport} style="height:600px;width:700px;overflow:auto;overflow-anchor:none;position:relative">
-      <Virtualizer
-        ref={(value) => {
-          if (value) virtual = value
-        }}
-        scrollRef={viewport}
-        data={rows()}
-        itemKey={(row) => row.id}
-        shift={shift()}
-        keepMounted={rows().map((_, index) => index)}
-      >
-        {(row) => (
-          <div data-row={row.id} style={{ height: `${row.height}px` }}>
-            {row.id}
-          </div>
-        )}
-      </Virtualizer>
+render(() => {
+  let motion!: HTMLDivElement
+  const autoScroll = following ? createAutoScroll({ working: () => true, motionTarget: () => motion }) : undefined
+  onMount(() => {
+    autoScroll?.forceScrollToBottom({ untilInteraction: true })
+  })
+  return (
+    <div
+      ref={(element) => {
+        viewport = element
+        autoScroll?.scrollRef(element)
+      }}
+      onScroll={autoScroll?.handleScroll}
+      style="height:600px;width:700px;overflow:auto;overflow-anchor:none;position:relative"
+    >
+      <div ref={autoScroll?.contentRef}>
+        <div ref={motion}>
+          <Virtualizer
+            ref={(value) => {
+              if (value) virtual = value
+            }}
+            scrollRef={viewport}
+            data={rows()}
+            itemKey={(row) => row.id}
+            shift={shift()}
+            keepMounted={rows().map((_, index) => index)}
+          >
+            {(row) => {
+              const motion = createDisclosureMotionRef({
+                visible: () => true,
+                animate: () => following,
+                appear: () => row.id.startsWith("append"),
+                resize: true,
+              })
+              return (
+                <div ref={motion} data-row={row.id}>
+                  <div style={{ height: `${row.height}px` }}>{row.id}</div>
+                </div>
+              )
+            }}
+          </Virtualizer>
+        </div>
+      </div>
     </div>
-  ),
-  document.getElementById("root")!,
-)
+  )
+}, document.getElementById("root")!)
 
 const controls = {
   viewport: () => viewport,
+  append: () => setRows((rows) => [...rows, { id: `append-${rows.length}`, height: 33 }]),
   collapse: () => setRows([prefix, header, answer, footer]),
   expand: () => setRows([prefix, header, ...process, answer, footer]),
   reorder: () => setRows([prefix, header, answer, ...process, footer]),
