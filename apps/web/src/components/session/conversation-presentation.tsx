@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createRenderEffect, createSignal, on, onCleanup, Show, type JSX } from "solid-js"
+import { createComputed, createEffect, createMemo, createSignal, on, onCleanup, Show, type JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { AP } from "../../app-i18n"
 import "./conversation-presentation.css"
@@ -23,7 +23,8 @@ export function ConversationPresentation(props: {
     outgoing?.remove()
     outgoing = undefined
   }
-  createRenderEffect(
+  // Capture before render effects replace the outgoing body with the target's preparation branch.
+  createComputed(
     on(owner, (_next, previous) => {
       generation++
       props.onLeave?.()

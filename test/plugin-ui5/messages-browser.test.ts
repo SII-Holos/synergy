@@ -202,6 +202,78 @@ describe("production conversation history", () => {
     }
   }, 180000)
 
+  test("cold navigation retains the admitted transcript through storage preparation and history loading", async () => {
+    const target = await importPreviewConversation(preview, { title: "Cold navigation target", turns: 2 })
+    const browser = await chromium.launch({ headless: true })
+    const preparation = Promise.withResolvers<void>()
+    const history = Promise.withResolvers<void>()
+    const preparing = Promise.withResolvers<void>()
+    const loading = Promise.withResolvers<void>()
+    let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
+    try {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
+      page.setDefaultTimeout(20000)
+      diagnostics = await openPluginPreviewPage(preview, page)
+      await page.goto(conversation.url)
+      await page.locator('[data-conversation-current] [data-conversation-viewport][data-ready="true"]').waitFor()
+      await page.getByText("Answer 360", { exact: true }).waitFor()
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      )
+      const before = await page.getByText("Answer 360", { exact: true }).boundingBox()
+      await page.route(`**/global/storage/upgrade/sessions/${target.id}/prepare`, async (route) => {
+        preparing.resolve()
+        await preparation.promise
+        await route.continue()
+      })
+      await page.route(`**/session/${target.id}/timeline/page*`, async (route) => {
+        loading.resolve()
+        await history.promise
+        await route.continue()
+      })
+      await page.getByRole("button", { name: "Cold navigation target", exact: true }).click()
+      await preparing.promise
+      const retained = page.locator("[data-conversation-retained]")
+      expect(await retained.textContent()).toContain("Answer 360")
+      expect(await retained.textContent()).not.toContain("Preparing this conversation")
+      const held = await retained.getByText("Answer 360", { exact: true }).boundingBox()
+      expect(held!.y).toBeCloseTo(before!.y, 0)
+      preparation.resolve()
+      await loading.promise
+      expect(await retained.textContent()).toContain("Answer 360")
+      const admission = page.evaluate(async () => {
+        const frames: Array<{ retained: boolean; live: boolean; opacity: number; text: string }> = []
+        for (let index = 0; index < 600; index++) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+          const current = document.querySelector<HTMLElement>("[data-conversation-current]")!
+          const viewport = current.querySelector<HTMLElement>("[data-conversation-viewport]")
+          const opacity = Number(getComputedStyle(current).opacity)
+          const frame = {
+            retained: !!document.querySelector("[data-conversation-retained]")?.childElementCount,
+            live: opacity > 0,
+            opacity: opacity * (viewport ? Number(getComputedStyle(viewport).opacity) : 1),
+            text: current.textContent ?? "",
+          }
+          frames.push(frame)
+          if (frame.live && frame.text.includes("Answer 2") && viewport?.dataset.ready === "true") break
+        }
+        return frames
+      })
+      history.resolve()
+      const frames = await admission
+      expect(frames.length).toBeLessThan(600)
+      expect(frames.every((frame) => frame.retained !== frame.live)).toBe(true)
+      expect(frames.filter((frame) => frame.live).every((frame) => frame.opacity === 1)).toBe(true)
+      expect(frames.at(-1)!.text).toContain("Answer 2")
+      expect(diagnostics.errors.map((error) => error.message)).toEqual([])
+    } finally {
+      preparation.resolve()
+      history.resolve()
+      diagnostics?.dispose()
+      await browser.close()
+    }
+  }, 60000)
+
   test("an existing Home session never becomes a new-task greeting while history is pending", async () => {
     const browser = await chromium.launch({ headless: true })
     let release = () => {}

@@ -12,6 +12,8 @@ The new-task predicate uses route and captured-submission identity, never an emp
 
 Presentation retains the last admitted rendered window while the target prepares, then releases the inert copy and exposes the target at full opacity in one frame. This supersedes the transcript crossfade in [Conversation motion continuity](2026-10-08-conversation-motion-continuity.md) while preserving its bounded snapshot, reading restoration and lifecycle ownership. Source views still release their data subscriptions normally. Scope changes discard the picture, and generation checks reject late admission.
 
+The owner computation captures the outgoing DOM before render effects reconcile preparation-dependent children. Capturing in a render effect is too late when a derived loading branch has already replaced the body. The retained window contains the admitted transcript, never a mixture of its title and the target's preparation notice; it requires no continuously refreshed clone or additional data owner.
+
 ## Alternatives considered
 
 **Wait for message loading before deciding whether to show the greeting.** A confirmed empty existing Session is still an existing Session; data readiness cannot determine new-task intent.
