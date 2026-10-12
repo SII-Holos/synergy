@@ -41,7 +41,8 @@ beforeAll(async () => {
     const long=()=>location.search.includes("long=1")
     const longRows=Array.from({length:10_000},(_,i)=>({...node("long-"+i,"root","tool","Long tool "+i),started:i+1,ended:i+2}))
     const model={...node("model","root","model","Test model"),modelID:"test-model",evidenceKind:"call",tokens:{known:1250,total:1250,unknown:0}}
-    const fixtureNode=(id)=>id==="model"?model:[...exportRows,...longRows].find(n=>n.id===id)
+    const relatedRows=Array.from({length:40},(_,i)=>node("related-"+i,"child","model","Related request "+i,"child"))
+    const fixtureNode=(id)=>id==="model"?model:[...exportRows,...longRows,...relatedRows].find(n=>n.id===id)
     export const updateFixture=()=>{
       const changed={...longRows[9950],preview:"Updated tool 9950",revision:2}
       const added={...node("long-new","root","tool","New tool"),started:10001,revision:2}
@@ -64,7 +65,7 @@ beforeAll(async () => {
       }
       if(q.limit===500){const start=q.cursor==="page-2"?500:0;return {data:{sessionID:q.sessionID,revision:1,total:exportRows.length,items:exportRows.slice(start,start+500),nextCursor:start===0?"page-2":null,previousCursor:null}}}
       return {data:{sessionID:q.sessionID,revision:1,total:records[q.sessionID].length,items:records[q.sessionID],nextCursor:null,previousCursor:null}}
-    },executionSummary:async()=>{if(window.holdSummary)await new Promise(resolve=>{window.releaseSummary=resolve});return {data:summary}},executionNode:async(q)=>({data:{node:q.nodeID==="read"?{...fixtureNode(q.nodeID),status:"failed"}:fixtureNode(q.nodeID),record:q.nodeID==="read"?{error:"File not found: architecture.md"}:null,sources:q.nodeID==="model" && !location.search.includes("missing=1")?[{field:"request",artifact:{bytes:100}},{field:"response",artifact:{bytes:100}}]:[],definitions:null,related:[]}}),executionContent:async(q,options)=>{(window.contentRequests ??= []).push(q);if(location.search.includes("pending=1"))await new Promise(resolve=>(window.pendingEvidence ??= []).push({signal:options.signal,resolve}));return {data:{available:true,status:"complete",contentVersion:"v1",mediaType:"application/json",text:'{"test": true}',offset:0,bytes:14,totalBytes:14,nextOffset:null}}}}}}
+    },executionSummary:async()=>{if(window.holdSummary)await new Promise(resolve=>{window.releaseSummary=resolve});return {data:summary}},executionNode:async(q)=>({data:{node:q.nodeID==="read"?{...fixtureNode(q.nodeID),status:"failed"}:fixtureNode(q.nodeID),record:q.nodeID==="read"?{error:"File not found: architecture.md"}:null,sources:q.nodeID==="model" && !location.search.includes("missing=1")?[{field:"request",artifact:{bytes:100}},{field:"response",artifact:{bytes:100}}]:[],definitions:null,related:q.nodeID==="child" && location.search.includes("related=1")?relatedRows:[]}}),executionContent:async(q,options)=>{(window.contentRequests ??= []).push(q);if(location.search.includes("pending=1"))await new Promise(resolve=>(window.pendingEvidence ??= []).push({signal:options.signal,resolve}));return {data:{available:true,status:"complete",contentVersion:"v1",mediaType:"application/json",text:'{"test": true}',offset:0,bytes:14,totalBytes:14,nextOffset:null}}}}}}
     export const useParams=()=>({id:"root"})
     export const useSDK=()=>sdk
     const snapshots=[1,2].map(n=>({sessionID:"root",callID:"call-"+n,nodeID:"model",runID:"root-round",requestNumber:n,roundNumber:1,started:n,modelID:"test-model",providerID:"test-provider",status:"completed",inputTokens:n*100,outputTokens:10,cacheHit:0.5,elapsedMs:1000,retries:0,usage:null,compactedBefore:false,requestAvailable:true,contextLimit:10000}))
@@ -84,8 +85,9 @@ beforeAll(async () => {
     import {DialogProvider} from "@ericsanchezok/synergy-ui/context/dialog"
     import {ExecutionPanelBody} from ${JSON.stringify(`${source}/components/execution/panel.tsx`)}
     import {ContextWorkbenchContent} from ${JSON.stringify(`${source}/components/execution/context-dashboard.tsx`)}
-    import {updateFixture,fixtureTab} from ${JSON.stringify(`${directory}/services.ts`)}
+    import {updateFixture,fixtureTab,setFixtureTab} from ${JSON.stringify(`${directory}/services.ts`)}
     window.updateFixture=updateFixture
+    window.openTask=(state)=>setFixtureTab(tab=>({...tab,state}))
     import "@ericsanchezok/synergy-ui/styles"
     Object.defineProperty(navigator,"clipboard",{value:{writeText:async(text)=>{window.copiedEvidence=text}}})
     const i18n=setupI18n({locale:"en",messages:{en:{"execution.copyBlock":["Copy ",["label"]],"execution.round":["Round ",["number"]],"context.dashboard.request":["Request ",["number"]]}}})
@@ -613,6 +615,60 @@ test("dashboard request inspection returns to the same scope, selection, focus a
   ).toMatchObject({ records: false, runID: "" })
   expect(errors).toEqual([])
 }, 15_000)
+
+test("an open dashboard follows new task targets and retains its overview when returning", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?dashboard=1")
+  await page.getByRole("button", { name: "Request 1 · 100", exact: true }).click()
+  const open = (state: { nodeID?: string; runID?: string }) =>
+    page.evaluate((state) => Reflect.get(window, "openTask")(state), state)
+  const title = page.locator(".execution-inspector-title strong")
+  for (const nodeID of ["child", "nested"]) {
+    await open({ nodeID })
+    await page.waitForFunction(
+      (title) => document.querySelector(".execution-inspector-title strong")?.textContent === title,
+      nodeID === "child" ? "Child analysis" : "Nested analysis",
+      { timeout: 3000 },
+    )
+  }
+  expect(await title.textContent()).toBe("Nested analysis")
+  await page.getByRole("button", { name: "Back to overview", exact: true }).click()
+  expect(await page.getByRole("button", { name: "Request 1 · 100", exact: true }).getAttribute("aria-pressed")).toBe(
+    "true",
+  )
+  await open({ nodeID: "nested" })
+  await title.waitFor()
+  expect(await title.textContent()).toBe("Nested analysis")
+  await open({ runID: "root-round" })
+  await page.locator(".context-dashboard").waitFor()
+  expect(await page.getByRole("button", { name: /^Rounds:/ }).textContent()).toContain("Round 1")
+  expect(errors).toEqual([])
+}, 15_000)
+
+for (const viewport of [
+  { width: 480, height: 1000 },
+  { width: 375, height: 667 },
+]) {
+  test("subtask records use the full inspector scroll area at " + viewport.width + "px", async () => {
+    await page.setViewportSize(viewport)
+    await page.goto(server.resolvedUrls!.local[0]! + "?related=1")
+    await page.locator('[data-node-id="child"] .execution-node-button').click()
+    const body = page.locator(".execution-inspector-body")
+    const related = body.locator(".execution-related")
+    await related.getByText("Related request 39", { exact: true }).waitFor()
+    expect(await related.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true)
+    const header = (await page.locator(".execution-inspector-header").boundingBox())!
+    const timing = (await body.getByRole("heading", { name: "Timing", exact: true }).boundingBox())!
+    expect(timing.y - (header.y + header.height)).toBeLessThanOrEqual(20)
+    const last = related.getByRole("button", { name: /Related request 39/ })
+    await last.scrollIntoViewIfNeeded()
+    expect(await body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+    expect(await related.evaluate((element) => element.scrollTop)).toBe(0)
+    expect((await body.boundingBox())!.height).toBeGreaterThan(viewport.height / 2)
+    await last.click()
+    await page.locator(".execution-inspector-title").getByText("Related request 39", { exact: true }).waitFor()
+    expect(errors).toEqual([])
+  })
+}
 
 test("returning to a round keeps its metric cards while the background summary refresh is pending", async () => {
   await page.goto(server.resolvedUrls!.local[0]! + "?dashboard=1")

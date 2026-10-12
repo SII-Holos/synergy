@@ -251,8 +251,9 @@
 .workbench-surface-add-group:has([aria-expanded="true"]) {
   background-color: var(--workbench-control-bg, var(--surface-inset-base));
 }
+.workbench-surface-add-group [data-component="icon-button"]:is(:hover, :focus-visible):not(:disabled),
 .workbench-surface-add-group [data-component="icon-button"][aria-expanded="true"]:not(:disabled) {
-  background-color: var(--workbench-control-bg-hover, var(--surface-inset-base-hover));
+  background-color: var(--surface-inset-strong);
 }
 .workbench-surface-add-group [data-component="icon-button"]:active:not(:disabled) {
   background-color: var(--surface-inset-strong-hover);

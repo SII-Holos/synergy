@@ -707,8 +707,9 @@ test("workspace identity copies its current path, rejects stale branch reads and
     const identity = document.querySelector<HTMLButtonElement>(".execution-location-heading")!
     identity.focus()
     await flush()
-    expect(document.querySelector('[data-component="tooltip"]')?.textContent).toContain("current-branch")
-    expect(document.querySelector('[data-component="tooltip"]')?.textContent).not.toContain("stale-branch")
+    expect(document.querySelector('[data-component="tooltip"]')).toBeNull()
+    expect(identity.getAttribute("aria-description")).toContain("current-branch")
+    expect(identity.getAttribute("aria-description")).not.toContain("stale-branch")
     identity.click()
     await flush()
     expect(copied).toEqual(["/next"])

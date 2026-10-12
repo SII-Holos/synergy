@@ -103,6 +103,7 @@ beforeAll(async () => {
     import { setupI18n } from "@lingui/core"
     import { I18nProvider } from "@lingui/solid"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+    import { ThemeProvider } from "@ericsanchezok/synergy-ui/theme"
     import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
     import { Popover } from "@ericsanchezok/synergy-ui/popover"
     import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
@@ -197,7 +198,7 @@ beforeAll(async () => {
         <button>After workspaces</button>
       </>
     }
-    render(() => <I18nProvider i18n={i18n}><DialogProvider><Fixture /></DialogProvider></I18nProvider>, document.querySelector("#root"))
+    render(() => <ThemeProvider><I18nProvider i18n={i18n}><DialogProvider><Fixture /></DialogProvider></I18nProvider></ThemeProvider>, document.querySelector("#root"))
   `,
   )
   server = await createBrowserFixture({
@@ -632,6 +633,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     await add.hover()
     const addHover = await styles()
     expect(addHover.background).not.toBe("rgba(0, 0, 0, 0)")
+    expect(addHover.buttons[0]).not.toBe("rgba(0, 0, 0, 0)")
     expect(addHover.buttons[0]).not.toBe(addHover.background)
     expect(addHover.buttons[1]).toBe("rgba(0, 0, 0, 0)")
     await page.mouse.down()

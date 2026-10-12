@@ -608,6 +608,7 @@
 }
 .execution-inspector-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
   min-height: 64px;
@@ -692,9 +693,7 @@
   white-space: nowrap;
 }
 .execution-related {
-  flex-shrink: 0;
-  max-height: 176px;
-  overflow: auto;
+  margin-top: 12px;
   border-top: 1px solid var(--border-weaker-base);
 }
 .execution-related button {
@@ -702,7 +701,7 @@
   align-items: baseline;
   gap: 12px;
   width: 100%;
-  padding: 8px 16px;
+  padding: 8px 0;
   border: 0;
   border-bottom: 1px solid var(--border-weaker-base);
   color: var(--text-base);
@@ -726,8 +725,11 @@
   min-height: 0;
   min-width: 0;
   overflow: auto;
-  padding: 16px;
+  padding: 8px 16px 16px;
   overscroll-behavior: contain;
+}
+.execution-inspector-body > .execution-diagnostics-section:first-child {
+  margin-top: 0;
 }
 .execution-evidence-block {
   min-width: 0;

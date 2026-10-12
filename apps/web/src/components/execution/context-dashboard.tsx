@@ -152,6 +152,25 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
     })
     setRecords(true)
   }
+  createEffect(
+    on(
+      () => props.tab.state,
+      (value) => {
+        const target = record(value)
+        if (target.contextDashboard) return
+        const targetRun = typeof target.runID === "string" ? target.runID : undefined
+        if (typeof target.nodeID === "string") {
+          openRecords({ nodeID: target.nodeID, runID: targetRun ?? "" })
+        } else if (targetRun !== undefined) {
+          batch(() => {
+            selectRound(targetRun)
+            setRecords(false)
+          })
+        }
+      },
+      { defer: true },
+    ),
+  )
   const diagnosticRun = () => record(diagnosticTab().state).runID as string | undefined
   const scopeLabel = () => {
     if (!diagnosticRun()) return _(D.taskScope)
