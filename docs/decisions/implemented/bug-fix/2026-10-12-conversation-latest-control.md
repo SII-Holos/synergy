@@ -8,7 +8,7 @@ The conversation's follow state also protects reading inside bounded process win
 
 ## Decision
 
-The conversation viewport measures remaining outer scroll distance on native scrolling and observed layout changes. Its floating control requires both the existing detached state and content below the viewport. Nested scroll deliveries do not update outer scroll state, while process interaction continues to protect reading anchors.
+The conversation viewport measures remaining outer scroll distance on native scrolling and observed layout changes. For loaded content, its floating control requires both the existing detached state and content below the viewport. Canonical pending or missing latest-tail state also exposes this single control, as defined by [history pagination continuity](2026-10-12-history-pagination-reading-continuity.md). Nested scroll deliveries do not update outer scroll state, while process interaction continues to protect reading anchors.
 
 The built-in session shares its mounted dock-body element with the viewport through a local context. The control aligns with that body's right edge and clears it by 12px, constrained to the conversation viewport. Decisions and navigation links belong to that body; activity remains separate and reserves lateral space for the control. Full dock height continues to determine transcript clearance. Custom viewport offsets and layouts without the built-in anchor retain their existing positioning path.
 

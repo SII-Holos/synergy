@@ -32,6 +32,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let cleanup: (() => void) | undefined
   let readingAnchor: AutoScrollReadingAnchor | undefined
   let anchoredScrollTop: number | undefined
+  let anchoredScrollHeight: number | undefined
   let movementOffset: number | undefined
   let resumeRequested = false
   let previousOffset = 0
@@ -50,6 +51,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     readingAnchor = undefined
     setReadingAnchorOwner(undefined)
     anchoredScrollTop = undefined
+    anchoredScrollHeight = undefined
     movementOffset = undefined
   }
   const preserveReadingAnchor = (target?: Element) => {
@@ -60,6 +62,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     readingAnchor = options.captureReadingAnchor?.({ reading: store.userScrolled, target })
     setReadingAnchorOwner(readingAnchor?.owner)
     anchoredScrollTop = scroll?.scrollTop
+    anchoredScrollHeight = scroll?.scrollHeight
   }
 
   const distanceFromBottom = () => {
@@ -202,7 +205,15 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const handleScroll = () => {
     if (!scroll) return
-    const compensated = anchoredScrollTop !== undefined && Math.abs(scroll.scrollTop - anchoredScrollTop) < 1
+    // Virtual layout compensation can deliver scroll before ResizeObserver; retain the pre-layout reading offset.
+    if (readingAnchor && movementOffset === undefined && anchoredScrollHeight !== scroll.scrollHeight) {
+      readingAnchor.restore()
+      anchoredScrollTop = scroll.scrollTop
+      anchoredScrollHeight = scroll.scrollHeight
+    }
+    const compensated =
+      (anchoredScrollTop !== undefined && Math.abs(scroll.scrollTop - anchoredScrollTop) < 1) ||
+      (!!readingAnchor && movementOffset === undefined && Math.abs(scroll.scrollTop - previousOffset) < 1)
     anchoredScrollTop = undefined
     const advancing = scroll.scrollTop > previousOffset
     previousOffset = scroll.scrollTop
@@ -247,6 +258,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
       if (!readingAnchor || !readingAnchor.owner.isConnected) preserveReadingAnchor()
       if (scroll && readingAnchor) {
         anchoredScrollTop = scroll.scrollTop
+        anchoredScrollHeight = scroll.scrollHeight
         if (movementOffset !== undefined) movementOffset = scroll.scrollTop
       }
       scheduleMeasure()

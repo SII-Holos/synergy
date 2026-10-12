@@ -17,9 +17,9 @@ Otherwise, test the fix.
 
 ## Format
 
-Use `NNNN-kebab-case-title.md`. Sections:
+`NNNN-kebab-case-title.md` sections:
 
-- **Executive summary** — what broke, why, how it escaped, and the durable lesson.
+- **Executive summary** — failure, cause, escaped safeguard, lesson.
 - **Summary** — failure details.
 - **Timeline** — what was observed and when.
 - **Root cause** — the mechanism and missing safeguards.
@@ -27,6 +27,8 @@ Use `NNNN-kebab-case-title.md`. Sections:
 - **Lessons** — durable takeaways.
 
 ## Index
+
+- [0069: History anchors](0069-history-pagination-reading-anchor.md)
 
 - [0068: Measurements](0068-conversation-measurement-identity.md)
 

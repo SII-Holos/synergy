@@ -338,6 +338,7 @@ function SessionConversationView(input: SessionConversationProps) {
         ready={admitted()}
         animateAdmission={animateAdmission && !input.onAdmitted}
         scrolledUp={props.scrolledUp()}
+        hasUnseenLatest={props.historyPendingLatest() || sync.data.messageWindow[props.sessionID]?.tailMissingLatest}
         onScrolledUpChange={props.onScrolledUpChange}
         autoScroll={props.autoScroll}
         setScrollRef={(element, releaseOf) => {
@@ -370,33 +371,17 @@ function SessionConversationView(input: SessionConversationProps) {
             </Button>
           </div>
         </Show>
-        <Show when={props.historyMore() || props.historyMode() === "history" || props.historyPendingLatest()}>
-          <div class="w-full flex flex-wrap justify-center gap-2">
-            <Show when={props.historyMore()}>
-              <Button
-                variant="ghost"
-                size="large"
-                class="text-12-medium opacity-50"
-                disabled={props.historyLoading()}
-                onClick={props.onLoadMore}
-              >
-                {props.historyLoading() ? _(S.convLoadingEarlier) : _(S.convLoadEarlier)}
-              </Button>
-            </Show>
-            <Show when={props.historyMode() === "history" || props.historyPendingLatest()}>
-              <Button
-                variant="secondary"
-                size="large"
-                class="text-12-medium"
-                disabled={props.historyLoading()}
-                onClick={(event: MouseEvent) => {
-                  event.stopPropagation()
-                  props.onReturnLatest()
-                }}
-              >
-                {props.historyPendingLatest() ? _(S.convNewMessagesReturnLatest) : _(S.convReturnLatest)}
-              </Button>
-            </Show>
+        <Show when={props.historyMore()}>
+          <div class="w-full flex justify-center">
+            <Button
+              variant="ghost"
+              size="large"
+              class="text-12-medium opacity-50"
+              disabled={props.historyLoading()}
+              onClick={props.onLoadMore}
+            >
+              {props.historyLoading() ? _(S.convLoadingEarlier) : _(S.convLoadEarlier)}
+            </Button>
           </div>
         </Show>
         <Show

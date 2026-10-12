@@ -17086,10 +17086,6 @@ msgid "session.conversation.moveToQueueTitle"
 msgstr "⟦Move back to queue⟧"
 
 #. js-lingui-explicit-id
-msgid "session.conversation.newMessagesReturnLatest"
-msgstr "⟦New messages — Return to latest⟧"
-
-#. js-lingui-explicit-id
 msgid "session.conversation.paused"
 msgstr "⟦Paused⟧"
 
@@ -17116,10 +17112,6 @@ msgstr "⟦Remove pending message⟧"
 #. conversation.tsx
 msgid "session.conversation.renderEarlier"
 msgstr "⟦Render earlier messages⟧"
-
-#. js-lingui-explicit-id
-msgid "session.conversation.returnLatest"
-msgstr "⟦Return to latest⟧"
 
 #. js-lingui-explicit-id
 msgid "session.conversation.withdraw"

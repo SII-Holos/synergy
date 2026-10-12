@@ -38,7 +38,7 @@ type Fixture = {
   growReadingParagraph(id: string, count: number): void
   growToolEvidence(id: string): void
   latest(): void
-  prependTurns(count: number): void
+  prependTurns(count: number, more?: boolean): void
   prepend(count: number): void
   delivery(): void
   manualCompaction(): void

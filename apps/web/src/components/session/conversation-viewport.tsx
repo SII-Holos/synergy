@@ -14,6 +14,7 @@ export function ConversationViewport(props: {
   ready?: boolean
   animateAdmission?: boolean
   scrolledUp: boolean
+  hasUnseenLatest?: boolean
   onScrolledUpChange: (value: boolean) => void
   autoScroll: PluginConversationViewport
   setScrollRef: (el: HTMLDivElement | undefined, releaseOf?: HTMLDivElement) => void
@@ -79,7 +80,7 @@ export function ConversationViewport(props: {
           <Spinner class="size-6 text-text-weak" />
         </div>
       </Show>
-      <Show when={props.ready !== false && props.scrolledUp && hasContentBelow()}>
+      <Show when={props.ready !== false && (props.hasUnseenLatest || (props.scrolledUp && hasContentBelow()))}>
         <div
           data-conversation-latest
           data-anchored={buttonPosition() ? "" : undefined}
