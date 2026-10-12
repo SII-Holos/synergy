@@ -90,6 +90,7 @@ export const fixtureServer = (entry: "index.mjs" | "index.jsx") =>
     aliases: [
       { find: /^virtua\/solid$/, replacement: path.join(directory, `virtualizer-${entry}.ts`) },
       { find: "@/context/execution", replacement: path.join(directory, "execution.ts") },
+      { find: "@", replacement: path.join(app, "src") },
     ],
   })
 export const frames = (target = page) =>
@@ -120,7 +121,7 @@ beforeAll(async () => {
   )
   await Bun.write(
     path.join(directory, "execution.ts"),
-    "export const useExecution=()=>({available:()=>true,round:()=>undefined,open:()=>{}})",
+    "export const useExecution=()=>({retain() {}, available:()=>true,round:()=>undefined,open:()=>{}})",
   )
   await Bun.write(
     path.join(directory, "resize.html"),

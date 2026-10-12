@@ -53,6 +53,8 @@ export namespace ExecutionService {
   }
   const state = RuntimeContext.state(() => ({
     entries: new Map<string, Data>(),
+    subscriptions: new Map<string, number>(),
+    legacyClients: 0,
     pending: new Map<string, Promise<Data>>(),
     timers: new Map<string, ReturnType<typeof setTimeout>>(),
     dirty: new Set<string>(),
@@ -601,13 +603,13 @@ export namespace ExecutionService {
       throw new Storage.NotFoundError({ message: "Session is outside the selected Scope" })
     return session
   }
-  async function data(sessionID: string) {
+  async function data(sessionID: string, access = true) {
     const root = await requireRoot(sessionID)
     init()
     const cache = state()
     const existing = cache.entries.get(sessionID)
+    if (existing && access) existing.touched = Date.now()
     if (existing && !cache.dirty.has(sessionID)) {
-      existing.touched = Date.now()
       return existing
     }
     const pending = cache.pending.get(sessionID)
@@ -782,12 +784,45 @@ export namespace ExecutionService {
     entry.pendingMessages.clear()
     entry.nodes.sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
     entry.revision = ++state().sequence
-    entry.touched = Date.now()
     entry.summary = summarize(entry)
     for (const [runID, selection] of entry.selections) {
       selection.summary = summarize(entry, runID)
     }
     return entry
+  }
+  export function subscribe(sessionID: string) {
+    const cache = state()
+    cache.subscriptions.set(sessionID, (cache.subscriptions.get(sessionID) ?? 0) + 1)
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      const count = (cache.subscriptions.get(sessionID) ?? 1) - 1
+      if (count) cache.subscriptions.set(sessionID, count)
+      else {
+        cache.subscriptions.delete(sessionID)
+        if (!cache.legacyClients) {
+          clearTimeout(cache.timers.get(sessionID))
+          cache.timers.delete(sessionID)
+        }
+      }
+    }
+  }
+  export function legacyClient() {
+    const cache = state()
+    cache.legacyClients++
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      cache.legacyClients--
+      if (!cache.legacyClients)
+        for (const [sessionID, timer] of cache.timers)
+          if (!cache.subscriptions.has(sessionID)) {
+            clearTimeout(timer)
+            cache.timers.delete(sessionID)
+          }
+    }
   }
   export function init() {
     const cache = state()
@@ -795,17 +830,27 @@ export namespace ExecutionService {
     const schedule = (sessionID: string, messageID?: string, refreshChildren = false) => {
       for (const entry of cache.entries.values()) {
         if (!entry.sessions.some((session) => session.id === sessionID)) continue
+        if (!cache.subscriptions.has(entry.root.id) && !cache.legacyClients) {
+          cache.dirty.add(entry.root.id)
+          entry.refreshChildren = true
+          continue
+        }
         if (messageID) entry.pendingMessages.set(messageID, sessionID)
         entry.refreshChildren ||= refreshChildren
         cache.dirty.add(entry.root.id)
-        if (Date.now() - entry.touched > 600_000 || cache.timers.has(entry.root.id)) continue
+        if (
+          (!cache.subscriptions.has(entry.root.id) && Date.now() - entry.touched > 600_000) ||
+          cache.timers.has(entry.root.id)
+        )
+          continue
         const timer = setTimeout(async () => {
           cache.timers.delete(entry.root.id)
+          if (!cache.subscriptions.has(entry.root.id) && !cache.legacyClients) return
           await ScopeContext.provide({
             scope: entry.root.scope,
             fn: async () => {
               const previousRevision = entry.publishedRevision
-              const next = await data(entry.root.id)
+              const next = await data(entry.root.id, false)
               const process = ExecutionProcess.project(next.nodes, "process", entry.root.id)
               const processUpserts = process.filter(
                 (node) =>
@@ -829,9 +874,7 @@ export namespace ExecutionService {
                 previousRevision,
                 summary: next.summary,
                 roundSummaries: [...next.selections.values()].map((selection) => selection.summary),
-                contextUpserts: contextSnapshots(next).filter(
-                  (entry, index) => index < 30 || next.changed.has(entry.nodeID),
-                ),
+                contextUpserts: contextSnapshots(next).filter((entry) => next.changed.has(entry.nodeID)),
                 upserts: upserts.map((node) => ({ ...node, revision: next.revision })),
                 processUpserts: processUpserts.map((node) => ({ ...node, revision: next.revision })),
                 processRemoved,
@@ -871,7 +914,8 @@ export namespace ExecutionService {
           )
         }
         for (const entry of cache.entries.values())
-          apply(entry, event.properties.owner, event.properties.revision, event.properties.record)
+          if (cache.subscriptions.has(entry.root.id) || cache.legacyClients)
+            apply(entry, event.properties.owner, event.properties.revision, event.properties.record)
         schedule(event.properties.owner.sessionID)
       }),
       Bus.subscribeGlobal(SessionInbox.Event.Updated, (event) => {
@@ -895,8 +939,18 @@ export namespace ExecutionService {
             entry.sessions.some(
               (session) => event.properties.owner.kind === "session" && session.id === event.properties.owner.sessionID,
             )
-          )
-            entry.usage.set(event.properties.record.id, event.properties.record)
+          ) {
+            const record = event.properties.record
+            entry.usage.set(record.id, record)
+            if (record.kind === "call" || record.kind === "attempt")
+              entry.changed.add(
+                nodeID(
+                  event.properties.owner.sessionID,
+                  "call",
+                  record.kind === "call" ? record.entityID : record.callID,
+                ),
+              )
+          }
         schedule(event.properties.owner.sessionID)
       }),
       Bus.subscribeGlobal(MessageV2.Event.Updated, (event) => {
@@ -945,6 +999,8 @@ export namespace ExecutionService {
       for (const timer of cache.timers.values()) clearTimeout(timer)
       cache.timers.clear()
       cache.entries.clear()
+      cache.subscriptions.clear()
+      cache.legacyClients = 0
       cache.dispose = undefined
     }
     return cache.dispose

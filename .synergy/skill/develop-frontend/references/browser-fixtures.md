@@ -14,6 +14,8 @@ Audit opened dropdowns as well as their triggers. Feature-page choices reuse `Me
 
 When a shared component gains a provider dependency, update every direct DOM fixture that mounts it and run those suites together. Mount the real shared UI provider and use getter-based children so Solid constructs descendants within its owner; file preview and menu fixtures must exercise the same navigation dependencies as the product page.
 
+Fixtures importing App modules resolve `@` to `apps/web/src`, after any specific module overrides. Update capability and subscription fixtures with the current public interfaces, and make replay fixtures return a continuous sequence or an explicit recovery response. Assert lease disposal alongside listener cleanup.
+
 When a menu suppresses its trigger Tooltip, preserve the trigger element, focus listeners and flex-item wrapper geometry. Verify suppression inside a dialog as well as the Composer; long names must not push adjacent labels onto another line. Exercise focus → open → Escape → focus return with the real composed controls. A menu action that opens a Dialog must hand off a connected return-focus target; an unmounted menu item is not one. Distinguish a visible path Tooltip consuming Escape from a parent dialog failing to close.
 
 When a nested Solid control must consume Escape before a document-level workspace listener, use a native `on:keydown` handler at the active control boundary; delegated `onKeyDown` runs after document listeners. Test that Escape closes only the nested control and returns focus without navigating or closing its parent surface.

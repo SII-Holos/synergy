@@ -1,4 +1,5 @@
 import { WorkbenchPanelsProvider } from "@/context/workbench"
+import { ViewResidencyProvider } from "@/context/view-residency"
 import { NoteDocumentsProvider } from "@/components/note/documents"
 import { WelcomeProvider } from "@/components/session/welcome/context"
 import { PluginPageOutlet } from "./plugin/shell-outlet"
@@ -31,7 +32,7 @@ import { InputProvider } from "@/context/input"
 import { FontPreferenceProvider } from "@/context/font-preference"
 import Layout from "@/pages/layout"
 import { PluginUIRecoveryProvider } from "@/plugin/ui-recovery"
-import DirectoryLayout from "@/pages/directory-layout"
+import SessionRoute from "@/pages/session-route"
 import { FatalErrorPage } from "./pages/fatal-error"
 import {
   PluginComposerSlotBridge,
@@ -64,12 +65,6 @@ function initialRouteWaitsForSessionSurface() {
   if (pathname.includes("/kanban")) return false
   return true
 }
-
-const Session = lazy(async () => {
-  const session = await import("@/pages/session")
-  signalAppSurfaceReady()
-  return session
-})
 
 const Diff = lazy(async () => {
   await ensureSynergyHighlightTheme()
@@ -227,17 +222,19 @@ function ConnectedApp() {
                                 <GlobalSyncProvider>
                                   <DesktopPowerSync />
                                   <LayoutProvider>
-                                    <WorkbenchPanelsProvider>
-                                      <PluginHostProvider scopeKey={scopeKey}>
-                                        <PluginComposerSlotBridge />
-                                        <PluginThemeConfigBridge />
-                                        <PluginTextInteractionBridge />
-                                        <GlobalPluginThemesRegistrar />
-                                        <NotificationProvider>
-                                          <Layout>{props.children}</Layout>
-                                        </NotificationProvider>
-                                      </PluginHostProvider>
-                                    </WorkbenchPanelsProvider>
+                                    <ViewResidencyProvider>
+                                      <WorkbenchPanelsProvider>
+                                        <PluginHostProvider scopeKey={scopeKey}>
+                                          <PluginComposerSlotBridge />
+                                          <PluginThemeConfigBridge />
+                                          <PluginTextInteractionBridge />
+                                          <GlobalPluginThemesRegistrar />
+                                          <NotificationProvider>
+                                            <Layout>{props.children}</Layout>
+                                          </NotificationProvider>
+                                        </PluginHostProvider>
+                                      </WorkbenchPanelsProvider>
+                                    </ViewResidencyProvider>
                                   </LayoutProvider>
                                 </GlobalSyncProvider>
                               )}
@@ -303,16 +300,9 @@ function ConnectedApp() {
                       path="/plugins/:pluginId"
                       component={() => <PluginPageOutlet page="plugin-detail" fallback={() => <PluginDetailPage />} />}
                     />
-                    <Route path="/:dir" component={DirectoryLayout}>
+                    <Route path="/:dir">
                       <Route path="/" component={() => <Navigate href="session" />} />
-                      <Route
-                        path="/session/:id?"
-                        component={() => (
-                          <Suspense fallback={<Loading />}>
-                            <Session />
-                          </Suspense>
-                        )}
-                      />
+                      <Route path="/session/:id?" component={SessionRoute} />
                     </Route>
                   </Router>
                 </NoteDocumentsProvider>

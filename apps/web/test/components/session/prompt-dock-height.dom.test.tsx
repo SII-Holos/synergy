@@ -54,10 +54,11 @@ beforeAll(async () => {
       const heights: number[] = []
       globalThis.__heights = heights
       const [promptHeight, setPromptHeight] = createSignal<number>()
+      const [enabled,setEnabled]=createSignal(true)
       const dock = createPromptDockHeight((height) => {
         heights.push(height)
         setPromptHeight(height)
-      })
+      },enabled)
       const [generation, setGeneration] = createSignal(0)
       const heightFor = (gen: number) => 100 + gen * 50
 
@@ -81,13 +82,15 @@ beforeAll(async () => {
         <div>
           <button data-mount onClick={() => setGeneration(1)}>mount</button>
           <button data-swap onClick={() => setGeneration((gen) => gen + 1)}>swap</button>
+          <button data-toggle onClick={()=>setEnabled(value=>!value)}>toggle activity</button>
+          <div style={{display:enabled()?"contents":"none"}}>
           <DefaultSession context={{ layout: {
             minimumWidth: () => undefined,
             promptHeight,
             render: (part) => part === "composer" ? (
               <Show when={generation()} keyed>{(gen) => <Dock gen={gen} />}</Show>
             ) : undefined,
-          } }} />
+          } }} /></div>
         </div>
       )
       }
@@ -133,6 +136,19 @@ afterAll(async () => {
 })
 
 describe("prompt dock height observer", () => {
+  test("inactive docks keep their last layout measurement and resume with the actual height", async () => {
+    await page.goto(baseUrl)
+    await page.click("[data-mount]")
+    const before = await waitForHeight(150)
+    await page.click("[data-toggle]")
+    await page.waitForTimeout(100)
+    expect(await page.evaluate(() => (globalThis as unknown as { __heights: number[] }).__heights)).toEqual(before)
+    await page.locator("[data-dock]").evaluate((element) => {
+      ;(element as HTMLElement).style.height = "210px"
+    })
+    await page.click("[data-toggle]")
+    await waitForHeight(210)
+  })
   test("observes a dock that mounts after setup, and follows shell swaps", async () => {
     await page.goto(baseUrl)
     expect(await page.evaluate(() => (globalThis as unknown as { __heights: number[] }).__heights)).toEqual([])

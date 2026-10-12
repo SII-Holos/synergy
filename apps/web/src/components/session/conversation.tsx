@@ -1,3 +1,4 @@
+import { useViewActivity } from "@/context/view-residency"
 import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
 import { useSessionPreparation } from "./session-preparation"
 import { isOptimisticMessagePending } from "@/context/session-optimistic-message"
@@ -61,13 +62,13 @@ export function SessionConversation(input: SessionConversationProps) {
 }
 
 function SessionConversationView(input: SessionConversationProps) {
+  const active = useViewActivity()
   const transitions = useSessionTransition()
   const props = input.context
-  const [contentReady, setContentReady] = createSignal(false)
   const [admitted, setAdmitted] = createSignal(!input.initialScrollSettled)
   createEffect(() => {
     if (!input.initialScrollSettled || admitted()) return
-    if (!input.initialScrollSettled() || (props.content && !contentReady())) return
+    if (!active() || !input.initialScrollSettled()) return
     let frame = requestAnimationFrame(() => {
       frame = requestAnimationFrame(() => {
         input.onAdmitted?.(props.sessionID)
@@ -100,7 +101,7 @@ function SessionConversationView(input: SessionConversationProps) {
   })
   const takePartArrival = (partID: string) => {
     const arrival = arrivalView()?.take(partID) ?? false
-    return document.visibilityState === "visible" && arrival
+    return active() && document.visibilityState === "visible" && arrival
   }
   const takeUserArrival = (messageID: string) =>
     transitions.messageArrival.take([sdk.url, sdk.scopeKey, props.sessionID], messageID)
@@ -118,7 +119,7 @@ function SessionConversationView(input: SessionConversationProps) {
   let stateRequest: AbortController | undefined
   const executionRequest = createMemo(
     () => {
-      if (!preparation.ready() || !data().sessionFor(props.sessionID)) return undefined
+      if (!active() || !preparation.ready() || !data().sessionFor(props.sessionID)) return undefined
       const roots = (props.timeline() ?? []).filter((message) => message.role === "user").map((message) => message.id)
       const latest = props.lastUserMessage()
       const last = latest ? props.turnProjection().turnMessagesFor(latest).at(-1) : undefined
@@ -505,7 +506,6 @@ function SessionConversationView(input: SessionConversationProps) {
         >
           <VirtualConversationRows
             layoutOwner={[sdk.url, sdk.scopeKey, props.sessionID]}
-            onReady={setContentReady}
             onReadingMessage={(messageID) => {
               const element = scrollRef()
               if (element && props.isDesktop()) props.onScheduleScrollSpy(element, messageID)

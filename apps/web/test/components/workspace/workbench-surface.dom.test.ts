@@ -24,6 +24,8 @@ beforeAll(async () => {
     `
     import { createSignal, Show } from "solid-js"
     export const [crash, setCrash] = createSignal(false)
+    const [available, setAvailable] = createSignal(true), [generation, setGeneration] = createSignal("one")
+    const registered = () => location.search === "?plugin-residency" ? available() ? entries.map(entry => ({...entry,pluginId:"fixture",retention:"pause",generation:generation()})) : [] : entries
     window.mounts = { side: 0, bottom: 0, extra: 0 }
     const entries = ["side", "bottom", "extra"].map(id => ({
       id, label: id, icon: "file", surfaces: ["side", "bottom"], cardinality: "multi",
@@ -42,10 +44,10 @@ beforeAll(async () => {
       return [id, { opened, setOpened, close: () => setOpened(false), toggle: () => setOpened(!opened()), size, setSize, tabs, setTabs,
         fullscreen, setFullscreen, activeTab: () => tabs().find(tab => tab.id === active()), active, setActive }]
     }))
-    window.fixture = { retarget: () => states.side.setTabs([{id:"side",panelId:"extra"}]), open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size(), populate: () => states.side.setTabs(Array.from({length:20}, (_,i) => ({ id: i ? 'tab-'+i : 'side', panelId:'side', title: 'Long document title ' + i }))) }
+    window.fixture = { available: setAvailable, generation: setGeneration, select: id => states.side.setActive(id), retarget: () => states.side.setTabs([{id:"side",panelId:"extra"}]), open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size(), populate: () => states.side.setTabs(Array.from({length:20}, (_,i) => ({ id: i ? 'tab-'+i : 'side', panelId:'side', title: 'Long document title ' + i }))) }
     export const useWorkbenchPanels = () => ({
       openingForTab: () => undefined,
-      surface: id => states[id], panels: () => entries, panelForTab: tab => entries.find(x => x.id === tab?.panelId),
+      surface: id => states[id], panels: registered, panelForTab: tab => registered().find(x => x.id === tab?.panelId),
       interact() {}, activateTab(name, id) { states[name].setActive(id) }, getPanel: id => entries.find(entry => entry.id === id),
       panelTitle: tab => tab.title ?? tab.panelId, openPanel: () => {}, closeTab: () => {}, closeOtherTabs: () => {}, moveTab: () => {}
     })
@@ -60,7 +62,7 @@ beforeAll(async () => {
     export const useLocale = () => ({ i18n: useLingui().i18n() })
     export const useGlobalSDK = () => ({ client: {}, capabilities: { has: () => false } })
     export const useSDK = () => ({ connected: () => true, client: {} })
-    export const useExecution = () => ({ available: () => false, state: {} })
+    export const useExecution = () => ({retain() {},  available: () => false, state: {} })
     export const useLocal = () => ({ agent: { current: () => ({}) }, model: {
       current: () => ({ name: "Fixture model" }),
       variant: { list: () => ["high"], displayed: () => undefined, set() {} },
@@ -162,7 +164,7 @@ beforeAll(async () => {
           <div data-plugin-ui="synergy" style="display:contents"><aside class="sb-root sb-integrated sb-expanded" style="width:260px"><div class="sb-navigation"><button>Navigation</button></div></aside></div> : part === "route" ?
           <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <WorkspaceToggleProbe /> : view === "composer" ? <div style="position:absolute;bottom:0;left:0;right:0;z-index:50"><input aria-label="Composer draft" /></div> : null } }} /> : null }}} />
       </div>
-      if (location.search && location.search !== "?restored" && location.search !== "?workspace-navigation") return <NavigatorProbe />
+      if (location.search && location.search !== "?restored" && location.search !== "?workspace-navigation" && location.search !== "?plugin-residency") return <NavigatorProbe />
       return <>
         <button onClick={() => window.fixture.open("side")}>Open side</button>
         <button onClick={() => window.fixture.open("bottom")}>Open bottom</button>
@@ -228,6 +230,7 @@ interface WorkbenchWindow extends Window {
     size(id: string): number
     populate(): void
     retarget(): void
+    select(id: string): void
   }
 }
 
@@ -238,6 +241,28 @@ async function openSurfaces() {
   await page.getByRole("button", { name: "Open bottom", exact: true }).click()
   await page.getByRole("button", { name: "bottom action" }).waitFor()
 }
+
+test("recent panel switches preserve the editor node, selection and draft within a bounded cache", async () => {
+  await openSurfaces()
+  await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.populate())
+  const draft = page.getByRole("textbox", { name: "side draft" })
+  await draft.fill("Retained document")
+  const original = await draft.elementHandle()
+  await draft.evaluate((input: HTMLInputElement) => input.setSelectionRange(3, 8))
+  await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.select("tab-1"))
+  await page.getByRole("textbox", { name: "side draft" }).fill("Second document")
+  await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.select("side"))
+  expect(await draft.inputValue()).toBe("Retained document")
+  expect(await draft.evaluate((input, original) => input === original, original)).toBe(true)
+  expect(await draft.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd])).toEqual([3, 8])
+  expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).mounts.side)).toBe(2)
+  for (let index = 2; index < 20; index++) {
+    await page.evaluate((index) => (window as unknown as WorkbenchWindow).fixture.select(`tab-${index}`), index)
+  }
+  expect(await page.locator('input[aria-label="side draft"]').count()).toBeLessThanOrEqual(8)
+  expect(await page.getByRole("textbox", { name: "side draft" }).count()).toBe(1)
+  expect(errors).toEqual([])
+})
 
 function captureWorkspaceFrames() {
   return page.evaluate(
@@ -1129,3 +1154,41 @@ test("modal workspace stays accessible and focusable below the dock width limit"
     await page.setViewportSize({ width: 1200, height: 1000 })
   }
 }, 20000)
+
+test("paused plugin panels survive registry reactivation but changed generations replace the instance", async () => {
+  await page.goto(`${baseUrl}?plugin-residency`)
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  const input = page.getByRole("textbox", { name: "side draft" })
+  await input.fill("retained plugin draft")
+  const original = await input.elementHandle()
+  await page.evaluate(() =>
+    (window as unknown as { fixture: { available(value: boolean): void } }).fixture.available(false),
+  )
+  expect(await original!.evaluate((element) => element.isConnected && element.getBoundingClientRect().height > 0)).toBe(
+    true,
+  )
+  expect(await original!.evaluate((element) => !!element.closest("[inert]"))).toBe(true)
+  await page.evaluate(() =>
+    (window as unknown as { fixture: { available(value: boolean): void } }).fixture.available(true),
+  )
+  expect(await input.inputValue()).toBe("retained plugin draft")
+  expect(await input.evaluate((element, previous) => element === previous, original)).toBe(true)
+  await page.evaluate(() =>
+    (window as unknown as { fixture: { generation(value: string): void } }).fixture.generation("two"),
+  )
+  expect(await input.inputValue()).toBe("")
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(false)
+})
+
+test("visiting more than the panel budget evicts old instances and keeps the active editor", async () => {
+  await page.goto(baseUrl)
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  await page.evaluate(() => (window as unknown as { fixture: { populate(): void } }).fixture.populate())
+  for (let index = 1; index < 20; index++)
+    await page.evaluate(
+      (index) => (window as unknown as { fixture: { select(id: string): void } }).fixture.select("tab-" + index),
+      index,
+    )
+  expect(await page.locator("[data-resident-panel]").count()).toBe(8)
+  expect(await page.getByRole("textbox", { name: "side draft" }).count()).toBe(1)
+})

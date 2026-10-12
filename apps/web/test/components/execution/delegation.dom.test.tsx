@@ -68,7 +68,7 @@ beforeAll(async () => {
     export const useParams=()=>({id:"root"})
     export const useSDK=()=>sdk
     const snapshots=[1,2].map(n=>({sessionID:"root",callID:"call-"+n,nodeID:"model",runID:"root-round",requestNumber:n,roundNumber:1,started:n,modelID:"test-model",providerID:"test-provider",status:"completed",inputTokens:n*100,outputTokens:10,cacheHit:0.5,elapsedMs:1000,retries:0,usage:null,compactedBefore:false,requestAvailable:true,contextLimit:10000}))
-    export const useExecution=()=>({available:()=>true,advance:()=>0,connected:()=>true,state:{summary},connectionVersion:()=>0,createContextHistory:(options)=>{window.contextActive=options.active;return {state:{items:snapshots,total:2,latest:snapshots[1],loading:false,error:false},snapshot:()=>snapshots.find(n=>n.callID===options.selected())??snapshots[1],load:async()=>{}}}})
+    export const useExecution=()=>({retain() {}, available:()=>true,advance:()=>0,connected:()=>true,state:{summary},connectionVersion:()=>0,createContextHistory:(options)=>{window.contextActive=options.active;return {state:{items:snapshots,total:2,latest:snapshots[1],loading:false,error:false},snapshot:()=>snapshots.find(n=>n.callID===options.selected())??snapshots[1],load:async()=>{}}}})
     export const [fixtureTab,setFixtureTab]=createSignal({id:"context",state:{}})
     export const useWorkbenchPanels=()=>({surface:()=>({opened:()=>true,active:()=>"context"}),updateTab:(id,patch)=>{window.recordedTab=patch.state;(window.stateWrites??=[]).push(patch.state);if(window.stateWrites.length>30)throw new Error("Execution state did not settle");setFixtureTab({id,...patch})}})
     export const useNavigateToSession=()=>()=>{}

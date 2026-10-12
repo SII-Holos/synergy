@@ -158,6 +158,7 @@ const WorkbenchPanelContribution = UIBase.extend({
   surface: z.enum(["side", "bottom"]),
   cardinality: z.enum(["exclusive", "singleton", "multi"]),
   requiresSession: z.boolean().optional(),
+  retention: z.literal("pause").optional(),
   defaultResource: z
     .object({ id: z.string().min(1), title: z.string().min(1), state: z.unknown().optional() })
     .strict()

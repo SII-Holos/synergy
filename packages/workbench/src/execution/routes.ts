@@ -5,6 +5,7 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { ExecutionSchema } from "./schema"
 import { ExecutionService } from "./service"
+import { ExecutionProjection } from "./projection"
 import { ExecutionContent } from "./content"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -110,10 +111,17 @@ export const ExecutionRoute = () =>
       "/:sessionID/execution/summary",
       metadata("session.executionSummary", "Read a compact session execution summary", ExecutionSchema.Summary),
       validator("param", Params),
-      validator("query", ExecutionSchema.Query.pick({ runID: true })),
+      validator(
+        "query",
+        ExecutionSchema.Query.pick({ runID: true }).extend({ projection: z.string().uuid().optional() }),
+      ),
       async (c) => {
         const response = await result(() =>
-          ExecutionService.summary(c.req.valid("param").sessionID, c.req.valid("query").runID),
+          c.req.valid("query").projection
+            ? Promise.resolve(
+                ExecutionProjection.checkpoint(c.req.valid("param").sessionID, c.req.valid("query").projection!),
+              )
+            : ExecutionService.summary(c.req.valid("param").sessionID, c.req.valid("query").runID),
         )
         return c.json(response.value, response.status)
       },

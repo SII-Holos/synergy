@@ -1,7 +1,7 @@
 import { executionDuration } from "@ericsanchezok/synergy-ui/execution-completion"
 import { createMemo, createSignal, For, Show, onCleanup, type JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { Popover, restorePopoverFocus } from "@ericsanchezok/synergy-ui/popover"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -32,6 +32,7 @@ export function TaskDetailsPopover(props: {
   const sdk = useSDK()
   const params = useParams()
   const [open, setOpen] = createSignal(false)
+  execution.retain({ active: open })
   const [history, setHistory] = createSignal(false)
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [pending, setPending] = createSignal<Set<string>>(new Set())

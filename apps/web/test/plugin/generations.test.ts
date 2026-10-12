@@ -117,3 +117,22 @@ test("cleanup failures cannot roll back a successful generation or strand other 
   expect(disposed.toSorted()).toEqual(["one", "other", "two"])
   expect(errors).toHaveLength(1)
 })
+
+test("verified Scope generations survive navigation discovery and change only for that Scope", async () => {
+  const { createPluginScopeVersions } = await import("../../src/plugin/generations")
+  const versions = createPluginScopeVersions()
+  const first = [plugin("one")]
+  versions.accept("server", "a", first)
+  const a = versions.get("server", "a")
+  expect(a).not.toBe(versions.get("server", "b"))
+  versions.accept("server", "b", [{ ...plugin("different"), scopeId: "b" }])
+  expect(versions.get("server", "a")).toBe(a)
+  versions.accept("server", "a", first)
+  expect(versions.get("server", "a")).toBe(a)
+  versions.accept("server", "a", [{ ...plugin("one"), capabilities: ["session.read"] }])
+  expect(versions.get("server", "a")).not.toBe(a)
+  versions.accept("server", "a", [])
+  expect(versions.get("server", "a")).toBe("[]")
+  versions.clear()
+  expect(versions.get("server", "b")).toBe("[]")
+})

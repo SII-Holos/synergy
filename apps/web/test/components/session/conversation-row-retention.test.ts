@@ -342,7 +342,7 @@ beforeAll(async () => {
           if (rootID === "r32") virtualExecutionWork.processRootReads++
           return undefined
         }
-        export const useExecution = () => ({
+        export const useExecution = () => ({retain() {},
           available: executionAvailable,
           round: () => undefined,
           open: (id: string) => openedExecution.push(id),
@@ -822,7 +822,7 @@ async function paintedConversationPixels() {
   }, screenshot)
 }
 
-test("reveals a session only after its mounted bodies and initial scroll settle, then preserves streaming visibility", async () => {
+test("keeps target rows visible while individual bodies and initial scroll settle without a second entrance animation", async () => {
   await page.goto(new URL("?admission", page.url()).href)
   await page.waitForFunction(() => typeof window.__setTimeline === "function")
   await page.addStyleTag({ content: "[data-display-row] { background: rgb(0, 255, 0); min-height: 32px; }" })
@@ -840,20 +840,20 @@ test("reveals a session only after its mounted bodies and initial scroll settle,
   })
   await page.waitForSelector("[data-display-row]", { state: "attached" })
   const viewport = page.locator("[data-conversation-viewport]")
-  expect(await viewport.getAttribute("aria-hidden")).toBe("true")
+  expect(await viewport.getAttribute("aria-hidden")).toBeNull()
   const pendingBounds = await page.locator("[data-display-row]").first().boundingBox()
   expect(pendingBounds?.height).toBeGreaterThan(0)
   expect(pendingBounds?.width).toBeGreaterThan(0)
-  expect(await paintedConversationPixels()).toBe(0)
+  expect(await paintedConversationPixels()).toBeGreaterThan(0)
   await page.evaluate(() => (window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true))
   await page.evaluate(
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
-  expect(await viewport.getAttribute("aria-hidden")).toBe("true")
-  expect(await paintedConversationPixels()).toBe(0)
+  expect(await viewport.getAttribute("aria-hidden")).toBeNull()
+  expect(await paintedConversationPixels()).toBeGreaterThan(0)
   await page.evaluate(() => (window as unknown as { __settleBodies(): void }).__settleBodies())
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
-  expect(await viewport.evaluate((element) => element.getAnimations().length)).toBe(1)
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
+  expect(await viewport.evaluate((element) => element.getAnimations().length)).toBe(0)
   await page.emulateMedia({ reducedMotion: "reduce" })
   expect(await viewport.evaluate((element) => getComputedStyle(element).opacity)).toBe("1")
   expect(await viewport.evaluate((element) => element.getAnimations().length)).toBe(0)
@@ -867,7 +867,7 @@ test("reveals a session only after its mounted bodies and initial scroll settle,
       { id: "stream", sessionID: "ses_1", role: "user", text: "streaming", time: { created: 2 } },
     ])
   })
-  expect(await viewport.getAttribute("aria-hidden")).toBe("false")
+  expect(await viewport.getAttribute("aria-hidden")).toBeNull()
   expect(await viewport.evaluate((element) => getComputedStyle(element).opacity)).toBe("1")
   expect(await viewport.evaluate((element) => element.getAnimations().length)).toBe(0)
   expect(await paintedConversationPixels()).toBeGreaterThan(0)
@@ -881,14 +881,15 @@ test("reveals a session only after its mounted bodies and initial scroll settle,
     fixture.__sessionID("ses_2")
     fixture.__setTimeline([{ id: "next", sessionID: "ses_2", role: "user", text: "next", time: { created: 3 } }])
   })
-  expect(await viewport.getAttribute("aria-hidden")).toBe("true")
-  expect(await paintedConversationPixels()).toBe(0)
+  await page.locator('[data-display-row="next:user"]').waitFor()
+  expect(await viewport.getAttribute("aria-hidden")).toBeNull()
+  expect(await paintedConversationPixels()).toBeGreaterThan(0)
   await page.evaluate(() => {
     const fixture = window as unknown as { __settleBodies(): void; __layoutReady(value: boolean): void }
     fixture.__settleBodies()
     fixture.__layoutReady(true)
   })
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   expect(pageErrors).toEqual([])
 })
 
@@ -908,13 +909,13 @@ test("terminal body failures reveal an actionable retry instead of stranding ini
     fixture.__layoutReady(true)
   })
   await page.waitForSelector("[data-display-row]", { state: "attached" })
-  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("true")
+  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBeNull()
   await page.evaluate(() => (window as unknown as { __failBodies(): void }).__failBodies())
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   expect(await page.locator("[data-content-error] button").count()).toBe(1)
   await page.locator("[data-content-error] button").click()
   await page.waitForSelector("[data-content-error]", { state: "detached" })
-  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("false")
+  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBeNull()
   expect(pageErrors).toEqual([])
 })
 
@@ -931,7 +932,7 @@ test("session navigation replaces only the transcript owner and releases its bod
     fixture.__enableContent()
     fixture.__layoutReady(true)
   })
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   await page.evaluate(() => {
     Object.assign(window, { priorViewport: document.querySelector("[data-conversation-viewport]") })
     const fixture = window as unknown as {
@@ -957,9 +958,9 @@ test("session navigation replaces only the transcript owner and releases its bod
   ).toContain(JSON.stringify(["ses_1", "first", "part-0000"]))
   await page.evaluate(() => (window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true))
   await executionFrames()
-  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("true")
+  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBeNull()
   await page.evaluate(() => (window as unknown as { __settleBodies(): void }).__settleBodies())
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   const mount = await page
     .locator('[data-display-row="second:user"] [data-slot="session-turn-stub"]')
     .getAttribute("data-mount")
@@ -986,7 +987,7 @@ test("the same session identifier on another connection has an independent viewp
     window.__setTimeline([{ id: "owner", sessionID: "ses_1", role: "user", time: { created: 1 } }])
     ;(window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true)
   })
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   await page.evaluate(() => {
     Object.assign(window, { priorViewport: document.querySelector("[data-conversation-viewport]") })
     const fixture = window as unknown as { __layoutReady(value: boolean): void }
@@ -1000,9 +1001,9 @@ test("the same session identifier on another connection has an independent viewp
       return fixture.priorViewport.isConnected
     }),
   ).toBe(false)
-  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("true")
+  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBeNull()
   await page.evaluate(() => (window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true))
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   expect(pageErrors).toEqual([])
 })
 

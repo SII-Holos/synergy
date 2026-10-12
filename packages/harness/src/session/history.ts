@@ -33,6 +33,8 @@ export namespace SessionHistory {
   export const TimelinePage = SessionHistoryDisplay.TimelinePage
   export const PartPage = SessionHistoryDisplay.PartPage
   export const PartPages = SessionHistoryDisplay.PartPages
+  export const DisplayManifest = SessionHistoryDisplay.DisplayManifest
+  export const DisplayManifestInput = SessionHistoryDisplay.DisplayManifestInput
   export const PartContent = SessionHistoryDisplay.PartContent
   export const DisplayConflict = SessionHistoryDisplay.Conflict
   export const summarizePart = SessionHistoryDisplay.summarizePart
@@ -145,6 +147,12 @@ export namespace SessionHistory {
     const session = await SessionManager.requireSession(input.sessionID)
     await requireDisplayMessage(session, input.messageID)
     return SessionHistoryDisplay.partPage(input, session.scope.id)
+  }
+  export async function displayManifest(input: Parameters<typeof SessionHistoryDisplay.displayManifest>[0]) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    return Storage.snapshot(async () =>
+      SessionHistoryDisplay.displayManifest(input, session.scope.id, await displayVisibility(session)),
+    )
   }
   export async function partPages(input: { sessionID: string; messageIDs: string[]; limit?: number }) {
     const session = await SessionManager.requireSession(input.sessionID)

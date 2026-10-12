@@ -159,6 +159,7 @@ export interface WorkbenchPanelContribution extends UISurfaceContributionBase<"u
   surface: "side" | "bottom"
   cardinality: "exclusive" | "singleton" | "multi"
   requiresSession?: boolean
+  retention?: "pause"
   defaultResource?: { id: string; title: string; state?: unknown }
 }
 

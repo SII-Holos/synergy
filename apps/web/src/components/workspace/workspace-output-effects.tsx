@@ -1,5 +1,5 @@
 import { createEffect } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useData } from "@ericsanchezok/synergy-ui/context"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"

@@ -1,7 +1,7 @@
 import { batch, createEffect, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import type { ExecutionSummary } from "@ericsanchezok/synergy-sdk/client"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { useExecution } from "@/context/execution"

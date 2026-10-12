@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createResource, onCleanup, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"

@@ -1,7 +1,7 @@
 import { createMemo, Show } from "solid-js"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { ProgressCircle } from "@ericsanchezok/synergy-ui/progress-circle"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useSessionDataView } from "@/context/session-data-view"
 
 import { useSync } from "@/context/sync"

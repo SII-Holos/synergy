@@ -1,6 +1,6 @@
 import type { SessionWorkspaceTransitionRequest } from "./worktree-session"
 import { createMemo, createResource, createSignal, For, Show, Suspense, onCleanup, type JSX } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useLingui } from "@lingui/solid"
 import type {
   ProjectDirectories,

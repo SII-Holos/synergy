@@ -1034,3 +1034,43 @@ for (const force of [false, true]) {
     }
   })
 }
+
+test("paused retained view ignores resize and scroll work without losing reading intent", async () => {
+  const harness = createScrollHarness()
+  let dispose = () => {}
+  try {
+    const element = harness.makeScroller()
+    const [enabled, setEnabled] = createSignal(true)
+    let auto!: ReturnType<typeof createAutoScroll>
+    let measures = 0
+    createRoot((cleanup) => {
+      dispose = cleanup
+      auto = createAutoScroll({ enabled, working: () => true, onMeasure: () => measures++ })
+      auto.scrollRef(element)
+      auto.contentRef(element)
+    })
+    await harness.tick()
+    harness.flushFrames()
+    element.scrollTop = 240
+    auto.handleInteraction()
+    setEnabled(false)
+    await harness.tick()
+    const before = measures
+    element.scrollHeight = 0
+    harness.lastObserver()?.fire(element)
+    auto.forceScrollToBottom()
+    harness.flushFrames()
+    expect(element.scrollTop).toBe(240)
+    expect(measures).toBe(before)
+    expect(auto.userScrolled()).toBe(true)
+    element.scrollHeight = 1000
+    setEnabled(true)
+    await harness.tick()
+    harness.flushFrames()
+    expect(auto.userScrolled()).toBe(true)
+    expect(element.scrollTop).toBe(240)
+  } finally {
+    dispose()
+    harness.restore()
+  }
+})

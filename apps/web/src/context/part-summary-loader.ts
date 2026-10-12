@@ -27,6 +27,7 @@ export function partSummaryPageState(page: SessionPartPage): PartSummaryPageStat
     previousCursor: page.previousCursor,
     hasMore: page.hasMore,
     hasEarlier: page.hasEarlier,
+    generation: page.generation,
     ranges: page.items.length
       ? [{ firstID: page.items[0].id, lastID: page.items.at(-1)!.id, count: page.items.length, end: !page.hasMore }]
       : [],
@@ -82,8 +83,16 @@ export async function readPartSummaryRanges(input: {
   const items = new Map<string, SessionPartSummary>()
   let ranges = input.page.ranges.map((range) => ({ ...range }))
   let navigation = input.page
+  let generation: number | undefined
+  let readGeneration = false
+  const read = async (query: Parameters<typeof input.read>[0]) => {
+    const page = await input.read(query)
+    generation = readGeneration && generation !== page.generation ? undefined : page.generation
+    readGeneration = true
+    return page
+  }
   if (!ranges.length) {
-    const page = await input.read({ limit: 100 })
+    const page = await read({ limit: 100 })
     input.signal.throwIfAborted()
     for (const part of page.items) items.set(part.id, part)
     navigation = partSummaryPageState(page)
@@ -95,7 +104,7 @@ export async function readPartSummaryRanges(input: {
     for (let reads = 0; ; reads++) {
       if (reads > range.count) throw new PartSummarySupersededError()
       input.signal.throwIfAborted()
-      const page = await input.read({
+      const page = await read({
         partID: cursor ? undefined : range.lastID,
         cursor,
         older: !!cursor,
@@ -116,7 +125,7 @@ export async function readPartSummaryRanges(input: {
   while (uncovered.size) {
     input.signal.throwIfAborted()
     const lastID = [...uncovered].sort().at(-1)!
-    const page = await input.read({ partID: lastID, limit: 100 })
+    const page = await read({ partID: lastID, limit: 100 })
     input.signal.throwIfAborted()
     if (page.items.some((part) => part.id > lastID)) throw new PartSummarySupersededError()
     const firstID = page.items[0]?.id
@@ -137,11 +146,11 @@ export async function readPartSummaryRanges(input: {
   let hasMore = navigation.hasMore
   for (const range of input.page.ranges.filter((range) => range.end)) {
     input.signal.throwIfAborted()
-    const boundary = await input.read({ partID: range.lastID, limit: 1 })
+    const boundary = await read({ partID: range.lastID, limit: 1 })
     input.signal.throwIfAborted()
     if (boundary.items.some((part) => part.id > range.lastID)) throw new PartSummarySupersededError()
     if (boundary.items.length && !boundary.hasMore) continue
-    const page = await input.read({ cursor: boundary.nextCursor ?? undefined, limit: 100 })
+    const page = await read({ cursor: boundary.nextCursor ?? undefined, limit: 100 })
     input.signal.throwIfAborted()
     const tail = page.items.filter((part) => part.id > range.lastID)
     for (const part of tail) items.set(part.id, part)
@@ -157,6 +166,7 @@ export async function readPartSummaryRanges(input: {
     previousCursor: navigation.previousCursor,
     hasMore,
     hasEarlier: navigation.hasEarlier,
+    generation,
     ranges,
   }
 }
@@ -202,6 +212,10 @@ export function planPartSummaryPage(
     items: nextItems,
     removedIDs: current.filter((part) => !items.has(part.id)).map((part) => part.id),
     page: {
+      generation:
+        (request.more || targeted || action === "preserve") && previous?.generation !== incoming.generation
+          ? undefined
+          : incoming.generation,
       nextCursor: page.nextCursor,
       previousCursor: page.previousCursor,
       hasMore: page.hasMore,

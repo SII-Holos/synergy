@@ -1,3 +1,4 @@
+import { useViewActivity } from "@/context/view-residency"
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import type { AssistantMessage, UserMessage, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
 import { Virtualizer, type VirtualizerHandle } from "virtua/solid"
@@ -84,6 +85,7 @@ export function VirtualConversationRows(
     onReadingMessage?: (messageID: string) => void
   },
 ) {
+  const active = useViewActivity()
   const props = input.context
   const content = props.content!
   const { view } = useData()
@@ -151,6 +153,7 @@ export function VirtualConversationRows(
     },
   }
   const processState = createMemo((previous: Map<string, { working: boolean; held: boolean }> | undefined) => {
+    if (!active() && previous) return previous
     const next = new Map<string, { working: boolean; held: boolean }>()
     let changed = false
     for (const root of props.timeline()) {
@@ -184,32 +187,34 @@ export function VirtualConversationRows(
     return !changed && previous?.size === next.size ? previous : next
   })
   const projectionRows = createMemo<ConversationRow[]>((previous) =>
-    buildConversationRows({
-      previous,
-      timeline: props.timeline(),
-      messageKey: input.messageKey,
-      messagesFor: (root) => props.turnProjection().turnMessagesFor(root as UserMessage),
-      summaries: content.summaries,
-      page: content.page,
-      activity: (block) =>
-        activityView.getExpanded(block.key) ??
-        (props.activityDisplay() === "full" ||
-          ((interactionBlocks().includes(block.key) || readingBlocks().includes(block.key) || props.scrolledUp()) &&
-            !!previous?.find((row) => row.key === block.key)?.activity?.open) ||
-          (props.activityDisplay() !== "minimal" && (block.active || paused(block.entries[0].root.id)))),
-      process: (root) => {
-        const state = processState().get(root.id)!
-        return {
-          working: state.working,
-          open: resolveActivityDisclosure({
-            mode: props.activityDisplay(),
-            working: state.working,
-            heldOpen: state.held,
-            explicit: activityView.getExpanded(`turn-process:${root.id}`),
-          }),
-        }
-      },
-    }),
+    !active() && previous
+      ? previous
+      : buildConversationRows({
+          previous,
+          timeline: props.timeline(),
+          messageKey: input.messageKey,
+          messagesFor: (root) => props.turnProjection().turnMessagesFor(root as UserMessage),
+          summaries: content.summaries,
+          page: content.page,
+          activity: (block) =>
+            activityView.getExpanded(block.key) ??
+            (props.activityDisplay() === "full" ||
+              ((interactionBlocks().includes(block.key) || readingBlocks().includes(block.key) || props.scrolledUp()) &&
+                !!previous?.find((row) => row.key === block.key)?.activity?.open) ||
+              (props.activityDisplay() !== "minimal" && (block.active || paused(block.entries[0].root.id)))),
+          process: (root) => {
+            const state = processState().get(root.id)!
+            return {
+              working: state.working,
+              open: resolveActivityDisclosure({
+                mode: props.activityDisplay(),
+                working: state.working,
+                heldOpen: state.held,
+                explicit: activityView.getExpanded(`turn-process:${root.id}`),
+              }),
+            }
+          },
+        }),
   )
   const requestedRows = createMemo(() => projectionRows().filter((row) => row.kind !== "body" || !row.activity))
   let container: HTMLDivElement | undefined
@@ -344,6 +349,7 @@ export function VirtualConversationRows(
     )
   const scheduleLocation = (behavior: ScrollBehavior = "auto") => {
     if (!untrack(located) || locationFrame !== undefined) return
+    if (!active()) return
     locationFrame = requestAnimationFrame(() => {
       locationFrame = undefined
       const location = located(),
@@ -406,7 +412,8 @@ export function VirtualConversationRows(
       setInteractionBlocks([...blocks])
     })
   }
-  onMount(() => {
+  createEffect(() => {
+    if (!active()) return
     let measureFrame: number | undefined
     let viewportLimit: number | undefined
     const measure = () => {
@@ -597,6 +604,7 @@ function ConversationDisplayRow(
     located?: { messageID: string; partID?: string }
   },
 ) {
+  const active = useViewActivity()
   const props = input.context
   const content = props.content!
   const row = input.row
@@ -733,6 +741,7 @@ function ConversationDisplayRow(
     retainedParts.clear()
   })
   createEffect(() => {
+    if (!active()) return
     const current = row()
     if (current.kind !== "body" || current.event) return
     const page = content.page(current.message.id)
@@ -758,6 +767,11 @@ function ConversationDisplayRow(
       })
   })
   createEffect(() => {
+    if (!active()) {
+      for (const entry of retainedParts.values()) entry.lease.release()
+      retainedParts.clear()
+      return
+    }
     retry()
     const current = row()
     if (current.kind !== "body" || current.event) return

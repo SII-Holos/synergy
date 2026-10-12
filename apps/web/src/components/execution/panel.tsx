@@ -14,7 +14,7 @@ import {
 } from "solid-js"
 import { z } from "zod"
 import { useLingui } from "@lingui/solid"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { VList, type VListHandle } from "virtua/solid"
 import type { ExecutionContextSnapshot, ExecutionTrajectoryNode } from "@ericsanchezok/synergy-sdk/client"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
@@ -87,6 +87,7 @@ export function ExecutionPanelBody(
   const params = useParams()
   const sdk = useSDK()
   const execution = useExecution()
+  execution.retain()
   const { _, i18n } = useLingui()
   const initial = settings(props.tab.state)
   const runID = createMemo(() => props.runID)
