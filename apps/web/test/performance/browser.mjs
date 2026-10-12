@@ -11,10 +11,16 @@ let collecting = false,
   requests = {}
 const contentRequests = []
 const seenContent = new Set()
+const pendingReads = new Set()
+let readsChangedAt = Date.now()
 let navigationIndex = -1
 page.on("pageerror", (error) => errors.push(error.message))
 page.on("request", (request) => {
   const contentPath = new URL(request.url()).pathname
+  if (contentPath.startsWith("/session/")) {
+    pendingReads.add(request)
+    readsChangedAt = Date.now()
+  }
   const repeated = seenContent.has(contentPath)
   if (contentPath.endsWith("/content")) seenContent.add(contentPath)
   if (!collecting) return
@@ -31,6 +37,19 @@ page.on("request", (request) => {
       navigationIndex,
     })
 })
+const finishRead = (request) => {
+  if (pendingReads.delete(request)) readsChangedAt = Date.now()
+}
+page.on("requestfinished", finishRead)
+page.on("requestfailed", finishRead)
+const settleWarmup = async () => {
+  const deadline = Date.now() + 120000
+  readsChangedAt = Date.now()
+  while (pendingReads.size || Date.now() - readsChangedAt < 500) {
+    if (Date.now() > deadline) throw Error("Warm-up Session reads did not settle")
+    await page.waitForTimeout(50)
+  }
+}
 page.on("websocket", (socket) =>
   socket.on("framereceived", (frame) => {
     if (!collecting) return
@@ -86,8 +105,7 @@ try {
     }
   for (const target of targets) {
     await nav(target)
-    await page.waitForLoadState("networkidle")
-    await page.waitForTimeout(100)
+    await settleWarmup()
   }
   const navigation = []
   collecting = true

@@ -39,6 +39,12 @@ The production panel run holds the initial timeline response while the composer 
 
 Three rounds across all twelve Sessions retain six Session presentations. Evicted Sessions release their panels. Forced-GC heaps are 80,962,824, 82,287,928 and 79,122,224 bytes, showing a plateau rather than continuous growth. Behavioral panel tests separately open twenty resources and require the global eight-panel limit, retained selection and generation invalidation.
 
+### Post-repair repeat
+
+A repeat after the execution-context repair at `5a1680ce46b15a6f3e79b941d12c4599e3b30a63` exposed a fixture phase error: seventeen first-time body reads from the final warm-up target entered the hot counter. None repeated an earlier content request. Playwright's document `networkidle` state was already satisfied before the SPA switch. The runner now waits for observed Session reads to finish and remain quiet for 500 ms during warm-up only; hot-switch assertions and visible-text timing are unchanged. The failed sample is preserved separately.
+
+The frozen baseline and repaired candidate were then run sequentially with this same corrected runner and the same synthetic input. Streaming bytes were 4,800,784 versus 398,234, a 91.70% reduction. Warm body reads were 100 versus zero, warm timeline reads were thirty versus zero, and readable P95 was 98.3 ms versus 40.4 ms. The candidate again performed zero streaming body reads, verified all chunks in both streams, preserved Notes/file/execution instances and reported no browser errors.
+
 ## Red and green evidence
 
 | Invariant                                         | Observed failure before correction                                                                             | Verification                                                                                                                           |
