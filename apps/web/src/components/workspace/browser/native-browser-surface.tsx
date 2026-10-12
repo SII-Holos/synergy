@@ -1,11 +1,12 @@
 import { claimNativeView } from "./native-view-lease"
 import { useViewActivity } from "@/context/view-residency"
-import { createEffect, createMemo, createSignal, Show, onCleanup, onMount } from "solid-js"
+import { createEffect, createMemo, createSignal, Show, onCleanup, onMount, useContext } from "solid-js"
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { usePlatform } from "@/context/platform"
 import { useBrowser } from "./browser-store"
 import { normalizeBrowserError } from "./browser-error"
+import { WorkbenchSurfaceOverlay } from "../workbench-surface-overlay"
 
 export function nativeBrowserViewVisible(input: {
   appDialogOpen: boolean
@@ -14,6 +15,7 @@ export function nativeBrowserViewVisible(input: {
   controlsOpen?: boolean
   errorOpen?: boolean
   annotationOpen?: boolean
+  workspaceMenuOpen?: boolean
 }) {
   return (
     !input.appDialogOpen &&
@@ -21,7 +23,8 @@ export function nativeBrowserViewVisible(input: {
     !input.pageDialogOpen &&
     !input.controlsOpen &&
     !input.errorOpen &&
-    !input.annotationOpen
+    !input.annotationOpen &&
+    !input.workspaceMenuOpen
   )
 }
 
@@ -38,6 +41,7 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
   const browser = useBrowser()
   const dialog = useDialog()
   const platform = usePlatform()
+  const workspaceMenuOpen = useContext(WorkbenchSurfaceOverlay)
   const [cover, setCover] = createSignal<{ pageId: string; url: string; dataUrl: string }>()
   let presentation: ReturnType<typeof claimNativeView> | undefined
   let disposed = false
@@ -57,6 +61,7 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
         controlsOpen: browser.controlsOpen() || browser.addressSuggestionsOpen(),
         errorOpen: Boolean(browser.browserError()),
         annotationOpen: Boolean(browser.annotationTarget()),
+        workspaceMenuOpen: workspaceMenuOpen(),
       }),
   )
 

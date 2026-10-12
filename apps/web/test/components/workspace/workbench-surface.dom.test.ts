@@ -23,6 +23,7 @@ beforeAll(async () => {
     path.join(directory, "state.tsx"),
     `
     import { createSignal, Show } from "solid-js"
+    import { Dynamic } from "solid-js/web"
     export const [crash, setCrash] = createSignal(false)
     const [available, setAvailable] = createSignal(true), [generation, setGeneration] = createSignal("one")
     const registered = () => location.search === "?plugin-residency" ? available() ? entries.map(entry => ({...entry,pluginId:"fixture",retention:"pause",generation:generation()})) : [] : entries
@@ -31,7 +32,7 @@ beforeAll(async () => {
       id, label: id, icon: "file", surfaces: ["side", "bottom"], cardinality: "multi",
       component: () => { window.mounts[id]++; return <div>
         {(() => { if (crash() && id === "side") throw new Error("Panel crashed"); return null })()}
-        {id === "side" && new URLSearchParams(location.search).has("workspace-navigation") ? window.navigationPanel() : <><button>{id} action</button><input aria-label={id + " draft"} /></>}
+        {id === "side" && location.search === "?native-browser" ? <Dynamic component={window.browserPanel} /> : id === "side" && new URLSearchParams(location.search).has("workspace-navigation") ? window.navigationPanel() : <><button>{id} action</button><input aria-label={id + " draft"} /></>}
       </div> }
     }))
     const states = Object.fromEntries(["side", "bottom"].map(id => {
@@ -44,7 +45,7 @@ beforeAll(async () => {
       return [id, { opened, setOpened, close: () => setOpened(false), toggle: () => setOpened(!opened()), size, setSize, tabs, setTabs,
         fullscreen, setFullscreen, activeTab: () => tabs().find(tab => tab.id === active()), active, setActive }]
     }))
-    window.fixture = { available: setAvailable, generation: setGeneration, select: id => states.side.setActive(id), retarget: () => states.side.setTabs([{id:"side",panelId:"extra"}]), open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size(), populate: () => states.side.setTabs(Array.from({length:20}, (_,i) => ({ id: i ? 'tab-'+i : 'side', panelId:'side', title: 'Long document title ' + i }))) }
+    window.fixture = { resetTabs: () => states.side.setTabs([{id:"side",panelId:"side"}]), available: setAvailable, generation: setGeneration, select: id => states.side.setActive(id), retarget: () => states.side.setTabs([{id:"side",panelId:"extra"}]), open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size(), populate: () => states.side.setTabs(Array.from({length:20}, (_,i) => ({ id: i ? 'tab-'+i : 'side', panelId:'side', title: 'Long document title ' + i }))) }
     export const useWorkbenchPanels = () => ({
       openingForTab: () => undefined,
       surface: id => states[id], panels: registered, panelForTab: tab => registered().find(x => x.id === tab?.panelId),
@@ -54,6 +55,17 @@ beforeAll(async () => {
     const hasSidebar = () => location.search === "?composed" || (location.search === "?toolbar" && innerWidth >= 768)
     export const useLayout = () => ({ isDesktop: () => true, sidebar: { opened: hasSidebar, width: () => 260, occupiedWidth: () => hasSidebar() ? 260 : 0 }, nav: { recentEntries: () => [], rootNavEntries: () => [], projectNavEntries: () => [] }, scopes: { list: () => [] }, mobileSidebar: { toggle() {} }, rightSidebar: { toggle() {} } })
   `,
+  )
+  await Bun.write(
+    path.join(directory, "platform.ts"),
+    `
+    window.attachments = []; window.detachments = [];
+    export const usePlatform = () => ({ browserNative: {
+      attachView: async input => window.attachments.push(input), resizeView: async () => {},
+      detachView: async input => window.detachments.push(input), focusView: async () => {},
+      onEvent: listener => { window.nativeEvent = listener; return () => { window.nativeEvent = undefined } }
+    } })
+    `,
   )
   await Bun.write(
     path.join(directory, "topbar-services.ts"),
@@ -93,6 +105,9 @@ beforeAll(async () => {
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
     import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
     import { Popover } from "@ericsanchezok/synergy-ui/popover"
+    import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
+    import { NativeBrowserSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/native-browser-surface.tsx`)}
+    import { BrowserStoreProvider, createBrowserStore } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-store.tsx`)}
     import { MobileWorkspaceDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/mobile-workspace-dialog.tsx`)}
     import { WorkbenchSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/workbench-surface.tsx`)}
     import { WorkspaceNavigator } from ${JSON.stringify(`/@fs/${source}/components/workspace/workspace-navigator.tsx`)}
@@ -137,6 +152,14 @@ beforeAll(async () => {
       </div>
     }
     window.navigationPanel = () => <NavigatorProbe width="100%" layers />
+    window.browserPanel = () => {
+      let container
+      const store = createBrowserStore()
+      store.replacePages([{id:"page-one",profileId:"personal",status:"active",url:"https://example.test",title:"Test",isLoading:false,lastActiveAt:null}])
+      store.setPresentation({kind:"native",protocolVersion:BROWSER_PROTOCOL_VERSION,capabilities:{native:true},reason:"desktop-local"})
+      window.setBrowserError = store.setBrowserError
+      return <BrowserStoreProvider store={store}><div data-native-surface ref={container} style="position:relative;width:100%;height:400px"><NativeBrowserSurface container={() => container} ownerKey="owner-one" /></div></BrowserStoreProvider>
+    }
     function Fixture() {
       const dialog = useDialog()
       const [mobileOpen, setMobileOpen] = createSignal(false)
@@ -164,7 +187,7 @@ beforeAll(async () => {
           <div data-plugin-ui="synergy" style="display:contents"><aside class="sb-root sb-integrated sb-expanded" style="width:260px"><div class="sb-navigation"><button>Navigation</button></div></aside></div> : part === "route" ?
           <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <WorkspaceToggleProbe /> : view === "composer" ? <div style="position:absolute;bottom:0;left:0;right:0;z-index:50"><input aria-label="Composer draft" /></div> : null } }} /> : null }}} />
       </div>
-      if (location.search && location.search !== "?restored" && location.search !== "?workspace-navigation" && location.search !== "?plugin-residency") return <NavigatorProbe />
+      if (location.search && location.search !== "?restored" && location.search !== "?workspace-navigation" && location.search !== "?plugin-residency" && location.search !== "?native-browser") return <NavigatorProbe />
       return <>
         <button onClick={() => window.fixture.open("side")}>Open side</button>
         <button onClick={() => window.fixture.open("bottom")}>Open bottom</button>
@@ -181,6 +204,7 @@ beforeAll(async () => {
     root: directory,
     styled: true,
     aliases: [
+      { find: "@/context/platform", replacement: path.join(directory, "platform.ts") },
       { find: /^@\/context\/(workbench|layout)$/, replacement: path.join(directory, "state.tsx") },
       {
         find: /^@\/context\/(global-sdk|sdk|execution|local|command|sync|session-data-view|locale)$/,
@@ -222,6 +246,10 @@ afterAll(async () => {
 
 interface WorkbenchWindow extends Window {
   mounts: Record<string, number>
+  attachments: Array<{ pageId: string; visible: boolean }>
+  detachments: unknown[]
+  setBrowserError(error: { severity: "error"; message: string } | null): void
+  nativeEvent(event: { type: "native.cover"; pageId: string; url: string; dataUrl: string }): void
   fixture: {
     open(id: string): void
     close(id: string): void
@@ -231,7 +259,72 @@ interface WorkbenchWindow extends Window {
     populate(): void
     retarget(): void
     select(id: string): void
+    resetTabs(): void
   }
+}
+
+for (const width of [375, 1200]) {
+  test(`Workspace menus yield native Browser presentation and restore the same page at ${width}px`, async () => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.emulateMedia({ colorScheme: width === 375 ? "dark" : "light", reducedMotion: "reduce" })
+    await page.goto(baseUrl + "?native-browser")
+    await page.getByRole("button", { name: "Open side", exact: true }).click()
+    await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
+    const resource = page.getByRole("button", { name: "Open a resource", exact: true })
+    await resource.click()
+    await page.getByRole("menuitem", { name: "extra", exact: true }).waitFor()
+    expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible)).toBe(false)
+    await page.evaluate(() => {
+      const fixture = window as unknown as WorkbenchWindow
+      fixture.nativeEvent({
+        type: "native.cover",
+        pageId: "page-one",
+        url: "https://example.test",
+        dataUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+      })
+      fixture.setBrowserError({ severity: "error", message: "Page error" })
+    })
+    await page.locator("[data-native-surface] img").waitFor()
+    await page.keyboard.press("Escape")
+    await page.getByRole("menu").waitFor({ state: "detached" })
+    await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Open a resource")
+    expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible)).toBe(false)
+    await page.evaluate(() => (window as unknown as WorkbenchWindow).setBrowserError(null))
+    await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
+    expect(await page.locator("[data-native-surface] img").count()).toBe(0)
+
+    await resource.click()
+    await page.getByRole("menuitem", { name: "extra", exact: true }).click()
+    await page.getByRole("menu").waitFor({ state: "detached" })
+    await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
+
+    await page.getByRole("tab", { name: "side", exact: true }).click({ button: "right" })
+    await page.getByRole("menu").waitFor()
+    expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible)).toBe(false)
+    await page.keyboard.press("Escape")
+    await page.getByRole("menu").waitFor({ state: "detached" })
+    await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
+    await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.populate())
+    await page.getByRole("button", { name: "Tab actions", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Long document title 19", exact: true }).waitFor()
+    expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible)).toBe(false)
+    await page.keyboard.press("Escape")
+    await page.getByRole("menu").waitFor({ state: "detached" })
+    await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
+    await page.getByRole("button", { name: "Tab actions", exact: true }).click()
+    await page.getByRole("menu").waitFor()
+    await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.resetTabs())
+    await page.getByRole("menu").waitFor({ state: "detached" })
+    await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
+    expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).detachments)).toEqual([])
+    expect(
+      await page.evaluate(() => [
+        ...new Set((window as unknown as WorkbenchWindow).attachments.map((item) => item.pageId)),
+      ]),
+    ).toEqual(["page-one"])
+    expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).mounts.side)).toBe(1)
+    expect(errors).toEqual([])
+  })
 }
 
 async function openSurfaces() {

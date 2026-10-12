@@ -59,6 +59,7 @@ import {
 } from "@thisbeyond/solid-dnd"
 import { ConstrainDragYAxis } from "@/utils/solid-dnd"
 import { createWorkbenchPanelLoader } from "./workbench-panel-loader"
+import { WorkbenchSurfaceOverlay } from "./workbench-surface-overlay"
 import { Dynamic } from "solid-js/web"
 import {
   createResidencyBudget,
@@ -419,6 +420,14 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
     const tabs = state().tabs()
     return tabs.length > 1 && activeTab() !== undefined && local.overflow
   })
+  const overlayOpen = createMemo(
+    () =>
+      (addablePanels().length > 0 && local.addOpen) ||
+      (showTabActions() && local.actionsOpen) ||
+      state()
+        .tabs()
+        .some((tab) => tab.id === local.menuTabId),
+  )
 
   const closeOtherTabs = () => {
     setLocal("actionsOpen", false)
@@ -936,37 +945,39 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
           </div>
         </Show>
         <div class="workbench-surface-body">
-          <Show when={!activePanel() && !residentPanels().some((panel) => panel.key === panelMountKey())}>
-            <Launcher surface={props.surface} panels={addablePanels()} onOpen={openPanel} />
-          </Show>
-          <For each={residentPanels()}>
-            {(resident) => (
-              <div
-                ref={(element) => pauseHiddenScroll(element, resident.active)}
-                data-resident-panel={resident.key}
-                hidden={panelMountKey() !== resident.key}
-                inert={!resident.active()}
-                aria-hidden={!resident.active()}
-                style={{
-                  height: "100%",
-                  "min-height": "0",
-                  display: panelMountKey() === resident.key ? "flex" : "none",
-                  "flex-direction": "column",
-                }}
-              >
-                <ViewActivityProvider active={resident.active}>
-                  <WorkbenchPanelContent
-                    entry={resident.entry}
-                    tab={resident.tab()}
-                    active={resident.active}
-                    onRequestClose={() => {
-                      if (resident.active()) void workbench.closeTab(resident.tab().id)
-                    }}
-                  />
-                </ViewActivityProvider>
-              </div>
-            )}
-          </For>
+          <WorkbenchSurfaceOverlay.Provider value={overlayOpen}>
+            <Show when={!activePanel() && !residentPanels().some((panel) => panel.key === panelMountKey())}>
+              <Launcher surface={props.surface} panels={addablePanels()} onOpen={openPanel} />
+            </Show>
+            <For each={residentPanels()}>
+              {(resident) => (
+                <div
+                  ref={(element) => pauseHiddenScroll(element, resident.active)}
+                  data-resident-panel={resident.key}
+                  hidden={panelMountKey() !== resident.key}
+                  inert={!resident.active()}
+                  aria-hidden={!resident.active()}
+                  style={{
+                    height: "100%",
+                    "min-height": "0",
+                    display: panelMountKey() === resident.key ? "flex" : "none",
+                    "flex-direction": "column",
+                  }}
+                >
+                  <ViewActivityProvider active={resident.active}>
+                    <WorkbenchPanelContent
+                      entry={resident.entry}
+                      tab={resident.tab()}
+                      active={resident.active}
+                      onRequestClose={() => {
+                        if (resident.active()) void workbench.closeTab(resident.tab().id)
+                      }}
+                    />
+                  </ViewActivityProvider>
+                </div>
+              )}
+            </For>
+          </WorkbenchSurfaceOverlay.Provider>
         </div>
       </aside>
     </div>

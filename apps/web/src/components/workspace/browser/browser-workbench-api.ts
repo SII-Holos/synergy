@@ -55,7 +55,7 @@ export async function openBrowserWorkbenchPage(
   const pageId = input.pageId ?? selection?.pageId
   const latest = pageId
     ? access.state.pages?.find((page) => page.id === pageId)
-    : input.restore && !selection?.newPage
+    : input.restore && input.route.mode === "session" && !selection?.newPage
       ? [...(access.state.pages ?? [])].sort((a, b) => (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0))[0]
       : undefined
   if (pageId && !latest) throw new Error("The browser page has closed. Reopen the browser page.")

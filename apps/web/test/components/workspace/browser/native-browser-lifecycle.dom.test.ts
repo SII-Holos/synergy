@@ -34,10 +34,13 @@ test("a retained native surface hides for overlays and detaches while its sessio
     import {render} from 'solid-js/web'
     import {NativeBrowserSurface} from ${JSON.stringify(native)}
     import {ViewActivityProvider} from '@/context/view-residency'
+    import {WorkbenchSurfaceOverlay} from '@/components/workspace/workbench-surface-overlay'
+    import {createSignal} from 'solid-js'
     import {active,setActive,setOverlay,calls} from './stub'
-    window.fixture={setActive,setOverlay,calls}
+    const [menu,setMenu]=createSignal(false)
+    window.fixture={setActive,setOverlay,setMenu,calls}
     const container=document.createElement('div');container.style.cssText='width:800px;height:600px';document.body.append(container)
-    render(()=><ViewActivityProvider active={active}><NativeBrowserSurface container={()=>container} ownerKey="scope"/></ViewActivityProvider>,document.getElementById('root'))
+    render(()=><ViewActivityProvider active={active}><WorkbenchSurfaceOverlay.Provider value={menu}><NativeBrowserSurface container={()=>container} ownerKey="scope"/></WorkbenchSurfaceOverlay.Provider></ViewActivityProvider>,document.getElementById('root'))
   `,
   )
   const server = await createBrowserFixture({
@@ -71,9 +74,18 @@ test("a retained native surface hides for overlays and detaches while its sessio
     await act("setOverlay", false)
     await page.waitForTimeout(20)
     expect((await calls()).at(-1)).toEqual(["attach", true])
+    await act("setMenu", true)
+    await page.waitForTimeout(20)
+    expect((await calls()).at(-1)).toEqual(["attach", false])
     await act("setActive", false)
     await page.waitForTimeout(20)
     expect((await calls()).at(-1)).toEqual(["detach"])
+    const inactiveCalls = (await calls()).length
+    await act("setMenu", false)
+    await act("setOverlay", true)
+    await act("setOverlay", false)
+    await page.waitForTimeout(20)
+    expect((await calls()).length).toBe(inactiveCalls)
     await act("setActive", true)
     await page.waitForTimeout(20)
     expect((await calls()).at(-1)).toEqual(["attach", true])

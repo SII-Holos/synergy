@@ -449,6 +449,12 @@ test("resource selection follows canonical identity rather than a reused tab ID"
 
 test("background Browser metadata synchronization preserves a pending tool resource open", async () => {
   await load()
+  await tool("browser_navigation", { action: "open" }, { pageId: "background" })
+  await row().click()
+  await page.waitForFunction(() =>
+    (window as unknown as FixtureWindow).fixture.tabs().some((tab) => tab.resourceId === "background"),
+  )
+  await tool("note_write", {}, { id: "note" })
   await row().click()
   await page.waitForFunction(() =>
     (window as unknown as FixtureWindow).fixture.tabs().some((tab) => tab.panelId === "notes"),
