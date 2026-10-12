@@ -16,7 +16,6 @@ import path from "path"
 // @ts-ignore
 import { createWrapper } from "@parcel/watcher/wrapper"
 import { lazy } from "@ericsanchezok/synergy-harness/util/lazy"
-import { withTimeout } from "@ericsanchezok/synergy-harness/util/timeout"
 import type ParcelWatcher from "@parcel/watcher"
 import { $ } from "bun"
 import { Flag } from "@ericsanchezok/synergy-harness/flag/flag"
@@ -203,17 +202,12 @@ export namespace FileWatcher {
                 }),
             })
           }
-          return withTimeout(pending, timeoutMs).catch((error) => {
-            pending
-              .then((subscription) => subscription.unsubscribe())
-              .catch((unsubscribeError) => {
-                log.error("failed to unsubscribe timed out watcher subscription", {
-                  directory: input.directory,
-                  label: input.label,
-                  error: unsubscribeError,
-                })
-              })
-            throw error
+          return FileWatcherEvents.withSubscriptionTimeout(pending, timeoutMs, (error) => {
+            log.error("failed to unsubscribe timed out watcher subscription", {
+              directory: input.directory,
+              label: input.label,
+              error,
+            })
           })
         }
         // Linux serializes the native scans process-wide so concurrent
@@ -224,7 +218,9 @@ export namespace FileWatcher {
         // the guard instead of scanning.
         return nativeSubscribeGate ? nativeSubscribeGate(subscribe) : subscribe()
       },
-      shouldRetry: (error) => !FileWatcherEvents.isLinuxInotifyTerminalError(error),
+      shouldRetry: async (error) =>
+        !FileWatcherEvents.isLinuxInotifyTerminalError(error) &&
+        !(await FileWatcherEvents.subscriptionRootGone(input.directory)),
       disconnect: (subscription) => subscription.unsubscribe(),
       resync: async (context) => {
         await input.resync?.()
@@ -431,9 +427,18 @@ export namespace FileWatcher {
       })
       subs.push(workspaceRecovery)
 
-      const git = await $`git rev-parse --git-dir`.quiet().nothrow().cwd(ScopeContext.current.directory)
+      const git = await (async () => {
+        const directory = ScopeContext.current.directory
+        if (await FileWatcherEvents.subscriptionRootGone(directory)) return
+        try {
+          return await $`git rev-parse --git-dir`.quiet().nothrow().cwd(directory)
+        } catch (error) {
+          if (await FileWatcherEvents.subscriptionRootGone(directory)) return
+          throw error
+        }
+      })()
       const vcsDir =
-        git.exitCode === 0 ? path.resolve(ScopeContext.current.directory, git.stdout.toString().trim()) : undefined
+        git?.exitCode === 0 ? path.resolve(ScopeContext.current.directory, git.stdout.toString().trim()) : undefined
       if (vcsDir && !cfgIgnores.includes(".git") && !cfgIgnores.includes(vcsDir)) {
         const gitDirContents = await readdir(vcsDir).catch(() => [])
         const ignoreList = gitDirContents.filter((entry) => entry !== "HEAD")

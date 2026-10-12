@@ -3,12 +3,42 @@ import path from "path"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { FileIgnore } from "./ignore"
 import { RuntimeReloadPath } from "@ericsanchezok/synergy-harness/config/reload-path"
+import { withTimeout } from "@ericsanchezok/synergy-harness/util/timeout"
+import { stat } from "node:fs/promises"
 
 export namespace FileWatcherEvents {
   export type WorkspaceEvent = "added" | "changed" | "deleted" | "renamed"
   export type WorkspaceChange = { path: string; event: WorkspaceEvent; oldPath?: string }
   export type RawEvent = { type: "create" | "update" | "delete"; path: string }
   export type PathPlatform = "win32" | "posix"
+
+  export async function subscriptionRootGone(directory: string) {
+    try {
+      return !(await stat(directory)).isDirectory()
+    } catch (error) {
+      return error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR")
+    }
+  }
+
+  export function withSubscriptionTimeout<T extends { unsubscribe(): Promise<void> }>(
+    pending: Promise<T>,
+    timeoutMs: number,
+    onCleanupError: (error: unknown) => void,
+  ) {
+    return withTimeout(pending, timeoutMs).catch((error) => {
+      void pending.then(
+        async (subscription) => {
+          try {
+            await subscription.unsubscribe()
+          } catch (error) {
+            onCleanupError(error)
+          }
+        },
+        () => {},
+      )
+      throw error
+    })
+  }
 
   // Native subscribe timeout by platform. Linux inotify tree scans cannot be
   // cancelled: abandoning one at a generic timeout lets a retry overlap the
@@ -337,7 +367,7 @@ export namespace FileWatcherEvents {
     disconnect: (subscription: T) => Promise<void>
     onError: (error: unknown) => void | Promise<void>
     resync?: (context: { generation: number; isCurrent: () => boolean }) => void | Promise<void>
-    shouldRetry?: (error: unknown) => boolean
+    shouldRetry?: (error: unknown) => boolean | Promise<boolean>
     retryMs?: number
   }) {
     const retryMs = input.retryMs ?? 1_000
@@ -391,7 +421,6 @@ export namespace FileWatcherEvents {
 
     const fail = (error: unknown, expectedGeneration?: number) => {
       if (disposed || (expectedGeneration !== undefined && expectedGeneration !== generation)) return Promise.resolve()
-      if (input.shouldRetry?.(error) === false) retryBlocked = true
       generation += 1
       ready = false
       if (handlingFailure) return handlingFailure
@@ -400,6 +429,7 @@ export namespace FileWatcherEvents {
         const subscription = current
         current = undefined
         if (subscription) await disconnect(subscription)
+        if ((await input.shouldRetry?.(error)) === false) retryBlocked = true
         await report(error)
         if (!retryBlocked) scheduleRetry()
       })()
