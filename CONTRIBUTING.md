@@ -21,7 +21,7 @@ For feature ideas or design discussions, open a [GitHub Issue](https://github.co
 
 ## Development Setup
 
-Use the Bun version pinned by the root `packageManager` field. Then:
+Use the Bun version pinned by the root `packageManager` field. `bun dev` checks the selected runtime before doing work; preparation does not upgrade a version manager's global selection. See [runtime selection and preparation](docs/reference/development.md#requirements-and-preparation). Then:
 
 ```bash
 git clone https://github.com/SII-Holos/synergy.git
