@@ -21,6 +21,17 @@ export type RuntimeCapabilities = {
   }
 }
 
+export type RuntimeNotReadyError = {
+  error: string
+}
+
+export type RuntimeShuttingDownError = {
+  name: "RuntimeShuttingDown"
+  data: {
+    message: string
+  }
+}
+
 export type GlobalPaths = {
   home: string
   root: string
@@ -10734,13 +10745,6 @@ export type StorageServiceError = {
   }
 }
 
-export type RuntimeShuttingDownError = {
-  name: "RuntimeShuttingDown"
-  data: {
-    message: string
-  }
-}
-
 export type SessionHistorySearchPage = {
   items: Array<{
     sessionID: string
@@ -14920,8 +14924,10 @@ export type GlobalCapabilitiesErrors = {
   /**
    * Runtime services are still starting or shutting down
    */
-  503: unknown
+  503: RuntimeNotReadyError | RuntimeShuttingDownError
 }
+
+export type GlobalCapabilitiesError = GlobalCapabilitiesErrors[keyof GlobalCapabilitiesErrors]
 
 export type GlobalCapabilitiesResponses = {
   /**

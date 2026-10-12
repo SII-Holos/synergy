@@ -1604,6 +1604,10 @@
       },
       "exempt": [
         {
+          "glob": "src/config-schema.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
           "glob": "src/compat/agents.ts",
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
@@ -2505,6 +2509,10 @@
         "functions": 75
       },
       "exempt": [
+        {
+          "glob": "src/config-schema.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
         {
           "glob": "src/compat/agenda/clock.ts",
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."

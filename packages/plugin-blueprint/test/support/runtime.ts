@@ -6,7 +6,7 @@ import { note } from "@ericsanchezok/synergy-note/component"
 import { blueprint } from "@ericsanchezok/synergy-blueprint/component"
 import { plugins } from "@ericsanchezok/synergy-plugin-host/component"
 import { registerWorker } from "../../src/worker"
-export function testRuntime() {
+export function testRuntime(options: { register?: () => void } = {}) {
   const composition = RuntimeComponents.compose([
     localRuntime({ workers: false, environment: false }),
     note(),
@@ -18,6 +18,7 @@ export function testRuntime() {
     composition: {
       register() {
         composition.register()
+        options.register?.()
       },
     },
   })

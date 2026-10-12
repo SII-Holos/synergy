@@ -874,7 +874,19 @@ export namespace Server {
                 },
               },
             },
-            503: { description: "Runtime services are still starting or shutting down" },
+            503: {
+              description: "Runtime services are still starting or shutting down",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.union([
+                      z.object({ error: z.string() }).meta({ ref: "RuntimeNotReadyError" }),
+                      RuntimeShuttingDownError,
+                    ]),
+                  ),
+                },
+              },
+            },
           },
         }),
         (c) => {

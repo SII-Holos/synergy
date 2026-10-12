@@ -41,6 +41,8 @@ Read [the domain guidance](references/test-design.md#define-the-invariant-first)
 
 Optional components require behavioral absence, reinstall and interleaved-Runtime tests. Select minimal requirements, import unselected factories, and inspect actual tools, agents, prepared prompts, public schemas, events, service activity and HTTP requests. Write data with the owner installed, remove it and update unrelated configuration, then reinstall and verify retained data and drafts. Exercise delayed installation, interrupted owner migrations, repeated execution and failed startup. Web composition changes include mobile paths and a real same-URL backend restart; packed dependency closures, native workers and managed Node SDK acceptance cover resolution outside the workspace. Source-string assertions cannot prove capability absence.
 
+When migration ownership moves, update historical fixtures to execute the migrations registered by the current composition. Retire unused aggregate migration implementations instead of keeping a parallel upgrade path solely to satisfy old tests. Preserve historical receipt compatibility and assert retained data and repeated execution through the real owners.
+
 ## Choose the Lowest Useful Level
 
 Read [the domain guidance](references/test-design.md#choose-the-lowest-useful-level) when this area is affected.

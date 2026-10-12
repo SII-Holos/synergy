@@ -5,10 +5,18 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
-import { migrations } from "../src/session-migration"
+import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "./support/runtime"
 const runtime = await testRuntime()
+
+function ownerMigration(owner: "blueprint" | "light-loop" | "lattice") {
+  const migration = MigrationRegistry.list()
+    .get(`${owner}-session`)
+    ?.find((entry) => entry.id === `20261012-${owner}-session-owner`)
+  if (!migration) throw new Error(`Missing registered ${owner} session migration`)
+  return migration
+}
 
 describe("workflow session migrations", () => {
   test("migrates legacy workflow session fields and message metadata", () =>
@@ -86,17 +94,10 @@ describe("workflow session migrations", () => {
             },
           )
 
-          const migration = migrations.find((entry) => entry.id === "20260708-session-workflow-field")
-          expect(migration).toBeDefined()
-          const reports: [number, number, number][] = []
-          await migration!.up((current, total, phase = 0) => reports.push([current, total, phase]))
-          const sessionsComplete = reports.find(([current, total, phase]) => phase === 0 && current === total)
-          expect(sessionsComplete?.[0]).toBeGreaterThanOrEqual(4)
-          expect(reports).toContainEqual([0, 0, 1])
-          const messagesComplete = reports.find(
-            ([current, total, phase]) => phase === 1 && current === total && total > 0,
-          )
-          expect(messagesComplete?.[0]).toBeGreaterThanOrEqual(2)
+          for (const owner of ["blueprint", "light-loop", "lattice"] as const) {
+            await ownerMigration(owner).up(() => {})
+            await ownerMigration(owner).up(() => {})
+          }
 
           const migratedLattice = await Storage.read<any>(
             StoragePath.sessionInfo(scope, Identifier.asSessionID(latticeSession.id)),
@@ -115,17 +116,19 @@ describe("workflow session migrations", () => {
             kind: "lattice",
             runID: "ltr_legacy",
             mode: "auto",
-            firstBlueprintStarted: true,
           })
-          expect(migratedLightloop.workflow).toEqual({ kind: "lightloop", taskDescription: "Keep going" })
+          expect(migratedLightloop.workflow).toEqual({ kind: "lightloop", instructions: "Keep going" })
           expect(migratedPlan.workflow).toEqual({ kind: "plan" })
           expect(migratedConflict.workflow).toBeUndefined()
 
-          for (const migrated of [migratedLattice, migratedLightloop, migratedPlan, migratedConflict]) {
-            expect("planMode" in migrated).toBe(false)
-            expect("lightLoop" in migrated).toBe(false)
-            expect("lattice" in migrated).toBe(false)
-          }
+          expect(migratedLattice.lattice).toBeUndefined()
+          expect(migratedLattice.planMode).toBe(true)
+          expect(migratedLattice.lightLoop).toEqual({ active: true, taskDescription: "ignored" })
+          expect(migratedLightloop.lightLoop).toBeUndefined()
+          expect(migratedPlan.planMode).toBeUndefined()
+          expect(migratedConflict.planMode).toBe(true)
+          expect(migratedConflict.lightLoop).toEqual({ active: true, taskDescription: "conflict" })
+          expect(migratedConflict.blueprint).toEqual({ loopID })
 
           const migratedPlanMessage = await Storage.read<any>(
             StoragePath.messageInfo(scope, Identifier.asSessionID(planSession.id), planMessageID),
@@ -177,9 +180,8 @@ describe("workflow session migrations", () => {
             workflow: { kind: "lightloop", instructions: "Keep current instructions" },
           })
 
-          const migration = migrations.find((entry) => entry.id === "20260718-lightloop-instructions-field")
-          expect(migration).toBeDefined()
-          await migration!.up(() => {})
+          const migration = ownerMigration("light-loop")
+          await migration.up(() => {})
 
           expect((await Storage.read<any>(legacyKey)).workflow).toEqual({
             kind: "lightloop",
@@ -248,9 +250,8 @@ describe("workflow session migrations", () => {
             },
           })
 
-          const migration = migrations.find((entry) => entry.id === "20260723-migrate-terminal-lightloops")
-          expect(migration).toBeDefined()
-          await migration!.up(() => {})
+          const migration = ownerMigration("light-loop")
+          await migration.up(() => {})
 
           expect((await Storage.read<any>(completedKey)).workflow).toBeUndefined()
           expect((await Storage.read<any>(exhaustedKey)).workflow).toBeUndefined()

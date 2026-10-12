@@ -11,6 +11,7 @@ export function testRuntime(options: { register?: () => void; env?: Record<strin
   return harnessRuntime({
     env: options.env,
     composition: {
+      ...composition,
       register() {
         composition.register()
         options.register?.()

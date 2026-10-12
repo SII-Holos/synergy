@@ -23,7 +23,21 @@
             }
           },
           "503": {
-            "description": "Runtime services are still starting or shutting down"
+            "description": "Runtime services are still starting or shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeNotReadyError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
+                }
+              }
+            }
           }
         },
         "x-codeSamples": [
@@ -36774,6 +36788,34 @@
         },
         "required": ["apiVersion", "hostVersion", "components", "features"]
       },
+      "RuntimeNotReadyError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["error"]
+      },
+      "RuntimeShuttingDownError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "RuntimeShuttingDown"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "GlobalPaths": {
         "type": "object",
         "properties": {
@@ -69724,25 +69766,6 @@
               }
             },
             "required": ["message", "state", "retryAfterMs"]
-          }
-        },
-        "required": ["name", "data"]
-      },
-      "RuntimeShuttingDownError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "RuntimeShuttingDown"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
           }
         },
         "required": ["name", "data"]

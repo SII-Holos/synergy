@@ -9,7 +9,7 @@ import { testRuntime } from "./support/runtime"
 const runtime = await testRuntime()
 
 describe("Blueprint plugin adapter (protocol 5)", () => {
-  test("start creates Blueprint atomically with Note + Session + Store", () =>
+  test("start rejects unknown execution agents before creating resources", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -18,8 +18,6 @@ describe("Blueprint plugin adapter (protocol 5)", () => {
           const markdown = "# Plugin Blueprint\n\nTest content."
           const digest = await sha256(markdown)
 
-          // This will fail because no real agents are registered — but we verify
-          // that validation runs before trying to create resources.
           await expect(
             startBlueprint({
               context: {
@@ -41,6 +39,7 @@ describe("Blueprint plugin adapter (protocol 5)", () => {
               },
             }),
           ).rejects.toThrow("Unknown execution agent")
+          expect(await BlueprintLoopStore.list(ScopeContext.current.scope.id)).toEqual([])
         },
       })
     }))

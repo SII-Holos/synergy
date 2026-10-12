@@ -1,7 +1,10 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { NoteReadTool } from "@ericsanchezok/synergy-note/tools/note-read"
 import type { Info as BlueprintLoopInfo } from "../../src/blueprint/types"
 import { buildBlueprintLoopContext } from "../../src/blueprint/prompt"
+import { BlueprintLoopService } from "../../src/blueprint/service"
 import { WorkflowUserWrapper } from "@ericsanchezok/synergy-harness/test/internal/session/workflow-user-wrapper"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -28,6 +31,31 @@ function loopFixture(over: Record<string, unknown> = {}): BlueprintLoopInfo {
   } as unknown as BlueprintLoopInfo
 }
 
+test.each([PrimaryAgentIdentity.names.coding, PrimaryAgentIdentity.names.general])(
+  "%s first prompt supplies valid Note read arguments",
+  (agent) =>
+    runtime.run(async () => {
+      const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
+      const deliver = spyOn(SessionManager, "deliver").mockImplementation(async (input) => {
+        deliveries.push(input)
+      })
+      try {
+        const loop = loopFixture({ executionAgent: agent })
+        await BlueprintLoopService.deliverFirstPrompt(loop.sessionID, loop)
+        expect(deliveries).toHaveLength(1)
+        const mail = deliveries[0].mail
+        if (mail.type !== "user") throw new Error("Expected execution user mail")
+        const prompt = mail.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+        const read = prompt.match(/note_read with (\w+)=(\[[^\]]+\])/)
+        if (!read) throw new Error("Execution prompt has no note_read call")
+        const tool = await NoteReadTool.init()
+        expect(tool.parameters.parse({ [read[1]]: JSON.parse(read[2]) }).noteIds).toEqual([loop.noteID])
+      } finally {
+        deliver.mockRestore()
+      }
+    }),
+)
+
 describe("blueprint loop context golden (audit variant)", () => {
   test("audit instruction names both verdict tools and the stop boundary", () =>
     runtime.run(() => {
@@ -41,7 +69,7 @@ describe("blueprint loop context golden (audit variant)", () => {
           "Description: N/A",
           "Status: running",
           "",
-          `You are auditing this BlueprintLoop. Read the Blueprint note with note_read ids=["nte_alpha"] and audit the start user instruction when present. Treat Change Scope, boundaries, and non-goals as requirements; adjacent work is not an acceptable superset.  Inspect the execution trajectory after the first successful blueprint_loop_stop and reject if execution called more tools, modified artifacts, assisted review, or began adjacent work after that boundary. If changes are required, call blueprint_loop_reject with sessionID "ses_exec" and structured reason, completed, remaining, and instructions fields. If and only if the outcome is complete, verified, in scope, and lifecycle-correct, call blueprint_loop_approve with sessionID "ses_exec" and a verdict summary.`,
+          `You are auditing this BlueprintLoop. Read the Blueprint note with note_read noteIds=["nte_alpha"] and audit the start user instruction when present. Treat Change Scope, boundaries, and non-goals as requirements; adjacent work is not an acceptable superset.  Inspect the execution trajectory after the first successful blueprint_loop_stop and reject if execution called more tools, modified artifacts, assisted review, or began adjacent work after that boundary. If changes are required, call blueprint_loop_reject with sessionID "ses_exec" and structured reason, completed, remaining, and instructions fields. If and only if the outcome is complete, verified, in scope, and lifecycle-correct, call blueprint_loop_approve with sessionID "ses_exec" and a verdict summary.`,
           "</blueprint-loop-context>",
         ].join("\n"),
       )
@@ -82,7 +110,7 @@ describe("blueprint loop context golden (execution variants)", () => {
           "Description: N/A",
           "Status: running",
           "",
-          `You are executing this coding BlueprintLoop. Before editing code, call note_read ids=["nte_alpha"] and read the full Blueprint content. Satisfy both the Blueprint note and any start user instruction before requesting audit.  Continue until the current Blueprint is fully implemented and verified. When ready for audit, call blueprint_loop_stop with a summary and concrete completion evidence. ${stopBoundary}`,
+          `You are executing this coding BlueprintLoop. Before editing code, call note_read noteIds=["nte_alpha"] and read the full Blueprint content. Satisfy both the Blueprint note and any start user instruction before requesting audit.  Continue until the current Blueprint is fully implemented and verified. When ready for audit, call blueprint_loop_stop with a summary and concrete completion evidence. ${stopBoundary}`,
           "</blueprint-loop-context>",
         ].join("\n"),
       )
@@ -106,7 +134,7 @@ describe("blueprint loop context golden (execution variants)", () => {
           "Description: N/A",
           "Status: running",
           "",
-          `You are executing this BlueprintLoop. Before carrying out the Blueprint, call note_read ids=["nte_alpha"] and read the full Blueprint content. Satisfy both the Blueprint note and any start user instruction before requesting audit.  Continue until the current Blueprint outcome is fully delivered. When ready for audit, call blueprint_loop_stop with a summary and concrete completion evidence. ${stopBoundary}`,
+          `You are executing this BlueprintLoop. Before carrying out the Blueprint, call note_read noteIds=["nte_alpha"] and read the full Blueprint content. Satisfy both the Blueprint note and any start user instruction before requesting audit.  Continue until the current Blueprint outcome is fully delivered. When ready for audit, call blueprint_loop_stop with a summary and concrete completion evidence. ${stopBoundary}`,
           "</blueprint-loop-context>",
         ].join("\n"),
       )

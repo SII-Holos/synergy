@@ -4,6 +4,8 @@ Email account configuration, credentials, service, tools and HTTP operations. Re
 
 Tools and routes share the same Email service. Keep account secret redaction and restoration in the owner configuration contribution.
 
+SMTP pools and idle timers belong to their Runtime. Component disposal calls `Email.close()`; repeated cleanup must be harmless and leave other Runtimes connected.
+
 Expose selection through `./component`; imports are inert. Keep factory requirements, published `synergy` metadata, worker roles and production dependencies aligned. Register owner schemas, events, tools and HTTP features before Runtime composition closes.
 
 Tests under `test/` select this owner and its real requirements. Run `bun run typecheck` and focused `bun test test/<file>.test.ts` with the package preload; then run the root dependency and installed-composition checks.

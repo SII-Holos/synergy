@@ -97,7 +97,7 @@ export namespace BlueprintLoopService {
         : ""
     if (isCodingBlueprintAgent(agentName)) {
       return `Execute the coding Blueprint "${loop.title}" (note ID: ${loop.noteID}, loop ID: ${loop.id}).
-First call note_read with ids=["${loop.noteID}"] and read the full Blueprint content.
+First call note_read with noteIds=["${loop.noteID}"] and read the full Blueprint content.
 Treat the Blueprint as the authoritative engineering contract for this run: requirements, non-goals, codebase entry points, migration or compatibility expectations, cleanup, and verification commands.
 ${latticeBoundary}
 ${OUTCOME_VERIFICATION_PROMPT}
@@ -107,7 +107,7 @@ When the Blueprint is complete and verified, call blueprint_loop_stop with a con
     }
 
     return `Execute the Blueprint "${loop.title}" (note ID: ${loop.noteID}, loop ID: ${loop.id}).
-First call note_read with ids=["${loop.noteID}"] and read the full Blueprint content.
+First call note_read with noteIds=["${loop.noteID}"] and read the full Blueprint content.
 Treat the Blueprint as the authoritative brief for this run: goal, deliverables, constraints, audience, chosen approach, quality criteria, and acceptance criteria.
 ${latticeBoundary}
 ${OUTCOME_VERIFICATION_PROMPT}

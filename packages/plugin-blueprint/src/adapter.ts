@@ -3,7 +3,7 @@ import { hash as sha256 } from "@ericsanchezok/synergy-util/encode"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
-import { NoteStore } from "@ericsanchezok/synergy-note"
+import { NoteMarkdown, NoteStore } from "@ericsanchezok/synergy-note"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
@@ -89,7 +89,7 @@ export interface BlueprintStartContext {
 
 function firstPromptText(title: string, noteID: string, loopID: string): string {
   return `Execute the Blueprint "${title}" (note ID: ${noteID}, loop ID: ${loopID}).
-First call note_read with ids=["${noteID}"] and read the full Blueprint content.
+First call note_read with noteIds=["${noteID}"] and read the full Blueprint content.
 Treat the Blueprint as the authoritative engineering contract for this run: requirements, non-goals, deliverables, constraints, quality criteria, and acceptance criteria.
 Continue until every Blueprint requirement is implemented, verified, and integrated.
 When the Blueprint is complete and verified, call blueprint_loop_stop with a concise summary, completed requirements, concrete evidence, and any known limitations to request independent review.`
@@ -101,8 +101,8 @@ When the Blueprint is complete and verified, call blueprint_loop_stop with a con
  * Validates all inputs, hashes markdown, creates a Blueprint Note, a dedicated
  * hidden execution Session via Session.create (no execution yet), a Store record,
  * binds, marks running, and THEN launches Cortex with the pre-created sessionID
- * delivering exactly ONE formatted execution prompt. Raw markdown stays in the
- * frozen Note only.
+ * delivering exactly ONE formatted execution prompt. The source content stays in
+ * the frozen Note only.
  *
  * On failure at any stage, all previously created resources are rolled back
  * (archived/cancelled).
@@ -184,10 +184,10 @@ export async function startBlueprint(input: {
   }
 
   try {
-    // Step 1: Create a project-scoped Blueprint Note (frozen, raw markdown only)
+    // Step 1: Create a project-scoped Blueprint Note from the verified source Markdown
     const note = await NoteStore.create({
       title,
-      content: { format: "markdown", text: markdown },
+      content: NoteMarkdown.fromMarkdown(markdown),
       kind: "blueprint",
       blueprint: { description },
     })
@@ -248,7 +248,7 @@ export async function startBlueprint(input: {
     })
 
     // Step 5: Launch Cortex with the pre-created session, delivering exactly ONE formatted prompt.
-    // Raw markdown stays in the Note; the Cortex prompt is the execution instruction.
+    // Blueprint content stays in the Note; the Cortex prompt is the execution instruction.
     const ft = firstPromptText(title, noteID, loop.id)
     const task = await Cortex.launch({
       description: `[Blueprint] ${title.slice(0, 80)}`,

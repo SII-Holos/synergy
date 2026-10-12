@@ -27,6 +27,8 @@ test(
             path.join(import.meta.dir, "fixture/bundled-workflow.ts"),
             "--target=bun",
             "--compile",
+            // The OSS SDK's optional proxy transport is not exercised by this workflow fixture.
+            "--external=proxy-agent",
             "--outfile",
             output,
           ],

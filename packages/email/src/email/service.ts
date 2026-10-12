@@ -73,6 +73,10 @@ export namespace Email {
     instanceState.transportKey = undefined
   }
 
+  export function close() {
+    closePool()
+  }
+
   async function resolveConfig(): Promise<ResolvedConfig> {
     const config = await Config.current()
     const email = config.email
