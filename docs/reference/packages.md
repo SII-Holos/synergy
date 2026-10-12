@@ -38,7 +38,9 @@ Plugin Host owns plugin execution and installation. Plugin Kit is an explicit au
 | `boss-feishu`                                                | Boss account routing, explicit replies and Feishu guidance                  |
 | `channel-blueprint`, `channel-light-loop`, `channel-lattice` | Explicit Channel command adapters requiring Channels and the named workflow |
 
-`workflowComponents()` and `connectionComponents()` are source assembly arrays. The `workflows` and `connections` installation names remain presets for the six and seven leaf capabilities respectively. They do not infer integrations from installed packages. Full composition explicitly selects all named bridges. The pure `src/compat/` exports preserve moved import paths without registration side effects; the cross-domain Boss delivery builder now lives at `@ericsanchezok/synergy-boss-feishu/prompt`.
+`workflowComponents()` and `connectionComponents()` are source assembly arrays. The `workflows` and `connections` installation names remain presets for the six and seven leaf capabilities respectively. They do not infer integrations from installed packages. Full composition explicitly selects all named bridges. The cross-domain Boss delivery builder lives at `@ericsanchezok/synergy-boss-feishu/prompt`.
+
+Moved subpaths backed by `workflows/src/compat/` and `connections/src/compat/`, including their configuration re-exports, are deprecated for the remainder of the 1.x series and scheduled for removal in 2.0.0. They only re-export the owning leaf without registration side effects. Consumers migrate to that leaf's public package export; new first-party imports use the leaf directly. The `workflows` and `connections` installation preset names remain supported independently of this import-path sunset.
 
 Worker entries register the same selected owner and integrations as the foreground Runtime. Package metadata, source requirements and the release catalog share the same dependency closure. Legacy installation selections are upgraded once to explicit leaves and bridges, preserving previously active capabilities; a new minimal selection uses only its declared requirements.
 
