@@ -1,23 +1,22 @@
 import { executionDetailAvailable } from "@/components/session/execution-detail-model"
 import { runtimeFeatureAvailable } from "@/components/runtime-features"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useViewActivity } from "@/context/view-residency"
+import { useWorkbenchPanelRegistry } from "./registry"
 import { createWorkbenchClosePolicy } from "./close-policy"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { useLocale } from "@/context/locale"
 import { createWorkspaceRevealPolicy } from "./reveal-policy"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { batch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { batch, createEffect, createMemo, createSignal, onCleanup, untrack } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 import type { JSX } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useLayout } from "../layout"
 import {
-  getWorkbenchPanel,
-  listWorkbenchPanels,
-  subscribeWorkbenchPanels,
   type WorkbenchPanelEntry,
   type WorkbenchPanelSurface,
   type WorkbenchPanelTab,
@@ -53,8 +52,30 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
   name: "WorkbenchPanels",
   gate: false,
   init: () => {
+    const registry = useWorkbenchPanelRegistry()
+    const listWorkbenchPanels = registry.list,
+      subscribeWorkbenchPanels = registry.subscribe
     const layout = useLayout()
     const { capabilities } = useGlobalSDK()
+    const active = useViewActivity()
+    const retainedPanels = new Map<
+      string,
+      { selection: NonNullable<ReturnType<typeof capabilities.current>>; entry: WorkbenchPanelEntry }
+    >()
+    onCleanup(() => retainedPanels.clear())
+    const pluginPanel = (entry: WorkbenchPanelEntry) => !!entry.pluginId && entry.pluginId !== "builtin"
+    function getWorkbenchPanel(id: string) {
+      const entry = registry.get(id)
+      const selection = capabilities.current()
+      if (!active()) {
+        const retained = retainedPanels.get(id)
+        if (retained && retained.selection === selection && capabilities.has("plugin-host")) return retained.entry
+        return entry && !pluginPanel(entry) ? entry : undefined
+      }
+      if (entry && pluginPanel(entry) && entry.retention === "pause" && selection && capabilities.has("plugin-host"))
+        retainedPanels.set(id, { selection, entry })
+      return entry
+    }
     const params = useParams()
     const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
     const hasSession = createMemo(() => !!params.id)
@@ -244,6 +265,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         return listWorkbenchPanels(surfaceName).filter(
           (entry) =>
             isWorkbenchPanelAvailable(entry, hasSession()) &&
+            (!pluginPanel(entry) || capabilities.has("plugin-host")) &&
             runtimeFeatureAvailable("panel", entry.id, capabilities.has),
         )
       })
@@ -281,6 +303,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       registryVersion()
       const entry = getWorkbenchPanel(panelId)
       if (!entry || !runtimeFeatureAvailable("panel", panelId, capabilities.has)) return undefined
+      if (pluginPanel(entry) && !capabilities.has("plugin-host")) return undefined
       if (!isWorkbenchPanelAvailable(entry, hasSession())) return undefined
       return entry
     }
@@ -624,17 +647,19 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     }
 
     function updateTab(tabId: string, patch: Omit<WorkbenchPanelTabInit, "id">) {
-      for (const surfaceName of ["side", "bottom"] as const) {
-        const target = surface(surfaceName)
-        const tabs = target.tabs()
-        const next = updateWorkbenchPanelTab(tabs, tabId, patch)
-        if (next === tabs) continue
-        const previous = tabs.find((tab) => tab.id === tabId)
-        if (previous && !sameWorkbenchResource(previous, previous.panelId, { ...previous, ...patch }))
-          changeSelection(sessionKey(), surfaceName)
-        target.setTabs(next)
-        return
-      }
+      untrack(() => {
+        for (const surfaceName of ["side", "bottom"] as const) {
+          const target = surface(surfaceName)
+          const tabs = target.tabs()
+          const next = updateWorkbenchPanelTab(tabs, tabId, patch)
+          if (next === tabs) continue
+          const previous = tabs.find((tab) => tab.id === tabId)
+          if (previous && !sameWorkbenchResource(previous, previous.panelId, { ...previous, ...patch }))
+            changeSelection(sessionKey(), surfaceName)
+          target.setTabs(next)
+          return
+        }
+      })
     }
 
     function moveTab(surfaceName: WorkbenchPanelSurface, tabId: string, index: number) {

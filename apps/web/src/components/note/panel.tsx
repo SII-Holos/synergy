@@ -1,3 +1,4 @@
+import { useViewActivity } from "@/context/view-residency"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { resourceMenuKeyDown } from "../workspace/resource-menu"
@@ -14,7 +15,7 @@ import {
   onMount,
   untrack,
 } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import type { Editor } from "@tiptap/core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -689,8 +690,10 @@ function ScopeSection(props: {
 const NOTES_LIST_RESOURCE = "notes:list"
 
 export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
+  const active = useViewActivity()
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const reconnect = createMemo((version: number) => (active() ? globalSync.reconnectVersion() : version), 0)
   const params = useParams()
   const directory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
   const lingui = useLingui()
@@ -732,7 +735,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   })
 
   const [rawGroups, { refetch, mutate: mutateRawGroups }] = createResource(
-    () => ({ dir: directory(), reconnect: globalSync.reconnectVersion(), showArchived: showArchived() }),
+    () => ({ dir: directory(), reconnect: reconnect(), showArchived: showArchived() }),
     async ({ dir, showArchived }) => {
       if (!dir) return []
       if (showArchived) {
@@ -770,7 +773,8 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   const loopResource = createBlueprintLoopsResource({
     scopeID: currentScopeID,
     capabilities: sdk.capabilities.current,
-    reconnect: globalSync.reconnectVersion,
+    active,
+    reconnect,
     async list(scopeID, signal) {
       const result = await sdk.client.blueprint.loop.list({ scopeID }, { signal })
       return result.data ?? []
@@ -1564,6 +1568,7 @@ function NoteEditor(props: {
   onDelete: () => void
   tab?: WorkbenchPanelTab
 }) {
+  const active = useViewActivity()
   const noteID = props.id
   const scopeID = props.directory
   const tab = props.tab ? { ...props.tab } : undefined
@@ -1571,6 +1576,7 @@ function NoteEditor(props: {
   const client = sdk.client
   const serverURL = sdk.url
   const globalSync = useGlobalSync()
+  const reconnect = createMemo((version: number) => (active() ? globalSync.reconnectVersion() : version), 0)
   const sync = useSync()
   const data = useData()
   const platform = usePlatform()
@@ -1581,7 +1587,7 @@ function NoteEditor(props: {
   const lingui = useLingui()
 
   const [note, { refetch }] = createResource(
-    () => ({ id: noteID, dir: directory(), reconnect: globalSync.reconnectVersion() }),
+    () => ({ id: noteID, dir: directory(), reconnect: reconnect() }),
     async ({ id, dir }) => {
       if (!dir) return null
       const result = await client.note.get({ id, scopeID: dir })
@@ -1678,6 +1684,7 @@ function NoteEditor(props: {
     if (note.error && isNoteNotFoundError(note.error)) doc.markDeleted()
   })
   createEffect(() => {
+    if (!active()) return
     const instance = editor()
     const content = doc.content()
     if (!instance || instance.isDestroyed || !shouldReplaceEditorContent(instance.getJSON(), content)) return

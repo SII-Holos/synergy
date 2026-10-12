@@ -1,3 +1,12 @@
+import { ProjectionPatch } from "@ericsanchezok/synergy-util/projection-patch"
+import { projectionContent } from "./projection-content"
+import {
+  createViewProjection,
+  ViewInterests,
+  projectViewReplay,
+  type ViewEvent,
+  type ViewProjectionContribution as ProjectionContribution,
+} from "./view-projection"
 import { SessionLocationError } from "@ericsanchezok/synergy-local-runtime/session-api"
 import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
@@ -450,6 +459,23 @@ export namespace Server {
   }
 
   export const Event = {
+    Cursor: BusEvent.define(
+      "server.cursor",
+      z.object({ epoch: z.string(), fromSeq: z.number().int().nonnegative(), toSeq: z.number().int().nonnegative() }),
+    ),
+    ProjectionReset: BusEvent.define("server.projection.reset", z.object({ eventType: z.string() })),
+    ViewPatch: BusEvent.define(
+      "server.view.patch",
+      z.object({
+        kind: z.string(),
+        sessionID: z.string(),
+        generation: z.number().int().nonnegative(),
+        revision: z.number().int().nonnegative(),
+        previousRevision: z.number().int().nonnegative(),
+        patches: ProjectionPatch.array(),
+        snapshot: z.string().optional(),
+      }),
+    ),
     Connected: BusEvent.define("server.connected", z.object({})),
     Disposed: BusEvent.define("global.disposed", z.object({})),
   }
@@ -464,8 +490,10 @@ export namespace Server {
     | "scoped-after-assets"
     | "scoped-integrations"
 
+  export type ViewProjectionContribution = ProjectionContribution
   export interface Contributions {
     features?: readonly string[]
+    projections?: ViewProjectionContribution[]
     routes?: Partial<Record<RouteStage, Hono>>
     providerRoutes?: Hono
     bootstrap?: BootstrapContributions
@@ -508,6 +536,7 @@ export namespace Server {
     if (applications.length > 1) throw new Error("Multiple application asset owners")
     instanceState.contributions = {
       routes,
+      projections: contributions.flatMap((contribution) => contribution.projections ?? []),
       bootstrap,
       providerRoutes,
       scopeConflictSchema: conflicts.length > 1 ? z.union(conflicts) : conflicts[0],
@@ -836,6 +865,9 @@ export namespace Server {
                         hostVersion: z.string(),
                         components: z.array(RuntimeComponents.Info),
                         features: z.array(z.string()),
+                        transports: z
+                          .object({ displayManifest: z.literal(1), projection: z.literal("projection-v2").optional() })
+                          .optional(),
                       })
                       .meta({ ref: "RuntimeCapabilities" }),
                   ),
@@ -852,6 +884,7 @@ export namespace Server {
             hostVersion: Installation.VERSION,
             components: RuntimeComponents.selected(),
             features: features(),
+            transports: { displayManifest: 1 as const, projection: "projection-v2" as const },
           })
         },
       )
@@ -1024,20 +1057,25 @@ export namespace Server {
           // on the wrapper leak across reconnects (#551). The registry also
           // applies send backpressure limits so a slow UI cannot hard-stall the
           // event loop (#524).
-          const globalEventClients = GlobalEventClients.createRegistry()
+          const globalEventClients = GlobalEventClients.createRegistry({
+            onRemove(key) {
+              for (const release of legacy.get(key) ?? []) release()
+              legacy.delete(key)
+              views.get(key)?.dispose()
+              views.delete(key)
+              projections.get(key)?.dispose()
+              projections.delete(key)
+            },
+          })
           // One encoder shared by all delta clients on this route: they receive
           // identical frames, so the checkpoint throttle is shared correctly.
           const wire = EventWire.createEncoder()
           const projections = new Map<unknown, ReturnType<typeof createEventProjection>>()
-          const broadcastHandler = (event: any) => {
-            const summary =
-              event.payload?.type === "message.part.updated"
-                ? MessageV2.summarizePart(event.payload.properties.part)
-                : undefined
-            const header =
-              event.payload?.type === "message.updated"
-                ? SessionHistory.summarizeMessage(event.payload.properties.info)
-                : undefined
+          const legacy = new Map<unknown, Array<() => void>>()
+          const views = new Map<unknown, ReturnType<typeof createViewProjection>>()
+          const broadcastHandler = (event: ViewEvent) => {
+            let summary: MessageV2.PartSummary | undefined
+            let header: ReturnType<typeof SessionHistory.summarizeMessage> | undefined
             const result = globalEventClients.broadcast(
               (mode) => {
                 if (mode === "full") return JSON.stringify(event)
@@ -1047,7 +1085,15 @@ export namespace Server {
                   : JSON.stringify({ scopeID: event.scopeID, payload: dp })
               },
               (client) => {
+                if (client.mode === "projection-v2") {
+                  const frame = views.get(GlobalEventClients.connectionKey(client.ws))?.project(event)
+                  return frame ? JSON.stringify(frame) : null
+                }
                 if (client.mode !== "projection") return
+                if (event.payload.type === "message.part.updated")
+                  summary ??= MessageV2.summarizePart(event.payload.properties.part as MessageV2.Part)
+                if (event.payload.type === "message.updated")
+                  header ??= SessionHistory.summarizeMessage(event.payload.properties.info as MessageV2.Info)
                 if (summary)
                   return JSON.stringify(
                     projections.get(GlobalEventClients.connectionKey(client.ws))!.project(event, summary),
@@ -1068,8 +1114,18 @@ export namespace Server {
                 projection.dispose()
                 projections.delete(key)
               }
+            for (const [key, view] of views)
+              if (!live.has(key)) {
+                view.dispose()
+                views.delete(key)
+              }
+            for (const [key, releases] of legacy)
+              if (!live.has(key)) {
+                for (const release of releases) release()
+                legacy.delete(key)
+              }
             const payload = event?.payload
-            const part = payload?.properties?.part
+            const part = payload?.properties?.part as MessageV2.Part | undefined
             if (result.dropped > 0 && payload?.type === "message.part.updated" && part?.type === "tool") {
               log.warn("global event ws tool part send failed", {
                 sessionID: part.sessionID,
@@ -1089,6 +1145,10 @@ export namespace Server {
             GlobalBus().off("event", broadcastHandler)
             for (const projection of projections.values()) projection.dispose()
             projections.clear()
+            for (const view of views.values()) view.dispose()
+            views.clear()
+            for (const releases of legacy.values()) for (const release of releases) release()
+            legacy.clear()
           }
           const heartbeatData = JSON.stringify({
             scopeID: null,
@@ -1118,11 +1178,35 @@ export namespace Server {
             }
             const streamMode = c.req.query("stream")
             const mode: GlobalEventClients.Mode =
-              streamMode === "projection" ? "projection" : streamMode === "delta" ? "delta" : "full"
+              streamMode === "projection-v2"
+                ? "projection-v2"
+                : streamMode === "projection"
+                  ? "projection"
+                  : streamMode === "delta"
+                    ? "delta"
+                    : "full"
             return {
               onOpen(_event, ws) {
                 log.info("global event ws connected", { mode })
                 globalEventClients.add(ws, mode)
+                if (mode !== "projection-v2")
+                  legacy.set(
+                    GlobalEventClients.connectionKey(ws),
+                    instanceState.contributions?.projections?.flatMap((contribution) =>
+                      contribution.legacy ? [contribution.legacy()] : [],
+                    ) ?? [],
+                  )
+                if (mode === "projection-v2")
+                  views.set(
+                    GlobalEventClients.connectionKey(ws),
+                    createViewProjection(
+                      (frame) => {
+                        globalEventClients.reply(ws, JSON.stringify(frame))
+                      },
+                      instanceState.contributions?.projections,
+                      projectionContent(),
+                    ),
+                  )
                 if (mode === "projection")
                   projections.set(
                     GlobalEventClients.connectionKey(ws),
@@ -1142,12 +1226,20 @@ export namespace Server {
                 )
               },
               onClose(_event, ws) {
+                for (const release of legacy.get(GlobalEventClients.connectionKey(ws)) ?? []) release()
+                legacy.delete(GlobalEventClients.connectionKey(ws))
+                views.get(GlobalEventClients.connectionKey(ws))?.dispose()
+                views.delete(GlobalEventClients.connectionKey(ws))
                 projections.get(GlobalEventClients.connectionKey(ws))?.dispose()
                 projections.delete(GlobalEventClients.connectionKey(ws))
                 globalEventClients.remove(ws)
                 log.info("global event ws disconnected")
               },
               onError(_event, ws) {
+                for (const release of legacy.get(GlobalEventClients.connectionKey(ws)) ?? []) release()
+                legacy.delete(GlobalEventClients.connectionKey(ws))
+                views.get(GlobalEventClients.connectionKey(ws))?.dispose()
+                views.delete(GlobalEventClients.connectionKey(ws))
                 projections.get(GlobalEventClients.connectionKey(ws))?.dispose()
                 projections.delete(GlobalEventClients.connectionKey(ws))
                 globalEventClients.remove(ws)
@@ -1156,10 +1248,15 @@ export namespace Server {
                 try {
                   if (typeof _event.data !== "string") return
                   const data = JSON.parse(_event.data)
-                  if (data?.payload?.type === "client.content.interests" && mode === "projection") {
-                    const interests = ContentInterests.parse(data.payload.properties)
-                    const projection = projections.get(GlobalEventClients.connectionKey(ws))
-                    void projection?.interests(interests, async (interest) => {
+                  if (
+                    (data?.payload?.type === "client.content.interests" && mode === "projection") ||
+                    (data?.payload?.type === "client.view.interests" && mode === "projection-v2")
+                  ) {
+                    const interests =
+                      mode === "projection-v2"
+                        ? ViewInterests.parse(data.payload.properties)
+                        : ContentInterests.parse(data.payload.properties)
+                    const read = async (interest: z.infer<typeof ContentInterests>["parts"][number]) => {
                       const session = await SessionManager.requireSession(interest.sessionID)
                       if (session.scope.id !== interest.scopeID)
                         throw new Error("Content interest belongs to another Scope")
@@ -1179,7 +1276,13 @@ export namespace Server {
                           return { part: result.part, epoch, seq }
                         },
                       })
-                    })
+                    }
+                    if (mode === "projection-v2")
+                      void views
+                        .get(GlobalEventClients.connectionKey(ws))
+                        ?.interests(ViewInterests.parse(interests), read)
+                        .catch((error) => log.warn("view interests failed", { error }))
+                    else void projections.get(GlobalEventClients.connectionKey(ws))?.interests(interests, read)
                     return
                   }
                   if (data?.payload?.type === "client.ping") {
@@ -1710,7 +1813,7 @@ export namespace Server {
             epoch: z.string().optional(),
             directory: z.string().optional(),
             scopeID: z.string().optional(),
-            mode: z.enum(["full", "projection"]).optional(),
+            mode: z.enum(["full", "projection", "projection-v2"]).optional(),
           }),
         ),
         async (c) => {
@@ -1723,12 +1826,20 @@ export namespace Server {
           }
           const replay = Bus.replay(since)
           return c.json(
-            mode === "projection" && replay.status === "ok"
+            mode === "projection-v2" && replay.status === "ok"
               ? {
                   ...replay,
-                  events: replay.events.map((event) => projectReplayEvent(event, SessionHistory.summarizeMessage)),
+                  events: projectViewReplay(
+                    replay.events as ViewEvent["payload"][],
+                    instanceState.contributions?.projections,
+                  ),
                 }
-              : replay,
+              : mode === "projection" && replay.status === "ok"
+                ? {
+                    ...replay,
+                    events: replay.events.map((event) => projectReplayEvent(event, SessionHistory.summarizeMessage)),
+                  }
+                : replay,
           )
         },
       )

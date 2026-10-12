@@ -13,7 +13,7 @@ import {
   Match,
   Switch,
 } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
 import type { ToolPart } from "@ericsanchezok/synergy-sdk/client"
@@ -41,6 +41,7 @@ import { ExecutionDetailLayout } from "./execution-detail-layout"
 import { ExecutionReport, ExecutionTrajectory, ExecutionOriginal } from "./execution-report"
 import { toolTaskOutput } from "./process-task-output"
 import { requestErrorMessage } from "@/utils/error"
+import { useViewActivity } from "@/context/view-residency"
 
 const statuses: Record<ToolPart["state"]["status"], MessageDescriptor> = {
   pending: { id: "session.execution.pending", message: "Pending" },
@@ -72,6 +73,7 @@ export function ExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProp
 function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) {
   const { capabilities } = useGlobalSDK()
   const workbench = useWorkbenchPanels()
+  const active = useViewActivity()
   const sdk = useSDK()
   const params = useParams()
   const data = useSessionDataView()
@@ -96,23 +98,33 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
       : undefined
   })
   const [processRevision, setProcessRevision] = createSignal(0)
-  onCleanup(
-    sdk.event.on("session.tool.activity", (event) => {
-      const target = selected()
-      if (
-        target?.sessionID === event.properties.sessionID &&
-        target.messageID === event.properties.messageID &&
-        (target.callID ?? live()?.callID) === event.properties.callID
-      )
-        setProcessRevision(event.properties.revision)
-    }),
-  )
+  createEffect(() => {
+    if (
+      !active() ||
+      !capabilities.current() ||
+      !executionDetailAvailable(state(), capabilities.has) ||
+      (live() && !toolFeatureAvailable(live()!, capabilities.has))
+    )
+      return
+    onCleanup(
+      sdk.event.on("session.tool.activity", (event) => {
+        const target = selected()
+        if (
+          target?.sessionID === event.properties.sessionID &&
+          target.messageID === event.properties.messageID &&
+          (target.callID ?? live()?.callID) === event.properties.callID
+        )
+          setProcessRevision(event.properties.revision)
+      }),
+    )
+  })
   let output: HTMLElement | undefined
   let following = true
   let frame: number | undefined
   let controller: AbortController | undefined
   const request = createMemo(
     () => {
+      if (!active()) return undefined
       const target = selected()
       const current = state()
       const selection = capabilities.current()
@@ -295,6 +307,7 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
     }),
   )
   createEffect(() => {
+    if (!active()) return
     const current = part()
     const content = current?.state.status === "running" ? current.state.metadata?.output : captured()?.text
     void content

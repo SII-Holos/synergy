@@ -6,7 +6,9 @@ import {
   Suspense,
   createEffect,
   createMemo,
+  createRenderEffect,
   createSignal,
+  untrack,
   on,
   onCleanup,
   onMount,
@@ -57,18 +59,28 @@ import {
 } from "@thisbeyond/solid-dnd"
 import { ConstrainDragYAxis } from "@/utils/solid-dnd"
 import { createWorkbenchPanelLoader } from "./workbench-panel-loader"
+import { WorkbenchSurfaceOverlay } from "./workbench-surface-overlay"
 import { Dynamic } from "solid-js/web"
+import {
+  createResidencyBudget,
+  pauseHiddenScroll,
+  useViewActivity,
+  useViewResidency,
+  ViewActivityProvider,
+} from "@/context/view-residency"
 
 function WorkbenchPanelContent(props: {
   entry: WorkbenchPanelEntry
   tab: WorkbenchPanelTab
   onRequestClose: () => void
+  active: () => boolean
 }) {
   const workbench = useWorkbenchPanels()
   const opening = () => workbench.openingForTab(props.tab.id)
   const panel = createWorkbenchPanelLoader<Component<WorkbenchPanelContentProps>>(
     props.entry.loader,
     props.entry.component ?? null,
+    props.entry.moduleKey,
   )
 
   onMount(() => {
@@ -154,6 +166,7 @@ function WorkbenchPanelContent(props: {
                     panelId={props.entry.id}
                     tab={props.tab}
                     onRequestClose={props.onRequestClose}
+                    active={props.active}
                   />
                 )
               })()}
@@ -378,6 +391,8 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
   const lingui = useLingui()
   const dialog = useDialog()
   const workbench = useWorkbenchPanels()
+  const viewActive = useViewActivity()
+  const residency = useViewResidency()?.panels ?? createResidencyBudget(8)
   const layout = useLayout()
   const [local, setLocal] = createStore({
     addOpen: false,
@@ -397,14 +412,22 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
     return { tab, entry }
   })
   const panelMountKey = createMemo(() => {
-    const panel = activePanel()
-    return panel ? workbenchPanelMountKey(panel.tab) : undefined
+    const tab = activeTab()
+    return tab ? workbenchPanelMountKey(tab) : undefined
   })
   const addablePanels = createMemo(() => workbenchAddablePanels(workbench.panels(props.surface), state().tabs()))
   const showTabActions = createMemo(() => {
     const tabs = state().tabs()
     return tabs.length > 1 && activeTab() !== undefined && local.overflow
   })
+  const overlayOpen = createMemo(
+    () =>
+      (addablePanels().length > 0 && local.addOpen) ||
+      (showTabActions() && local.actionsOpen) ||
+      state()
+        .tabs()
+        .some((tab) => tab.id === local.menuTabId),
+  )
 
   const closeOtherTabs = () => {
     setLocal("actionsOpen", false)
@@ -428,17 +451,77 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
     measureOverflow()
     onCleanup(() => observer.disconnect())
   })
-  const visited = new Set<string>()
-  const [visitedVersion, setVisitedVersion] = createSignal(0)
-  createEffect(() => {
-    const id = panelMountKey()
-    if (state().opened() && id && !visited.has(id)) {
-      visited.add(id)
-      setVisitedVersion((value) => value + 1)
-    }
+  type Resident = {
+    key: string
+    entry: WorkbenchPanelEntry
+    tab: () => WorkbenchPanelTab
+    active: () => boolean
+    release: () => void
+  }
+  const residents = new Map<string, Resident>()
+  const [residentPanels, setResidentPanels] = createSignal<Resident[]>([])
+  const retire = (key: string) => {
+    const resident = residents.get(key)
+    if (!resident) return
+    resident.release()
+    residents.delete(key)
+    setResidentPanels([...residents.values()])
+  }
+  createRenderEffect(() => {
+    const bound = state()
+    const tabs = bound.tabs()
+    const key = panelMountKey()
+    const panel = activePanel()
+    const opened = bound.opened() && viewActive()
+    untrack(() => {
+      for (const [id, resident] of residents) {
+        const entry = resident.entry
+        const current = workbench.panelForTab(resident.tab())
+        const retain = !entry.pluginId || entry.pluginId === "builtin" || entry.retention === "pause"
+        const replaced =
+          entry.pluginId &&
+          entry.pluginId !== "builtin" &&
+          viewActive() &&
+          current &&
+          (entry.generation ? current.generation !== entry.generation : current.moduleKey !== entry.moduleKey)
+        if (!tabs.some((tab) => workbenchPanelMountKey(tab) === id) || (id !== key && !retain) || replaced) retire(id)
+        else residency.active(resident, id === key && opened)
+      }
+      if (!key || !panel || !opened || residents.has(key)) return
+      const captured = panel.tab
+      const resident: Resident = {
+        key,
+        entry: panel.entry,
+        tab: () => bound.tabs().find((tab) => workbenchPanelMountKey(tab) === key) ?? captured,
+        active: () => {
+          const current = workbench.panelForTab(resident.tab())
+          return (
+            viewActive() &&
+            bound.opened() &&
+            panelMountKey() === key &&
+            !!current &&
+            (!resident.entry.generation || current.generation === resident.entry.generation)
+          )
+        },
+        release: () => {},
+      }
+      residents.set(key, resident)
+      resident.release = residency.retain(resident, () => retire(key))
+      setResidentPanels([...residents.values()])
+    })
+  })
+  onCleanup(() => {
+    for (const resident of residents.values()) resident.release()
+    residents.clear()
   })
   createEffect(() => {
-    if (!state().opened() || activePanel() || !workbench.getPanel("resource-home")) return
+    if (
+      !state().opened() ||
+      activePanel() ||
+      residentPanels().some((panel) => panel.key === panelMountKey()) ||
+      !workbench.getPanel("resource-home")
+    )
+      return
     void workbench.openPanel(workbench.getPanel("browser") ? "browser" : "resource-home", { intent: "restore" })
   })
   createEffect(
@@ -862,26 +945,39 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
           </div>
         </Show>
         <div class="workbench-surface-body">
-          <Show
-            when={
-              (visitedVersion(),
-              panelMountKey() && (state().opened() || visited.has(panelMountKey()!)) ? panelMountKey() : undefined)
-            }
-            keyed
-            fallback={<Launcher surface={props.surface} panels={addablePanels()} onOpen={openPanel} />}
-          >
-            {(_tabId) => (
-              <WorkbenchPanelContent
-                entry={activePanel()!.entry}
-                tab={activePanel()!.tab}
-                onRequestClose={() => {
-                  const tab = activeTab()
-                  if (!tab) return
-                  void workbench.closeTab(tab.id)
-                }}
-              />
-            )}
-          </Show>
+          <WorkbenchSurfaceOverlay.Provider value={overlayOpen}>
+            <Show when={!activePanel() && !residentPanels().some((panel) => panel.key === panelMountKey())}>
+              <Launcher surface={props.surface} panels={addablePanels()} onOpen={openPanel} />
+            </Show>
+            <For each={residentPanels()}>
+              {(resident) => (
+                <div
+                  ref={(element) => pauseHiddenScroll(element, resident.active)}
+                  data-resident-panel={resident.key}
+                  hidden={panelMountKey() !== resident.key}
+                  inert={!resident.active()}
+                  aria-hidden={!resident.active()}
+                  style={{
+                    height: "100%",
+                    "min-height": "0",
+                    display: panelMountKey() === resident.key ? "flex" : "none",
+                    "flex-direction": "column",
+                  }}
+                >
+                  <ViewActivityProvider active={resident.active}>
+                    <WorkbenchPanelContent
+                      entry={resident.entry}
+                      tab={resident.tab()}
+                      active={resident.active}
+                      onRequestClose={() => {
+                        if (resident.active()) void workbench.closeTab(resident.tab().id)
+                      }}
+                    />
+                  </ViewActivityProvider>
+                </div>
+              )}
+            </For>
+          </WorkbenchSurfaceOverlay.Provider>
         </div>
       </aside>
     </div>

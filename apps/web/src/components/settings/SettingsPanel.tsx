@@ -1710,7 +1710,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
               <button
                 ref={mobileBackButton}
                 type="button"
-                class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus-base"
+                class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base"
                 aria-label={_(copy.backLabel)}
                 onClick={showMobileSectionList}
               >

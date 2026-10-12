@@ -1,6 +1,6 @@
 import { useGlobalSDK } from "@/context/global-sdk"
 import { createMemo, Show, type ParentProps } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"

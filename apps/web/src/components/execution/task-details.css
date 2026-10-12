@@ -51,19 +51,6 @@
   flex: 0 0 auto;
   color: var(--icon-weak-base);
 }
-.execution-path-tooltip {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.execution-popover [data-component="tooltip"] {
-  max-width: min(320px, calc(100vw - 24px));
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.execution-compact-identity > [data-component="tooltip-trigger"] {
-  flex: 1;
-  min-width: 0;
-}
 .execution-popover .execution-icon-action {
   display: inline-flex;
   align-items: center;
@@ -76,10 +63,24 @@
   padding: 0;
   background: transparent;
   color: var(--icon-weak-base);
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
 }
-.execution-popover .execution-icon-action:hover {
-  background: var(--surface-raised-base-hover);
+.execution-popover .execution-icon-action:is(:hover, :focus-visible):not(:disabled) {
+  background: var(--surface-inset-strong);
   color: var(--icon-strong-base);
+}
+.execution-popover .execution-icon-action:active:not(:disabled) {
+  background: var(--surface-inset-strong-hover);
+}
+.execution-popover .execution-icon-action:disabled {
+  opacity: 0.5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .execution-popover .execution-icon-action {
+    transition: none;
+  }
 }
 .execution-identity-action {
   opacity: 0;
@@ -193,7 +194,7 @@
 .execution-compact-row[data-open="true"] {
   background: var(--surface-raised-base-hover);
 }
-.execution-compact-row > :is([data-component="tooltip-trigger"], [data-slot="popover-trigger"]) {
+.execution-compact-row > [data-slot="popover-trigger"] {
   flex: 1;
   min-width: 0;
 }
@@ -323,7 +324,6 @@
 }
 @media (pointer: coarse) {
   .execution-popover .execution-icon-action,
-  .execution-popover .session-inbox-detail-actions .execution-icon-action,
   .execution-popover [data-slot="popover-close-button"] {
     flex-basis: 44px;
     width: 44px;

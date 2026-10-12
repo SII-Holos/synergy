@@ -15,6 +15,10 @@ export type RuntimeCapabilities = {
   hostVersion: string
   components: Array<RuntimeComponentInfo>
   features: Array<string>
+  transports?: {
+    displayManifest: 1
+    projection?: "projection-v2"
+  }
 }
 
 export type GlobalPaths = {
@@ -10786,6 +10790,24 @@ export type SessionPartPage = {
   previousCursor: string | null
   hasMore: boolean
   hasEarlier: boolean
+  generation?: number
+}
+
+export type SessionDisplayManifest = {
+  messages: Array<{
+    messageID: string
+    status: "unchanged" | "changed" | "deleted" | "recovery"
+    version?: string
+    generation?: number
+  }>
+}
+
+export type SessionDisplayManifestInput = {
+  messages: Array<{
+    messageID: string
+    version?: string
+    generation?: number
+  }>
 }
 
 export type SessionPartPages = {
@@ -13916,14 +13938,65 @@ export type EventMessagePartSummary = {
     subscription?: number
     checkpointEpoch?: string
     checkpointSeq?: number
+    stream?: {
+      id: string
+      revision: number
+      offset: number
+    }
     content?:
       | {
           kind: "checkpoint"
           part: Part
         }
       | {
+          kind: "reference"
+          checkpoint: string
+        }
+      | {
+          kind: "anchor"
+          streamID: string
+          revision: number
+          offset: number
+          part:
+            | {
+                id: string
+                sessionID: string
+                messageID: string
+                type: "text"
+                synthetic?: boolean
+                origin?: "user" | "system"
+                time?: {
+                  start: number
+                  end?: number
+                }
+                metadata?: {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                id: string
+                sessionID: string
+                messageID: string
+                type: "reasoning"
+                metadata?: {
+                  [key: string]: unknown
+                }
+                time: {
+                  start: number
+                  end?: number
+                }
+              }
+        }
+      | {
           kind: "delta"
           baseVersion: string
+          delta: string
+        }
+      | {
+          kind: "append"
+          streamID: string
+          revision: number
+          offset: number
           delta: string
         }
   }
@@ -14237,6 +14310,39 @@ export type EventRuntimeReloaded = {
     executed: Array<RuntimeReloadTarget>
     cascaded: Array<RuntimeReloadTarget>
     changedFields: Array<string>
+  }
+}
+
+export type EventServerCursor = {
+  type: "server.cursor"
+  properties: {
+    epoch: string
+    fromSeq: number
+    toSeq: number
+  }
+}
+
+export type EventServerProjectionReset = {
+  type: "server.projection.reset"
+  properties: {
+    eventType: string
+  }
+}
+
+export type EventServerViewPatch = {
+  type: "server.view.patch"
+  properties: {
+    kind: string
+    sessionID: string
+    generation: number
+    revision: number
+    previousRevision: number
+    patches: Array<{
+      path: Array<string>
+      value?: unknown
+      remove?: true
+    }>
+    snapshot?: string
   }
 }
 
@@ -14751,6 +14857,9 @@ export type Event =
   | EventQuestionTimedOut
   | EventCommandExecuted
   | EventRuntimeReloaded
+  | EventServerCursor
+  | EventServerProjectionReset
+  | EventServerViewPatch
   | EventServerConnected
   | EventGlobalDisposed
   | EventAgendaItemCreated
@@ -19173,6 +19282,7 @@ export type SessionExecutionSummaryData = {
     directory?: string
     scopeID?: string
     runID?: string
+    projection?: string
   }
   url: "/session/{sessionID}/execution/summary"
 }
@@ -21513,6 +21623,44 @@ export type SessionPartPageResponses = {
 
 export type SessionPartPageResponse = SessionPartPageResponses[keyof SessionPartPageResponses]
 
+export type SessionDisplayManifestData = {
+  body?: SessionDisplayManifestInput
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/display/manifest"
+}
+
+export type SessionDisplayManifestErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionDisplayManifestError = SessionDisplayManifestErrors[keyof SessionDisplayManifestErrors]
+
+export type SessionDisplayManifestResponses = {
+  /**
+   * Changed, deleted, unchanged and recovery states for the loaded window
+   */
+  200: SessionDisplayManifest
+}
+
+export type SessionDisplayManifestResponse = SessionDisplayManifestResponses[keyof SessionDisplayManifestResponses]
+
 export type SessionPartPagesData = {
   body?: {
     messageIDs: Array<string>
@@ -21572,6 +21720,7 @@ export type SessionPartContentData = {
     directory?: string
     scopeID?: string
     version?: string
+    projection?: string
   }
   url: "/session/{sessionID}/message/{messageID}/part/{partID}/content"
 }
@@ -31389,7 +31538,7 @@ export type EventReplayData = {
     scopeID?: string
     since: number
     epoch?: string
-    mode?: "full" | "projection"
+    mode?: "full" | "projection" | "projection-v2"
   }
   url: "/event/replay"
 }

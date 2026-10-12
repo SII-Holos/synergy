@@ -78,3 +78,42 @@ test("Note loops filter source owners in snapshots and events, clearing old epoc
   dispose()
   expect(replies[3].signal.aborted).toBe(true)
 })
+
+test("inactive Note views cancel pending loops and observe owner loss before becoming active again", async () => {
+  const [capabilities, setCapabilities] = createSignal<RuntimeCapabilities | undefined>(
+    selection("blueprint", "lattice"),
+  )
+  const [active, setActive] = createSignal(true)
+  const replies: Array<{ signal: AbortSignal; resolve: (loops: BlueprintLoopInfo[]) => void }> = []
+  let dispose = () => {}
+  const resource = createRoot((close) => {
+    dispose = close
+    return createBlueprintLoopsResource({
+      scopeID: () => "home",
+      capabilities,
+      active,
+      reconnect: () => 0,
+      list: (_scopeID, signal) => new Promise((resolve) => replies.push({ signal, resolve })),
+    })
+  })
+  await Bun.sleep(0)
+  expect(replies).toHaveLength(1)
+  setActive(false)
+  expect(replies[0].signal.aborted).toBe(true)
+  setCapabilities(undefined)
+  replies[0].resolve([loop("lattice")])
+  await Bun.sleep(0)
+  expect(resource.loops()).toEqual([])
+  setCapabilities(selection("blueprint"))
+  await Bun.sleep(0)
+  expect(replies).toHaveLength(1)
+  setActive(true)
+  await Bun.sleep(0)
+  expect(replies).toHaveLength(2)
+  replies[1].resolve([loop("lattice"), loop("user")])
+  await Bun.sleep(0)
+  expect(resource.loops().map((loop) => loop.id)).toEqual(["user"])
+  setActive(false)
+  expect(resource.loops().map((loop) => loop.id)).toEqual(["user"])
+  dispose()
+})

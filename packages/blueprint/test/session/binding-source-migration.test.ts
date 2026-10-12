@@ -245,6 +245,110 @@ test("a direct HTTP message read migrates confirmed control messages, tool resul
   )
 })
 
+test("a first display manifest read migrates source controls before comparing cached display versions", async () => {
+  await using home = await tmpdir()
+  await using runtime = await open(home.path)
+  await runtime.run(() =>
+    inHome(async () => {
+      const data = await seedMessages("plugin")
+      const cached = await Storage.read<{ version: string }>(data.displayMessageKey)
+      const generation = 9
+      await Storage.write(["sessions", "home", data.session.id, "display_parts_state", data.message.id], {
+        version: 1,
+        ready: true,
+        generation,
+      })
+      expect((await Storage.read<MessageV2.User>(data.messageKey)).metadata?.requiredFeatures).toBeUndefined()
+
+      const manifest = await SessionHistory.displayManifest({
+        sessionID: data.session.id,
+        messages: [{ messageID: data.message.id, version: cached.version, generation }],
+      })
+      expect(manifest.messages[0].status).toBe("changed")
+      expect(manifest.messages[0].version).not.toBe(cached.version)
+      const features = ["blueprint", "plugin-host", "plugin-blueprint"]
+      const displayed = await Storage.read<{ info: MessageV2.Info; future: unknown }>(data.displayMessageKey)
+      expect(displayed.info.metadata?.requiredFeatures).toEqual(features)
+      expect(displayed.future).toEqual({ keep: true })
+      const displayedPart = await Storage.read<MessageV2.PartSummary & { future: unknown }>(data.displayPartKey)
+      expect(displayedPart.content.version).not.toBe(MessageV2.summarizePart(data.part).content.version)
+      expect(displayedPart.future).toEqual({ keep: true })
+      expect((await Storage.read<MessageV2.User>(data.messageKey)).metadata?.requiredFeatures).toEqual(features)
+      expect((await Storage.read<Record<string, unknown>>(data.infoKey)).blueprint).toMatchObject({ source: "plugin" })
+      expect(await Storage.read(receipt(data.session.id))).toHaveProperty("completed")
+      expect(
+        (
+          await SessionHistory.displayManifest({
+            sessionID: data.session.id,
+            messages: manifest.messages,
+          })
+        ).messages[0].status,
+      ).toBe("unchanged")
+    }),
+  )
+})
+
+test("a display manifest detects source requirements added only to a cached tool result", async () => {
+  await using home = await tmpdir()
+  await using runtime = await open(home.path)
+  await runtime.run(() =>
+    inHome(async () => {
+      const data = await seedMessages()
+      const message: MessageV2.Assistant = {
+        id: data.message.id,
+        sessionID: data.session.id,
+        role: "assistant",
+        parentID: Identifier.ascending("message"),
+        time: { created: 30, completed: 31 },
+        modelID: "test",
+        providerID: "test",
+        path: { cwd: null, root: null },
+        mode: "synergy",
+        agent: "atlas",
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        metadata: { future: { keep: true } },
+      }
+      const cached = { ...SessionHistory.summarizeMessage(message), future: { keep: true } }
+      await Storage.write(data.messageKey, message)
+      await Storage.write(data.displayMessageKey, cached)
+      const stateKey = ["sessions", "home", data.session.id, "display_parts_state", message.id]
+      const generation = 12
+      await Storage.write(stateKey, { version: 1, ready: true, generation, future: { keep: true } })
+
+      const manifest = await SessionHistory.displayManifest({
+        sessionID: data.session.id,
+        messages: [{ messageID: message.id, version: cached.version, generation }],
+      })
+      expect(manifest.messages[0]).toEqual({
+        messageID: message.id,
+        status: "changed",
+        version: cached.version,
+        generation: generation + 1,
+      })
+      expect(await Storage.read<MessageV2.Assistant>(data.messageKey)).toEqual(message)
+      expect(await Storage.read<typeof cached>(data.displayMessageKey)).toEqual(cached)
+      const part = await Storage.read<MessageV2.ToolPart>(data.partKey)
+      expect(part.state.metadata).toMatchObject({ requiredFeatures: ["blueprint", "lattice"], future: { keep: true } })
+      const displayed = await Storage.read<MessageV2.PartSummary & { future: unknown }>(data.displayPartKey)
+      expect(displayed.content.version).toBe(MessageV2.summarizePart(part).content.version)
+      expect(displayed.content.version).not.toBe(MessageV2.summarizePart(data.part).content.version)
+      expect(displayed.future).toEqual({ keep: true })
+      expect(await Storage.read<Record<string, unknown>>(stateKey)).toEqual({
+        version: 1,
+        ready: true,
+        generation: generation + 1,
+        future: { keep: true },
+      })
+      expect(
+        (await SessionHistory.displayManifest({ sessionID: data.session.id, messages: manifest.messages })).messages[0]
+          .status,
+      ).toBe("unchanged")
+      expect((await Storage.read<{ generation: number }>(stateKey)).generation).toBe(generation + 1)
+    }),
+  )
+})
+
 test("a missing central receipt retries an already committed control projection idempotently", async () => {
   await using home = await tmpdir()
   await using runtime = await open(home.path)

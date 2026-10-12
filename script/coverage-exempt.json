@@ -1465,6 +1465,26 @@
         {
           "glob": "src/components/workspace/process-event-detail.tsx",
           "reason": "test/components/workspace/execution-detail.dom.test.ts verifies Agent result identity, summary loading, full copying, retry, cancellation and bounded previews in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/retained-session-views.tsx",
+          "reason": "Cross-Scope DOM, disclosure, scroll, owner fencing, deletion and six-view eviction are exercised by test/components/session/retained-session-views.dom.test.ts in Chromium; Vite browser execution does not contribute to Bun lcov."
+        },
+        {
+          "glob": "src/context/view-residency.tsx",
+          "reason": "Real activity composition and global six-view/eight-panel eviction are exercised by retained-session-views.dom.test.ts and workbench-surface.dom.test.ts; the Solid renderer executes in Chromium outside Bun lcov."
+        },
+        {
+          "glob": "src/context/session-route.tsx",
+          "reason": "Owner-bound routes are exercised by the built App in test/performance/browser.mjs and panels.mjs, including cross-Scope switches and delayed reconnect. Browser TSX execution cannot be attributed by Bun lcov."
+        },
+        {
+          "glob": "src/context/workbench/registry.tsx",
+          "reason": "The scoped provider is exercised by the built App panel continuity fixture in test/performance/panels.mjs; its registry ownership model remains measured by test/plugin/registries/workbench-owners.test.ts. Vite browser TSX does not contribute to Bun lcov."
+        },
+        {
+          "glob": "src/pages/session-route.tsx",
+          "reason": "Production route composition is exercised by test/performance/browser.mjs, panels.mjs and the private HTTP build smoke; retained lifetime behavior is covered in retained-session-views.dom.test.ts. Bun cannot instrument the browser renderer."
         }
       ]
     },

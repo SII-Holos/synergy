@@ -298,7 +298,20 @@ export function closeOtherWorkbenchPanelTabs(
 }
 
 export function workbenchPanelMountKey(tab?: WorkbenchPanelTab) {
-  return tab ? JSON.stringify([tab.id, tab.panelId]) : undefined
+  if (!tab) return undefined
+  const state = tab.state && typeof tab.state === "object" ? tab.state : undefined
+  const workspace =
+    state && "workspace" in state && state.workspace && typeof state.workspace === "object"
+      ? (state.workspace as { id?: unknown; generation?: unknown })
+      : undefined
+  return JSON.stringify([
+    tab.id,
+    tab.panelId,
+    tab.resourceId,
+    tab.panelId === "notes" ? tab.source : undefined,
+    workspace?.id,
+    workspace?.generation,
+  ])
 }
 
 /**

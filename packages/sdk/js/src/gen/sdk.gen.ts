@@ -696,6 +696,9 @@ import type {
   SessionDeleteResponses,
   SessionDiffErrors,
   SessionDiffResponses,
+  SessionDisplayManifestErrors,
+  SessionDisplayManifestInput,
+  SessionDisplayManifestResponses,
   SessionEnvironmentSelection,
   SessionExecutionContentDownloadErrors,
   SessionExecutionContentDownloadResponses,
@@ -2817,6 +2820,7 @@ export class Session extends HeyApiClient {
       directory?: string
       scopeID?: string
       runID?: string
+      projection?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2829,6 +2833,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "query", key: "runID" },
+            { in: "query", key: "projection" },
           ],
         },
       ],
@@ -4847,6 +4852,47 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Validate loaded message and Part page versions without returning content
+   */
+  public displayManifest<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      sessionDisplayManifestInput?: SessionDisplayManifestInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionDisplayManifestInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionDisplayManifestResponses,
+      SessionDisplayManifestErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/display/manifest",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Get presentation summaries for a batch of messages' Parts
    *
    * Refresh-time fan-in for the Web conversation window: one request returns the bounded Part summary page for each of up to 100 messages; under HTTP/1.1-only deployments this avoids stalling the per-message fan-out behind the browser's connection limit.
@@ -4898,6 +4944,7 @@ export class Session extends HeyApiClient {
       directory?: string
       scopeID?: string
       version?: string
+      projection?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4912,6 +4959,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "query", key: "version" },
+            { in: "query", key: "projection" },
           ],
         },
       ],
@@ -16334,7 +16382,7 @@ export class Event extends HeyApiClient {
       scopeID?: string
       since: number
       epoch?: string
-      mode?: "full" | "projection"
+      mode?: "full" | "projection" | "projection-v2"
     },
     options?: Options<never, ThrowOnError>,
   ) {

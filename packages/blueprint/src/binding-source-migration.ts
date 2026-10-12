@@ -110,10 +110,8 @@ async function refreshMessage(owner: Owner, message: Record<string, unknown>) {
 }
 
 async function refreshPart(owner: Owner, part: Record<string, unknown>) {
-  if (typeof part.messageID !== "string" || typeof part.id !== "string") return
-  const key = StoragePath.sessionDisplayPart(owner.scopeID, owner.sessionID, part.messageID, part.id)
-  const [display] = await Storage.readMany<Record<string, unknown>>([key])
-  if (display) await Storage.write(key, { ...display, ...MessageV2.summarizePart(part as MessageV2.ToolPart) })
+  if (part.sessionID !== owner.sessionID || typeof part.messageID !== "string" || typeof part.id !== "string") return
+  await SessionHistory.refreshDisplayPart(owner.scopeID, part as MessageV2.ToolPart)
 }
 
 function toolLoopID(part: Record<string, unknown>, state: Record<string, unknown>) {

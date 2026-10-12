@@ -67,9 +67,6 @@
   --workbench-selected-bg: var(--settings-selected-bg);
   --workbench-selected-bg-hover: var(--settings-selected-bg-hover);
   --workbench-border: var(--settings-border);
-  --settings-focus-ring:
-    0 0 0 1px color-mix(in srgb, var(--text-strong) 24%, transparent),
-    0 0 0 3px color-mix(in srgb, var(--text-strong) 7%, transparent);
   --settings-type-page-title-size: 1.5rem;
   --settings-type-page-title-line-height: 1.875rem;
   --settings-type-section-title-size: 0.875rem;
@@ -148,8 +145,6 @@
 }
 
 .settings-panel-root {
-  --shadow-xs-border-select: var(--settings-focus-ring);
-
   height: 100%;
   min-height: 0;
   background: var(--settings-canvas-bg);
@@ -587,12 +582,6 @@
     box-shadow 120ms ease;
 }
 
-.personalize-editor [data-component="input"]:focus-within [data-slot="input-wrapper"] {
-  background: var(--settings-input-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 62%, transparent);
-  box-shadow: var(--settings-focus-ring);
-}
-
 .personalize-editor [data-component="input"][data-invalid] [data-slot="input-wrapper"] {
   border-color: var(--text-base);
 }
@@ -708,7 +697,6 @@
 
 .settings-theme-card:focus-visible {
   outline: none;
-  box-shadow: var(--settings-focus-ring);
 }
 
 .settings-theme-card-active {
@@ -818,7 +806,6 @@
 
 .settings-color-card:focus-visible {
   outline: none;
-  box-shadow: var(--settings-focus-ring);
 }
 
 .settings-color-card-active {
@@ -1088,12 +1075,12 @@
 
 .settings-duration-slider:focus-visible::-webkit-slider-thumb,
 .settings-step-scale-slider:focus-visible::-webkit-slider-thumb {
-  box-shadow: var(--settings-focus-ring);
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 
 .settings-duration-slider:focus-visible::-moz-range-thumb,
 .settings-step-scale-slider:focus-visible::-moz-range-thumb {
-  box-shadow: var(--settings-focus-ring);
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 
 .settings-duration-ticks {
@@ -1297,7 +1284,6 @@
 
 .settings-model-trigger:focus-visible {
   outline: none;
-  box-shadow: var(--settings-focus-ring);
 }
 
 .settings-model-trigger-text {
@@ -1355,10 +1341,6 @@
 
 .settings-model-variant:hover {
   background: var(--settings-input-bg-hover);
-}
-
-.settings-model-variant:focus-visible {
-  box-shadow: var(--settings-focus-ring);
 }
 
 .settings-panel-frame .settings-model-trigger-icon {
@@ -2213,11 +2195,6 @@
     box-shadow 120ms ease;
 }
 
-.settings-integration-shell [data-component="input"]:focus-within [data-slot="input-wrapper"] {
-  border-color: color-mix(in oklch, var(--border-base) 72%, transparent);
-  box-shadow: var(--settings-focus-ring);
-}
-
 .settings-integration-shell [data-slot="input-input"] {
   color: var(--text-strong);
   font-size: var(--settings-type-control-size);
@@ -2498,7 +2475,6 @@
 
 .settings-mcp-summary:focus-visible {
   outline: none;
-  box-shadow: var(--settings-focus-ring);
 }
 
 .settings-mcp-summary-copy {
@@ -2744,12 +2720,6 @@
     background-color 120ms ease,
     border-color 120ms ease,
     box-shadow 120ms ease;
-}
-
-.account-profile-form [data-component="input"]:focus-within [data-slot="input-wrapper"] {
-  background: var(--settings-control-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 62%, transparent);
-  box-shadow: var(--settings-focus-ring);
 }
 
 .account-profile-form [data-slot="input-input"] {
@@ -3141,12 +3111,6 @@
 .providers-advanced > summary:hover {
   background: var(--settings-control-bg);
   color: var(--text-strong);
-}
-
-.providers-management > summary:focus-visible,
-.providers-advanced > summary:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 
 .providers-management-actions {
@@ -3754,7 +3718,7 @@
 }
 
 .ds-import-file-button:focus-within {
-  box-shadow: var(--shadow-xs-border-select);
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 
 .ds-import-file-button input {
@@ -3791,7 +3755,6 @@
 .ds-import-url-input:focus,
 .ds-import-paste-input:focus {
   outline: none;
-  box-shadow: var(--shadow-xs-border-select);
 }
 
 .ds-import-plan-header {
@@ -4158,9 +4121,8 @@
 
 .settings-search-result:focus-visible,
 .settings-panel-content [data-settings-search-match="true"] {
-  outline: 2px solid var(--border-interactive-focus);
-  outline-offset: -2px;
   border-radius: 8px;
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 
 .settings-panel-close:disabled {
@@ -4524,9 +4486,6 @@
   border: 0;
   box-shadow: none;
 }
-.settings-panel-frame .menu-field-trigger:focus-visible {
-  box-shadow: var(--settings-focus-ring);
-}
 .settings-panel-frame .menu-field-value {
   flex: 1;
   min-width: 0;
@@ -4699,8 +4658,7 @@
   border-color: var(--border-base);
 }
 .settings-choice:has(:focus-visible) label {
-  outline: 2px solid var(--border-interactive-focus);
-  outline-offset: 2px;
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 .settings-choice-copy {
   display: flex;

@@ -6,6 +6,7 @@ import { patchBlueprintLoops } from "./note-sync"
 export function createBlueprintLoopsResource(input: {
   scopeID: Accessor<string | undefined>
   capabilities: Accessor<RuntimeCapabilities | undefined>
+  active?: Accessor<boolean>
   reconnect: Accessor<number>
   list: (scopeID: string, signal: AbortSignal) => Promise<BlueprintLoopInfo[]>
 }) {
@@ -24,8 +25,8 @@ export function createBlueprintLoopsResource(input: {
 
   createEffect(() => {
     const current = source()
-    setSnapshot(undefined)
-    if (!current.scopeID || !current.capabilities?.features.includes("blueprint")) return
+    if (untrack(snapshot)?.source !== current) setSnapshot(undefined)
+    if (input.active?.() === false || !current.scopeID || !current.capabilities?.features.includes("blueprint")) return
     const cancellation = new AbortController()
     onCleanup(() => cancellation.abort())
     void input

@@ -902,10 +902,28 @@ export namespace MessageV2 {
         subscription: z.number().int().optional(),
         checkpointEpoch: z.string().optional(),
         checkpointSeq: z.number().int().optional(),
+        stream: z
+          .object({ id: z.string(), revision: z.number().int().nonnegative(), offset: z.number().int().nonnegative() })
+          .optional(),
         content: z
           .discriminatedUnion("kind", [
             z.object({ kind: z.literal("checkpoint"), part: Part }),
+            z.object({ kind: z.literal("reference"), checkpoint: z.string().uuid() }),
+            z.object({
+              kind: z.literal("anchor"),
+              streamID: z.string(),
+              revision: z.number().int().nonnegative(),
+              offset: z.number().int().nonnegative(),
+              part: z.union([TextPart.omit({ text: true }), ReasoningPart.omit({ text: true })]),
+            }),
             z.object({ kind: z.literal("delta"), baseVersion: z.string(), delta: z.string() }),
+            z.object({
+              kind: z.literal("append"),
+              streamID: z.string(),
+              revision: z.number().int().nonnegative(),
+              offset: z.number().int().nonnegative(),
+              delta: z.string(),
+            }),
           ])
           .optional(),
       }),

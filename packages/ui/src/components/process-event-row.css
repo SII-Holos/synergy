@@ -34,10 +34,6 @@
 [data-slot="process-event-trigger"][aria-pressed="true"] {
   font-weight: var(--font-weight-medium);
 }
-[data-slot="process-event-trigger"]:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
-}
 [data-component="process-event-row"][data-kind="compaction"] [data-slot="process-event-title"] {
   overflow: hidden;
   text-overflow: ellipsis;

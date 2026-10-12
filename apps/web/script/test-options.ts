@@ -7,6 +7,14 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 // These `mock.module`-heavy suites stub the same context modules under the same
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
+  "test/components/session/retained-session-views.dom.test.ts",
+  "test/components/workspace/browser/native-browser-lifecycle.dom.test.ts",
+  "test/context/workbench/updates.dom.test.ts",
+  "test/context/workbench/residency-capabilities.dom.test.ts",
+  "test/plugin/host-capabilities.dom.test.ts",
+  "test/context/global-sync-lifecycle.dom.test.ts",
+  "test/context/sync-history-transition.dom.test.ts",
+  "test/testing/focus-presentation.browser.test.ts",
   "test/context/render-confirmation.browser.test.ts",
   "test/context/global-sync-memory.browser.test.ts",
   "test/context/tool-resource-open.dom.test.ts",
@@ -59,6 +67,7 @@ const playwrightIsolated = [
   "test/components/session/conversation-process-reading.dom.test.ts",
   "test/components/session/conversation-process-virtualization.dom.test.ts",
   "test/components/session/conversation-presentation.dom.test.ts",
+  "test/components/session/conversation-controls.dom.test.tsx",
   "test/components/session/conversation-process.dom.test.ts",
   "test/components/session/session-submission-status.dom.test.ts",
   "test/components/dialog/workspace-dialog.dom.test.ts",

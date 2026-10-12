@@ -8931,6 +8931,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "projection",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
           }
         ],
         "summary": "Read a compact session execution summary",
@@ -14451,6 +14460,94 @@
         ]
       }
     },
+    "/session/{sessionID}/display/manifest": {
+      "post": {
+        "operationId": "session.displayManifest",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Validate loaded message and Part page versions without returning content",
+        "responses": {
+          "200": {
+            "description": "Changed, deleted, unchanged and recovery states for the loaded window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDisplayManifest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionDisplayManifestInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.displayManifest({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/part/pages": {
       "post": {
         "operationId": "session.partPages",
@@ -14624,6 +14721,15 @@
             "name": "version",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "projection",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
             }
           }
         ],
@@ -36520,7 +36626,7 @@
             "name": "mode",
             "schema": {
               "type": "string",
-              "enum": ["full", "projection"]
+              "enum": ["full", "projection", "projection-v2"]
             }
           }
         ],
@@ -36650,6 +36756,20 @@
             "items": {
               "type": "string"
             }
+          },
+          "transports": {
+            "type": "object",
+            "properties": {
+              "displayManifest": {
+                "type": "number",
+                "const": 1
+              },
+              "projection": {
+                "type": "string",
+                "const": "projection-v2"
+              }
+            },
+            "required": ["displayManifest"]
           }
         },
         "required": ["apiVersion", "hostVersion", "components", "features"]
@@ -69811,9 +69931,72 @@
           },
           "hasEarlier": {
             "type": "boolean"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           }
         },
         "required": ["items", "nextCursor", "previousCursor", "hasMore", "hasEarlier"]
+      },
+      "SessionDisplayManifest": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "messageID": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["unchanged", "changed", "deleted", "recovery"]
+                },
+                "version": {
+                  "type": "string"
+                },
+                "generation": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["messageID", "status"]
+            }
+          }
+        },
+        "required": ["messages"]
+      },
+      "SessionDisplayManifestInput": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "messageID": {
+                  "type": "string",
+                  "pattern": "^msg.*"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "generation": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["messageID"]
+            }
+          }
+        },
+        "required": ["messages"]
       },
       "SessionPartPages": {
         "type": "object",
@@ -79574,6 +79757,25 @@
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
               },
+              "stream": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["id", "revision", "offset"]
+              },
               "content": {
                 "anyOf": [
                   {
@@ -79594,6 +79796,131 @@
                     "properties": {
                       "kind": {
                         "type": "string",
+                        "const": "reference"
+                      },
+                      "checkpoint": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      }
+                    },
+                    "required": ["kind", "checkpoint"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "anchor"
+                      },
+                      "streamID": {
+                        "type": "string"
+                      },
+                      "revision": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "part": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "sessionID": {
+                                "type": "string"
+                              },
+                              "messageID": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "text"
+                              },
+                              "synthetic": {
+                                "type": "boolean"
+                              },
+                              "origin": {
+                                "type": "string",
+                                "enum": ["user", "system"]
+                              },
+                              "time": {
+                                "type": "object",
+                                "properties": {
+                                  "start": {
+                                    "type": "number"
+                                  },
+                                  "end": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": ["start"]
+                              },
+                              "metadata": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              }
+                            },
+                            "required": ["id", "sessionID", "messageID", "type"]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "sessionID": {
+                                "type": "string"
+                              },
+                              "messageID": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "reasoning"
+                              },
+                              "metadata": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "time": {
+                                "type": "object",
+                                "properties": {
+                                  "start": {
+                                    "type": "number"
+                                  },
+                                  "end": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": ["start"]
+                              }
+                            },
+                            "required": ["id", "sessionID", "messageID", "type", "time"]
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["kind", "streamID", "revision", "offset", "part"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
                         "const": "delta"
                       },
                       "baseVersion": {
@@ -79604,6 +79931,32 @@
                       }
                     },
                     "required": ["kind", "baseVersion", "delta"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "append"
+                      },
+                      "streamID": {
+                        "type": "string"
+                      },
+                      "revision": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "delta": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind", "streamID", "revision", "offset", "delta"]
                   }
                 ]
               }
@@ -80601,6 +80954,115 @@
               }
             },
             "required": ["executed", "cascaded", "changedFields"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.server.cursor": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "server.cursor"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "epoch": {
+                "type": "string"
+              },
+              "fromSeq": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "toSeq": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["epoch", "fromSeq", "toSeq"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.server.projection.reset": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "server.projection.reset"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "eventType": {
+                "type": "string"
+              }
+            },
+            "required": ["eventType"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.server.view.patch": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "server.view.patch"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "previousRevision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "patches": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "maxItems": 64,
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "value": {},
+                    "remove": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": ["path"]
+                }
+              },
+              "snapshot": {
+                "type": "string"
+              }
+            },
+            "required": ["kind", "sessionID", "generation", "revision", "previousRevision", "patches"]
           }
         },
         "required": ["type", "properties"]
@@ -82116,6 +82578,15 @@
           },
           {
             "$ref": "#/components/schemas/Event.runtime.reloaded"
+          },
+          {
+            "$ref": "#/components/schemas/Event.server.cursor"
+          },
+          {
+            "$ref": "#/components/schemas/Event.server.projection.reset"
+          },
+          {
+            "$ref": "#/components/schemas/Event.server.view.patch"
           },
           {
             "$ref": "#/components/schemas/Event.server.connected"

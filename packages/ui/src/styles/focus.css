@@ -1,0 +1,17 @@
+:focus,
+:focus::before,
+:focus::after {
+  outline: none !important;
+}
+
+:focus-visible:not(:where(input, textarea, [contenteditable], [role="textbox"])) {
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
+}
+
+@media (forced-colors: active) {
+  :focus-visible:not(:where(input, textarea, [contenteditable], [role="textbox"])) {
+    background-color: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+}

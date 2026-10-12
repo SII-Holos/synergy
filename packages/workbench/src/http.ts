@@ -11,11 +11,13 @@ import { describeRoute } from "hono-openapi"
 import { resolver } from "hono-openapi"
 import { ExecutionRoute } from "./execution/routes"
 import { ReviewRoutes } from "./review/routes"
+import { ExecutionProjection } from "./execution/projection"
 
 export function registerHttp() {
   Server.registerContributions(
     {
       features: ["workbench"],
+      projections: [ExecutionProjection.contribution()],
       routes: {
         "global-tools": new Hono()
           .route("/global/project", ProjectDirectoriesRoute())

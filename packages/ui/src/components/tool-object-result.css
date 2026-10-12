@@ -42,10 +42,6 @@
   color: var(--text-weak);
   cursor: default;
 }
-[data-component="tool-object-result"] button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
-}
 [data-component="tool-object-result"] pre {
   margin: 0;
   font: inherit;

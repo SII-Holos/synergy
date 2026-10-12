@@ -247,10 +247,6 @@ msgid "app.agenda.action.submittedHint"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.activity.description"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.agenda.activity.loaded"
 msgstr ""
 
@@ -329,10 +325,6 @@ msgid "app.agenda.arrangements.count"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.arrangements.description"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.agenda.arrangements.empty"
 msgstr ""
 
@@ -362,10 +354,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.agenda.arrangements.predicted"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.agenda.arrangements.relative"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -906,14 +894,6 @@ msgid "app.agenda.runStatus.skipped"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.agenda.scope.all"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.agenda.scope.filter"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.agenda.search.clear"
 msgstr ""
 
@@ -951,10 +931,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.agenda.tasks.count"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.agenda.tasks.description"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17086,10 +17062,6 @@ msgid "session.conversation.moveToQueueTitle"
 msgstr "⟦Move back to queue⟧"
 
 #. js-lingui-explicit-id
-msgid "session.conversation.newMessagesReturnLatest"
-msgstr "⟦New messages — Return to latest⟧"
-
-#. js-lingui-explicit-id
 msgid "session.conversation.paused"
 msgstr "⟦Paused⟧"
 
@@ -17116,10 +17088,6 @@ msgstr "⟦Remove pending message⟧"
 #. conversation.tsx
 msgid "session.conversation.renderEarlier"
 msgstr "⟦Render earlier messages⟧"
-
-#. js-lingui-explicit-id
-msgid "session.conversation.returnLatest"
-msgstr "⟦Return to latest⟧"
 
 #. js-lingui-explicit-id
 msgid "session.conversation.withdraw"

@@ -38,11 +38,6 @@
 .context-dashboard button:disabled {
   cursor: default;
 }
-.context-dashboard button:focus-visible,
-.context-dashboard input:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 3px;
-}
 .context-dashboard-toolbar {
   display: flex;
   align-items: center;

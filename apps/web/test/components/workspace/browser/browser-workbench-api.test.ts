@@ -60,6 +60,26 @@ test("manual recovery resumes the most recent page without creating another page
   expect(await input.requests[1]!.json()).toMatchObject({ pageId: "recent", command: { type: "resume" } })
 })
 
+test("opening an empty task Workspace creates a page without restoring another task's shared page", async () => {
+  const input = fixture((request) =>
+    request.method === "GET"
+      ? Response.json({
+          ownerKey: "canonical-scope",
+          pages: [
+            { id: "other-active", url: "https://example.com", title: "Active", status: "active", lastActiveAt: 2 },
+            { id: "other-saved", url: "https://example.org", title: "Saved", status: "suspended", lastActiveAt: 1 },
+          ],
+        })
+      : Response.json({ id: "new-page", url: "about:blank", title: "", status: "active" }),
+  )
+  const shared = { mode: "scope" as const, path_directory: "home", scopeID: "scope-one" }
+  const tab = await openBrowserWorkbenchPage({ ...input, route: shared, restore: true })
+  expect(tab.resourceId).toBe("new-page")
+  expect(input.requests).toHaveLength(2)
+  expect(new URL(input.requests[1]!.url).pathname).toBe("/home/browser/pages")
+  expect(await input.requests[1]!.json()).toEqual({ requestId: expect.any(String), url: "about:blank" })
+})
+
 test("open retries carry the caller's stable request identity", async () => {
   const input = fixture((request) =>
     request.method === "GET"
