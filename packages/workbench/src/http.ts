@@ -15,6 +15,7 @@ import { ReviewRoutes } from "./review/routes"
 export function registerHttp() {
   Server.registerContributions(
     {
+      features: ["workbench"],
       routes: {
         "global-tools": new Hono()
           .route("/global/project", ProjectDirectoriesRoute())

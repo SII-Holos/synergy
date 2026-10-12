@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test"
-import { Channel } from "@ericsanchezok/synergy-connections/channel"
+import { Channel } from "@ericsanchezok/synergy-channels/channel"
 import {
   GithubProvider,
   assertNotBaseBranch,
   resolveCanonicalBranch,
-} from "@ericsanchezok/synergy-connections/channel/provider/github"
-import { GithubDeliverFixTool } from "@ericsanchezok/synergy-connections/channel/tools/github-deliver-fix"
+} from "@ericsanchezok/synergy-channel-github/channel/provider/github"
+import { GithubDeliverFixTool } from "@ericsanchezok/synergy-channel-github/channel/tools/github-deliver-fix"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"

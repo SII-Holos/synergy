@@ -1,15 +1,21 @@
+import { registerConfig as registerBossConfig } from "@ericsanchezok/synergy-boss/config-schema"
+import { registerConfig as registerAnimaConfig } from "@ericsanchezok/synergy-anima/config-schema"
+import { registerConfig as registerGithubConfig } from "@ericsanchezok/synergy-github/config-schema"
+import { registerConfig as registerEmailConfig } from "@ericsanchezok/synergy-email/config-schema"
+import { registerConfig as registerHolosConfig } from "@ericsanchezok/synergy-holos/config-schema"
+import { registerConfig as registerChannelGithubConfig } from "@ericsanchezok/synergy-channel-github/config-schema"
+import { registerConfig as registerChannelClarusConfig } from "@ericsanchezok/synergy-channel-clarus/config-schema"
+import { registerConfig as registerChannelFeishuConfig } from "@ericsanchezok/synergy-channel-feishu/config-schema"
+import { registerConfig as registerChannelsConfig } from "@ericsanchezok/synergy-channels/config-schema"
 import { registerConfig as registerLocalConfig } from "@ericsanchezok/synergy-local-runtime/config-schema"
 import { registerConfig as registerMcpConfig } from "@ericsanchezok/synergy-mcp/config-schema"
 import { registerConfig as registerExternalAgentsConfig } from "@ericsanchezok/synergy-external-agents/config-schema"
 import { registerConfig as registerFormatterConfig } from "@ericsanchezok/synergy-formatter/config-schema"
 import { registerConfig as registerLspConfig } from "@ericsanchezok/synergy-lsp/config-schema"
 import { registerConfig as registerLibraryConfig } from "@ericsanchezok/synergy-library/config-schema"
-import { registerConfig as registerConnectionsConfig } from "@ericsanchezok/synergy-connections/config-schema"
 import { registerConfig as registerPluginConfig } from "@ericsanchezok/synergy-plugin-host/config-schema"
 import { registerConfig as registerMediaConfig } from "@ericsanchezok/synergy-media/config-schema"
 import { registerConfig as registerWorkbenchConfig } from "@ericsanchezok/synergy-workbench/config-schema"
-import { registerConfig as registerWorkflowsConfig } from "@ericsanchezok/synergy-workflows/config-schema"
-import { registerSessionSchema } from "@ericsanchezok/synergy-workflows/session-schema"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
 export function registerFullConfiguration() {
   registerLocalConfig()
@@ -18,11 +24,17 @@ export function registerFullConfiguration() {
   registerFormatterConfig()
   registerLspConfig()
   registerLibraryConfig()
-  registerConnectionsConfig()
   registerPluginConfig()
   registerMediaConfig()
   registerWorkbenchConfig()
-  registerWorkflowsConfig()
-  registerSessionSchema()
+  registerChannelsConfig()
+  registerChannelFeishuConfig()
+  registerChannelClarusConfig()
+  registerChannelGithubConfig()
+  registerHolosConfig()
+  registerEmailConfig()
+  registerGithubConfig()
+  registerBossConfig()
+  registerAnimaConfig()
   ConfigExtensions.completeRegistration()
 }

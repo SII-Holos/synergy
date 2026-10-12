@@ -1,7 +1,7 @@
 import "@ericsanchezok/synergy-connections/config-schema"
 import { afterEach, describe, expect, test } from "bun:test"
-import { AgendaGithubTrigger } from "@ericsanchezok/synergy-workflows/agenda/github-trigger"
-import { AgendaTypes } from "@ericsanchezok/synergy-workflows/agenda/types"
+import { AgendaGithubTrigger } from "@ericsanchezok/synergy-github-agenda/github-trigger"
+import { AgendaTypes } from "@ericsanchezok/synergy-agenda/agenda/types"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -240,7 +240,7 @@ describe("snapshot mapping and change collection", () => {
 describe("autoDone completion", () => {
   test("updateRunState marks autoDone github items done after a successful fire", () =>
     runtime.run(async () => {
-      const { AgendaStore } = await import("@ericsanchezok/synergy-workflows/agenda/store")
+      const { AgendaStore } = await import("@ericsanchezok/synergy-agenda/agenda/store")
       const { tmpdir } = await import("@ericsanchezok/synergy-harness/test/support/fixture")
       await using tmp = await tmpdir({ git: true })
       const { ScopeContext } = await import("@ericsanchezok/synergy-harness/scope/context")
@@ -301,7 +301,7 @@ test("workflow conclusion filter does not fire for non-matching conclusions", ()
 
 test("disabling github.watch pauses existing items instead of idling forever", () =>
   runtime.run(async () => {
-    const { AgendaStore } = await import("@ericsanchezok/synergy-workflows/agenda/store")
+    const { AgendaStore } = await import("@ericsanchezok/synergy-agenda/agenda/store")
     const { tmpdir } = await import("@ericsanchezok/synergy-harness/test/support/fixture")
     const { ScopeContext } = await import("@ericsanchezok/synergy-harness/scope/context")
     await using tmp = await tmpdir({
@@ -336,8 +336,8 @@ test("disabling github.watch pauses existing items instead of idling forever", (
 
 test("completed one-shot github watches stop polling — settleAfterFire drops the entry", () =>
   runtime.run(async () => {
-    const { AgendaStore } = await import("@ericsanchezok/synergy-workflows/agenda/store")
-    const { Agenda } = await import("@ericsanchezok/synergy-workflows/agenda")
+    const { AgendaStore } = await import("@ericsanchezok/synergy-agenda/agenda/store")
+    const { Agenda } = await import("@ericsanchezok/synergy-agenda/agenda")
     const { tmpdir } = await import("@ericsanchezok/synergy-harness/test/support/fixture")
     const { ScopeContext } = await import("@ericsanchezok/synergy-harness/scope/context")
     await using tmp = await tmpdir({ git: true })
@@ -477,7 +477,7 @@ test("baseline eviction is LRU — actively observed resources are not evicted a
 
 test("a credential that stays missing across polls pauses the item", () =>
   runtime.run(async () => {
-    const { AgendaStore } = await import("@ericsanchezok/synergy-workflows/agenda/store")
+    const { AgendaStore } = await import("@ericsanchezok/synergy-agenda/agenda/store")
     const { tmpdir } = await import("@ericsanchezok/synergy-harness/test/support/fixture")
     const { ScopeContext } = await import("@ericsanchezok/synergy-harness/scope/context")
     const saved = [process.env.GH_TOKEN, process.env.GITHUB_TOKEN]

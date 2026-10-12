@@ -155,7 +155,7 @@ test("a model archives its running worktree and continues a real file write in t
         nano_model: "fixture/model",
         mini_model: "fixture/model",
         controlProfile: "full_access",
-        library: { autonomy: false },
+        anima: { enabled: false },
         embedding: { apiKey: "fixture", baseURL: provider.url.toString(), model: "embedding" },
         provider: {
           fixture: {

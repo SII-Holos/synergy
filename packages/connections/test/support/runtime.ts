@@ -1,18 +1,19 @@
-import { registerChannelSessionProjects } from "../../src/channel/session-projects"
-import { registerManagedProjectGuard } from "../../src/channel/managed-project-ownership"
 import { testRuntime as harnessRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
-import { registerConfig } from "../../src/config-schema"
-
+import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
+import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
+import { connectionComponents } from "../../src/component"
+import { agenda } from "@ericsanchezok/synergy-agenda/component"
 export function testRuntime(options: { register?: () => void; env?: Record<string, string | undefined> } = {}) {
+  const composition = RuntimeComponents.compose([
+    localRuntime({ workers: false, environment: false }),
+    agenda(),
+    ...connectionComponents(),
+  ])
   return harnessRuntime({
     env: options.env,
     composition: {
       register() {
-        registerLocalRuntime()
-        registerConfig()
-        registerChannelSessionProjects()
-        registerManagedProjectGuard()
+        composition.register()
         options.register?.()
       },
     },

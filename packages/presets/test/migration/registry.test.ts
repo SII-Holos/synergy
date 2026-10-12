@@ -8,7 +8,7 @@ describe("MigrationRegistry", () => {
   test("registers all domains", () =>
     runtime.run(() => {
       const domainCount = MigrationRegistry.list().size
-      expect(domainCount).toBe(28)
+      expect(domainCount).toBe(36)
     }))
 
   test("has expected domain names", () =>
@@ -16,18 +16,27 @@ describe("MigrationRegistry", () => {
       const domains = [...MigrationRegistry.list().keys()].sort()
       expect(domains).toEqual([
         "agenda",
+        "anima",
+        "blueprint-note",
+        "blueprint-session",
         "blueprint_loop",
+        "boss-config",
         "browser",
         "channel",
+        "channel-clarus",
         "config",
         "environment",
         "holos",
         "installation",
         "lattice",
+        "lattice-session",
         "library",
+        "light-loop-session",
         "local-workspace",
+        "mcp-config",
         "note",
         "observability",
+        "plugin-config",
         "plugin_catalog",
         "scope",
         "session",
@@ -41,7 +50,6 @@ describe("MigrationRegistry", () => {
         "tool-input-note",
         "usage",
         "workbench-projects",
-        "workflows-session",
         "workspace",
       ])
     }))

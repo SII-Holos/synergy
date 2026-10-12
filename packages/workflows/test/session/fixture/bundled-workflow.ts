@@ -2,7 +2,7 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { WorkflowSessionService } from "../../../src/session/workflow"
-import { registerWorkflowSessions } from "../../../src/session/register"
+import { workflowComponents } from "../../../src/component"
 
 if (process.argv.includes("__storage-worker-runner")) {
   await import("@ericsanchezok/synergy-harness/storage/sqlite-worker")
@@ -16,8 +16,7 @@ const home = process.env.SYNERGY_TEST_HOME!
 const runtime = RuntimeContext.create({ home, root: path.join(home, ".synergy"), env: process.env })
 await runtime.run(async () => {
   registerHarness()
-  registerConfig()
-  registerWorkflowSessions()
+  for (const component of workflowComponents()) component.register()
   const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
   await using maintenance = await StorageMaintenance.open()
   const { scope } = await Scope.fromDirectory(process.cwd())

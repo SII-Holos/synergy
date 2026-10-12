@@ -209,6 +209,121 @@
       "project": ["src/**/*.ts", "test/**/*.ts"],
       "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
+    "packages/agenda": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/light-loop": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/blueprint": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/lattice": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/boss": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/anima": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/channels": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/channel-feishu": {
+      "entry": ["test/**/*.ts", "script/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts", "script/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/github": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/channel-github": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/holos": {
+      "entry": ["test/**/*.ts", "script/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts", "script/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/channel-clarus": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/email": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/agenda-blueprint": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/agenda-light-loop": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/plugin-agenda": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/plugin-blueprint": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/plugin-light-loop": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/boss-feishu": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/github-agenda": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+    },
+    "packages/channel-blueprint": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/channel-light-loop": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/channel-lattice": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
     "packages/workflows": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],

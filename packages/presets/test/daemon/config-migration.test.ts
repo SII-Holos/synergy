@@ -129,6 +129,7 @@ describe("daemon.spec", () => {
   test("CLI network options migrate legacy identity config before reading config", () =>
     runtime.run(async () => {
       const target = path.join(home, ".synergy", "config", "synergy.jsonc")
+      const retained = { entries: ["future", { checkpoint: 3 }] }
       await Bun.write(
         target,
         JSON.stringify({
@@ -145,11 +146,15 @@ describe("daemon.spec", () => {
             hostname: "0.0.0.0",
             port: 4321,
           },
+          unregisteredOwner: retained,
         }),
       )
       Config.global.reset()
 
-      await expect(Config.global()).rejects.toThrow()
+      const visible = await Config.global()
+      expect(visible).not.toHaveProperty("identity")
+      expect(visible).not.toHaveProperty("unregisteredOwner")
+      expect((await readMigratedLegacyConfig(target)).unregisteredOwner).toEqual(retained)
 
       const network = await resolveNetworkOptions({
         hostname: "0.0.0.0",
@@ -170,13 +175,15 @@ describe("daemon.spec", () => {
           encode: false,
           retrieve: false,
         },
-        autonomy: false,
       })
+      expect(migrated.anima).toEqual({ enabled: false })
+      expect(migrated.unregisteredOwner).toEqual(retained)
     }))
 
   test("CLI network options remove deprecated Holos friend reply config before reading config", () =>
     runtime.run(async () => {
       const target = path.join(home, ".synergy", "config", "synergy.jsonc")
+      const retained = { entries: ["future", { checkpoint: 3 }] }
       await Bun.write(
         target,
         JSON.stringify({
@@ -185,11 +192,15 @@ describe("daemon.spec", () => {
             hostname: "0.0.0.0",
             port: 4321,
           },
+          unregisteredOwner: retained,
         }),
       )
       Config.global.reset()
 
-      await expect(Config.global()).rejects.toThrow()
+      const visible = await Config.global()
+      expect(visible).not.toHaveProperty("holos_friend_reply_model")
+      expect(visible).not.toHaveProperty("unregisteredOwner")
+      expect((await readMigratedLegacyConfig(target)).unregisteredOwner).toEqual(retained)
 
       const network = await resolveNetworkOptions({
         hostname: "0.0.0.0",
@@ -206,5 +217,6 @@ describe("daemon.spec", () => {
         hostname: "0.0.0.0",
         port: 4321,
       })
+      expect(migrated.unregisteredOwner).toEqual(retained)
     }))
 })

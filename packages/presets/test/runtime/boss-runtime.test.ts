@@ -5,7 +5,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
-import { BossRuntime } from "@ericsanchezok/synergy-workflows/boss/boss-runtime"
+import { BossRuntime } from "@ericsanchezok/synergy-boss/boss/boss-runtime"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
@@ -219,7 +219,7 @@ describe("BossRuntime", () => {
       await withHomeScope(async () => {
         stubConfig({ ...FEISHU_CFG, boss: { enabled: true, briefingIntervalDays: 7 } })
         await BossRuntime.ensure()
-        const { AgendaStore } = await import("@ericsanchezok/synergy-workflows/agenda/store")
+        const { AgendaStore } = await import("@ericsanchezok/synergy-agenda/agenda/store")
         const item = await AgendaStore.get("home", BossRuntime.briefingAgendaID("acct1")).catch(() => undefined)
         expect(item).toBeDefined()
         expect(item!.triggers).toContainEqual({ type: "every", interval: "7d" })
@@ -236,7 +236,7 @@ describe("BossRuntime", () => {
       await withHomeScope(async () => {
         stubConfig({ ...FEISHU_ONE, boss: { enabled: true, briefingIntervalDays: 7 } })
         await BossRuntime.ensure()
-        const { AgendaStore } = await import("@ericsanchezok/synergy-workflows/agenda/store")
+        const { AgendaStore } = await import("@ericsanchezok/synergy-agenda/agenda/store")
         const itemID = BossRuntime.briefingAgendaID("acct1")
         const before = await AgendaStore.get("home", itemID).catch(() => undefined)
         expect(before).toBeDefined()
