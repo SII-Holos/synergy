@@ -1,4 +1,11 @@
 import type { SessionActivity } from "@/utils/session-status"
+import { blueprintRequestErrorMessage } from "./blueprint-slot"
+
+export function promptControlError(error: unknown) {
+  if (error && typeof error === "object" && "name" in error && error.name === "SessionExecutionOwnerUnavailableError")
+    return { kind: "unavailable" as const }
+  return { kind: "failed" as const, description: blueprintRequestErrorMessage(error) }
+}
 
 /**
  * The composer's single primary control. Its meaning follows session state, so

@@ -96,6 +96,7 @@ import {
 import { createPendingAttachmentTracker } from "@/components/prompt-input/pending-attachments"
 import {
   resolvePromptControlState,
+  promptControlError,
   canLongPressAbandon,
   ABANDON_HOLD_MS,
   ABANDON_HOLD_TOLERANCE_PX,
@@ -396,7 +397,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const continueSession = async (sessionID = params.id) => {
     if (!sessionID) return
     const result = await sdk.client.session.continue({ sessionID })
-    if (result.error) throw new Error(blueprintRequestErrorMessage(result.error))
+    if (result.error) throw result.error
   }
 
   /** The destructive gesture: terminalize the interrupted turn and cancel any
@@ -439,12 +440,14 @@ export function createPromptInputController(props: PromptInputProps) {
     request: () => abortSession(params.id),
     setPending: setAbortStopping,
   })
-  const reportControlError = (error: unknown) =>
+  const reportControlError = (error: unknown) => {
+    const feedback = promptControlError(error)
     showToast({
       type: "error",
-      title: i18n._(PI.controlFailed),
-      description: blueprintRequestErrorMessage(error),
+      title: feedback.kind === "unavailable" ? i18n._(PI.continueUnavailable) : i18n._(PI.controlFailed),
+      description: feedback.description,
     })
+  }
   const abort = () => {
     void abortController.run().catch(reportControlError)
   }

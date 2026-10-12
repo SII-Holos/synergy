@@ -15,14 +15,6 @@ import type { MessageDescriptor } from "@lingui/core"
 
 /* Boss Mode */
 const bossPageTitle = { id: "settings.runtime.boss.title", message: "Boss Mode" }
-const bossPageDesc = {
-  id: "settings.runtime.boss.desc",
-  message: "Coordinate tasks and projects from one entry point.",
-}
-const bossRowDesc = {
-  id: "settings.runtime.boss.enabled.desc",
-  message: "Feishu messages also go to the corresponding task entry.",
-}
 const personalityRowTitle = settingsFieldCopy.bossPersonality
 const personaDefault = { id: "settings.runtime.boss.persona.default", message: "Default" }
 const personaProjectManager = { id: "settings.runtime.boss.persona.projectManager", message: "Project Manager" }
@@ -36,10 +28,6 @@ const nameRowTitle = settingsFieldCopy.bossName
 const namePlaceholder = { id: "settings.runtime.boss.name.placeholder", message: "e.g. Xiaofei" }
 const openSessionRowTitle = { id: "settings.runtime.boss.openSession", message: "Open task entry" }
 const openSessionAction = { id: "settings.runtime.boss.openSession.action", message: "Open" }
-const openSessionRowDesc = {
-  id: "settings.runtime.boss.openSession.desc",
-  message: "Created on first use.",
-}
 const openSessionBusy = { id: "settings.runtime.boss.openSession.busy", message: "Opening…" }
 const openSessionFailed = { id: "settings.runtime.boss.openSession.failed", message: "Could not open the task entry" }
 
@@ -116,11 +104,10 @@ export function BossModePanel(props: {
   }
 
   return (
-    <SettingsPage title={_(bossPageTitle)} description={_(bossPageDesc)}>
+    <SettingsPage title={_(bossPageTitle)}>
       <SettingsSection>
         <SettingRow
           title={_({ id: "settings.runtime.boss.enable", message: "Enable Boss Mode" })}
-          description={_(bossRowDesc)}
           trailing={
             <Switch
               checked={enabled()}
@@ -206,7 +193,6 @@ export function BossModePanel(props: {
       <SettingsSection>
         <SettingRow
           title={_({ id: "settings.runtime.boss.conversation.open", message: "Task entry" })}
-          description={_(openSessionRowDesc)}
           trailing={
             <Button
               type="button"

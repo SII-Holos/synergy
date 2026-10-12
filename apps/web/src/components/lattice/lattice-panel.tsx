@@ -605,12 +605,6 @@ export function LatticePanel(props: {
                             <span class="block text-13-medium text-text-strong">
                               {_({ id: "app.lattice.panel.blueprintDetails", message: "Blueprint details" })}
                             </span>
-                            <span class="mt-0.5 block text-11-regular text-text-weak">
-                              {_({
-                                id: "app.lattice.panel.blueprintDetailsHint",
-                                message: "Objectives, acceptance criteria, assumptions, and execution attempts",
-                              })}
-                            </span>
                           </span>
                           <Icon
                             name={getSemanticIcon(

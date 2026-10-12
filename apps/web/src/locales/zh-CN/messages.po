@@ -2809,11 +2809,6 @@ msgstr "Synergy 服务器当前无响应，无法确认正在运行的任务状�
 msgid "app.fatalError.connection.title"
 msgstr "无法连接到服务器"
 
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.initialization.description"
-msgstr "配置、Provider 或设置错误导致 Synergy 无法完成启动。"
-
 #. ── pages/fatal-error.tsx ───────────────────────────────────────────
 msgid "app.fatalError.initialization.title"
 msgstr "Synergy 启动失败"
@@ -2827,19 +2822,9 @@ msgstr "重新加载此页面不会停止服务器上已在运行的任务。"
 msgid "app.fatalError.renderer.title"
 msgstr "界面遇到了问题"
 
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.scope.description"
-msgstr "工作区无法加载，可能是临时故障或配置问题。"
-
 #. ── pages/fatal-error.tsx ───────────────────────────────────────────
 msgid "app.fatalError.scope.title"
 msgstr "无法加载此项目"
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.summaryLabel"
-msgstr "摘要"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
@@ -3735,10 +3720,6 @@ msgstr "假设"
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.blueprintDetails"
 msgstr "Blueprint 详情"
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintDetailsHint"
-msgstr "目标、验收标准、假设与执行尝试"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.blueprintVersion"
@@ -13867,6 +13848,13 @@ msgstr "从中断处恢复"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.continueUnavailable"
+msgstr "当前任务无法继续，请发送新消息。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.control.disabledHint"
 msgstr "输入消息后可发送"
 
@@ -21401,24 +21389,12 @@ msgid "settings.library.learning.autonomyRow.title"
 msgstr "后台反思与规划"
 
 #. js-lingui-explicit-id
-msgid "settings.library.learning.capture.desc"
-msgstr "选择如何记录有价值的知识。"
-
-#. js-lingui-explicit-id
-msgid "settings.library.learning.capture.title"
-msgstr "自动整理"
-
-#. js-lingui-explicit-id
 msgid "settings.library.learning.learnRow.desc"
 msgstr "从有价值的对话中提取并整理可复用的记忆。"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.learnRow.title"
 msgstr "允许学习"
-
-#. js-lingui-explicit-id
-msgid "settings.library.learning.page.desc"
-msgstr "设置 Synergy 如何从对话中学习并整理知识。"
 
 #. ---------- page / section descriptors ----------
 msgid "settings.library.learning.page.title"
@@ -23149,16 +23125,8 @@ msgid "settings.runtime.boss.conversation.open"
 msgstr "任务入口"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.desc"
-msgstr "一个入口，统筹任务与项目。"
-
-#. js-lingui-explicit-id
 msgid "settings.runtime.boss.enable"
 msgstr "启用 Boss 模式"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.enabled.desc"
-msgstr "飞书消息汇入对应入口。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.name"
@@ -23183,10 +23151,6 @@ msgstr "打开"
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.busy"
 msgstr "正在打开…"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.openSession.desc"
-msgstr "首次使用时创建。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.failed"
