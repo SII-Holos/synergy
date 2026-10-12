@@ -1,9 +1,15 @@
 import type { RuntimeStatusRow } from "@ericsanchezok/synergy-util/runtime-startup"
 import * as ChannelTypes from "@ericsanchezok/synergy-channels/channel/types"
 import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 
 const CHANNEL_CONNECT_TIMEOUT = 15_000
 const STATUS_POLL_INTERVAL = 320
+const polling = RuntimeContext.state(() => new AbortController())
+
+export function stopStatusPolling() {
+  polling().abort()
+}
 
 function getStatusText(status: ChannelTypes.Status): string {
   if (status.status === "failed") return `failed: ${status.error}`
@@ -13,6 +19,7 @@ function getStatusText(status: ChannelTypes.Status): string {
 async function resolveStatuses(input: {
   statuses: Record<string, ChannelTypes.Status>
   refresh: () => Promise<Record<string, ChannelTypes.Status>>
+  signal: AbortSignal
 }): Promise<Record<string, ChannelTypes.Status>> {
   const entries = Object.entries(input.statuses)
   if (entries.length === 0) return {}
@@ -21,21 +28,29 @@ async function resolveStatuses(input: {
   await Promise.all(
     entries.map(async ([key, status]) => {
       if (status.status === "connecting") {
-        result[key] = await new Promise<ChannelTypes.Status>((resolve) => {
+        const next = await new Promise<ChannelTypes.Status | undefined>((resolve) => {
+          const finish = (value?: ChannelTypes.Status) => {
+            clearInterval(spin)
+            clearTimeout(timeout)
+            input.signal.removeEventListener("abort", abort)
+            resolve(value)
+          }
+          const abort = () => finish()
           const timeout = setTimeout(
-            () => resolve({ status: "failed", error: "connection timeout" } as ChannelTypes.Status),
+            () => finish({ status: "failed", error: "connection timeout" }),
             CHANNEL_CONNECT_TIMEOUT,
           )
           const spin = setInterval(async () => {
             const current = await input.refresh().catch(() => ({}) as Record<string, ChannelTypes.Status>)
             const nextStatus = current[key]
             if (nextStatus && nextStatus.status !== "connecting") {
-              clearInterval(spin)
-              clearTimeout(timeout)
-              resolve(nextStatus)
+              finish(nextStatus)
             }
           }, STATUS_POLL_INTERVAL)
+          input.signal.addEventListener("abort", abort, { once: true })
+          if (input.signal.aborted) abort()
         })
+        if (next) result[key] = next
       }
     }),
   )
@@ -43,10 +58,17 @@ async function resolveStatuses(input: {
 }
 
 export async function connectionStatusRows(report: (rows: RuntimeStatusRow[]) => void): Promise<RuntimeStatusRow[]> {
+  const signal = polling().signal
   const { Bus } = await import("@ericsanchezok/synergy-harness/bus")
   const { Channel } = await import("@ericsanchezok/synergy-channels/channel")
 
-  const channelStatuses = await resolveStatuses({ statuses: await Channel.status(), refresh: () => Channel.status() })
+  if (signal.aborted) return []
+  const channelStatuses = await resolveStatuses({
+    statuses: await Channel.status(),
+    refresh: () => Channel.status(),
+    signal,
+  })
+  if (signal.aborted) return []
   const rows: RuntimeStatusRow[] = [channelStatusRow(channelStatuses)]
 
   const channelState = ScopedState.create(

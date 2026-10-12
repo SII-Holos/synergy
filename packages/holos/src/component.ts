@@ -8,6 +8,7 @@ import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { HolosRuntime } from "./holos/runtime"
 import { Contact } from "./holos/contact"
 import { registerReload } from "./reload"
+import { stopStatusPolling } from "./startup-status"
 export function holos(): RuntimeComponent {
   return {
     id: "holos",
@@ -15,7 +16,10 @@ export function holos(): RuntimeComponent {
     version,
     requires: { "local-runtime": version },
     workers: { agent: new URL("./worker.ts", import.meta.url) },
-    services: () => ({ resident: { start: () => HolosRuntime.init(), async stop() {} } }),
+    services: () => ({
+      resident: { start: () => HolosRuntime.init(), async stop() {} },
+      disposeExtensions: async () => stopStatusPolling(),
+    }),
     adapters: { http: new URL("./http.ts", import.meta.url), cli: new URL("./cli-adapter.ts", import.meta.url) },
     register() {
       AgentPromptContributions.register("holos", [

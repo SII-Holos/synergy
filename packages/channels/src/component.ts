@@ -12,6 +12,7 @@ import { AppChannel } from "./channel/app"
 import { ChannelOutbound } from "./channel/outbound"
 import { ResponseCardRuntime } from "./channel/response-card"
 import { registerReload } from "./reload"
+import { stopStatusPolling } from "./startup-status"
 export function channels(): RuntimeComponent {
   return {
     id: "channels",
@@ -20,6 +21,7 @@ export function channels(): RuntimeComponent {
     requires: { "local-runtime": version },
     workers: { agent: new URL("./worker.ts", import.meta.url) },
     services: () => ({
+      disposeExtensions: async () => stopStatusPolling(),
       resident: {
         async start(config) {
           await ResponseCardRuntime.pruneExpired()

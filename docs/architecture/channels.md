@@ -21,6 +21,8 @@ An unloaded provider has no transports, reconnect loops, tools, HTTP features, s
 
 Email keeps each SMTP pool and its idle timer inside the owning Runtime. Successful sends renew the idle deadline; credential changes and transport failures discard that pool. Component disposal closes the pool and cancels its timer, with idempotent cleanup that leaves other Runtimes connected.
 
+Channels and Holos startup status polling belongs to its Runtime. Completion, timeout and disposal cancel both the poll and its deadline. A cancelled status request returns no rows and cannot install subscriptions after Scope disposal.
+
 Holos registers its own configuration catchup. Core retains historical migration receipts without converting `channel.holos` or removing retired Holos settings. The selected Holos owner converts known fields from legacy monolithic or Channel domain files, preserves unknown fields, and publishes the destination before removing the converted source fields. Existing destination settings take precedence, including changes made after an earlier uninstall.
 
 Providers report typed ingress facts through `ChannelHost` and may support one or both ingress families:
