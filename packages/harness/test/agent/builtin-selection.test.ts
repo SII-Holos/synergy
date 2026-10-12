@@ -29,6 +29,9 @@ test("an embedded host selects internal agents without product agent families", 
           "title",
         ])
         expect(agents.filter((agent) => !agent.hidden).map((agent) => agent.name)).toEqual(["assistant"])
+        expect(agents.find((agent) => agent.name === "assistant")!.permission).not.toEqual(
+          expect.arrayContaining([expect.objectContaining({ permission: "memory_write" })]),
+        )
         expect(() => AgentBuiltins.selectDefaultFamilies([])).toThrow("before opening the Runtime")
         expect(() => AgentBuiltins.register("late", () => ({}))).toThrow("before opening the Runtime")
       },

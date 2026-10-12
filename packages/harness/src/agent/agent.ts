@@ -7,6 +7,7 @@ import { Truncate } from "../tool/truncation"
 
 import { createBuiltinInternalAgents } from "./builtin-internal"
 import { AgentBuiltins } from "./builtins"
+import { AgentPermissionContributions } from "./permission-contributions"
 import { createBuiltinLegacySubagents } from "./builtin-legacy-subagents"
 import { createBuiltinPrimaryAgents } from "./builtin-primary"
 import { createBuiltinMaxSubagents } from "./builtin-max-subagents"
@@ -191,8 +192,6 @@ export namespace Agent {
 
   const state = ScopedState.create(async () => {
     const cfg = await Config.current()
-    const evolutionActive =
-      ((cfg as any).library?.memory?.enabled ?? true) && (cfg as any).library?.experience?.encode !== false
     const role = (r: ModelRoleType) => Provider.resolveRoleModelSync(cfg, r)
 
     const defaults = PermissionNext.fromConfig({
@@ -223,7 +222,7 @@ export namespace Agent {
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
 
-    const builtinContext = { defaults, user, role, evolutionActive }
+    const builtinContext = { defaults, user, role }
     const result: Record<string, Info> = {
       ...(AgentBuiltins.enabled("primary") ? createBuiltinPrimaryAgents(builtinContext) : {}),
       ...(AgentBuiltins.enabled("legacy") ? createBuiltinLegacySubagents(builtinContext) : {}),
@@ -316,26 +315,7 @@ export namespace Agent {
       })
     }
 
-    for (const [name, item] of Object.entries(result)) {
-      // Skip agents that explicitly deny memory_write/memory_edit (e.g. coding primary).
-      // The blanket allow-patch uses PermissionNext.merge() which appends rules, and
-      // PermissionNext.evaluate() uses findLast() — so this patch would silently
-      // override any explicit "deny" configured in the agent's own permission builder.
-      const hasExplicitMemoryDeny = item.permission.some(
-        (r) => (r.permission === "memory_write" || r.permission === "memory_edit") && r.action === "deny",
-      )
-      if (hasExplicitMemoryDeny) continue
-
-      if (item.mode === "primary" && item.hidden !== true) {
-        item.permission = PermissionNext.merge(
-          item.permission,
-          PermissionNext.fromConfig({
-            memory_write: "allow",
-            memory_edit: "allow",
-          }),
-        )
-      }
-    }
+    for (const item of Object.values(result)) await AgentPermissionContributions.apply(item)
 
     // Ensure Truncate.directory() is allowed unless explicitly configured
 
