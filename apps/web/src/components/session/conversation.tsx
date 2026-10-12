@@ -43,6 +43,7 @@ import { useExecution } from "@/context/execution"
 type SessionConversationProps = PluginComponentProps<PluginConversationService> & {
   initialScrollSettled?: () => boolean
   onAdmitted?: (sessionID: string) => void
+  onHydrated?: (sessionID: string) => void
 }
 
 export function SessionConversation(input: SessionConversationProps) {
@@ -55,6 +56,7 @@ export function SessionConversation(input: SessionConversationProps) {
           context={mergeProps(input.context, { sessionID: untrack(() => input.context.sessionID) })}
           initialScrollSettled={input.initialScrollSettled}
           onAdmitted={input.onAdmitted}
+          onHydrated={input.onHydrated}
         />
       )}
     </Show>
@@ -326,6 +328,53 @@ function SessionConversationView(input: SessionConversationProps) {
   const lastTimelineID = createMemo(() => props.timeline()?.at(-1)?.id)
   const turnProjection = props.turnProjection
   const [scrollRef, setScrollRef] = createSignal<HTMLDivElement>()
+  const [rowsReady, setRowsReady] = createSignal(!props.content)
+  let hydrated = false
+  createEffect(() => {
+    if (!input.onHydrated || hydrated || !active() || !admitted() || !rowsReady()) return
+    const viewport = scrollRef()
+    const surface = viewport?.querySelector<HTMLElement>("[data-conversation-motion]")
+    if (!surface) return
+    let current = true
+    let frame: number | undefined
+    const pending = () => surface.querySelector("[data-markdown-pending]") || document.fonts?.status === "loading"
+    const schedule = () => {
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      frame = undefined
+      if (!current || pending()) return
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          frame = undefined
+          if (!current || pending()) return
+          hydrated = true
+          cleanup()
+          input.onHydrated?.(props.sessionID)
+        })
+      })
+    }
+    const mutations = new MutationObserver(schedule)
+    const resize = new ResizeObserver(schedule)
+    const cleanup = () => {
+      current = false
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      mutations.disconnect()
+      resize.disconnect()
+      document.fonts?.removeEventListener("loadingdone", schedule)
+      document.fonts?.removeEventListener("loadingerror", schedule)
+    }
+    mutations.observe(surface, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["data-markdown-pending"],
+    })
+    resize.observe(surface)
+    document.fonts?.addEventListener("loadingdone", schedule)
+    document.fonts?.addEventListener("loadingerror", schedule)
+    schedule()
+    onCleanup(cleanup)
+  })
   // Rows below are keyed by the stable message id (see conversation-timeline):
   // message objects are replaced in place by window reload, reconnect replay,
   // rollback copies, and message.updated reconcile. Reference-keyed rows would
@@ -490,6 +539,7 @@ function SessionConversationView(input: SessionConversationProps) {
           }
         >
           <VirtualConversationRows
+            onReady={setRowsReady}
             layoutOwner={[sdk.url, sdk.scopeKey, props.sessionID]}
             onReadingMessage={(messageID) => {
               const element = scrollRef()

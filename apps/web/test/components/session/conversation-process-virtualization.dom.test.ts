@@ -115,6 +115,44 @@ test.each(["index.mjs", "index.jsx"] as const)(
   30000,
 )
 
+test("a tool entrance preserves an in-flight following offset instead of snapping the transcript", async () => {
+  await page.goto(`${url}keyed.html?following`)
+  await page.waitForFunction(() => window.keyedLayout?.viewport().scrollTop > 1000)
+  await page.waitForFunction(() => !document.getAnimations().length)
+  await page.evaluate(() => {
+    document.querySelector<HTMLElement>('[data-row="history-11"] > div')!.style.height = "412px"
+  })
+  await page.waitForFunction(() => !!document.querySelector("[data-follow-motion]")?.getAnimations().length)
+  const result = await page.evaluate(async () => {
+    const animation = document.querySelector("[data-follow-motion]")!.getAnimations()[0]
+    animation.pause()
+    animation.currentTime = 40
+    const anchor = document.querySelector('[data-row="history-11"]')!
+    const before = anchor.getBoundingClientRect().top
+    const animate = Element.prototype.animate
+    Element.prototype.animate = function (...args) {
+      const next = animate.apply(this, args)
+      if (this.hasAttribute("data-follow-motion")) {
+        next.pause()
+        next.currentTime = 0
+      }
+      return next
+    }
+    window.keyedLayout.append()
+    const samples = []
+    try {
+      for (let frame = 0; frame < 8; frame++) {
+        await new Promise(requestAnimationFrame)
+        samples.push(anchor.getBoundingClientRect().top)
+      }
+    } finally {
+      Element.prototype.animate = animate
+    }
+    return { before, samples }
+  })
+  expect(Math.max(...result.samples.map((y) => Math.abs(result.before - y))), JSON.stringify(result)).toBeLessThan(1)
+}, 30000)
+
 test("focus outside a large conversation does not reread its summaries", async () => {
   await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()

@@ -24,6 +24,10 @@ New virtual rows had no accepted size. Their estimated height changed the parent
 - [Initial-admission decision](../decisions/implemented/bug-fix/2026-10-12-measure-new-rows-before-following.md) limits synchronous work to newly mounted unmeasured rows.
 - [Conversation development guidance](../../.synergy/skill/develop-frontend/references/conversation.md) requires composed motion and per-frame assertions.
 
+## Follow-up evidence
+
+A later live-provider case exposed another overlap: a tool disclosure began while the parent still carried a following offset. Excluding all disclosure compensation cancelled that offset immediately. Retargeting from the painted offset while retaining the original deadline prevents both cancellation jumps and indefinitely extended settling. The [follow-up decision](../decisions/implemented/bug-fix/2026-10-12-history-and-tool-arrival-continuity.md) adds a composed browser test with the presentation clock held while real child layout changes.
+
 ## Lessons
 
 Correct DOM identity and final scroll position are necessary but insufficient. The geometry exposed to another animation owner before the next paint is observable behavior and needs its own regression.

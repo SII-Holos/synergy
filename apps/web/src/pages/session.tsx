@@ -1333,7 +1333,7 @@ function SessionPageContent() {
   const autoScroll = createAutoScroll({
     enabled: active,
     motionTarget: () =>
-      initialScrollSettled() === params.id
+      initialScrollSettled() === params.id && hydratedConversation() === conversationSessionID()
         ? (scroller?.querySelector<HTMLElement>("[data-conversation-motion]") ?? undefined)
         : undefined,
     working: isWorking,
@@ -1366,6 +1366,7 @@ function SessionPageContent() {
   let initScrollFrame: number | undefined
   let historyScrollFrame: number | undefined
   const [initialScrollSettled, setInitialScrollSettled] = createSignal<string>()
+  const [hydratedConversation, setHydratedConversation] = createSignal<string>()
   const [presentedSession, setPresentedSession] = createSignal<string>()
   let scrollView: ReturnType<typeof layout.view> | undefined
   let scrollSession: string | undefined
@@ -1405,6 +1406,7 @@ function SessionPageContent() {
     scrollWasReady = false
     scroller?.removeEventListener("wheel", releaseHistoryLocation)
     scroller?.removeEventListener("keydown", releaseHistoryLocation)
+    if (scroller !== el) setHydratedConversation(undefined)
     scroller = el
     el?.addEventListener("wheel", releaseHistoryLocation, { passive: true })
     el?.addEventListener("keydown", releaseHistoryLocation)
@@ -2320,6 +2322,9 @@ function SessionPageContent() {
               <SessionConversation
                 context={conversation}
                 onAdmitted={admittedConversation}
+                onHydrated={(id) => {
+                  if (id === conversationSessionID()) setHydratedConversation(id)
+                }}
                 initialScrollSettled={() =>
                   !!submissionDraft()?.message ||
                   !params.id ||
