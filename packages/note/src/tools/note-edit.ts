@@ -1,10 +1,9 @@
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
-import { NoteBlueprintPolicy, NoteDocument, NoteError, NoteStore } from ".."
+import { NoteDocumentKinds, NoteDocument, NoteError, NoteStore } from ".."
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import DESCRIPTION from "./note-edit.txt"
-import { Session } from "@ericsanchezok/synergy-harness/session"
 
 const contentInput = z.discriminatedUnion("format", [
   z.object({ format: z.literal("text"), text: z.string() }),
@@ -756,15 +755,13 @@ export const NoteEditTool = Tool.define(
         throw error
       }
 
-      const session = await Session.get(ctx.sessionID)
-      const decision = NoteBlueprintPolicy.evaluateWrite({
-        workflowKind: session.workflow?.kind,
+      const blocked = await NoteDocumentKinds.guard({
+        sessionID: ctx.sessionID,
         action: "edit",
-        existingKind: existing.kind ?? "note",
+        existing,
+        title: existing.title,
       })
-      if (!decision.allowed) {
-        return NoteBlueprintPolicy.blockedResult({ action: decision.action, id: params.noteId, title: existing.title })
-      }
+      if (blocked) return blocked
 
       const beforeDoc = NoteDocument.normalize(existing.content)
       const beforeHash = NoteDocument.hash(beforeDoc)

@@ -5,6 +5,7 @@ import { Hono } from "hono"
 export function registerHttp() {
   Server.registerContributions(
     {
+      features: ["note"],
       routes: { "scoped-before-assets": new Hono().route("/note", NoteRoute()) },
       isScopeRequiredRoute: (pathname) => matchesPath(pathname, ["/note"]),
     },

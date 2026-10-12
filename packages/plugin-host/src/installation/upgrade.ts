@@ -5,18 +5,27 @@ import { FULL_COMPONENTS, PRESET_IDS } from "./catalog"
 import { readPluginManifest } from "./plugin-manifest"
 import type { InstalledGeneration } from "./generations"
 import type { prepareInstallation } from "./manager"
+import { legacyComponentSelections } from "./selection-upgrade"
 
 const official = new Set(
-  [...FULL_COMPONENTS, ...PRESET_IDS, "web-app", "desktop-app"].map((id) => `@ericsanchezok/synergy-${id}`),
+  [...FULL_COMPONENTS, ...PRESET_IDS, "workflows", "connections", "web-app", "desktop-app"].map(
+    (id) => `@ericsanchezok/synergy-${id}`,
+  ),
 )
 
 export function upgradeInstallationRoots(previous: InstalledGeneration, version: string) {
-  return Object.fromEntries(
+  const roots = Object.fromEntries(
     Object.entries(previous.roots).map(([name, spec]) => [
       name,
       official.has(name) && spec === previous.hostVersion ? version : spec,
     ]),
   )
+  for (const [name, replacement] of Object.entries(legacyComponentSelections)) {
+    if (!(name in roots) || previous.packages[name]?.metadata?.kind !== "component") continue
+    delete roots[name]
+    for (const leaf of replacement) roots[leaf] ??= version
+  }
+  return roots
 }
 
 export async function preservePluginActivation(plan: Awaited<ReturnType<typeof prepareInstallation>>, version: string) {
