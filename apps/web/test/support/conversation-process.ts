@@ -28,7 +28,7 @@ type Fixture = {
   }): void
   connected(value: boolean): void
   approval(value: boolean): void
-  stream(): void
+  stream(text?: string): void
   terminal(): void
   complete(): void
   grow(count: number): void
@@ -86,7 +86,7 @@ export const observeResizeErrors = (target: Page) =>
 export const fixtureServer = (entry: "index.mjs" | "index.jsx") =>
   createBrowserFixture({
     root: directory,
-    entries: ["index.html", "resize.html"],
+    entries: ["index.html", "resize.html", "keyed.html"],
     aliases: [
       { find: /^virtua\/solid$/, replacement: path.join(directory, `virtualizer-${entry}.ts`) },
       { find: "@/context/execution", replacement: path.join(directory, "execution.ts") },
@@ -144,6 +144,14 @@ beforeAll(async () => {
       path.join(directory, `virtualizer-${entry}.ts`),
       `export * from ${JSON.stringify(path.join(virtualizer, entry))}`,
     )
+  await Bun.write(
+    path.join(directory, "keyed.html"),
+    '<!doctype html><div id="root"></div><script type="module" src="/keyed.tsx"></script>',
+  )
+  await Bun.write(
+    path.join(directory, "keyed.tsx"),
+    `import ${JSON.stringify(`/@fs/${app}/test/fixtures/conversation/keyed-layout.tsx`)}`,
+  )
   server = await fixtureServer("index.mjs")
   url = server.url
   browser = await chromium.launch({ headless: true })

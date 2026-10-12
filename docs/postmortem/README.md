@@ -13,7 +13,7 @@ Otherwise, test the fix.
 ## Placement
 
 - Bugs and process failures belong here.
-- Decisions and rationale belong in `docs/decisions/`.
+- Keep rationale in `docs/decisions/`.
 
 ## Format
 
@@ -24,9 +24,11 @@ Use `NNNN-kebab-case-title.md`. Sections:
 - **Timeline** — what was observed and when.
 - **Root cause** — the mechanism and missing safeguards.
 - **Guardrails added** — linked fixes: tests, doc updates, gate changes.
-- **Lessons** — the durable takeaways.
+- **Lessons** — durable takeaways.
 
 ## Index
+
+- [0068: Measurements](0068-conversation-measurement-identity.md)
 
 - [0067: Isolated containment](0067-isolated-runtime-containment-gaps.md)
 

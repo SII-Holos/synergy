@@ -431,8 +431,8 @@ window.__conversationProcess = {
     setData("part", "final", [part("final", "answer", "text", "Final answer stays mounted.")])
     setData("message", "session", [root, final])
   },
-  stream() {
-    setData("part", "final", [part("final", "answer", "text", "Final answer stays mounted.")])
+  stream(text = "Final answer stays mounted.") {
+    setData("part", "final", [part("final", "answer", "text", text)])
     setData("message", "session", [root, work, more, final])
   },
   terminal() {
