@@ -386,6 +386,7 @@ export function Markdown(
   return (
     <div
       data-component="markdown"
+      data-markdown-pending={!local.streaming && html.loading ? "" : undefined}
       ref={container}
       classList={{
         ...(local.classList ?? {}),

@@ -1,7 +1,5 @@
 # Postmortems
 
-- [0061: Usage recovery](0061-streamed-usage-recovery.md)
-
 ## Criteria
 
 - **Subtle** — needs investigation.
@@ -27,6 +25,8 @@ Otherwise, test.
 - **Lessons** — durable takeaways.
 
 ## Index
+
+- [0071: Cold hydration](0071-cold-conversation-hydration-motion.md)
 
 - [0070: Rebound](0070-new-row-following-rebound.md)
 

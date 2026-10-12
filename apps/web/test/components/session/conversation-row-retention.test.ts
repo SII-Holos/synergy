@@ -387,7 +387,9 @@ beforeAll(async () => {
           let holdBody = false
           const pendingBodies: { resolve(): void; reject(error: Error): void }[] = []
           const bodyReleases: string[] = []
+          const hydratedSessions: string[] = []
           Object.assign(window, {
+            __hydratedSessions: () => [...hydratedSessions],
             __holdBodies: () => { holdBody = true },
             __settleBodies: () => { holdBody = false; for (const entry of pendingBodies.splice(0)) entry.resolve() },
             __failBodies: () => { holdBody = false; for (const entry of pendingBodies.splice(0)) entry.reject(new Error("Fixture content unavailable")) },
@@ -418,7 +420,7 @@ beforeAll(async () => {
             turnMessagesFor: (m: AnyMsg) => [m],
             compactionParentIDs: () => [],
           })
-          return createComponent(SessionConversation, { initialScrollSettled: layoutReady, context: {
+          return createComponent(SessionConversation, { initialScrollSettled: layoutReady, onHydrated: id => hydratedSessions.push(id), context: {
             get content() { return contentEnabled() ? {
               summaries: id => Array.from({length: id === "huge" ? 1001 : 1}, (_, index) => ({id: "part-"+String(index).padStart(4,"0"),messageID:id,sessionID:sessionID(),type:"text",preview:"",content:{version:"one",bytes:10}})),
               page: readProjectionPage,load: async () => {},retain: summary => ({ready:holdBody ? new Promise<void>((resolve,reject) => pendingBodies.push({resolve,reject})) : Promise.resolve(),release() {bodyReleases.push(JSON.stringify([summary.sessionID, summary.messageID, summary.id]))}}),
@@ -958,9 +960,64 @@ test("terminal body failures reveal an actionable retry instead of stranding ini
   await page.evaluate(() => (window as unknown as { __failBodies(): void }).__failBodies())
   await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   expect(await page.locator("[data-content-error] button").count()).toBe(1)
+  await page.waitForFunction(() =>
+    (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions().includes("ses_1"),
+  )
   await page.locator("[data-content-error] button").click()
   await page.waitForSelector("[data-content-error]", { state: "detached" })
   expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBeNull()
+  expect(pageErrors).toEqual([])
+})
+
+test("cold hydration waits for bodies and Markdown, releases once, and rejects the previous owner", async () => {
+  await page.goto(new URL("?admission", page.url()).href)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      __enableContent(): void
+      __holdBodies(): void
+      __layoutReady(value: boolean): void
+      __setTimeline(messages: unknown[]): void
+    }
+    fixture.__holdBodies()
+    fixture.__setTimeline([{ id: "first", sessionID: "ses_1", role: "user", time: { created: 1 } }])
+    fixture.__enableContent()
+    fixture.__layoutReady(true)
+  })
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
+  await executionFrames()
+  const hydrated = () =>
+    page.evaluate(() => (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions())
+  expect(await hydrated()).toEqual([])
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      __switchSession(id: string, messages: unknown[]): void
+      __layoutReady(value: boolean): void
+    }
+    fixture.__switchSession("ses_2", [{ id: "second", sessionID: "ses_2", role: "user", time: { created: 2 } }])
+    fixture.__layoutReady(true)
+  })
+  await page.locator('[data-display-row="second:user"]').waitFor()
+  await page.evaluate(() => {
+    const marker = document.createElement("div")
+    marker.dataset.markdownPending = ""
+    document.querySelector("[data-conversation-motion]")!.append(marker)
+    ;(window as unknown as { __settleBodies(): void }).__settleBodies()
+  })
+  await executionFrames()
+  expect(await hydrated()).toEqual([])
+  await page.evaluate(() => document.querySelector("[data-markdown-pending]")!.remove())
+  await page.waitForFunction(
+    () => (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions().length === 1,
+  )
+  expect(await hydrated()).toEqual(["ses_2"])
+  await page.evaluate(() => {
+    window.__setTimeline([
+      { id: "second", sessionID: "ses_2", role: "user", text: "later growth", time: { created: 2 } },
+    ])
+  })
+  await executionFrames()
+  expect(await hydrated()).toEqual(["ses_2"])
   expect(pageErrors).toEqual([])
 })
 

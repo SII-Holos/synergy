@@ -286,6 +286,98 @@ describe("production conversation history", () => {
     }
   }, 60000)
 
+  test("cold body hydration keeps the latest footer pinned through delayed Markdown and warm return", async () => {
+    const target = await importPreviewConversation(preview, {
+      title: "Delayed Markdown fixture",
+      turns: 24,
+      answer: (turn) =>
+        `## Answer ${turn}\n\n` +
+        "A paragraph with **emphasis**, `code` and a [reference](https://example.com).\n\n".repeat(
+          turn === 24 ? 500 : 8,
+        ),
+    })
+    const browser = await chromium.launch({ headless: true })
+    const bodies = Promise.withResolvers<void>()
+    let bodyReads = 0
+    let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
+    try {
+      const page = await browser.newPage({ viewport: { width: 1100, height: 950 } })
+      page.setDefaultTimeout(20000)
+      diagnostics = await openPluginPreviewPage({ ...preview, url: conversation.url }, page)
+      const active = page.locator("[data-session-resident]:not([hidden])")
+      await active.getByText("Answer 360", { exact: true }).waitFor()
+      await page.route(`**/session/${target.id}/message/**/part/**/content*`, async (route) => {
+        bodyReads++
+        const response = await route.fetch()
+        await bodies.promise
+        await route.fulfill({ response })
+      })
+      type Frame = { y: number; opacity: number; key: string | undefined; text: boolean }
+      await page.evaluate(
+        ({ sessionID, rootID, messageID }) => {
+          const state = { frames: [] as Frame[], done: false }
+          Object.assign(window, { coldFrames: state })
+          let attempts = 0
+          const sample = () => {
+            const current = document.querySelector<HTMLElement>("[data-session-resident]:not([hidden])")
+            const viewport = current?.querySelector<HTMLElement>("[data-conversation-viewport]")
+            const footer = current?.querySelector<HTMLElement>(`[data-display-row="${rootID}:footer"]`)
+            const motion = current?.querySelector<HTMLElement>("[data-conversation-motion]")
+            if (
+              current?.dataset.sessionResident?.includes(sessionID) &&
+              viewport &&
+              footer &&
+              motion &&
+              (state.frames.length || Math.abs(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop) < 2)
+            ) {
+              state.frames.push({
+                y: footer.getBoundingClientRect().bottom - viewport.getBoundingClientRect().bottom,
+                opacity: Number(getComputedStyle(motion).opacity),
+                key: footer.dataset.displayRow,
+                text: !!current.querySelector(`[data-message-id="${messageID}"] [data-component="text-part"]`)
+                  ?.textContent,
+              })
+            }
+            if (state.frames.length < 240 && ++attempts < 1200) requestAnimationFrame(sample)
+            else state.done = true
+          }
+          requestAnimationFrame(sample)
+        },
+        { sessionID: target.id, rootID: target.messages.at(-2)!.info.id, messageID: target.messages.at(-1)!.info.id },
+      )
+      await page.getByRole("button", { name: "Delayed Markdown fixture", exact: true }).click()
+      await page.waitForURL(target.url)
+      await active.locator('[data-conversation-viewport][data-ready="true"]').waitFor()
+      expect(await page.getByRole("textbox").first().isEditable()).toBe(true)
+      await page.waitForTimeout(80)
+      bodies.resolve()
+      await page.waitForFunction(() => (window as unknown as { coldFrames: { done: boolean } }).coldFrames.done)
+      const frames = await page.evaluate(
+        () => (window as unknown as { coldFrames: { frames: Frame[] } }).coldFrames.frames,
+      )
+      expect(bodyReads).toBeGreaterThan(0)
+      expect(frames.length).toBeGreaterThan(120)
+      expect(new Set(frames.map((frame) => frame.key)).size).toBe(1)
+      const positions = frames.map((frame) => frame.y)
+      expect(Math.max(...positions) - Math.min(...positions), JSON.stringify(frames.slice(0, 60))).toBeLessThan(2)
+      expect(frames.every((frame) => frame.opacity === 1)).toBe(true)
+      expect(frames.some((frame) => !frame.text)).toBe(true)
+      expect(frames.at(-1)!.text).toBe(true)
+      const viewport = await active.locator("[data-conversation-viewport]").elementHandle()
+      await page.getByRole("button", { name: "History fixture", exact: true }).click()
+      await active.getByText("Answer 360", { exact: true }).waitFor()
+      await page.getByRole("button", { name: "Delayed Markdown fixture", exact: true }).click()
+      expect(await active.locator("[data-conversation-viewport]").evaluate((el, saved) => el === saved, viewport)).toBe(
+        true,
+      )
+      expect(diagnostics.errors.map((error) => error.message)).toEqual([])
+    } finally {
+      bodies.resolve()
+      diagnostics?.dispose()
+      await browser.close()
+    }
+  }, 60000)
+
   test("an existing Home session never becomes a new-task greeting while history is pending", async () => {
     const browser = await chromium.launch({ headless: true })
     let release = () => {}
