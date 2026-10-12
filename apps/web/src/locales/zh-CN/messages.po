@@ -10501,7 +10501,7 @@ msgstr "错误"
 msgid "brand.logo.alt"
 msgstr "Holos"
 
-#. js-lingui-explicit-id
+#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
 msgid "brand.workbench.synergy"
 msgstr "Synergy 工作台"
 
@@ -19269,8 +19269,12 @@ msgid "settings.catalog.import.searchTerms"
 msgstr "导入 | 配置"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.learning.autonomy.searchTerms"
+msgstr "anima | 自动整理 | 自动 | 后台例程"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.learning.description"
-msgstr "设置如何从对话中学习并在后台整理经验。"
+msgstr "设置知识库的学习方式。"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.label"
@@ -19278,7 +19282,7 @@ msgstr "学习"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.searchTerms"
-msgstr "知识库 | 学习 | 自动整理 | 后台反思 | 规划"
+msgstr "知识库 | 学习"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.lsp.description"
@@ -21430,7 +21434,7 @@ msgstr "后台反思与规划"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.capture.desc"
-msgstr "允许记录知识和后台反思。"
+msgstr "选择如何记录有价值的知识。"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.capture.title"

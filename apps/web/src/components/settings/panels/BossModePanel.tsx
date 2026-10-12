@@ -82,6 +82,7 @@ export function BossModePanel(props: {
   runtime: RuntimeStore
   onRuntimeChange: (key: keyof RuntimeStore, value: string) => void
   nameController: BossNameController
+  nameAvailable: boolean
   configDirty?: boolean
   onOpenBossSession?: () => Promise<void>
 }) {
@@ -176,27 +177,29 @@ export function BossModePanel(props: {
             </For>
           </div>
         </Show>
-        <SettingRow
-          title={_(nameRowTitle)}
-          trailing={
-            <TextField
-              type="text"
-              value={props.nameController.content()}
-              placeholder={_(namePlaceholder)}
-              disabled={!enabled() || !props.nameController.loaded()}
-              class="settings-row-control-text"
-              onChange={props.nameController.setContent}
-            />
-          }
-        />
-        <Show when={props.nameController.error()}>
-          <p role="alert" class="ds-section-hint">
-            {props.nameController.error()}
-          </p>
-          <Show when={!props.nameController.loaded()}>
-            <Button variant="secondary" onClick={() => void props.nameController.load()}>
-              {_({ id: "settings.runtime.boss.name.retry", message: "Reload name" })}
-            </Button>
+        <Show when={props.nameAvailable}>
+          <SettingRow
+            title={_(nameRowTitle)}
+            trailing={
+              <TextField
+                type="text"
+                value={props.nameController.content()}
+                placeholder={_(namePlaceholder)}
+                disabled={!enabled() || !props.nameController.loaded()}
+                class="settings-row-control-text"
+                onChange={props.nameController.setContent}
+              />
+            }
+          />
+          <Show when={props.nameController.error()}>
+            <p role="alert" class="ds-section-hint">
+              {props.nameController.error()}
+            </p>
+            <Show when={!props.nameController.loaded()}>
+              <Button variant="secondary" onClick={() => void props.nameController.load()}>
+                {_({ id: "settings.runtime.boss.name.retry", message: "Reload name" })}
+              </Button>
+            </Show>
           </Show>
         </Show>
       </SettingsSection>
@@ -210,14 +213,16 @@ export function BossModePanel(props: {
               variant="secondary"
               size="small"
               aria-label={opening() ? _(openSessionBusy) : _(openSessionRowTitle)}
-              disabled={!enabled() || opening() || props.configDirty || props.nameController.dirty()}
+              disabled={
+                !enabled() || opening() || props.configDirty || (props.nameAvailable && props.nameController.dirty())
+              }
               onClick={() => void handleOpenSession()}
             >
               {opening() ? _(openSessionBusy) : _(openSessionAction)}
             </Button>
           }
         />
-        <Show when={props.configDirty || props.nameController.dirty()}>
+        <Show when={props.configDirty || (props.nameAvailable && props.nameController.dirty())}>
           <p class="ds-section-hint">
             {_({
               id: "settings.runtime.boss.saveFirst",

@@ -10501,7 +10501,7 @@ msgstr "Error"
 msgid "brand.logo.alt"
 msgstr "Holos"
 
-#. js-lingui-explicit-id
+#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
 msgid "brand.workbench.synergy"
 msgstr "Synergy workspace"
 
@@ -19269,8 +19269,12 @@ msgid "settings.catalog.import.searchTerms"
 msgstr "import | config"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.learning.autonomy.searchTerms"
+msgstr "anima | autonomy | automatic | routines"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.learning.description"
-msgstr "Library learning and autonomy controls."
+msgstr "Library learning controls."
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.label"
@@ -19278,7 +19282,7 @@ msgstr "Learning"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.searchTerms"
-msgstr "library | learning | autonomy"
+msgstr "library | learning"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.lsp.description"
@@ -21430,7 +21434,7 @@ msgstr "Autonomous routines"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.capture.desc"
-msgstr "Allow knowledge capture and background reflection."
+msgstr "Choose how useful knowledge is captured."
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.capture.title"

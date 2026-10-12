@@ -1,4 +1,5 @@
-import { createMemo, createSignal, Show } from "solid-js"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { createEffect, createMemo, createResource, createSignal, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { createSynergyClient, type ProjectCreated } from "@ericsanchezok/synergy-sdk/client"
@@ -28,6 +29,7 @@ export function DialogCreateProject(props: {
   const dialog = useDialog()
   const confirm = useConfirm()
   const server = useServer()
+  const globalSDK = useGlobalSDK()
   const platform = usePlatform()
   const [url, setUrl] = createSignal(server.url)
   const [name, setName] = createSignal("")
@@ -39,7 +41,19 @@ export function DialogCreateProject(props: {
   const [error, setError] = createSignal("")
   const [existing, setExisting] = createSignal<ProjectCreated>()
   const [created, setCreated] = createSignal<ProjectCreated>()
+  let disposed = false
+  onCleanup(() => (disposed = true))
   const client = createMemo(() => createSynergyClient({ baseUrl: url(), fetch: platform.fetch }))
+  const [selection] = createResource(
+    () => ({ client: client(), local: url() === globalSDK.url, selected: globalSDK.capabilities.current() }),
+    async ({ client, local, selected }) =>
+      local ? selected : (await client.global.capabilities().catch(() => undefined))?.data,
+  )
+  const available = () =>
+    !selection.loading && selection()?.apiVersion === 1 && (selection()?.features?.includes("workbench") ?? false)
+  createEffect(() => {
+    if (!selection.loading && selection() && !available()) dialog.close()
+  })
   const picker = useProjectDirectoryPicker(url)
   const dirty = () => !!name() || Object.values(selections).some((selection) => selection.folders.length)
   async function close() {
@@ -63,12 +77,13 @@ export function DialogCreateProject(props: {
     setError("")
   }
   async function add() {
-    if (picking() || pending()) return
+    if (!available() || picking() || pending()) return
     const connection = url()
+    const owner = globalSDK.capabilities.current()
     setPicking(true)
     try {
       const result = await picker.pickProjectDirectories({ title: _(copy.chooseFolders), multiple: true })
-      if (!result || connection !== url()) return
+      if (!result || disposed || connection !== url() || globalSDK.capabilities.current() !== owner) return
       const folders = [...new Set([...selected().folders, ...result.directoryPaths])]
       change(folders, selected().main || folders[0])
       if (!editedName()) setName(getFilename(folders[0]))
@@ -77,16 +92,25 @@ export function DialogCreateProject(props: {
     }
   }
   async function submit() {
-    if (pending() || picking() || !name().trim() || !selected().main) return
+    if (!available() || pending() || picking() || !name().trim() || !selected().main) return
     const connection = url()
+    const owner = globalSDK.capabilities.current()
+    const targetClient = client()
+    const isCurrent = () => !disposed && connection === url() && globalSDK.capabilities.current() === owner
     setPending(true)
     setError("")
     try {
+      const confirmed = await targetClient.global.capabilities()
+      if (!isCurrent()) return
+      if (confirmed.data?.apiVersion !== 1 || !confirmed.data?.features?.includes("workbench")) {
+        dialog.close()
+        return
+      }
       const result =
         existing() ??
         created() ??
         (
-          await client().project.create(
+          await targetClient.project.create(
             {
               projectCreateInput: {
                 name: name().trim(),
@@ -97,6 +121,7 @@ export function DialogCreateProject(props: {
             { throwOnError: true },
           )
         ).data
+      if (!isCurrent()) return
       if (result.existing && !existing()) {
         setExisting(result)
         return
@@ -109,105 +134,108 @@ export function DialogCreateProject(props: {
         document.querySelector<HTMLElement>('[data-component="prompt-input"][contenteditable="true"]')?.focus(),
       )
     } catch (failure) {
+      if (!isCurrent()) return
       setError(requestErrorMessage(failure, _(copy.failed)))
     } finally {
       setPending(false)
     }
   }
   return (
-    <Dialog
-      title={
-        <span class="project-create-title">
-          <span class="project-create-icon">
-            <Icon name={getSemanticIcon("project.main")} />
+    <Show when={available()}>
+      <Dialog
+        title={
+          <span class="project-create-title">
+            <span class="project-create-icon">
+              <Icon name={getSemanticIcon("project.main")} />
+            </span>
+            {_(copy.create)}
           </span>
-          {_(copy.create)}
-        </span>
-      }
-      size="compact"
-      class="project-create-dialog"
-      dismissible={false}
-      onEscapeKeyDown={(event) => {
-        event.preventDefault()
-        void close()
-      }}
-      action={
-        <button
-          type="button"
-          class="project-icon-button"
-          disabled={pending()}
-          aria-label={_(locationCopy.cancel)}
-          onClick={() => void close()}
-        >
-          <Icon name={getSemanticIcon("action.close")} size="small" />
-        </button>
-      }
-      footer={
-        <div data-slot="dialog-actions">
-          <Button variant="ghost" size="large" disabled={pending() || picking()} onClick={() => void close()}>
-            {_(locationCopy.cancel)}
-          </Button>
-          <Button
-            variant="primary"
-            size="large"
-            class="project-submit"
-            disabled={pending() || picking() || !name().trim() || !selected().main}
-            onClick={() => void submit()}
-            aria-busy={pending()}
-          >
-            {_(pending() ? copy.creating : existing() ? copy.openExisting : copy.createAction)}
-          </Button>
-        </div>
-      }
-    >
-      <form
-        class="project-form"
-        onSubmit={(event) => {
+        }
+        size="compact"
+        class="project-create-dialog"
+        dismissible={false}
+        onEscapeKeyDown={(event) => {
           event.preventDefault()
-          void submit()
+          void close()
         }}
+        action={
+          <button
+            type="button"
+            class="project-icon-button"
+            disabled={pending()}
+            aria-label={_(locationCopy.cancel)}
+            onClick={() => void close()}
+          >
+            <Icon name={getSemanticIcon("action.close")} size="small" />
+          </button>
+        }
+        footer={
+          <div data-slot="dialog-actions">
+            <Button variant="ghost" size="large" disabled={pending() || picking()} onClick={() => void close()}>
+              {_(locationCopy.cancel)}
+            </Button>
+            <Button
+              variant="primary"
+              size="large"
+              class="project-submit"
+              disabled={pending() || picking() || !name().trim() || !selected().main}
+              onClick={() => void submit()}
+              aria-busy={pending()}
+            >
+              {_(pending() ? copy.creating : existing() ? copy.openExisting : copy.createAction)}
+            </Button>
+          </div>
+        }
       >
-        <TextField
-          autofocus
-          label={_(copy.name)}
-          placeholder={_(copy.namePlaceholder)}
-          value={name()}
-          onChange={(value) => {
-            setEditedName(true)
-            setName(value)
+        <form
+          class="project-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void submit()
           }}
-          disabled={pending()}
-        />
-        <ProjectFolderFields
-          folders={selected().folders}
-          main={selected().main}
-          onChange={change}
-          onAdd={add}
-          disabled={pending() || picking()}
-          computer={
-            <ComputerMenu
-              value={url()}
-              disabled={pending() || picking()}
-              onChange={(value) => {
-                setUrl(value)
-                setExisting(undefined)
-                setCreated(undefined)
-                setError("")
-              }}
-            />
-          }
-        />
-        <Show when={existing()}>
-          <p class="project-inline-note" role="status">
-            {_(copy.existing)} <strong>{existing()?.scope.name}</strong>
-          </p>
-        </Show>
-        <Show when={error()}>
-          <p class="project-inline-error" role="alert">
-            {error()}
-          </p>
-        </Show>
-      </form>
-    </Dialog>
+        >
+          <TextField
+            autofocus
+            label={_(copy.name)}
+            placeholder={_(copy.namePlaceholder)}
+            value={name()}
+            onChange={(value) => {
+              setEditedName(true)
+              setName(value)
+            }}
+            disabled={pending()}
+          />
+          <ProjectFolderFields
+            folders={selected().folders}
+            main={selected().main}
+            onChange={change}
+            onAdd={add}
+            disabled={pending() || picking()}
+            computer={
+              <ComputerMenu
+                value={url()}
+                disabled={pending() || picking()}
+                onChange={(value) => {
+                  setUrl(value)
+                  setExisting(undefined)
+                  setCreated(undefined)
+                  setError("")
+                }}
+              />
+            }
+          />
+          <Show when={existing()}>
+            <p class="project-inline-note" role="status">
+              {_(copy.existing)} <strong>{existing()?.scope.name}</strong>
+            </p>
+          </Show>
+          <Show when={error()}>
+            <p class="project-inline-error" role="alert">
+              {error()}
+            </p>
+          </Show>
+        </form>
+      </Dialog>
+    </Show>
   )
 }

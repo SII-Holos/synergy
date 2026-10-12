@@ -184,7 +184,7 @@ const learningPageDesc = {
 const captureSectionTitle = { id: "settings.library.learning.capture.title", message: "Capture" }
 const captureSectionDesc = {
   id: "settings.library.learning.capture.desc",
-  message: "Allow knowledge capture and background reflection.",
+  message: "Choose how useful knowledge is captured.",
 }
 const learnRowTitle = settingsFieldCopy.learningLearn
 const learnRowDesc = {
@@ -354,6 +354,7 @@ function estimateDescriptor(callCount: number) {
 
 export function LearningPanel(props: {
   library: LibrarySettingsStore
+  showAutonomy?: boolean
   onLibraryChange: (key: keyof LibrarySettingsStore, value: string) => void
 }) {
   const { _ } = useLingui()
@@ -376,22 +377,24 @@ export function LearningPanel(props: {
             </>
           }
         />
-        <SettingRow
-          title={_(autonomyRowTitle)}
-          description={_(autonomyRowDesc)}
-          stateLabel={props.library.autonomy !== "false" ? _(autonomyOn) : _(autonomyOff)}
-          trailing={
-            <>
-              <Switch
-                checked={props.library.autonomy !== "false"}
-                hideLabel
-                onChange={(value) => props.onLibraryChange("autonomy", value ? "true" : "false")}
-              >
-                {_(autonomyRowTitle)}
-              </Switch>
-            </>
-          }
-        />
+        <Show when={props.showAutonomy}>
+          <SettingRow
+            title={_(autonomyRowTitle)}
+            description={_(autonomyRowDesc)}
+            stateLabel={props.library.autonomy !== "false" ? _(autonomyOn) : _(autonomyOff)}
+            trailing={
+              <>
+                <Switch
+                  checked={props.library.autonomy !== "false"}
+                  hideLabel
+                  onChange={(value) => props.onLibraryChange("autonomy", value ? "true" : "false")}
+                >
+                  {_(autonomyRowTitle)}
+                </Switch>
+              </>
+            }
+          />
+        </Show>
       </SettingsSection>
     </SettingsPage>
   )

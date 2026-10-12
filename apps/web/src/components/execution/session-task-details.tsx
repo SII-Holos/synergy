@@ -46,7 +46,7 @@ function Details(props: { sessionID: string; hasCanonicalRoot?: boolean; inboxFr
       )}
       context={(active) => <TaskResources sessionID={props.sessionID} active={active()} />}
       agenda={(active, close) => (
-        <Show when={globalSDK.capabilities.has("workflows")}>
+        <Show when={globalSDK.capabilities.has("agenda")}>
           <SessionAgendaWakeIndicator sessionID={props.sessionID} active={active()} onDetailOpened={close} />
         </Show>
       )}

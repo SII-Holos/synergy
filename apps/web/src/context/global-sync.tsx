@@ -865,39 +865,51 @@ function createGlobalSync() {
   async function loadAgenda(scopeKey: string) {
     const [_, setStore] = ensureScopeState(scopeKey)
     await globalSDK.capabilities.load()
-    if (!globalSDK.capabilities.has("workflows")) {
+    if (!globalSDK.capabilities.has("agenda")) {
       setStore("agenda", reconcile([]))
       return
     }
+    const selection = globalSDK.capabilities.current()
     const sdk = createScopedClient(scopeKey)
     return sdk.agenda
       .list()
-      .then((x) =>
+      .then((x) => {
+        if (globalSDK.capabilities.current() !== selection) return
         setStore(
           "agenda",
           reconcile(
             (x.data ?? []).slice().sort((a, b) => a.id.localeCompare(b.id)),
             { key: "id" },
           ),
-        ),
-      )
+        )
+      })
       .catch((err) => {
+        if (globalSDK.capabilities.current() !== selection) return
         console.error("Failed to load agenda", err)
       })
   }
 
+  createEffect(() => {
+    if (globalSDK.capabilities.has("agenda")) return
+    setGlobalStore("agenda", reconcile([]))
+    for (const [, setStore] of Object.values(children)) setStore("agenda", reconcile([]))
+  })
+
   async function loadGlobalAgenda() {
-    if (!globalSDK.capabilities.has("workflows")) {
+    if (!globalSDK.capabilities.has("agenda")) {
       setGlobalStore("agenda", reconcile([]))
       return
     }
+    const selection = globalSDK.capabilities.current()
     return globalSDK.client.global.agenda
       .list()
       .then((x) => {
+        if (globalSDK.capabilities.current() !== selection) return
         const items = (x.data ?? []).slice().sort((a, b) => a.id.localeCompare(b.id))
         setGlobalStore("agenda", reconcile(items, { key: "id" }))
       })
       .catch((err) => {
+        if (globalSDK.capabilities.current() !== selection) return
         console.error("Failed to load global agenda", err)
       })
   }
@@ -1261,7 +1273,7 @@ function createGlobalSync() {
           ),
         )
       }
-      if (!globalSDK.capabilities.has("workflows")) setStore("agenda", reconcile([]))
+      if (!globalSDK.capabilities.has("agenda")) setStore("agenda", reconcile([]))
       if (data.lsp) setStore("lsp", reconcile(data.lsp, { key: "id" }))
       else if (!globalSDK.capabilities.has("lsp")) setStore("lsp", reconcile([]))
       if (data.vcs) setStore("vcs", reconcile(data.vcs))
@@ -1785,6 +1797,7 @@ function createGlobalSync() {
       return
     }
     if (event?.type === "agenda.item.created" || event?.type === "agenda.item.updated") {
+      if (!globalSDK.capabilities.has("agenda")) return
       const item = event.properties.item as AgendaItem
       const result = Binary.search(globalStore.agenda, item.id, (a) => a.id)
       if (result.found) {
@@ -2391,6 +2404,7 @@ function createGlobalSync() {
       }
       case "agenda.item.created":
       case "agenda.item.updated": {
+        if (!globalSDK.capabilities.has("agenda")) break
         const item = event.properties.item
         const result = Binary.search(store.agenda, item.id, (a) => a.id)
         if (result.found) {

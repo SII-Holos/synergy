@@ -53,6 +53,7 @@ beforeAll(async () => {
     export const i18n=setupI18n({locale:"en",messages:{en:messages}})
     export const useLocale=() => ({i18n})
     export const useConfirm=() => ({ask:async () => true})
+    export const useGlobalSDK=() => ({capabilities:{has:() => true}})
     const surfaces=new Map()
     export function surface(key,name) {
       const id=key+":"+name
@@ -122,7 +123,7 @@ beforeAll(async () => {
     plugins: [solidPlugin(), tailwindcss(), ...lingui()],
     resolve: {
       alias: [
-        { find: /^@\/context\/(layout|locale)$/, replacement: path.join(directory, "services.ts") },
+        { find: /^@\/context\/(layout|locale|global-sdk)$/, replacement: path.join(directory, "services.ts") },
         { find: "../layout", replacement: path.join(directory, "services.ts") },
         { find: "@/context/sdk", replacement: path.join(directory, "sdk.ts") },
         { find: "@/context/platform", replacement: path.join(directory, "platform.ts") },

@@ -1,3 +1,5 @@
+import { runtimeFeatureAvailable } from "@/components/runtime-features"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { Show, createMemo, createSignal } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
@@ -53,6 +55,7 @@ export function KanbanPaneComposer(props: {
   onUpdateProfile: (profile: ControlProfileId) => Promise<void>
   onSetWorkflow: (kind: BoardWorkflowKind) => Promise<void>
 }) {
+  const { capabilities } = useGlobalSDK()
   const { _ } = useLingui()
   const { controller, i18n } = useLocale()
   const translateModeCopy = (descriptor: MessageDescriptor) => {
@@ -71,7 +74,15 @@ export function KanbanPaneComposer(props: {
   const [actionError, setActionError] = createSignal<string>()
 
   const profile = createMemo<ControlProfileId>(() => props.session?.controlProfile ?? "guarded")
-  const workflow = createMemo<BoardWorkflowKind>(() => workflowKindOf(props.session))
+  const workflow = createMemo<BoardWorkflowKind>(() => {
+    const kind = workflowKindOf(props.session)
+    return runtimeFeatureAvailable("workflow", kind, capabilities.has) ? kind : "none"
+  })
+  const workflows = createMemo(() =>
+    (["none", "plan", "lattice", "boss"] as BoardWorkflowKind[]).filter((kind) =>
+      runtimeFeatureAvailable("workflow", kind, capabilities.has),
+    ),
+  )
   const profileVisual = createMemo(() => permissionModeVisual(profile()))
   const visibleAgents = createMemo(() => props.agents.filter((a) => !a.hidden && a.mode !== "subagent"))
   const currentAgent = createMemo(() => agent() ?? visibleAgents()[0]?.name ?? _(kanbanPage.composerDefaultAgent))
@@ -137,17 +148,21 @@ export function KanbanPaneComposer(props: {
             void run(() => props.onUpdateProfile(id)).finally(() => setSwitchingProfile(false))
           }}
         />
-        <MenuField
-          ariaLabel={_(kanbanPage.composerWorkflow)}
-          icon={getSemanticIcon("cortex.main")}
-          triggerClass="menu-field-trigger kanban-composer-chip"
-          value={workflow()}
-          options={(["none", "plan", "lattice", "boss"] as BoardWorkflowKind[]).map((kind) => ({
-            value: kind,
-            label: workflowLabel(kind, _),
-          }))}
-          onChange={(kind) => void run(() => props.onSetWorkflow(kind))}
-        />
+        <Show when={workflows().length > 1}>
+          <MenuField
+            ariaLabel={_(kanbanPage.composerWorkflow)}
+            icon={getSemanticIcon("cortex.main")}
+            triggerClass="menu-field-trigger kanban-composer-chip"
+            value={workflow()}
+            options={workflows().map((kind) => ({
+              value: kind,
+              label: workflowLabel(kind, _),
+            }))}
+            onChange={(kind) =>
+              runtimeFeatureAvailable("workflow", kind, capabilities.has) && void run(() => props.onSetWorkflow(kind))
+            }
+          />
+        </Show>
       </div>
       <form
         class="kanban-pane-composer-input-row"

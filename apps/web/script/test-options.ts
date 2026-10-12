@@ -65,6 +65,7 @@ const playwrightIsolated = [
   "test/components/dialog/directory-navigation.dom.test.ts",
   "test/components/dialog/directory-selection.dom.test.ts",
   "test/components/dialog/environment-dialog.dom.test.ts",
+  "test/components/dialog/project-capabilities.dom.test.ts",
   "test/components/dialog/file-entry-dialog.dom.test.ts",
   "test/context/file/workspace.dom.test.ts",
   "test/components/kanban/layout.dom.test.tsx",
@@ -136,6 +137,8 @@ export const testOptions = {
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/components/note/blueprint-loops.test.ts",
+    "test/components/settings/settings-resource.test.ts",
     "test/context/session-submission-view.test.ts",
     "test/components/workspace/browser/browser-import-target.test.ts",
     "test/components/execution/controls.render.test.ts",

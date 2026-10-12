@@ -964,14 +964,15 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
     },
   })
   async function reload() {
-    if (!server.url) return
+    if (!server.url || !globalSDK.capabilities.has("plugin-host")) return
+    const selection = globalSDK.capabilities.current()
     const revision = ++reloadGeneration
     reloadController?.abort()
     const controller = new AbortController()
     reloadController = controller
     try {
       const discovered = await fetchUIContributions(server.url, scopeKey(), controller.signal)
-      if (revision !== reloadGeneration) return
+      if (revision !== reloadGeneration || selection !== globalSDK.capabilities.current()) return
       setPlugins(discovered)
       setStatus(
         (current) =>
@@ -989,11 +990,13 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
     }
   }
   let wasConnected = false
+  let wasAvailable = false
   createEffect(() => {
+    const available = globalSDK.capabilities.has("plugin-host")
     const connected = globalSDK.connected()
     const nextOwner = JSON.stringify([server.url, scopeKey()])
     const changed = owner !== nextOwner
-    if (changed) {
+    if (changed || !available) {
       owner = nextOwner
       reloadGeneration++
       reloadController?.abort()
@@ -1004,8 +1007,9 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
         setErrors([])
       })
     }
-    if (server.url && (changed || (connected && !wasConnected))) void reload()
+    if (available && server.url && (changed || !wasAvailable || (connected && !wasConnected))) void reload()
     wasConnected = connected
+    wasAvailable = available
   })
   onCleanup(
     globalSDK.event.listen(({ name, details }) => {

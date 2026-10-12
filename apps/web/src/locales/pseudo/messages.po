@@ -10501,7 +10501,7 @@ msgstr "⟦Error⟧"
 msgid "brand.logo.alt"
 msgstr "⟦Holos⟧"
 
-#. js-lingui-explicit-id
+#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
 msgid "brand.workbench.synergy"
 msgstr "⟦Synergy workspace⟧"
 
@@ -19267,6 +19267,10 @@ msgstr "⟦Import⟧"
 #. js-lingui-explicit-id
 msgid "settings.catalog.import.searchTerms"
 msgstr "⟦import | config⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.learning.autonomy.searchTerms"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.description"

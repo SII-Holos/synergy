@@ -24,6 +24,7 @@ export type BlueprintSlot =
   | {
       type: "loop"
       loopID: string
+      source?: "user" | "lattice" | "plugin"
       noteID: string
       title: string
       runMode: "current" | "new" | "worktree"
