@@ -158,6 +158,54 @@ test("replayed additions and passive resize cannot follow a historical viewport"
   expect(await viewport.evaluate((el) => el.scrollTop)).toBe(before)
 })
 
+test.each([false, true])(
+  "loading earlier turns preserves each reading frame (more: %s)",
+  async (more) => {
+    await page.goto(`${url}?scrolling=1&history-controls=1${more ? "&keep-history-control=1" : ""}`)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    await page.evaluate(() => window.__conversationProcess.grow(30))
+    await frames()
+    const scroller = page.locator("[data-scroller]")
+    await scroller.evaluate((element, more) => {
+      element.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }))
+      element.style.height = "280px"
+      element.style.width = more ? "380px" : "700px"
+      element.scrollTop = 0
+    }, more)
+    await frames()
+    expect(await scroller.evaluate((element) => element.scrollTop)).toBe(0)
+    const recording = scroller.evaluate(async (element) => {
+      const row = element.querySelector<HTMLElement>('[data-message-id="root"][data-row-kind="body"]')!
+      const initial = row.getBoundingClientRect().top
+      await new Promise<void>((resolve) =>
+        element.querySelector("button")!.addEventListener("click", () => resolve(), { once: true }),
+      )
+      const samples: { frame: number; top: number; scrollTop: number; height: number; connected: boolean }[] = []
+      for (let frame = 0; frame < 24; frame++) {
+        await new Promise(requestAnimationFrame)
+        samples.push({
+          frame,
+          top: row.getBoundingClientRect().top - initial,
+          scrollTop: element.scrollTop,
+          height: element.scrollHeight,
+          connected: row.isConnected,
+        })
+      }
+      return samples
+    })
+    await page.getByRole("button", { name: "Load earlier messages", exact: true }).click()
+    const samples = await recording
+    for (const sample of samples) {
+      expect(sample.connected, JSON.stringify(sample)).toBe(true)
+      expect(Math.abs(sample.top), JSON.stringify(sample)).toBeLessThanOrEqual(2)
+    }
+    expect(samples.at(-1)!.scrollTop).toBeGreaterThan(1000)
+    expect(await page.getByRole("button", { name: "Load earlier messages", exact: true }).count()).toBe(more ? 1 : 0)
+    expect(errors).toEqual([])
+  },
+  30000,
+)
+
 test("loading earlier turns from latest preserves the visible outer row before and after measurement", async () => {
   await page.goto(`${url}?scrolling=1`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()

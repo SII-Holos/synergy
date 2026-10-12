@@ -202,6 +202,76 @@ describe("production conversation history", () => {
     }
   }, 180000)
 
+  test("cold navigation keeps the target shell operable through preparation and warms the original transcript", async () => {
+    const target = await importPreviewConversation(preview, { title: "Cold navigation target", turns: 2 })
+    const browser = await chromium.launch({ headless: true })
+    const preparation = Promise.withResolvers<void>()
+    const history = Promise.withResolvers<void>()
+    const preparing = Promise.withResolvers<void>()
+    const loading = Promise.withResolvers<void>()
+    let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
+    try {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
+      page.setDefaultTimeout(20000)
+      diagnostics = await openPluginPreviewPage(preview, page)
+      await page.goto(conversation.url)
+      const active = page.locator("[data-session-resident]:not([hidden])")
+      await active.getByText("Answer 360", { exact: true }).waitFor()
+      const original = await active.locator("[data-conversation-viewport]").elementHandle()
+      await page.route(`**/global/storage/upgrade/sessions/${target.id}/prepare`, async (route) => {
+        preparing.resolve()
+        await preparation.promise
+        await route.continue()
+      })
+      await page.route(`**/session/${target.id}/timeline/page*`, async (route) => {
+        loading.resolve()
+        await history.promise
+        await route.continue()
+      })
+      await page.getByRole("button", { name: "Cold navigation target", exact: true }).click()
+      await preparing.promise
+      expect(await active.getByText("Answer 360", { exact: true }).count()).toBe(0)
+      expect(await page.locator("[data-conversation-retained]").count()).toBe(0)
+      expect(await active.evaluate((el) => (el as HTMLElement).inert)).toBe(false)
+      expect(await page.getByRole("textbox").first().isVisible()).toBe(true)
+      preparation.resolve()
+      await loading.promise
+      const admission = page.evaluate(async () => {
+        const frames: Array<{ opacity: number; inert: boolean; introduction: boolean; text: string }> = []
+        for (let index = 0; index < 600; index++) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+          const current = document.querySelector<HTMLElement>("[data-session-resident]:not([hidden])")!
+          const viewport = current.querySelector<HTMLElement>("[data-conversation-viewport]")
+          frames.push({
+            opacity:
+              Number(getComputedStyle(current).opacity) * (viewport ? Number(getComputedStyle(viewport).opacity) : 1),
+            inert: current.inert,
+            introduction: !!current.querySelector("[data-session-new]"),
+            text: current.textContent ?? "",
+          })
+          if (frames.at(-1)!.text.includes("Answer 2") && viewport?.dataset.ready === "true") break
+        }
+        return frames
+      })
+      history.resolve()
+      const frames = await admission
+      expect(frames.length).toBeLessThan(600)
+      expect(frames.every((frame) => frame.opacity === 1 && !frame.inert && !frame.introduction)).toBe(true)
+      expect(frames.at(-1)!.text).toContain("Answer 2")
+      await page.getByRole("button", { name: "History fixture", exact: true }).click()
+      await active.getByText("Answer 360", { exact: true }).waitFor()
+      expect(
+        await active.locator("[data-conversation-viewport]").evaluate((el, original) => el === original, original),
+      ).toBe(true)
+      expect(diagnostics.errors.map((error) => error.message)).toEqual([])
+    } finally {
+      preparation.resolve()
+      history.resolve()
+      diagnostics?.dispose()
+      await browser.close()
+    }
+  }, 60000)
+
   test("an existing Home session never becomes a new-task greeting while history is pending", async () => {
     const browser = await chromium.launch({ headless: true })
     let release = () => {}

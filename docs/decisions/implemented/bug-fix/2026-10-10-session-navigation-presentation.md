@@ -10,7 +10,7 @@ A Home Session with an unloaded message bucket could be classified as a new task
 
 The new-task predicate uses route and captured-submission identity, never an empty message bucket. Existing Sessions use the conversation loader's explicit pending, empty and error states. The games-enabled and plain introductions reuse one welcome heading; the retired branding and heading styles are removed.
 
-Presentation retains the last admitted rendered window while the target prepares, then releases the inert copy and exposes the target at full opacity in one frame. This supersedes the transcript crossfade in [Conversation motion continuity](2026-10-08-conversation-motion-continuity.md) while preserving its bounded snapshot, reading restoration and lifecycle ownership. Source views still release their data subscriptions normally. Scope changes discard the picture, and generation checks reject late admission.
+The no-greeting and no-overlapping-transcript invariants remain. [Retained Session views and projected updates](../architecture/2026-10-12-frontend-residency-projections.md) supersedes the transient outgoing DOM copy: warm navigation exposes its existing view, while cold navigation exposes the target shell and local placeholders immediately. There is no clone capture whose timing can race a preparation render effect. A terminal preparation error remains actionable without hiding the Composer.
 
 ## Alternatives considered
 

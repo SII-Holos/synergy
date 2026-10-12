@@ -17086,10 +17086,6 @@ msgid "session.conversation.moveToQueueTitle"
 msgstr "移回队列"
 
 #. js-lingui-explicit-id
-msgid "session.conversation.newMessagesReturnLatest"
-msgstr "有新消息，返回最新消息"
-
-#. js-lingui-explicit-id
 msgid "session.conversation.paused"
 msgstr "已暂停"
 
@@ -17116,10 +17112,6 @@ msgstr "移除待处理消息"
 #. conversation.tsx
 msgid "session.conversation.renderEarlier"
 msgstr "渲染更早的消息"
-
-#. js-lingui-explicit-id
-msgid "session.conversation.returnLatest"
-msgstr "返回最新消息"
 
 #. js-lingui-explicit-id
 msgid "session.conversation.withdraw"

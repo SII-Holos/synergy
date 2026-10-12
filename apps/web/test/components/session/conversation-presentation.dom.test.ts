@@ -24,17 +24,19 @@ beforeAll(async () => {
     path.join(directory, "main.tsx"),
     `
     import {render} from "solid-js/web"
-    import {createSignal} from "solid-js"
+    import {createMemo,createSignal,Show} from "solid-js"
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from ${JSON.stringify(`/@fs/${path.resolve(appSrc, "../../../packages/ui/src/testing/i18n.tsx")}`)}
     import {createAutoScroll} from ${JSON.stringify(`/@fs/${path.resolve(appSrc, "../../../packages/ui/src/hooks/create-auto-scroll.tsx")}`)}
     import {ConversationPresentation} from ${JSON.stringify(`/@fs/${appSrc}/components/session/conversation-presentation.tsx`)}
     import {ConversationViewport} from ${JSON.stringify(`/@fs/${appSrc}/components/session/conversation-viewport.tsx`)}
     const [session,setSession]=createSignal("A"),[accepted,setAccepted]=createSignal("A"),[scope,setScope]=createSignal("scope"),[route,setRoute]=createSignal()
+    const prepared=createMemo(()=>accepted()===session())
+    const branch=createMemo(()=>prepared() || location.search!=="?preparation")
     let leaves=0
     window.presentation={select(id){setSession(id)},admit(id){setAccepted(id)},scope(id){setScope(id)},promote(){setRoute(session())},leaves(){return leaves}}
     if(location.search!=="?flow") render(()=><I18nProvider i18n={setupI18n()}><ConversationPresentation owner={["server",scope(),route()??session()]} ready={accepted()===session()} onLeave={()=>leaves++}>
-      <header>Title {session()}</header><div style="height:300px;overflow:auto"><article style="height:800px"><p id="live-id">Body {session()}</p></article></div>
+      <header>Title {session()}</header><Show when={branch()} fallback={<p>Preparing this conversation</p>}><div style="height:300px;overflow:auto"><article style="height:800px"><p id="live-id">Body {session()}</p></article></div></Show>
     </ConversationPresentation></I18nProvider>,document.getElementById("presentation"))
     else render(()=>{const scroll=createAutoScroll({working:()=>false});return <I18nProvider i18n={setupI18n()}><ConversationViewport ready={true} scrolledUp={false} onScrolledUpChange={()=>{}} autoScroll={scroll} setScrollRef={scroll.scrollRef} contentClass="fixture-column"><article style="width:100%"><p>{"A naturally wrapping conversation paragraph. ".repeat(25)}</p></article></ConversationViewport></I18nProvider>},document.getElementById("flow"))
   `,
@@ -79,6 +81,25 @@ const presentation = (action: "select" | "admit" | "scope", value: string) =>
     ({ action, value }) => (window as unknown as { presentation: Presentation }).presentation[action](value),
     { action, value },
   )
+
+test("cold child navigation immediately exposes the target shell and keeps it visible through preparation", async () => {
+  await page.goto(base + "?preparation")
+  await page.getByText("Body A", { exact: true }).waitFor()
+  await frames()
+  await presentation("select", "B")
+  const current = page.locator("[data-conversation-current]")
+  expect(await current.textContent()).toContain("Title B")
+  expect(await current.textContent()).toContain("Preparing this conversation")
+  expect(await page.getByText("Body A", { exact: true }).count()).toBe(0)
+  expect(await page.locator("[data-conversation-retained]").count()).toBe(0)
+  expect(await current.evaluate((el) => getComputedStyle(el).opacity)).toBe("1")
+  expect(await current.evaluate((el) => (el as HTMLElement).inert)).toBe(false)
+  await presentation("admit", "B")
+  await frames()
+  expect(await current.textContent()).toContain("Body B")
+  expect(await current.evaluate((el) => getComputedStyle(el).opacity)).toBe("1")
+  expect(errors).toEqual([])
+})
 
 test("promoting a captured conversation to the same route preserves its admission", async () => {
   await page.goto(base + "?presentation")

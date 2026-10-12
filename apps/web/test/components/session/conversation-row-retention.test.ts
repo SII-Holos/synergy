@@ -102,6 +102,10 @@ declare global {
   interface Window {
     __setTimeline: (messages: unknown[]) => void
     __enableContent(): void
+    __historyControls: {
+      set(value: { more?: boolean; history?: boolean; pending?: boolean; tail?: boolean }): void
+      returns(): number
+    }
     __virtualExecutionWork: {
       reset(): void
       counts(): { processRootReads: number; projectionRootReads: number }
@@ -207,10 +211,10 @@ beforeAll(async () => {
           <div data-slot="command-stub">{props.message?.text ?? ""}</div>
         )
         export const MessageSlotOutlet = () => null
-        export const Button = (props: any) => <button type="button">{props.children}</button>
+        export const Button = (props: any) => <button type="button" disabled={props.disabled} onClick={props.onClick}>{props.children}</button>
         export const Icon = () => null
         export const Spinner = () => <span data-spinner />
-        export const IconButton = () => null
+        export const IconButton = (props: { "aria-label"?: string; onClick?: (event: MouseEvent) => void }) => <button type="button" aria-label={props["aria-label"]} onClick={props.onClick} />
         export const getSemanticIcon = () => "circle"
         export const navMark = () => {}
         export const BrowserViewEffects = () => null
@@ -293,7 +297,14 @@ beforeAll(async () => {
           holdExecutions = false
           for (const index of [...pendingExecutions.keys()]) settle(index)
         }
-        const [content, setContent] = createStore({partSummary: {}, part: {}, partVersion: {}})
+        const [content, setContent] = createStore({partSummary: {}, part: {}, partVersion: {}, messageWindow: {}})
+        export const [historyState, setHistoryState] = createStore({more: false, history: false, pending: false, tail: false})
+        let returns = 0
+        export const returnLatest = () => { returns++; window.__historyControls.set({more: false, history: false, pending: false, tail: false}) }
+        window.__historyControls = {
+          set: value => { setHistoryState(value); setContent("messageWindow", session(), {tailMissingLatest: historyState.tail}) },
+          returns: () => returns,
+        }
         window.__executionOwner = {
           hold: window.__holdExecutions, calls: () => calls, settle,
           event: (rootID, sessionID = session(), type = "session.execution.updated") => {
@@ -362,7 +373,7 @@ beforeAll(async () => {
         import { DataProvider } from "@ericsanchezok/synergy-ui/context/data"
         import { SessionConversation } from ${JSON.stringify(`/@fs/${conversationPath}`)}
         import ${JSON.stringify(`/@fs/${path.resolve(import.meta.dir, "../../../../../packages/ui/src/styles/theme.css")}`)}
-        import { fixtureSession, setFixtureSession, fixtureMessages, setFixtureMessages, readProjectionPage } from "./stubs"
+        import { fixtureSession, setFixtureSession, fixtureMessages, setFixtureMessages, readProjectionPage, historyState, returnLatest } from "./stubs"
         console.info("[conversation-boot] main")
 
         type AnyMsg = { id: string; role: "user" | "assistant"; text?: string }
@@ -430,11 +441,11 @@ beforeAll(async () => {
             get turnStart() { return 0 },
             get turnBatch() { return 20 },
             get onSetTurnStart() { return () => {} },
-            get historyMore() { return () => false },
+            get historyMore() { return () => historyState.more },
             get historyLoading() { return () => false },
-            get historyMode() { return () => "latest" as const },
-            get historyPendingLatest() { return () => false },
-            get onReturnLatest() { return () => {} },
+            get historyMode() { return () => historyState.history ? "history" : "latest" },
+            get historyPendingLatest() { return () => historyState.pending },
+            get onReturnLatest() { return returnLatest },
             get onLoadMore() { return () => {} },
             get scrolledUp() { return () => scrolledUp },
             get onScrolledUpChange() { return () => {} },
@@ -619,6 +630,40 @@ describe("conversation row retention", () => {
       ])
     })
     expect(await page.getByRole("navigation", { name: "Conversation timeline" }).count()).toBe(0)
+  })
+
+  test("uses one floating latest action for pending or unloaded latest history", async () => {
+    await reloadFixture("timeline")
+    await page.evaluate(() => {
+      window.__setTimeline([{ id: "history-root", sessionID: "ses_1", role: "user", time: { created: 1 } }])
+      window.__historyControls.set({ history: true, more: true })
+    })
+    const latest = page.getByRole("button", { name: "Back to latest", exact: true })
+    expect(await page.getByRole("button", { name: "Load earlier messages", exact: true }).count()).toBe(1)
+    expect(await page.getByRole("button", { name: "Return to latest", exact: true }).count()).toBe(0)
+    expect(await latest.count()).toBe(0)
+    for (const missing of [
+      { tail: true, pending: false },
+      { tail: false, pending: true },
+    ]) {
+      await page.evaluate(
+        (missing) => window.__historyControls.set({ history: true, more: false, ...missing }),
+        missing,
+      )
+      await latest.waitFor()
+      expect(await page.getByRole("button", { name: "New messages — Return to latest", exact: true }).count()).toBe(0)
+      expect(
+        await page
+          .locator("[data-conversation-viewport]")
+          .evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop),
+      ).toBeLessThanOrEqual(1)
+      const before = await page.evaluate(() => window.__historyControls.returns())
+      await latest.focus()
+      await latest.press("Enter")
+      expect(await page.evaluate(() => window.__historyControls.returns())).toBe(before + 1)
+      expect(await latest.count()).toBe(0)
+    }
+    expect(pageErrors).toEqual([])
   })
 
   test("keeps rows mounted across message object replacement and propagates updates", async () => {

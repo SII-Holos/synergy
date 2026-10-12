@@ -531,6 +531,7 @@ export function VirtualConversationRows(
             <Virtualizer
               ref={layout.ref}
               data={keys()}
+              itemKey={(key) => key}
               shift={rowLayout().shift}
               scrollRef={input.scrollRef}
               startMargin={margin()}
@@ -1320,6 +1321,7 @@ function ConversationActivityBody(
           as={VirtualRoot}
           ref={layout.ref}
           data={keys()}
+          itemKey={(key) => key}
           scrollRef={scroll()}
           overscan={2}
           itemSize={estimatedSize()}

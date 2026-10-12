@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import type {} from "../../fixtures/conversation/keyed-layout"
 import {
   browser,
   page,
@@ -8,6 +9,69 @@ import {
   fixtureServer,
   frames,
 } from "../../support/conversation-process"
+
+test.each(["index.mjs", "index.jsx"] as const)(
+  "keyed middle edits preserve retained measurements before the next resize (%s)",
+  async (entry) => {
+    const alternate = entry === "index.jsx" ? await fixtureServer(entry) : undefined
+    const target = alternate ? await browser.newPage() : page
+    try {
+      await target.goto(`${alternate?.url ?? url}keyed.html`)
+      await target.waitForFunction(
+        () => window.keyedLayout?.measure().find((row) => row.id === "answer")?.size === 2034.75,
+      )
+      const result = await target.evaluate(async () => {
+        const fixture = window.keyedLayout
+        const viewport = fixture.viewport()
+        viewport.scrollTop = 2380
+        await new Promise(requestAnimationFrame)
+        const answer = document.querySelector('[data-row="answer"]')!
+        const header = document.querySelector('[data-row="header"]')!
+        const top = header.getBoundingClientRect().top
+        const samples: {
+          phase: string
+          measured: number
+          offsetGap: number
+          actual: number
+          drift: number
+          same: boolean
+        }[] = []
+        for (const phase of ["collapse", "expand", "reorder"] as const) {
+          fixture[phase]()
+          for (let frame = 0; frame < 8; frame++) {
+            const rows = fixture.measure()
+            const index = rows.findIndex((row) => row.id === "answer")
+            samples.push({
+              phase,
+              measured: rows[index].size,
+              offsetGap: rows[index + 1].offset - rows[index].offset,
+              actual: answer.getBoundingClientRect().height,
+              drift: header.getBoundingClientRect().top - top,
+              same: answer === document.querySelector('[data-row="answer"]'),
+            })
+            await new Promise(requestAnimationFrame)
+          }
+        }
+        fixture.prepend()
+        for (let frame = 0; frame < 8; frame++) await new Promise(requestAnimationFrame)
+        return { samples, prependedDrift: header.getBoundingClientRect().top - top }
+      })
+      for (const sample of result.samples) {
+        expect(sample.measured, sample.phase).toBeCloseTo(sample.actual, 1)
+        expect(sample.offsetGap, sample.phase).toBeCloseTo(sample.actual, 1)
+        expect(Math.abs(sample.drift), sample.phase).toBeLessThanOrEqual(1)
+        expect(sample.same, sample.phase).toBe(true)
+      }
+      expect(Math.abs(result.prependedDrift)).toBeLessThanOrEqual(1)
+    } finally {
+      if (alternate) {
+        await target.close()
+        await alternate.close()
+      }
+    }
+  },
+  30000,
+)
 
 test("focus outside a large conversation does not reread its summaries", async () => {
   await page.goto(`${url}?scrolling`)

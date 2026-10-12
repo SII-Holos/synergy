@@ -64,6 +64,7 @@ const playwrightIsolated = [
   "test/components/session/conversation-process-reading.dom.test.ts",
   "test/components/session/conversation-process-virtualization.dom.test.ts",
   "test/components/session/conversation-presentation.dom.test.ts",
+  "test/components/session/conversation-controls.dom.test.tsx",
   "test/components/session/conversation-process.dom.test.ts",
   "test/components/session/session-submission-status.dom.test.ts",
   "test/components/dialog/workspace-dialog.dom.test.ts",

@@ -29,3 +29,9 @@ The route's Session identity was available but message count determined new-task
 ## Lessons
 
 Loading and emptiness are data states; neither establishes new-task intent. A transition that finishes correctly can still expose incorrect content between endpoints. The [navigation presentation decision](../decisions/implemented/bug-fix/2026-10-10-session-navigation-presentation.md) keeps visual retention separate from data ownership and releases the old picture before exposing its replacement.
+
+## Follow-up: preparation invalidation
+
+A subsequent child-session recording showed the full-page preparation notice between two readable transcripts. The retained-picture implementation captured DOM in a render effect. A preparation-derived conditional could reconcile first, leaving the retained copy with the outgoing title and an incoming loading notice. Even immediate follow-up navigation could capture the target body under a different reactive dependency order.
+
+The [presentation regression](../../apps/web/test/components/session/conversation-presentation.dom.test.ts) adds a preparation-dependent branch. Before the fix it retained `Title APreparing this conversation` instead of the admitted body. Capturing in the synchronous owner computation precedes render effects; both cold preparation and rapid replacement preserve the source window. The [production navigation regression](../../test/plugin-ui5/messages-browser.test.ts) holds storage preparation and timeline reads separately and samples the opaque handoff. Simple direct signal children had missed the production dependency ordering.
