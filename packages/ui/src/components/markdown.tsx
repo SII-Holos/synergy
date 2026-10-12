@@ -221,11 +221,15 @@ export function Markdown(
   })
   onMount(() => {
     const update = () => setInteraction((value) => value + 1)
+    const focusout = (event: FocusEvent) => {
+      if (event.relatedTarget instanceof Node && container.contains(event.relatedTarget)) return
+      update()
+    }
     document.addEventListener("selectionchange", update)
-    document.addEventListener("focusout", update)
+    document.addEventListener("focusout", focusout)
     onCleanup(() => {
       document.removeEventListener("selectionchange", update)
-      document.removeEventListener("focusout", update)
+      document.removeEventListener("focusout", focusout)
     })
   })
 
