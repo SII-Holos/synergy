@@ -49,6 +49,7 @@ export namespace ExecutionService {
     selections: Map<string, { summary: ExecutionSchema.Summary; touched: number }>
     processRows: Map<string, ExecutionSchema.Node>
     recordRows: Map<string, ExecutionSchema.Node>
+    contextRows: Map<string, string>
     publishedRevision: number
   }
   const state = RuntimeContext.state(() => ({
@@ -375,9 +376,12 @@ export namespace ExecutionService {
       selections: new Map<string, { summary: ExecutionSchema.Summary; touched: number }>(),
       processRows: new Map(ExecutionProcess.project(nodes, "process", root.id).map((node) => [node.id, node])),
       recordRows: new Map(ExecutionProcess.project(nodes, "records", root.id).map((node) => [node.id, node])),
+      contextRows: new Map<string, string>(),
       publishedRevision: revision,
     } as Omit<Data, "summary">
-    return { ...data, summary: summarize(data) }
+    const value = { ...data, summary: summarize(data) }
+    value.contextRows = new Map(contextSnapshots(value).map((context) => [context.nodeID, JSON.stringify(context)]))
+    return value
   }
   function summarize(data: Omit<Data, "summary">, runID?: string): ExecutionSchema.Summary {
     const nodes = selected(data as Data, runID)
@@ -628,7 +632,10 @@ export namespace ExecutionService {
             value = await build(root)
             continue
           }
-          if (existing && value !== existing) value.selections = existing.selections
+          if (existing && value !== existing) {
+            value.selections = existing.selections
+            value.contextRows = existing.contextRows
+          }
           const version = cache.bufferVersion
           let updated = false
           for (const info of cache.bufferedSessions.values()) {
@@ -868,13 +875,18 @@ export namespace ExecutionService {
               )
               next.recordRows = new Map(records.map((node) => [node.id, node]))
               const ids = new Set(next.nodes.map((node) => node.id))
+              const contexts = contextSnapshots(next).filter(
+                (context) =>
+                  (next !== entry || next.changed.has(context.nodeID)) &&
+                  JSON.stringify(context) !== next.contextRows.get(context.nodeID),
+              )
               await Bus.publish(ExecutionSchema.Updated, {
                 sessionID: entry.root.id,
                 revision: next.revision,
                 previousRevision,
                 summary: next.summary,
                 roundSummaries: [...next.selections.values()].map((selection) => selection.summary),
-                contextUpserts: contextSnapshots(next).filter((entry) => next.changed.has(entry.nodeID)),
+                contextUpserts: contexts,
                 upserts: upserts.map((node) => ({ ...node, revision: next.revision })),
                 processUpserts: processUpserts.map((node) => ({ ...node, revision: next.revision })),
                 processRemoved,
@@ -883,6 +895,8 @@ export namespace ExecutionService {
                     ? [...next.removed]
                     : entry.nodes.filter((node) => !ids.has(node.id)).map((node) => node.id),
               })
+              for (const context of contexts) next.contextRows.set(context.nodeID, JSON.stringify(context))
+              for (const id of next.contextRows.keys()) if (!ids.has(id)) next.contextRows.delete(id)
               next.publishedRevision = next.revision
               next.changed.clear()
               next.removed.clear()

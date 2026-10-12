@@ -12,6 +12,8 @@ Retain six session presentations and eight resource panels with captured owners,
 
 Negotiate `projection-v2` through capabilities. Runtime registers domain contributors on the Server-owned transport boundary. Leases govern detail computation and delivery. Omitted state events advance contiguous cursors; detail patches have independent revisions. Stream append identity/offsets avoid repeated whole-content hashing. Bounded transient HTTP checkpoints carry content exceeding the 64 KiB frame limit.
 
+Execution context deltas compare against the last published metadata, preserving that baseline when a dirty snapshot rebuilds. Live classification therefore survives rebuilds without resending unchanged contexts; ordinary updates inspect only changed nodes.
+
 Validate message versions and Part page generations after replay, in batches of 100. Repair changed admitted ranges without refetching unchanged bodies or discarding historical reading windows. Drain the frontend event queue with both count and time budgets.
 
 ## Alternatives considered
