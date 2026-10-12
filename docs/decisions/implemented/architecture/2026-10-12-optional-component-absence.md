@@ -50,4 +50,4 @@ Component development includes absence, reinstall and interleaved-Runtime behavi
 
 The package and release inventories grow to reflect existing capability ownership. Explicit adapters add composition choices, and configuration projection and migration require dedicated roundtrip tests. These costs keep reduced installations independent while preserving the full product selection and recoverable user data.
 
-GitHub watch removal and bridge restart invalidate pending poll responses and queued dispatches by registration identity, preserving saved Agenda state without firing work owned by an obsolete registration.
+GitHub watch removal and bridge restart invalidate pending poll responses and queued dispatches by registration identity, preserving saved Agenda state without firing work owned by an obsolete registration. Late callbacks retain that original state through Runtime disposal and cannot resolve their state through a closed or different Runtime.

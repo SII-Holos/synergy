@@ -383,3 +383,46 @@ for (const action of ["unregister", "stop"] as const)
       expect((await AgendaStore.get(entry.scopeID, entry.itemID)).status).toBe("active")
     })
   })
+
+test("a stopped poll settles after its Runtime closes without entering another Runtime", async () => {
+  await using runtime = await testRuntime({ GH_TOKEN: "fixture-token", GITHUB_TOKEN: undefined })
+  await using survivor = await testRuntime()
+  const entered = Promise.withResolvers<void>()
+  const response = Promise.withResolvers<Response>()
+  const signals: AgendaTypes.FiredSignal[] = []
+  using fetcher = interceptFetch(async () => {
+    entered.resolve()
+    return response.promise
+  })
+  const triggers: AgendaTypes.Trigger[] = [
+    { type: "github", resource: "pr", repository, number: 42, states: ["merged"] },
+  ]
+  await survivor.run(() => AgendaGithubTrigger.register("surviving-watch", "home", triggers))
+  const { pending, entry } = await runtime.run(() => {
+    GithubWatchPolicy.register(async () => ({ enabled: true }))
+    AgendaGithubTrigger.start(async (signal) => {
+      signals.push(signal)
+    }, [])
+    AgendaGithubTrigger.register("closing-watch", "home", triggers)
+    const entry = AgendaGithubTrigger.entriesFor("closing-watch")[0]!
+    const pending = poll(entry).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    return { pending, entry }
+  })
+  try {
+    await entered.promise
+    await runtime.run(() => AgendaGithubTrigger.stop())
+    await runtime.close()
+    response.resolve(Response.json(pull))
+    expect(await pending).toBeUndefined()
+    expect(signals).toEqual([])
+    expect(entry.timer).toBeUndefined()
+    await survivor.run(() => expect(AgendaGithubTrigger.active()).toEqual({ items: 1, entries: 1 }))
+  } finally {
+    response.resolve(Response.json(pull))
+    await pending
+    await survivor.run(() => AgendaGithubTrigger.stop())
+  }
+})
