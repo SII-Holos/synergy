@@ -22,9 +22,6 @@ function classicPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Rule
       save_file: "deny",
       scan_files: "deny",
       parse_code: "deny",
-      memory_write: "allow",
-      memory_edit: "allow",
-      ...(ctx.evolutionActive ? {} : { memory_search: "deny", memory_get: "deny" }),
     }),
     ctx.user,
   )
@@ -50,9 +47,6 @@ function flashPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Rulese
       glob: "deny",
       grep: "deny",
       ast_grep: "deny",
-      memory_write: "allow",
-      memory_edit: "allow",
-      ...(ctx.evolutionActive ? {} : { memory_search: "deny", memory_get: "deny" }),
     }),
     ctx.user,
   )

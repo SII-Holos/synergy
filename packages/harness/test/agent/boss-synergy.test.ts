@@ -12,7 +12,6 @@ const ctx = {
   defaults: [],
   user: [],
   role: () => undefined,
-  evolutionActive: false,
 }
 
 function action(agent: ReturnType<typeof createBuiltinPrimaryAgents>[string], permission: string) {

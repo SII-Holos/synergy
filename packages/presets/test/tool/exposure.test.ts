@@ -78,7 +78,6 @@ const builtinCtx = {
   defaults: [],
   user: [],
   role: () => undefined,
-  evolutionActive: false,
 }
 
 async function definitionIDs(

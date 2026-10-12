@@ -12,7 +12,7 @@ import { registerLspToolSource } from "@ericsanchezok/synergy-lsp/tool-source"
 import { registerWorkspaceFileSymbolSource } from "@ericsanchezok/synergy-lsp/workspace-symbol-source"
 import { registerLspConfigCatalog } from "@ericsanchezok/synergy-lsp/config-catalog"
 import { ToolLspSource } from "@ericsanchezok/synergy-harness/tool/lsp-source"
-import { ToolNoteSource } from "@ericsanchezok/synergy-harness/tool/note-source"
+import { BashVirtualPath } from "@ericsanchezok/synergy-harness/tool/virtual-path"
 import { ToolPluginSource } from "@ericsanchezok/synergy-harness/tool/plugin-source"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -44,9 +44,10 @@ describe("full Runtime source composition", () => {
 
   test("note virtual-file source registers note markdown reads", () =>
     runtime.run(() => {
-      const source = ToolNoteSource.get()
+      const source = BashVirtualPath.source("note")
       expect(source).toBeDefined()
-      expect(source!.noteExtension).toBe(".md")
+      expect(source.extension).toBe(".md")
+      expect(BashVirtualPath.match("/synergy/note/nte_fixture")).toEqual({ provider: "note", id: "nte_fixture" })
     }))
 
   test("permission plugin source registers the ask-hook trigger", () =>

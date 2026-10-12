@@ -11,7 +11,6 @@ const ctx = {
   defaults: [],
   user: [],
   role: () => undefined,
-  evolutionActive: false,
 }
 
 test("hidden recursive reviewer agents stay off primary tables but can delegate through groups", () =>

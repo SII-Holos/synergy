@@ -10,7 +10,6 @@ const ctx = {
   defaults: [],
   user: [],
   role: () => undefined,
-  evolutionActive: false,
 }
 
 function action(agent: ReturnType<typeof createBuiltinMaxSubagents>[string], permission: string) {

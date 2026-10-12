@@ -194,7 +194,7 @@
     "./tool/lsp-source": "./src/tool/lsp-source.ts",
     "./tool/exposure": "./src/tool/exposure.ts",
     "./tool/mcp-source": "./src/tool/mcp-source.ts",
-    "./tool/note-source": "./src/tool/note-source.ts",
+    "./agent/permission-contributions": "./src/agent/permission-contributions.ts",
     "./session/input": "./src/session/input.ts",
     "./session/working": "./src/session/working.ts",
     "./observability/store": "./src/observability/store.ts",

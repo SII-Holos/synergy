@@ -8,7 +8,6 @@ export interface BuiltinAgentContext {
   defaults: PermissionNext.Ruleset
   user: PermissionNext.Ruleset
   role: (role: Provider.ModelRole) => { providerID: string; modelID: string } | undefined
-  evolutionActive: boolean
 }
 
 export type SubagentPermissionProfile =
@@ -21,8 +20,6 @@ export type SubagentPermissionProfile =
   | "docsWrite"
   | "anchoredDocsWrite"
   | "quality"
-  | "memory"
-  | "note"
   | "sessionHistory"
   | "externalResearch"
   | "research"
@@ -143,35 +140,6 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
 
   if (profile === "anchoredDocsWrite") {
     return PermissionNext.merge(common, anchoredReadTools(), anchoredWriteTools())
-  }
-
-  if (profile === "memory") {
-    return PermissionNext.merge(
-      common,
-      classicReadTools(),
-      PermissionNext.fromConfig({
-        memory_search: "allow",
-        memory_get: "allow",
-        memory_write: "allow",
-        memory_edit: "allow",
-      }),
-    )
-  }
-
-  if (profile === "note") {
-    return PermissionNext.merge(
-      common,
-      classicReadTools(),
-      PermissionNext.fromConfig({
-        note_list: "allow",
-        note_read: "allow",
-        note_search: "allow",
-        note_write: "allow",
-        note_edit: "allow",
-        note_archive: "allow",
-        note_delete: "allow",
-      }),
-    )
   }
 
   if (profile === "sessionHistory") {
