@@ -5,6 +5,7 @@ import { useParams } from "@/context/session-route"
 import type { ExecutionSummary } from "@ericsanchezok/synergy-sdk/client"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { useExecution } from "@/context/execution"
+import { useViewActivity } from "@/context/view-residency"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
@@ -26,6 +27,7 @@ const record = (value: unknown) => (value && typeof value === "object" ? (value 
 
 export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
   const execution = useExecution()
+  const viewActive = useViewActivity()
   const sdk = useSDK()
   const panels = useWorkbenchPanels()
   const params = useParams()
@@ -56,6 +58,7 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
   let summaryRequest = 0
   let summaryOwner = ""
   const visible = () =>
+    viewActive() &&
     execution.available() &&
     (["side", "bottom"] as const).some(
       (surface) => panels.surface(surface).opened() && panels.surface(surface).active() === tabID,
@@ -113,7 +116,7 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
     }),
   )
   const unsubscribe = sdk.event.on("execution.updated", (event) => {
-    if (event.properties.sessionID !== params.id || !runID()) return
+    if (!active() || event.properties.sessionID !== params.id || !runID()) return
     const next = event.properties.roundSummaries.find((entry) => entry.runID === runID())
     if (next && (!scoped.summary || next.revision >= scoped.summary.revision)) setScoped("summary", reconcile(next))
   })

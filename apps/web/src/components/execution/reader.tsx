@@ -7,6 +7,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { useSDK } from "@/context/sdk"
+import { useViewActivity } from "@/context/view-residency"
 import { EvidencePages } from "./reader-state"
 import { E } from "./i18n"
 
@@ -54,6 +55,7 @@ export function EvidenceReader(props: {
 }) {
   const { _ } = useLingui()
   const sdk = useSDK()
+  const active = useViewActivity()
   const pages = new EvidencePages(2 * 1024 * 1024)
   const rowCache = new Map<number, Row[]>()
   const checkpoints = new Map<number, number | null>()
@@ -80,6 +82,7 @@ export function EvidenceReader(props: {
   let list: VListHandle | undefined
   let protectedPage: number | undefined
   let debounce: ReturnType<typeof setTimeout> | undefined
+  let resumeRead: { offset: number; reset: boolean; before?: number } | undefined
   const params = () => ({
     sessionID: props.sessionID,
     nodeID: props.nodeID,
@@ -110,7 +113,8 @@ export function EvidenceReader(props: {
     return pages.pages().flatMap((page) => rowCache.get(page.offset) ?? [])
   })
   const read = async (offset: number, reset = false, before?: number) => {
-    if ((loading() && !reset) || disposed) return
+    if (!active() || (loading() && !reset) || disposed) return
+    resumeRead = { offset, reset, before }
     readAbort?.abort()
     readAbort = new AbortController()
     const controller = readAbort
@@ -172,7 +176,10 @@ export function EvidenceReader(props: {
     } catch {
       if (!disposed && version === sequence && !controller.signal.aborted) setError(true)
     } finally {
-      if (!disposed && version === sequence) setLoading(false)
+      if (!disposed && version === sequence) {
+        resumeRead = undefined
+        setLoading(false)
+      }
     }
   }
   const reset = async () => {
@@ -191,9 +198,29 @@ export function EvidenceReader(props: {
     setLoading(false)
     setProgress(undefined)
     setOpenedAt(props.revision)
+    resumeRead = { offset: 0, reset: true }
     await read(0, true)
   }
   createEffect(on([() => props.nodeID, () => props.field], () => void reset()))
+  createEffect(
+    on(
+      active,
+      (enabled) => {
+        if (enabled) {
+          if (resumeRead) void read(resumeRead.offset, resumeRead.reset, resumeRead.before)
+          return
+        }
+        sequence++
+        searchSequence++
+        readAbort?.abort()
+        searchAbort?.abort()
+        clearTimeout(debounce)
+        setLoading(false)
+        setSearching(false)
+      },
+      { defer: true },
+    ),
+  )
   const next = () => {
     const last = pages.pages().at(-1)
     const end = meta()?.bytes
@@ -211,6 +238,7 @@ export function EvidenceReader(props: {
     )
   }
   const query = async (cursor?: string) => {
+    if (!active()) return
     const value = search().trim()
     if (!value || !meta()) {
       setMatches(undefined)
@@ -234,9 +262,9 @@ export function EvidenceReader(props: {
     }
   }
   createEffect(
-    on(search, () => {
+    on([search, active], () => {
       clearTimeout(debounce)
-      debounce = setTimeout(() => void query(), 250)
+      if (active()) debounce = setTimeout(() => void query(), 250)
     }),
   )
   const complete = async (copy: boolean) => {

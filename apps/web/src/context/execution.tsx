@@ -46,13 +46,15 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
       nodeIDs?: Accessor<string[]>
     }) => {
       const panelActive = useViewActivity()
+      const consuming = () =>
+        active() && panelActive() && visible() && !!params.id && available() && options?.active?.() !== false
       createEffect(() => {
-        if (!active() || !panelActive() || !visible() || !params.id || !available() || options?.active?.() === false)
-          return
+        const sessionID = params.id
+        if (!consuming() || !sessionID) return
         const release = global.content.view({
           kind: "execution",
           scopeID: sdk.scopeID,
-          sessionID: params.id,
+          sessionID,
           runID: options?.runID?.(),
           nodeIDs: options?.nodeIDs?.(),
         })
@@ -62,6 +64,7 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
           setConsumers((value) => value - 1)
         })
       })
+      return consuming
     }
     const rounds = createMemo(() => new Map(state.summary?.rounds.map((round) => [round.id, round]) ?? []))
     return {
@@ -75,9 +78,10 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
       createContextHistory: (
         options: Pick<Parameters<typeof createExecutionContext>[0], "runID" | "active" | "selected">,
       ) => {
-        retain({ active: options.active, runID: options.runID })
+        const consuming = retain({ active: options.active, runID: options.runID })
         return createExecutionContext({
           ...options,
+          active: consuming,
           client: sdk.client,
           scopeID: () => sdk.scopeID,
           sessionID: () => params.id,

@@ -38,6 +38,10 @@ beforeAll(async () => {
     const records={root:[node("root","root","turn","Root task"),child],child:[child,node("read","child","tool","Read architecture"),nested],nested:[nested,node("answer","nested","output","Nested result")]}
     const exportRows=[...new Map(Object.values(records).flat().map(n=>[n.id,n])).values(),...Array.from({length:600},(_,i)=>node("export-"+i,"root","context","Export row "+i))]
     const event=createGlobalEmitter()
+    export const [ownerActive,setOwnerActive]=createSignal(true)
+    export const [connectionVersion,setConnectionVersion]=createSignal(0)
+    const [connected,connect]=createSignal(!location.search.includes("offline=1"))
+    window.executionResidencyControls={hide(value){setOwnerActive(value)},reconnect(){connect(false);connect(true);setConnectionVersion(value=>value+1)}}
     const long=()=>location.search.includes("long=1")
     const longRows=Array.from({length:10_000},(_,i)=>({...node("long-"+i,"root","tool","Long tool "+i),started:i+1,ended:i+2}))
     const model={...node("model","root","model","Test model"),modelID:"test-model",evidenceKind:"call",tokens:{known:1250,total:1250,unknown:0}}
@@ -48,7 +52,7 @@ beforeAll(async () => {
       const added={...node("long-new","root","tool","New tool"),started:10001,revision:2}
       event.emit("execution.updated",{type:"execution.updated",properties:{sessionID:"root",revision:2,previousRevision:1,summary:{...summary,revision:2},roundSummaries:[],upserts:[changed,added],processUpserts:[changed,added],removed:[]}})
     }
-    const sdk={event,connected:()=>true,client:{session:{executionTrajectory:async(q,options)=>{
+    const sdk={event,connected,client:{session:{executionTrajectory:async(q,options)=>{
       (window.trajectoryRequests ??= []).push(q)
       if(location.search.includes("membership=1")){
         const items=[model].filter(n=>!q.query || n.title.includes(q.query))
@@ -65,11 +69,11 @@ beforeAll(async () => {
       }
       if(q.limit===500){const start=q.cursor==="page-2"?500:0;return {data:{sessionID:q.sessionID,revision:1,total:exportRows.length,items:exportRows.slice(start,start+500),nextCursor:start===0?"page-2":null,previousCursor:null}}}
       return {data:{sessionID:q.sessionID,revision:1,total:records[q.sessionID].length,items:records[q.sessionID],nextCursor:null,previousCursor:null}}
-    },executionSummary:async()=>{if(window.holdSummary)await new Promise(resolve=>{window.releaseSummary=resolve});return {data:summary}},executionNode:async(q)=>({data:{node:q.nodeID==="read"?{...fixtureNode(q.nodeID),status:"failed"}:fixtureNode(q.nodeID),record:q.nodeID==="read"?{error:"File not found: architecture.md"}:null,sources:q.nodeID==="model" && !location.search.includes("missing=1")?[{field:"request",artifact:{bytes:100}},{field:"response",artifact:{bytes:100}}]:[],definitions:null,related:q.nodeID==="child" && location.search.includes("related=1")?relatedRows:[]}}),executionContent:async(q,options)=>{(window.contentRequests ??= []).push(q);if(location.search.includes("pending=1"))await new Promise(resolve=>(window.pendingEvidence ??= []).push({signal:options.signal,resolve}));return {data:{available:true,status:"complete",contentVersion:"v1",mediaType:"application/json",text:'{"test": true}',offset:0,bytes:14,totalBytes:14,nextOffset:null}}}}}}
+    },executionSummary:async()=>{window.summaryReads=(window.summaryReads??0)+1;if(window.holdSummary)await new Promise(resolve=>{window.releaseSummary=resolve});return {data:summary}},executionNode:async(q)=>{window.nodeReads=(window.nodeReads??0)+1;return ({data:{node:q.nodeID==="read"?{...fixtureNode(q.nodeID),status:"failed"}:fixtureNode(q.nodeID),record:q.nodeID==="read"?{error:"File not found: architecture.md"}:null,sources:q.nodeID==="model" && !location.search.includes("missing=1")?[{field:"request",artifact:{bytes:100}},{field:"response",artifact:{bytes:100}}]:[],definitions:null,related:q.nodeID==="child" && location.search.includes("related=1")?relatedRows:[]}})},executionContent:async(q,options)=>{(window.contentRequests ??= []).push(q);if(location.search.includes("pending=1"))await new Promise(resolve=>(window.pendingEvidence ??= []).push({signal:options.signal,resolve}));return {data:{available:true,status:"complete",contentVersion:"v1",mediaType:"application/json",text:'{"test": true}',offset:0,bytes:14,totalBytes:14,nextOffset:null}}}}}}
     export const useParams=()=>({id:"root"})
     export const useSDK=()=>sdk
     const snapshots=[1,2].map(n=>({sessionID:"root",callID:"call-"+n,nodeID:"model",runID:"root-round",requestNumber:n,roundNumber:1,started:n,modelID:"test-model",providerID:"test-provider",status:"completed",inputTokens:n*100,outputTokens:10,cacheHit:0.5,elapsedMs:1000,retries:0,usage:null,compactedBefore:false,requestAvailable:true,contextLimit:10000}))
-    export const useExecution=()=>({retain() {}, available:()=>true,advance:()=>0,connected:()=>true,state:{summary},connectionVersion:()=>0,createContextHistory:(options)=>{window.contextActive=options.active;return {state:{items:snapshots,total:2,latest:snapshots[1],loading:false,error:false},snapshot:()=>snapshots.find(n=>n.callID===options.selected())??snapshots[1],load:async()=>{}}}})
+    export const useExecution=()=>({retain() {}, available:()=>true,advance:()=>0,connected:()=>true,state:{summary},connectionVersion,createContextHistory:(options)=>{window.contextActive=options.active;return {state:{items:snapshots,total:2,latest:snapshots[1],loading:false,error:false},snapshot:()=>snapshots.find(n=>n.callID===options.selected())??snapshots[1],load:async()=>{}}}})
     export const [fixtureTab,setFixtureTab]=createSignal({id:"context",state:{}})
     export const useWorkbenchPanels=()=>({surface:()=>({opened:()=>true,active:()=>"context"}),updateTab:(id,patch)=>{window.recordedTab=patch.state;(window.stateWrites??=[]).push(patch.state);if(window.stateWrites.length>30)throw new Error("Execution state did not settle");setFixtureTab({id,...patch})}})
     export const useNavigateToSession=()=>()=>{}
@@ -85,13 +89,14 @@ beforeAll(async () => {
     import {DialogProvider} from "@ericsanchezok/synergy-ui/context/dialog"
     import {ExecutionPanelBody} from ${JSON.stringify(`${source}/components/execution/panel.tsx`)}
     import {ContextWorkbenchContent} from ${JSON.stringify(`${source}/components/execution/context-dashboard.tsx`)}
-    import {updateFixture,fixtureTab,setFixtureTab} from ${JSON.stringify(`${directory}/services.ts`)}
+    import { ViewActivityProvider } from "@/context/view-residency"
+    import {updateFixture,fixtureTab,setFixtureTab,ownerActive} from ${JSON.stringify(`${directory}/services.ts`)}
     window.updateFixture=updateFixture
     window.openTask=(state)=>setFixtureTab(tab=>({...tab,state}))
     import "@ericsanchezok/synergy-ui/styles"
     Object.defineProperty(navigator,"clipboard",{value:{writeText:async(text)=>{window.copiedEvidence=text}}})
     const i18n=setupI18n({locale:"en",messages:{en:{"execution.copyBlock":["Copy ",["label"]],"execution.round":["Round ",["number"]],"context.dashboard.request":["Request ",["number"]]}}})
-    render(()=><I18nProvider i18n={i18n}><DialogProvider><main style="height:100dvh;width:100%;max-width:100%;padding:8px;box-sizing:border-box"><Show when={location.search.includes("dashboard=1")} fallback={<ExecutionPanelBody tab={{id:"context",state:location.search.includes("model=1")?{nodeID:"model"}:{}}} runID={location.search.includes("scoped=1")?"root-round":""} scopeLabel="Entire task" onStateChange={(state)=>{window.recordsState=state}} onBack={()=>{window.returnedToOverview=true}}/>}><ContextWorkbenchContent tab={fixtureTab()}/></Show></main></DialogProvider></I18nProvider>,document.getElementById("root"))
+    render(()=><I18nProvider i18n={i18n}><DialogProvider><ViewActivityProvider active={ownerActive}><main hidden={!ownerActive()} style="height:100dvh;width:100%;max-width:100%;padding:8px;box-sizing:border-box"><Show when={location.search.includes("dashboard=1")} fallback={<ExecutionPanelBody tab={{id:"context",state:location.search.includes("model=1")?{nodeID:"model"}:{}}} runID={location.search.includes("scoped=1")?"root-round":""} scopeLabel="Entire task" onStateChange={(state)=>{window.recordsState=state}} onBack={()=>{window.returnedToOverview=true}}/>}><ContextWorkbenchContent tab={fixtureTab()}/></Show></main></ViewActivityProvider></DialogProvider></I18nProvider>,document.getElementById("root"))
   `,
   )
   const services = path.join(directory, "services.ts")
@@ -706,5 +711,120 @@ test("the failure count opens failed tools across the same task and its descenda
   expect(await page.locator(".execution-inspector").count()).toBe(0)
   await page.getByRole("button", { name: "Back to overview", exact: true }).click()
   expect(await page.getByRole("region", { name: "Task activity", exact: true }).isVisible()).toBe(true)
+  expect(errors).toEqual([])
+})
+
+type ResidencyControls = { hide(active: boolean): void; reconnect(): void }
+test("hidden retained execution records defer reconnect reads and preserve the selected inspector", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?model=1")
+  await page.locator(".execution-inspector").waitFor()
+  await page.waitForFunction(() => (window as unknown as { nodeReads: number }).nodeReads > 0)
+  const inspector = await page.locator(".execution-inspector").elementHandle()
+  await page.locator(".execution-content-row").first().waitFor()
+  const reader = await page.locator(".execution-reader").first().elementHandle()
+  const bodyReads = await page.evaluate(
+    () => (window as unknown as { contentRequests: unknown[] }).contentRequests.length,
+  )
+  const result = await page.evaluate(async () => {
+    const win = window as unknown as {
+      executionResidencyControls: ResidencyControls
+      trajectoryRequests: unknown[]
+      nodeReads: number
+    }
+    win.executionResidencyControls.hide(false)
+    const before = { trajectory: win.trajectoryRequests.length, node: win.nodeReads }
+    win.executionResidencyControls.reconnect()
+    await new Promise(requestAnimationFrame)
+    await new Promise(requestAnimationFrame)
+    return { before, after: { trajectory: win.trajectoryRequests.length, node: win.nodeReads } }
+  })
+  expect(result.after).toEqual(result.before)
+  expect(await inspector!.evaluate((node) => node.isConnected)).toBe(true)
+  await page.evaluate(() =>
+    (window as unknown as { executionResidencyControls: ResidencyControls }).executionResidencyControls.hide(true),
+  )
+  await page.locator(".execution-inspector").waitFor()
+  await page.waitForFunction(
+    (count) => (window as unknown as { nodeReads: number }).nodeReads > count,
+    result.before.node,
+  )
+  expect(await page.locator(".execution-inspector").evaluate((node, old) => node === old, inspector)).toBe(true)
+  expect(
+    await page
+      .locator(".execution-reader")
+      .first()
+      .evaluate((node, old) => node === old, reader),
+  ).toBe(true)
+  expect(await page.evaluate(() => (window as unknown as { contentRequests: unknown[] }).contentRequests.length)).toBe(
+    bodyReads,
+  )
+  expect(errors).toEqual([])
+})
+
+test("hidden retained context dashboards defer scoped summaries and history activity", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?dashboard=1")
+  await page.locator(".context-dashboard").waitFor()
+  await page.evaluate(() => (window as unknown as { openTask(state: unknown): void }).openTask({ runID: "root-round" }))
+  await page.waitForFunction(() => (window as unknown as { summaryReads: number }).summaryReads > 0)
+  const result = await page.evaluate(async () => {
+    const win = window as unknown as {
+      executionResidencyControls: ResidencyControls
+      summaryReads: number
+      contextActive(): boolean
+    }
+    win.executionResidencyControls.hide(false)
+    const before = win.summaryReads
+    win.executionResidencyControls.reconnect()
+    await new Promise(requestAnimationFrame)
+    return { before, after: win.summaryReads, active: win.contextActive() }
+  })
+  expect(result.active).toBe(false)
+  expect(result.after).toBe(result.before)
+  expect(errors).toEqual([])
+})
+
+test("hidden selected evidence cancels pending reads and resumes without replacing the inspector", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?model=1&pending=1")
+  await page.waitForFunction(() => (window as unknown as { pendingEvidence: unknown[] }).pendingEvidence?.length === 2)
+  const inspector = await page.locator(".execution-inspector").elementHandle()
+  await page.evaluate(() =>
+    (window as unknown as { executionResidencyControls: ResidencyControls }).executionResidencyControls.hide(false),
+  )
+  expect(
+    await page.evaluate(() =>
+      (window as unknown as { pendingEvidence: { signal: AbortSignal }[] }).pendingEvidence.map(
+        (entry) => entry.signal.aborted,
+      ),
+    ),
+  ).toEqual([true, true])
+  expect(await inspector!.evaluate((node) => node.isConnected)).toBe(true)
+  await page.evaluate(() =>
+    (window as unknown as { executionResidencyControls: ResidencyControls }).executionResidencyControls.hide(true),
+  )
+  await page.waitForFunction(() => (window as unknown as { pendingEvidence: unknown[] }).pendingEvidence.length === 4)
+  await page.evaluate(() => {
+    for (const entry of (window as unknown as { pendingEvidence: { resolve(): void }[] }).pendingEvidence)
+      entry.resolve()
+  })
+  await page.waitForFunction(() => document.querySelectorAll(".execution-content-row").length === 2)
+  expect((await page.locator(".execution-content-row").allTextContents()).map((text) => JSON.parse(text))).toEqual([
+    { test: true },
+    { test: true },
+  ])
+  expect(await page.locator(".execution-inspector").evaluate((node, old) => node === old, inspector)).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("an inspector opened offline loads its first node after reconnect", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?model=1&offline=1")
+  await page.locator(".execution-inspector").waitFor()
+  expect(await page.evaluate(() => (window as unknown as { nodeReads?: number }).nodeReads ?? 0)).toBe(0)
+  await page.evaluate(() =>
+    (window as unknown as { executionResidencyControls: ResidencyControls }).executionResidencyControls.reconnect(),
+  )
+  await page.waitForFunction(() => (window as unknown as { nodeReads: number }).nodeReads === 1, undefined, {
+    timeout: 3000,
+  })
+  await page.locator(".execution-content-row").first().waitFor()
   expect(errors).toEqual([])
 })

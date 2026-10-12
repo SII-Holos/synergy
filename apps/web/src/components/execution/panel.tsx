@@ -22,6 +22,7 @@ import { Checkbox } from "@ericsanchezok/synergy-ui/checkbox"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useExecution } from "@/context/execution"
+import { useViewActivity } from "@/context/view-residency"
 import { useSDK } from "@/context/sdk"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { ExecutionInspector } from "./inspector"
@@ -87,6 +88,7 @@ export function ExecutionPanelBody(
   const params = useParams()
   const sdk = useSDK()
   const execution = useExecution()
+  const viewActive = useViewActivity()
   execution.retain()
   const { _, i18n } = useLingui()
   const initial = settings(props.tab.state)
@@ -125,7 +127,7 @@ export function ExecutionPanelBody(
         ?.focus({ preventScroll: true }),
     )
   })
-  const active = execution.available
+  const active = () => viewActive() && execution.available()
   const branchCount = createMemo(() => [...branches().values()].reduce((sum, branch) => sum + branch.rows.length, 0))
   const trajectory = createExecutionTrajectory({
     sdk,
@@ -911,7 +913,7 @@ export function ExecutionPanelBody(
             </Show>
           </div>
         </div>
-        <Show when={selected() && active()}>
+        <Show when={selected() && execution.available()}>
           <ExecutionInspector
             sessionID={params.id!}
             nodeID={selected()}
