@@ -43,20 +43,14 @@ export function createScrollMotion(target: () => HTMLElement | undefined) {
       position = { viewport, top: viewport.scrollTop }
       const delta = viewport.scrollTop - previous + carry
       if (!animate || reduced?.matches || !next?.animate || Math.abs(delta) < 0.5) return
+      if (Math.abs(delta) >= viewport.clientHeight) return
       const style = getComputedStyle(next)
-      const distant = Math.abs(delta) >= viewport.clientHeight
-      const duration = style.getPropertyValue(distant ? "--motion-duration-base" : "--motion-duration-slow").trim()
-      animation = next.animate(
-        distant
-          ? [{ opacity: 0.65 }, { opacity: 1 }]
-          : [{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }],
-        {
-          duration:
-            remaining ?? (duration ? parseFloat(duration) * (duration.endsWith("ms") ? 1 : 1000) : distant ? 180 : 240),
-          easing: style.getPropertyValue("--motion-ease-standard").trim() || "cubic-bezier(0.2, 0, 0, 1)",
-          fill: "both",
-        },
-      )
+      const duration = style.getPropertyValue("--motion-duration-slow").trim()
+      animation = next.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], {
+        duration: remaining ?? (duration ? parseFloat(duration) * (duration.endsWith("ms") ? 1 : 1000) : 240),
+        easing: style.getPropertyValue("--motion-ease-standard").trim() || "cubic-bezier(0.2, 0, 0, 1)",
+        fill: "both",
+      })
       animation.onfinish = cancel
     },
     interrupt(viewport?: HTMLElement) {

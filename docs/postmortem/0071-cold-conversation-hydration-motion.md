@@ -14,6 +14,7 @@ A production browser fixture held body responses, opened a 24-turn conversation 
 - A cold navigation recording still showed body expansion, displacement and rebound.
 - Frame capture originally started after readiness and missed the correction. Moving capture before navigation reproduced a footer range of 1,013 CSS pixels with transient 0.65 opacity.
 - Separating cold hydration from follow animation reduced the same fixture's range below 2 CSS pixels with full opacity.
+- A later hosted run retained the footer geometry but caught the distant-follow fallback fading the transcript after a late correction. Deterministic large-growth and Latest-navigation controls reproduced 0.65 opacity. Those corrections now use immediate native positioning; ordinary short following motion remains covered.
 
 ## Root cause
 

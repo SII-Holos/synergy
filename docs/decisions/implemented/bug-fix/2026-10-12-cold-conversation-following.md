@@ -12,6 +12,8 @@ Keep initial positioning and following animation admission separate. The mounted
 
 The shared Markdown renderer exposes its asynchronous pending state as a DOM attribute, without adding a visual loading barrier. This avoids coupling Session navigation to the parser implementation or fetching offscreen bodies.
 
+Following corrections at least one viewport tall land at the native destination without animation. Neither late layout corrections nor explicit Latest navigation fade the whole transcript. Smaller live changes retain their bounded transform motion, interruption and overlapping-disclosure deadline.
+
 ## Alternatives considered
 
 **Disable all following animation.** It removes useful feedback during subsequent generation and does not distinguish cold geometry correction from new content.
@@ -19,6 +21,8 @@ The shared Markdown renderer exposes its asynchronous pending state as a DOM att
 **Wait before showing the conversation.** It restores the disruptive whole-area loading barrier and delays usable content and controls.
 
 **Use a fixed delay or only header readiness.** Body/network latency and Markdown work vary; either can finish after the arbitrary deadline.
+
+**Fade the transcript for a large correction.** It keeps the destination geometry visible but dims already readable content, so a late virtual measurement can still flash after cold admission. Instant positioning preserves full opacity without sliding an empty viewport across the screen.
 
 ## Consequences
 

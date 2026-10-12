@@ -10,8 +10,7 @@ Otherwise, test.
 
 ## Placement
 
-- Bugs and process failures belong here.
-- Keep rationale in `docs/decisions/`.
+Bugs belong here; rationale in `docs/decisions/`.
 
 ## Format
 
@@ -19,12 +18,14 @@ Otherwise, test.
 
 - **Executive summary** — failure, cause, escaped safeguard, lesson.
 - **Summary** — failure details.
-- **Timeline** — what was observed and when.
+- **Timeline** — observations and timing.
 - **Root cause** — the mechanism and missing safeguards.
 - **Guardrails added** — linked fixes: tests, doc updates, gate changes.
 - **Lessons** — durable takeaways.
 
 ## Index
+
+- [0072: Native watcher concurrency](0072-native-watcher-exception-concurrency.md)
 
 - [0071: Cold hydration](0071-cold-conversation-hydration-motion.md)
 
@@ -46,6 +47,7 @@ Otherwise, test.
 
 - [0062: Historical project bindings](0062-project-migration-required-live-directory-identity.md)
 - [0061: Concurrent Workspace admission](0061-concurrent-workspace-admission.md)
+- [0061: Usage recovery](0061-streamed-usage-recovery.md)
 
 - [0059: Disclosure](0059-cold-process-disclosure-jank.md)
 

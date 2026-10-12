@@ -461,7 +461,10 @@ describe("production conversation history", () => {
       expect(new Set(frames.map((frame) => frame.key)).size).toBe(1)
       const positions = frames.map((frame) => frame.y)
       expect(Math.max(...positions) - Math.min(...positions), JSON.stringify(frames.slice(0, 60))).toBeLessThan(2)
-      expect(frames.every((frame) => frame.opacity === 1)).toBe(true)
+      expect(
+        frames.every((frame) => frame.opacity === 1),
+        JSON.stringify(frames.filter((frame) => frame.opacity !== 1).slice(0, 20)),
+      ).toBe(true)
       expect(frames.some((frame) => !frame.text)).toBe(true)
       expect(frames.at(-1)!.text).toBe(true)
       const viewport = await active.locator("[data-conversation-viewport]").elementHandle()
