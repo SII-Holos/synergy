@@ -35,7 +35,7 @@ describe("session rollback history", () => {
           )
           await Storage.write(cursorPath, { from: "from_tree", to: "to_tree", files: [] })
           const [u1] = await writeTurn(session.id, tmp.path, "first", "one")
-          await writeTurn(session.id, tmp.path, "second", "two")
+          const [u2] = await writeTurn(session.id, tmp.path, "second", "two")
           await writeTurn(session.id, tmp.path, "third", "three")
 
           const firstRollback = (await Session.rollback({
@@ -46,6 +46,11 @@ describe("session rollback history", () => {
           expect(firstRollback.droppedUserMessageIDs).toHaveLength(1)
           expect(await visibleTexts(session.id)).toEqual(["first", "one", "second", "two"])
           expect(await rawTexts(session.id)).toEqual(["first", "one", "second", "two", "third", "three"])
+          const effective = await Storage.snapshot(() => SessionHistory.effectiveMessageInfos(session))
+          expect(effective.map((message) => message.id)).toEqual(
+            (await SessionHistory.detachedModelMessages({ sessionID: session.id })).map((message) => message.info.id),
+          )
+          expect(effective.findLast((message) => message.role === "user" && message.isRoot)?.id).toBe(u2.info.id)
 
           await Session.rollback({ sessionID: session.id, numTurns: 1 })
           expect(await visibleTexts(session.id)).toEqual(["first", "one"])

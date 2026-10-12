@@ -182,8 +182,8 @@
       "ignoreDependencies": ["@hono/standard-validator", "zod-openapi"],
     },
     "packages/presets": {
-      "entry": ["script/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
-      "project": ["src/**/*.ts", "script/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
+      "entry": ["script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
     },
     "packages/browser-runtime": {
       "entry": ["test/**/*.ts"],
@@ -327,12 +327,12 @@
     "packages/workflows": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
     },
     "packages/connections": {
-      "entry": ["script/**/*.ts", "test/**/*.ts"],
-      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
     },
     "packages/workbench": {
       "entry": ["test/**/*.ts"],

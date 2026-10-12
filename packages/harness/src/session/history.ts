@@ -1197,6 +1197,25 @@ export namespace SessionHistory {
     return readMessageInfo(sessionID)
   }
 
+  export async function effectiveMessageInfos(session: Info) {
+    const [infos, events] = await Promise.all([
+      MessageV2.readInfoList({ scopeID: asScopeID(session.scope.id), sessionID: asSessionID(session.id) }),
+      readSessionEvents(session),
+    ])
+    const canonical = await deriveInfoSemantics(infos, async (messageID) => {
+      const parts: MessageV2.Part[] = []
+      for await (const record of Storage.records<MessageV2.Part>({
+        kind: "part",
+        scopeID: session.scope.id,
+        sessionID: session.id,
+        messageID,
+      }))
+        parts.push(upgradeAccessRecord(record.key, record.value))
+      return parts.sort((a, b) => a.id.localeCompare(b.id))
+    })
+    return applyEventsToInfo(canonical, events)
+  }
+
   async function readMessageInfo(sessionID: string) {
     const session = await SessionManager.requireSession(sessionID)
     return MessageV2.readInfoList({

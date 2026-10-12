@@ -56,8 +56,9 @@ export namespace SessionExecutionOwners {
 
   export async function latestRoot(sessionID: string) {
     const { SessionHistory } = await import("./history")
-    const messages = await SessionHistory.detachedModelMessages({ sessionID })
-    const root = messages.findLast((message) => message.info.role === "user" && message.info.isRoot)?.info
+    const { SessionManager } = await import("./manager")
+    const messages = await SessionHistory.effectiveMessageInfos(await SessionManager.requireSession(sessionID))
+    const root = messages.findLast((message) => message.role === "user" && message.isRoot)
     return root?.role === "user" ? root : undefined
   }
 
@@ -81,16 +82,16 @@ export namespace SessionExecutionOwners {
 
   export async function allowsResume(session: SessionInfo): Promise<boolean> {
     const { SessionHistory } = await import("./history")
-    const messages = await SessionHistory.detachedModelMessages({ sessionID: session.id })
-    const root = messages.findLast((message) => message.info.role === "user" && message.info.isRoot)?.info
+    const messages = await SessionHistory.effectiveMessageInfos(session)
+    const root = messages.findLast((message) => message.role === "user" && message.isRoot)
     const context = forRoot(session, root)
     if (!(await allowsSession(context))) return false
-    const latest = messages.findLast((message) => message.info.role === "user")
+    const latest = messages.findLast((message) => message.role === "user")
     if (!root) {
       const { SessionInbox } = await import("./inbox")
       return !(await SessionInbox.hasUnavailableItem(session.id))
     }
-    return (await allowsMessage(context, root)) && (!latest || (await allowsMessage(context, latest.info)))
+    return (await allowsMessage(context, root)) && (!latest || (await allowsMessage(context, latest)))
   }
 
   export async function assertResume(session: SessionInfo): Promise<void> {

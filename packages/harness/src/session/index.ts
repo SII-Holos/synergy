@@ -228,7 +228,13 @@ export namespace Session {
       page.entries.sort((a, b) => b.updated - a.updated || b.id.localeCompare(a.id))
       nav.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id))
       await tx.write(["sessions_page_index", scopeID], page)
-      await tx.write(["session_nav_v2", scopeID], { version: 1, scopeID, updatedAt: Date.now(), entries: nav })
+      await tx.write(["session_nav_v2", scopeID], {
+        version: 1,
+        composition: SessionSchemaRegistry.projectionKey(),
+        scopeID,
+        updatedAt: Date.now(),
+        entries: nav,
+      })
       for (const [parentID, child] of children) {
         sortChildIndexEntries(child.entries)
         await tx.write(["session_child_index", scopeID, parentID], child)

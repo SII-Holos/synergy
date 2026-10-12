@@ -466,7 +466,7 @@ export namespace SessionInbox {
    * owners without traversing empty historical inboxes.
    */
   export async function listRunnableSessions(scopeID?: string): Promise<string[]> {
-    const candidates = new Map<string, string>()
+    const candidates = new Map<string, { scope: string; items: StoredItem[] }>()
     let after: string[] | undefined
     for (;;) {
       const keys = await Storage.queryKeys({ kind: "inbox", scopeID, after, limit: 256 })
@@ -475,8 +475,14 @@ export namespace SessionInbox {
         const item = items[i]
         if (!item?.id) continue
         const normalized = normalizeStored(item)
-        if ((normalized.mode === "task" || normalized.admission === "idle_no_reply") && normalized.status !== "failed")
-          candidates.set(keys[i][2], keys[i][1])
+        if (
+          (normalized.mode === "task" || normalized.admission === "idle_no_reply") &&
+          normalized.status !== "failed"
+        ) {
+          const candidate = candidates.get(keys[i][2]) ?? { scope: keys[i][1], items: [] }
+          candidate.items.push(normalized)
+          candidates.set(keys[i][2], candidate)
+        }
       }
       if (keys.length < 256) break
       after = keys.at(-1)
@@ -486,12 +492,24 @@ export namespace SessionInbox {
     for (let offset = 0; offset < entries.length; offset += 256) {
       const batch = entries.slice(offset, offset + 256)
       const infos = await readRecoveryBatch<Info>(
-        batch.map(([sessionID, scope]) =>
+        batch.map(([sessionID, { scope }]) =>
           StoragePath.sessionInfo(Identifier.asScopeID(scope), Identifier.asSessionID(sessionID)),
         ),
       )
-      for (const info of infos)
-        if (info?.time && !info.time.archived && (await hasRunnableItem(info.id))) result.push(info.id)
+      for (const info of infos) {
+        if (!info?.time || info.time.archived) continue
+        try {
+          const session = await readSession(info.id)
+          for (const item of candidates.get(info.id)!.items) {
+            if (!(await itemAvailable(session, item))) continue
+            result.push(info.id)
+            break
+          }
+        } catch (error) {
+          if (!(error instanceof Storage.NotFoundError) && !(error instanceof StorageIntegrityError)) throw error
+          log.warn("startup inbox discovery skipped an unreadable owner", { sessionID: info.id, error })
+        }
+      }
     }
     return result.sort()
   }

@@ -2,6 +2,7 @@ import { expect, spyOn, test } from "bun:test"
 import { AgendaStore, type AgendaTypes } from "@ericsanchezok/synergy-agenda/agenda"
 import { GithubWatchPolicy } from "@ericsanchezok/synergy-agenda/agenda/github-watch-policy"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { GitHubProvider } from "@ericsanchezok/synergy-harness/provider/github"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { AgendaGithubTrigger } from "../../src/github-trigger"
 import { testRuntime } from "../support/runtime"
@@ -214,3 +215,171 @@ test("stopping a selected bridge suppresses a late response and its next timer",
     fetcher.mockRestore()
   }
 })
+
+test("disconnecting GitHub pauses a saved watch after the credential grace period without making requests", async () => {
+  await watch({ type: "github", resource: "pr", repository, number: 42 }, async (entry, signals) => {
+    using credential = spyOn(GitHubProvider, "resolveToken").mockResolvedValue(undefined)
+    using fetcher = spyOn(globalThis, "fetch")
+    for (let attempt = 0; attempt < 4; attempt++) await poll(entry)
+    expect((await AgendaStore.get(entry.scopeID, entry.itemID)).status).toBe("active")
+    await poll(entry)
+    expect((await AgendaStore.get(entry.scopeID, entry.itemID)).status).toBe("paused")
+    expect(signals).toEqual([])
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(entry.timer).toBeUndefined()
+    expect(AgendaGithubTrigger.active()).toEqual({ items: 0, entries: 0 })
+  })
+})
+
+test("disabling GitHub polling pauses existing watches and removes their timers", async () => {
+  await watch({ type: "github", resource: "pr", repository, number: 42 }, async (entry, signals) => {
+    const restore = GithubWatchPolicy.register(async () => ({ enabled: false }))
+    using fetcher = spyOn(globalThis, "fetch")
+    try {
+      await poll(entry)
+      expect((await AgendaStore.get(entry.scopeID, entry.itemID)).status).toBe("paused")
+      expect(signals).toEqual([])
+      expect(fetcher).not.toHaveBeenCalled()
+      expect(entry.timer).toBeUndefined()
+      expect(AgendaGithubTrigger.active()).toEqual({ items: 0, entries: 0 })
+    } finally {
+      restore()
+    }
+  })
+})
+
+test("restarting a previously run watch establishes a baseline before reporting a later transition", async () => {
+  let merged = true
+  using fetcher = interceptFetch(async () => Response.json({ ...pull, merged, state: merged ? "closed" : "open" }))
+  await watch(
+    { type: "github", resource: "pr", repository, number: 42, states: ["merged"] },
+    async (entry, signals) => {
+      const saved = await AgendaStore.get(entry.scopeID, entry.itemID)
+      AgendaGithubTrigger.stop()
+      AgendaGithubTrigger.start(
+        async (signal) => {
+          signals.push(signal)
+        },
+        [{ ...saved, state: { ...saved.state, runCount: 1 } }],
+      )
+      const restored = AgendaGithubTrigger.entriesFor(entry.itemID)[0]!
+      await poll(restored)
+      expect(signals).toEqual([])
+      merged = false
+      await poll(restored)
+      expect(signals).toEqual([])
+      merged = true
+      await poll(restored)
+      expect(signals).toHaveLength(1)
+      expect(signals[0].payload).toMatchObject({ state: "merged", previousState: "open" })
+      expect(restored.timer).toBeDefined()
+    },
+  )
+})
+
+test("one failed signal handler does not block the next GitHub transition", async () => {
+  let state = "open"
+  using fetcher = interceptFetch(async () => Response.json({ ...pull, merged: state === "merged", state }))
+  await watch({ type: "github", resource: "pr", repository, number: 42 }, async (entry, signals) => {
+    const saved = await AgendaStore.get(entry.scopeID, entry.itemID)
+    AgendaGithubTrigger.stop()
+    AgendaGithubTrigger.start(
+      async (signal) => {
+        signals.push(signal)
+        if (signals.length === 1) throw new Error("Fixture handler failed")
+      },
+      [saved],
+    )
+    const current = AgendaGithubTrigger.entriesFor(entry.itemID)[0]!
+    await poll(current)
+    state = "closed"
+    await poll(current)
+    state = "merged"
+    await poll(current)
+    expect(signals.map((signal) => signal.payload?.state)).toEqual(["closed", "merged"])
+    expect((await AgendaStore.get(entry.scopeID, entry.itemID)).status).toBe("active")
+    expect(current.timer).toBeDefined()
+  })
+})
+
+test("failed pause persistence preserves saved work and stops further polling", async () => {
+  await watch({ type: "github", resource: "pr", repository, number: 42 }, async (entry, signals) => {
+    const before = await AgendaStore.get(entry.scopeID, entry.itemID)
+    const restore = GithubWatchPolicy.register(async () => ({ enabled: false }))
+    using write = spyOn(AgendaStore, "update").mockRejectedValueOnce(new Error("Fixture storage unavailable"))
+    try {
+      await poll(entry)
+      expect(write).toHaveBeenCalledTimes(1)
+      expect(await AgendaStore.get(entry.scopeID, entry.itemID)).toEqual(before)
+      expect(signals).toEqual([])
+      expect(entry.timer).toBeUndefined()
+    } finally {
+      restore()
+    }
+  })
+})
+
+for (const action of ["unregister", "restart"] as const)
+  test(`${action} suppresses an in-flight response from an obsolete watch`, async () => {
+    const entered = Promise.withResolvers<void>()
+    const response = Promise.withResolvers<Response>()
+    using fetcher = interceptFetch(async () => {
+      entered.resolve()
+      return response.promise
+    })
+    await watch(
+      { type: "github", resource: "pr", repository, number: 42, states: ["merged"] },
+      async (entry, signals) => {
+        const pending = poll(entry)
+        try {
+          await entered.promise
+          AgendaGithubTrigger.unregister(entry.itemID)
+          if (action === "restart") {
+            const saved = await AgendaStore.get(entry.scopeID, entry.itemID)
+            AgendaGithubTrigger.stop()
+            AgendaGithubTrigger.start(
+              async (signal) => {
+                signals.push(signal)
+              },
+              [saved],
+            )
+            const replacement = AgendaGithubTrigger.entriesFor(entry.itemID)[0]!
+            clearTimeout(replacement.timer)
+            replacement.timer = undefined
+          }
+          response.resolve(Response.json(pull))
+          await pending
+          expect(signals).toEqual([])
+          expect(entry.timer).toBeUndefined()
+          expect((await AgendaStore.get(entry.scopeID, entry.itemID)).status).toBe("active")
+        } finally {
+          response.resolve(Response.json(pull))
+          await pending
+        }
+      },
+    )
+  })
+
+for (const action of ["unregister", "stop"] as const)
+  test(`${action} suppresses remaining signals already queued by the current poll`, async () => {
+    using fetcher = interceptFetch(async () => Response.json([pull, { ...pull, number: 46 }]))
+    await watch({ type: "github", resource: "pr", repository, states: ["merged"] }, async (entry, signals) => {
+      const saved = await AgendaStore.get(entry.scopeID, entry.itemID)
+      AgendaGithubTrigger.stop()
+      AgendaGithubTrigger.start(
+        async (signal) => {
+          signals.push(signal)
+          if (action === "stop") AgendaGithubTrigger.stop()
+          else AgendaGithubTrigger.unregister(entry.itemID)
+        },
+        [saved],
+      )
+      const current = AgendaGithubTrigger.entriesFor(entry.itemID)[0]!
+      await poll(current)
+      expect(signals).toHaveLength(1)
+      expect(signals[0].payload?.number).toBe(42)
+      expect(current.timer).toBeUndefined()
+      expect(AgendaGithubTrigger.active()).toEqual({ items: 0, entries: 0 })
+      expect((await AgendaStore.get(entry.scopeID, entry.itemID)).status).toBe("active")
+    })
+  })

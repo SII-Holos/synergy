@@ -143,7 +143,6 @@ function migrateMemoryRows(conn: SqliteConn) {
 }
 
 export const migrations: Migration[] = [
-  configMigration,
   {
     id: "20260301-library-data-path",
     description: "Rename legacy engram database and stats paths to library paths",
@@ -381,6 +380,7 @@ export const migrations: Migration[] = [
       if (updated > 0) log.info("seeded retrieval_count from q_visits", { updated })
     },
   },
+  configMigration,
   {
     id: "20261012-library-home-scope",
     description: "Converge legacy Home experience identities when Library becomes available",

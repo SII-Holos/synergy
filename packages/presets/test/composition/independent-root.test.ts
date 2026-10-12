@@ -341,7 +341,12 @@ for (const materializeBeforeReinstall of [true, false]) {
           )
           expect(await MessageV2.get({ sessionID, messageID: humanReply.info.id })).toEqual(humanReply)
           expect(await RolloutLedger.getRun(RolloutLifecycle.owner(session), oldRootID)).toEqual(previousRun)
-          expect((await RolloutLedger.getRun(RolloutLifecycle.owner(session), newRootID)).status).toBe("completed")
+          const owner = RolloutLifecycle.owner(session)
+          expect((await RolloutLedger.getRun(owner, newRootID)).execution?.status).toBe("completed")
+          const settlementDeadline = Date.now() + 2000
+          while ((await RolloutLedger.getRun(owner, newRootID)).status === "running" && Date.now() < settlementDeadline)
+            await Bun.sleep(5)
+          expect((await RolloutLedger.getRun(owner, newRootID)).status).toBe("completed")
           await Session.mergeMessageMetadata({
             sessionID,
             messageID: newRootID,

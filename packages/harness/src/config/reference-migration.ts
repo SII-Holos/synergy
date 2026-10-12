@@ -1,7 +1,17 @@
 import path from "node:path"
 import fs from "node:fs/promises"
 import matter from "gray-matter"
-import { applyEdits, modify, parse, parseTree, type Edit, type Node, type ParseError } from "jsonc-parser"
+import {
+  applyEdits,
+  findNodeAtLocation,
+  getNodeValue,
+  modify,
+  parse,
+  parseTree,
+  type Edit,
+  type Node,
+  type ParseError,
+} from "jsonc-parser"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { PrimaryAgentUpgrade } from "../agent/primary-identity-upgrade"
 import { upgradeImportedConfig } from "../migration/import"
@@ -10,7 +20,6 @@ import { Global } from "../global"
 import { Flag } from "../flag/flag"
 import { Storage } from "../storage/storage"
 import { ConfigDomain } from "./domain"
-import { mergeDeep } from "remeda"
 
 export namespace ConfigReferenceMigration {
   interface Options {
@@ -56,6 +65,41 @@ export namespace ConfigReferenceMigration {
     })
   }
 
+  function render(raw: string, after: Record<string, unknown>) {
+    let text = applyEdits(raw, keyEdits(parseTree(raw), after))
+    const keyed = PrimaryAgentUpgrade.record(parse(text))!
+    for (const edit of edits(keyed, after)) {
+      text = applyEdits(
+        text,
+        modify(text, edit.path, edit.value, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
+      )
+    }
+    return text
+  }
+
+  function mergeProperty(target: string, source: string, property: Node, prefix: string[] = []): string {
+    const [key, value] = property.children!
+    const location = [...prefix, key.value as string]
+    const existing = findNodeAtLocation(parseTree(target)!, location)
+    if (existing) {
+      if (existing.type !== "object" || value.type !== "object") return target
+      for (const child of value.children ?? []) target = mergeProperty(target, source, child, location)
+      return target
+    }
+    const inserted = applyEdits(
+      target,
+      modify(target, location, getNodeValue(value), { formattingOptions: { tabSize: 2, insertSpaces: true } }),
+    )
+    const destination = findNodeAtLocation(parseTree(inserted)!, location)!.parent!
+    return applyEdits(inserted, [
+      {
+        offset: destination.offset,
+        length: destination.length,
+        content: source.slice(property.offset, property.offset + property.length),
+      },
+    ])
+  }
+
   export async function file(filepath: string, options: Options = {}) {
     const raw = await Bun.file(filepath)
       .text()
@@ -68,6 +112,8 @@ export namespace ConfigReferenceMigration {
     const before = PrimaryAgentUpgrade.record(parse(raw, errors, { allowTrailingComma: true }))
     if (!before || errors.length) return
     const after = upgradeImportedConfig(before)
+    const source = render(raw, after)
+    let text = source
     const owner = ConfigDomain.domainForFile(filepath)
     if (owner || path.basename(path.dirname(filepath)) === "synergy.d") {
       for (const [key, value] of Object.entries(after)) {
@@ -85,26 +131,15 @@ export namespace ConfigReferenceMigration {
         const stored = PrimaryAgentUpgrade.record(parse(targetRaw, targetErrors, { allowTrailingComma: true }))
         if (!stored || targetErrors.length)
           throw new Error(`Cannot migrate configuration into invalid domain ${targetOwner.id}`)
-        const incoming = PrimaryAgentUpgrade.record(value)
-        const current = PrimaryAgentUpgrade.record(stored[key])
-        const merged =
-          incoming && current ? mergeDeep(incoming, current) : Object.hasOwn(stored, key) ? stored[key] : value
-        const updated = applyEdits(
-          targetRaw,
-          modify(targetRaw, [key], merged, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
-        )
+        const property = findNodeAtLocation(parseTree(source)!, [key])!.parent!
+        const updated = mergeProperty(targetRaw, source, property)
         // Publish the destination first so an interrupted move can retry without losing the source.
         if (updated !== targetRaw) await AtomicFile.writeFileAtomic(target, updated, { private: true, durable: true })
-        delete after[key]
+        text = applyEdits(
+          text,
+          modify(text, [key], undefined, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
+        )
       }
-    }
-    let text = applyEdits(raw, keyEdits(parseTree(raw), after))
-    const keyed = PrimaryAgentUpgrade.record(parse(text))!
-    for (const edit of edits(keyed, after)) {
-      text = applyEdits(
-        text,
-        modify(text, edit.path, edit.value, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
-      )
     }
     if (text !== raw) await AtomicFile.writeFileAtomic(filepath, text, { private: true, durable: true })
   }

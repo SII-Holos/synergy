@@ -42,6 +42,12 @@ An exclusive host ConfigSource excludes migrations marked `configuration: "files
 
 ## Consequences
 
+Execution-owner checks read effective message metadata without materializing bodies or scheduling migrations from read snapshots, so passive input status and concurrent message writes cannot wait on one another. Rebuilt navigation carries its composition key and normalizes historical endpoints only in the projection; canonical archived records remain unchanged. Configuration relocation preserves source field comments and destination overrides while publishing the destination before removing the source.
+
+Startup discovery applies execution-owner checks per retained Session. A missing index or corrupt owner cannot prevent healthy queued work from being discovered; storage outages remain fatal and unreadable records remain intact.
+
 Component development includes absence, reinstall and interleaved-Runtime behavioral tests. Composition checks inspect actual tools, agents, final instructions, events, schemas, routes, lifecycle and browser requests. Packed installations, native workers and managed Node SDK checks expose dependencies that workspace resolution can hide. The [architecture workflow](../../../../.synergy/skill/architecture/SKILL.md) and [testing guide](../../../../.synergy/skill/testing-guide/SKILL.md) define the verification procedure.
 
 The package and release inventories grow to reflect existing capability ownership. Explicit adapters add composition choices, and configuration projection and migration require dedicated roundtrip tests. These costs keep reduced installations independent while preserving the full product selection and recoverable user data.
+
+GitHub watch removal and bridge restart invalidate pending poll responses and queued dispatches by registration identity, preserving saved Agenda state without firing work owned by an obsolete registration.

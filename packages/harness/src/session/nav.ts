@@ -243,6 +243,7 @@ export namespace SessionNav {
   }
 
   async function buildNavIndexUnlocked(scopeID: string, previous?: ScopeNavIndex): Promise<ScopeNavIndex> {
+    const { Session } = await import(".")
     const sid = Identifier.asScopeID(scopeID)
     const sessionIDs = previous?.entries.map((entry) => entry.id) ?? (await Storage.scan(StoragePath.sessionsRoot(sid)))
     const activity = new Map(previous?.entries.map((entry) => [entry.id, entry.lastActivityAt]))
@@ -251,7 +252,22 @@ export namespace SessionNav {
       const keys = sessionIDs.map((id) => StoragePath.sessionInfo(sid, Identifier.asSessionID(id)))
       const storedSessions = await SessionRecords.readMany(keys)
       for (const storedSession of storedSessions) {
-        const parsed = SessionInfo.safeParse(storedSession)
+        let projected = storedSession
+        try {
+          if (storedSession)
+            projected = {
+              ...storedSession,
+              endpoint: Session.indexEndpoint(storedSession.endpoint, storedSession.time?.archived),
+            }
+        } catch (error) {
+          log.warn("skipping malformed session endpoint", {
+            scopeID,
+            sessionID: storedSession?.id,
+            error: String(error),
+          })
+          continue
+        }
+        const parsed = SessionInfo.safeParse(projected)
         if (!parsed.success) {
           log.warn("skipping malformed session info", {
             scopeID,

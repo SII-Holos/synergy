@@ -185,18 +185,23 @@ export namespace AgendaGithubTrigger {
     entry.timer = setTimeout(() => void poll(entry), delayMs)
   }
 
+  function isCurrent(entry: Entry): boolean {
+    const current = runtimeState()
+    return current.entries.get(entry.itemID)?.includes(entry) === true
+  }
+
   async function watchConfig(): Promise<{ enabled: boolean; defaultIntervalMs?: number }> {
     return GithubWatchPolicy.read()
   }
 
   export async function poll(entry: Entry) {
-    const instanceState = runtimeState()
-
+    if (!isCurrent(entry)) return
     entry.timer = undefined
     let configuredDefaultMs: number | undefined
     let abandoned = false
     try {
       const watch = await watchConfig()
+      if (!isCurrent(entry)) return
       configuredDefaultMs = watch.defaultIntervalMs
       if (!watch.enabled) {
         // Polling was switched off after this item was created: pause it now
@@ -206,6 +211,7 @@ export namespace AgendaGithubTrigger {
         return
       }
       const resolved = await GitHubProvider.resolveToken()
+      if (!isCurrent(entry)) return
       if (!resolved?.token) {
         // Credential vanished after creation (account disconnected, env
         // removed): poll silently a few times, then pause the item — the
@@ -220,6 +226,7 @@ export namespace AgendaGithubTrigger {
       }
       entry.missingCredentialPolls = 0
       const snapshots = await fetchSnapshots(entry, resolved.token)
+      if (!isCurrent(entry)) return
       const changes = collectChanges(entry, snapshots)
       // The first poll after a restart is the restore baseline: it must not
       // fire for already-satisfied states, but after it completes, first
@@ -230,6 +237,7 @@ export namespace AgendaGithubTrigger {
       }
       entry.consecutiveFailures = 0
     } catch (error) {
+      if (!isCurrent(entry)) return
       entry.consecutiveFailures++
       log.warn("github poll failed", {
         itemID: entry.itemID,
@@ -244,7 +252,7 @@ export namespace AgendaGithubTrigger {
     } finally {
       // Never reschedule a detached entry: unregister()/stop() may have run
       // while the poll request was in flight.
-      if (!abandoned && instanceState.started && instanceState.entries.get(entry.itemID)?.includes(entry)) {
+      if (!abandoned && runtimeState().started && isCurrent(entry)) {
         const intervalMs = entry.intervalMs ?? configuredDefaultMs ?? DEFAULT_INTERVAL_MS
         schedule(entry, Math.max(MIN_INTERVAL_MS, intervalMs))
       }
@@ -287,9 +295,8 @@ export namespace AgendaGithubTrigger {
   }
 
   function fire(entry: Entry, snapshot: ResourceSnapshot, previous: string | undefined): Promise<void> {
-    const instanceState = runtimeState()
-
-    if (!instanceState.handler) return Promise.resolve()
+    const handler = runtimeState().handler
+    if (!handler || !isCurrent(entry)) return Promise.resolve()
     const signal: AgendaTypes.FiredSignal = {
       type: "github",
       source: entry.itemID,
@@ -308,7 +315,7 @@ export namespace AgendaGithubTrigger {
       },
       timestamp: Date.now(),
     }
-    return instanceState.handler(signal, entry.scopeID).catch((err) => {
+    return handler(signal, entry.scopeID).catch((err) => {
       log.error("github trigger handler failed", {
         itemID: entry.itemID,
         error: err instanceof Error ? err : new Error(String(err)),
