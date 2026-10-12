@@ -8,7 +8,7 @@ Recreating session and resource presentations interrupts reading and editing. A 
 
 ## Decision
 
-Retain six session presentations and eight resource panels with captured owners, activity lifetimes and LRU eviction. Domain state remains authoritative; residency holds presentation state, not another synchronization store. Cache panel modules separately from instances and require an explicit pause contract for third-party instances. Keep first-open loading local to unavailable content.
+Retain six session presentations and eight resource panels with captured owners, activity lifetimes and LRU eviction. Domain state remains authoritative; residency holds presentation state, not another synchronization store. Cache panel modules separately from instances and require an explicit pause contract for third-party instances. Keep first-open loading local to unavailable content. This supersedes the outgoing DOM copy and preparation barrier in [Session navigation presentation](../bug-fix/2026-10-10-session-navigation-presentation.md), preserving its new-task identity and transcript isolation invariants.
 
 Negotiate `projection-v2` through capabilities. Runtime registers domain contributors on the Server-owned transport boundary. Leases govern detail computation and delivery. Omitted state events advance contiguous cursors; detail patches have independent revisions. Stream append identity/offsets avoid repeated whole-content hashing. Bounded transient HTTP checkpoints carry content exceeding the 64 KiB frame limit.
 

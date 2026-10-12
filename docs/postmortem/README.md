@@ -8,7 +8,7 @@
 - **Systemic** — safeguards missed it.
 - **Costly to rediscover**.
 
-Otherwise, test the fix.
+Otherwise, test.
 
 ## Placement
 
@@ -28,7 +28,7 @@ Otherwise, test the fix.
 
 ## Index
 
-- [0070: Following rebound](0070-new-row-following-rebound.md)
+- [0070: Rebound](0070-new-row-following-rebound.md)
 
 - [0069: History anchors](0069-history-pagination-reading-anchor.md)
 

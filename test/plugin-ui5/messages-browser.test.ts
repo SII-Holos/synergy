@@ -38,6 +38,7 @@ describe("production conversation history", () => {
   }, 30000)
 
   test("native public conversation retains bounded history and reconciles updates after reconnect", async () => {
+    const conversation = await importPreviewConversation(preview, { title: "Reconnect history fixture", turns: 360 })
     const started = performance.now()
     const phase = (name: string) =>
       console.info(`[conversation history] ${name}: ${Math.round(performance.now() - started)}ms`)
@@ -131,7 +132,7 @@ describe("production conversation history", () => {
         phase("search result")
         expect(await rootCount()).toBeLessThanOrEqual(30)
         expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
-        const returnLatest = page.getByRole("button", { name: "Return to latest", exact: true })
+        const returnLatest = page.getByRole("button", { name: "Back to latest", exact: true })
         if (activation === "click") await returnLatest.click()
         else await returnLatest.press(activation)
         await page.getByText("Answer 360", { exact: true }).waitFor()
@@ -297,10 +298,11 @@ describe("production conversation history", () => {
       await page.evaluate(
         () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
       )
-      expect(await page.locator(".session-empty-view").count()).toBe(0)
+      expect(await page.locator(".session-empty-view:visible").count()).toBe(0)
+      expect(await page.getByRole("heading", { name: "Bring your ideas to life.", exact: true }).count()).toBe(0)
       expect(await page.getByRole("heading", { name: "What would you like to work on?", exact: true }).count()).toBe(0)
       release()
-      await page.locator('[data-conversation-viewport][aria-hidden="false"]').waitFor()
+      await page.getByText("Answer 360", { exact: true }).waitFor()
       const empty = (
         await preview.client.session.create(
           { scopeID: "home", title: "Empty existing session" },
@@ -310,7 +312,8 @@ describe("production conversation history", () => {
       await page.getByRole("button", { name: "Empty existing session", exact: true }).click()
       await page.waitForURL(`**/session/${empty.id}`)
       await page.getByText("No messages yet", { exact: true }).waitFor()
-      expect(await page.locator(".session-empty-view").count()).toBe(0)
+      expect(await page.locator(".session-empty-view:visible").count()).toBe(0)
+      expect(await page.getByRole("heading", { name: "Bring your ideas to life.", exact: true }).count()).toBe(0)
       expect(diagnostics.errors.map((error) => error.message)).toEqual([])
     } finally {
       release()
