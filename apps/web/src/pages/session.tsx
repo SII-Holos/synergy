@@ -1382,7 +1382,7 @@ function SessionPageContent() {
     const saved = scrollView?.conversation.get()
     if (saved && !saved.following && saved.position && !window.location.hash) {
       restoreConversationReadingPosition(scroller, saved.position)
-      scroller.dispatchEvent(new Event("conversation-reading-restored"))
+      scroller.dispatchEvent(new Event("conversation-location-reset"))
       autoScroll.handleInteraction()
       setScrolledUp(true)
     }
@@ -1445,6 +1445,7 @@ function SessionPageContent() {
   const returnToLatestMessages = async () => {
     const id = params.id
     if (!id) return
+    scroller?.dispatchEvent(new Event("conversation-location-reset"))
     const intent = autoScroll.interactionVersion()
     try {
       await sync.session.history.returnLatest(id)
@@ -1750,7 +1751,7 @@ function SessionPageContent() {
                         return
                     }
                     restoreConversationReadingPosition(target, saved.position)
-                    scroller.dispatchEvent(new Event("conversation-reading-restored"))
+                    scroller.dispatchEvent(new Event("conversation-location-reset"))
                     autoScroll.handleInteraction()
                     setScrolledUp(true)
                     setInitialScrollSettled(sessionID)

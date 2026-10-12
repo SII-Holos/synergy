@@ -119,17 +119,19 @@ describe("production conversation history", () => {
         expect(await rootCount()).toBeLessThanOrEqual(30)
         expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
       }
-      for (const activation of ["click", "Enter", "Space"]) {
+      for (const { question, activation } of [137, 350].flatMap((question) =>
+        ["click", "Enter", "Space"].map((activation) => ({ question, activation })),
+      )) {
         await page.keyboard.press("ControlOrMeta+f")
         const historySearch = page.getByRole("dialog", { name: "Search conversation", exact: true })
         await historySearch.waitFor()
-        await historySearch.getByPlaceholder("Search all conversation history").fill("Question 137")
+        await historySearch.getByPlaceholder("Search all conversation history").fill(`Question ${question}`)
         expect(await historySearch.getByLabel("Include reasoning", { exact: true }).count()).toBe(1)
         expect(await historySearch.getByLabel("Include tool content", { exact: true }).count()).toBe(1)
-        await historySearch.getByRole("button", { name: "Question 137", exact: true }).click()
+        await historySearch.getByRole("button", { name: `Question ${question}`, exact: true }).click()
         await historySearch.waitFor({ state: "detached" })
-        await page.getByText("Question 137", { exact: true }).waitFor()
-        phase("search result")
+        await page.getByText(`Question ${question}`, { exact: true }).waitFor()
+        phase(`search result ${question}`)
         expect(await rootCount()).toBeLessThanOrEqual(30)
         expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
         const returnLatest = page.getByRole("button", { name: "Back to latest", exact: true })
@@ -140,6 +142,17 @@ describe("production conversation history", () => {
           const scroller = document.querySelector("[data-conversation-viewport]")
           return scroller && scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop < 10
         })
+        await page.setViewportSize({ width: page.viewportSize()!.width === 1440 ? 1280 : 1440, height: 1000 })
+        const distances = await page.evaluate(async () => {
+          const distances: number[] = []
+          for (let frame = 0; frame < 24; frame++) {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+            const scroller = document.querySelector("[data-conversation-viewport]")!
+            distances.push(scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop)
+          }
+          return distances
+        })
+        expect(Math.max(...distances)).toBeLessThan(10)
         phase(`returned to latest with ${activation}`)
       }
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })

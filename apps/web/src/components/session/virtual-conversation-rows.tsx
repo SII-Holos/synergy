@@ -339,8 +339,8 @@ export function VirtualConversationRows(
   }
   createEffect(() => {
     const scroll = input.scrollRef
-    scroll?.addEventListener("conversation-reading-restored", releaseLocation)
-    onCleanup(() => scroll?.removeEventListener("conversation-reading-restored", releaseLocation))
+    scroll?.addEventListener("conversation-location-reset", releaseLocation)
+    onCleanup(() => scroll?.removeEventListener("conversation-location-reset", releaseLocation))
   })
 
   const locationElement = (row: ConversationRow, partID?: string) =>
