@@ -22,6 +22,7 @@ const { client, server } = await createSynergy({
 })
 try {
   assert.equal(server.owned, true)
+  assert.ok(Number.isSafeInteger(server.pid) && server.pid > 0)
   const capabilities = await client.global.capabilities({ throwOnError: true })
   assert.deepEqual(
     capabilities.data.components.map((item) => item.id).sort(),
@@ -74,7 +75,7 @@ try {
   await server.close()
   await server.close()
 }
-await assert.rejects(fetch(`${server.url}/global/health`))
+assert.throws(() => process.kill(server.pid, 0), { code: "ESRCH" })
 console.log(
   `PASS installed Node managed/attach ${Object.keys(selected).join("+")}: exact composition, features, auth, session, ownership${noteAction ? `, note ${noteAction}` : ""}`,
 )
