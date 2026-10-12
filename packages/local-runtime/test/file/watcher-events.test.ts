@@ -185,6 +185,87 @@ describe("FileWatcherEvents native subscription policy", () => {
       expect(order).toContain("after-failure")
     }))
 
+  test("subscription timeouts retain the native slot and start the next timeout only on admission", async () => {
+    const enqueue = FileWatcherEvents.createSubscriptionQueue()
+    const native = Promise.withResolvers<{ unsubscribe(): Promise<void> }>()
+    const starts: string[] = []
+    const errors: unknown[] = []
+    let cleaned = 0
+    const first = enqueue(
+      () => {
+        starts.push("first")
+        return native.promise
+      },
+      (pending) => FileWatcherEvents.withSubscriptionTimeout(pending, 1, (error) => errors.push(error)),
+    )
+    const second = enqueue(
+      async () => {
+        starts.push("second")
+        return 2
+      },
+      (pending) => {
+        starts.push("second-timeout")
+        return pending
+      },
+    )
+    await expect(first).rejects.toThrow()
+    expect(starts).toEqual(["first"])
+    native.resolve({
+      unsubscribe: async () => {
+        cleaned++
+      },
+    })
+    expect(await second).toBe(2)
+    expect(starts).toEqual(["first", "second", "second-timeout"])
+    expect(cleaned).toBe(1)
+    expect(errors).toEqual([])
+    await expect(
+      enqueue(
+        async () => {
+          throw new Error("native rejection")
+        },
+        (pending) => pending,
+      ),
+    ).rejects.toThrow("native rejection")
+    expect(
+      await enqueue(
+        async () => 3,
+        (pending) => pending,
+      ),
+    ).toBe(3)
+  })
+
+  test("queued subscriptions observe a capacity trip before starting another native scan", () =>
+    runtime.run(async () => {
+      FileWatcherEvents.resetLinuxInotifyCapacity()
+      const enqueue = FileWatcherEvents.createSubscriptionQueue()
+      let scans = 0
+      const recoveries = Array.from({ length: 4 }, () =>
+        FileWatcherEvents.createSubscriptionRecovery({
+          connect: () =>
+            enqueue(
+              async () => {
+                if (FileWatcherEvents.isLinuxInotifyCapacityTripped())
+                  throw FileWatcherEvents.linuxInotifyCapacityError()
+                scans++
+                throw FileWatcherEvents.linuxInotifyCapacityError()
+              },
+              (pending) => pending,
+            ),
+          disconnect: async () => {},
+          shouldRetry: () => false,
+          onError: () => FileWatcherEvents.tripLinuxInotifyCapacity(),
+        }),
+      )
+      try {
+        await Promise.all(recoveries.map((recovery) => recovery.start()))
+        expect(scans).toBe(1)
+      } finally {
+        await Promise.all(recoveries.map((recovery) => recovery.dispose()))
+        FileWatcherEvents.resetLinuxInotifyCapacity()
+      }
+    }))
+
   test("classifies synthetic capacity errors by marker, independent of code or message", () =>
     runtime.run(() => {
       const synthetic = FileWatcherEvents.linuxInotifyCapacityError() as Error & { code?: string }

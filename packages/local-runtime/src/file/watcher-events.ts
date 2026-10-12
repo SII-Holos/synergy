@@ -320,6 +320,22 @@ export namespace FileWatcherEvents {
     }
   }
 
+  export function createSubscriptionQueue() {
+    const enqueue = createSerialQueue()
+    return function subscribe<T>(start: () => Promise<T>, observe: (pending: Promise<T>) => Promise<T>): Promise<T> {
+      const result = Promise.withResolvers<T>()
+      void enqueue(async () => {
+        const pending = Promise.resolve().then(start)
+        void Promise.resolve()
+          .then(() => observe(pending))
+          .then(result.resolve, result.reject)
+        // A caller timeout cannot cancel the native scan or release its slot.
+        await pending.catch(() => {})
+      }).catch(result.reject)
+      return result.promise
+    }
+  }
+
   /**
    * Observes an uncancellable native task without cancelling or racing it. A
    * Linux scan over a network filesystem (NFS/autofs) can block in readdir

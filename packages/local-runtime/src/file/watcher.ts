@@ -103,14 +103,13 @@ export namespace FileWatcher {
     return createWrapper(binding) as typeof import("@parcel/watcher")
   })
 
-  // Serializes native Linux subscribe scans process-wide. The kernel watch
-  // budget is shared, so concurrent scans (a project's .synergy + workspace +
-  // VCS subscriptions, or several scopes starting at once) can each hit
-  // ENOSPC and retain a partial native tree before the first failure trips
-  // the breaker. Queuing the scans keeps at most one in flight; the first
-  // failure trips the breaker, and the queued scans then fail fast at the
-  // connect guard instead of scanning again.
-  const nativeSubscribeGate = process.platform === "linux" ? FileWatcherEvents.createSerialQueue() : undefined
+  // macOS concurrent native rejections corrupt Bun's exception state; Linux
+  // scans share the inotify budget. Keep the native slot through caller timeout.
+  // Evidence: docs/decisions/implemented/bug-fix/2026-10-12-native-watcher-subscription-serialization.md.
+  const nativeSubscribeGate =
+    process.platform === "linux" || process.platform === "darwin"
+      ? FileWatcherEvents.createSubscriptionQueue()
+      : undefined
 
   // Scope IDs whose watcher state is live. FileWatcher.reload() tears down and
   // re-creates exactly these so the advertised remediation actually restores
@@ -177,7 +176,10 @@ export namespace FileWatcher {
           if (process.platform === "linux" && FileWatcherEvents.isLinuxInotifyCapacityTripped()) {
             throw FileWatcherEvents.linuxInotifyCapacityError()
           }
-          const pending = watcher().subscribe(input.directory, callback, input.options)
+          if (!context.isCurrent()) throw new DOMException("Watcher subscription disposed", "AbortError")
+          return watcher().subscribe(input.directory, callback, input.options)
+        }
+        const observe = (pending: Promise<ParcelWatcher.AsyncSubscription>) => {
           const timeoutMs = FileWatcherEvents.nativeSubscribeTimeoutMs()
           if (timeoutMs === undefined) {
             // Linux inotify scans cannot be cancelled: abandoning the attempt
@@ -210,13 +212,7 @@ export namespace FileWatcher {
             })
           })
         }
-        // Linux serializes the native scans process-wide so concurrent
-        // subscriptions (a project's .synergy + workspace + VCS, or several
-        // scopes starting at once) cannot each exhaust the shared kernel watch
-        // table and retain a partial tree before the breaker trips. The first
-        // scan that fails trips the breaker; queued scans then fail fast at
-        // the guard instead of scanning.
-        return nativeSubscribeGate ? nativeSubscribeGate(subscribe) : subscribe()
+        return nativeSubscribeGate ? nativeSubscribeGate(subscribe, observe) : observe(subscribe())
       },
       shouldRetry: async (error) =>
         !FileWatcherEvents.isLinuxInotifyTerminalError(error) &&
