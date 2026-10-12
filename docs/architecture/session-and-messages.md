@@ -18,7 +18,9 @@ Session state includes, when applicable:
 
 ## Session Mutation and Index Projection
 
-Session storage and transcript imports use `Session.PersistedInfo`, which validates the base session fields while preserving optional domain metadata, including unknown workflow kinds and nested fields. `SessionSchemaRegistry` lets owners contribute the public API shape, creation behavior and import cleanup before runtime startup seals registration. Workflows owns the Blueprint, Agenda, SuperPlan and workflow schemas; its full composition preserves the existing API union. Unloaded owners do not validate or clear their persisted fields, and persistence tolerance does not add arbitrary fields to the generated SDK contract.
+Session storage and transcript imports use `Session.PersistedInfo`, which validates the base session fields while preserving optional domain metadata, including unknown workflow kinds and nested fields. `SessionSchemaRegistry` lets each selected owner contribute the public API shape, creation behavior and import cleanup before runtime startup seals registration. Workflow kinds and their request schemas come from the selected descriptors. Unloaded owners do not validate or clear their persisted fields, and persistence tolerance does not add arbitrary fields to the generated SDK contract.
+
+Internal Session reads retain canonical owner metadata. HTTP responses and Session events use `Session.publicInfo()` to expose only registered fields; unknown workflow kinds are omitted before validating the public shape, so an unloaded workflow cannot block an ordinary session read or Scope bootstrap. Archive exports retain the canonical metadata for restoration. Ordinary Session mutations never write a public projection back over retained owner data.
 
 Session mutations use one `Storage.transaction()` for canonical session info and the session, page, child, navigation and endpoint indexes. Nested `Storage.update()` and index writes join that transaction. Activity updates, completion acknowledgements and last-exchange updates therefore commit their state and projections together.
 
@@ -27,6 +29,8 @@ Workspace selection accepts catalog identity and binding generation for both dir
 Page and navigation indexes are shared by sessions in a Scope, while child indexes are shared by siblings under one parent. Their read-modify-write operations participate in the same SQL business transaction. Completion notice operations also use a per-session queue outside that transaction to preserve operation order without waiting on another SQL writer from inside the current transaction.
 
 Navigation reconstruction reads canonical metadata through `SessionRecords` before applying the current Session schema. Owner-local on-access upgrades, their receipts and the rebuilt navigation commit in the same transaction. Reconstruction preserves conversation timestamps and unknown owner metadata without hydrating messages or rollout evidence. A versioned derived migration repairs previously persisted incomplete indexes; its deferred-owner path upgrades and publishes only the admitted Session.
+
+Navigation indexes record the sorted Session owner IDs and workflow kinds that produced their identity fields. A composition change reprojects the existing index membership from canonical metadata while retaining its activity cursors. Uninstall and reinstall therefore hide and restore owner identity without expanding deferred Session admission. Missing indexes and explicit repair migrations retain their full reconstruction path.
 
 Event publication inside a transaction records a durable pending notification with the state change. Dispatch and cache effects run after commit. The storage and recovery behavior is defined in [Agent storage](agent-storage.md).
 
@@ -122,6 +126,12 @@ Recovery records belong to the Session and are deleted with it. Whole-Home trans
 ## Task Roots
 
 A session processes a serial sequence of tasks. One root user message `R` owns each task.
+
+Execution ownership is distinct from retained Session metadata. Resume and queue consumption require the selected owners of the root, injected messages and bound operation. A new ordinary human task admitted while the previous task cannot resume receives a host-written `execution: { version: 1, kind: "independent", previousRootID? }` marker. Inbox admission persists that decision before acknowledgement; materialization commits the marker with its canonical user message and receipt. Clients cannot supply it through the input API. Missing markers retain the existing ownership rules.
+
+Admission resolves an independent task's implicit Agent against the current registry and retains a usable inherited choice. If that inherited Agent is absent, the task records the current default Agent before acknowledgement. An explicit unavailable Agent still fails validation. Stored Session overrides and earlier roots retain their original choices.
+
+An independent root uses an in-memory base Session view without old workflow or component extensions for configuration, instructions, tools and continuation. Canonical Session fields, earlier rollout evidence and unavailable queued work remain stored. Reinstall does not reattach the old operation to that root. Owner-authored steer and context messages cannot enter it; separate owner tasks remain queued for their normal lifecycle after the independent task finishes. Its model projection removes system-authored parts from earlier non-root owner control messages while retaining human and Channel text and attachments. Stored history and its public presentation remain unchanged. Continue resumes the same independent root after interruption or restart.
 
 - `R.isRoot = true`
 - `R.rootID = R.id`

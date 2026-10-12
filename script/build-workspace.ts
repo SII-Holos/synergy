@@ -145,8 +145,8 @@ export async function buildWorkspace(directory: string, options: { output?: stri
     const { buildEmbeddingModule } = await import("../packages/library/script/embedding-runtime-assets")
     await buildEmbeddingModule(output)
   }
-  if (manifest.name === "@ericsanchezok/synergy-connections") {
-    const { stageSvgRasterRuntimeAssets } = await import("../packages/connections/script/svg-raster-runtime-assets")
+  if (manifest.name === "@ericsanchezok/synergy-channel-feishu") {
+    const { stageSvgRasterRuntimeAssets } = await import("../packages/channel-feishu/script/svg-raster-runtime-assets")
     await stageSvgRasterRuntimeAssets({ runtimeDir: output })
   }
   return { name: manifest.name as string, files: files.length, output }

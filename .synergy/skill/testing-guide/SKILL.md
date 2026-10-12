@@ -39,6 +39,8 @@ Use stable primary responsibilities for built-in behavior tests. Keep concrete p
 
 Read [the domain guidance](references/test-design.md#define-the-invariant-first) when this area is affected.
 
+Optional components require behavioral absence, reinstall and interleaved-Runtime tests. Select minimal requirements, import unselected factories, and inspect actual tools, agents, prepared prompts, public schemas, events, service activity and HTTP requests. Write data with the owner installed, remove it and update unrelated configuration, then reinstall and verify retained data and drafts. Exercise delayed installation, interrupted owner migrations, repeated execution and failed startup. Web composition changes include mobile paths and a real same-URL backend restart; packed dependency closures, native workers and managed Node SDK acceptance cover resolution outside the workspace. Source-string assertions cannot prove capability absence.
+
 ## Choose the Lowest Useful Level
 
 Read [the domain guidance](references/test-design.md#choose-the-lowest-useful-level) when this area is affected.

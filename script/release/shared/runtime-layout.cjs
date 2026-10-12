@@ -7,7 +7,7 @@ function requiredRuntimeArtifactPaths(name, profile = "full") {
   const modules = "runtime/node_modules/"
   const native = `${modules}@ericsanchezok/synergy-native-${os === "windows" ? "win32" : os}-${arch}${os === "linux" ? (musl ? "-musl" : "-glibc") : ""}`
   const library = `${modules}@ericsanchezok/synergy-library/dist/lib/onnxruntime-web`
-  const svg = `${modules}@ericsanchezok/synergy-connections/dist/lib/resvg-wasm`
+  const svg = `${modules}@ericsanchezok/synergy-channel-feishu/dist/lib/resvg-wasm`
   const ast = os === "windows" ? `win32-${arch}-msvc` : os === "linux" ? `linux-${arch}-gnu` : `${os}-${arch}`
   const extension = os === "windows" ? "dll" : os === "darwin" ? "dylib" : "so"
   return [

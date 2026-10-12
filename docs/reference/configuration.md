@@ -12,6 +12,7 @@ Generated from `packages/harness/src/config/domain.ts` and the domain-owned conf
 | `models` | `10-models.jsonc` | merge |
 | `providers` | `20-providers.jsonc` | merge |
 | `library` | `30-library.jsonc` | merge |
+| `anima` | `35-anima.jsonc` | merge |
 | `mcp` | `40-mcp.jsonc` | merge |
 | `plugins` | `50-plugins.jsonc` | merge |
 | `skills` | `55-skills.jsonc` | merge |
@@ -88,6 +89,14 @@ File: `30-library.jsonc` · Merge: merge
 | --- | --- | --- |
 | `library` | LibraryConfig |  |
 
+## Anima
+
+File: `35-anima.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `anima` | object (optional) |  |
+
 ## MCP
 
 File: `40-mcp.jsonc` · Merge: merge
@@ -145,7 +154,7 @@ File: `70-commands.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `command` | array (optional) |  |
+| `command` | record (optional) | Command configuration |
 
 ## Permissions
 
@@ -167,7 +176,7 @@ File: `90-channels.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `channel` | record (optional) | Channel configurations for messaging platform integrations |
+| `channel` | record (optional) | Channel configurations for selected messaging providers |
 
 ## Holos
 
@@ -175,7 +184,7 @@ File: `100-holos.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `holos` | Holos.optional (optional) | Holos platform configuration |
+| `holos` | Holos.optional (optional) |  |
 | `enterprise` | object (optional) |  |
 
 ## Email
@@ -184,15 +193,15 @@ File: `110-email.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `email` | Email.optional (optional) | Outgoing email configuration |
+| `email` | Email.optional (optional) |  |
 
-## GitHub
+## Github
 
 File: `115-github.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `github` | Github.optional (optional) | GitHub integration settings (git identity sync, agenda watch) |
+| `github` | Github.optional (optional) |  |
 
 ## Runtime
 
@@ -208,12 +217,12 @@ File: `120-runtime.jsonc` · Merge: merge
 | `question` | object (optional) |  |
 | `compaction` | object (optional) |  |
 | `observability` | ObservabilityConfig.optional (optional) | Local logs, indexed telemetry, and diagnostics settings |
+| `boss` | object (optional) |  |
 | `formatter` | union (optional) |  |
-| `lsp` | boolean (optional) | Expose the LSP tool; permission checks still apply (default: false) |
+| `lsp` | union (optional) |  |
 | `lspWriteDiagnostics` | boolean (optional) | Include LSP diagnostics after file-writing tools complete (default: true) |
 | `lspDiagnostics` | object (optional) | Severity and scope policy for diagnostics returned after file-writing tools |
 | `toolExposure` | object (optional) |  |
-| `boss` | object (optional) |  |
 
 ## Voice
 

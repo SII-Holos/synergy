@@ -15,10 +15,10 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `agenda_cancel` | `orchestration.agenda` | Cancel an agenda item. The item will no longer fire, but its configuration and execution history are preserved. Use agenda_list to find the item ID. To temporarily pause without cancelling, use agenda |
 | `agenda_list` | `orchestration.agenda` | List agenda items visible from the current scope — both watches (one-time) and scheduled tasks (recurring). Use `scope` to filter: "current" (project only), "global" (global only), "all" (both, defaul |
 | `agenda_logs` | `orchestration.agenda` | View execution history for an agenda item. Shows recent runs with status, duration, and timing. Each run includes a session ID — use session_read(target=sessionID) to see what the agent did. Use agend |
-| `agenda_schedule` | `orchestration.agenda` | Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Recurring schedules reuse their sepa |
+| `agenda_schedule` | `orchestration.agenda` |  |
 | `agenda_trigger` | `orchestration.agenda` | Manually trigger an agenda item to execute immediately, regardless of its configured schedule. If the item is pending or paused, it will be activated first. This does NOT change the item's regular sch |
 | `agenda_update` | `orchestration.agenda` | Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged. Use agenda_list to find the item ID first. Common actions: - Pause: agenda_update(agendaItemId="agd_ |
-| `agenda_watch` | `orchestration.agenda` | Set a one-time wake-up in THIS session. When the watch fires, you receive the prompt as a message and continue with full conversation history. The watch auto-completes after firing. Pass exactly one o |
+| `agenda_watch` | `orchestration.agenda` |  |
 | `agent_config` | `platform.config` | Manage Synergy agent definitions: create, update, disable, delete, inspect, and set the default agent through validated writes. Use this when the user wants to create a custom agent ("make me an agent |
 | `ast_grep` | `search.codebase` | Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep understands code structure and finds patterns based on syntax, not just text. Supports 25 languages: bash, c, cpp, cshar |
 | `bash` | `code.execute` | Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID `cd <directory> && <command>` pat |
@@ -52,8 +52,6 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `browser_view` | `browser.inspect` | Control the Browser Side Workspace panel. Show or hide the Browser UI, switch focus to the browser page, or query the Side Workspace open state. This does not affect CDP or the running browser — only  |
 | `browser_wait` | `browser.inspect` | Wait for a specific page condition: load state, URL, title, text, locator state, download, or dialog. The result only reports that the requested condition was observed; it is never evidence of busines |
 | `channel_push` | `orchestration.session` | 把结果或状态显式推送到渠道(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to a channel chat, or reply to an inbound message — the only outbound delivery surface for boss-role sessions. accountId defaults to the  |
-| `clarus_extend_task` | `platform.collaboration` | Extend the current Clarus assignment deadline. The current session supplies assignment identity; never provide project, task, run, subtask, or account IDs. |
-| `clarus_submit_task_result` | `platform.collaboration` | Submit the current Clarus assignment result. The current session supplies assignment identity; never provide project, task, run, subtask, or account IDs. |
 | `computer_action` | `platform.external` | Act on the latest observation: click (button, count), type text, key (optional modifiers), scroll, drag, or set_value. target is {elementIndex} from the observation or {x,y} in the image; drag uses fr |
 | `computer_apps` | `platform.external` | Find native app windows by optional app/title query. Returns pid, windowId and title, including off-screen windows. Observe an exact window before acting. Requires local macOS Desktop and Full Access. |
 | `computer_observe` | `platform.external` | Observe a window from computer_apps. Returns accessibility elements, a window image when available, and observationId for one action within 60 seconds. query narrows elements. foreground:true brings t |
@@ -65,7 +63,6 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `email_send` | `communication.email` | Send an email via SMTP. Use this tool when the user asks you to send an email, notify someone via email, or deliver content to an email address. Usage notes: - The `to` field accepts one or more email |
 | `expand_tools` | `platform.tooling` | Expand deferred groups or activate search-only tools for this session. Visibility persists across turns, restore and compaction until the session ends or expansion state is cleared. This does not call |
 | `file_search` | `search.codebase` | Hybrid workspace search that combines fuzzy file path matching, literal file-content search, and LSP workspace symbol lookup. Use this when you roughly know a filename, directory name, module name, pa |
-| `github_deliver_fix` | `platform.collaboration` | Deliver a locally committed fix as a GitHub pull request. The current session supplies the repository thread; provide the local branch name, a concise title, and a body describing what was wrong, what |
 | `glob` | `search.codebase` | - Fast file pattern matching tool that works with any codebase size - Supports glob patterns like "**/*.js" or "src/**/*.ts" - Returns matching file paths sorted by modification time - Use this tool w |
 | `grep` | `search.codebase` | - Fast content search tool that works with any codebase size - Searches file contents using regular expressions - Supports full regex syntax (eg. "log.*Error", "function\s+\w+", etc.) - Filter files b |
 | `lattice_submit` | `orchestration.task` | Submit exactly one semantic action for the current parent Lattice state. Valid state/action pairs are: submit_requirements in clarifying; submit_pathway in planning; submit_pathway_review in reviewing |
@@ -80,11 +77,11 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `memory_write` | `knowledge.memory` | Persist a piece of knowledge as long-term memory. Provide a concise title, content, `category`, and `recallMode`. `category` answers **what kind of memory this is**: - `user` — Stable facts about the  |
 | `note_archive` | `knowledge.note` | Archive notes by ID. Archived notes are hidden from the active list but preserved on disk. Use this when you need to clean up notes from a completed sprint, task, or session. Archiving is safe and rev |
 | `note_delete` | `knowledge.note` | Permanently delete one note by ID. Only archived notes can be permanently deleted. Active notes must be archived first using note_archive. To delete an active note: call note_archive first, then note_ |
-| `note_edit` | `knowledge.note` | Performs precise anchored edits to note content. Blueprint notes are editable only in Plan or Lattice. Outside Plan or Lattice, Blueprint notes are read-only; use `note_read`, `note_search`, or `note_ |
+| `note_edit` | `knowledge.note` | Performs precise anchored edits to note content. Always read first: - Call note_read({ noteIds:[...], format:"blocks" }) before editing. - Pass baseVersion from Version. - Pass baseDocHash from DocHas |
 | `note_list` | `knowledge.note` | List notes in the current scope. By default shows only active notes. Use the `archived` parameter to view archived notes or all notes regardless of archive status. Use this to browse available notes b |
-| `note_read` | `knowledge.note` | Read the full content of one or more notes by ID. Blueprint documents are notes with kind:"blueprint" and are read with this same tool. Formats: - "markdown" (default): Human-readable Markdown export. |
-| `note_search` | `search.note` | Search notes using regex patterns. Searches across note titles and content, returning matching notes with context lines around each match — similar to ripgrep output. Blueprint documents are notes wit |
-| `note_write` | `knowledge.note` | Create a new note or overwrite an existing note with complete markdown content. A Blueprint is not a separate document type; it is a note with kind:"blueprint". Choose the write mode: - "create" (defa |
+| `note_read` | `knowledge.note` | Read the full content of one or more notes by ID. Formats: - "markdown" (default): Human-readable Markdown export. Useful for reading, not for precise edits. - "blocks": Editable block anchor listing  |
+| `note_search` | `search.note` | Search notes using regex patterns. Searches across note titles and content, returning matching notes with context lines around each match — similar to ripgrep output. Use this to find notes containing |
+| `note_write` | `knowledge.note` |  |
 | `openai_image_edit` | `communication.visual` | Edit or transform existing images with a text prompt and save the result to output_path. Use it when the user wants to modify, restyle, composite, expand, clean up, or create a variation from one or m |
 | `openai_image_gen` | `communication.visual` | Generate a new image from a text prompt and save it to output_path. Use it when the user wants a raster visual such as an illustration, photo, product shot, UI mockup, concept art, texture, sprite, me |
 | `parse_code` | `code.analyze` | Search code with AST-aware patterns and return anchored file blocks. Use this instead of `ast_grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and the ma |
@@ -163,14 +160,12 @@ View execution history for an agenda item. Shows recent runs with status, durati
 
 Kind: `orchestration.agenda`
 
-Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Recurring schedules reuse their separate execution session; the prompt must be a complete, self-contained brief. The schedule captures this Session’s selected Workspace when created. Changing this conversation’s Workspace later does not move the schedule. Triggers: - `{type:"cron", expr:"0 9 * * *", tz:"Asia/Shanghai"}` — recurring cron - `{type:"every", interval:"30m"}` — recurring at a fixed interval - `{type:"session", sessionID:"ses_xxx", event:"turn.end"}` — fires once when the target session ends a turn. Optional filters: `agent`, `finish`. Set `once:false` to keep firing on every matching turn. - `{type:"github", resource:"pr"|"issue"|"workflow"|"check", repository:"owner/repo", number?, ref?, interval?, states?}` — fires when the watched GitHub resource changes state, polled on an interval (default 5m). `number` targets one PR/issue or workflow run id; `ref` targets a branch/tag/commit for workflow/check watches; `states` filters transitions (e.g. ["merged"], ["failure"]). Requires a connected GitHub credential — creation is rejected with connection steps when none resolves; do not substitute a generic `every` interval that shell-checks GitHub. For "wait until a GitHub resource reaches a state" requests, the github trigger IS the right schedule — prefer it over a generic `every` interval plus manual shell checks. By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery. Set controlProfile to "full_access", "autonomous", or "guarded" when the scheduled session needs an explicit permission profile. **If you need adaptive timing** — shorter checks when things look uncertain, longer intervals when stable — use recursive `agenda_watch` instead. `agenda_schedule` is for rigid, predictable schedules only. **Never use `agenda_schedule` or `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion. Use agenda_list to see scheduled tasks. Use agenda_cancel(id) to stop a recurring task.
-
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `agendaTitle` | string | yes | Task title |
 | `agendaDescription` | string |  | Description of the scheduled item; omit when its title is sufficient |
 | `executionInstructions` | string | yes | Instruction for the agent to execute when triggered. Write as a complete brief — the executing agent has no access to this conversation. |
-| `trigger` | AgendaTypes.ScheduleTrigger.describe | yes |  |
+| `trigger` | AgendaTypes.ScheduleTrigger | yes |  |
 | `tags` | array |  | Tags for organization and filtering |
 | `global` | boolean |  | If true, visible from all scopes. Default: false (current project only) |
 | `wake` | boolean |  | If true, wake this session's agent when execution completes. Default: true |
@@ -224,25 +219,6 @@ Update an existing agenda item. Only provided fields are changed — omitted fie
 
 Kind: `orchestration.agenda`
 
-Set a one-time wake-up in THIS session. When the watch fires, you receive the prompt as a message and continue with full conversation history. The watch auto-completes after firing. Pass exactly one of `delay`, `onSessionEnd`, or `onGithub`. **Prefer managed GitHub watches over repeated shell polling.** When the condition you are waiting for is a GitHub event (PR merged/closed, issue closed, workflow or check run finishing), pass `onGithub: {resource, repository, number?, ref?, states?}` instead of a `delay` plus repeated shell checks. The trigger polls the GitHub REST API with the connected credential on an interval (default 5 minutes, minimum 30 seconds) and wakes you when it next observes a matching state. Intermediate transitions between polls may be missed. `resource` is "pr" | "issue" | "workflow" | "check"; `repository` is owner/repo; `number` targets one PR/issue or workflow run id (omit for the repository's recent ites); `ref` targets a branch/tag/commit for workflow/check watches; `states` filters which new state should wake you (e.g. ["merged"], ["failure"], ["completed"]). Requires a connected GitHub credential — without one the watch is rejected with connection steps; ask the user to connect GitHub in Settings → GitHub rather than substituting timed shell polling. Repo-wide watches (no `number`) fire for transitions of the 10 most recently updated items. A states-filtered watch reports new items first observed already in a targeted state; an unfiltered watch baselines first observations silently, so an item created and merged entirely between two polls is not reported. Point watches (`number`) always see transitions. **Wake on another session's turn**: pass `onSessionEnd: {sessionID, agent?, finish?}` to react when the watched session ends a turn, optionally filtered by agent or finish state. Example: `onSessionEnd: {sessionID:"ses_research", finish:"stop"}`. **Timed wake-up** (external processes without an event source): the primary use case is **recursive adaptive monitoring**: - Start with a short delay (3–5min) to check an external process, experiment, or pipeline. - Assess health when woken — if more monitoring is needed, set another `agenda_watch` with an adjusted delay. Stretch as stability is confirmed (e.g. 3min → 10min → 30min). Always include in the prompt whether another watch should follow and under what conditions. Also use for deliberate pauses: wait for a deploy, batch job, or user review before continuing. **Never use `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion — no watch or polling is needed. Use agenda_list to see active watches. Use agenda_cancel(id) to cancel before it fires. If you need a RECURRING task with a strictly periodic schedule (cron, fixed interval), use `agenda_schedule`. If timing needs to adapt based on observed state, recursive `agenda_watch` is the right tool.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `agendaTitle` | string | yes | Short name, e.g. 'Check pipeline health' |
-| `agendaDescription` | string |  | Description of this watched item; omit when its title is sufficient |
-| `executionInstructions` | string | yes | Instruction you'll receive when woken up. Write it for yourself — you'll see it with full conversation history. |
-| `delay` | string |  | How long to wait before waking you, e.g. '30m', '2h', '1d' |
-| `onSessionEnd` | object |  | Wake when another session ends a turn instead of after a delay |
-| `sessionID` | string | yes | Session to watch — wake when it ends a turn |
-| `agent` | string |  | Only wake when the turn's agent matches |
-| `finish` | string |  | Only wake when the turn's finish state matches (e.g. 'stop', 'error') |
-| `onGithub` | object |  | Wake when a GitHub PR / issue / workflow / check changes state instead of after a delay |
-| `resource` | "pr" \| "issue" \| "workflow" \| "check" | yes | GitHub resource kind to watch |
-| `repository` | string | yes | Repository in owner/repo form |
-| `number` | number |  | PR/issue number or workflow run id. Omit for repository-wide pr/issue watch. For checks this is the commit's latest run set |
-| `ref` | string |  | Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows |
-| `states` | array |  | Only wake on transitions into these states (e.g. ['merged'], ['failure'], ['completed']) |
-| `global` | boolean |  | If true, visible from all scopes. Default: false (current project only) |
 
 ## agent_config
 
@@ -310,7 +286,7 @@ Use this when the BlueprintLoop review finds missing, incorrect, or unverified r
 
 Kind: `orchestration.task`
 
-Request independent review only when the one current Blueprint outcome is complete and ready for audit. Parameters: - summary: Concise summary of the completed outcome - completed: Completed Blueprint requirement statements - evidence: Concrete verification evidence such as checks, artifacts, and file paths - remaining: Any known remaining work or limitations Before requesting review, cancel every active Agenda item that can still wake this session. This tool rejects the request and lists the required `agenda_cancel` commands while any such item remains. This records durable stop intent; it does not synchronously start the reviewer. A successful result closes execution work for this Blueprint and instructs you to end the assistant turn immediately because the configured reviewer can start only after the turn releases the session. After success, do not call another tool, modify files or artifacts, inspect reviewer state, repeat the request, extend the Blueprint scope, or begin a later Lattice Pathway Step. A repeated call is idempotent and returns the same end-turn instruction. The reviewer will either approve completion or return concrete work, and it delivers that verdict directly to this execution session.
+Request independent review only when the one current Blueprint outcome is complete and ready for audit. Parameters: - summary: Concise summary of the completed outcome - completed: Completed Blueprint requirement statements - evidence: Concrete verification evidence such as checks, artifacts, and file paths - remaining: Any known remaining work or limitations This records durable stop intent; it does not synchronously start the reviewer. A successful result closes execution work for this Blueprint and instructs you to end the assistant turn immediately because the configured reviewer can start only after the turn releases the session. After success, do not call another tool, modify files or artifacts, inspect reviewer state, repeat the request, extend the Blueprint scope, or begin a later Lattice Pathway Step. A repeated call is idempotent and returns the same end-turn instruction. The reviewer will either approve completion or return concrete work, and it delivers that verdict directly to this execution session.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -673,56 +649,6 @@ Kind: `orchestration.session`
 | `chatId` | string |  | Target chat (group or DM) ID. Defaults to the chat the current message arrived from. |
 | `replyToMessageId` | string |  | Reply to this message ID instead of pushing a new message. |
 
-## clarus_extend_task
-
-Kind: `platform.collaboration`
-
-Extend the current Clarus assignment deadline. The current session supplies assignment identity; never provide project, task, run, subtask, or account IDs.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `sessionID` | ctx.sessionID | yes |  |
-| `payload` | params | yes |  |
-| `signal` | ctx.abort | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `disposition` | failure.disposition | yes |  |
-| `requestID` | failure.requestID | yes |  |
-
-## clarus_submit_task_result
-
-Kind: `platform.collaboration`
-
-Submit the current Clarus assignment result. The current session supplies assignment identity; never provide project, task, run, subtask, or account IDs.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `sessionID` | ctx.sessionID | yes |  |
-| `signal` | ctx.abort | yes |  |
-| `payload` | - | yes |  |
-| `success` | params.success | yes |  |
-| `output` | params.output | yes |  |
-| `artifacts` | - | yes |  |
-| `artifactID` | artifact.artifact_id | yes |  |
-| `name` | artifact.name | yes |  |
-| `parts` | artifact.parts.map | yes |  |
-| `type` | part.type | yes |  |
-| `format` | part.format | yes |  |
-| `role` | part.role | yes |  |
-| `contentKind` | part.content_kind | yes |  |
-| `name` | part.name | yes |  |
-| `content` | part.content | yes |  |
-| `evidenceRefs` | params.evidence_refs | yes |  |
-| `notaryRefs` | params.notary_refs | yes |  |
-| `error` | params.error | yes |  |
-| `submittedBy` | ctx.agent | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `disposition` | failure.disposition | yes |  |
-| `requestID` | failure.requestID | yes |  |
-
 ## computer_action
 
 Kind: `platform.external`
@@ -839,11 +765,11 @@ Send an email via SMTP. Use this tool when the user asks you to send an email, n
 
 Kind: `platform.tooling`
 
-Expand deferred groups or activate search-only tools for this session. Visibility persists across turns, restore and compaction until the session ends or expansion state is cleared. This does not call the tools or bypass permissions, agent policy, sandboxing, user settings or runtime availability. Known built-in groups: For a known domain, expand its group directly. If the name is uncertain, use search_tools first, then expand its group or activate the returned search-only tool. Use the tools listed in the result; other tools may remain hidden by policy, settings or availability.
+Expand deferred groups or activate search-only tools for this session. Visibility persists across turns, restore and compaction until the session ends or expansion state is cleared. This does not call the tools or bypass permissions, agent policy, sandboxing, user settings or runtime availability. For a known domain, expand its group directly. If the name is uncertain, use search_tools first, then expand its group or activate the returned search-only tool. Use the tools listed in the result; other tools may remain hidden by policy, settings or availability.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `groups` | array |  | Tool group IDs to expand, such as browser, agenda, session, note, memory. |
+| `groups` | array |  | Currently available group IDs to expand. Use search_tools to discover their names. |
 | `tools` | array |  | Search-only individual tool IDs to activate. |
 | `reason` | string |  | Brief reason this capability is needed. |
 
@@ -859,25 +785,6 @@ Hybrid workspace search that combines fuzzy file path matching, literal file-con
 | `limit` | number |  | Maximum total merged results across path, content, and symbol matches; defaults to 50 |
 | `include` | string |  | Optional comma-separated glob patterns to include for path and content search |
 | `exclude` | string |  | Optional comma-separated glob patterns to exclude from path and content search |
-
-## github_deliver_fix
-
-Kind: `platform.collaboration`
-
-Deliver a locally committed fix as a GitHub pull request. The current session supplies the repository thread; provide the local branch name, a concise title, and a body describing what was wrong, what changed, and the test results. The provider pushes the branch and opens (or reuses) the PR.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `sessionID` | ctx.sessionID | yes |  |
-| `branch` | params.branch | yes |  |
-| `title` | params.title | yes |  |
-| `body` | params.body | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `pullRequestURL` | result.pullRequestURL | yes |  |
-| `pullNumber` | result.pullNumber | yes |  |
-| `headBranch` | result.headBranch | yes |  |
 
 ## glob
 
@@ -950,7 +857,7 @@ Analyze image files (screenshots, diagrams, charts, UI mockups, photos) with a s
 
 Kind: `orchestration.task`
 
-Request a completion review for the active Light Loop. Use this when you believe the task is fully complete and verified. Parameters: - summary: Concise summary of what was completed (required) - completed: List of completed deliverable or requirement statements - evidence: Concrete verification evidence (test results, file paths, checks) - remaining: Any known remaining work or limitations Before requesting review, cancel every active Agenda item that can still wake this session. This tool rejects the request and lists the required `agenda_cancel` commands while any such item remains. This will launch a reviewer agent that audits the task against the session trajectory and workspace evidence. The reviewer will either approve completion or return concrete remaining work to finish. Do not call any tools to check on the reviewer — it will deliver results directly to this session when the audit completes.
+Request a completion review for the active Light Loop. Use this when you believe the task is fully complete and verified. Parameters: - summary: Concise summary of what was completed (required) - completed: List of completed deliverable or requirement statements - evidence: Concrete verification evidence (test results, file paths, checks) - remaining: Any known remaining work or limitations This will launch a reviewer agent that audits the task against the session trajectory and workspace evidence. The reviewer will either approve completion or return concrete remaining work to finish. Do not call any tools to check on the reviewer — it will deliver results directly to this session when the audit completes.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1101,7 +1008,7 @@ Permanently delete one note by ID. Only archived notes can be permanently delete
 
 Kind: `knowledge.note`
 
-Performs precise anchored edits to note content. Blueprint notes are editable only in Plan or Lattice. Outside Plan or Lattice, Blueprint notes are read-only; use `note_read`, `note_search`, or `note_list` to inspect them, and use ordinary notes for deliverables. Always read first: - Call note_read({ noteIds:[...], format:"blocks" }) before editing. - Pass baseVersion from Version. - Pass baseDocHash from DocHash when available. - Pass blockId and expectedHash from the target block line when available. Default stale-anchor recovery: - `freshen:"safe"` is the default. If the note version, docHash, or a low-risk block hash is stale, note_edit re-reads the latest note and replays safe operations against the latest stable block IDs. - Safe replay is limited to insertBefore, insertAfter, setAttrs, replaceText with a `find` string, and updateTableCell by `cellId`. - Unsafe operations such as replaceBlock, deleteBlock, replaceRange, and range-based replaceText still fail on stale anchors; re-read and retry deliberately. - Use `freshen:"never"` when you need strict old behavior: any version, docHash, or expectedHash mismatch fails without writing. Preferred operations: - replaceBlock: Replace one block by stable blockId. The old block is removed. - insertBefore / insertAfter: Insert content adjacent to a stable blockId. - deleteBlock: Delete one block by stable blockId. - setAttrs: Update a block's attributes while preserving its blockId. - replaceText: Replace editable text inside one block using find or range. If find appears more than once, specify occurrence. Ranges use the exact block text shown by note_read, but spans that cross non-editable rendered content such as hard breaks, inline math, images, or generated separators fail without writing; use replaceBlock for those cases. - updateTableCell: Replace the content of one table cell by cellId or by tableId,row,col. - replaceRange: Replace a contiguous sibling range. Content inputs: - { format:"text", text:"..." } creates a paragraph. - { format:"markdown", text:"..." } parses simple Markdown into blocks. - { format:"json", json:{...} } inserts exact ProseMirror/Tiptap JSON. Use this for rich structures. Safety behavior: - Strict failures, unsafe stale operations, missing targets, invalid JSON content, ambiguous text replacements, and replaceText ranges that include non-editable rendered content fail without writing. - On failure, the tool returns current version, current docHash, failed operation index/action when applicable, and current block summaries so you can re-read/retry deliberately. A failed operation means no write occurred. - dryRun:true validates and returns the same semantic operation preview without writing. Result interpretation: - Success output includes one section per operation. Inspect matched text, before/after context, checks, warnings, and changed-block classification before assuming the edit is correct. - `directChangedBlocks` are the operation's target, inserted, or deleted blocks; `ancestorChangedBlocks` are parent list/table/blockquote/container hashes changed by descendants; `unexpectedChangedBlocks` are changes outside that direct/ancestor set. - Warnings are not fatal, but they indicate a possible no-op, unexpected extra change, or semantic mismatch and should usually be followed by re-reading or correcting the note. Use note_write with mode:"replace" instead when rewriting most or all of a note/Blueprint and you have complete desired markdown content.
+Performs precise anchored edits to note content. Always read first: - Call note_read({ noteIds:[...], format:"blocks" }) before editing. - Pass baseVersion from Version. - Pass baseDocHash from DocHash when available. - Pass blockId and expectedHash from the target block line when available. Default stale-anchor recovery: - `freshen:"safe"` is the default. If the note version, docHash, or a low-risk block hash is stale, note_edit re-reads the latest note and replays safe operations against the latest stable block IDs. - Safe replay is limited to insertBefore, insertAfter, setAttrs, replaceText with a `find` string, and updateTableCell by `cellId`. - Unsafe operations such as replaceBlock, deleteBlock, replaceRange, and range-based replaceText still fail on stale anchors; re-read and retry deliberately. - Use `freshen:"never"` when you need strict old behavior: any version, docHash, or expectedHash mismatch fails without writing. Preferred operations: - replaceBlock: Replace one block by stable blockId. The old block is removed. - insertBefore / insertAfter: Insert content adjacent to a stable blockId. - deleteBlock: Delete one block by stable blockId. - setAttrs: Update a block's attributes while preserving its blockId. - replaceText: Replace editable text inside one block using find or range. If find appears more than once, specify occurrence. Ranges use the exact block text shown by note_read, but spans that cross non-editable rendered content such as hard breaks, inline math, images, or generated separators fail without writing; use replaceBlock for those cases. - updateTableCell: Replace the content of one table cell by cellId or by tableId,row,col. - replaceRange: Replace a contiguous sibling range. Content inputs: - { format:"text", text:"..." } creates a paragraph. - { format:"markdown", text:"..." } parses simple Markdown into blocks. - { format:"json", json:{...} } inserts exact ProseMirror/Tiptap JSON. Use this for rich structures. Safety behavior: - Strict failures, unsafe stale operations, missing targets, invalid JSON content, ambiguous text replacements, and replaceText ranges that include non-editable rendered content fail without writing. - On failure, the tool returns current version, current docHash, failed operation index/action when applicable, and current block summaries so you can re-read/retry deliberately. A failed operation means no write occurred. - dryRun:true validates and returns the same semantic operation preview without writing. Result interpretation: - Success output includes one section per operation. Inspect matched text, before/after context, checks, warnings, and changed-block classification before assuming the edit is correct. - `directChangedBlocks` are the operation's target, inserted, or deleted blocks; `ancestorChangedBlocks` are parent list/table/blockquote/container hashes changed by descendants; `unexpectedChangedBlocks` are changes outside that direct/ancestor set. - Warnings are not fatal, but they indicate a possible no-op, unexpected extra change, or semantic mismatch and should usually be followed by re-reading or correcting the note. Use note_write with mode:"replace" instead when rewriting most or all of a note and you have complete desired markdown content.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1116,23 +1023,14 @@ Performs precise anchored edits to note content. Blueprint notes are editable on
 
 Kind: `knowledge.note`
 
-List notes in the current scope. By default shows only active notes. Use the `archived` parameter to view archived notes or all notes regardless of archive status. Use this to browse available notes before reading specific ones with `note_read`. Results are sorted by pinned status first, then by last updated time. The `scope` parameter controls which notes are listed: - "all" (default): Notes from the current project scope plus global notes - "current": Only notes from the current project scope - "global": Only global notes Use `since` and `before` to filter notes by last updated time (ISO 8601 dates). For example, to get today's notes use `since: "2026-03-15"`, or last week's notes with `since: "2026-03-08"`. Use `offset` and `limit` for pagination when there are many notes. Use `kind:"blueprint"` to list only executable Blueprint notes, `kind:"note"` for plain notes, or `kind:"all"` to include both. Use `archived:"archived"` to list archived notes or `archived:"all"` to include notes regardless of archive status. The output includes a tag summary at the end showing all tags across listed notes with their frequency. Use these tags with `note_search`'s `tags` parameter to filter by topic, or reuse existing tags when creating/updating notes with `note_write` to keep tagging consistent.
+List notes in the current scope. By default shows only active notes. Use the `archived` parameter to view archived notes or all notes regardless of archive status. Use this to browse available notes before reading specific ones with `note_read`. Results are sorted by pinned status first, then by last updated time. The `scope` parameter controls which notes are listed: - "all" (default): Notes from the current project scope plus global notes - "current": Only notes from the current project scope - "global": Only global notes Use `since` and `before` to filter notes by last updated time (ISO 8601 dates). For example, to get today's notes use `since: "2026-03-15"`, or last week's notes with `since: "2026-03-08"`. Use `offset` and `limit` for pagination when there are many notes. Use `kind:"note"` for plain notes or `kind:"all"` for all available document kinds. Use `archived:"archived"` to list archived notes or `archived:"all"` to include notes regardless of archive status. The output includes a tag summary at the end showing all tags across listed notes with their frequency. Use these tags with `note_search`'s `tags` parameter to filter by topic, or reuse existing tags when creating/updating notes with `note_write` to keep tagging consistent.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `scope` | "current" \| "global" \| "all" |  | Which scope to list from: 'current' (project only), 'global' (global only), 'all' (current project + global). |
-| `kind` | "all" \| "note" \| "blueprint" |  | Filter by document kind. Blueprints are executable notes. |
-| `archived` | "active" \| "archived" \| "all" |  | Filter by archive status: 'active' (default), 'archived', or 'all'. |
-| `since` | string |  | Only include notes updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00'). |
-| `before` | string |  | Only include notes updated before this date (ISO 8601). |
-| `offset` | number |  | Number of notes to skip. |
-| `limit` | number |  | Maximum number of notes to return (max 100). |
 
 ## note_read
 
 Kind: `knowledge.note`
 
-Read the full content of one or more notes by ID. Blueprint documents are notes with kind:"blueprint" and are read with this same tool. Formats: - "markdown" (default): Human-readable Markdown export. Useful for reading, not for precise edits. - "blocks": Editable block anchor listing for note_edit. Each block includes the note Version, DocHash, stable block id, type, path, hash, summary, text preview, and table row/cell coordinates where relevant. - "json": Structured note data. Use detail:"json" when exact node JSON is needed. Precise edit workflow: 1. Call note_read with format:"blocks" before note_edit. 2. Copy Version, DocHash, target block id, and target block hash into note_edit. 3. Use blockId operations in note_edit. Do not use block numbers as edit targets. 4. Re-read after conflicts or hash mismatches. Do not guess a new target from stale block numbers. Use this after `note_list` or `note_search` to read the full details of specific notes or Blueprint notes. For BlueprintLoop execution, read the Blueprint note with `note_read({ noteIds: [...] })` before carrying out the Blueprint. Pagination: - markdown pagination is line-based. - blocks pagination is block-based, so multi-line code blocks and tables are not split across output slices.
+Read the full content of one or more notes by ID. Formats: - "markdown" (default): Human-readable Markdown export. Useful for reading, not for precise edits. - "blocks": Editable block anchor listing for note_edit. Each block includes the note Version, DocHash, stable block id, type, path, hash, summary, text preview, and table row/cell coordinates where relevant. - "json": Structured note data. Use detail:"json" when exact node JSON is needed. Precise edit workflow: 1. Call note_read with format:"blocks" before note_edit. 2. Copy Version, DocHash, target block id, and target block hash into note_edit. 3. Use blockId operations in note_edit. Do not use block numbers as edit targets. 4. Re-read after conflicts or hash mismatches. Do not guess a new target from stale block numbers. Use this after `note_list` or `note_search` to read the full details of specific notes. Pagination: - markdown pagination is line-based. - blocks pagination is block-based, so multi-line code blocks and tables are not split across output slices.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1147,35 +1045,13 @@ Read the full content of one or more notes by ID. Blueprint documents are notes 
 
 Kind: `search.note`
 
-Search notes using regex patterns. Searches across note titles and content, returning matching notes with context lines around each match — similar to ripgrep output. Blueprint documents are notes with kind:"blueprint". Use this to find notes containing specific information. For browsing all notes, use `note_list` instead. To read a full note after finding it, use `note_read`. The search pattern is a regular expression applied to each note's markdown content line by line. Title matches cause the entire note to be included. Use `kind:"blueprint"` to search only Blueprint notes. Use `tags` or `pinned` filters to narrow the search scope. Use `archived:"archived"` to search archived notes or `archived:"all"` to search all notes regardless of archive status (defaults to `"active"`). The `since` and `before` parameters filter by last updated time (ISO 8601 dates). Combine with pattern matching to find e.g. "notes from last week mentioning X".
+Search notes using regex patterns. Searches across note titles and content, returning matching notes with context lines around each match — similar to ripgrep output. Use this to find notes containing specific information. For browsing all notes, use `note_list` instead. To read a full note after finding it, use `note_read`. The search pattern is a regular expression applied to each note's markdown content line by line. Title matches cause the entire note to be included. Use `kind` to filter available document kinds. Use `tags` or `pinned` filters to narrow the search scope. Use `archived:"archived"` to search archived notes or `archived:"all"` to search all notes regardless of archive status (defaults to `"active"`). The `since` and `before` parameters filter by last updated time (ISO 8601 dates). Combine with pattern matching to find e.g. "notes from last week mentioning X".
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `pattern` | string | yes | Regex pattern to search for in note titles and content. |
-| `scope` | "current" \| "global" \| "all" |  | Which scope to search: 'current', 'global', or 'all'. |
-| `kind` | "all" \| "note" \| "blueprint" |  | Filter by document kind. Blueprints are executable notes. |
-| `archived` | "active" \| "archived" \| "all" |  | Filter by archive status: 'active' (default), 'archived', or 'all'. |
-| `since` | string |  | Only include notes updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00'). |
-| `before` | string |  | Only include notes updated before this date (ISO 8601). |
-| `tags` | array |  | Only search notes that have ALL of these tags. |
-| `pinned` | boolean |  | Filter by pinned status. |
 
 ## note_write
 
 Kind: `knowledge.note`
 
-Create a new note or overwrite an existing note with complete markdown content. A Blueprint is not a separate document type; it is a note with kind:"blueprint". Choose the write mode: - "create" (default): Creates a new note. Requires `noteTitle` and `noteContent`. - "append": Adds content to the end of an existing note. Requires `noteId` and `noteContent`. This is an optimistic update and may report a conflict if the note changes while appending. - "replace": Overwrites the entire existing note content. Requires `noteId` and `noteContent`. This is the reliable full-document write path, analogous to file write; use it when you have generated the complete desired note from the latest content or when rewriting most of a Blueprint. Prefer `note_edit` for targeted changes to a few blocks. Prefer `note_write` with `mode:"replace"` for broad rewrites, large Blueprint reshaping, or recovery after local edit structure is no longer useful. Do not use append/replace as a blind fallback after a failed edit unless the replacement content is intentionally complete. The `scope` parameter controls where new notes are created: - "current" (default): Creates in the current project scope - "home": Creates in the home scope (visible from all projects) Blueprint creation and editing is only available in Plan or Lattice. Outside Plan or Lattice, use `kind:"note"` for deliverables and do not pass Blueprint fields. Attempts to create, replace, append to, or convert a Blueprint outside Plan or Lattice will be rejected with a semantic error. Use `kind:"blueprint"` in Plan or Lattice when the note should become executable through BlueprintLoop. Blueprint content must be decision-complete and directly executable. Do not create or replace a Blueprint that contains Open Decisions, Open Questions, TBDs, unresolved alternatives, or instructions for the execution session to ask the user later. If blocking ambiguity remains, ask the user first and wait for the answer. In Plan or Lattice, use `kind:"note"` to convert a Blueprint note back to a plain note. Blueprint notes may include `blueprintDescription` metadata; Blueprint run state lives on BlueprintLoop, not on the note itself. Execution-agent and audit-reviewer selection are host-owned: reviewers are host-selected and not available through this tool. When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `noteId` | string |  | Note ID to update. If omitted, creates a new note. |
-| `noteTitle` | string |  | Note title. Required when creating a new note. |
-| `noteContent` | string | yes | Note content in markdown format. |
-| `mode` | "create" \| "append" \| "replace" |  | 'create': new note, 'append': add content to end of existing note, 'replace': overwrite content. |
-| `tags` | array |  | Tags for the note. |
-| `kind` | "note" \| "blueprint" |  | Document kind. Use 'blueprint' when this note should be executable as a BlueprintLoop. |
-| `blueprintDescription` | string |  | Short blueprint description. Only used when kind is 'blueprint'. |
-| `scope` | "current" \| "home" |  | Which scope to create the note in. Only used for create mode. |
 
 ## openai_image_edit
 
@@ -1287,7 +1163,7 @@ Use this tool when you need to ask the user questions during execution. This all
 
 Kind: `code.read`
 
-Reads text and document content from the local filesystem. You can access any text or supported document file directly by using this tool. Assume this tool is able to read files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned. Usage: - The filePath parameter must be an absolute path, not a relative path - By default, it reads up to 2000 lines starting from the beginning of the file - Use offset/limit for a known target. Read enough surrounding code to understand dependencies; omit them when an overview or the whole small file is needed. - Explicit limits are honored; there is no minimum reading window. Output shares a 50 KiB UTF-8 budget. - Complete lines are retained within the byte budget. A line larger than the budget requires a bounded shell inspection. - Results are returned using cat -n format, with line numbers starting at 1 - Batch independent reads when the files are known to be relevant. Avoid speculative whole-file reads. - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents. - Use this tool for text files and supported document text extraction (PDF, DOCX, XLSX, PPTX, HTML, EPUB, IPYNB, CSV, XML, RSS, audio metadata, ZIP). For image visual inspection, use `view_image` when it is available; use `look_at` when `view_image` is unavailable.
+Reads text and document content from the local filesystem. You can access any text or supported document file directly by using this tool. Assume this tool is able to read files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned. Usage: - The filePath parameter must be an absolute path, not a relative path - By default, it reads up to 2000 lines starting from the beginning of the file - Use offset/limit for a known target. Read enough surrounding code to understand dependencies; omit them when an overview or the whole small file is needed. - Explicit limits are honored; there is no minimum reading window. Output shares a 50 KiB UTF-8 budget. - Complete lines are retained within the byte budget. A line larger than the budget requires a bounded shell inspection. - Results are returned using cat -n format, with line numbers starting at 1 - Batch independent reads when the files are known to be relevant. Avoid speculative whole-file reads. - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents. - Use this tool for text files and formats supported by the registered document extractors. For image visual inspection, discover an available image tool in the current catalog.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1470,7 +1346,7 @@ List sessions by scope. Returns session metadata, scope info, and the latest mes
 
 Kind: `orchestration.session`
 
-Read messages from a session. Returns session metadata and a paginated list of messages. The `target` parameter identifies which session to read: - A session ID (e.g. "ses_xxx") to read a specific session - A contact ID to read the conversation with a holos friend Each message includes its role, text content, timestamp, and tool call summaries (for assistant messages). Two pagination modes: - **Browse mode** (default): Use `offset` and `limit` to paginate through messages. Offset 0 starts from the most recent message. - **Anchor mode**: Use `around` with a message ID to center the view around a specific message. Returns `limit` messages surrounding it. The anchor message is marked with ◀ in the output. Useful after `session_search` to read context around a match.
+Read messages from a session. Returns session metadata and a paginated list of messages. The `target` parameter identifies which session to read: - A session ID (e.g. "ses_xxx") to read a specific session Each message includes its role, text content, timestamp, and tool call summaries (for assistant messages). Two pagination modes: - **Browse mode** (default): Use `offset` and `limit` to paginate through messages. Offset 0 starts from the most recent message. - **Anchor mode**: Use `around` with a message ID to center the view around a specific message. Returns `limit` messages surrounding it. The anchor message is marked with ◀ in the output. Useful after `session_search` to read context around a match.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
