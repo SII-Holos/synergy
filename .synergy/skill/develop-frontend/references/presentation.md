@@ -17,7 +17,7 @@ Read [Frontend localization](../../../../docs/architecture/localization.md) befo
 4. Use the shared active-locale formatter for dates, time, numbers, percentages, currency, lists, and relative time. Do not hard-code locale tags or use a regional locale to imply an unrelated preference such as 24-hour time.
 5. `apps/web` owns locale state, catalog loading, Settings, persistence, bootstrap mirror reconciliation, and the global `I18nProvider`. `packages/ui` consumes that provider through peer dependencies; it does not create a second runtime, import App contexts, inspect browser locale, or own catalogs.
 6. Keep the Settings language control global, responsive, and recoverable: Follow System, English, and Simplified Chinese apply without refresh, do not follow project Scope, and must preserve language self-names so a user can switch back after a mistake.
-7. Run extraction after each coherent copy change, translate every new `zh-CN` message, remove obsolete entries, and keep strict compilation green. Finish with the repository localization contract so new hard-coded product text cannot bypass the catalog.
+7. Run extraction after each coherent copy change, translate every new `zh-CN` message, remove obsolete entries, and keep strict compilation green. When removing or renaming IDs, update affected terminology assertions and include `apps/web/test/script/i18n-check.test.ts` in focused verification; do not restore unused copy to satisfy a stale assertion. Finish with the repository localization contract so new hard-coded product text cannot bypass the catalog.
 
 ## Use Semantic Icons
 
