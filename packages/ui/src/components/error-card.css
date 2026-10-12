@@ -53,11 +53,6 @@
   gap: 8px;
 }
 
-[data-slot="error-card-header"]:focus-visible {
-  outline: 2px solid var(--color-focus-ring, var(--color-border-focus));
-  outline-offset: -2px;
-}
-
 [data-slot="error-card-leading"] {
   width: 18px;
   height: 18px;
@@ -168,11 +163,6 @@
 
 [data-slot="error-card-copy-button"]:hover:not(:disabled) {
   background-color: var(--surface-raised-base-hover);
-}
-
-[data-slot="error-card-copy-button"]:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 
 [data-slot="error-card-copy-button"]:disabled {

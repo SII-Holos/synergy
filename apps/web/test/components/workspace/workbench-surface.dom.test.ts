@@ -272,7 +272,7 @@ for (const width of [375, 1200]) {
     await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
     const resource = page.getByRole("button", { name: "Open a resource", exact: true })
     await resource.click()
-    await page.getByRole("menuitem", { name: "extra", exact: true }).waitFor()
+    await page.getByRole("menuitem", { name: "extra", exact: true }).focus()
     expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible)).toBe(false)
     await page.evaluate(() => {
       const fixture = window as unknown as WorkbenchWindow
@@ -653,7 +653,8 @@ for (const colorScheme of ["light", "dark"] as const) {
     await page.keyboard.press("Escape")
     await page.getByRole("menu").waitFor({ state: "hidden" })
     await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Open a resource")
-    expect(await menu.evaluate((button) => getComputedStyle(button).outlineStyle)).toBe("solid")
+    expect(await menu.evaluate((button) => getComputedStyle(button).outlineStyle)).toBe("none")
+    expect(await menu.evaluate((button) => getComputedStyle(button).backgroundImage)).not.toBe("none")
     await page.keyboard.press("Shift+Tab")
     expect(await add.evaluate((button) => document.activeElement === button)).toBe(true)
     expect((await styles()).buttons[0]).not.toBe((await styles()).background)

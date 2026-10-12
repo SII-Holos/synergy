@@ -1,6 +1,7 @@
 # Decision Record: Kanban pane headers tint by session status
 
 Status: implemented
+Archived: 2026-10-12
 
 ## Problem
 

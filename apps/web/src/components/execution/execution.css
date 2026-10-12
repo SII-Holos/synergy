@@ -45,11 +45,6 @@
   cursor: default;
   opacity: 0.55;
 }
-.execution-panel :is(button, select, input, [tabindex]):focus-visible,
-.execution-popover :is(button, summary):focus-visible:focus-visible {
-  outline: 2px solid var(--border-interactive-focus);
-  outline-offset: -2px;
-}
 .execution-global {
   flex: 0 0 auto;
   min-width: 0;
@@ -163,8 +158,6 @@
 }
 .execution-compact-metric:is(button):focus-visible,
 .execution-cost-button:focus-visible {
-  outline: 2px solid var(--border-interactive-base);
-  outline-offset: 3px;
   border-radius: 2px;
 }
 .execution-failure {
@@ -313,10 +306,6 @@
   background: transparent;
   color: var(--text-base);
 }
-.execution-search:focus-within {
-  outline: 2px solid var(--border-interactive-focus);
-  outline-offset: -2px;
-}
 .execution-search input::placeholder {
   color: var(--text-weak);
 }
@@ -406,8 +395,7 @@
   background: var(--surface-raised-base);
 }
 .execution-actor-choice:has(input:focus-visible) {
-  outline: 2px solid var(--border-interactive-focus);
-  outline-offset: -2px;
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 .execution-filter-choice [data-component="checkbox"] {
   position: relative;
@@ -821,10 +809,6 @@
 }
 .execution-content-menu-actions > button:hover {
   background: var(--surface-raised-base);
-}
-.execution-content-menu button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 .execution-content-search {
   margin: 4px 16px;

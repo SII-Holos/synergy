@@ -32,11 +32,14 @@
     color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
+.session-inbox-send-all:hover {
+  border-color: var(--border-weak-hover);
+}
+
 .session-inbox-send-all:hover,
 .session-inbox-send-all:focus-visible {
   color: var(--text-strong);
   background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
-  border-color: var(--border-weak-hover);
   outline: none;
 }
 
@@ -70,23 +73,31 @@
   color: var(--text-weak);
 }
 
+.session-inbox-row:hover {
+  border-color: var(--border-weak-hover);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-weaker-hover) 82%, transparent);
+}
+
 .session-inbox-row:hover,
 .session-inbox-row:focus-within {
-  border-color: var(--border-weak-hover);
   background: var(
     --workbench-card-bg-hover,
     color-mix(in srgb, var(--surface-raised-base-hover) 86%, var(--surface-raised-base))
   );
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border-weaker-hover) 82%, transparent);
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
+}
+
+.session-inbox-row[data-mode="steer"]:hover {
+  border-color: var(--border-strong-hover);
 }
 
 .session-inbox-row[data-mode="steer"]:hover,
 .session-inbox-row[data-mode="steer"]:focus-within {
-  border-color: var(--border-strong-hover);
   background: var(
     --workbench-selected-bg-hover,
     color-mix(in srgb, var(--surface-raised-base-active) 62%, var(--surface-raised-base-hover))
   );
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 
 .session-inbox-row-tooltip,
@@ -210,12 +221,17 @@
 }
 
 .session-inbox-more:hover,
+.session-inbox-more[aria-expanded="true"] {
+  border-color: var(--border-weak-hover);
+}
+
+.session-inbox-more:hover,
 .session-inbox-more:focus-visible,
 .session-inbox-more[aria-expanded="true"] {
   background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
-  border-color: var(--border-weak-hover);
   color: var(--icon-strong-base);
   outline: none;
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 
 .session-inbox-menu-popover[data-component="popover-content"] {
@@ -321,10 +337,6 @@
   border: 0;
   background: transparent;
   font: inherit;
-}
-.session-inbox-row-main:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 .session-inbox-operation,
 .session-inbox-removed-list,

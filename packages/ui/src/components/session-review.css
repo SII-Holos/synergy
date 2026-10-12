@@ -68,10 +68,6 @@
     background: transparent !important;
     border: 0;
   }
-  button:focus-visible {
-    outline: 2px solid var(--border-focus) !important;
-    outline-offset: -2px;
-  }
   [data-slot="session-review-trigger-content"],
   [data-slot="session-review-file-info"],
   [data-slot="session-review-file-name-container"] {

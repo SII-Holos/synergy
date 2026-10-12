@@ -262,7 +262,7 @@ function FormulaMenu(props: {
         </button>
       </div>
       <textarea
-        class="min-h-20 w-full resize-y rounded-lg border border-border-base/55 bg-surface-inset-base/52 px-3 py-2 font-mono text-12-regular leading-relaxed text-text-base outline-none transition-colors focus:border-text-interactive-base/45 focus:bg-surface-inset-base/72"
+        class="min-h-20 w-full resize-y rounded-lg border border-border-base/55 bg-surface-inset-base/52 px-3 py-2 font-mono text-12-regular leading-relaxed text-text-base outline-none transition-colors"
         value={draft()}
         spellcheck={false}
         onInput={(e) => updateLatex(e.currentTarget.value)}

@@ -84,10 +84,6 @@
     font-variant-numeric: tabular-nums;
     color: var(--text-weak);
   }
-  button:focus-visible {
-    outline: 2px solid var(--border-interactive-base);
-    outline-offset: -2px;
-  }
   [data-slot="dag-graph-viewport"] {
     position: relative;
     width: 100%;
@@ -323,9 +319,6 @@
   padding: 4px 8px;
   border-radius: 6px;
   background: var(--surface-base);
-}
-[data-slot="dag-node-preview-open-session"]:focus-visible {
-  outline: 2px solid var(--border-interactive-base);
 }
 @media (pointer: coarse) {
   [data-component="dag-graph"] [data-slot="dag-graph-controls"] button,

@@ -80,10 +80,6 @@
     background: var(--workbench-control-bg-hover, var(--surface-inset-base-hover));
     color: var(--text-base);
   }
-  &:focus-visible {
-    outline: 2px solid var(--border-interactive-base);
-    outline-offset: 2px;
-  }
   &:disabled {
     cursor: default;
     opacity: 0.6;

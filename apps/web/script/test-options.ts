@@ -12,6 +12,7 @@ const playwrightIsolated = [
   "test/context/workbench/updates.dom.test.ts",
   "test/context/global-sync-lifecycle.dom.test.ts",
   "test/context/sync-history-transition.dom.test.ts",
+  "test/testing/focus-presentation.browser.test.ts",
   "test/context/render-confirmation.browser.test.ts",
   "test/context/global-sync-memory.browser.test.ts",
   "test/context/tool-resource-open.dom.test.ts",

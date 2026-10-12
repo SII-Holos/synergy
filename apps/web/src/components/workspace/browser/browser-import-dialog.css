@@ -42,10 +42,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.browser-import-source-trigger:focus-visible {
-  outline: 2px solid var(--border-interactive-base);
-  outline-offset: 2px;
-}
 .browser-import-source-trigger:disabled {
   opacity: 0.5;
 }

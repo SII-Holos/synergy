@@ -364,10 +364,6 @@
   font-size: 12px;
   outline: none;
 }
-.office-reader-find:focus-within {
-  outline: 2px solid var(--border-interactive-base);
-  outline-offset: 2px;
-}
 .office-document-frame {
   border: 0;
   width: 100%;
@@ -384,10 +380,6 @@
   font-size: 12px;
   background: var(--workbench-canvas-bg);
   contain: strict;
-}
-.xlsx-grid:focus-visible {
-  outline: 2px solid var(--border-interactive-base);
-  outline-offset: -2px;
 }
 .xlsx-column-headings {
   position: sticky;

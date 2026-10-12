@@ -557,7 +557,7 @@ export function LatticePanel(props: {
                                   >
                                     <button
                                       type="button"
-                                      class="flex w-full min-w-0 gap-3 py-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus-base"
+                                      class="flex w-full min-w-0 gap-3 py-3 text-left"
                                       aria-expanded={isExpanded()}
                                       onClick={() =>
                                         setExpandedPathwayStepID((current) =>
@@ -584,7 +584,7 @@ export function LatticePanel(props: {
                     <section class="border-b border-border-weaker-base">
                       <button
                         type="button"
-                        class="flex w-full items-center gap-3 py-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus-base"
+                        class="flex w-full items-center gap-3 py-4 text-left"
                         aria-expanded={expanded() === "blueprints"}
                         onClick={() => toggleDetails("blueprints")}
                       >
@@ -738,7 +738,7 @@ export function LatticePanel(props: {
                     <section>
                       <button
                         type="button"
-                        class="flex w-full items-center gap-3 py-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus-base"
+                        class="flex w-full items-center gap-3 py-4 text-left"
                         aria-expanded={expanded() === "history"}
                         onClick={() => toggleDetails("history")}
                       >

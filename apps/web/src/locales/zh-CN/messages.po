@@ -247,10 +247,6 @@ msgid "app.agenda.action.submittedHint"
 msgstr "执行结果可在历史中查看。"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.activity.description"
-msgstr "按发生时间查看真实执行、结果和关联会话。"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.activity.loaded"
 msgstr "已加载 {shown} / {total} 条执行记录"
 
@@ -329,10 +325,6 @@ msgid "app.agenda.arrangements.count"
 msgstr "{count, plural, one {# 次预计触发} other {# 次预计触发}}"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.arrangements.description"
-msgstr "查看已启用任务的预计触发时间；选择日期即可更改展示范围。"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.arrangements.empty"
 msgstr "这段时间没有未来安排"
 
@@ -363,10 +355,6 @@ msgstr "这段时间已过去，可在历史中查看实际执行。"
 #. js-lingui-explicit-id
 msgid "app.agenda.arrangements.predicted"
 msgstr "预计触发时间 · {timezone}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.arrangements.relative"
-msgstr "部分间隔或延迟任务的时间取决于启用和实际执行；这里只显示已知的下一次触发。"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.arrangements.weekRange"
@@ -906,14 +894,6 @@ msgid "app.agenda.runStatus.skipped"
 msgstr "已跳过"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.scope.all"
-msgstr "所有范围"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.scope.filter"
-msgstr "范围"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.search.clear"
 msgstr "清除搜索"
 
@@ -952,10 +932,6 @@ msgstr "已结束"
 #. js-lingui-explicit-id
 msgid "app.agenda.tasks.count"
 msgstr "{count, plural, one {# 项任务} other {# 项任务}}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.tasks.description"
-msgstr "管理全部任务规则，包括手动、事件触发、未启用和已结束的任务。"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.tasks.empty"

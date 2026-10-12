@@ -475,6 +475,30 @@ test("neighboring month dates and form hints stay readable on their actual surfa
   ).toBeGreaterThanOrEqual(4.5)
 })
 
+test("all Agenda destinations omit standing explanations and Scope filters while history covers all Scopes", async () => {
+  for (const locale of ["en", "zh-CN"]) {
+    await page.goto(baseUrl + "?panel&locale=" + locale)
+    const tabs = locale === "en" ? ["Arrangements", "Tasks", "History"] : ["安排", "任务", "历史"]
+    for (const tab of tabs) {
+      const history = tab === tabs[2]
+      const request = history
+        ? page.waitForRequest((request) => new URL(request.url()).pathname.endsWith("/agenda/activity"))
+        : undefined
+      await page.getByRole("tab", { name: tab, exact: true }).click()
+      expect(await page.getByRole("button", { name: /^(Scope|范围)[:：]/ }).count()).toBe(0)
+      expect(
+        await page
+          .getByText(/^(Manage all task rules|Review actual executions|管理全部任务规则|按发生时间查看真实执行)/)
+          .count(),
+      ).toBe(0)
+      if (request) {
+        expect(new URL((await request).url()).searchParams.has("scopeID")).toBe(false)
+        await page.getByRole("button", { name: "History fixture", exact: true }).waitFor()
+      }
+    }
+  }
+})
+
 test("the composed Agenda separates future occurrences from rule management and restores clicked-time context", async () => {
   await page.clock.setFixedTime(new Date(2026, 8, 25, 0))
   await page.setViewportSize({ width: 1280, height: 900 })
@@ -506,12 +530,7 @@ test("the composed Agenda separates future occurrences from rule management and 
   await page.getByRole("button", { name: "Clear search", exact: true }).press("Enter")
   expect(await search.evaluate((element) => element === document.activeElement)).toBe(true)
   expect(await page.locator(".agenda-task-row").count()).toBe(4)
-  await page.getByRole("button", { name: "Scope: All Scopes", exact: true }).click()
-  await page.getByRole("option", { name: "Target project", exact: true }).click()
-  expect(await page.locator(".agenda-task-row").count()).toBe(1)
   expect(await page.getByRole("button", { name: "Project briefing Enabled", exact: true }).isVisible()).toBe(true)
-  await page.getByRole("button", { name: "Clear filters", exact: true }).first().click()
-  expect(await page.locator(".agenda-task-row").count()).toBe(4)
   expect(errors).toEqual([])
 })
 
@@ -612,22 +631,23 @@ test("phone Agenda actions keep usable touch targets and the primary icon stays 
   await page.emulateMedia({ reducedMotion: "no-preference" })
 })
 
-test("Scope filters use a themed listbox with keyboard selection and focus return", async () => {
+test("the creation Scope menu keeps keyboard selection and focus return", async () => {
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto(baseUrl + "?panel")
-  const trigger = page.getByRole("button", { name: "Scope: All Scopes", exact: true })
+  await page.getByRole("button", { name: "New task", exact: true }).click()
+  await page.getByRole("button", { name: /Advanced settings/ }).click()
+  const trigger = page.getByRole("button", { name: /^Scope: .*Home/ })
   expect(await trigger.count()).toBe(1)
   await trigger.press("ArrowDown")
   const options = page.getByRole("listbox", { name: "Scope", exact: true })
   await options.waitFor()
-  const allScopes = options.getByRole("option", { name: "All Scopes", exact: true })
-  await page.waitForFunction((element) => element === document.activeElement, await allScopes.elementHandle())
-  await page.keyboard.press("ArrowDown")
+  const home = options.getByRole("option", { name: /Home/ })
+  await page.waitForFunction((element) => element === document.activeElement, await home.elementHandle())
   await page.keyboard.press("ArrowDown")
   const project = options.getByRole("option", { name: "Target project", exact: true })
   expect(await project.evaluate((element) => element === document.activeElement)).toBe(true)
   expect(await project.getAttribute("aria-selected")).toBe("false")
-  expect(await trigger.getAttribute("aria-label")).toBe("Scope: All Scopes")
+  expect(await trigger.getAttribute("aria-label")).toContain("Home")
   await page.keyboard.press("Enter")
   await options.waitFor({ state: "detached" })
   const selected = page.getByRole("button", { name: "Scope: Target project", exact: true })
@@ -642,22 +662,24 @@ test("Scope filters use a themed listbox with keyboard selection and focus retur
   expect(await selected.evaluate((element) => element === document.activeElement)).toBe(true)
 })
 
-test("creating from a selected Scope keeps that context without changing an existing task owner", async () => {
+test("creating from the global task list defaults to Home and lets the form choose its Scope", async () => {
   const received = () => formRequest
   formRequest = undefined
   saveFailure = false
   await page.goto(baseUrl + "?panel")
-  await page.getByRole("button", { name: "Scope: All Scopes", exact: true }).click()
-  await page.getByRole("option", { name: "Target project", exact: true }).click()
+  await page.getByRole("tab", { name: "Tasks", exact: true }).click()
   await page.getByRole("button", { name: "New task", exact: true }).click()
+  await page.getByRole("button", { name: /Advanced settings/ }).click()
+  await page.getByRole("button", { name: /^Scope: .*Home/ }).click()
+  await page.getByRole("option", { name: "Target project", exact: true }).click()
   await page.getByPlaceholder("Add title", { exact: true }).fill("Scoped new task")
   await page.getByRole("button", { name: "Create", exact: true }).click()
-  await page.getByRole("dialog").waitFor({ state: "detached" })
+  await page.getByRole("dialog", { name: "New task", exact: true }).waitFor({ state: "detached" })
   expect(received()?.scopeID).toBe("scope-target")
 })
 
 test("peer destinations keep independent scroll positions so a new destination exposes its controls", async () => {
-  await page.setViewportSize({ width: 375, height: 812 })
+  await page.setViewportSize({ width: 375, height: 520 })
   await page.goto(baseUrl + "?panel")
   await page.getByRole("radio", { name: "Month", exact: true }).press("Space")
   const arrangements = page.getByRole("tabpanel", { name: "Arrangements", exact: true })

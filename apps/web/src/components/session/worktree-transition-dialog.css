@@ -10,9 +10,6 @@
   --wtd-row-border: color-mix(in srgb, var(--border-base) 36%, transparent);
   --wtd-control-bg: var(--surface-inset-base);
   --wtd-control-bg-hover: var(--surface-inset-base-hover);
-  --wtd-focus-ring:
-    0 0 0 1px color-mix(in srgb, var(--text-strong) 24%, transparent),
-    0 0 0 3px color-mix(in srgb, var(--text-strong) 7%, transparent);
 
   width: min(560px, calc(100vw - 40px));
   max-width: min(560px, calc(100vw - 40px));
@@ -74,7 +71,6 @@
 
 [data-slot="dialog-content"].workspace-transition-dialog [data-slot="dialog-close-button"]:focus-visible {
   outline: none;
-  box-shadow: var(--wtd-focus-ring);
 }
 
 .wtd-form {
@@ -100,10 +96,6 @@
   min-height: 36px;
   background: var(--workbench-input-bg);
   border-color: var(--wtd-border);
-}
-
-.wtd-form [data-slot="input-wrapper"]:focus-within {
-  box-shadow: var(--wtd-focus-ring);
 }
 
 .wtd-actions {

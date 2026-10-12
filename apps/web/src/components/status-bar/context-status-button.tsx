@@ -93,7 +93,7 @@ export function ContextStatusButton() {
       >
         <button
           type="button"
-          class="relative flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:shadow-xs-border-focus sm:size-7"
+          class="relative flex size-11 items-center justify-center rounded-full focus-visible:outline-none sm:size-7"
           aria-label={ariaLabel()}
           onClick={() => void openContext()}
         >

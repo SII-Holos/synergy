@@ -4,7 +4,6 @@ import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "sol
 import { useNavigate } from "@solidjs/router"
 import { useParams } from "@/context/session-route"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -78,7 +77,6 @@ export function AgendaPanel() {
 
   const [viewMode, setViewMode] = createSignal<ViewMode>("list")
   const [anchor, setAnchor] = createSignal(Date.now())
-  const [scopeFilter, setScopeFilter] = createSignal("")
   const [taskQuery, setTaskQuery] = createSignal("")
   const [taskFilter, setTaskFilter] = createSignal<AgendaTaskFilter>("all")
   const [now, setNow] = createSignal(Date.now())
@@ -95,19 +93,17 @@ export function AgendaPanel() {
 
   const items = createMemo(() => globalSync.agenda)
 
-  const matchingItems = createMemo(() => filterAgendaTasks(items(), { query: taskQuery(), scopeID: scopeFilter() }))
+  const matchingItems = createMemo(() => filterAgendaTasks(items(), { query: taskQuery(), scopeID: "" }))
   const taskItems = createMemo(() =>
     filterAgendaTasks(matchingItems(), { query: "", scopeID: "", filter: taskFilter() }),
   )
   const forecast = createMemo(() => forecastAgenda(matchingItems(), agendaRange(anchor(), viewMode()), { now: now() }))
-  const historyScope = () => scopeFilter() || directory() || "home"
   const scopeLabel = (item: AgendaItem) =>
     globalSync.data.scope.find((scope) => scope.id === item.origin.scope.id)?.name ??
     (item.origin.scope.type === "home" ? _({ id: "app.sidebar.section.home", message: "Home" }) : item.origin.scope.id)
   function clearFilters() {
     setTaskQuery("")
     setTaskFilter("all")
-    setScopeFilter("")
     searchInput?.focus()
   }
 
@@ -225,7 +221,7 @@ export function AgendaPanel() {
 
   function formDirectory(item?: AgendaItem): string {
     if (item) return directoryForItem(item) ?? directory() ?? "home"
-    return scopeFilter() || directory() || "home"
+    return directory() || "home"
   }
 
   function openForm(item?: AgendaItem) {
@@ -322,9 +318,8 @@ export function AgendaPanel() {
   })
   async function loadActivity(options?: { reset?: boolean; append?: boolean; query?: string }) {
     if (!sdk?.client?.agenda) return
-    const scopeID = historyScope()
     const query = (options?.query ?? activityQuery()).trim()
-    const context = JSON.stringify([scopeID, query])
+    const context = query
     if (activityLoading() && context === activityContext) return
     const changed = context !== activityContext
     const request = ++activityRequest
@@ -332,11 +327,10 @@ export function AgendaPanel() {
     if (changed) setActivity(defaultAgendaActivityState(activity().limit))
     setActivityLoading(true)
     setActivityError(null)
-    const current = () => request === activityRequest && historyScope() === scopeID && activityQuery().trim() === query
+    const current = () => request === activityRequest && activityQuery().trim() === query
     try {
       const page = await requestAgendaActivity({
         client: sdk.client,
-        scopeID,
         query,
         append: !changed && options?.append,
         state: activity(),
@@ -351,7 +345,7 @@ export function AgendaPanel() {
   }
 
   createEffect(
-    on([tab, directory, scopeFilter], ([currentTab]) => {
+    on(tab, (currentTab) => {
       if (currentTab === "activity") void loadActivity()
     }),
   )
@@ -395,43 +389,8 @@ export function AgendaPanel() {
           tab={{ id: "agenda", value: tab() }}
         >
           <div class="agenda-stage">
-            <p class="app-panel-copy text-text-weak">
-              {tab() === "schedule"
-                ? _({
-                    id: "app.agenda.arrangements.description",
-                    message:
-                      "See when your enabled tasks are expected to run. Select a date to change the displayed range.",
-                  })
-                : tab() === "tasks"
-                  ? _({
-                      id: "app.agenda.tasks.description",
-                      message: "Manage all task rules, including manual, event-triggered, disabled and archived tasks.",
-                    })
-                  : _({
-                      id: "app.agenda.activity.description",
-                      message: "Review actual executions, results and related sessions, newest first.",
-                    })}
-            </p>
-            <div class="agenda-page-tools">
-              <div class="agenda-scope-filter app-panel-control">
-                <span>{_({ id: "app.agenda.scope.filter", message: "Scope" })}</span>
-                <MenuField
-                  ariaLabel={_({ id: "app.agenda.scope.filter", message: "Scope" })}
-                  value={tab() === "activity" ? historyScope() : scopeFilter()}
-                  triggerClass="menu-field-trigger agenda-scope-select"
-                  options={[
-                    ...(tab() !== "activity"
-                      ? [{ value: "", label: _({ id: "app.agenda.scope.all", message: "All Scopes" }) }]
-                      : []),
-                    { value: "home", label: _({ id: "app.sidebar.section.home", message: "Home" }) },
-                    ...globalSync.data.scope
-                      .filter((scope) => scope.id !== "home")
-                      .map((scope) => ({ value: scope.id, label: scope.name || scope.id })),
-                  ]}
-                  onChange={setScopeFilter}
-                />
-              </div>
-              <Show when={tab() !== "activity"}>
+            <Show when={tab() !== "activity"}>
+              <div class="agenda-page-tools">
                 <div class="agenda-search">
                   <input
                     ref={searchInput}
@@ -453,25 +412,16 @@ export function AgendaPanel() {
                     </button>
                   </Show>
                 </div>
-                <Show when={scopeFilter() || taskQuery() || (tab() === "tasks" && taskFilter() !== "all")}>
+                <Show when={taskQuery() || (tab() === "tasks" && taskFilter() !== "all")}>
                   <button type="button" class="agenda-secondary-action" onClick={clearFilters}>
                     {_({ id: "app.agenda.filters.clear", message: "Clear filters" })}
                   </button>
                 </Show>
-              </Show>
-            </div>
+              </div>
+            </Show>
             <Show when={tab() === "schedule"}>
-              <Show when={forecast().limited.length || forecast().invalid.length || forecast().relative.length}>
+              <Show when={forecast().limited.length || forecast().invalid.length}>
                 <div class="agenda-forecast-warning app-panel-caption" role="status">
-                  <Show when={forecast().relative.length}>
-                    <p>
-                      {_({
-                        id: "app.agenda.arrangements.relative",
-                        message:
-                          "Some interval or delayed tasks depend on activation and execution times; only their known next trigger is shown.",
-                      })}
-                    </p>
-                  </Show>
                   <Show when={forecast().limited.length}>
                     <p>
                       {_(
@@ -522,7 +472,7 @@ export function AgendaPanel() {
                 isLoading={isLoading}
                 scopeLabel={scopeLabel}
                 onClear={clearFilters}
-                filtered={!!scopeFilter() || !!taskQuery() || taskFilter() !== "all"}
+                filtered={!!taskQuery() || taskFilter() !== "all"}
                 now={now()}
               />
             </Show>
