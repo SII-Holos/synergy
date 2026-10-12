@@ -522,7 +522,12 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
       !workbench.getPanel("resource-home")
     )
       return
-    void workbench.openPanel(workbench.getPanel("browser") ? "browser" : "resource-home", { intent: "restore" })
+    let cancelled = false
+    onCleanup(() => (cancelled = true))
+    queueMicrotask(() => {
+      if (cancelled || !state().opened() || activePanel()) return
+      void workbench.openPanel(workbench.getPanel("browser") ? "browser" : "resource-home", { intent: "restore" })
+    })
   })
   createEffect(
     on(

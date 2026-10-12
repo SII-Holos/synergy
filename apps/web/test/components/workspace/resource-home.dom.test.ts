@@ -507,6 +507,62 @@ test("capability loss removes resource controls and old tabs without deleting th
   expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(saved)
 })
 
+test("unknown capabilities retire the sole resource without replacing its saved active selection", async () => {
+  await cards().getByText("Notes", { exact: true }).click()
+  const content = page.getByText("Notes content", { exact: true })
+  await content.waitFor()
+  const original = await content.elementHandle()
+  const saved = await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())
+  const active = await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())
+  await page.evaluate(() => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    fixture.features(undefined)
+    fixture.remove("notes")
+  })
+  await content.waitFor({ state: "detached" })
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(false)
+  expect(await page.getByRole("tab").count()).toBe(0)
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(saved)
+  await page.evaluate(() => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    fixture.features(["note"])
+    fixture.register({ id: "notes", label: "Notes" })
+  })
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())).toBe(active)
+  await content.waitFor()
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(saved)
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.features([]))
+  await content.waitFor({ state: "detached" })
+  await page.getByRole("tab", { name: "New tab", exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(
+    expect.arrayContaining(saved),
+  )
+})
+
+test("unknown capabilities allow an empty core surface and preserve explicit user selection", async () => {
+  await page.evaluate(() => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    fixture.features(undefined)
+    fixture.restore([])
+  })
+  await page.getByRole("tab", { name: "New tab", exact: true }).waitFor()
+  expect(await cards().allTextContents()).toEqual(["Files"])
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.features(["note"]))
+  await cards().getByText("Notes", { exact: true }).click()
+  await page.getByText("Notes content", { exact: true }).waitFor()
+  await page.evaluate(async () => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    fixture.features(undefined)
+    await fixture.open("file")
+  })
+  await page.getByText("Files content", { exact: true }).waitFor()
+  const active = await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.features(["note"]))
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())).toBe(active)
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["Notes", "Files"])
+  await page.getByText("Files content", { exact: true }).waitFor()
+})
+
 test("a restored resource can publish its unchanged title without a reactive update loop", async () => {
   await cards().getByText("Notes", { exact: true }).click()
   await page.getByText("Notes content", { exact: true }).waitFor()

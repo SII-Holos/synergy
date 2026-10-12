@@ -169,9 +169,14 @@ const artifact = () =>
 
 try {
   await start("lattice")
-  const seedFile = Bun.file(path.join(home, "blueprint-source-seed.json"))
-  await until(() => seedFile.exists(), "Source fixture was not seeded")
-  const seed = (await seedFile.json()) as { sessionID: string; noteID: string; loopID: string; toolPartID: string }
+  const seedPath = path.join(home, "blueprint-source-seed.json")
+  await until(() => Bun.file(seedPath).exists(), "Source fixture was not seeded")
+  const seed = (await Bun.file(seedPath).json()) as {
+    sessionID: string
+    noteID: string
+    loopID: string
+    toolPartID: string
+  }
   const historyURL = `${origin}/aG9tZQ/session/${seed.sessionID}`
   await historyPage.goto(historyURL)
   await notePage.goto(origin)
@@ -285,6 +290,9 @@ try {
   await artifact()
   await historyPage
     .screenshot({ path: path.join(home, `failure-${generation}.png`), animations: "disabled" })
+    .catch(() => {})
+  await notePage
+    .screenshot({ path: path.join(home, `failure-${generation}-note.png`), animations: "disabled" })
     .catch(() => {})
   throw error
 } finally {

@@ -64,6 +64,14 @@ const latticeAttachment = {
   mime: "text/plain",
   url: "data:text/plain,original%20attachment",
 }
+const [latePartsLoaded, setLatePartsLoaded] = createSignal(false)
+const lateParts = () => (latePartsLoaded() ? [latticeAttachment] : [])
+const latticeControl = {
+  ...workflowRequest,
+  id: "lattice-control",
+  metadata: { source: "lattice_resume" },
+}
+const WorkflowControl = getSpecialUserMessageRenderer(latticeControl)!
 const [railState, setRailState] = createSignal<"running" | "done">("running")
 
 const resetCount = (identity: string, value: number) => {
@@ -420,6 +428,15 @@ render(
       >
         <CodeComponentProvider component={CodeFixture}>
           <MarkedProvider>
+            <div id="late-blueprint-start">
+              <BlueprintStart message={latticeBlueprintStart} parts={lateParts()} />
+            </div>
+            <div id="late-workflow-request">
+              <WorkflowRequest message={workflowRequest} parts={lateParts()} />
+            </div>
+            <div id="late-workflow-control">
+              <WorkflowControl message={latticeControl} parts={lateParts()} />
+            </div>
             <div id="source-blueprint-control">
               <BlueprintControl message={latticeBlueprintControl} parts={[]} />
             </div>
@@ -645,6 +662,7 @@ render(
 )
 ;(globalThis as unknown as { __activityDomHarness: unknown }).__activityDomHarness = {
   setFeatures,
+  setLatePartsLoaded,
   setBatchPending,
   setBatchLive,
   setSessionPaused,

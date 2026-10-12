@@ -15,6 +15,7 @@ export async function seedBlueprintSourceHistory(
     { Asset },
     { NoteStore },
     { BlueprintLoopStore, BlueprintLoopService },
+    { WorkflowSessionService },
   ] = await Promise.all([
     import(path.join(repository, "packages/harness/src/session/index.ts")),
     import(path.join(repository, "packages/harness/src/scope/index.ts")),
@@ -23,6 +24,7 @@ export async function seedBlueprintSourceHistory(
     import(path.join(repository, "packages/harness/src/asset/asset.ts")),
     import(path.join(repository, "packages/note/src/index.ts")),
     import(path.join(repository, "packages/blueprint/src/blueprint/index.ts")),
+    import(path.join(repository, "packages/lattice/src/session/workflow.ts")),
   ])
   await runtime.run(() =>
     ScopeContext.provide({
@@ -38,6 +40,7 @@ export async function seedBlueprintSourceHistory(
         })
         await NoteStore.create({ title: "Ordinary Note remains", kind: "note" })
         const session = await Session.create({ title: "Preserved source conversation" })
+        await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "collaborative" })
         const loop = await BlueprintLoopStore.create({
           noteID: note.id,
           title: note.title,
@@ -89,6 +92,7 @@ export async function seedBlueprintSourceHistory(
           type: "attachment",
           mime: "image/svg+xml",
           filename: "source-sent.svg",
+          presentation: { purpose: "deliverable" },
           url: `asset://${asset}`,
         })
         await Session.updateMessage({

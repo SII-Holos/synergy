@@ -115,10 +115,13 @@ function SpecialUserBubbleMessage(
 }
 
 function WorkflowUserRequestMessage(props: SpecialUserMessageProps): JSX.Element {
-  return SpecialUserBubbleMessage({
-    ...props,
-    view: getSpecialUserMessageBubbleView(props.message, props.parts)!,
-  })
+  return (
+    <SpecialUserBubbleMessage
+      message={props.message}
+      parts={props.parts}
+      view={getSpecialUserMessageBubbleView(props.message, props.parts)!}
+    />
+  )
 }
 
 function HiddenSpecialMessage(): JSX.Element {
@@ -130,17 +133,23 @@ function HiddenSpecialMessage(): JSX.Element {
 }
 
 function BlueprintControlMessage(props: SpecialUserMessageProps): JSX.Element {
-  return SpecialUserBubbleMessage({
-    ...props,
-    view: getSpecialUserMessageBubbleView(props.message, props.parts)!,
-  })
+  return (
+    <SpecialUserBubbleMessage
+      message={props.message}
+      parts={props.parts}
+      view={getSpecialUserMessageBubbleView(props.message, props.parts)!}
+    />
+  )
 }
 
 function WorkflowControlMessage(props: SpecialUserMessageProps): JSX.Element {
-  return SpecialUserBubbleMessage({
-    ...props,
-    view: getSpecialUserMessageBubbleView(props.message, props.parts)!,
-  })
+  return (
+    <SpecialUserBubbleMessage
+      message={props.message}
+      parts={props.parts}
+      view={getSpecialUserMessageBubbleView(props.message, props.parts)!}
+    />
+  )
 }
 
 registerSpecialUserMessageRenderer({

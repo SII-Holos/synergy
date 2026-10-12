@@ -315,6 +315,12 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         return undefined
       if (options.canCommit?.() === false) return undefined
       const boundSession = sessionKey()
+      if (
+        options.intent === "restore" &&
+        !capabilities.current() &&
+        layout.surface(boundSession, entry.surface).tabs().length
+      )
+        return undefined
       if ((options.intent ?? "user") === "user" && !options.canCommit) changeSelection(boundSession, entry.surface)
       if (
         !entry.openingComponent ||

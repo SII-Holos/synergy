@@ -10,6 +10,7 @@ const TRANSITION_SETTLE_MS = TRANSITION_MS + 80
 
 interface ActivityDomHarness {
   setFeatures(features: string[] | undefined): void
+  setLatePartsLoaded(loaded: boolean): void
   setSessionPaused: (paused: boolean) => void
   setBatchPending: (count: number) => void
   setBatchLive: (live: boolean) => void
@@ -599,6 +600,22 @@ test("removing a tool capability replaces its historical card with retained gene
   harness.setFeatures(["note"])
   await wait(0)
   expect(document.querySelector(selector)).toBeNull()
+})
+
+test("special workflow bubbles admit late attachment content and preserve it when their source disappears", async () => {
+  const hosts = ["late-blueprint-start", "late-workflow-request", "late-workflow-control"]
+  harness.setFeatures(["blueprint", "lattice"])
+  await wait(0)
+  for (const id of hosts) expect(document.getElementById(id)?.textContent).not.toContain("retained-request.txt")
+  harness.setLatePartsLoaded(true)
+  await wait(0)
+  for (const id of hosts) expect(document.getElementById(id)?.textContent).toContain("retained-request.txt")
+  for (const features of [undefined, ["blueprint"], ["blueprint", "lattice"]]) {
+    harness.setFeatures(features)
+    await wait(0)
+    for (const id of hosts) expect(document.getElementById(id)?.textContent).toContain("retained-request.txt")
+  }
+  harness.setFeatures(["note"])
 })
 
 test("missing workflow owners hide historical badges and control messages while preserving user requests", async () => {
