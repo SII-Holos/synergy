@@ -358,6 +358,7 @@ test("streamed and completed Markdown references open the shared image preview a
   await page.keyboard.press("Enter")
   await page.locator('[data-component="image-preview"]').waitFor()
   await page.evaluate("window.fixture.setStreaming(false)")
+  await page.waitForFunction(() => !document.querySelector("[data-markdown-pending]"))
   await page.waitForFunction(
     () => !!document.querySelector('[data-component="markdown"] a[data-resource-bound="true"]'),
   )
