@@ -13,15 +13,23 @@ type FrameCallback = (time: number) => void
 
 class FakeResizeObserver {
   static instances: FakeResizeObserver[] = []
+  readonly targets = new Set<unknown>()
 
   constructor(readonly dispatch: (entries: unknown[], observer: FakeResizeObserver) => void) {
     FakeResizeObserver.instances.push(this)
   }
 
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
+  observe(element: unknown): void {
+    this.targets.add(element)
+  }
+  unobserve(element: unknown): void {
+    this.targets.delete(element)
+  }
+  disconnect(): void {
+    this.targets.clear()
+  }
   fire(element: { scrollHeight: number }): void {
+    if (!this.targets.has(element)) return
     this.dispatch([{ target: element, contentRect: { width: 800, height: element.scrollHeight } }], this)
   }
 }
@@ -672,6 +680,44 @@ describe("createAutoScroll", () => {
       harness.lastObserver()!.fire(element)
       harness.flushFrames()
       expect(element.calls).toEqual([])
+      expect(autoScroll.userScrolled()).toBe(true)
+    } finally {
+      dispose()
+      harness.restore()
+    }
+  })
+
+  test("viewport shrink preserves latest while native reading cancels later resize compensation", async () => {
+    const harness = createScrollHarness()
+    let dispose = () => {}
+    try {
+      const viewport = harness.makeScroller()
+      const content = harness.makeScroller()
+      let autoScroll!: ReturnType<typeof createAutoScroll>
+      createRoot((cleanup) => {
+        dispose = cleanup
+        autoScroll = createAutoScroll({ working: () => false, settleMs: 10 })
+        autoScroll.scrollRef(viewport)
+        autoScroll.contentRef(content)
+      })
+      await harness.tick()
+      autoScroll.forceScrollToBottom({ untilInteraction: true })
+      harness.flushFrames()
+      await Bun.sleep(30)
+      viewport.calls.length = 0
+      Object.defineProperty(viewport, "clientHeight", { value: 200 })
+      harness.lastObserver()!.fire(viewport)
+      expect(viewport.calls).toEqual([{ top: 1000, behavior: "auto" }])
+      const wheel = new Event("wheel")
+      Object.defineProperty(wheel, "deltaY", { value: -200 })
+      viewport.dispatchEvent(wheel)
+      viewport.scrollTop = 500
+      viewport.calls.length = 0
+      Object.defineProperty(viewport, "clientHeight", { value: 100 })
+      harness.lastObserver()!.fire(viewport)
+      harness.flushFrames()
+      expect(viewport.calls).toEqual([])
+      expect(viewport.scrollTop).toBe(500)
       expect(autoScroll.userScrolled()).toBe(true)
     } finally {
       dispose()

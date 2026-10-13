@@ -18,6 +18,7 @@ import { NewSessionGreeting } from "@/components/session/session-new-view"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 import { SessionInbox } from "@/components/session/session-inbox"
+import { PendingComposerQueue } from "@/components/session/pending-composer-queue"
 import { SubagentSessionFooter } from "@/components/session/subagent-session-footer"
 import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
 import {
@@ -1590,16 +1591,7 @@ function SessionPageContent() {
   const dockHeight = createPromptDockHeight((next) => {
     if (!active() || next === store.promptHeight) return
 
-    const el = scroller
-    const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 : false
-
     setStore("promptHeight", next)
-
-    if (stick && el) {
-      requestAnimationFrame(() => {
-        if (active() && scroller === el) el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
-      })
-    }
   }, active)
 
   const updateHash = (id: string) => {
@@ -2412,7 +2404,19 @@ function SessionPageContent() {
     ),
     composer: () => (
       <Show when={active()}>
-        <PromptDock context={composerLayout} />
+        <PromptDock
+          context={composerLayout}
+          pending={
+            <PendingComposerQueue
+              identity={sessionKey()}
+              items={pendingTimeline()}
+              rollbackActive={rollbackActive()}
+              hasCanonicalRoot={rootMessages().length > 0}
+              onGuide={guidePending}
+              onRemove={removePending}
+            />
+          }
+        />
       </Show>
     ),
     "workbench.side": () => (
