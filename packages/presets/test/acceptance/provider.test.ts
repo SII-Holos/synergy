@@ -1,9 +1,63 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { recordedProvider, readRequests } from "../../script/acceptance/provider"
 import { acceptanceRuntime } from "../../script/acceptance/runtime"
 import { fixtureSettings } from "./support"
+
+test("request enumeration publishes captured bytes before an in-flight journal entry", async () => {
+  await using tmp = await tmpdir()
+  const capturing = Promise.withResolvers<void>()
+  const releaseCapture = Promise.withResolvers<void>()
+  const forwarded = Promise.withResolvers<void>()
+  const releaseUpstream = Promise.withResolvers<void>()
+  using upstream = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch() {
+      forwarded.resolve()
+      await releaseUpstream.promise
+      return Response.json({ usage: { prompt_tokens: 7, completion_tokens: 2 } })
+    },
+  })
+  await using gateway = await recordedProvider({
+    directory: tmp.path,
+    upstream: upstream.url.toString(),
+    apiKey: "fixture",
+    provider: "fixture",
+  })
+  const write = Bun.write
+  const capture = spyOn(Bun, "write").mockImplementation(async (destination, data, options) => {
+    if (typeof destination === "string" && destination.startsWith(tmp.path) && destination.endsWith("/request.bin")) {
+      capturing.resolve()
+      await releaseCapture.promise
+    }
+    return Reflect.apply(write, Bun, [destination, data, options]) as ReturnType<typeof Bun.write>
+  })
+  const body = JSON.stringify({ model: "model", messages: [{ role: "user", content: "captured input" }] })
+  const response = fetch(`${gateway.url}/chat/completions`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${gateway.token}` },
+    body,
+  }).then((response) => response.text())
+  try {
+    await capturing.promise
+    expect(await readRequests(tmp.path)).toEqual([])
+    releaseCapture.resolve()
+    await forwarded.promise
+    const ledger = await readRequests(tmp.path)
+    expect(ledger).toEqual([expect.objectContaining({ status: "unknown", model: "model", usage: null })])
+    expect(await Bun.file(path.join(tmp.path, "requests", ledger[0]!.id, "request.bin")).text()).toBe(body)
+    releaseUpstream.resolve()
+    await response
+    expect(await readRequests(tmp.path)).toEqual([expect.objectContaining({ status: "completed" })])
+  } finally {
+    releaseCapture.resolve()
+    releaseUpstream.resolve()
+    capture.mockRestore()
+    await response.catch(() => {})
+  }
+})
 
 test("isolated Runtime variants retain requests in one scenario ledger", async () => {
   await using tmp = await tmpdir()

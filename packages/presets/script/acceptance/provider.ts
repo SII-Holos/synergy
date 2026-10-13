@@ -87,9 +87,16 @@ export async function recordedProvider(options: {
       const body = JSON.parse(new TextDecoder().decode(bytes)) as Body
       const id = crypto.randomUUID()
       const directory = path.join(options.directory, "requests", id)
+      const staging = path.join(options.directory, ".requests", id)
       const record: ModelRequest = { id, status: "unknown", usage: null, provider: options.provider, model: body.model }
-      await atomicJSON(path.join(directory, "request.json"), record)
-      await Bun.write(path.join(directory, "request.bin"), bytes, { mode: 0o600 })
+      try {
+        await atomicJSON(path.join(staging, "request.json"), record)
+        await Bun.write(path.join(staging, "request.bin"), bytes, { mode: 0o600 })
+        await fs.mkdir(path.dirname(directory), { recursive: true, mode: 0o700 })
+        await fs.rename(staging, directory)
+      } finally {
+        await fs.rm(staging, { recursive: true, force: true })
+      }
       const controller = new AbortController()
       const settled = Promise.withResolvers<void>()
       active.set(controller, settled.promise)
