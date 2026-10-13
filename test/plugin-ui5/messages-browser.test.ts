@@ -38,6 +38,7 @@ describe("production conversation history", () => {
   }, 30000)
 
   test("native public conversation retains bounded history and reconciles updates after reconnect", async () => {
+    const conversation = await importPreviewConversation(preview, { title: "Reconnect history fixture", turns: 360 })
     const started = performance.now()
     const phase = (name: string) =>
       console.info(`[conversation history] ${name}: ${Math.round(performance.now() - started)}ms`)
@@ -118,20 +119,22 @@ describe("production conversation history", () => {
         expect(await rootCount()).toBeLessThanOrEqual(30)
         expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
       }
-      for (const activation of ["click", "Enter", "Space"]) {
+      for (const { question, activation } of [137, 350].flatMap((question) =>
+        ["click", "Enter", "Space"].map((activation) => ({ question, activation })),
+      )) {
         await page.keyboard.press("ControlOrMeta+f")
         const historySearch = page.getByRole("dialog", { name: "Search conversation", exact: true })
         await historySearch.waitFor()
-        await historySearch.getByPlaceholder("Search all conversation history").fill("Question 137")
+        await historySearch.getByPlaceholder("Search all conversation history").fill(`Question ${question}`)
         expect(await historySearch.getByLabel("Include reasoning", { exact: true }).count()).toBe(1)
         expect(await historySearch.getByLabel("Include tool content", { exact: true }).count()).toBe(1)
-        await historySearch.getByRole("button", { name: "Question 137", exact: true }).click()
+        await historySearch.getByRole("button", { name: `Question ${question}`, exact: true }).click()
         await historySearch.waitFor({ state: "detached" })
-        await page.getByText("Question 137", { exact: true }).waitFor()
-        phase("search result")
+        await page.getByText(`Question ${question}`, { exact: true }).waitFor()
+        phase(`search result ${question}`)
         expect(await rootCount()).toBeLessThanOrEqual(30)
         expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
-        const returnLatest = page.getByRole("button", { name: "Return to latest", exact: true })
+        const returnLatest = page.getByRole("button", { name: "Back to latest", exact: true })
         if (activation === "click") await returnLatest.click()
         else await returnLatest.press(activation)
         await page.getByText("Answer 360", { exact: true }).waitFor()
@@ -139,6 +142,17 @@ describe("production conversation history", () => {
           const scroller = document.querySelector("[data-conversation-viewport]")
           return scroller && scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop < 10
         })
+        await page.setViewportSize({ width: page.viewportSize()!.width === 1440 ? 1280 : 1440, height: 1000 })
+        const distances = await page.evaluate(async () => {
+          const distances: number[] = []
+          for (let frame = 0; frame < 24; frame++) {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+            const scroller = document.querySelector("[data-conversation-viewport]")!
+            distances.push(scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop)
+          }
+          return distances
+        })
+        expect(Math.max(...distances)).toBeLessThan(10)
         phase(`returned to latest with ${activation}`)
       }
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
@@ -202,6 +216,272 @@ describe("production conversation history", () => {
     }
   }, 180000)
 
+  test("paging inside a long completed turn never replaces its readable answer with transient load rows", async () => {
+    const seed = await importPreviewConversation(preview, { title: "Dense history", turns: 1 })
+    const { data: info } = await preview.client.session.get(
+      { scopeID: "home", sessionID: seed.id },
+      { throwOnError: true },
+    )
+    const root = seed.messages[0]
+    const answer = seed.messages[1]
+    const messages = [
+      root,
+      ...Array.from({ length: 240 }, (_, index) => {
+        const id = `msg_dense_${String(index).padStart(6, "0")}`
+        return {
+          info: {
+            ...answer.info,
+            id,
+            finish: index === 239 ? "stop" : "tool-calls",
+            time: { created: Date.now() + index, completed: Date.now() + index + 1 },
+          },
+          parts: [
+            {
+              ...answer.parts[0],
+              id: `prt_dense_${index}`,
+              messageID: id,
+              type: "text",
+              text: index === 239 ? "Retained final answer." : `Progress step ${index}.`,
+            },
+          ],
+        }
+      }),
+    ]
+    const file = new File([JSON.stringify({ info, messages })], "dense.json", { type: "application/json" })
+    const { data: imported } = await preview.client.session.import({ scopeID: "home", file }, { throwOnError: true })
+    if (!imported) throw new Error("Dense conversation missing")
+    const browser = await chromium.launch({ headless: true })
+    try {
+      const page = await browser.newPage({ viewport: { width: 1100, height: 950 } })
+      await openPluginPreviewPage(preview, page)
+      await page.goto(new URL(`/aG9tZQ/session/${imported.rootSessionID}`, preview.url).href)
+      await page.getByText("Retained final answer.", { exact: true }).waitFor()
+      await page.waitForFunction(
+        () => !document.querySelector("[data-markdown-pending]") && !document.getAnimations().length,
+      )
+      let bodyReads = 0
+      page.on("request", (request) => {
+        if (new URL(request.url()).pathname.endsWith("/content")) bodyReads++
+      })
+      let summaryReads = 0
+      await page.route("**/session/**/part/pages", async (route) => {
+        summaryReads++
+        await new Promise((resolve) => setTimeout(resolve, 350))
+        await route.continue()
+      })
+      const timelineResponse = page.waitForResponse((response) => {
+        const url = new URL(response.url())
+        return (
+          url.pathname === `/session/${imported.rootSessionID}/timeline/page` &&
+          url.searchParams.has("cursor") &&
+          response.ok()
+        )
+      })
+      const samples = await page.getByText("Retained final answer.", { exact: true }).evaluate(async (answer) => {
+        const row = answer.closest<HTMLElement>("[data-display-row]")!
+        const top = row.getBoundingClientRect().top
+        const viewport = row.closest("[data-conversation-viewport]")!
+        const button = [...document.querySelectorAll("button")].find(
+          (button) => button.textContent === "Load earlier messages",
+        )!
+        button.click()
+        const samples = []
+        let settled = 0
+        for (let frame = 0; frame < 600 && settled < 20; frame++) {
+          await new Promise(requestAnimationFrame)
+          settled = button.disabled ? 0 : settled + 1
+          samples.push({
+            connected: answer.isConnected,
+            drift: row.getBoundingClientRect().top - top,
+            loads: viewport.querySelectorAll('[data-row-kind="load"]').length,
+            pending: button.disabled,
+          })
+        }
+        return samples
+      })
+      const timeline = (await (await timelineResponse).json()) as SessionTimelinePage
+      expect(timeline.items.length).toBeGreaterThan(0)
+      expect(summaryReads).toBeGreaterThan(0)
+      expect(samples.some((sample) => sample.pending)).toBe(true)
+      expect(samples.at(-1)?.pending).toBe(false)
+      expect(
+        samples.every((sample) => sample.connected),
+        JSON.stringify(samples),
+      ).toBe(true)
+      expect(Math.max(...samples.map((sample) => Math.abs(sample.drift)))).toBeLessThanOrEqual(1)
+      expect(Math.max(...samples.map((sample) => sample.loads))).toBe(0)
+      expect(bodyReads).toBe(0)
+      await page.getByRole("button", { name: "Load earlier messages", exact: true }).waitFor()
+    } finally {
+      await browser.close()
+    }
+  }, 60000)
+
+  test("cold navigation keeps the target shell operable through preparation and warms the original transcript", async () => {
+    const target = await importPreviewConversation(preview, { title: "Cold navigation target", turns: 2 })
+    const browser = await chromium.launch({ headless: true })
+    const preparation = Promise.withResolvers<void>()
+    const history = Promise.withResolvers<void>()
+    const preparing = Promise.withResolvers<void>()
+    const loading = Promise.withResolvers<void>()
+    let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
+    try {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
+      page.setDefaultTimeout(20000)
+      diagnostics = await openPluginPreviewPage(preview, page)
+      await page.goto(conversation.url)
+      const active = page.locator("[data-session-resident]:not([hidden])")
+      await active.getByText("Answer 360", { exact: true }).waitFor()
+      const original = await active.locator("[data-conversation-viewport]").elementHandle()
+      await page.route(`**/global/storage/upgrade/sessions/${target.id}/prepare`, async (route) => {
+        preparing.resolve()
+        await preparation.promise
+        await route.continue()
+      })
+      await page.route(`**/session/${target.id}/timeline/page*`, async (route) => {
+        loading.resolve()
+        await history.promise
+        await route.continue()
+      })
+      await page.getByRole("button", { name: "Cold navigation target", exact: true }).click()
+      await preparing.promise
+      expect(await active.getByText("Answer 360", { exact: true }).count()).toBe(0)
+      expect(await page.locator("[data-conversation-retained]").count()).toBe(0)
+      expect(await active.evaluate((el) => (el as HTMLElement).inert)).toBe(false)
+      expect(await page.getByRole("textbox").first().isVisible()).toBe(true)
+      preparation.resolve()
+      await loading.promise
+      const admission = page.evaluate(async () => {
+        const frames: Array<{ opacity: number; inert: boolean; introduction: boolean; text: string }> = []
+        for (let index = 0; index < 600; index++) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+          const current = document.querySelector<HTMLElement>("[data-session-resident]:not([hidden])")!
+          const viewport = current.querySelector<HTMLElement>("[data-conversation-viewport]")
+          frames.push({
+            opacity:
+              Number(getComputedStyle(current).opacity) * (viewport ? Number(getComputedStyle(viewport).opacity) : 1),
+            inert: current.inert,
+            introduction: !!current.querySelector("[data-session-new]"),
+            text: current.textContent ?? "",
+          })
+          if (frames.at(-1)!.text.includes("Answer 2") && viewport?.dataset.ready === "true") break
+        }
+        return frames
+      })
+      history.resolve()
+      const frames = await admission
+      expect(frames.length).toBeLessThan(600)
+      expect(frames.every((frame) => frame.opacity === 1 && !frame.inert && !frame.introduction)).toBe(true)
+      expect(frames.at(-1)!.text).toContain("Answer 2")
+      await page.getByRole("button", { name: "History fixture", exact: true }).click()
+      await active.getByText("Answer 360", { exact: true }).waitFor()
+      expect(
+        await active.locator("[data-conversation-viewport]").evaluate((el, original) => el === original, original),
+      ).toBe(true)
+      expect(diagnostics.errors.map((error) => error.message)).toEqual([])
+    } finally {
+      preparation.resolve()
+      history.resolve()
+      diagnostics?.dispose()
+      await browser.close()
+    }
+  }, 60000)
+
+  test("cold body hydration keeps the latest footer pinned through delayed Markdown and warm return", async () => {
+    const target = await importPreviewConversation(preview, {
+      title: "Delayed Markdown fixture",
+      turns: 24,
+      answer: (turn) =>
+        `## Answer ${turn}\n\n` +
+        "A paragraph with **emphasis**, `code` and a [reference](https://example.com).\n\n".repeat(
+          turn === 24 ? 500 : 8,
+        ),
+    })
+    const browser = await chromium.launch({ headless: true })
+    const bodies = Promise.withResolvers<void>()
+    let bodyReads = 0
+    let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
+    try {
+      const page = await browser.newPage({ viewport: { width: 1100, height: 950 } })
+      page.setDefaultTimeout(20000)
+      diagnostics = await openPluginPreviewPage({ ...preview, url: conversation.url }, page)
+      const active = page.locator("[data-session-resident]:not([hidden])")
+      await active.getByText("Answer 360", { exact: true }).waitFor()
+      await page.route(`**/session/${target.id}/message/**/part/**/content*`, async (route) => {
+        bodyReads++
+        const response = await route.fetch()
+        await bodies.promise
+        await route.fulfill({ response })
+      })
+      type Frame = { y: number; opacity: number; key: string | undefined; text: boolean }
+      await page.evaluate(
+        ({ sessionID, rootID, messageID }) => {
+          const state = { frames: [] as Frame[], done: false }
+          Object.assign(window, { coldFrames: state })
+          let attempts = 0
+          const sample = () => {
+            const current = document.querySelector<HTMLElement>("[data-session-resident]:not([hidden])")
+            const viewport = current?.querySelector<HTMLElement>("[data-conversation-viewport]")
+            const footer = current?.querySelector<HTMLElement>(`[data-display-row="${rootID}:footer"]`)
+            const motion = current?.querySelector<HTMLElement>("[data-conversation-motion]")
+            if (
+              current?.dataset.sessionResident?.includes(sessionID) &&
+              viewport &&
+              footer &&
+              motion &&
+              (state.frames.length || Math.abs(viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop) < 2)
+            ) {
+              state.frames.push({
+                y: footer.getBoundingClientRect().bottom - viewport.getBoundingClientRect().bottom,
+                opacity: Number(getComputedStyle(motion).opacity),
+                key: footer.dataset.displayRow,
+                text: !!current.querySelector(`[data-message-id="${messageID}"] [data-component="text-part"]`)
+                  ?.textContent,
+              })
+            }
+            if (state.frames.length < 240 && ++attempts < 1200) requestAnimationFrame(sample)
+            else state.done = true
+          }
+          requestAnimationFrame(sample)
+        },
+        { sessionID: target.id, rootID: target.messages.at(-2)!.info.id, messageID: target.messages.at(-1)!.info.id },
+      )
+      await page.getByRole("button", { name: "Delayed Markdown fixture", exact: true }).click()
+      await page.waitForURL(target.url)
+      await active.locator('[data-conversation-viewport][data-ready="true"]').waitFor()
+      expect(await page.getByRole("textbox").first().isEditable()).toBe(true)
+      await page.waitForTimeout(80)
+      bodies.resolve()
+      await page.waitForFunction(() => (window as unknown as { coldFrames: { done: boolean } }).coldFrames.done)
+      const frames = await page.evaluate(
+        () => (window as unknown as { coldFrames: { frames: Frame[] } }).coldFrames.frames,
+      )
+      expect(bodyReads).toBeGreaterThan(0)
+      expect(frames.length).toBeGreaterThan(120)
+      expect(new Set(frames.map((frame) => frame.key)).size).toBe(1)
+      const positions = frames.map((frame) => frame.y)
+      expect(Math.max(...positions) - Math.min(...positions), JSON.stringify(frames.slice(0, 60))).toBeLessThan(2)
+      expect(
+        frames.every((frame) => frame.opacity === 1),
+        JSON.stringify(frames.filter((frame) => frame.opacity !== 1).slice(0, 20)),
+      ).toBe(true)
+      expect(frames.some((frame) => !frame.text)).toBe(true)
+      expect(frames.at(-1)!.text).toBe(true)
+      const viewport = await active.locator("[data-conversation-viewport]").elementHandle()
+      await page.getByRole("button", { name: "History fixture", exact: true }).click()
+      await active.getByText("Answer 360", { exact: true }).waitFor()
+      await page.getByRole("button", { name: "Delayed Markdown fixture", exact: true }).click()
+      expect(await active.locator("[data-conversation-viewport]").evaluate((el, saved) => el === saved, viewport)).toBe(
+        true,
+      )
+      expect(diagnostics.errors.map((error) => error.message)).toEqual([])
+    } finally {
+      bodies.resolve()
+      diagnostics?.dispose()
+      await browser.close()
+    }
+  }, 60000)
+
   test("an existing Home session never becomes a new-task greeting while history is pending", async () => {
     const browser = await chromium.launch({ headless: true })
     let release = () => {}
@@ -227,10 +507,11 @@ describe("production conversation history", () => {
       await page.evaluate(
         () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
       )
-      expect(await page.locator(".session-empty-view").count()).toBe(0)
+      expect(await page.locator(".session-empty-view:visible").count()).toBe(0)
+      expect(await page.getByRole("heading", { name: "Bring your ideas to life.", exact: true }).count()).toBe(0)
       expect(await page.getByRole("heading", { name: "What would you like to work on?", exact: true }).count()).toBe(0)
       release()
-      await page.locator('[data-conversation-viewport][aria-hidden="false"]').waitFor()
+      await page.getByText("Answer 360", { exact: true }).waitFor()
       const empty = (
         await preview.client.session.create(
           { scopeID: "home", title: "Empty existing session" },
@@ -240,7 +521,8 @@ describe("production conversation history", () => {
       await page.getByRole("button", { name: "Empty existing session", exact: true }).click()
       await page.waitForURL(`**/session/${empty.id}`)
       await page.getByText("No messages yet", { exact: true }).waitFor()
-      expect(await page.locator(".session-empty-view").count()).toBe(0)
+      expect(await page.locator(".session-empty-view:visible").count()).toBe(0)
+      expect(await page.getByRole("heading", { name: "Bring your ideas to life.", exact: true }).count()).toBe(0)
       expect(diagnostics.errors.map((error) => error.message)).toEqual([])
     } finally {
       release()

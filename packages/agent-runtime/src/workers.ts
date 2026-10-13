@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
-import { registerHarness, type RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
+import { registerHarness, RuntimeComponents, type RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { registerAgentWorkerEntrypoint } from "@ericsanchezok/synergy-harness/session/agent-turn/process-host"
 import { registerPolicyWorkerEntrypoint } from "@ericsanchezok/synergy-harness/enforcement/policy-worker/process-host"
 
@@ -56,6 +56,7 @@ export async function registerWorkerComponents(role: "agent" | "policy") {
       throw new Error(`Worker component has no registrar: ${component.id}`)
     module.registerWorker()
   }
+  RuntimeComponents.registerSelection(plan[role].map(({ id, version }) => ({ id, version, apiVersion: 1 })))
   ConfigExtensions.completeRegistration()
   ConfigExtensions.lock()
   RuntimeContext.sealComposition()

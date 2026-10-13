@@ -1,3 +1,4 @@
+import { toolFeatureAvailable, toolRequiredFeatures } from "@ericsanchezok/synergy-ui/tool-result-presentation"
 import { useGlobalSDK } from "./global-sdk"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { catalogFileWorkspace } from "./file/workspace"
@@ -7,7 +8,7 @@ import { usePlatform } from "./platform"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { usePluginHost } from "@/plugin/host"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { toolReviewSource } from "./tool-review-target"
 import { createEffect, createSignal, lazy, Suspense, onCleanup, onMount, type ParentProps } from "solid-js"
 import { useLingui } from "@lingui/solid"
@@ -128,6 +129,7 @@ export function ResourceOpenProvider(props: ParentProps) {
   }>()
   createEffect(() => {
     ownerKey()
+    globalSDK.capabilities.current()
     pending?.abort()
     resourceRequest?.abort()
     setResourceSelection(undefined)
@@ -202,19 +204,35 @@ export function ResourceOpenProvider(props: ParentProps) {
     return true
   }
 
-  const openActivityDetail = (target: ActivityDetailTarget) => {
+  const openActivityDetail = (target: ActivityDetailTarget, part?: ToolPart) => {
+    const resolved =
+      part ??
+      (target.kind === "tool"
+        ? (canonicalView
+            .partsFor(target.messageID)
+            .find((value) => value.id === target.partID && value.type === "tool") as ToolPart | undefined)
+        : undefined)
+    if (resolved && !toolFeatureAvailable(resolved, globalSDK.capabilities.has)) return false
     if (params.id !== target.sessionID) return false
     pending?.abort()
     setResourceSelection(undefined)
     void workbench.openPanel("execution-detail", {
       reuseExisting: true,
-      init: { state: { server: sdk.url, scope: sdk.scopeKey, ...target } },
+      init: {
+        state: {
+          server: sdk.url,
+          scope: sdk.scopeKey,
+          ...target,
+          ...(resolved ? { requiredFeatures: toolRequiredFeatures(resolved) } : {}),
+        },
+      },
     })
     return true
   }
   const openToolActivity = (target: ToolActivityTarget, part?: ToolPart) => {
-    if (params.id !== target.sessionID) return false
-    if (part && !supportsToolResource(part.tool)) return openActivityDetail({ ...target, kind: "tool" })
+    if (params.id !== target.sessionID || (part && !toolFeatureAvailable(part, globalSDK.capabilities.has)))
+      return false
+    if (part && !supportsToolResource(part.tool)) return openActivityDetail({ ...target, kind: "tool" }, part)
     pending?.abort()
     const request = new AbortController()
     pending = request
@@ -236,8 +254,8 @@ export function ResourceOpenProvider(props: ParentProps) {
       value.messageID === target.messageID &&
       value.sessionID === target.sessionID &&
       (!target.callID || value.callID === target.callID)
-    const fallback = () => {
-      if (current()) openActivityDetail({ ...target, kind: "tool" })
+    const fallback = (value?: ToolPart) => {
+      if (current()) openActivityDetail({ ...target, kind: "tool" }, value)
     }
     void (async () => {
       try {
@@ -252,7 +270,8 @@ export function ResourceOpenProvider(props: ParentProps) {
           value = result.data?.part
           resource = value && matches(value) ? toolResourceTarget(value) : undefined
         }
-        if (!resource || !workbench.getPanel(resource.panelId)) return fallback()
+        if (value && !toolFeatureAvailable(value, globalSDK.capabilities.has)) return
+        if (!resource || !workbench.getPanel(resource.panelId)) return fallback(value)
         let source = resource.source
         if (resource.panelId === "notes") {
           const groups = await Promise.all(
@@ -271,7 +290,7 @@ export function ResourceOpenProvider(props: ParentProps) {
               .filter((group) => group.notes.some((note) => note.id === resource!.resourceId))
               .map((group) => group.scopeID),
           )
-          if (scopes.size !== 1) return fallback()
+          if (scopes.size !== 1) return fallback(value)
           source = [...scopes][0]
           const existing = side
             .tabs()
@@ -297,7 +316,7 @@ export function ResourceOpenProvider(props: ParentProps) {
           canCommit: current,
           init: { resourceId: resource.resourceId, ...(source ? { source } : {}) },
         })
-        if (!tab) return fallback()
+        if (!tab) return fallback(value)
         if (
           request.signal.aborted ||
           ownerKey() !== owner ||
@@ -313,7 +332,7 @@ export function ResourceOpenProvider(props: ParentProps) {
         })
         workbench.activateTab("side", tab.id)
       } catch {
-        fallback()
+        fallback(part)
       }
     })()
     return true

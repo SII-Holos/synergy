@@ -6,6 +6,8 @@ import { build, preview, type PreviewServer } from "vite"
 import solid from "vite-plugin-solid"
 
 type Fixture = {
+  features(features: string[] | undefined): void
+  required(features: string[]): void
   event(kind: "agent-delivery" | "compaction", messageID?: string): void
   child(taskID: string, value: string, mode?: "summary" | "final_response" | "structured"): void
   resolveEvent(index: number, text: string, state?: "running" | "committed" | "failed", mechanical?: boolean): void
@@ -61,6 +63,7 @@ beforeAll(async () => {
     const [owner,setOwner]=createStore({server:"server-a",scope:"scope-a",sessionID:"session"})
     const [state,setState]=createSignal({...owner,messageID:"message",partID:"part-a",callID:"call-part-a"})
     const [open,setOpen]=createSignal(true)
+    const [selection,setSelection]=createSignal({features:["note","blueprint","media"]})
     const requests=[]
     let activityListener
     let resultUnmounts=0
@@ -69,6 +72,8 @@ beforeAll(async () => {
     const [eventLive,setEventLive]=createSignal()
     configureClipboard({writer(text){copied=text}})
     const h=window.fixture={state,open,
+      features:features=>setSelection(features ? {features} : undefined),
+      required:requiredFeatures=>setState({...state(),requiredFeatures}),
       event(kind,messageID="event"){setState({...owner,kind,messageID})},
       child(taskID,value,mode="final_response"){child={taskID,parentSessionID:owner.sessionID,status:"completed",startedAt:1,completedAt:146001,output:{mode,value}}},
       resolveEvent(index,text,status="committed",mechanical=false){
@@ -88,6 +93,7 @@ beforeAll(async () => {
       close(){setOpen(false)},facts(){return {requests:requests.length,aborted:requests.map(request=>request.signal.aborted),resultUnmounts,copied}}
     }
     export {h}
+    export const useGlobalSDK=()=>({capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false}})
     export const useSDK=()=>({get url(){return owner.server},get scopeKey(){return owner.scope},event:{on(type,listener){activityListener=listener;return()=>{activityListener=undefined}}},client:{session:{message:async(target,options)=>new Promise((resolve,reject)=>requests.push({...target,kind:state().kind,signal:options.signal,resolve,reject})),get:async()=>({data:{cortex:child}}),toolActivity:async(target,options)=>new Promise((resolve,reject)=>requests.push({...target,partID:state().partID,signal:options.signal,resolve,reject}))}}})
     export const useParams=()=>({get id(){return owner.sessionID}})
     export const useSessionDataView=()=>()=>({messagesFor:()=>eventLive()?[eventLive()]:[],partsFor:()=>[]})
@@ -138,6 +144,7 @@ beforeAll(async () => {
           ["@", appSrc],
           ...[
             "@/context/sdk",
+            "@/context/global-sdk",
             "@/context/session-data-view",
             "@/context/workbench",
             "@ericsanchezok/synergy-ui/context/data",
@@ -861,3 +868,45 @@ test("mechanical compaction retains a readable summary and puts its limitation i
   await page.keyboard.press("Home")
   await page.getByRole("heading", { name: "Preserved context", exact: true }).waitFor()
 }, 30000)
+
+test("a restored owner-specific execution detail silently hides and stops reads when its owner disappears", async () => {
+  await page.goto(base)
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 1)
+  await page.evaluate(() =>
+    (window as unknown as { fixture: Fixture }).fixture.resolve(0, '{"control":"private-note"}', {
+      kind: "object",
+      text: '{"control":"private-note"}',
+      tool: "note_read",
+    }),
+  )
+  await page.locator('[data-component="execution-detail"]').waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features([]))
+  await page.waitForTimeout(30)
+  expect(await page.locator('[data-component="execution-detail"]').count()).toBe(0)
+  expect(await page.getByText("private-note", { exact: false }).count()).toBe(0)
+  expect((await inspect()).requests).toBe(1)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.activity(2))
+  expect((await inspect()).requests).toBe(1)
+})
+
+test("old execution replies cannot restore details across a same-URL feature epoch", async () => {
+  await page.goto(base)
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 1)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features(undefined))
+  await page.waitForTimeout(30)
+  expect((await inspect()).aborted).toEqual([true])
+  await page.evaluate(() =>
+    (window as unknown as { fixture: Fixture }).fixture.resolve(0, "Old private output", {
+      kind: "object",
+      text: "Old private output",
+      tool: "note_read",
+    }),
+  )
+  expect(await page.getByText("Old private output", { exact: false }).count()).toBe(0)
+  await page.evaluate(() => {
+    const f = (window as unknown as { fixture: Fixture }).fixture
+    f.required(["note"])
+    f.features([])
+  })
+  expect((await inspect()).requests).toBe(1)
+})

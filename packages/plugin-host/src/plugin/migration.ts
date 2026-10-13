@@ -1,4 +1,5 @@
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { configMigrations } from "../config-migration"
 import { writeLocalRegistry } from "./local-registry-store"
 import * as Lockfile from "./lockfile"
 import { writeApprovals } from "./consent/approval-store"
@@ -225,4 +226,5 @@ function pathToFileSpec(directory: string) {
 
 export function registerPluginMigrations() {
   MigrationRegistry.register("plugin_catalog", migrations)
+  MigrationRegistry.register("plugin-config", configMigrations)
 }

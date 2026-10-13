@@ -61,7 +61,6 @@ export const LibraryShowCommand = cmd({
     }
 
     // Autonomy
-    prompts.log.info(`Autonomy: ${library.autonomy ?? "not set (default: true)"}`)
 
     prompts.outro("Done")
   },

@@ -117,17 +117,17 @@ test("shrinking content compensates native scroll clamping before the resize del
   expect(Math.abs(result.after - result.before)).toBeLessThan(1)
 })
 
-test("distant latest navigation exposes the destination without sliding an empty viewport", async () => {
+test.each(["growth", "navigation"])("distant %s keeps the destination visible and fully opaque", async (mode) => {
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await page.goto(server.url.href)
   await page.waitForFunction(() => !!(window as unknown as { motion: unknown }).motion)
-  const result = await page.evaluate(() => {
+  const result = await page.evaluate((mode) => {
     const viewport = document.querySelector<HTMLElement>("#viewport")!
     const target = document.querySelector<HTMLElement>("#target")!
     const anchor = document.querySelector<HTMLElement>("#anchor")!
     target.style.height = "3000px"
     anchor.style.paddingTop = "2960px"
-    viewport.scrollTop = 0
+    if (mode === "navigation") viewport.scrollTop = 0
     ;(window as unknown as { motion: { move(v: HTMLElement, top: number, animate: boolean): void } }).motion.move(
       viewport,
       viewport.scrollHeight,
@@ -141,8 +141,8 @@ test("distant latest navigation exposes the destination without sliding an empty
       bottom: viewport.getBoundingClientRect().bottom,
       opacity: Number(getComputedStyle(target).opacity),
     }
-  })
+  }, mode)
   expect(result.text).toBeGreaterThanOrEqual(result.top)
   expect(result.text).toBeLessThan(result.bottom)
-  expect(result.opacity).toBeGreaterThanOrEqual(0.6)
+  expect(result.opacity).toBe(1)
 })

@@ -7,6 +7,14 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 // These `mock.module`-heavy suites stub the same context modules under the same
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
+  "test/components/session/retained-session-views.dom.test.ts",
+  "test/components/workspace/browser/native-browser-lifecycle.dom.test.ts",
+  "test/context/workbench/updates.dom.test.ts",
+  "test/context/workbench/residency-capabilities.dom.test.ts",
+  "test/plugin/host-capabilities.dom.test.ts",
+  "test/context/global-sync-lifecycle.dom.test.ts",
+  "test/context/sync-history-transition.dom.test.ts",
+  "test/testing/focus-presentation.browser.test.ts",
   "test/context/render-confirmation.browser.test.ts",
   "test/context/global-sync-memory.browser.test.ts",
   "test/context/tool-resource-open.dom.test.ts",
@@ -59,12 +67,14 @@ const playwrightIsolated = [
   "test/components/session/conversation-process-reading.dom.test.ts",
   "test/components/session/conversation-process-virtualization.dom.test.ts",
   "test/components/session/conversation-presentation.dom.test.ts",
+  "test/components/session/conversation-controls.dom.test.tsx",
   "test/components/session/conversation-process.dom.test.ts",
   "test/components/session/session-submission-status.dom.test.ts",
   "test/components/dialog/workspace-dialog.dom.test.ts",
   "test/components/dialog/directory-navigation.dom.test.ts",
   "test/components/dialog/directory-selection.dom.test.ts",
   "test/components/dialog/environment-dialog.dom.test.ts",
+  "test/components/dialog/project-capabilities.dom.test.ts",
   "test/components/dialog/file-entry-dialog.dom.test.ts",
   "test/context/file/workspace.dom.test.ts",
   "test/components/kanban/layout.dom.test.tsx",
@@ -138,6 +148,8 @@ export const testOptions = {
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/components/note/blueprint-loops.test.ts",
+    "test/components/settings/settings-resource.test.ts",
     "test/context/session-submission-view.test.ts",
     "test/components/workspace/browser/browser-import-target.test.ts",
     "test/components/execution/controls.render.test.ts",

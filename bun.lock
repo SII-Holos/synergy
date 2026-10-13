@@ -171,10 +171,30 @@
         "@agentclientprotocol/sdk": "0.5.1",
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
-        "@ericsanchezok/synergy-mcp": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "ai": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-mcp": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/agenda": {
+      "name": "@ericsanchezok/synergy-agenda",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "croner": "10.0.1",
+        "hono": "catalog:",
+        "hono-openapi": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -182,7 +202,50 @@
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
-        "@typescript/native-preview": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
+    "packages/agenda-blueprint": {
+      "name": "@ericsanchezok/synergy-agenda-blueprint",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-agenda": "workspace:*",
+        "@ericsanchezok/synergy-blueprint": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-note": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/agenda-light-loop": {
+      "name": "@ericsanchezok/synergy-agenda-light-loop",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-agenda": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-light-loop": "workspace:*",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
         "typescript": "catalog:",
       },
     },
@@ -202,6 +265,109 @@
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "@typescript/native-preview": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/anima": {
+      "name": "@ericsanchezok/synergy-anima",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-agenda": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-library": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-note": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "croner": "10.0.1",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
+    "packages/blueprint": {
+      "name": "@ericsanchezok/synergy-blueprint",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-note": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
+        "hono": "catalog:",
+        "hono-openapi": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
+    "packages/boss": {
+      "name": "@ericsanchezok/synergy-boss",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-agenda": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-library": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "hono": "catalog:",
+        "hono-openapi": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
+    "packages/boss-feishu": {
+      "name": "@ericsanchezok/synergy-boss-feishu",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-agenda": "workspace:*",
+        "@ericsanchezok/synergy-boss": "workspace:*",
+        "@ericsanchezok/synergy-channel-feishu": "workspace:*",
+        "@ericsanchezok/synergy-channels": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-library": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
         "typescript": "catalog:",
       },
     },
@@ -235,6 +401,174 @@
         "@types/node": "catalog:",
         "@typescript/native-preview": "7.0.0-dev.20251207.1",
         "playwright-core": "1.61.0",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
+    "packages/channel-blueprint": {
+      "name": "@ericsanchezok/synergy-channel-blueprint",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-blueprint": "workspace:*",
+        "@ericsanchezok/synergy-channels": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-note": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/channel-clarus": {
+      "name": "@ericsanchezok/synergy-channel-clarus",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-agenda": "workspace:*",
+        "@ericsanchezok/synergy-channels": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-holos": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
+        "@sii-holos/holos-cli": "0.1.1",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-channel-feishu": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
+    "packages/channel-feishu": {
+      "name": "@ericsanchezok/synergy-channel-feishu",
+      "version": "1.1.26",
+      "dependencies": {
+        "@clack/prompts": "1.0.0-alpha.1",
+        "@ericsanchezok/synergy-channels": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
+        "@larksuiteoapi/node-sdk": "1.71.1",
+        "@resvg/resvg-wasm": "2.6.2",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
+    "packages/channel-github": {
+      "name": "@ericsanchezok/synergy-channel-github",
+      "version": "1.1.26",
+      "dependencies": {
+        "@clack/prompts": "1.0.0-alpha.1",
+        "@ericsanchezok/synergy-channels": "workspace:*",
+        "@ericsanchezok/synergy-github": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
+    "packages/channel-lattice": {
+      "name": "@ericsanchezok/synergy-channel-lattice",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-channels": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-lattice": "workspace:*",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-blueprint": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-note": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/channel-light-loop": {
+      "name": "@ericsanchezok/synergy-channel-light-loop",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-channels": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-light-loop": "workspace:*",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/channels": {
+      "name": "@ericsanchezok/synergy-channels",
+      "version": "1.1.26",
+      "dependencies": {
+        "@clack/prompts": "1.0.0-alpha.1",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
+        "hono": "catalog:",
+        "hono-openapi": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
         "typescript": "catalog:",
       },
       "peerDependencies": {
@@ -345,21 +679,45 @@
       "name": "@ericsanchezok/synergy-connections",
       "version": "1.1.26",
       "dependencies": {
-        "@clack/prompts": "1.0.0-alpha.1",
+        "@ericsanchezok/synergy-boss-feishu": "workspace:*",
+        "@ericsanchezok/synergy-channel-clarus": "workspace:*",
+        "@ericsanchezok/synergy-channel-feishu": "workspace:*",
+        "@ericsanchezok/synergy-channel-github": "workspace:*",
+        "@ericsanchezok/synergy-channels": "workspace:*",
+        "@ericsanchezok/synergy-email": "workspace:*",
+        "@ericsanchezok/synergy-github": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-holos": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-agenda": "workspace:*",
+        "@ericsanchezok/synergy-blueprint": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
+    "packages/email": {
+      "name": "@ericsanchezok/synergy-email",
+      "version": "1.1.26",
+      "dependencies": {
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
-        "@ericsanchezok/synergy-workflows": "workspace:*",
-        "@hono/standard-validator": "^0.2.0",
-        "@larksuiteoapi/node-sdk": "1.71.1",
-        "@resvg/resvg-wasm": "2.6.2",
-        "@sii-holos/holos-cli": "0.1.1",
-        "hono": "catalog:",
-        "hono-openapi": "catalog:",
         "imapflow": "1.3.2",
         "mailparser": "3.9.14",
         "nodemailer": "8.0.3",
-        "open": "10.1.2",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -423,6 +781,58 @@
         "@ericsanchezok/synergy-server",
       ],
     },
+    "packages/github": {
+      "name": "@ericsanchezok/synergy-github",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
+        "hono": "catalog:",
+        "hono-openapi": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
+    "packages/github-agenda": {
+      "name": "@ericsanchezok/synergy-github-agenda",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-agenda": "workspace:*",
+        "@ericsanchezok/synergy-github": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "hono": "catalog:",
+        "hono-openapi": "catalog:",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
     "packages/harness": {
       "name": "@ericsanchezok/synergy-harness",
       "version": "1.1.26",
@@ -456,6 +866,63 @@
         "typescript": "catalog:",
       },
     },
+    "packages/holos": {
+      "name": "@ericsanchezok/synergy-holos",
+      "version": "1.1.26",
+      "dependencies": {
+        "@clack/prompts": "1.0.0-alpha.1",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
+        "@sii-holos/holos-cli": "0.1.1",
+        "hono": "catalog:",
+        "hono-openapi": "catalog:",
+        "open": "10.1.2",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
+    "packages/lattice": {
+      "name": "@ericsanchezok/synergy-lattice",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-blueprint": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-note": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
+        "hono": "catalog:",
+        "hono-openapi": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
     "packages/library": {
       "name": "@ericsanchezok/synergy-library",
       "version": "1.1.26",
@@ -484,6 +951,31 @@
         "sqlite-vec-linux-arm64": "0.1.7-alpha.2",
         "sqlite-vec-linux-x64": "0.1.7-alpha.2",
         "sqlite-vec-windows-x64": "0.1.7-alpha.2",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "@ericsanchezok/synergy-server": "workspace:*",
+      },
+      "optionalPeers": [
+        "@ericsanchezok/synergy-server",
+      ],
+    },
+    "packages/light-loop": {
+      "name": "@ericsanchezok/synergy-light-loop",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "hono": "catalog:",
+        "hono-openapi": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
         "typescript": "catalog:",
       },
       "peerDependencies": {
@@ -662,6 +1154,7 @@
       },
       "devDependencies": {
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-testing": "workspace:*",
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
@@ -697,6 +1190,44 @@
         "zod": ">=4.0.0",
       },
     },
+    "packages/plugin-agenda": {
+      "name": "@ericsanchezok/synergy-plugin-agenda",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-agenda": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-plugin-host": "workspace:*",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/plugin-blueprint": {
+      "name": "@ericsanchezok/synergy-plugin-blueprint",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-blueprint": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-note": "workspace:*",
+        "@ericsanchezok/synergy-plugin": "workspace:*",
+        "@ericsanchezok/synergy-plugin-host": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+    },
     "packages/plugin-host": {
       "name": "@ericsanchezok/synergy-plugin-host",
       "version": "1.1.26",
@@ -710,6 +1241,7 @@
         "ajv": "8.18.0",
         "hono": "catalog:",
         "hono-openapi": "catalog:",
+        "remeda": "catalog:",
         "unzipper": "^0.12.3",
         "yargs": "18.0.0",
         "zod": "catalog:",
@@ -767,20 +1299,56 @@
         "zod": ">=4.0.0",
       },
     },
+    "packages/plugin-light-loop": {
+      "name": "@ericsanchezok/synergy-plugin-light-loop",
+      "version": "1.1.26",
+      "dependencies": {
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-light-loop": "workspace:*",
+        "@ericsanchezok/synergy-plugin-host": "workspace:*",
+      },
+      "devDependencies": {
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-testing": "workspace:*",
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "7.0.0-dev.20251207.1",
+        "typescript": "catalog:",
+      },
+    },
     "packages/presets": {
       "name": "@ericsanchezok/synergy-presets",
       "version": "1.1.26",
       "dependencies": {
         "@clack/prompts": "1.0.0-alpha.1",
         "@ericsanchezok/synergy-acp": "workspace:*",
+        "@ericsanchezok/synergy-agenda": "workspace:*",
+        "@ericsanchezok/synergy-agenda-blueprint": "workspace:*",
+        "@ericsanchezok/synergy-agenda-light-loop": "workspace:*",
         "@ericsanchezok/synergy-agent-runtime": "workspace:*",
+        "@ericsanchezok/synergy-anima": "workspace:*",
+        "@ericsanchezok/synergy-boss": "workspace:*",
+        "@ericsanchezok/synergy-boss-feishu": "workspace:*",
+        "@ericsanchezok/synergy-browser-runtime": "workspace:*",
+        "@ericsanchezok/synergy-channel-blueprint": "workspace:*",
+        "@ericsanchezok/synergy-channel-clarus": "workspace:*",
+        "@ericsanchezok/synergy-channel-feishu": "workspace:*",
+        "@ericsanchezok/synergy-channel-github": "workspace:*",
+        "@ericsanchezok/synergy-channel-lattice": "workspace:*",
+        "@ericsanchezok/synergy-channel-light-loop": "workspace:*",
+        "@ericsanchezok/synergy-channels": "workspace:*",
         "@ericsanchezok/synergy-cli": "workspace:*",
         "@ericsanchezok/synergy-code-tools": "workspace:*",
         "@ericsanchezok/synergy-computer-runtime": "workspace:*",
         "@ericsanchezok/synergy-connections": "workspace:*",
+        "@ericsanchezok/synergy-email": "workspace:*",
         "@ericsanchezok/synergy-external-agents": "workspace:*",
         "@ericsanchezok/synergy-formatter": "workspace:*",
+        "@ericsanchezok/synergy-github": "workspace:*",
+        "@ericsanchezok/synergy-github-agenda": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-holos": "workspace:*",
         "@ericsanchezok/synergy-library": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-lsp": "workspace:*",
@@ -788,8 +1356,11 @@
         "@ericsanchezok/synergy-media": "workspace:*",
         "@ericsanchezok/synergy-note": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",
+        "@ericsanchezok/synergy-plugin-agenda": "workspace:*",
+        "@ericsanchezok/synergy-plugin-blueprint": "workspace:*",
         "@ericsanchezok/synergy-plugin-host": "workspace:*",
         "@ericsanchezok/synergy-plugin-kit": "workspace:*",
+        "@ericsanchezok/synergy-plugin-light-loop": "workspace:*",
         "@ericsanchezok/synergy-server": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@ericsanchezok/synergy-workbench": "workspace:*",
@@ -800,7 +1371,10 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@ericsanchezok/synergy-browser-runtime": "workspace:*",
+        "@ericsanchezok/synergy-blueprint": "workspace:*",
+        "@ericsanchezok/synergy-lattice": "workspace:*",
+        "@ericsanchezok/synergy-light-loop": "workspace:*",
+        "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-testing": "workspace:*",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@tsconfig/bun": "catalog:",
@@ -810,7 +1384,6 @@
         "@typescript/native-preview": "7.0.0-dev.20251207.1",
         "@zip.js/zip.js": "2.8.26",
         "ai": "catalog:",
-        "croner": "10.0.1",
         "jsonc-parser": "3.3.1",
         "playwright-core": "1.61.0",
         "remeda": "catalog:",
@@ -973,11 +1546,8 @@
       "name": "@ericsanchezok/synergy-workbench",
       "version": "1.1.26",
       "dependencies": {
-        "@ericsanchezok/synergy-browser-runtime": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
-        "@ericsanchezok/synergy-mcp": "workspace:*",
-        "@ericsanchezok/synergy-plugin-host": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@hono/standard-validator": "^0.2.0",
         "hono": "catalog:",
@@ -1007,20 +1577,24 @@
       "name": "@ericsanchezok/synergy-workflows",
       "version": "1.1.26",
       "dependencies": {
+        "@ericsanchezok/synergy-agenda": "workspace:*",
+        "@ericsanchezok/synergy-agenda-blueprint": "workspace:*",
+        "@ericsanchezok/synergy-agenda-light-loop": "workspace:*",
+        "@ericsanchezok/synergy-anima": "workspace:*",
+        "@ericsanchezok/synergy-blueprint": "workspace:*",
+        "@ericsanchezok/synergy-boss": "workspace:*",
+        "@ericsanchezok/synergy-github-agenda": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
-        "@ericsanchezok/synergy-library": "workspace:*",
-        "@ericsanchezok/synergy-local-runtime": "workspace:*",
-        "@ericsanchezok/synergy-note": "workspace:*",
-        "@ericsanchezok/synergy-plugin": "workspace:*",
-        "@ericsanchezok/synergy-plugin-host": "workspace:*",
-        "@ericsanchezok/synergy-util": "workspace:*",
-        "@hono/standard-validator": "^0.2.0",
-        "croner": "10.0.1",
-        "hono": "catalog:",
-        "hono-openapi": "catalog:",
+        "@ericsanchezok/synergy-lattice": "workspace:*",
+        "@ericsanchezok/synergy-light-loop": "workspace:*",
+        "@ericsanchezok/synergy-plugin-blueprint": "workspace:*",
+        "@ericsanchezok/synergy-plugin-light-loop": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@ericsanchezok/synergy-library": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
+        "@ericsanchezok/synergy-note": "workspace:*",
         "@ericsanchezok/synergy-testing": "workspace:*",
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
@@ -1297,15 +1871,43 @@
 
     "@ericsanchezok/synergy-acp": ["@ericsanchezok/synergy-acp@workspace:packages/acp"],
 
+    "@ericsanchezok/synergy-agenda": ["@ericsanchezok/synergy-agenda@workspace:packages/agenda"],
+
+    "@ericsanchezok/synergy-agenda-blueprint": ["@ericsanchezok/synergy-agenda-blueprint@workspace:packages/agenda-blueprint"],
+
+    "@ericsanchezok/synergy-agenda-light-loop": ["@ericsanchezok/synergy-agenda-light-loop@workspace:packages/agenda-light-loop"],
+
     "@ericsanchezok/synergy-agent-runtime": ["@ericsanchezok/synergy-agent-runtime@workspace:packages/agent-runtime"],
+
+    "@ericsanchezok/synergy-anima": ["@ericsanchezok/synergy-anima@workspace:packages/anima"],
 
     "@ericsanchezok/synergy-app": ["@ericsanchezok/synergy-app@workspace:apps/web"],
 
     "@ericsanchezok/synergy-benchmark": ["@ericsanchezok/synergy-benchmark@workspace:benchmark"],
 
+    "@ericsanchezok/synergy-blueprint": ["@ericsanchezok/synergy-blueprint@workspace:packages/blueprint"],
+
+    "@ericsanchezok/synergy-boss": ["@ericsanchezok/synergy-boss@workspace:packages/boss"],
+
+    "@ericsanchezok/synergy-boss-feishu": ["@ericsanchezok/synergy-boss-feishu@workspace:packages/boss-feishu"],
+
     "@ericsanchezok/synergy-browser-core": ["@ericsanchezok/synergy-browser-core@workspace:packages/browser-core"],
 
     "@ericsanchezok/synergy-browser-runtime": ["@ericsanchezok/synergy-browser-runtime@workspace:packages/browser-runtime"],
+
+    "@ericsanchezok/synergy-channel-blueprint": ["@ericsanchezok/synergy-channel-blueprint@workspace:packages/channel-blueprint"],
+
+    "@ericsanchezok/synergy-channel-clarus": ["@ericsanchezok/synergy-channel-clarus@workspace:packages/channel-clarus"],
+
+    "@ericsanchezok/synergy-channel-feishu": ["@ericsanchezok/synergy-channel-feishu@workspace:packages/channel-feishu"],
+
+    "@ericsanchezok/synergy-channel-github": ["@ericsanchezok/synergy-channel-github@workspace:packages/channel-github"],
+
+    "@ericsanchezok/synergy-channel-lattice": ["@ericsanchezok/synergy-channel-lattice@workspace:packages/channel-lattice"],
+
+    "@ericsanchezok/synergy-channel-light-loop": ["@ericsanchezok/synergy-channel-light-loop@workspace:packages/channel-light-loop"],
+
+    "@ericsanchezok/synergy-channels": ["@ericsanchezok/synergy-channels@workspace:packages/channels"],
 
     "@ericsanchezok/synergy-cli": ["@ericsanchezok/synergy-cli@workspace:packages/cli"],
 
@@ -1319,13 +1921,25 @@
 
     "@ericsanchezok/synergy-desktop": ["@ericsanchezok/synergy-desktop@workspace:apps/desktop"],
 
+    "@ericsanchezok/synergy-email": ["@ericsanchezok/synergy-email@workspace:packages/email"],
+
     "@ericsanchezok/synergy-external-agents": ["@ericsanchezok/synergy-external-agents@workspace:packages/external-agents"],
 
     "@ericsanchezok/synergy-formatter": ["@ericsanchezok/synergy-formatter@workspace:packages/formatter"],
 
+    "@ericsanchezok/synergy-github": ["@ericsanchezok/synergy-github@workspace:packages/github"],
+
+    "@ericsanchezok/synergy-github-agenda": ["@ericsanchezok/synergy-github-agenda@workspace:packages/github-agenda"],
+
     "@ericsanchezok/synergy-harness": ["@ericsanchezok/synergy-harness@workspace:packages/harness"],
 
+    "@ericsanchezok/synergy-holos": ["@ericsanchezok/synergy-holos@workspace:packages/holos"],
+
+    "@ericsanchezok/synergy-lattice": ["@ericsanchezok/synergy-lattice@workspace:packages/lattice"],
+
     "@ericsanchezok/synergy-library": ["@ericsanchezok/synergy-library@workspace:packages/library"],
+
+    "@ericsanchezok/synergy-light-loop": ["@ericsanchezok/synergy-light-loop@workspace:packages/light-loop"],
 
     "@ericsanchezok/synergy-local-runtime": ["@ericsanchezok/synergy-local-runtime@workspace:packages/local-runtime"],
 
@@ -1339,9 +1953,15 @@
 
     "@ericsanchezok/synergy-plugin": ["@ericsanchezok/synergy-plugin@workspace:packages/plugin"],
 
+    "@ericsanchezok/synergy-plugin-agenda": ["@ericsanchezok/synergy-plugin-agenda@workspace:packages/plugin-agenda"],
+
+    "@ericsanchezok/synergy-plugin-blueprint": ["@ericsanchezok/synergy-plugin-blueprint@workspace:packages/plugin-blueprint"],
+
     "@ericsanchezok/synergy-plugin-host": ["@ericsanchezok/synergy-plugin-host@workspace:packages/plugin-host"],
 
     "@ericsanchezok/synergy-plugin-kit": ["@ericsanchezok/synergy-plugin-kit@workspace:packages/plugin-kit"],
+
+    "@ericsanchezok/synergy-plugin-light-loop": ["@ericsanchezok/synergy-plugin-light-loop@workspace:packages/plugin-light-loop"],
 
     "@ericsanchezok/synergy-presets": ["@ericsanchezok/synergy-presets@workspace:packages/presets"],
 

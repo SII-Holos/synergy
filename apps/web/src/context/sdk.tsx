@@ -42,6 +42,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       event: emitter,
       url: globalSDK.url,
       connected: globalSDK.connected,
+      capabilities: globalSDK.capabilities,
     }
   },
 })

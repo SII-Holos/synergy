@@ -24,8 +24,6 @@ import { createResearchMethodologistAgent } from "./prompt/research-methodologis
 import { createResearchScoutAgent } from "./prompt/research-scout/builder"
 import { createRustQualityEngineerAgent } from "./prompt/rust-quality-engineer/builder"
 import { createSecurityReviewerAgent } from "./prompt/security-reviewer/builder"
-import { createSupervisorAgent } from "./prompt/supervisor/builder"
-import { createLightLoopReviewerAgent } from "./prompt/lightloop-reviewer/builder"
 import { createSessionHistorianAgent } from "./prompt/session-historian/builder"
 import { createSolutionArchitectAgent } from "./prompt/solution-architect/builder"
 import { createTestStrategistAgent } from "./prompt/test-strategist/builder"
@@ -62,8 +60,6 @@ const FACTORIES = [
   createResearchScoutAgent,
   createLiteratureSearcherAgent,
   createLiteratureAnalystAgent,
-  createSupervisorAgent,
-  createLightLoopReviewerAgent,
 ]
 export function createBuiltinMaxSubagents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
   const result: Record<string, Agent.Info> = {}

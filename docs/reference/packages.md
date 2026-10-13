@@ -24,6 +24,26 @@ Each optional package exports a factory from `./component`. Factories declare id
 
 Plugin Host owns plugin execution and installation. Plugin Kit is an explicit authoring dependency; the full preset selects its authoring commands through the same component adapter used by downstream hosts. Domain CLI modules use shared terminal/command primitives and Local Runtime's network/Scope adapters, without depending on the CLI application.
 
+## Workflow and connection capability packages
+
+| Packages                                                     | Required capability boundary                                                |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| `agenda`, `light-loop`                                       | Local Runtime; neither requires Note or Library                             |
+| `blueprint`, `lattice`                                       | Blueprint requires Note; Lattice requires Blueprint                         |
+| `boss`, `anima`                                              | Boss requires Agenda and Library; Anima additionally requires Note          |
+| `channels`, `github`, `holos`, `email`                       | Independent Local Runtime capabilities                                      |
+| `channel-feishu`, `channel-github`, `channel-clarus`         | Provider owners; GitHub requires GitHub, Clarus requires Holos and Agenda   |
+| `agenda-blueprint`, `agenda-light-loop`, `github-agenda`     | Explicit Agenda integrations requiring both named owners                    |
+| `plugin-agenda`, `plugin-blueprint`, `plugin-light-loop`     | Explicit Plugin Host services requiring Plugin Host and the named owner     |
+| `boss-feishu`                                                | Boss account routing, explicit replies and Feishu guidance                  |
+| `channel-blueprint`, `channel-light-loop`, `channel-lattice` | Explicit Channel command adapters requiring Channels and the named workflow |
+
+`workflowComponents()` and `connectionComponents()` are source assembly arrays. The `workflows` and `connections` installation names remain presets for the six and seven leaf capabilities respectively. They do not infer integrations from installed packages. Full composition explicitly selects all named bridges. The cross-domain Boss delivery builder lives at `@ericsanchezok/synergy-boss-feishu/prompt`.
+
+Moved subpaths backed by `workflows/src/compat/` and `connections/src/compat/`, including their configuration re-exports, are deprecated for the remainder of the 1.x series and scheduled for removal in 2.0.0. They only re-export the owning leaf without registration side effects. Consumers migrate to that leaf's public package export; new first-party imports use the leaf directly. The `workflows` and `connections` installation preset names remain supported independently of this import-path sunset.
+
+Worker entries register the same selected owner and integrations as the foreground Runtime. Package metadata, source requirements and the release catalog share the same dependency closure. Legacy installation selections are upgraded once to explicit leaves and bridges, preserving previously active capabilities; a new minimal selection uses only its declared requirements.
+
 ## Package builds
 
 Run `bun script/build-workspace.ts packages/harness` from the repository root to build its importable modules. `bun script/pack-workspace.ts packages/cli .artifacts/packages` builds and packs the CLI workspace dependency closure. Archives contain compiled module exports and normal dependency versions. Packing compiles the existing HTTP SDK without regenerating the complete product API; run the root generator explicitly after API changes. Core archives do not include optional Browser, Library, MCP or UI packages.

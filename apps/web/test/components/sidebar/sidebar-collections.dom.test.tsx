@@ -456,6 +456,26 @@ test("a core composition retains local navigation without optional channel surfa
   expect(errors).toEqual([])
 })
 
+test("signed-out account menus retain local settings with and without Holos", async () => {
+  for (const core of [false, true]) {
+    await open("?locale=en" + (core ? "&core=1" : ""))
+    await page
+      .locator(".sidebar-account-hub > button, .sidebar-account-hub button[aria-haspopup='menu']")
+      .first()
+      .click()
+    const menu = page.getByRole("menu").first()
+    await menu.waitFor({ state: "visible" })
+    for (const name of ["Settings", "Providers", "Repository"]) {
+      const item = menu.getByRole("menuitem", { name, exact: true })
+      expect(await item.isVisible()).toBe(true)
+      expect(await item.isEnabled()).toBe(true)
+    }
+    expect(await menu.getByRole("menuitem", { name: "Create Agent", exact: true }).count()).toBe(core ? 0 : 1)
+    expect(await menu.getByRole("menuitem", { name: "Import Agent", exact: true }).count()).toBe(core ? 0 : 1)
+    expect(errors).toEqual([])
+  }
+})
+
 test("tools precede tags and vertical categories while the list scrolls independently", async () => {
   await open()
   const before = await page.evaluate(() => {

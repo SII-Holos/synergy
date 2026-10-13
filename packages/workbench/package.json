@@ -42,11 +42,8 @@
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
-    "@ericsanchezok/synergy-browser-runtime": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
-    "@ericsanchezok/synergy-mcp": "workspace:*",
-    "@ericsanchezok/synergy-plugin-host": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@hono/standard-validator": "^0.2.0",
     "hono": "catalog:",

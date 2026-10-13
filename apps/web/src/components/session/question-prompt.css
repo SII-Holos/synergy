@@ -44,8 +44,7 @@
   }
   &:focus-visible,
   &:focus-within {
-    outline: 2px solid var(--border-interactive-base);
-    outline-offset: 2px;
+    background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
   }
   &:disabled,
   &:has(input:disabled) {

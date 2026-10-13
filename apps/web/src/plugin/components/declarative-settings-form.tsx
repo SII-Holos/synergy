@@ -14,7 +14,7 @@ export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
   const { _ } = useLingui()
   const [local, setLocal] = createSignal(props.values)
   const inputClass =
-    "workbench-input-surface w-full rounded-lg border border-border-base/40 bg-input-base px-3 py-2 text-14-regular text-text-strong outline-none transition-colors placeholder:text-text-weaker focus-visible:ring-2 focus-visible:ring-border-strong-base/25"
+    "workbench-input-surface w-full rounded-lg border border-border-base/40 bg-input-base px-3 py-2 text-14-regular text-text-strong outline-none transition-colors placeholder:text-text-weaker"
 
   createEffect(() => {
     setLocal(props.values)

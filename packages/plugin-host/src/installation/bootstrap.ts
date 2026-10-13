@@ -7,7 +7,7 @@ import { InstallationGenerations, type InstalledGeneration } from "./generations
 import { prepareInstallation } from "./manager"
 import { assertHarnessIdentity } from "./component-loader"
 import { seedInstalledCore, canSeedInstalledCore } from "./seed"
-import { initializeInstallationSelection } from "./selection"
+import { upgradeInstallationSelection } from "./selection"
 import { upgradeInstallationRoots, preservePluginActivation } from "./upgrade"
 
 export async function prepareInstalledLaunch(
@@ -30,14 +30,19 @@ export async function prepareInstalledLaunch(
   const minimum = generation?.minimumVersions["host:core"]
   if (options.version !== "local" && minimum && minimum !== "local" && Bun.semver.order(options.version, minimum) < 0)
     throw new Error(`This home requires Synergy ${minimum} or newer; upgrade the launcher before opening it`)
-  if (!generation || (!options.deferUpgrade && Bun.semver.order(options.version, generation.hostVersion) > 0)) {
+  const upgradedRoots = generation ? upgradeInstallationRoots(generation, options.version) : undefined
+  const legacySelection = generation && Object.keys(generation.roots).some((name) => !(name in upgradedRoots!))
+  if (
+    !generation ||
+    (!options.deferUpgrade && (legacySelection || Bun.semver.order(options.version, generation.hostVersion) > 0))
+  ) {
     const seed = options.seed ? await InstallationGenerations.readSeed(options.seed) : undefined
     if (seed && seed.hostVersion !== options.version)
       throw new Error("The bundled modules do not match the launcher version")
     const roots = generation
-      ? upgradeInstallationRoots(generation, options.version)
+      ? upgradedRoots!
       : Object.fromEntries(
-          (await initializeInstallationSelection(root, Object.keys(seed?.roots ?? {}))).map((name) => [
+          (await upgradeInstallationSelection(root, Object.keys(seed?.roots ?? {}))).map((name) => [
             name,
             options.version,
           ]),
@@ -48,7 +53,8 @@ export async function prepareInstalledLaunch(
     const hasActivation = Object.values(generation?.packages ?? {}).some(
       (pkg) => pkg.metadata?.kind === "plugin" || pkg.metadata?.kind === "app",
     )
-    if (cliDirectory && !hasActivation && (await canSeedInstalledCore(cliDirectory, roots))) {
+    const hasLock = !!(generation?.files["bun.lock"] || generation?.files["bun.lockb"])
+    if (cliDirectory && !hasActivation && !hasLock && (await canSeedInstalledCore(cliDirectory, roots))) {
       generation = await seedInstalledCore(root, cliDirectory, options.version, { roots, previous: generation?.id })
     } else {
       await using prepared = await prepareInstallation(root, {
@@ -57,6 +63,7 @@ export async function prepareInstalledLaunch(
         sources: Object.entries(roots)
           .filter(([name, spec]) => generation?.roots[name] !== spec)
           .map(([name, spec]) => `${name}@${spec}`),
+        remove: Object.keys(generation?.roots ?? {}).filter((name) => !(name in roots)),
       })
       await preservePluginActivation(prepared, options.version)
       await (

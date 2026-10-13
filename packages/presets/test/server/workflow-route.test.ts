@@ -5,12 +5,14 @@ import { Server } from "@ericsanchezok/synergy-server/server/server"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { WorkflowSessionService } from "@ericsanchezok/synergy-workflows/session/workflow"
-import { LightLoopRuntime } from "@ericsanchezok/synergy-workflows/light-loop/runtime"
+import { SessionWorkflowService } from "@ericsanchezok/synergy-harness/session/workflow"
+import { WorkflowSessionService as LightLoopSessionService } from "@ericsanchezok/synergy-light-loop/session/workflow"
+import { LightLoopRuntime } from "@ericsanchezok/synergy-light-loop/light-loop/runtime"
 // Product domains register workflow contributions via the L4 manifest
-import { LatticeRunService } from "@ericsanchezok/synergy-workflows/lattice/run-service"
-import { LatticeStore } from "@ericsanchezok/synergy-workflows/lattice/store"
-import { LatticeMachine } from "@ericsanchezok/synergy-workflows/lattice/machine"
-import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint/loop-store"
+import { LatticeRunService } from "@ericsanchezok/synergy-lattice/lattice/run-service"
+import { LatticeStore } from "@ericsanchezok/synergy-lattice/lattice/store"
+import { LatticeMachine } from "@ericsanchezok/synergy-lattice/lattice/machine"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint/loop-store"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -55,7 +57,7 @@ describe("workflow routes", () => {
       await withScope(async (scope) => {
         const session = await Session.create({})
         await WorkflowSessionService.startLightloop(session.id, "Original task")
-        const cancel = spyOn(WorkflowSessionService, "cancelLightloop").mockRejectedValueOnce(
+        const cancel = spyOn(LightLoopSessionService, "cancelLightloop").mockRejectedValueOnce(
           new Error("Cancel failed"),
         )
 
@@ -157,7 +159,7 @@ describe("workflow routes", () => {
     runtime.run(async () => {
       await withScope(async (scope) => {
         const session = await Session.create({})
-        const set = spyOn(WorkflowSessionService, "set").mockRejectedValueOnce(new Error("sensitive storage failure"))
+        const set = spyOn(SessionWorkflowService, "set").mockRejectedValueOnce(new Error("sensitive storage failure"))
 
         try {
           const response = await Server.App().request(`/workflow/session/${session.id}`, {

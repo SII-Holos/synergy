@@ -1,12 +1,14 @@
 import type { BlueprintLoopInfo } from "@ericsanchezok/synergy-sdk/client"
 import type { BlueprintSlot } from "./types"
+import { blueprintLoopFeatureAvailable } from "../note/blueprint-run-session"
 
 export type BlueprintSlotDisplay = {
   slot: BlueprintSlot
   mode: string
 }
 
-type DisplayLoop = Pick<BlueprintLoopInfo, "id" | "noteID" | "title" | "runMode" | "status">
+type DisplayLoop = Pick<BlueprintLoopInfo, "id" | "noteID" | "title" | "runMode" | "status"> &
+  Partial<Pick<BlueprintLoopInfo, "source">>
 
 const TERMINAL_BLUEPRINT_LOOP_STATUSES = new Set(["completed", "failed", "cancelled"])
 
@@ -18,8 +20,12 @@ export function resolveBlueprintSlotDisplay(input: {
   localSlot?: BlueprintSlot | null
   sessionLoop?: DisplayLoop | null
   activeLoopID?: string | null
+  hasFeature?: (id: string) => boolean
 }): BlueprintSlotDisplay | null {
+  const hasFeature = input.hasFeature ?? (() => true)
+  if (!hasFeature("blueprint")) return null
   if (input.localSlot) {
+    if (input.localSlot.type === "loop" && !blueprintLoopFeatureAvailable(input.localSlot, hasFeature)) return null
     return {
       slot: input.localSlot,
       mode: input.localSlot.type === "pending" ? "pending" : "armed",
@@ -28,6 +34,7 @@ export function resolveBlueprintSlotDisplay(input: {
 
   const loop = input.sessionLoop
   if (!loop) return null
+  if (!blueprintLoopFeatureAvailable(loop, hasFeature)) return null
   if (!input.activeLoopID || loop.id !== input.activeLoopID) return null
   if (isTerminalBlueprintLoopStatus(loop.status)) return null
 
@@ -35,6 +42,7 @@ export function resolveBlueprintSlotDisplay(input: {
     slot: {
       type: "loop",
       loopID: loop.id,
+      ...(loop.source ? { source: loop.source } : {}),
       noteID: loop.noteID,
       title: loop.title,
       runMode: loop.runMode ?? "current",

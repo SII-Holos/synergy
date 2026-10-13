@@ -1,0 +1,61 @@
+{
+  "name": "@ericsanchezok/synergy-github",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./component": "./src/component.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./github/identity": "./src/github/identity.ts",
+    "./github/routes": "./src/github/routes.ts",
+    "./http": "./src/http.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/github",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "github",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "github",
+    "requires": {
+      "local-runtime": "1.1.26"
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}

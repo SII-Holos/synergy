@@ -1,9 +1,21 @@
+import { useViewActivity } from "@/context/view-residency"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { resourceMenuKeyDown } from "../workspace/resource-menu"
 import { List } from "@ericsanchezok/synergy-ui/list"
-import { createMemo, createResource, createSignal, For, Show, createEffect, on, onCleanup, onMount } from "solid-js"
-import { useParams } from "@solidjs/router"
+import {
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  Show,
+  createEffect,
+  on,
+  onCleanup,
+  onMount,
+  untrack,
+} from "solid-js"
+import { useParams } from "@/context/session-route"
 import type { Editor } from "@tiptap/core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -43,6 +55,8 @@ import {
   blueprintExecutionAgentOptions,
   blueprintExecutionAgentPatch,
   blueprintExecutionControlProfile,
+  blueprintLoopFeatureAvailable,
+  blueprintRunHistory,
   blueprintSessionWorkspaceSelection,
   canCreateBlueprintWorktree,
   canRunBlueprintInCurrentSession,
@@ -53,7 +67,6 @@ import {
 import {
   hasDirtyFields,
   isNoteNotFoundError,
-  patchBlueprintLoops,
   patchNoteGroups,
   patchNoteGroupsMany,
   removeNotesFromGroups,
@@ -61,6 +74,7 @@ import {
 } from "@/components/note/note-sync"
 import { note as N, panels as P } from "@/locales/messages"
 import { useNoteDocuments } from "./documents"
+import { createBlueprintLoopsResource } from "./blueprint-loops"
 import { WorkspaceNavigator, type WorkspaceNavigatorController } from "../workspace/workspace-navigator"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import "./panel.css"
@@ -137,14 +151,6 @@ function getBlueprintVisualState(
     tone: "idle",
     icon: getSemanticIcon("blueprint.main"),
   }
-}
-
-function getRunCount(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []) {
-  return note.blueprint?.runCount ?? loops.length
-}
-
-function getBlueprintActivityTime(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []) {
-  return note.blueprint?.lastRunAt ?? loops[0]?.time.updated ?? note.time.updated
 }
 
 function attachNoteDragData(e: DragEvent, note: NoteCardInfo) {
@@ -684,8 +690,10 @@ function ScopeSection(props: {
 const NOTES_LIST_RESOURCE = "notes:list"
 
 export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
+  const active = useViewActivity()
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const reconnect = createMemo((version: number) => (active() ? globalSync.reconnectVersion() : version), 0)
   const params = useParams()
   const directory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
   const lingui = useLingui()
@@ -727,7 +735,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   })
 
   const [rawGroups, { refetch, mutate: mutateRawGroups }] = createResource(
-    () => ({ dir: directory(), reconnect: globalSync.reconnectVersion(), showArchived: showArchived() }),
+    () => ({ dir: directory(), reconnect: reconnect(), showArchived: showArchived() }),
     async ({ dir, showArchived }) => {
       if (!dir) return []
       if (showArchived) {
@@ -762,23 +770,20 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     },
   )
 
-  const [loops, { mutate: mutateLoops }] = createResource(
-    () => ({ dir: directory(), reconnect: globalSync.reconnectVersion() }),
-    async ({ dir }) => {
-      if (!dir) return [] as BlueprintLoopInfo[]
-      try {
-        const result = await sdk.client.blueprint.loop.list({ scopeID: dir })
-        return [...((result.data ?? []) as BlueprintLoopInfo[])].sort((a, b) => b.time.updated - a.time.updated)
-      } catch (error) {
-        console.error("Failed to load blueprint loops", error)
-        return [] as BlueprintLoopInfo[]
-      }
+  const loopResource = createBlueprintLoopsResource({
+    scopeID: currentScopeID,
+    capabilities: sdk.capabilities.current,
+    active,
+    reconnect,
+    async list(scopeID, signal) {
+      const result = await sdk.client.blueprint.loop.list({ scopeID }, { signal })
+      return result.data ?? []
     },
-  )
+  })
 
   const loopsByNote = createMemo(() => {
     const map = new Map<string, BlueprintLoopInfo[]>()
-    for (const loop of loops() ?? []) {
+    for (const loop of loopResource.loops()) {
       const items = map.get(loop.noteID) ?? []
       items.push(loop)
       map.set(loop.noteID, items)
@@ -797,9 +802,6 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     )
   }
 
-  const updateLoop = (loop: BlueprintLoopInfo) => {
-    mutateLoops(patchBlueprintLoops(loops() ?? [], loop, currentScopeID()))
-  }
   const unsubNoteListEvents = sdk.event.listen((entry: { details: SynergyEvent }) => {
     const event = entry.details
     if (event.type === "note.created") {
@@ -837,7 +839,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
       return
     }
     if (event.type === "blueprint_loop.created" || event.type === "blueprint_loop.updated") {
-      updateLoop(event.properties.loop)
+      loopResource.update(event.properties.loop)
     }
   })
   onCleanup(() => {
@@ -849,6 +851,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     let blueprints = 0
     for (const g of rawGroups() ?? []) {
       for (const n of g.notes) {
+        if (isBlueprintNote(n) && !sdk.capabilities.has("blueprint")) continue
         total += 1
         if (isBlueprintNote(n)) blueprints += 1
       }
@@ -877,7 +880,9 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         const isCurrent = g.scopeID === curID
         const deregistered = g.scopeType === "project" && !meta && !isCurrent
         const groupDirectory = meta?.directory ?? (g.scopeID === "home" ? "home" : isCurrent ? (directory() ?? "") : "")
-        let notes: NoteCardInfo[] = [...g.notes]
+        let notes: NoteCardInfo[] = g.notes.filter(
+          (note) => sdk.capabilities.has("blueprint") || !isBlueprintNote(note),
+        )
         if (q) {
           notes = notes.filter((n) => {
             if (n.title.toLowerCase().includes(q)) return true
@@ -956,23 +961,25 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   })
 
   const visibleNotes = createMemo(() => displayGroups().reduce((sum, g) => sum + g.notes.length, 0))
-  const filterOptions = createMemo(() => [
-    {
-      value: "all" as const,
-      label: lingui._({ id: N.filterAll.id, message: N.filterAll.message }),
-      count: noteStats().total,
-    },
-    {
-      value: "note" as const,
-      label: lingui._({ id: N.filterNotes.id, message: N.filterNotes.message }),
-      count: noteStats().notes,
-    },
-    {
-      value: "blueprint" as const,
-      label: lingui._({ id: N.filterBlueprints.id, message: N.filterBlueprints.message }),
-      count: noteStats().blueprints,
-    },
-  ])
+  const filterOptions = createMemo(() =>
+    [
+      {
+        value: "all" as const,
+        label: lingui._({ id: N.filterAll.id, message: N.filterAll.message }),
+        count: noteStats().total,
+      },
+      {
+        value: "note" as const,
+        label: lingui._({ id: N.filterNotes.id, message: N.filterNotes.message }),
+        count: noteStats().notes,
+      },
+      {
+        value: "blueprint" as const,
+        label: lingui._({ id: N.filterBlueprints.id, message: N.filterBlueprints.message }),
+        count: noteStats().blueprints,
+      },
+    ].filter((item) => item.value !== "blueprint" || sdk.capabilities.has("blueprint")),
+  )
 
   function isExpanded(scopeID: string, isCurrent: boolean) {
     const state = expandedState()[scopeID]
@@ -1561,6 +1568,7 @@ function NoteEditor(props: {
   onDelete: () => void
   tab?: WorkbenchPanelTab
 }) {
+  const active = useViewActivity()
   const noteID = props.id
   const scopeID = props.directory
   const tab = props.tab ? { ...props.tab } : undefined
@@ -1568,6 +1576,7 @@ function NoteEditor(props: {
   const client = sdk.client
   const serverURL = sdk.url
   const globalSync = useGlobalSync()
+  const reconnect = createMemo((version: number) => (active() ? globalSync.reconnectVersion() : version), 0)
   const sync = useSync()
   const data = useData()
   const platform = usePlatform()
@@ -1578,7 +1587,7 @@ function NoteEditor(props: {
   const lingui = useLingui()
 
   const [note, { refetch }] = createResource(
-    () => ({ id: noteID, dir: directory(), reconnect: globalSync.reconnectVersion() }),
+    () => ({ id: noteID, dir: directory(), reconnect: reconnect() }),
     async ({ id, dir }) => {
       if (!dir) return null
       const result = await client.note.get({ id, scopeID: dir })
@@ -1597,6 +1606,7 @@ function NoteEditor(props: {
   })
   const isCurrent = () =>
     !disposed &&
+    sdk.capabilities.has("note") &&
     sessionKey === workbench.sessionKey() &&
     (!tab ||
       workbench
@@ -1606,6 +1616,14 @@ function NoteEditor(props: {
           (item) =>
             item.id === tab.id && item.panelId === "notes" && item.resourceId === noteID && item.source === scopeID,
         ))
+  createEffect(() => {
+    const value = note()
+    if (!tab || !value) return
+    const kind = value.kind ?? "note"
+    const state = tab.state && typeof tab.state === "object" ? tab.state : {}
+    if ("kind" in state && state.kind === kind) return
+    untrack(() => workbench.updateTab(tab.id, { state: { ...state, kind } }))
+  })
   const baseNote = doc.base
   const title = doc.title
   const tags = doc.tags
@@ -1635,7 +1653,9 @@ function NoteEditor(props: {
       scopes: blueprintScopes(),
     }),
   )
-  const noteLoops = createMemo(() => props.loops ?? [])
+  const noteLoops = createMemo(() =>
+    (props.loops ?? []).filter((loop) => blueprintLoopFeatureAvailable(loop, sdk.capabilities.has)),
+  )
   const blueprintState = createMemo(() => {
     const base = baseNote()
     if (!base) return null
@@ -1644,7 +1664,11 @@ function NoteEditor(props: {
   const activeBlueprintRun = createMemo(() => {
     const base = baseNote()
     if (!base) return undefined
-    return activeBlueprintLoop(base, noteLoops())
+    return activeBlueprintLoop(base, noteLoops(), sdk.capabilities.has)
+  })
+  const blueprintHistory = createMemo(() => {
+    const base = baseNote()
+    return base ? blueprintRunHistory(base, noteLoops(), sdk.capabilities.has) : undefined
   })
 
   const flushSave = doc.flush
@@ -1660,6 +1684,7 @@ function NoteEditor(props: {
     if (note.error && isNoteNotFoundError(note.error)) doc.markDeleted()
   })
   createEffect(() => {
+    if (!active()) return
     const instance = editor()
     const content = doc.content()
     if (!instance || instance.isDestroyed || !shouldReplaceEditorContent(instance.getJSON(), content)) return
@@ -1766,7 +1791,7 @@ function NoteEditor(props: {
   }
 
   async function convertToBlueprint() {
-    if (isBlueprint() || convertingBlueprint()) return
+    if (!sdk.capabilities.has("blueprint") || isBlueprint() || convertingBlueprint()) return
     setConvertingBlueprint(true)
     try {
       await saveMetadata((base) => ({ kind: "blueprint", blueprint: {}, expectedVersion: base.version }))
@@ -1775,9 +1800,13 @@ function NoteEditor(props: {
     }
   }
   async function convertToNote() {
-    if (!isBlueprint() || convertingBlueprint()) return
+    if (!sdk.capabilities.has("blueprint") || !isBlueprint() || convertingBlueprint()) return
     const base = baseNote()
-    if (!base || base.blueprint?.activeLoopID || noteLoops().some((loop) => isActiveBlueprintLoopStatus(loop.status)))
+    if (
+      !base ||
+      blueprintHistory()?.activeLoopID ||
+      noteLoops().some((loop) => isActiveBlueprintLoopStatus(loop.status))
+    )
       return
     setConvertingBlueprint(true)
     try {
@@ -1788,6 +1817,7 @@ function NoteEditor(props: {
   }
 
   function openBlueprintSession(sessionID: string) {
+    if (activeBlueprintRun()?.sessionID !== sessionID) return
     data.navigateToSession?.(sessionID)
   }
 
@@ -1835,11 +1865,13 @@ function NoteEditor(props: {
     model?: { providerID: string; modelID: string },
   ) {
     const dir = directory()
-    if (!dir || runningBlueprint()) return
-    if (!(await flushSave())) return
+    if (!sdk.capabilities.has("blueprint") || !dir || runningBlueprint()) return
+    const selection = sdk.capabilities.current()
+    const current = () => isCurrent() && sdk.capabilities.current() === selection && sdk.capabilities.has("blueprint")
+    if (!(await flushSave()) || !current()) return
     let base = baseNote()
     if (!base || !isBlueprint()) return
-    const activeLoop = activeBlueprintLoop(base, noteLoops())
+    const activeLoop = activeBlueprintLoop(base, noteLoops(), sdk.capabilities.has)
     if (activeLoop) {
       alert("This Blueprint already has an active run. Finish or cancel it before starting another run.")
       return
@@ -1851,13 +1883,13 @@ function NoteEditor(props: {
     try {
       if (base.blueprint?.defaultAgent !== executionAgent) {
         const saved = await saveMetadata((current) => blueprintExecutionAgentPatch(current, executionAgent))
-        if (!saved) return
+        if (!saved || !current()) return
         base = baseNote()
         if (!base) return
       }
 
       target = await createExecutionSession(mode, dir)
-      if (!target) return
+      if (!target || !current()) return
       const loop = await client.blueprint.loop
         .create({
           scopeID: dir,
@@ -1875,9 +1907,11 @@ function NoteEditor(props: {
         .then((result) => result.data)
       if (!loop?.id) throw new Error("Failed to create BlueprintLoop")
       createdLoopID = loop.id
+      if (!current() || !blueprintLoopFeatureAvailable(loop, sdk.capabilities.has)) return
       await client.blueprint.loop.start({ id: loop.id, scopeID: dir })
       setShowRunMenu(false)
     } catch (error) {
+      if (!current()) return
       if (createdLoopID) {
         await client.blueprint.loop.cancel({ id: createdLoopID, scopeID: dir }).catch(() => undefined)
       }
@@ -1970,7 +2004,7 @@ function NoteEditor(props: {
                     ? lingui._({ id: "note.document.unsaved", message: "Unsaved changes" })
                     : lingui._({ id: "note.document.saved", message: "Saved" })}
           </span>
-          <Show when={isBlueprint()}>
+          <Show when={sdk.capabilities.has("blueprint") && isBlueprint()}>
             <button
               type="button"
               class="flex items-center gap-1 rounded-full px-2.5 py-1 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
@@ -2014,12 +2048,16 @@ function NoteEditor(props: {
                     icon: getSemanticIcon("notes.pin"),
                     run: togglePin,
                   },
-                  {
-                    label: lingui._(isBlueprint() ? N.convertToNote : N.convertToBlueprint),
-                    icon: getSemanticIcon("blueprint.main"),
-                    disabled: convertingBlueprint(),
-                    run: isBlueprint() ? convertToNote : convertToBlueprint,
-                  },
+                  ...(sdk.capabilities.has("blueprint")
+                    ? [
+                        {
+                          label: lingui._(isBlueprint() ? N.convertToNote : N.convertToBlueprint),
+                          icon: getSemanticIcon("blueprint.main"),
+                          disabled: convertingBlueprint(),
+                          run: isBlueprint() ? convertToNote : convertToBlueprint,
+                        },
+                      ]
+                    : []),
                   ...(baseNote()?.global !== undefined
                     ? [
                         {
@@ -2099,7 +2137,7 @@ function NoteEditor(props: {
           </div>
         </Show>
 
-        <Show when={isBlueprint()}>
+        <Show when={sdk.capabilities.has("blueprint") && isBlueprint()}>
           <div class="flex items-center gap-2 border-t border-border-weaker-base/40 px-4 py-1.5">
             <Show when={blueprintState()}>
               <span class={`note-blueprint-state note-blueprint-state--${blueprintState()!.tone}`}>
@@ -2109,17 +2147,17 @@ function NoteEditor(props: {
               <span class="text-11-regular text-text-weak">{blueprintState()!.detail}</span>
               <span class="h-3 w-px bg-border-weaker-base" />
               <span class="text-11-regular text-text-weak">
-                {getRunCount(baseNote()!, noteLoops()) > 0
+                {(blueprintHistory()?.count ?? 0) > 0
                   ? lingui._({
                       id: N.runsCount.id,
                       message: N.runsCount.message,
-                      values: { count: getRunCount(baseNote()!, noteLoops()) },
+                      values: { count: blueprintHistory()!.count },
                     })
                   : "No runs yet"}
               </span>
               <span class="text-11-regular text-text-weak">
                 {lingui._({ id: N.lastActivity.id, message: N.lastActivity.message })}{" "}
-                {relativeTime(fmt, getBlueprintActivityTime(baseNote()!, noteLoops()))}
+                {relativeTime(fmt, blueprintHistory()!.updated)}
               </span>
               <Show when={baseNote()!.blueprint?.defaultAgent}>
                 <span class="h-3 w-px bg-border-weaker-base" />

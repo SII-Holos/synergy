@@ -272,16 +272,6 @@
 .agenda-page-tools {
   justify-content: space-between;
 }
-.agenda-scope-filter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-weak);
-}
-.agenda-scope-select {
-  max-width: 240px;
-  min-height: 36px;
-}
 .agenda-search {
   display: flex;
   align-items: center;
@@ -412,10 +402,6 @@
   gap: 12px;
   padding: 20px 0;
 }
-:is(.agenda-calendar, .agenda-task-list, .agenda-page-tools) :is(button, input, select):focus-visible {
-  outline: 2px solid var(--border-interactive-focus);
-  outline-offset: 2px;
-}
 .agenda-secondary-action:disabled {
   opacity: 0.5;
   cursor: default;
@@ -501,8 +487,7 @@
     min-height: 44px;
   }
   .agenda-range-button,
-  .agenda-create-action,
-  .agenda-scope-select {
+  .agenda-create-action {
     min-height: 44px;
   }
 }

@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { SessionNav, type SessionNavEntry } from "@ericsanchezok/synergy-harness/session/nav"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { BlueprintLoopStore } from "../../src/blueprint/loop-store"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint/loop-store"
 import { WorkflowSessionService } from "../../src/session/workflow"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -73,6 +74,7 @@ describe("BlueprintLoop session phase projection", () => {
           loopID: loop.id,
           loopRole: "audit",
           phase: "auditing",
+          source: "user",
         })
 
         await Session.remove(execution.id)
@@ -191,9 +193,9 @@ describe("SessionNav workflow activity", () => {
       })
     }))
 
-  test("reports other workflow kinds and unregistered kinds as inactive", () =>
+  test("reports registered workflow activity and hides unregistered kinds without losing stored data", () =>
     runtime.run(async () => {
-      await withScope(async () => {
+      await withScope(async (scopeID) => {
         const plan = await Session.create({ title: "Plan" })
         await WorkflowSessionService.enablePlan(plan.id)
         expect(SessionNav.deriveSessionIdentity(await Session.get(plan.id)).workflow).toEqual({
@@ -201,13 +203,23 @@ describe("SessionNav workflow activity", () => {
           active: false,
         })
 
+        const retained = { kind: "extension" as const, extension: { kind: "unregistered_kind" } }
         await Session.update(plan.id, (draft) => {
-          draft.workflow = { kind: "extension", extension: { kind: "unregistered_kind" } }
+          draft.workflow = retained
         })
-        expect(SessionNav.deriveSessionIdentity(await Session.get(plan.id)).workflow).toEqual({
-          kind: "unregistered_kind",
-          active: false,
-        })
+        const raw = await Session.get(plan.id)
+        expect(raw.workflow).toEqual(retained)
+        expect((await Storage.read<Record<string, unknown>>(["sessions", scopeID, plan.id, "info"])).workflow).toEqual(
+          retained,
+        )
+        expect(Session.publicInfo(raw).workflow).toBeUndefined()
+        expect(SessionNav.deriveSessionIdentity(raw).workflow).toBeUndefined()
+        expect(
+          (await SessionNav.readNavIndex(scopeID)).entries.find((entry) => entry.id === plan.id)?.workflow,
+        ).toBeUndefined()
+        expect(
+          (await SessionNav.buildNavIndex(scopeID)).entries.find((entry) => entry.id === plan.id)?.workflow,
+        ).toBeUndefined()
 
         const plain = await Session.create({ title: "Plain" })
         expect(SessionNav.deriveSessionIdentity(await Session.get(plain.id)).workflow).toBeUndefined()

@@ -11,7 +11,7 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
-import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
+import { AgendaStore } from "@ericsanchezok/synergy-agenda/agenda/store"
 import { testRuntime } from "../support/runtime"
 
 const runtime = await testRuntime()

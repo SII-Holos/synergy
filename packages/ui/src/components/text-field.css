@@ -85,11 +85,6 @@
       border: 1px solid var(--border-weak-base);
       background: var(--workbench-input-bg, var(--input-base));
 
-      &:focus-within {
-        border-color: var(--border-selected);
-        box-shadow: none;
-      }
-
       &:has([data-invalid]) {
         background: var(--surface-critical-weak);
         border: 1px solid var(--border-critical-selected);
@@ -159,9 +154,4 @@
       letter-spacing: var(--letter-spacing-normal);
     }
   }
-}
-
-[data-component="input"] [data-slot="input-wrapper"]:has(:focus-visible) {
-  outline: 2px solid var(--border-selected);
-  outline-offset: -1px;
 }

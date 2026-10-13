@@ -47,7 +47,8 @@ test("context usage advances without rewriting retained transcript messages", as
         session:{list:()=>ok({total:0,data:[]}),inbox:()=>ok([])},
       }
     }
-    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true},prepareScopeState(){},connected:()=>false,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    const capabilitySnapshot = {}
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true,current:()=>capabilitySnapshot},prepareScopeState(){},connected:()=>false,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>ok({})},
     }})

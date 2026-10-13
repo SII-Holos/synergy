@@ -98,7 +98,7 @@ beforeAll(async () => {
       },
       solid(),
     ],
-    resolve: { alias: { "@/context/locale": stubs, "@": appSrc } },
+    resolve: { alias: { "@/context/session-route": stubs, "@/context/locale": stubs, "@": appSrc } },
     optimizeDeps: { include: ["solid-js", "solid-js/web", "solid-js/store"], noDiscovery: true },
     server: {
       host: "127.0.0.1",

@@ -283,6 +283,7 @@ function compileContribution(
         surface: contribution.surface,
         cardinality: contribution.cardinality,
         requiresSession: contribution.requiresSession,
+        retention: contribution.retention,
         defaultResource: contribution.defaultResource,
         component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`),
       }

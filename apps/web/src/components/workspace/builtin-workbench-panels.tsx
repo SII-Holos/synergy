@@ -1,8 +1,10 @@
+import { useWorkbenchPanelRegistry } from "@/context/workbench/registry"
+import { useViewActivity } from "@/context/view-residency"
 import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { runtimeFeatureAvailable } from "../runtime-features"
 import { createEffect, createMemo, lazy, Show, Suspense, onCleanup, onMount, type ParentProps } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { browserWorkbenchRoute, browserTabURL, type BrowserWorkbenchRoute } from "./browser/browser-workbench-model"
@@ -16,7 +18,7 @@ import { useFile, useProjectFiles } from "@/context/file"
 import { useNoteDocuments } from "@/components/note/documents"
 import { useBrowserCatalog } from "./browser/browser-catalog"
 import { browserPageTab } from "./browser/browser-workbench-model"
-import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
+import { type WorkbenchPanelEntry, type WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { shortestUniqueFileTitle } from "@/components/file-workbench/model"
 import { panels as P, browser as B } from "@/locales/messages"
 import { useLocale } from "@/context/locale"
@@ -25,9 +27,13 @@ import { createLatticeWorkbenchPanel } from "./lattice-panel-entry"
 import { createBossWorkbenchPanel } from "./boss-panel-entry"
 import { E } from "@/components/execution/i18n"
 import { BrowserPreparingPanel } from "./browser/browser-preparing"
+import { ResourceHome } from "./resource-home"
 import type { WorkbenchPanelOpenContext, WorkbenchPanelTabInit } from "@/plugin/registries/workbench-panel-registry"
 import type { BrowserWorkbenchOpenSelection } from "./browser/browser-workbench-api"
+const builtinModules = new Map<string, { key: object; loader: NonNullable<WorkbenchPanelEntry["loader"]> }>()
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
+  const registry = useWorkbenchPanelRegistry()
+  const active = useViewActivity()
   const { capabilities } = useGlobalSDK()
   const platform = usePlatform()
   const sdk = useSDK()
@@ -44,6 +50,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   onMount(() => {
     const key = (event: KeyboardEvent) => {
       if (
+        !active() ||
         event.defaultPrevented ||
         event.altKey ||
         event.shiftKey ||
@@ -64,13 +71,21 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
     scopeID: sdk.scopeID,
   }))
   const browserSync = createMemo(() =>
-    Boolean(platform.browserNative && runtimeFeatureAvailable("panel", "browser", capabilities.has)),
+    Boolean(active() && platform.browserNative && runtimeFeatureAvailable("panel", "browser", capabilities.has)),
   )
-  const register = (entry: Parameters<typeof registerWorkbenchPanel>[0]) =>
-    runtimeFeatureAvailable("panel", entry.id, capabilities.has) &&
-    (entry.id !== "browser" || Boolean(platform.browserNative))
-      ? registerWorkbenchPanel(entry)
-      : () => {}
+  const register = (entry: WorkbenchPanelEntry) => {
+    if (
+      !runtimeFeatureAvailable("panel", entry.id, capabilities.has) ||
+      (entry.id === "browser" && !platform.browserNative)
+    )
+      return () => {}
+    if (entry.loader) {
+      const module = builtinModules.get(entry.id) ?? { key: {}, loader: entry.loader }
+      builtinModules.set(entry.id, module)
+      entry = { ...entry, moduleKey: module.key, loader: module.loader }
+    }
+    return registry.register(entry)
+  }
   const terminal = useTerminal()
   const file = useFile()
   const files = useProjectFiles()
@@ -175,7 +190,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         cardinality: "multi",
         pluginId: "builtin",
         launchable: false,
-        loader: async () => ({ default: (await import("./resource-home")).ResourceHome }),
+        component: ResourceHome,
       }),
       register({
         id: "notes",

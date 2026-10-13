@@ -27,7 +27,7 @@ import type {
   WorkspaceFileCopyInput,
   WorkspaceFileDeleteInput,
 } from "@ericsanchezok/synergy-sdk"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useSDK } from "../sdk"
 import { useSync } from "../sync"

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint/loop-store"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint/loop-store"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { NoteStore } from "@ericsanchezok/synergy-note"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -174,7 +174,11 @@ describe("crashed-runtime recovery end to end", () => {
 
           // 3. Its references stay bound, because the loop they point at is live:
           // clearing them here would destroy the user's ability to continue.
-          expect((await Session.get(session.id)).blueprint).toEqual({ loopID: loop.id, loopRole: "execution" })
+          expect((await Session.get(session.id)).blueprint).toEqual({
+            loopID: loop.id,
+            loopRole: "execution",
+            source: "user",
+          })
           expect((await NoteStore.get(ScopeContext.current.scope.id, note.id)).blueprint?.activeLoopID).toBe(loop.id)
 
           // 4. The interrupted turn stays resumable. The in-flight tool call is

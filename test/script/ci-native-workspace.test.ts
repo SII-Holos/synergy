@@ -127,6 +127,7 @@ test("native batches retain every Windows and macOS control without overlapping 
     expect(files).toContain("test/workspace/workspace-concurrency.test.ts")
     expect(files).toContain("../harness/test/session/snapshot-long-path.test.ts")
     expect(files).toContain("../lsp/test/lsp/process.test.ts")
+    expect(files.includes("test/file/watcher-native-queue.test.ts")).toBe(!windows)
     expect(files).toContain(
       windows ? "test/process/owned-process-windows.test.ts" : "test/workspace/darwin-coalition.test.ts",
     )

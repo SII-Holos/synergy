@@ -1,9 +1,12 @@
-const requirements: Record<"settings" | "navigation" | "panel", Readonly<Record<string, string>>> = {
+const requirements: Record<
+  "settings" | "navigation" | "panel" | "workflow" | "action",
+  Readonly<Record<string, string>>
+> = {
   settings: {
-    account: "connections",
-    github: "connections",
-    channels: "connections",
-    email: "connections",
+    account: "holos",
+    github: "github",
+    channels: "channels",
+    email: "email",
     voice: "media",
     learning: "library",
     memory: "library",
@@ -11,22 +14,35 @@ const requirements: Record<"settings" | "navigation" | "panel", Readonly<Record<
     mcp: "mcp",
     formatter: "formatter",
     lsp: "lsp",
-    boss: "workflows",
+    "code-checks": "lsp",
+    observability: "workbench",
+    boss: "boss",
+    worktrees: "workbench",
   },
   navigation: {
-    agenda: "workflows",
-    kanban: "workflows",
+    agenda: "agenda",
+    kanban: "workbench",
     library: "library",
     performance: "workbench",
+    plugins: "plugin-host",
   },
-  panel: { context: "workbench", notes: "note", lattice: "workflows", boss: "workflows", browser: "browser-runtime" },
+  panel: {
+    context: "workbench",
+    notes: "note",
+    lattice: "lattice",
+    boss: "boss",
+    browser: "browser",
+    "session-review": "workbench",
+  },
+  workflow: { plan: "blueprint", blueprint: "blueprint", lightloop: "light-loop", lattice: "lattice", boss: "boss" },
+  action: { "project.create": "workbench" },
 }
 
 export function runtimeFeatureAvailable(
   surface: keyof typeof requirements,
   id: string,
-  hasComponent: (id: string) => boolean,
+  hasFeature: (id: string) => boolean,
 ): boolean {
-  const component = requirements[surface][id]
-  return !component || hasComponent(component)
+  const feature = requirements[surface][id]
+  return !feature || hasFeature(feature)
 }

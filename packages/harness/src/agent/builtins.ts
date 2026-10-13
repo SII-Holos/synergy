@@ -9,6 +9,9 @@ export namespace AgentBuiltins {
   type Factory = (context: BuiltinAgentContext) => Record<string, Agent.Info>
   const runtimeState = RuntimeContext.state(() => ({
     factories: new Map<string, Factory>(),
+    owners: new WeakMap<Agent.Info, string>(),
+    profiles: new WeakMap<Agent.Info, string>(),
+    prompts: new Map<string, { owner: string; build: (agents: readonly Agent.Info[]) => string }>(),
     families: undefined as Set<Family> | undefined,
   }))
 
@@ -31,13 +34,42 @@ export namespace AgentBuiltins {
     instanceState.factories.set(owner, factory)
   }
 
+  export function tagProfile(agent: Agent.Info, profile: string) {
+    runtimeState().profiles.set(agent, profile)
+  }
+
+  export function profile(agent: Agent.Info) {
+    return runtimeState().profiles.get(agent)
+  }
+
+  export function owner(agent: Agent.Info) {
+    return runtimeState().owners.get(agent)
+  }
+
+  export function registerPrompt(owner: string, key: string, build: (agents: readonly Agent.Info[]) => string) {
+    const prompts = runtimeState().prompts
+    if (prompts.get(key)?.build === build) return
+    RuntimeContext.assertCompositionOpen("agent prompt builders")
+    if (prompts.has(key)) throw new Error(`Duplicate agent prompt: ${key}`)
+    prompts.set(key, { owner, build })
+  }
+
+  export function buildPrompts(agents: Record<string, Agent.Info>, overrides: ReadonlySet<string>) {
+    for (const [key, contribution] of runtimeState().prompts) {
+      const agent = agents[key]
+      if (agent && owner(agent) === contribution.owner && !overrides.has(key))
+        agent.prompt = contribution.build(Object.values(agents))
+    }
+  }
+
   export function collect(context: BuiltinAgentContext) {
     const instanceState = runtimeState()
 
     const result: Record<string, Agent.Info> = {}
-    for (const factory of instanceState.factories.values()) {
+    for (const [owner, factory] of instanceState.factories) {
       for (const [name, agent] of Object.entries(factory(context))) {
         if (name in result) throw new Error(`Duplicate contributed agent: ${name}`)
+        instanceState.owners.set(agent, owner)
         result[name] = agent
       }
     }

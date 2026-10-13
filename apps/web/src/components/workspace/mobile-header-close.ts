@@ -1,4 +1,5 @@
-import { useParams, useNavigate } from "@solidjs/router"
+import { useNavigate } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useLayout } from "@/context/layout"
 
 export function useWorkspaceMobileHeaderClose() {

@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { createEffect, createRoot, createSignal, onCleanup, Show, untrack, type ParentProps } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useLingui } from "@lingui/solid"
 import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
 import {

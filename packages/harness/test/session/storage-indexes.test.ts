@@ -5,6 +5,7 @@ import { TransactionalStore } from "../../src/storage/transactional-store"
 import { tmpdir } from "../support/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
+import { SessionRecords } from "../../src/session/records"
 import { SessionEndpoint } from "../../src/session/endpoint"
 import { SessionNav } from "../../src/session/nav"
 import { migrations } from "../../src/session/migration"
@@ -39,13 +40,13 @@ test("startup rebuild preserves archived retired endpoints and nullable Channel 
       const archived = await Session.create({ title: "Archived source" })
       const channel = await Session.create({ title: "Channel source" })
       const legacy = {
-        ...archived,
+        ...SessionRecords.serialize(archived),
         endpoint: { kind: "holos", agentId: "retained-agent" },
         time: { ...archived.time, archived: 123 },
         retainedMetadata: { source: "historical" },
       }
       const current = {
-        ...channel,
+        ...SessionRecords.serialize(channel),
         endpoint: {
           kind: "channel",
           channel: { type: "feishu", chatId: "legacy-chat", senderName: null },
@@ -86,6 +87,22 @@ test("startup rebuild preserves archived retired endpoints and nullable Channel 
           endpointKind: "channel",
           chatId: "legacy-chat",
         })
+        await Storage.update<{ composition?: string }>(
+          StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id)),
+          (index) => {
+            index.composition = "previous-components"
+          },
+        )
+        const rebuilt = await SessionNav.readNavIndex(scope.id)
+        expect(rebuilt.entries.map((entry) => entry.id)).toEqual(nav.entries.map((entry) => entry.id))
+        expect(rebuilt.entries.find((entry) => entry.id === archived.id)).toMatchObject({ archived: true })
+        expect(rebuilt.entries.find((entry) => entry.id === archived.id)?.endpointKind).toBeUndefined()
+        expect(rebuilt.entries.find((entry) => entry.id === channel.id)).toMatchObject({
+          endpointKind: "channel",
+          chatId: "legacy-chat",
+        })
+        expect(await Storage.read<typeof legacy>(key)).toEqual(legacy)
+        expect(await Storage.read<typeof current>(currentKey)).toEqual(current)
         expect((await runMigrations({ targetDomain: "session", output: "silent" })).completed).toBe(0)
         await Storage.transaction((tx) => Session.rebuildStorageIndexes(tx))
         expect(await Storage.read<typeof legacy>(key)).toEqual(legacy)

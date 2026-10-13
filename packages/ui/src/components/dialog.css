@@ -27,9 +27,6 @@
   --dialog-selected-bg-hover: var(--workbench-selected-bg-hover, var(--surface-raised-base-active));
   --dialog-border: color-mix(in oklch, var(--border-base) 34%, transparent);
   --dialog-border-weak: color-mix(in oklch, var(--border-base) 22%, transparent);
-  --dialog-focus-ring:
-    0 0 0 1px color-mix(in srgb, var(--text-strong) 24%, transparent),
-    0 0 0 3px color-mix(in srgb, var(--text-strong) 7%, transparent);
 
   position: fixed;
   inset: 0;
@@ -315,10 +312,13 @@
       box-shadow 120ms ease;
   }
 
+  [data-slot="dialog-option"]:hover:not(:disabled) {
+    border-color: color-mix(in oklch, var(--border-base) 38%, transparent);
+  }
+
   [data-slot="dialog-option"]:hover:not(:disabled),
   [data-slot="dialog-option"]:focus-visible:not(:disabled) {
     background: var(--dialog-control-bg-hover);
-    border-color: color-mix(in oklch, var(--border-base) 38%, transparent);
   }
 
   [data-slot="dialog-option"][data-selected="true"] {
@@ -331,7 +331,6 @@
 
   [data-slot="dialog-option"]:focus-visible {
     outline: none;
-    box-shadow: var(--dialog-focus-ring);
   }
 
   [data-component="button"] {

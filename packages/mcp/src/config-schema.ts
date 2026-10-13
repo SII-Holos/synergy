@@ -1,3 +1,6 @@
+import { LegacyExecutionConfig } from "@ericsanchezok/synergy-harness/config/legacy-execution"
+import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
+import type { Migration } from "@ericsanchezok/synergy-harness/migration"
 import { ConfigDomain } from "@ericsanchezok/synergy-harness/config/domain"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
 import z from "zod"
@@ -125,7 +128,20 @@ const contribution: ConfigExtensions.Contribution = {
   },
 }
 
+const configMigrations: Migration[] = [
+  {
+    id: "20261012-mcp-execution-config-owner",
+    configuration: "files",
+    description: "Restore retained MCP execution settings when its owner is installed",
+    scope: "global",
+    execution: "startup",
+    upgradeConfig: LegacyExecutionConfig.upgradeConfig,
+    up: LegacyExecutionConfig.up,
+  },
+]
+
 export function registerConfig() {
+  MigrationRegistry.register("mcp-config", configMigrations)
   ConfigExtensions.register("mcp", contribution)
   ConfigDomain.register({
     id: "mcp",

@@ -512,6 +512,54 @@ describe("createAutoScroll", () => {
     },
   )
 
+  for (const native of [false, true])
+    test(`scroll delivery before resize ${native ? "accepts native reading movement" : "preserves the pre-layout reading offset"}`, async () => {
+      const harness = createScrollHarness()
+      let dispose = () => {}
+      try {
+        const element = harness.makeScroller()
+        let documentTop = 600
+        let captures = 0
+        let autoScroll!: ReturnType<typeof createAutoScroll>
+        createRoot((cleanup) => {
+          dispose = cleanup
+          autoScroll = createAutoScroll({
+            working: () => false,
+            captureReadingAnchor: () => {
+              captures++
+              const offset = documentTop - element.scrollTop
+              return {
+                owner: element,
+                restore: () => {
+                  element.scrollTop = documentTop - offset
+                },
+              }
+            },
+          })
+          autoScroll.scrollRef(element)
+          autoScroll.contentRef(element)
+        })
+        await harness.tick()
+        element.scrollTop = 200
+        autoScroll.handleInteraction()
+        if (native) element.dispatchEvent(harness.key())
+        element.scrollHeight = 1540
+        documentTop = 1140
+        element.scrollTop = 800
+        autoScroll.handleScroll()
+        expect(element.scrollTop).toBe(native ? 800 : 740)
+        expect(captures).toBe(native ? 2 : 1)
+        autoScroll.handleScroll()
+        expect(captures).toBe(native ? 2 : 1)
+        harness.lastObserver()!.fire(element)
+        harness.flushFrames()
+        expect(element.scrollTop).toBe(native ? 800 : 740)
+      } finally {
+        dispose()
+        harness.restore()
+      }
+    })
+
   test("a resize accepts an already compensated reading offset without adopting a newly visible owner", async () => {
     const harness = createScrollHarness()
     let dispose = () => {}
@@ -1080,3 +1128,43 @@ for (const force of [false, true]) {
     }
   })
 }
+
+test("paused retained view ignores resize and scroll work without losing reading intent", async () => {
+  const harness = createScrollHarness()
+  let dispose = () => {}
+  try {
+    const element = harness.makeScroller()
+    const [enabled, setEnabled] = createSignal(true)
+    let auto!: ReturnType<typeof createAutoScroll>
+    let measures = 0
+    createRoot((cleanup) => {
+      dispose = cleanup
+      auto = createAutoScroll({ enabled, working: () => true, onMeasure: () => measures++ })
+      auto.scrollRef(element)
+      auto.contentRef(element)
+    })
+    await harness.tick()
+    harness.flushFrames()
+    element.scrollTop = 240
+    auto.handleInteraction()
+    setEnabled(false)
+    await harness.tick()
+    const before = measures
+    element.scrollHeight = 0
+    harness.lastObserver()?.fire(element)
+    auto.forceScrollToBottom()
+    harness.flushFrames()
+    expect(element.scrollTop).toBe(240)
+    expect(measures).toBe(before)
+    expect(auto.userScrolled()).toBe(true)
+    element.scrollHeight = 1000
+    setEnabled(true)
+    await harness.tick()
+    harness.flushFrames()
+    expect(auto.userScrolled()).toBe(true)
+    expect(element.scrollTop).toBe(240)
+  } finally {
+    dispose()
+    harness.restore()
+  }
+})

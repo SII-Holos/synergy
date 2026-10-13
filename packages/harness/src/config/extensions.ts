@@ -17,6 +17,8 @@ export namespace ConfigExtensions {
   }
   export interface Contribution {
     shape: z.ZodRawShape
+    storedShape?: z.ZodRawShape
+    project?(config: Record<string, unknown>): void
     references?(config: Record<string, unknown>, providerID: string): string[]
     normalize?(config: Record<string, unknown>): void
     merge?(current: Record<string, unknown>, patch: Record<string, unknown>, result: Record<string, unknown>): void
@@ -30,6 +32,7 @@ export namespace ConfigExtensions {
     complete: false,
     locked: false,
     schemas: new WeakMap<object, { generation: number; schema: z.ZodObject }>(),
+    storedSchemas: new WeakMap<object, { generation: number; schema: z.ZodObject }>(),
     fields: new Map<string, { generation: number; schema: z.ZodType }>(),
   }))
   const schemaResolvers = new WeakMap<object, () => z.ZodObject>()
@@ -58,6 +61,9 @@ export namespace ConfigExtensions {
     if (existing === contribution) return
     if (existing) throw new Error(`Config domain ${id} is already registered`)
     assertRegistrationOpen(id)
+    for (const key of Object.keys(contribution.storedShape ?? {})) {
+      if (!(key in contribution.shape)) throw new Error(`Stored config field ${key} is not owned by ${id}`)
+    }
     for (const [otherID, other] of state().contributions) {
       if (otherID === id) continue
       for (const key of Object.keys(contribution.shape)) {
@@ -176,6 +182,53 @@ export namespace ConfigExtensions {
 
   export function resolveSchema<S extends z.ZodRawShape>(schema: z.ZodObject<S>): z.ZodObject<S> {
     return (schemaResolvers.get(schema)?.() ?? schema) as z.ZodObject<S>
+  }
+
+  export function persistenceSchema<S extends z.ZodRawShape>(schema: z.ZodObject<S>): z.ZodObject<S> {
+    const instance = state()
+    const cached = instance.storedSchemas.get(schema)
+    if (cached?.generation === instance.generation) return cached.schema as z.ZodObject<S>
+    const shape = Object.assign({}, ...[...instance.contributions.values()].map((item) => item.storedShape ?? {}))
+    const stored = resolveSchema(schema).extend(shape).passthrough()
+    instance.storedSchemas.set(schema, { generation: instance.generation, schema: stored })
+    return stored as z.ZodObject<S>
+  }
+
+  export function project(config: Record<string, unknown>) {
+    for (const contribution of state().contributions.values()) contribution.project?.(config)
+  }
+
+  export function preserveStored(
+    current: Record<string, unknown>,
+    visible: Record<string, unknown>,
+    result: Record<string, unknown>,
+  ) {
+    retainHidden(current, visible, result)
+  }
+
+  function record(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+  }
+
+  function retainHidden(
+    current: Record<string, unknown>,
+    visible: Record<string, unknown>,
+    result: Record<string, unknown>,
+  ): boolean {
+    let retained = false
+    for (const [key, value] of Object.entries(current)) {
+      if (!Object.hasOwn(visible, key)) {
+        result[key] = structuredClone(value)
+        retained = true
+        continue
+      }
+      if (!record(value) || !record(visible[key])) continue
+      const child = record(result[key]) ? result[key] : {}
+      if (!retainHidden(value, visible[key], child)) continue
+      result[key] = child
+      retained = true
+    }
+    return retained
   }
 
   type Field<K extends string> = K extends keyof ConfigExtensionShape

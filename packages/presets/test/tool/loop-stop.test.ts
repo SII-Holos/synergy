@@ -1,11 +1,11 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
-import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
+import { AgendaStore } from "@ericsanchezok/synergy-agenda/agenda/store"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { LoopStopTool } from "@ericsanchezok/synergy-workflows/light-loop/tools/loop-stop"
+import { LoopStopTool } from "@ericsanchezok/synergy-light-loop/light-loop/tools/loop-stop"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 // Wire the L4-injected agenda wakeup guard (same pattern as blueprint-loop-tools.test.ts).
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"

@@ -1,3 +1,4 @@
+import { useViewActivity } from "@/context/view-residency"
 import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
 import { useSessionPreparation } from "./session-preparation"
 import { isOptimisticMessagePending } from "@/context/session-optimistic-message"
@@ -41,6 +42,7 @@ import { useExecution } from "@/context/execution"
 type SessionConversationProps = PluginComponentProps<PluginConversationService> & {
   initialScrollSettled?: () => boolean
   onAdmitted?: (sessionID: string) => void
+  onHydrated?: (sessionID: string) => void
 }
 
 export function SessionConversation(input: SessionConversationProps) {
@@ -53,6 +55,7 @@ export function SessionConversation(input: SessionConversationProps) {
           context={mergeProps(input.context, { sessionID: untrack(() => input.context.sessionID) })}
           initialScrollSettled={input.initialScrollSettled}
           onAdmitted={input.onAdmitted}
+          onHydrated={input.onHydrated}
         />
       )}
     </Show>
@@ -60,13 +63,13 @@ export function SessionConversation(input: SessionConversationProps) {
 }
 
 function SessionConversationView(input: SessionConversationProps) {
+  const active = useViewActivity()
   const transitions = useSessionTransition()
   const props = input.context
-  const [contentReady, setContentReady] = createSignal(false)
   const [admitted, setAdmitted] = createSignal(!input.initialScrollSettled)
   createEffect(() => {
     if (!input.initialScrollSettled || admitted()) return
-    if (!input.initialScrollSettled() || (props.content && !contentReady())) return
+    if (!active() || !input.initialScrollSettled()) return
     let frame = requestAnimationFrame(() => {
       frame = requestAnimationFrame(() => {
         input.onAdmitted?.(props.sessionID)
@@ -99,7 +102,7 @@ function SessionConversationView(input: SessionConversationProps) {
   })
   const takePartArrival = (partID: string) => {
     const arrival = arrivalView()?.take(partID) ?? false
-    return document.visibilityState === "visible" && arrival
+    return active() && document.visibilityState === "visible" && arrival
   }
   const takeUserArrival = (messageID: string) =>
     transitions.messageArrival.take([sdk.url, sdk.scopeKey, props.sessionID], messageID)
@@ -117,7 +120,7 @@ function SessionConversationView(input: SessionConversationProps) {
   let stateRequest: AbortController | undefined
   const executionRequest = createMemo(
     () => {
-      if (!preparation.ready() || !data().sessionFor(props.sessionID)) return undefined
+      if (!active() || !preparation.ready() || !data().sessionFor(props.sessionID)) return undefined
       const roots = (props.timeline() ?? []).filter((message) => message.role === "user").map((message) => message.id)
       const latest = props.lastUserMessage()
       const last = latest ? props.turnProjection().turnMessagesFor(latest).at(-1) : undefined
@@ -324,6 +327,53 @@ function SessionConversationView(input: SessionConversationProps) {
   const lastTimelineID = createMemo(() => props.timeline()?.at(-1)?.id)
   const turnProjection = props.turnProjection
   const [scrollRef, setScrollRef] = createSignal<HTMLDivElement>()
+  const [rowsReady, setRowsReady] = createSignal(!props.content)
+  let hydrated = false
+  createEffect(() => {
+    if (!input.onHydrated || hydrated || !active() || !admitted() || !rowsReady()) return
+    const viewport = scrollRef()
+    const surface = viewport?.querySelector<HTMLElement>("[data-conversation-motion]")
+    if (!surface) return
+    let current = true
+    let frame: number | undefined
+    const pending = () => surface.querySelector("[data-markdown-pending]") || document.fonts?.status === "loading"
+    const schedule = () => {
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      frame = undefined
+      if (!current || pending()) return
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          frame = undefined
+          if (!current || pending()) return
+          hydrated = true
+          cleanup()
+          input.onHydrated?.(props.sessionID)
+        })
+      })
+    }
+    const mutations = new MutationObserver(schedule)
+    const resize = new ResizeObserver(schedule)
+    const cleanup = () => {
+      current = false
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      mutations.disconnect()
+      resize.disconnect()
+      document.fonts?.removeEventListener("loadingdone", schedule)
+      document.fonts?.removeEventListener("loadingerror", schedule)
+    }
+    mutations.observe(surface, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["data-markdown-pending"],
+    })
+    resize.observe(surface)
+    document.fonts?.addEventListener("loadingdone", schedule)
+    document.fonts?.addEventListener("loadingerror", schedule)
+    schedule()
+    onCleanup(cleanup)
+  })
   // Rows below are keyed by the stable message id (see conversation-timeline):
   // message objects are replaced in place by window reload, reconnect replay,
   // rollback copies, and message.updated reconcile. Reference-keyed rows would
@@ -337,6 +387,7 @@ function SessionConversationView(input: SessionConversationProps) {
         ready={admitted()}
         animateAdmission={animateAdmission && !input.onAdmitted}
         scrolledUp={props.scrolledUp()}
+        hasUnseenLatest={props.historyPendingLatest() || sync.data.messageWindow[props.sessionID]?.tailMissingLatest}
         onScrolledUpChange={props.onScrolledUpChange}
         autoScroll={props.autoScroll}
         setScrollRef={(element, releaseOf) => {
@@ -369,33 +420,17 @@ function SessionConversationView(input: SessionConversationProps) {
             </Button>
           </div>
         </Show>
-        <Show when={props.historyMore() || props.historyMode() === "history" || props.historyPendingLatest()}>
-          <div class="w-full flex flex-wrap justify-center gap-2">
-            <Show when={props.historyMore()}>
-              <Button
-                variant="ghost"
-                size="large"
-                class="text-12-medium opacity-50"
-                disabled={props.historyLoading()}
-                onClick={props.onLoadMore}
-              >
-                {props.historyLoading() ? _(S.convLoadingEarlier) : _(S.convLoadEarlier)}
-              </Button>
-            </Show>
-            <Show when={props.historyMode() === "history" || props.historyPendingLatest()}>
-              <Button
-                variant="secondary"
-                size="large"
-                class="text-12-medium"
-                disabled={props.historyLoading()}
-                onClick={(event: MouseEvent) => {
-                  event.stopPropagation()
-                  props.onReturnLatest()
-                }}
-              >
-                {props.historyPendingLatest() ? _(S.convNewMessagesReturnLatest) : _(S.convReturnLatest)}
-              </Button>
-            </Show>
+        <Show when={props.historyMore()}>
+          <div class="w-full flex justify-center">
+            <Button
+              variant="ghost"
+              size="large"
+              class="text-12-medium opacity-50"
+              disabled={props.historyLoading()}
+              onClick={props.onLoadMore}
+            >
+              {props.historyLoading() ? _(S.convLoadingEarlier) : _(S.convLoadEarlier)}
+            </Button>
           </div>
         </Show>
         <Show
@@ -503,8 +538,8 @@ function SessionConversationView(input: SessionConversationProps) {
           }
         >
           <VirtualConversationRows
+            onReady={setRowsReady}
             layoutOwner={[sdk.url, sdk.scopeKey, props.sessionID]}
-            onReady={setContentReady}
             onReadingMessage={(messageID) => {
               const element = scrollRef()
               if (element && props.isDesktop()) props.onScheduleScrollSpy(element, messageID)

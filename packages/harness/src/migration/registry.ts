@@ -50,6 +50,18 @@ export namespace MigrationRegistry {
     instanceState.locked = true
   }
 
+  export function excludeFileConfiguration(): void {
+    const instanceState = runtimeState()
+    if (instanceState.locked) throw new MigrationRegistrationLockedError("file configuration")
+    for (const [domain, entry] of instanceState.domains) {
+      const migrations = entry.migrations.filter((migration) => migration.configuration !== "files")
+      if (migrations.length === entry.migrations.length) continue
+      if (migrations.length) entry.migrations = migrations
+      else instanceState.domains.delete(domain)
+      instanceState.generation++
+    }
+  }
+
   export function unregister(domain: string): void {
     const instanceState = runtimeState()
 

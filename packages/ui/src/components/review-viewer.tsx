@@ -138,7 +138,7 @@ export function ReviewViewer(props: ReviewViewerProps) {
       },
       unsafeCSS:
         createDefaultOptions(props.style).unsafeCSS +
-        "\n[role=button]:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }" +
+        "\n:focus { outline: none !important; } [role=button]:focus-visible { background-image: linear-gradient(var(--surface-focus), var(--surface-focus)); }" +
         (props.whitespace
           ? "\n[data-code] { white-space: pre-wrap; } [data-token] { text-decoration-skip-ink: none; }"
           : ""),

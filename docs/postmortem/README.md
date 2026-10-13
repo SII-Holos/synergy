@@ -1,32 +1,39 @@
 # Postmortems
 
-- [0061: Usage recovery](0061-streamed-usage-recovery.md)
-
 ## Criteria
 
 - **Subtle** — needs investigation.
 - **Systemic** — safeguards missed it.
 - **Costly to rediscover**.
 
-Otherwise, test the fix.
+Otherwise, test.
 
 ## Placement
 
-- Bugs and process failures belong here.
-- Decisions and rationale belong in `docs/decisions/`.
+Bugs belong here; rationale in `docs/decisions/`.
 
 ## Format
 
-Use `NNNN-kebab-case-title.md`. Sections:
+`NNNN-kebab-case-title.md` sections:
 
-- **Executive summary** — what broke, why, how it escaped, and the durable lesson.
+- **Executive summary** — failure, cause, escaped safeguard, lesson.
 - **Summary** — failure details.
-- **Timeline** — what was observed and when.
+- **Timeline** — observations and timing.
 - **Root cause** — the mechanism and missing safeguards.
 - **Guardrails added** — linked fixes: tests, doc updates, gate changes.
-- **Lessons** — the durable takeaways.
+- **Lessons** — durable takeaways.
 
 ## Index
+
+- [0072: Native watcher concurrency](0072-native-watcher-exception-concurrency.md)
+
+- [0071: Cold hydration](0071-cold-conversation-hydration-motion.md)
+
+- [0070: Rebound](0070-new-row-following-rebound.md)
+
+- [0069: History anchors](0069-history-pagination-reading-anchor.md)
+
+- [0068: Measurements](0068-conversation-measurement-identity.md)
 
 - [0067: Isolated containment](0067-isolated-runtime-containment-gaps.md)
 
@@ -40,6 +47,7 @@ Use `NNNN-kebab-case-title.md`. Sections:
 
 - [0062: Historical project bindings](0062-project-migration-required-live-directory-identity.md)
 - [0061: Concurrent Workspace admission](0061-concurrent-workspace-admission.md)
+- [0061: Usage recovery](0061-streamed-usage-recovery.md)
 
 - [0059: Disclosure](0059-cold-process-disclosure-jank.md)
 

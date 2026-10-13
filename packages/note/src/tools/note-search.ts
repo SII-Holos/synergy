@@ -1,35 +1,34 @@
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
-import { NoteStore } from ".."
+import { NoteDocumentKinds, NoteStore } from ".."
 import { NoteMarkdown } from ".."
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import DESCRIPTION from "./note-search.txt"
 import { SessionPluginHooks } from "@ericsanchezok/synergy-harness/session/plugin-hooks"
 
-const parameters = z.object({
-  pattern: z.string().describe("Regex pattern to search for in note titles and content."),
-  scope: z
-    .enum(["current", "global", "all"])
-    .default("all")
-    .describe("Which scope to search: 'current', 'global', or 'all'."),
-  kind: z
-    .enum(["all", "note", "blueprint"])
-    .default("all")
-    .describe("Filter by document kind. Blueprints are executable notes."),
-  archived: z
-    .enum(["active", "archived", "all"])
-    .default("active")
-    .describe("Filter by archive status: 'active' (default), 'archived', or 'all'."),
-  since: z
-    .string()
-    .optional()
-    .describe(
-      "Only include notes updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00').",
-    ),
-  before: z.string().optional().describe("Only include notes updated before this date (ISO 8601)."),
-  tags: z.array(z.string()).optional().describe("Only search notes that have ALL of these tags."),
-  pinned: z.boolean().optional().describe("Filter by pinned status."),
-})
+const parameters = NoteDocumentKinds.filterSchema(
+  z.object({
+    pattern: z.string().describe("Regex pattern to search for in note titles and content."),
+    scope: z
+      .enum(["current", "global", "all"])
+      .default("all")
+      .describe("Which scope to search: 'current', 'global', or 'all'."),
+    kind: z.string().default("all").describe("Filter by registered document kind."),
+    archived: z
+      .enum(["active", "archived", "all"])
+      .default("active")
+      .describe("Filter by archive status: 'active' (default), 'archived', or 'all'."),
+    since: z
+      .string()
+      .optional()
+      .describe(
+        "Only include notes updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00').",
+      ),
+    before: z.string().optional().describe("Only include notes updated before this date (ISO 8601)."),
+    tags: z.array(z.string()).optional().describe("Only search notes that have ALL of these tags."),
+    pinned: z.boolean().optional().describe("Filter by pinned status."),
+  }),
+)
 
 const MAX_NOTES = 10
 const MAX_MATCHES = 20
@@ -95,7 +94,7 @@ export const NoteSearchTool = Tool.define(
         search.scope === "all"
           ? await NoteStore.listMetaWithGlobal(currentScopeID)
           : search.scope === "global"
-            ? await NoteStore.listMeta("global")
+            ? await NoteStore.listMeta("home")
             : await NoteStore.listMeta(currentScopeID)
 
       allNotes = NoteStore.filterArchive(allNotes, search.archived ?? params.archived)
@@ -156,7 +155,7 @@ export const NoteSearchTool = Tool.define(
         totalMatches += contentMatchCount
 
         const header: string[] = [`[${meta.id}] "${meta.title}"`]
-        if ((meta.kind ?? "note") === "blueprint") header.push("[blueprint]")
+        if (meta.kind && meta.kind !== "note") header.push(`[${meta.kind}]`)
         if (meta.pinned) header.push("[pinned]")
         if (meta.global) header.push("[global]")
 

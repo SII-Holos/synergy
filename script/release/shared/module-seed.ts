@@ -40,11 +40,11 @@ export async function prepareModuleArchives(options: {
     targets: options.targets,
     version: options.version,
   })
-  if (options.profile === "full")
-    await packWorkspace("packages/browser-runtime", options.output, {
-      targets: options.targets,
-      version: options.version,
-    })
+  if (options.profile === "full") {
+    for (const directory of ["packages/browser-runtime", "packages/workflows", "packages/connections"]) {
+      await packWorkspace(directory, options.output, { targets: options.targets, version: options.version })
+    }
+  }
   const stage = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-selections-"))
   try {
     for (const id of options.profile === "core" ? (["core"] as const) : (["core", "full", "web", "desktop"] as const)) {

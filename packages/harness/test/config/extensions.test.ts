@@ -53,7 +53,7 @@ test("core config preserves absent domains and an early schema reference validat
         const file = ConfigDomain.filepath("general", root)
         await fs.mkdir(path.dirname(file), { recursive: true })
         await Bun.write(file, JSON.stringify({ username: "before", embedding: { apiKey: "preserved" } }))
-        assert.equal((await Config.domainGet("general", root)).embedding.apiKey, "preserved")
+        assert.equal((await Config.domainGet("general", root)).embedding, undefined)
         await Config.domainUpdate("general", { username: "after" }, { root, mode: "replace-domain" })
         assert.deepEqual(JSON.parse(await Bun.file(file).text()), { username: "after", embedding: { apiKey: "preserved" } })
       } finally {

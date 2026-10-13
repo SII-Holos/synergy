@@ -1,15 +1,11 @@
-import { ToolNoteSource } from "@ericsanchezok/synergy-harness/tool/note-source"
+import { BashVirtualPath } from "@ericsanchezok/synergy-harness/tool/virtual-path"
 import { NoteMarkdown, NoteStore } from "."
 
-/**
- * S9d source inversion: the L1 bash virtual-file materializer reads note
- * content through this registered source instead of importing the note
- * product domain. Loaded through src/registration.ts.
- */
 export function registerNoteVirtualFileSource() {
-  ToolNoteSource.register({
-    noteExtension: ".md",
-    readNoteMarkdown: async (scopeID, noteID) => {
+  BashVirtualPath.register("note", {
+    extension: ".md",
+    match: (value) => /^\/synergy\/note\/(nte_[A-Za-z0-9_-]+)$/.exec(value)?.[1],
+    read: async (scopeID, noteID) => {
       const note = await NoteStore.getAny(scopeID, noteID)
       return NoteMarkdown.toMarkdown(note.content)
     },

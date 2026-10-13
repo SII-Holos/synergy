@@ -8,11 +8,17 @@ export interface SettingsResourceState {
   retry(): Promise<unknown>
 }
 
-export function createSettingsResource<T>(loader: () => Promise<T>, needed: () => boolean = () => true) {
+export function createSettingsResource<T>(
+  loader: () => Promise<T>,
+  needed: () => boolean = () => true,
+  ownerKey?: () => unknown,
+) {
   const [data, setData] = createSignal<T>()
   const [ready, setReady] = createSignal(false)
   const [loading, setLoading] = createSignal(false)
   const [error, setError] = createSignal<unknown>()
+  let owner = untrack(() => ownerKey?.())
+  let generation = 0
   let requested = false
   let disposed = false
   let pending: Promise<T | undefined> | undefined
@@ -25,10 +31,11 @@ export function createSettingsResource<T>(loader: () => Promise<T>, needed: () =
     if (pending) return pending
     requested = true
     setLoading(true)
-    pending = Promise.resolve()
+    const token = generation
+    const request = Promise.resolve()
       .then(loader)
       .then((value) => {
-        if (!disposed) {
+        if (!disposed && token === generation) {
           setData(() => value)
           setReady(true)
           setError(undefined)
@@ -36,18 +43,30 @@ export function createSettingsResource<T>(loader: () => Promise<T>, needed: () =
         return value
       })
       .catch((cause: unknown) => {
-        if (!disposed) setError(() => cause)
+        if (!disposed && token === generation) setError(() => cause)
         return undefined
       })
       .finally(() => {
-        pending = undefined
-        if (!disposed) setLoading(false)
+        if (pending === request) pending = undefined
+        if (!disposed && token === generation) setLoading(false)
       })
-    return pending
+    pending = request
+    return request
   }
 
   const refetch = () => (requested ? retry() : Promise.resolve(undefined))
   createEffect(() => {
+    const nextOwner = ownerKey?.()
+    if (owner !== nextOwner) {
+      owner = nextOwner
+      generation++
+      pending = undefined
+      requested = false
+      setData(undefined)
+      setReady(false)
+      setLoading(false)
+      setError(undefined)
+    }
     if (needed() && !requested) untrack(() => void retry())
   })
   return [data, { ready, loading, error, refetch, retry }] as const

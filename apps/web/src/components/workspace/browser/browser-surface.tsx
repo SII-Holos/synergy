@@ -1,3 +1,4 @@
+import { useViewActivity } from "@/context/view-residency"
 import { BrowserPageDialog } from "./page-dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -38,6 +39,7 @@ export function BrowserSurface(props: {
   let pendingFitFrame: number | undefined
   let lastFitViewportKey = ""
 
+  const active = useViewActivity()
   const browser = useBrowser()
   const platform = usePlatform()
   const lingui = useLingui()
@@ -47,7 +49,7 @@ export function BrowserSurface(props: {
   const nativeRecoveryAvailable = () => props.clientPresentation === "native" && Boolean(platform.browserNative)
 
   function fitViewportSize() {
-    if (!wrapperRef) return null
+    if (!active() || !wrapperRef) return null
     const rect = wrapperRef.getBoundingClientRect()
     const width = Math.max(MIN_FIT_VIEWPORT_WIDTH, Math.round(rect.width))
     const height = Math.max(MIN_FIT_VIEWPORT_HEIGHT, Math.round(rect.height))
@@ -73,7 +75,7 @@ export function BrowserSurface(props: {
   }
 
   function scheduleFitViewport() {
-    if (pendingFitFrame !== undefined) return
+    if (!active() || pendingFitFrame !== undefined) return
     pendingFitFrame = requestAnimationFrame(applyFitViewport)
   }
 

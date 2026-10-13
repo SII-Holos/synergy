@@ -247,10 +247,6 @@ msgid "app.agenda.action.submittedHint"
 msgstr "Check History for the execution result."
 
 #. js-lingui-explicit-id
-msgid "app.agenda.activity.description"
-msgstr "Review actual executions, results and related sessions, newest first."
-
-#. js-lingui-explicit-id
 msgid "app.agenda.activity.loaded"
 msgstr "{shown} of {total} executions loaded"
 
@@ -329,10 +325,6 @@ msgid "app.agenda.arrangements.count"
 msgstr "{count, plural, one {# upcoming trigger} other {# upcoming triggers}}"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.arrangements.description"
-msgstr "See when your enabled tasks are expected to run. Select a date to change the displayed range."
-
-#. js-lingui-explicit-id
 msgid "app.agenda.arrangements.empty"
 msgstr "No upcoming arrangements in this range"
 
@@ -363,10 +355,6 @@ msgstr "This period is in the past. History contains actual executions."
 #. js-lingui-explicit-id
 msgid "app.agenda.arrangements.predicted"
 msgstr "Expected trigger times · {timezone}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.arrangements.relative"
-msgstr "Some interval or delayed tasks depend on activation and execution times; only their known next trigger is shown."
 
 #. js-lingui-explicit-id
 msgid "app.agenda.arrangements.weekRange"
@@ -906,14 +894,6 @@ msgid "app.agenda.runStatus.skipped"
 msgstr "Skipped"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.scope.all"
-msgstr "All Scopes"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.scope.filter"
-msgstr "Scope"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.search.clear"
 msgstr "Clear search"
 
@@ -952,10 +932,6 @@ msgstr "Finished"
 #. js-lingui-explicit-id
 msgid "app.agenda.tasks.count"
 msgstr "{count, plural, one {# task} other {# tasks}}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.tasks.description"
-msgstr "Manage all task rules, including manual, event-triggered, disabled and archived tasks."
 
 #. js-lingui-explicit-id
 msgid "app.agenda.tasks.empty"
@@ -2833,11 +2809,6 @@ msgstr "The Synergy server is not responding right now. The state of running tas
 msgid "app.fatalError.connection.title"
 msgstr "Could not reach the server"
 
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.initialization.description"
-msgstr "A configuration, provider, or setup error prevented Synergy from starting."
-
 #. ── pages/fatal-error.tsx ───────────────────────────────────────────
 msgid "app.fatalError.initialization.title"
 msgstr "Synergy could not finish starting"
@@ -2851,19 +2822,9 @@ msgstr "Reloading this page will not stop any tasks already running on the serve
 msgid "app.fatalError.renderer.title"
 msgstr "The interface encountered a problem"
 
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.scope.description"
-msgstr "The workspace could not be loaded. This may be temporary or due to a configuration issue."
-
 #. ── pages/fatal-error.tsx ───────────────────────────────────────────
 msgid "app.fatalError.scope.title"
 msgstr "Could not load this project"
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.summaryLabel"
-msgstr "Summary"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
@@ -3759,10 +3720,6 @@ msgstr "Assumptions"
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.blueprintDetails"
 msgstr "Blueprint details"
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintDetailsHint"
-msgstr "Objectives, acceptance criteria, assumptions, and execution attempts"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.blueprintVersion"
@@ -10501,7 +10458,7 @@ msgstr "Error"
 msgid "brand.logo.alt"
 msgstr "Holos"
 
-#. js-lingui-explicit-id
+#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
 msgid "brand.workbench.synergy"
 msgstr "Synergy workspace"
 
@@ -13891,6 +13848,13 @@ msgstr "Resume from the breakpoint"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.continueUnavailable"
+msgstr "This task cannot continue. Send a new message."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.control.disabledHint"
 msgstr "Write a message to send"
 
@@ -17086,10 +17050,6 @@ msgid "session.conversation.moveToQueueTitle"
 msgstr "Move back to queue"
 
 #. js-lingui-explicit-id
-msgid "session.conversation.newMessagesReturnLatest"
-msgstr "New messages — Return to latest"
-
-#. js-lingui-explicit-id
 msgid "session.conversation.paused"
 msgstr "Paused"
 
@@ -17116,10 +17076,6 @@ msgstr "Remove pending message"
 #. conversation.tsx
 msgid "session.conversation.renderEarlier"
 msgstr "Render earlier messages"
-
-#. js-lingui-explicit-id
-msgid "session.conversation.returnLatest"
-msgstr "Return to latest"
 
 #. js-lingui-explicit-id
 msgid "session.conversation.withdraw"
@@ -19269,8 +19225,12 @@ msgid "settings.catalog.import.searchTerms"
 msgstr "import | config"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.learning.autonomy.searchTerms"
+msgstr "anima | autonomy | automatic | routines"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.learning.description"
-msgstr "Library learning and autonomy controls."
+msgstr "Library learning controls."
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.label"
@@ -19278,7 +19238,7 @@ msgstr "Learning"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.searchTerms"
-msgstr "library | learning | autonomy"
+msgstr "library | learning"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.lsp.description"
@@ -21429,24 +21389,12 @@ msgid "settings.library.learning.autonomyRow.title"
 msgstr "Autonomous routines"
 
 #. js-lingui-explicit-id
-msgid "settings.library.learning.capture.desc"
-msgstr "Allow knowledge capture and background reflection."
-
-#. js-lingui-explicit-id
-msgid "settings.library.learning.capture.title"
-msgstr "Capture"
-
-#. js-lingui-explicit-id
 msgid "settings.library.learning.learnRow.desc"
 msgstr "Create and curate memories from useful conversation context."
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.learnRow.title"
 msgstr "Allow learning"
-
-#. js-lingui-explicit-id
-msgid "settings.library.learning.page.desc"
-msgstr "Decide how Synergy captures and maintains library knowledge."
 
 #. ---------- page / section descriptors ----------
 msgid "settings.library.learning.page.title"
@@ -23177,16 +23125,8 @@ msgid "settings.runtime.boss.conversation.open"
 msgstr "Task entry"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.desc"
-msgstr "Coordinate tasks and projects from one entry point."
-
-#. js-lingui-explicit-id
 msgid "settings.runtime.boss.enable"
 msgstr "Enable Boss Mode"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.enabled.desc"
-msgstr "Feishu messages also go to the corresponding task entry."
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.name"
@@ -23211,10 +23151,6 @@ msgstr "Open"
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.busy"
 msgstr "Opening…"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.openSession.desc"
-msgstr "Created on first use."
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.failed"

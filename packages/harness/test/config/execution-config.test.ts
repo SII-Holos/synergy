@@ -8,6 +8,23 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
+test("legacy optional execution fields remain intact when their owners are absent", () =>
+  runtime.run(() => {
+    const source = {
+      experimental: {
+        coauthor_reminder: false,
+        mcp_timeout: 99,
+        boss_mode: true,
+        futureOwner: { value: 7 },
+      },
+    }
+    expect(LegacyExecutionConfig.migrate(source)).toEqual({
+      prompt: { coauthorReminder: false },
+      experimental: { mcp_timeout: 99, boss_mode: true, futureOwner: { value: 7 } },
+    })
+    expect(source.experimental.coauthor_reminder).toBe(false)
+  }))
+
 test("legacy environment behavior is resolved at the input boundary with explicit false preserved", () =>
   runtime.run(() => {
     expect(

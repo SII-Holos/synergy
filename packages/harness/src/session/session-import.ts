@@ -338,7 +338,7 @@ export namespace SessionImport {
         const navIndex = await SessionNav.buildNavIndex(scope.id)
         for (const item of imported) {
           Bus.publish(SessionEvent.Updated, {
-            info: await Session.withRuntimeInfo(item.session),
+            info: Session.publicInfo(await Session.withRuntimeInfo(item.session)),
             navEntry: navIndex.entries.find((entry) => entry.id === item.session.id),
           })
         }

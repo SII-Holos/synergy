@@ -52,7 +52,7 @@ export const migrations: Migration[] = [
     async isApplied() {
       if (ScopeLibraryStore.get()) return false
       const roots = new Set(await Storage.scan([]))
-      return !["sessions", "notes", "agenda"].some((root) => roots.has(root))
+      return !["sessions"].some((root) => roots.has(root))
     },
     description: "Consolidate orphan scope data (no active project, no worktree) into a reclaimed scope",
     async up(progress) {
@@ -61,7 +61,7 @@ export const migrations: Migration[] = [
 
       // 1. Collect all scopeIDs that have file-based data
       const dataScopeIDs = new Set<string>()
-      for (const prefix of [["sessions"], ["notes"], ["agenda", "items"]]) {
+      for (const prefix of [["sessions"]]) {
         for (const sid of await Storage.scan(prefix)) {
           if (sid !== ".DS_Store") dataScopeIDs.add(sid)
         }
@@ -213,9 +213,6 @@ export const migrations: Migration[] = [
         "session_nav_v2",
         "session_index",
         "endpoint_session",
-        "notes",
-        "agenda",
-        "blueprint_loops",
         "permissions",
         "stats",
         "library",
@@ -231,7 +228,7 @@ export const migrations: Migration[] = [
       }
       const fromSID = Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID)
       const toSID = Identifier.asScopeID(HOME_SCOPE_ID)
-      const steps = 12
+      const steps = 8
       let done = 0
 
       await moveRecordsByScope(LEGACY_GLOBAL_SCOPE_ID, HOME_SCOPE_ID)
@@ -239,7 +236,6 @@ export const migrations: Migration[] = [
       done++
       progress(done, steps)
 
-      await moveRecords(StoragePath.blueprintLoopsRoot(fromSID), StoragePath.blueprintLoopsRoot(toSID))
       await moveRecord(StoragePath.permission(fromSID), StoragePath.permission(toSID))
       await moveDir(
         path.join(Global.Path.snapshot, LEGACY_GLOBAL_SCOPE_ID),
@@ -261,22 +257,6 @@ export const migrations: Migration[] = [
       progress(done, steps)
 
       await patchEndpointSessionIndexes()
-      done++
-      progress(done, steps)
-
-      await patchHomeAgendaItems()
-      done++
-      progress(done, steps)
-
-      await patchAgendaSessionRefs()
-      done++
-      progress(done, steps)
-
-      await patchHomeNotes()
-      done++
-      progress(done, steps)
-
-      await patchHomeBlueprintLoops()
       done++
       progress(done, steps)
 
@@ -386,9 +366,13 @@ function normalizeLegacyScopeFields(value: unknown): boolean {
 }
 
 function normalizeHomeSessionInfo(info: Record<string, unknown>): boolean {
-  let changed = normalizeLegacyScopeFields(info)
+  let changed = false
   const scope = isRecord(info.scope) ? info.scope : undefined
-  if (!scope || scope.id === HOME_SCOPE_ID || scope.type === HOME_SCOPE_ID) {
+  if (
+    !scope ||
+    [HOME_SCOPE_ID, LEGACY_GLOBAL_SCOPE_ID].includes(String(scope.id)) ||
+    [HOME_SCOPE_ID, LEGACY_GLOBAL_SCOPE_ID].includes(String(scope.type))
+  ) {
     info.scope = {
       ...(scope ?? {}),
       id: HOME_SCOPE_ID,
@@ -465,59 +449,6 @@ async function patchEndpointSessionIndexes() {
   }
 }
 
-async function patchHomeAgendaItems() {
-  const scope = Identifier.asScopeID(HOME_SCOPE_ID)
-  const itemIDs = await Storage.scan(StoragePath.agendaItemsRoot(scope))
-  for (const itemID of itemIDs) {
-    const key = StoragePath.agendaItem(scope, itemID)
-    const item = await Storage.read<Record<string, unknown>>(key).catch(() => undefined)
-    if (!item) continue
-    if (normalizeLegacyScopeFields(item)) await Storage.write(key, item)
-  }
-}
-
-async function patchAgendaSessionRefs() {
-  const itemIDs = await Storage.scan(["agenda", "sessions"])
-  for (const itemID of itemIDs) {
-    const sessionIDs = await Storage.scan(StoragePath.agendaSessionsRoot(itemID))
-    for (const sessionID of sessionIDs) {
-      const key = StoragePath.agendaSession(itemID, sessionID)
-      const entry = await Storage.read<Record<string, unknown>>(key).catch(() => undefined)
-      if (!entry || entry.scopeID !== LEGACY_GLOBAL_SCOPE_ID) continue
-      entry.scopeID = HOME_SCOPE_ID
-      await Storage.write(key, entry)
-    }
-  }
-}
-
-async function patchHomeNotes() {
-  const scope = Identifier.asScopeID(HOME_SCOPE_ID)
-  const noteIDs = await Storage.scan(StoragePath.notesRoot(scope))
-  let rebuiltIndex = false
-  for (const noteID of noteIDs) {
-    if (noteID.startsWith("_")) continue
-    const key = StoragePath.note(scope, noteID)
-    const note = await Storage.read<Record<string, unknown>>(key).catch(() => undefined)
-    if (!note) continue
-    if (normalizeLegacyScopeFields(note)) {
-      await Storage.write(key, note)
-      rebuiltIndex = true
-    }
-  }
-  if (rebuiltIndex) await Storage.remove(StoragePath.note(scope, "_index")).catch(() => undefined)
-}
-
-async function patchHomeBlueprintLoops() {
-  const scope = Identifier.asScopeID(HOME_SCOPE_ID)
-  const loopIDs = await Storage.scan(StoragePath.blueprintLoopsRoot(scope))
-  for (const loopID of loopIDs) {
-    const key = StoragePath.blueprintLoop(scope, loopID)
-    const loop = await Storage.read<Record<string, unknown>>(key).catch(() => undefined)
-    if (!loop) continue
-    if (normalizeLegacyScopeFields(loop)) await Storage.write(key, loop)
-  }
-}
-
 async function renameLibraryScope() {
   try {
     const changed = ScopeLibraryStore.get()?.renameExperienceScope(LEGACY_GLOBAL_SCOPE_ID, HOME_SCOPE_ID) ?? 0
@@ -543,15 +474,6 @@ async function removeLegacyGlobalRoots() {
     () => undefined,
   )
   await Storage.remove(StoragePath.sessionNavIndex(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(() => undefined)
-  await Storage.removeTree(StoragePath.notesRoot(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(() => undefined)
-  await Storage.removeTree(StoragePath.agendaItemsRoot(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(
-    () => undefined,
-  )
-  await Storage.removeTree(["agenda", "runs", LEGACY_GLOBAL_SCOPE_ID]).catch(() => undefined)
-  await Storage.remove(StoragePath.agendaRunIndex(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(() => undefined)
-  await Storage.removeTree(StoragePath.blueprintLoopsRoot(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(
-    () => undefined,
-  )
   await Storage.remove(StoragePath.permission(Identifier.asScopeID(LEGACY_GLOBAL_SCOPE_ID))).catch(() => undefined)
 }
 
@@ -560,10 +482,6 @@ async function moveRecordsByScope(fromScopeID: string, toScopeID: string) {
   const to = Identifier.asScopeID(toScopeID)
   await moveRecords(StoragePath.sessionsRoot(from), StoragePath.sessionsRoot(to))
   await moveRecord(StoragePath.sessionsPageIndex(from), StoragePath.sessionsPageIndex(to))
-  await moveRecords(StoragePath.notesRoot(from), StoragePath.notesRoot(to))
-  await moveRecords(StoragePath.agendaItemsRoot(from), StoragePath.agendaItemsRoot(to))
-  await moveRecords(["agenda", "runs", fromScopeID], ["agenda", "runs", toScopeID])
-  await moveRecord(StoragePath.agendaRunIndex(from), StoragePath.agendaRunIndex(to))
 }
 
 async function moveRecord(from: string[], to: string[]) {
