@@ -102,3 +102,5 @@ For Browser tools, require an explicit page ID except list/open and keep descrip
 ## Interactive output ownership
 
 Generated visual content is untrusted. Keep its source immutable, attach evidence to the producing Part, and validate completed-call and effective-history ownership before granting a state bridge. Persist bounded semantic and UI state through canonical session records; never dispatch an agent input directly from the document. Exercise revision conflicts, duplicate writes, fork independence and rollback through real storage.
+
+For declarative visual catalogs, validate references and finite computations before applying an update. Keep keyed preview state local until the completed producing call grants persistence; preserve focused controls and the last usable view across incomplete or failed updates. Test completion promotion, conflict recovery and standalone export with the same renderer. See [visual results](../../../docs/architecture/visual-results.md).
