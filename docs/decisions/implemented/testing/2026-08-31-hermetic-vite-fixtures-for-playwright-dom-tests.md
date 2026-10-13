@@ -13,6 +13,7 @@ Playwright DOM-test fixtures that boot a Vite dev server must be hermetic agains
 - Alias workspace-package entries whose `import` condition points at gitignored `dist/` output to their source entry (`packages/plugin/src/theme/index.ts` for the theme contract).
 - Resolve runtime packages that break under dependency pre-bundling (Lingui's `@messageformat/parser` chain) to minimal fixture-local stubs when the suite asserts behavior unrelated to i18n rendering, or add them to `optimizeDeps.include` when the real runtime is the subject.
 - Set `optimizeDeps.include` for the Solid runtime/JSX runtime/zod with `noDiscovery: true` so the optimizer never re-runs mid-load and reloads the page.
+- Explicitly pre-bundle high-fanout runtime barrels such as `lucide-solid`; with discovery disabled, otherwise-valid imports can still require thousands of individual module requests. Resolve transitive dependencies from their owning workspace when the fixture root cannot resolve them, as the workspace-dialog fixture does from `packages/ui`.
 - Scope `cacheDir` to the fixture temp directory so sibling Playwright servers sharing `apps/web/node_modules/.vite` cannot invalidate each other's optimizer cache.
 - `warmupRequest` the fixture entry before launching the browser, and surface page/console/HTTP errors in the failure message instead of a bare 30s selector timeout.
 - Set `server.watch: null` when fixture files remain immutable after setup and HMR is not under test. Native watcher shutdown can block the main thread and delay unrelated Promise continuations; a static fixture does not need that lifecycle. Keep watching for tests that exercise file changes.
@@ -27,8 +28,14 @@ Playwright DOM-test fixtures that boot a Vite dev server must be hermetic agains
 
 **Stub only `@lingui/core`/`@lingui/solid` via alias and keep the real locale context.** Rejected: the fixture asserts toolbar chrome and click behavior, not translation rendering; the repo's own guidance already prefers minimal stubs at the boundary that is not the subject of the test.
 
+**Replace the navigation load boundary or increase its deadline.** Rejected for the workspace-dialog fixture: the observed module fanout is reducible inside fixture preparation while retaining real component imports, the original load boundary, and all behavioral assertions and budgets.
+
 ## Consequences
 
 `open-in-browser.dom.test.ts` passes in the Coverage job and locally without a plugin build, and the fixture reports real module-graph errors in `beforeAll` instead of timing out. The `testing-guide` skill now carries the hermetic-Vite-fixture checklist so future Playwright DOM tests get the mitigations up front instead of rediscovering them per file. The cost is a small per-fixture configuration block (alias + optimizeDeps + cacheDir + warmup) that each new DOM suite must include or consciously waive.
 
 Compiled Chromium and Electron execution does not contribute source hits to Bun coverage. Exact-file exemptions identify the behavioral fixture and instrumentation boundary; directly importable logic such as Composer typing autofocus remains measured in Bun. Workspace-location and request-recovery wrappers have explicit browser tests in addition to their domain logic suites.
+
+The workspace-dialog preparation diagnostic measures 2096 requests per cold/warm navigation, including 1947 individual Lucide glyph requests, without pre-bundling; explicit inclusion reduces each navigation to 142 requests with no individual glyph requests or transformed glyph modules. Optimizer metadata confirms the real package is bundled, and navigation finishes `load` with no pending requests or errors. These local macOS observations establish reduced fixture work, not the cause of a historical Linux CI timeout; Linux verification remains pending.
+
+No permanent performance test is added for this fixture-only optimization: the unchanged workspace-dialog suite retains all 24 cases and 104 assertions, including existing-target selection, hidden main-directory rejection and expired recovery. A bounded runtime-count diagnostic supplies preparation evidence without adding duplicate functional scenarios or machine-dependent CI latency thresholds. The 4-second action/navigation, 20-second preparation navigation and ordinary test, 30-second setup/layout test, and 120-second runner budgets remain unchanged.

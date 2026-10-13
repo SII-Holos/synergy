@@ -80,7 +80,7 @@ beforeAll(async () => {
     const sync = { data, session: { refresh: async () => setData("inbox", "s1", window.activeItems) } }
     const mode = new URLSearchParams(location.search).get("mode")
     render(() => <I18nProvider i18n={i18n}><MarkedProvider><DialogProvider>
-      {mode === "pending" ? <PendingTimelineItem item={{...item,mode:"task",status:"failed",failReason:"Attachment invalid"}} rollbackActive={false} hasCanonicalRoot={false} onRemove={async () => {window.removeCalls++; await new Promise(resolve => setTimeout(resolve, 150)); if (window.failRemove) throw new Error("Removal offline")}} /> : <SessionInbox sessionID="s1" sdk={{client}} sync={sync} active={active()} />}
+      {mode === "pending" ? <PendingTimelineItem item={{...item,mode:"task",status:"failed",failReason:"Attachment invalid"}} rollbackActive={false} hasCanonicalRoot={false} onRemove={async () => {window.removeCalls++; window.pendingRemove = true; await new Promise(resolve => window.finishPendingRemove = resolve); window.pendingRemove = false; if (window.failRemove) throw new Error("Removal offline")}} /> : <SessionInbox sessionID="s1" sdk={{client}} sync={sync} active={active()} />}
     </DialogProvider></MarkedProvider></I18nProvider>, document.querySelector("#root"))
   `,
   )
@@ -117,6 +117,8 @@ interface RecoveryWindow extends Window {
   removeCalls: number
   restoreCalls: number
   retryCount: number
+  pendingRemove: boolean
+  finishPendingRemove: () => void
   holdRemoved: boolean
   removedReadPending: boolean
   abortedReads: number
@@ -199,12 +201,19 @@ test("failed initial message has an accurate status and its timeline withdrawal 
   await page.evaluate(() => ((window as unknown as RecoveryWindow).failRemove = true))
   const withdraw = page.getByRole("button", { name: "Withdraw", exact: true })
   await withdraw.click()
+  await page.waitForFunction(() => (window as unknown as RecoveryWindow).pendingRemove)
   expect(await withdraw.isDisabled()).toBe(true)
+  await page.evaluate(() => (window as unknown as RecoveryWindow).finishPendingRemove())
   await page.getByRole("button", { name: "Retry removal" }).waitFor()
   expect(await page.getByText("Preserve my direction", { exact: true }).count()).toBe(1)
   await page.evaluate(() => ((window as unknown as RecoveryWindow).failRemove = false))
   await page.getByRole("button", { name: "Retry removal" }).click()
+  await page.waitForFunction(() => (window as unknown as RecoveryWindow).pendingRemove)
+  expect(await withdraw.isDisabled()).toBe(true)
+  expect(await page.getByRole("button", { name: "Retry removal" }).count()).toBe(0)
+  await page.evaluate(() => (window as unknown as RecoveryWindow).finishPendingRemove())
   await page.getByRole("alert").waitFor({ state: "hidden" })
+  expect(await withdraw.isDisabled()).toBe(false)
   expect(await page.evaluate(() => (window as unknown as RecoveryWindow).removeCalls)).toBe(2)
   expect(errors).toEqual([])
 })

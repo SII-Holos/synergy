@@ -1,6 +1,6 @@
 import "../../../src/styles/index.css"
 import { I18nProvider } from "@lingui/solid"
-import { createEffect, createRoot, createSignal, untrack } from "solid-js"
+import { batch, createEffect, createRoot, createSignal, untrack } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
@@ -10,7 +10,7 @@ import { DialogProvider } from "../../../src/context/dialog"
 import { DiffComponentProvider } from "../../../src/context/diff"
 import { MarkedProvider } from "../../../src/context/marked"
 import { ResourceOpenProvider } from "../../../src/context/resource-open"
-import { readRenderState, RenderProvider, type RenderHost } from "../../../src/context/render"
+import { readRenderState, RenderProvider, RenderStateConflict, type RenderHost } from "../../../src/context/render"
 import { SessionTurn } from "../../../src/components/session-turn"
 import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
 import { setupI18n } from "../../../src/testing/i18n"
@@ -34,11 +34,18 @@ const images: Array<string | undefined> = []
 let holdFollowUp = false
 let rejectWrite = false
 let releaseFollowUp: (() => void) | undefined
+let holdWrite = false
+let releaseWrite: (() => void) | undefined
 const descriptor = () => {
-  const { html, ...rest } = source
+  const { html, ui, ...rest } = source
   return { ...rest, source: `asset://${String(count).padStart(16, "0")}.bin` }
 }
+const [callID, setCallID] = createSignal("prt_render0")
+let conflict = false
+const [input, setInput] = createStore<Record<string, unknown>>({})
+const [status, setStatus] = createSignal<"completed" | "generating" | "running">("completed")
 const [metadata, setMetadata] = createSignal({ visual: descriptor(), visualState: state })
+const [visible, setVisible] = createSignal(true)
 const root: UserMessage = {
   id: "msg_root",
   sessionID: "ses_render",
@@ -74,37 +81,52 @@ const [data, setData] = createStore<Data>({
 })
 function syncMetadata() {
   const current = metadata()
+  if (!visible()) {
+    setData("part", assistant.id, [])
+    return
+  }
   setData(
     "part",
     assistant.id,
     reconcile([
       {
-        id: "prt_render",
+        id: callID(),
         sessionID: root.sessionID,
         messageID: assistant.id,
         type: "tool",
         tool: "render",
         callID: "call_render",
-        state: {
-          status: "completed",
-          input: {},
-          output: "Saved visual source",
-          title: current.visual.title,
-          metadata: structuredClone(current),
-          time: { start: 1, end: 2 },
-          attachments: [
-            {
-              id: "prt_source",
-              sessionID: root.sessionID,
-              messageID: assistant.id,
-              type: "attachment",
-              mime: RenderArtifact.MIME,
-              filename: "visual.synergy.json",
-              url: current.visual.source,
-              presentation: { purpose: "deliverable", renderer: "file" },
-            },
-          ],
-        },
+        state:
+          status() === "completed"
+            ? {
+                status: "completed",
+                input: JSON.parse(JSON.stringify(input)),
+                output: "Saved visual source",
+                title: current.visual.title,
+                metadata: structuredClone(current),
+                time: { start: 1, end: 2 },
+                attachments: [
+                  {
+                    id: "prt_source",
+                    sessionID: root.sessionID,
+                    messageID: assistant.id,
+                    type: "attachment",
+                    mime: RenderArtifact.MIME,
+                    filename: "visual.synergy.json",
+                    url: current.visual.source,
+                    presentation: { purpose: "deliverable", renderer: "file" },
+                  },
+                ],
+              }
+            : status() === "generating"
+              ? {
+                  status: "generating",
+                  input: {},
+                  raw: JSON.stringify(input).slice(0, -1),
+                  charsReceived: JSON.stringify(input).length - 1,
+                  time: { start: 1 },
+                }
+              : { status: "running", input: JSON.parse(JSON.stringify(input)), time: { start: 1 } },
       },
     ]),
   )
@@ -126,10 +148,21 @@ const host: RenderHost = {
     return { source, state }
   },
   async write(target, update) {
+    if (conflict) {
+      conflict = false
+      state = {
+        revision: state.revision + 1,
+        updatedAt: Date.now(),
+        content: { modelContent: { parameters: { seats: 12 } } },
+      }
+      setMetadata({ visual: descriptor(), visualState: state })
+      throw new RenderStateConflict("Another view changed the estimate", state)
+    }
     if (rejectWrite) {
       throw new Error("Saving is unavailable")
     }
     if (update.revision !== state.revision) throw new Error("revision conflict")
+    const acknowledgedRevision = state.revision + 1
     state = {
       revision: state.revision + 1,
       updatedAt: Date.now(),
@@ -138,7 +171,16 @@ const host: RenderHost = {
     }
     writes++
     setMetadata({ visual: descriptor(), visualState: state })
-    return state
+    if (holdWrite)
+      await new Promise<void>((resolve) => {
+        releaseWrite = resolve
+      })
+    return {
+      revision: acknowledgedRevision,
+      updatedAt: Date.now(),
+      mutationID: update.mutationID,
+      content: update.content,
+    }
   },
   async followUp(target, visual, input) {
     RenderArtifact.FollowUp.parse(input)
@@ -157,21 +199,70 @@ Object.assign(window, {
   __renderTest: {
     setup(html: string, libraries: RenderArtifact.Source["libraries"] = []) {
       rejectWrite = false
-      source = { ...source, id: crypto.randomUUID(), html, libraries }
+      source = { ...source, id: crypto.randomUUID(), html, libraries, ui: undefined, renderer: undefined }
       state = RenderArtifact.emptyState()
       count++
-      setMetadata({ visual: descriptor(), visualState: state })
+      batch(() => {
+        setInput(reconcile({}))
+        setStatus("completed")
+        setCallID(`prt_render${count}`)
+        setMetadata({ visual: descriptor(), visualState: state })
+      })
       return source.id
+    },
+    setupUI(ui: RenderArtifact.Source["ui"], streaming = false) {
+      rejectWrite = false
+      count++
+      source = { ...source, id: crypto.randomUUID(), renderer: "native", ui, html: "<p>Fallback</p>" }
+      state = RenderArtifact.emptyState()
+      batch(() => {
+        setCallID(`prt_render${count}`)
+        setInput(reconcile({ ui }))
+        setStatus(streaming ? "generating" : "completed")
+        setMetadata({ visual: descriptor(), visualState: state })
+      })
+    },
+    stream(ui: unknown, complete = false) {
+      batch(() => {
+        setInput(reconcile({ ui }))
+        if (complete) {
+          source = { ...source, ui: ui as RenderArtifact.Source["ui"] }
+          setMetadata({ visual: descriptor(), visualState: state })
+          setStatus("completed")
+        }
+      })
+    },
+    prepare() {
+      batch(() => {
+        setInput(reconcile({}))
+        setStatus("running")
+      })
+    },
+    visible(visible: boolean) {
+      setVisible(visible)
     },
     stats() {
       return { reads, writes, requests, images, state }
     },
+    conflictWrites() {
+      conflict = true
+    },
     rejectWrites() {
       rejectWrite = true
+    },
+    retryWrites() {
+      rejectWrite = false
     },
     remote(content: RenderArtifact.Content) {
       state = { revision: state.revision + 1, updatedAt: Date.now(), content }
       setMetadata({ visual: descriptor(), visualState: state })
+    },
+    holdWrites() {
+      holdWrite = true
+    },
+    releaseWrites() {
+      holdWrite = false
+      releaseWrite?.()
     },
     locale(locale: string) {
       i18n.activate(locale)

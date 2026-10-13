@@ -1,7 +1,7 @@
 import { createEffect, createSignal, on, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createScrollMotion } from "../utils/scroll-motion"
-import { createResizeObserver } from "@solid-primitives/resize-observer"
+import { makeResizeObserver } from "@solid-primitives/resize-observer"
 
 export interface AutoScrollReadingAnchor {
   owner: HTMLElement
@@ -43,6 +43,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const [store, setStore] = createStore({
     contentRef: undefined as HTMLElement | undefined,
+    viewportRef: undefined as HTMLElement | undefined,
     userScrolled: false,
   })
   const [readingAnchorOwner, setReadingAnchorOwner] = createSignal<HTMLElement>()
@@ -241,8 +242,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     preserveReadingAnchor(event && event.target instanceof Element ? event.target : undefined)
   }
 
-  createResizeObserver(
-    () => (enabled() ? store.contentRef : undefined),
+  const resizeObserver = makeResizeObserver(
     () => {
       if (!enabled()) return
       // While pinned-follow, resizes only re-pin (and extend an active settle
@@ -268,7 +268,16 @@ export function createAutoScroll(options: AutoScrollOptions) {
       }
       scheduleMeasure()
     },
+    { box: "border-box" },
   )
+
+  createEffect(() => {
+    const targets = new Set(enabled() ? [store.contentRef, store.viewportRef] : [])
+    for (const target of targets) if (target) resizeObserver.observe(target)
+    onCleanup(() => {
+      for (const target of targets) if (target) resizeObserver.unobserve(target)
+    })
+  })
 
   createEffect(
     on(enabled, (value) => {
@@ -337,6 +346,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
       measureFrame = undefined
       forceNextScroll = false
       scroll = el
+      setStore("viewportRef", el)
       down = false
       resumeRequested = false
       previousOffset = el?.scrollTop ?? 0
