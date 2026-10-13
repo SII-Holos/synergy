@@ -195,6 +195,10 @@ if (scenario === "cold-user") {
   setStatus("completed")
   for (const item of data.part.root) faults.set(item.id, "pending")
 }
+if (new URL(location.href).searchParams.has("initial-page")) {
+  setData("part", "root", [])
+  setPendingPage("root")
+}
 const canonicalParts =
   scenario === "late-reconnect" ||
   scenario === "pending-refresh" ||

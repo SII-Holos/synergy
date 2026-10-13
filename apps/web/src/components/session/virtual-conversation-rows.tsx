@@ -269,14 +269,16 @@ export function VirtualConversationRows(
         : previous,
     )
   }
-  const rowLayout = createMemo<{ keys: string[]; shift: boolean }>((previous) => {
-    const keys = rows().map((row) => row.key)
+  const rowLayout = createMemo<{ keys: string[]; shift: boolean; hasContent: boolean }>((previous) => {
+    const current = rows()
+    const keys = current.map((row) => row.key)
     if (previous && keys.length === previous.keys.length && keys.every((key, index) => key === previous.keys[index]))
-      return previous.shift ? { keys: previous.keys, shift: false } : previous
+      return previous.shift ? { ...previous, shift: false } : previous
     const added = previous ? keys.length - previous.keys.length : 0
     return {
       keys,
-      shift: added > 0 && !!previous?.keys.length && previous.keys.every((key, index) => keys[added + index] === key),
+      shift: added > 0 && !!previous?.hasContent && previous.keys.every((key, index) => keys[added + index] === key),
+      hasContent: current.some((row) => row.kind === "body" || row.kind === "activity"),
     }
   })
   const keys = () => rowLayout().keys

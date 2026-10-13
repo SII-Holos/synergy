@@ -231,46 +231,59 @@ test("terminal process collection preserves the visible answer while following i
   }
 }, 30000)
 
-test("a first overflowing activity does not move preceding progress backwards", async () => {
-  await page.goto(`${url}?scrolling&motion&content=tool-follow&underflow&empty`)
-  await page.waitForFunction(() => !!window.__conversationProcess)
-  await frames()
-  await page.evaluate(() => window.__conversationProcess.prepare())
-  await frames()
-  await page.evaluate(() => window.__conversationProcess.nextTool("next"))
-  await frames()
-  await page.waitForFunction(
-    () =>
-      !document.querySelector("[data-motion-resizing]") &&
-      !document.querySelector("[data-follow-motion]")!.getAnimations().length,
-  )
-  await page.evaluate(() => {
-    const view = document.querySelector<HTMLElement>("[data-scroller]")!
-    const content = document.querySelector<HTMLElement>("[data-follow-motion]")!
-    const outside = document.querySelector<HTMLElement>("[data-outside-control]")!
-    view.style.height = `${content.offsetHeight + outside.offsetHeight + 20}px`
-  })
-  await frames()
-  const result = await page.evaluate(async () => {
-    const view = document.querySelector<HTMLElement>("[data-scroller]")!
-    const anchor = document.querySelector('[data-display-row][data-part-id="next-progress"]')!
-    const samples = [anchor.getBoundingClientRect().top]
-    const before = view.scrollTop
-    window.__conversationProcess.nextTool("next", "pending")
-    for (let frame = 0; frame < 40; frame++) {
-      await new Promise(requestAnimationFrame)
-      await new Promise((resolve) => setTimeout(resolve, 0))
-      samples.push(anchor.getBoundingClientRect().top)
+test.each([false, true])(
+  "a first overflowing activity does not rebound after initial admission (pending page: %j)",
+  async (pending) => {
+    await page.goto(`${url}?scrolling&motion&content=tool-follow&underflow&empty${pending ? "&initial-page" : ""}`)
+    await page.waitForFunction(() => !!window.__conversationProcess)
+    await frames()
+    await page.evaluate(() => window.__conversationProcess.prepare())
+    await frames()
+    if (pending) {
+      await page.locator('[data-display-row="root:load"]').waitFor()
+      await page.evaluate(() => window.__conversationProcess.hydrateBefore(0))
+      await frames()
+      await page.evaluate(() => window.__conversationProcess.continuationReady())
+      await page.locator('[data-display-row="root:load"]').waitFor({ state: "detached" })
     }
-    return { before, after: view.scrollTop, samples }
-  })
-  expect(result.before).toBe(0)
-  expect(result.after).toBeGreaterThan(0)
-  expect(
-    Math.max(...result.samples.slice(1).map((y, index) => y - result.samples[index])),
-    JSON.stringify(result),
-  ).toBeLessThanOrEqual(1)
-})
+    await page.evaluate(() =>
+      window.__conversationProcess.phase({ phase: "waiting_model", startedAt: 1, rootID: "root" }),
+    )
+    await page.evaluate(() => window.__conversationProcess.nextTool("next"))
+    await frames()
+    await page.waitForFunction(
+      () =>
+        !document.querySelector("[data-motion-resizing]") &&
+        !document.querySelector("[data-follow-motion]")!.getAnimations().length,
+    )
+    await page.evaluate(() => {
+      const view = document.querySelector<HTMLElement>("[data-scroller]")!
+      const content = document.querySelector<HTMLElement>("[data-follow-motion]")!
+      const outside = document.querySelector<HTMLElement>("[data-outside-control]")!
+      view.style.height = `${content.offsetHeight + outside.offsetHeight + 20}px`
+    })
+    await frames()
+    const result = await page.evaluate(async () => {
+      const view = document.querySelector<HTMLElement>("[data-scroller]")!
+      const anchor = document.querySelector('[data-display-row][data-part-id="next-progress"]')!
+      const samples = [anchor.getBoundingClientRect().top]
+      const before = view.scrollTop
+      window.__conversationProcess.nextTool("next", "pending")
+      for (let frame = 0; frame < 40; frame++) {
+        await new Promise(requestAnimationFrame)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        samples.push(anchor.getBoundingClientRect().top)
+      }
+      return { before, after: view.scrollTop, samples }
+    })
+    expect(result.before).toBe(0)
+    expect(result.after).toBeGreaterThan(0)
+    expect(
+      Math.max(...result.samples.slice(1).map((y, index) => y - result.samples[index])),
+      JSON.stringify(result),
+    ).toBeLessThanOrEqual(1)
+  },
+)
 
 test.each(["pending", "generating"] as const)(
   "a %s tool does not add and remove a phantom body before its input is displayable",
