@@ -821,7 +821,7 @@ export namespace Channel {
 
               let closePromise: Promise<void> | undefined
               const closeStreaming = (text?: string, failed?: boolean) =>
-                (closePromise ??= streaming.close(text, failed))
+                (closePromise ??= Promise.resolve().then(() => streaming.close(text, failed)))
               let discardPromise: Promise<void> | undefined
               const discardStreaming = () =>
                 closePromise

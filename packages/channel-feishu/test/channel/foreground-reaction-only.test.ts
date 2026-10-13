@@ -106,7 +106,7 @@ async function runScenario(
   compensationFails = false,
   enumerationFails: boolean | "terminal-task" = false,
   streamingEnabled = false,
-  closeRejects = false,
+  closeRejects: boolean | "sync" = false,
   cardFailure?: "settings-rejection" | "oversize" | "terminal",
 ) {
   const connected = Promise.withResolvers<ChannelHost.Instance>()
@@ -351,16 +351,18 @@ async function runScenario(
               async updateToolProgress(progress: Parameters<StreamingSession["updateToolProgress"]>[0]) {
                 toolProgressUpdates.push(progress.map((item) => ({ ...item })))
               },
-              async close(finalText?: string, error?: boolean) {
+              close(finalText?: string, error?: boolean) {
                 closes.push({ replyToMessageId: input.replyToMessageId, finalText, error })
                 activeStreaming = false
-                if (closeRejects) throw new Error("Streaming card finalization failed")
+                if (closeRejects === "sync") throw new Error("Synchronous terminal close failed")
+                if (closeRejects) return Promise.reject(new Error("Streaming card finalization failed"))
                 if (finalText)
-                  await provider.replyMessage!({
+                  return provider.replyMessage!({
                     accountId: input.accountId,
                     messageId: input.replyToMessageId!,
                     parts: [{ type: "text", text: finalText }],
-                  })
+                  }).then(() => undefined)
+                return Promise.resolve()
               },
               async closeWithoutDelivery() {
                 cleanups.push(input.replyToMessageId!)
@@ -1036,4 +1038,10 @@ test(
   "stopping an account releases foreground presentation before the model settles and suppresses late delivery",
   () => runScenario("stopped-account", "acknowledged", false, false, true),
   20_000,
+)
+
+test(
+  "synchronous normal close failure never starts a second cleanup",
+  () => runScenario("ordinary-no-answer", "acknowledged", false, false, true, "sync"),
+  30_000,
 )

@@ -4,11 +4,7 @@ import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Channel } from "@ericsanchezok/synergy-channels/channel"
 import { ChannelOutbound } from "@ericsanchezok/synergy-channels/channel/outbound"
 import { ResponseCardRuntime } from "@ericsanchezok/synergy-channels/channel/response-card"
-import {
-  collectChannelTaskTerminals,
-  deliverForegroundTaskTerminal,
-  replyChannelTaskAttachments,
-} from "@ericsanchezok/synergy-channels/channel/outbound-parts"
+import { replyChannelTaskAttachments } from "@ericsanchezok/synergy-channels/channel/outbound-parts"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import type { OutboundPart, Provider, ResponseCard } from "@ericsanchezok/synergy-channels/channel/types"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -95,10 +91,24 @@ async function completedAssistant(
   rootID?: string,
   withText = true,
 ) {
+  rootID ??= Identifier.ascending("message")
+  await Session.updateMessage({
+    id: rootID,
+    rootID,
+    isRoot: true,
+    sessionID,
+    role: "user",
+    origin: { type: "user" },
+    visible: true,
+    includeInContext: true,
+    agent: PrimaryAgentIdentity.names.general,
+    model: { providerID: "test-provider", modelID: "test-model" },
+    time: { created: Date.now() },
+  })
   const created = (await Session.updateMessage({
     id: Identifier.ascending("message"),
     role: "assistant",
-    parentID: Identifier.ascending("message"),
+    parentID: rootID,
     mode: PrimaryAgentIdentity.names.general,
     agent: PrimaryAgentIdentity.names.general,
     path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
