@@ -67,8 +67,6 @@ The fixture checks shared launcher replay and context lifetime, not the componen
 
 Run `bun script/gen/gen-cli-reference.ts` to update the generated [CLI reference](../../../docs/reference/cli.md); never hand-edit it. The generator follows both command catalogs, lazy contributions and component adapters’ `dataCommands`, `debugCommands` and `pluginCommands` contributions. Test both core and full help when changing availability or aliases. Also review `README.md`, configuration/storage references, affected help text, and `.synergy/command/` workflows. Keep migration history outside the current CLI reference.
 
-When changing static workspace resolution, share one manifest reader across registration and source discovery within each `generate()` call; memoize parsed manifest Promises by path, not ASTs or generated output, and never retain the reader globally. Verify real temporary-workspace reads and manifest edits between independent generations with `bun test --config /dev/null test/script/gen-catalogs.test.ts`, then run `bun script/gen/gen-cli-reference.ts --check`. Keep the existing two-generation byte-stability test and its timeout unchanged. See [operation-scoped catalog resolution](../../../docs/decisions/implemented/process/2026-10-12-operation-scoped-catalog-manifests.md).
-
 ## Handoff
 
 Report the registered command path, domain API called, failure/exit behavior, manual invocation, tests, SDK generation status, and documentation updated.

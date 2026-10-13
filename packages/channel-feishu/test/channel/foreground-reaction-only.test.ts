@@ -19,7 +19,6 @@ import { ChannelOutbound } from "@ericsanchezok/synergy-channels/channel/outboun
 import { FeishuStreamingCard } from "../../src/channel/provider/feishu/streaming-card"
 import type { ChannelHost } from "@ericsanchezok/synergy-channels/channel/host"
 import type { Provider, StreamingSession } from "@ericsanchezok/synergy-channels/channel/types"
-import { ChannelReactionOnlyTool } from "../../src/channel/tools/channel-reaction-only"
 import { testRuntime } from "../support/runtime"
 
 type FixtureSdk = ReturnType<ProviderSdkSource.Factory>
@@ -82,7 +81,7 @@ function reactionChunks(): StreamPart[] {
       toolName: "channel_reaction_only",
       input: JSON.stringify({ workBrief: "Acknowledge without posting a reply" }),
     },
-    finish(),
+    finish("tool-calls"),
   ]
 }
 
@@ -265,7 +264,7 @@ async function runScenario(
         },
         { requiresWorkspace: false, exposure: { mode: "resident" } },
       )
-      ToolRegistry.registerToolProvider("foreground-fixture", () => [artifact, ChannelReactionOnlyTool])
+      ToolRegistry.registerToolProvider("foreground-fixture", () => [artifact])
     },
   })
 

@@ -5,7 +5,6 @@ export const testOptions = {
   isolated: [
     "test/markdown-resources.test.ts",
     "test/markdown-sanitize.test.ts",
-    "test/markdown-virtual.browser.test.ts",
     "test/solid-ordered-rows.test.ts",
     "test/components/iframe-focus.browser.test.ts",
     "test/components/review-viewer.dom.test.ts",

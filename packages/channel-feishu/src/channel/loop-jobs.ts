@@ -1,3 +1,4 @@
+import { ChannelTerminalIntent } from "@ericsanchezok/synergy-channels/channel/types"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
@@ -36,27 +37,31 @@ export function registerReactionOnlyJobs() {
     collect(ctx) {
       if (ctx.abort.aborted) return []
       const assistant = ctx.lastAssistant
-      if (!assistant || SessionProgress.isTerminalAssistant(assistant)) return []
+      if (!assistant || assistant.error || SessionProgress.isTerminalAssistant(assistant)) return []
       const parts = ctx.messages.findLast((message) => message.info.id === assistant.id)?.parts ?? []
       const recorded = parts.some(
-        (part) => part.type === "tool" && part.tool === REACTION_ONLY_TOOL && part.state.status === "completed",
+        (part) =>
+          part.type === "tool" &&
+          part.tool === REACTION_ONLY_TOOL &&
+          part.state.status === "completed" &&
+          ChannelTerminalIntent.safeParse(part.state.metadata.intent).success,
       )
       if (!recorded) return []
       // A sibling tool call still in flight must finish first: terminalizing
       // here would leave that result with no model round to consume it. Its
       // completion re-runs this job, which closes the turn then.
-      const siblingInFlight = parts.some(
-        (part) =>
-          part.type === "tool" &&
-          part.tool !== REACTION_ONLY_TOOL &&
-          part.state.status !== "completed" &&
-          part.state.status !== "error",
-      )
+      const siblingInFlight = parts.some((part) => part.type === "tool" && part.state.status !== "completed")
       return siblingInFlight ? [] : [{ type: "channel_reaction_only_turn_close" }]
     },
     async execute(ctx) {
       const assistant = ctx.lastAssistant
       if (!assistant || ctx.abort.aborted || assistant.error || SessionProgress.isTerminalAssistant(assistant))
+        return "pass"
+      if (
+        ctx.messages
+          .findLast((message) => message.info.id === assistant.id)
+          ?.parts.some((part) => part.type === "tool" && part.state.status !== "completed")
+      )
         return "pass"
       assistant.finish = "stop"
       await Session.updateMessage(assistant)

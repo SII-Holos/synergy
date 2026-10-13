@@ -6,6 +6,8 @@ import { Server } from "@ericsanchezok/synergy-server/server/server"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { channels } from "@ericsanchezok/synergy-channels/component"
 import { channelFeishu } from "../src/component"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import { SessionModePolicy } from "@ericsanchezok/synergy-harness/session/tool-mode-policy"
 
 const components = RuntimeComponents.resolve([
   localRuntime({ workers: false, environment: false }),
@@ -30,6 +32,8 @@ for (const selected of [false, true]) {
       },
     })
     await runtime.run(async () => {
+      expect(ToolRegistry.toolProviderIDs().includes("channel-feishu")).toBe(selected)
+      expect(!!SessionModePolicy.visibility({ toolName: "channel_reaction_only" })).toBe(selected)
       const response = await Server.App().request("/global/capabilities")
       expect(response.status).toBe(200)
       const capabilities = await response.json()

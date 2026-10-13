@@ -132,7 +132,7 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   // Real Channel drain fixture observes the process-wide invoke boundary while owning its Runtime composition.
   "packages/channel-feishu/test/channel/foreground-reaction-only.test.ts",
   "packages/channels/test/channel/host.test.ts",
-  "packages/channels/test/channel/loop-jobs.test.ts",
+  "packages/channel-feishu/test/channel/loop-jobs.test.ts",
   "packages/channels/test/channel/managed-project-ownership.test.ts",
   "packages/channels/test/channel/reaction-only-runtime.test.ts",
   "packages/channel-feishu/test/channel/svg-raster-standalone.test.ts",

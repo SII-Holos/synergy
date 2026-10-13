@@ -2,11 +2,9 @@ import { ChannelSetup } from "@ericsanchezok/synergy-channels/channel/setup"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
 import { registerConfig } from "./config-schema"
-import { registerReactionOnlyToolPolicy } from "./tool-policy"
+import { registerFeishuTools } from "./tools"
 import { FeishuProvider } from "./channel/provider/feishu"
 import { Channel } from "@ericsanchezok/synergy-channels/channel"
-import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
-import { ChannelReactionOnlyTool } from "./channel/tools/channel-reaction-only"
 export function channelFeishu(): RuntimeComponent {
   return {
     id: "channel-feishu",
@@ -25,9 +23,8 @@ export function channelFeishu(): RuntimeComponent {
         },
       })
       registerConfig()
-      registerReactionOnlyToolPolicy()
+      registerFeishuTools()
       Channel.registerProvider(new FeishuProvider())
-      ToolRegistry.registerToolProvider("channel-feishu", () => [ChannelReactionOnlyTool])
     },
   }
 }

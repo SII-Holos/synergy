@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import sys
 import uuid
 import zipfile
@@ -11,7 +12,6 @@ import pytest
 import yaml
 from aiohttp import web
 from fixtures.resources import fixture_resources
-from fixtures.task_copy import copy_task_fixture
 
 from synergy_bench.catalog import tree_digest
 from synergy_bench.evaluator import freeze_evaluator, recorded_environment
@@ -806,7 +806,7 @@ async def run_native_matrix(
 def create_matrix_suite(tmp_path, *, workload: bool = False, task_home: bool = False):
     dataset = tmp_path / "dataset"
     task = dataset / "tasks/marker"
-    copy_task_fixture(BENCHMARK / "test/fixtures/task", task)
+    shutil.copytree(BENCHMARK / "test/fixtures/task", task)
     dockerfile = task / "environment/Dockerfile"
     dockerfile.write_text(
         dockerfile.read_text() + "\nRUN git init --quiet && git -c user.name=Fixture "

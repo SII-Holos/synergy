@@ -5,10 +5,9 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { registerReactionOnlyJobs } from "../../src/channel/loop-jobs"
 import { testRuntime } from "../support/runtime"
 
-const runtime = await testRuntime({ register: registerReactionOnlyJobs })
+const runtime = await testRuntime()
 
 const JOB_TYPE = "channel_reaction_only_turn_close"
 const REACTION_TOOL = "channel_reaction_only"
@@ -168,6 +167,26 @@ describe("channel_reaction_only_turn_close", () => {
 
         const instances = collected(context({ sessionID, rootID, assistant, parts }))
         expect(instances).toEqual([])
+      }),
+    ))
+
+  test("leaves sibling tool errors for the model to handle", () =>
+    runtime.run(() =>
+      inScope(async (sessionID, rootID) => {
+        const assistant = await assistantMessage(sessionID, rootID)
+        assistant.finish = "tool-calls"
+        await reactionToolPart(sessionID, assistant.id)
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: assistant.id,
+          sessionID,
+          type: "tool",
+          callID: "failed_sibling",
+          tool: "bash",
+          state: { status: "error", input: {}, error: "Command failed", time: { start: 1, end: 2 } },
+        })
+        const parts = await MessageV2.parts({ sessionID, messageID: assistant.id })
+        expect(collected(context({ sessionID, rootID, assistant, parts }))).toEqual([])
       }),
     ))
 

@@ -205,7 +205,7 @@ export function zodTypeOf(expr: string): string | null {
 }
 
 export function inlineDescribe(expr: string): string | null {
-  const marker = owningCall(expr, "describe")
+  const marker = owningDescribe(expr)
   if (marker < 0) return null
   const openIndex = expr.indexOf("(", marker)
   const closeIndex = matchClose(expr, openIndex, "(", ")")
@@ -221,7 +221,7 @@ export function inlineDescribe(expr: string): string | null {
 // field. A describe nested inside an object literal documents the nested
 // property, so taking the last match would attribute a child's text to the
 // parent.
-function owningCall(expr: string, name: string) {
+function owningDescribe(expr: string) {
   let depth = 0
   let quote: string | null = null
   let marker = -1
@@ -235,13 +235,13 @@ function owningCall(expr: string, name: string) {
     if (char === '"' || char === "'" || char === "`") quote = char
     else if (char === "(" || char === "{" || char === "[") depth++
     else if (char === ")" || char === "}" || char === "]") depth--
-    else if (depth === 0 && char === "." && expr.startsWith(`.${name}(`, i)) marker = i
+    else if (depth === 0 && char === "." && expr.startsWith(".describe(", i)) marker = i
   }
   return marker
 }
 
 export function isOptionalExpr(expr: string): boolean {
-  return owningCall(expr, "optional") >= 0 || owningCall(expr, "default") >= 0 || /\.optional\s*$/.test(expr)
+  return /\.optional\(\)/.test(expr) || /\.default\(/.test(expr) || /\.optional\s*$/.test(expr)
 }
 
 export interface ObjectField {
@@ -319,56 +319,34 @@ export function mdCell(text: string): string {
   return text.replace(/\|/g, "\\|")
 }
 
-interface WorkspaceManifest {
-  name?: string
-  workspaces?: { packages: string[] }
-  exports?: Record<string, string | { bun?: string; types?: string; import?: string }>
-}
-
-export function createWorkspaceModuleResolver(root = REPO_ROOT) {
-  const manifests = new Map<string, Promise<WorkspaceManifest>>()
-  function readManifest(file: string) {
-    if (!manifests.has(file))
-      manifests.set(
-        file,
-        readFile(file, "utf8").then((text) => JSON.parse(text) as WorkspaceManifest),
+export async function resolveWorkspaceModule(directory: string, specifier: string): Promise<string | null> {
+  let base: string | undefined
+  if (specifier.startsWith(".")) base = path.resolve(directory, specifier)
+  else {
+    const name = specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0]!
+    const manifest = JSON.parse(await readFile(path.join(REPO_ROOT, "package.json"), "utf8"))
+    for (const workspace of manifest.workspaces.packages as string[]) {
+      const pkg = JSON.parse(await readFile(path.join(REPO_ROOT, workspace, "package.json"), "utf8"))
+      if (pkg.name !== name) continue
+      const key = specifier === name ? "." : `.${specifier.slice(name.length)}`
+      const entry = Object.keys(pkg.exports ?? {}).find(
+        (entry) =>
+          entry === key ||
+          (entry.includes("*") && key.startsWith(entry.split("*")[0]) && key.endsWith(entry.split("*")[1])),
       )
-    return manifests.get(file)!
-  }
-
-  return async function resolveWorkspaceModule(directory: string, specifier: string): Promise<string | null> {
-    let base: string | undefined
-    if (specifier.startsWith(".")) base = path.resolve(directory, specifier)
-    else {
-      const name = specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0]!
-      const manifest = await readManifest(path.join(root, "package.json"))
-      for (const workspace of manifest.workspaces!.packages) {
-        const pkg = await readManifest(path.join(root, workspace, "package.json"))
-        if (pkg.name !== name) continue
-        const key = specifier === name ? "." : `.${specifier.slice(name.length)}`
-        const entry = Object.keys(pkg.exports ?? {}).find(
-          (entry) =>
-            entry === key ||
-            (entry.includes("*") && key.startsWith(entry.split("*")[0]!) && key.endsWith(entry.split("*")[1]!)),
-        )
-        if (!entry) return null
-        let target = pkg.exports![entry]
-        if (typeof target === "object") target = target.bun ?? target.types ?? target.import
-        if (typeof target !== "string") return null
-        if (entry.includes("*"))
-          target = target.replace("*", key.slice(entry.split("*")[0]!.length, key.length - entry.split("*")[1]!.length))
-        base = path.join(root, workspace, target)
-        break
-      }
+      if (!entry) return null
+      let target = pkg.exports[entry]
+      if (typeof target === "object") target = target.bun ?? target.types ?? target.import
+      if (typeof target !== "string") return null
+      if (entry.includes("*"))
+        target = target.replace("*", key.slice(entry.split("*")[0].length, key.length - entry.split("*")[1].length))
+      base = path.join(REPO_ROOT, workspace, target)
+      break
     }
-    if (!base) return null
-    for (const file of [base, base.replace(/\.js$/, ".ts"), `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) {
-      if (await Bun.file(file).exists()) return file
-    }
-    return null
   }
-}
-
-export function resolveWorkspaceModule(directory: string, specifier: string): Promise<string | null> {
-  return createWorkspaceModuleResolver()(directory, specifier)
+  if (!base) return null
+  for (const file of [base, base.replace(/\.js$/, ".ts"), `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) {
+    if (await Bun.file(file).exists()) return file
+  }
+  return null
 }
