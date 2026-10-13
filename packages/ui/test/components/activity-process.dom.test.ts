@@ -263,3 +263,133 @@ test("reasoning and history controls react to locale changes while raw content s
   expect(document.querySelector('[data-reasoning-part="reasoning-0"]')?.textContent).toBe("Reasoning from call 1")
   expect(visibleTools().at(-1)?.textContent).toContain("Check project evidence 61")
 })
+
+const progressCount = () =>
+  document.querySelector('[data-slot="process-reasoning-progress"] [data-slot="activity-count-new"]')
+const progressUnit = () => document.querySelector('[data-slot="process-reasoning-progress-unit"]')
+const reasoningLabel = () => document.querySelector('[data-slot="process-reasoning-label"]')
+const reasoningTrigger = () => document.querySelector<HTMLButtonElement>('[data-slot="process-reasoning-trigger"]')!
+const reasoningPart = (id: string, messageID: string, text: string, end?: number): ReasoningPart => ({
+  id,
+  sessionID: "activity-process",
+  messageID,
+  type: "reasoning",
+  text,
+  time: end === undefined ? { start: 1 } : { start: 1, end },
+})
+
+test("reasoning progress counts generated words and keeps the final cumulative value", async () => {
+  harness.setReasoning([reasoningPart("r-progress", "reply-1", "We should check")])
+  await update()
+  expect(reasoningLabel()?.textContent).toBe("Thinking")
+  expect(progressCount()?.textContent).toBe("3")
+  expect(progressUnit()?.textContent).toBe("generated words")
+  expect(reasoningTrigger().getAttribute("aria-label")).toBe("View reasoning. Thinking, 3 generated words")
+
+  harness.setReasoning([reasoningPart("r-progress", "reply-1", "We should check", 9)])
+  await update()
+  expect(reasoningLabel()?.textContent).toBe("Reasoning")
+  expect(progressCount()?.textContent).toBe("3")
+  expect(reasoningTrigger().getAttribute("aria-label")).toBe("View reasoning. Reasoning, 3 generated words")
+})
+
+test("a single generated word uses singular plural copy", async () => {
+  harness.setReasoning([reasoningPart("r-one", "reply-1", "Knowledge", 9)])
+  await update()
+  expect(progressCount()?.textContent).toBe("1")
+  expect(progressUnit()?.textContent).toBe("generated word")
+  expect(reasoningTrigger().getAttribute("aria-label")).toBe("View reasoning. Reasoning, 1 generated word")
+})
+
+test("punctuation-only reasoning shows no progress and keeps the plain label", async () => {
+  harness.setReasoning([reasoningPart("r-empty", "reply-1", "... --- ***", 9)])
+  await update()
+  expect(document.querySelector('[data-slot="process-reasoning-progress"]')).toBeNull()
+  expect(reasoningLabel()?.textContent).toBe("Reasoning")
+  expect(reasoningTrigger().getAttribute("aria-label")).toBe("View reasoning")
+})
+
+test("multiple canonical parts sum in order while raw details stay verbatim", async () => {
+  harness.setReasoning([
+    reasoningPart("r-a", "reply-1", "First reasoning line", 9),
+    reasoningPart("r-b", "reply-1", "Second reasoning line", 9),
+    reasoningPart("r-c", "reply-2", "世界", 9),
+  ])
+  await update()
+  expect(progressCount()?.textContent).toBe("7")
+
+  reasoningTrigger().click()
+  await update()
+  await update()
+  expect(document.querySelectorAll('[data-slot="reasoning-segment"]')).toHaveLength(2)
+  expect(document.querySelector('[data-reasoning-part="r-a"]')?.textContent).toBe("First reasoning line")
+  expect(document.querySelector('[data-reasoning-part="r-c"]')?.textContent).toBe("世界")
+})
+
+test("large counts keep locale number grouping while the unit copy stays fixed", async () => {
+  harness.setReasoning([reasoningPart("r-big", "reply-1", "word ".repeat(1234).trim(), 9)])
+  await update()
+  expect(progressCount()?.textContent).toBe("1,234")
+  expect(progressUnit()?.textContent).toBe("generated words")
+})
+
+test("progress follows the active locale and locale change keeps one number node", async () => {
+  harness.setReasoning([reasoningPart("r-zh", "reply-1", "我们需要检查证据", 9)])
+  await update()
+  const number = document.querySelector(
+    '[data-slot="process-reasoning-progress"] [data-component="animated-activity-count"]',
+  )
+  expect(progressCount()?.textContent).toBe("4")
+
+  harness.setLocale("zh-CN")
+  await update()
+  expect(progressUnit()?.textContent).toBe("个词")
+  expect(reasoningLabel()?.textContent).toBe("推理")
+  expect(reasoningTrigger().getAttribute("aria-label")).toBe("查看推理。推理，已生成 4 个词")
+  expect(
+    document.querySelector('[data-slot="process-reasoning-progress"] [data-component="animated-activity-count"]'),
+  ).toBe(number)
+  expect(
+    document.querySelectorAll('[data-slot="process-reasoning-progress"] [data-slot="activity-count-new"]'),
+  ).toHaveLength(1)
+})
+
+test("rapid progress updates keep one stable number node and settle on the newest value", async () => {
+  harness.setReasoning([reasoningPart("r-rapid", "reply-1", "alpha")])
+  await update()
+  const number = document.querySelector(
+    '[data-slot="process-reasoning-progress"] [data-component="animated-activity-count"]',
+  )
+  expect(progressCount()?.textContent).toBe("1")
+
+  harness.setReasoning([reasoningPart("r-rapid", "reply-1", "alpha beta gamma")])
+  await update()
+  expect(
+    document.querySelector('[data-slot="process-reasoning-progress"] [data-component="animated-activity-count"]'),
+  ).toBe(number)
+  expect(progressCount()?.textContent).toBe("3")
+  expect(
+    document.querySelectorAll('[data-slot="process-reasoning-progress"] [data-slot="activity-count-new"]'),
+  ).toHaveLength(1)
+})
+
+test("the disclosure keeps expanded/controls wiring, its accessible name and no extra live region", async () => {
+  harness.reset()
+  await update()
+  const trigger = reasoningTrigger()
+  expect(trigger.tagName).toBe("BUTTON")
+  expect(trigger.getAttribute("aria-expanded")).toBe("false")
+  expect(trigger.getAttribute("aria-controls")).toBeTruthy()
+  expect(progressCount()?.textContent).toBe("12")
+  expect(trigger.getAttribute("aria-label")).toBe("View reasoning. Reasoning, 12 generated words")
+
+  const progress = document.querySelector('[data-slot="process-reasoning-progress"]')!
+  expect(progress.getAttribute("aria-live")).toBeNull()
+  expect(progress.getAttribute("role")).toBeNull()
+
+  trigger.click()
+  await update()
+  expect(trigger.getAttribute("aria-expanded")).toBe("true")
+  expect(trigger.getAttribute("aria-label")).toBe("Hide reasoning. Reasoning, 12 generated words")
+  expect(document.getElementById(trigger.getAttribute("aria-controls")!)).not.toBeNull()
+})
