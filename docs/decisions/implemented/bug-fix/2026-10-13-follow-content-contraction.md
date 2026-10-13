@@ -18,6 +18,8 @@ Grouped tools still waiting for generated input use their existing activity head
 
 Empty live continuations keep their page-read lifecycle without adding a loading line; the existing turn status represents waiting for the model. Historical page loading retains its local placeholder. A delayed empty-page test verifies the request still completes, the placeholder adds no gap and the previous paragraph remains mounted.
 
+An empty-to-populated conversation is initial admission, not a historical prepend. The prepend predicate requires an existing retained suffix with at least one row. Otherwise the virtualizer stays in shift mode while the short conversation has no native scrolling, deferring new-row measurements until the first overflow. A browser regression starts with an empty mounted conversation and samples the first overflowing tool activity, preserving the separate populated-history prepend tests.
+
 ## Alternatives considered
 
 **Skip compensation only while a disclosure marker exists.** Immediate virtual-row removal and the final resize can arrive after that marker disappears. It also misses simultaneous viewport growth.

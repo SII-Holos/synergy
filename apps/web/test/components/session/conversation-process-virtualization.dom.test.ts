@@ -232,8 +232,11 @@ test("terminal process collection preserves the visible answer while following i
 }, 30000)
 
 test("a first overflowing activity does not move preceding progress backwards", async () => {
-  await page.goto(`${url}?scrolling&motion&content=tool-follow&underflow`)
-  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.goto(`${url}?scrolling&motion&content=tool-follow&underflow&empty`)
+  await page.waitForFunction(() => !!window.__conversationProcess)
+  await frames()
+  await page.evaluate(() => window.__conversationProcess.prepare())
+  await frames()
   await page.evaluate(() => window.__conversationProcess.nextTool("next"))
   await frames()
   await page.waitForFunction(

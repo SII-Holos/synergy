@@ -276,7 +276,7 @@ export function VirtualConversationRows(
     const added = previous ? keys.length - previous.keys.length : 0
     return {
       keys,
-      shift: added > 0 && !!previous && previous.keys.every((key, index) => keys[added + index] === key),
+      shift: added > 0 && !!previous?.keys.length && previous.keys.every((key, index) => keys[added + index] === key),
     }
   })
   const keys = () => rowLayout().keys

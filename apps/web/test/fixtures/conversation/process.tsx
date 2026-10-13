@@ -98,6 +98,7 @@ const [data, setData] = createStore<Data>({
   },
 })
 const [status, setStatus] = createSignal<TurnExecutionState["status"]>("running")
+if (new URL(location.href).searchParams.has("empty")) setData("message", "session", [])
 const [activity, setActivity] = createSignal<SessionActivity | undefined>({
   phase: "waiting_model",
   startedAt: 1,
