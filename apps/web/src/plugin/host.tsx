@@ -974,7 +974,8 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
     },
   })
   async function reload() {
-    if (!server.url) return
+    if (!server.url || !globalSDK.capabilities.has("plugin-host")) return
+    const selection = globalSDK.capabilities.current()
     const revision = ++reloadGeneration
     reloadController?.abort()
     const controller = new AbortController()
@@ -983,7 +984,7 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
       requestedScope = scopeKey()
     try {
       const discovered = await fetchUIContributions(requestedServer, requestedScope, controller.signal)
-      if (revision !== reloadGeneration) return
+      if (revision !== reloadGeneration || selection !== globalSDK.capabilities.current()) return
       scopeVersions.accept(requestedServer, requestedScope, discovered)
       setPlugins(discovered)
       setStatus(
@@ -1002,11 +1003,18 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
     }
   }
   let wasConnected = false
+  let wasAvailable = false
+  let capabilityOwner: ReturnType<typeof globalSDK.capabilities.current>
   createEffect(() => {
+    const selection = globalSDK.capabilities.current()
+    const selectionChanged = capabilityOwner !== selection
+    capabilityOwner = selection
+    const available = globalSDK.capabilities.has("plugin-host")
     const connected = globalSDK.connected()
     const nextOwner = JSON.stringify([server.url, scopeKey()])
     const changed = owner !== nextOwner
-    if (changed) {
+    if (selectionChanged) scopeVersions.clear()
+    if (changed || selectionChanged || !available) {
       owner = nextOwner
       reloadGeneration++
       reloadController?.abort()
@@ -1017,8 +1025,10 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
         setErrors([])
       })
     }
-    if (server.url && (changed || (connected && !wasConnected))) void reload()
+    if (available && server.url && (changed || selectionChanged || !wasAvailable || (connected && !wasConnected)))
+      void reload()
     wasConnected = connected
+    wasAvailable = available
   })
   onCleanup(
     globalSDK.event.listen(({ name, details }) => {

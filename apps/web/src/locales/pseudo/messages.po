@@ -2809,11 +2809,6 @@ msgstr "⟦The Synergy server is not responding right now. The state of running 
 msgid "app.fatalError.connection.title"
 msgstr "⟦Could not reach the server⟧"
 
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.initialization.description"
-msgstr "⟦A configuration, provider, or setup error prevented Synergy from starting.⟧"
-
 #. ── pages/fatal-error.tsx ───────────────────────────────────────────
 msgid "app.fatalError.initialization.title"
 msgstr "⟦Synergy could not finish starting⟧"
@@ -2827,19 +2822,9 @@ msgstr "⟦Reloading this page will not stop any tasks already running on the se
 msgid "app.fatalError.renderer.title"
 msgstr "⟦The interface encountered a problem⟧"
 
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.scope.description"
-msgstr "⟦The workspace could not be loaded. This may be temporary or due to a configuration issue.⟧"
-
 #. ── pages/fatal-error.tsx ───────────────────────────────────────────
 msgid "app.fatalError.scope.title"
 msgstr "⟦Could not load this project⟧"
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.summaryLabel"
-msgstr "⟦Summary⟧"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
@@ -3735,10 +3720,6 @@ msgstr "⟦Assumptions⟧"
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.blueprintDetails"
 msgstr "⟦Blueprint details⟧"
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintDetailsHint"
-msgstr "⟦Objectives, acceptance criteria, assumptions, and execution attempts⟧"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.blueprintVersion"
@@ -10477,7 +10458,7 @@ msgstr "⟦Error⟧"
 msgid "brand.logo.alt"
 msgstr "⟦Holos⟧"
 
-#. js-lingui-explicit-id
+#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
 msgid "brand.workbench.synergy"
 msgstr "⟦Synergy workspace⟧"
 
@@ -13862,6 +13843,13 @@ msgstr "⟦Continue⟧"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.control.continueHint"
 msgstr "⟦Resume from the breakpoint⟧"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.continueUnavailable"
+msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -19237,6 +19225,10 @@ msgid "settings.catalog.import.searchTerms"
 msgstr "⟦import | config⟧"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.learning.autonomy.searchTerms"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.learning.description"
 msgstr "⟦Library learning and autonomy controls.⟧"
 
@@ -21397,24 +21389,12 @@ msgid "settings.library.learning.autonomyRow.title"
 msgstr "⟦Autonomous routines⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.library.learning.capture.desc"
-msgstr "⟦Allow knowledge capture and background reflection.⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.library.learning.capture.title"
-msgstr "⟦Capture⟧"
-
-#. js-lingui-explicit-id
 msgid "settings.library.learning.learnRow.desc"
 msgstr "⟦Create and curate memories from useful conversation context.⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.learnRow.title"
 msgstr "⟦Allow learning⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.library.learning.page.desc"
-msgstr "⟦Decide how Synergy captures and maintains library knowledge.⟧"
 
 #. ---------- page / section descriptors ----------
 msgid "settings.library.learning.page.title"
@@ -23145,16 +23125,8 @@ msgid "settings.runtime.boss.conversation.open"
 msgstr "⟦Task entry⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.desc"
-msgstr "⟦Coordinate tasks and projects from one entry point.⟧"
-
-#. js-lingui-explicit-id
 msgid "settings.runtime.boss.enable"
 msgstr "⟦Enable Boss Mode⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.enabled.desc"
-msgstr "⟦Feishu messages also go to the corresponding task entry.⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.name"
@@ -23179,10 +23151,6 @@ msgstr "⟦Open⟧"
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.busy"
 msgstr "⟦Opening…⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.openSession.desc"
-msgstr "⟦Created on first use.⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.failed"

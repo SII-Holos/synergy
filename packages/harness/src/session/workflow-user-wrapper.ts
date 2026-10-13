@@ -66,7 +66,9 @@ export namespace WorkflowUserWrapper {
     messages: MessageV2.WithParts[]
     session?: Pick<SessionInfo, "workflow">
     agent: { name: string }
+    root?: MessageV2.User
   }): MessageV2.WithParts[] {
+    if (MessageV2.isIndependentRoot(input.root)) return input.messages
     return input.messages.map((msg) => {
       if (msg.info.role !== "user") return msg
 

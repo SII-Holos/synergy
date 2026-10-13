@@ -10,6 +10,8 @@ import type { ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import type { WorkbenchPanelTab } from "../../src/plugin/registries/workbench-panel-registry"
 
 type Fixture = {
+  features(features: string[] | undefined): void
+  openTool(): boolean
   calls: { panelId: string; options: { init?: { resourceId?: string; source?: string } } }[]
   reads: string[]
   tabs(): WorkbenchPanelTab[]
@@ -54,6 +56,7 @@ beforeAll(async () => {
     import {createStore} from "solid-js/store"
     import {registerWorkbenchPanel} from ${JSON.stringify(`/@fs/${source}/plugin/registries/workbench-panel-registry.ts`)}
     import {setupI18n} from "@lingui/core"
+    const [selection,setSelection]=createSignal({features:["note","browser","blueprint","workbench","plugin-host","mcp","media"]})
     const surfaces=new Map()
     const surface=(key,name)=>{
       const id=key+":"+name
@@ -77,7 +80,7 @@ beforeAll(async () => {
     ]
     let disposers=register()
     registerWorkbenchPanel({id:"execution-detail",label:"Details",icon:"file",surface:"side",cardinality:"singleton"})
-    export const fixture=window.fixture={calls,reads,tabs:()=>workbench.surface("side").tabs(),active:()=>workbench.surface("side").active(),
+    export const fixture=window.fixture={calls,reads,features:features=>setSelection(features ? {features} : undefined),tabs:()=>workbench.surface("side").tabs(),active:()=>workbench.surface("side").active(),
       availability(value){disposers.forEach(dispose=>dispose());disposers=value?register():[]},owner(id,scopeID="project",url="http://fixture.test"){setSession(id);setScope(scopeID);setServer(url)},
       browserPages(value){setCatalog("session","pages",value)},sync:setSync,revision:()=>workbench.surface("side").selectionRevision(),
       hold(){hold=true},resolve(){complete?.();complete=undefined},missing(value){missing=value},close(){workbench.surface("side").close()},
@@ -88,7 +91,7 @@ beforeAll(async () => {
       select(){workbench.surface("side").setActive("other");workbench.surface("side").open()},evidence(value){evidence=value},notes(value){notes=value}
     }
     export const attachWorkbench=value=>{workbench=value}
-    export const useGlobalSDK=()=>({capabilities:{has:()=>false}})
+    export const useGlobalSDK=()=>({capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false}})
     export const useSDK=()=>({get url(){return server()},get scopeKey(){return scope()},get scopeID(){return scope()},client:{
       note:{async listMeta({archived}){reads.push("notes");return {data:notes.filter(group=>!!group.archived===(archived==="true"))}}},
       session:{async toolActivity(){reads.push("evidence");return {data:{part:evidence}}}}
@@ -117,6 +120,7 @@ beforeAll(async () => {
     import {setupI18n} from "@lingui/core"
     import {DialogProvider} from "@ericsanchezok/synergy-ui/context/dialog"
     import {DataProvider} from "@ericsanchezok/synergy-ui/context/data"
+    import {useResourceOpen} from "@ericsanchezok/synergy-ui/context/resource-open"
     import {ActivityTrace} from "@ericsanchezok/synergy-ui/activity-trace"
     import {ResourceOpenProvider} from ${JSON.stringify(`/@fs/${source}/context/resource-open.tsx`)}
     import {WorkbenchPanelsProvider,useWorkbenchPanels} from ${JSON.stringify(`/@fs/${source}/context/workbench/index.tsx`)}
@@ -126,8 +130,9 @@ beforeAll(async () => {
     fixture.tool=(tool,input={},metadata={},status="completed")=>setPart({...part(),sessionID:"session",tool,state:{status,input,metadata,title:tool,output:"receipt",error:status==="error"?"Failed":undefined,time:{start:1,end:2}}})
     const [data,setData]=createStore({session:[],message:{},part:{}})
     const group=createMemo(()=>({kind:"group",id:"group",family:"produce",state:part().state.status==="error"?"error":"done",steps:[{part:part(),title:"Open resource",icon:"file-text",state:part().state.status==="error"?"error":"done",family:"produce"}]}))
-    function Harness(){attachWorkbench(useWorkbenchPanels());return <><Show when={isSyncEnabled()}><Suspense><BrowserWorkbenchSync route={browserRoute}/></Suspense></Show><ResourceOpenProvider><ActivityTrace group={group()} serverUrl="http://fixture.test"/></ResourceOpenProvider></>}
-    render(()=><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><DataProvider data={data} directory={null} serverUrl="http://fixture.test"><WorkbenchPanelsProvider><Harness/></WorkbenchPanelsProvider></DataProvider></DialogProvider></I18nProvider>,document.getElementById("root"))
+    function Controls(){const resources=useResourceOpen();fixture.openTool=()=>resources.openToolActivity({sessionID:"session",messageID:"message",partID:"part",callID:"call"},part());return <ActivityTrace group={group()} serverUrl="http://fixture.test"/>}
+    function Harness(){attachWorkbench(useWorkbenchPanels());return <><Show when={isSyncEnabled()}><Suspense><BrowserWorkbenchSync route={browserRoute}/></Suspense></Show><ResourceOpenProvider><Controls/></ResourceOpenProvider></>}
+    render(()=><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><DataProvider data={data} directory={null} serverUrl="http://fixture.test" hasFeature={() => true}><WorkbenchPanelsProvider><Harness/></WorkbenchPanelsProvider></DataProvider></DialogProvider></I18nProvider>,document.getElementById("root"))
   `,
   )
   const bridge = path.join(directory, "bridge.ts")
@@ -144,6 +149,7 @@ beforeAll(async () => {
         { find: "./platform", replacement: bridge },
         ...[
           "@/context/sdk",
+          "@/context/global-sdk",
           "@/context/file",
           "@/context/workbench",
           "@/context/sync",
@@ -488,4 +494,14 @@ test("background Browser metadata synchronization preserves a pending tool resou
     return f.tabs().some((tab) => tab.id === f.active() && tab.resourceId === "page")
   })
   expect(await row().getAttribute("aria-pressed")).toBe("true")
+})
+
+test("a captured tool action cannot open a removed owner or request its resource", async () => {
+  await page.goto(url)
+  await row().waitFor()
+  await page.evaluate(() => (window as unknown as FixtureWindow).fixture.features([]))
+  const opened = await page.evaluate(() => (window as unknown as FixtureWindow).fixture.openTool())
+  expect(opened).toBe(false)
+  expect((await facts()).reads).toEqual([])
+  expect((await facts()).calls).toEqual([])
 })

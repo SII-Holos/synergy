@@ -27,6 +27,7 @@ import { createLatticeWorkbenchPanel } from "./lattice-panel-entry"
 import { createBossWorkbenchPanel } from "./boss-panel-entry"
 import { E } from "@/components/execution/i18n"
 import { BrowserPreparingPanel } from "./browser/browser-preparing"
+import { ResourceHome } from "./resource-home"
 import type { WorkbenchPanelOpenContext, WorkbenchPanelTabInit } from "@/plugin/registries/workbench-panel-registry"
 import type { BrowserWorkbenchOpenSelection } from "./browser/browser-workbench-api"
 const builtinModules = new Map<string, { key: object; loader: NonNullable<WorkbenchPanelEntry["loader"]> }>()
@@ -189,7 +190,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         cardinality: "multi",
         pluginId: "builtin",
         launchable: false,
-        loader: async () => ({ default: (await import("./resource-home")).ResourceHome }),
+        component: ResourceHome,
       }),
       register({
         id: "notes",

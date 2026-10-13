@@ -1,4 +1,4 @@
-Performs precise anchored edits to note content. Blueprint notes are editable only in Plan or Lattice. Outside Plan or Lattice, Blueprint notes are read-only; use `note_read`, `note_search`, or `note_list` to inspect them, and use ordinary notes for deliverables.
+Performs precise anchored edits to note content.
 
 Always read first:
 - Call note_read({ noteIds:[...], format:"blocks" }) before editing.
@@ -36,4 +36,4 @@ Result interpretation:
 - `directChangedBlocks` are the operation's target, inserted, or deleted blocks; `ancestorChangedBlocks` are parent list/table/blockquote/container hashes changed by descendants; `unexpectedChangedBlocks` are changes outside that direct/ancestor set.
 - Warnings are not fatal, but they indicate a possible no-op, unexpected extra change, or semantic mismatch and should usually be followed by re-reading or correcting the note.
 
-Use note_write with mode:"replace" instead when rewriting most or all of a note/Blueprint and you have complete desired markdown content.
+Use note_write with mode:"replace" instead when rewriting most or all of a note and you have complete desired markdown content.

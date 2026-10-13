@@ -155,7 +155,13 @@ render(
         <ResourceOpenProvider value={resourceController}>
           <MarkedProvider>
             <DiffComponentProvider component={EmptyDiff}>
-              <DataProvider data={data} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
+              <DataProvider
+                hasFeature={(id) => ["media", "mcp"].includes(id)}
+                data={data}
+                runtime={runtime}
+                directory="/workspace"
+                serverUrl="http://localhost"
+              >
                 <ConversationMotionProvider takeArrival={(id) => partArrivals.delete(id)}>
                   <For each={segmented() ? ["header", "first", "second", "answer", "footer"] : [`whole-${mount()}`]}>
                     {(segment) => (

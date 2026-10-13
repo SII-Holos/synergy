@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
+import { AgendaStore } from "@ericsanchezok/synergy-agenda/agenda/store"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"

@@ -209,6 +209,7 @@ function SessionPageData() {
   const view = useSessionDataView(submission, preparation.ready)
   return (
     <DataProvider
+      hasFeature={data.hasFeature}
       data={data.store}
       view={view()}
       directory={data.directory}

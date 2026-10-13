@@ -390,6 +390,8 @@ export namespace ConfigSetup {
     apiKey: string
     type?: "embedding" | "rerank"
   }): Promise<Array<{ id: string; name: string; type: "embedding" | "rerank" }>> {
+    if (!ConfigDomain.byId().has("library"))
+      throw new Error("Library is not registered; model discovery is unavailable")
     try {
       const available = await fetchOpenAICompatibleModels(input.baseURL, input.apiKey)
       const results: Array<{ id: string; name: string; type: "embedding" | "rerank" }> = []
@@ -734,6 +736,9 @@ export namespace ConfigSetup {
   }
 
   function extractEmbeddingRerank(config: SetupDraft | Config.Info) {
+    const library = ConfigDomain.byId().has("library")
+    if (!library && (config.embedding !== undefined || config.rerank !== undefined))
+      throw new Error("Library is not registered; embedding and rerank configuration are unavailable")
     const draft = config as SetupDraft
     const info = config as Partial<SetupDraft>
 
@@ -749,7 +754,7 @@ export namespace ConfigSetup {
         ? { baseURL: info.rerank.baseURL, apiKey: info.rerank.apiKey, model: info.rerank.model }
         : undefined)
 
-    return { embedding, rerank }
+    return { embedding, rerank, library }
   }
 
   async function resolveContextProviderModel(
@@ -1292,6 +1297,7 @@ export namespace ConfigSetup {
     next: { library?: Record<string, unknown> },
     validation: RequiredCoreValidationResult,
   ): void {
+    if (!ConfigDomain.byId().has("library")) return
     const embeddingFailed = validation.fields.embedding.failedRecommended
     const rerankFailed = validation.fields.rerank.failedRecommended
     if (!embeddingFailed && !rerankFailed) return
@@ -1301,7 +1307,7 @@ export namespace ConfigSetup {
   }
 
   export async function validateRequiredCore(config: SetupDraft): Promise<RequiredCoreValidationResult> {
-    const { embedding, rerank } = extractEmbeddingRerank(config)
+    const { embedding, rerank, library } = extractEmbeddingRerank(config)
     const context: ImportProbeContext = { config: applySetupDraft({}, config), auth: config.auth }
     const fields: Record<string, FieldValidationResult> = {
       model: config.model
@@ -1313,13 +1319,17 @@ export namespace ConfigSetup {
             requireImageInput: true,
             importContext: context,
           })
-        : recommendedSkipped("No vision model configured — look_at will be disabled"),
-      embedding: embedding
-        ? await verifyVectorModel(embedding, "embedding")
-        : recommendedSkipped("No embedding configured — using local model"),
-      rerank: rerank
-        ? downgradeRecommended(await verifyVectorModel(rerank, "rerank"))
-        : recommendedSkipped("No rerank configured — reranking disabled"),
+        : recommendedSkipped("No vision model configured"),
+      ...(library
+        ? {
+            embedding: embedding
+              ? await verifyVectorModel(embedding, "embedding")
+              : recommendedSkipped("No embedding configured — using local model"),
+            rerank: rerank
+              ? downgradeRecommended(await verifyVectorModel(rerank, "rerank"))
+              : recommendedSkipped("No rerank configured — reranking disabled"),
+          }
+        : {}),
     }
 
     return summarizeValidation(fields)
@@ -1329,7 +1339,7 @@ export namespace ConfigSetup {
     config: SetupDraft,
     options: LiveProbeOptions = {},
   ): Promise<RequiredCoreValidationResult> {
-    const { embedding, rerank } = extractEmbeddingRerank(config)
+    const { embedding, rerank, library } = extractEmbeddingRerank(config)
     const context: ImportProbeContext = { config: applySetupDraft({}, config), auth: config.auth }
     const [model, visionModel, embeddingResult, rerankResult] = await Promise.all([
       config.model
@@ -1341,7 +1351,7 @@ export namespace ConfigSetup {
             requireImageInput: true,
             importContext: context,
           })
-        : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
+        : Promise.resolve(recommendedSkipped("No vision model configured")),
       embedding
         ? probeEmbeddingModel(embedding)
         : Promise.resolve(recommendedSkipped("No embedding configured — using local model")),
@@ -1359,13 +1369,14 @@ export namespace ConfigSetup {
     return summarizeValidation({
       model,
       vision_model: visionModel,
-      embedding: downgradeRecommended(embeddingResult),
-      rerank: downgradeRecommended(rerankResult),
+      ...(library
+        ? { embedding: downgradeRecommended(embeddingResult), rerank: downgradeRecommended(rerankResult) }
+        : {}),
     })
   }
 
   async function validateImportedCore(config: Config.Info): Promise<RequiredCoreValidationResult> {
-    const { embedding, rerank } = extractEmbeddingRerank(config)
+    const { embedding, rerank, library } = extractEmbeddingRerank(config)
     const [model, visionModel, embeddingResult, rerankResult] = await Promise.all([
       config.model
         ? verifyLanguageModel(config.model, { label: "Default model", importContext: { config } })
@@ -1376,7 +1387,7 @@ export namespace ConfigSetup {
             requireImageInput: true,
             importContext: { config },
           })
-        : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
+        : Promise.resolve(recommendedSkipped("No vision model configured")),
       embedding
         ? verifyVectorModel(embedding, "embedding")
         : Promise.resolve(recommendedSkipped("No embedding configured — using local model")),
@@ -1388,8 +1399,9 @@ export namespace ConfigSetup {
     return summarizeValidation({
       model,
       vision_model: visionModel,
-      embedding: downgradeRecommended(embeddingResult),
-      rerank: downgradeRecommended(rerankResult),
+      ...(library
+        ? { embedding: downgradeRecommended(embeddingResult), rerank: downgradeRecommended(rerankResult) }
+        : {}),
     })
   }
 
@@ -1397,7 +1409,7 @@ export namespace ConfigSetup {
     config: Config.Info,
     options: LiveProbeOptions = {},
   ): Promise<RequiredCoreValidationResult> {
-    const { embedding, rerank } = extractEmbeddingRerank(config)
+    const { embedding, rerank, library } = extractEmbeddingRerank(config)
     const [model, visionModel, embeddingResult, rerankResult] = await Promise.all([
       config.model
         ? probeLanguageModel(config.model, { label: "Default model", importContext: { config } })
@@ -1408,7 +1420,7 @@ export namespace ConfigSetup {
             requireImageInput: true,
             importContext: { config },
           })
-        : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
+        : Promise.resolve(recommendedSkipped("No vision model configured")),
       embedding
         ? probeEmbeddingModel(embedding)
         : Promise.resolve(recommendedSkipped("No embedding configured — using local model")),
@@ -1426,12 +1438,14 @@ export namespace ConfigSetup {
     return summarizeValidation({
       model,
       vision_model: visionModel,
-      embedding: downgradeRecommended(embeddingResult),
-      rerank: downgradeRecommended(rerankResult),
+      ...(library
+        ? { embedding: downgradeRecommended(embeddingResult), rerank: downgradeRecommended(rerankResult) }
+        : {}),
     })
   }
 
   function applySetupDraft(base: Config.Info, draft: SetupDraft): Config.Info {
+    const { embedding, rerank } = extractEmbeddingRerank(draft)
     const next: Config.Info = {
       ...base,
       $schema: base.$schema ?? Global.Path.configSchemaUrl,
@@ -1443,10 +1457,9 @@ export namespace ConfigSetup {
       else delete next[key]
     }
 
-    const hasEmbedding = Boolean(draft.embedding?.baseURL && draft.embedding?.apiKey && draft.embedding?.model)
-    const hasRerank = Boolean(draft.rerank?.baseURL && draft.rerank?.apiKey && draft.rerank?.model)
+    const hasEmbedding = Boolean(embedding?.baseURL && embedding?.apiKey && embedding?.model)
+    const hasRerank = Boolean(rerank?.baseURL && rerank?.apiKey && rerank?.model)
 
-    // Embedding — always available (local fallback), but preserve user's explicit remote config
     if (hasEmbedding) {
       next.embedding = {
         baseURL: draft.embedding!.baseURL,
@@ -1468,8 +1481,9 @@ export namespace ConfigSetup {
       delete next.rerank
     }
 
-    // Library — always enabled (local embedding always works)
-    next.library = { memory: { enabled: true }, experience: { encode: true, retrieve: true }, autonomy: true }
+    if (ConfigDomain.byId().has("library"))
+      next.library = { memory: { enabled: true }, experience: { encode: true, retrieve: true } }
+    if (ConfigDomain.byId().has("anima")) next.anima = { enabled: true }
     if (draft.provider) {
       const provider = { ...(base.provider ?? {}) }
       for (const [providerID, config] of Object.entries(draft.provider)) {
@@ -1582,6 +1596,12 @@ export namespace ConfigSetup {
     if (typeof json !== "object" || json === null) {
       return { valid: false, warnings: ["Input must be a JSON object"] }
     }
+
+    if (!ConfigDomain.byId().has("library") && ("embedding" in json || "rerank" in json))
+      return {
+        valid: false,
+        warnings: ["Library is not registered; embedding and rerank configuration are unavailable"],
+      }
 
     const parsed = Config.Info.safeParse(json)
     if (!parsed.success) {

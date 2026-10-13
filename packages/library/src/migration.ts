@@ -9,6 +9,7 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
+import { configMigration } from "./config-migration"
 
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 type SqliteConn = Database
@@ -377,6 +378,17 @@ export const migrations: Migration[] = [
         .run().changes
       progress(2, 2)
       if (updated > 0) log.info("seeded retrieval_count from q_visits", { updated })
+    },
+  },
+  configMigration,
+  {
+    id: "20261012-library-home-scope",
+    description: "Converge legacy Home experience identities when Library becomes available",
+    scope: "global",
+    execution: "startup",
+    async up(progress) {
+      LibraryDB.connection().transaction(() => LibraryDB.Experience.renameScope("global", "home"))()
+      progress(1, 1)
     },
   },
 ]

@@ -1,3 +1,4 @@
+import { SessionExecutionOwners } from "./execution-owners"
 import { SessionPauseRecovery } from "./pause-recovery"
 import { PrimaryAgentIdentity } from "../agent/primary-identity"
 
@@ -466,7 +467,7 @@ export namespace SessionInvoke {
         })
       }
       if (!lease.signal.aborted) {
-        const session = await Session.get(sessionID)
+        const session = await SessionExecutionOwners.currentSession(await Session.get(sessionID))
         const kind = WorkflowKindRegistry.effectiveKind(session.workflow)
         if (kind)
           await WorkflowPromptRegistry.get(kind)
@@ -555,7 +556,7 @@ export namespace SessionInvoke {
     segments: RolloutSchema.ExecutionSegment[],
   ): Promise<MessageV2.WithParts> {
     ContinuationKernel.init()
-    for (const kind of WorkflowPromptRegistry.kinds()) WorkflowPromptRegistry.get(kind)?.init?.()
+    let workflowInitialized = false
     const abort = lease.signal
 
     // Open the loop-scoped message cache window (#350 D2): while this loop owns
@@ -566,7 +567,11 @@ export namespace SessionInvoke {
       SessionMessageCache.disable(sessionID)
       evictRecallCache(sessionID)
       const finalized = await Promise.allSettled(
-        WorkflowPromptRegistry.kinds().map((kind) => WorkflowPromptRegistry.get(kind)?.finalize?.(sessionID, scopeID)),
+        workflowInitialized
+          ? WorkflowPromptRegistry.kinds().map((kind) =>
+              WorkflowPromptRegistry.get(kind)?.finalize?.(sessionID, scopeID),
+            )
+          : [],
       )
       const errors = finalized.flatMap((result) => (result.status === "rejected" ? [result.reason as unknown] : []))
       if (errors.length) throw errors.find(RolloutRecordingError.isInstance) ?? errors[0]
@@ -583,9 +588,14 @@ export namespace SessionInvoke {
     let parkedTask: { itemID: string; reason: string } | undefined
 
     while (true) {
+      session = await Session.get(sessionID)
       const root = (await SessionHistory.modelMessages({ sessionID })).findLast(
         (message) => message.info.role === "user" && message.info.isRoot === true,
       )
+      const rootAvailable =
+        root &&
+        (await SessionExecutionOwners.allowsMessage(session, root.info)) &&
+        (await SessionExecutionOwners.allowsResume(session))
       const queued = root ? await SessionInbox.peekTask(sessionID) : undefined
       const previousRun =
         root && queued
@@ -596,13 +606,26 @@ export namespace SessionInvoke {
           : undefined
       // Historical roots without execution evidence and finished roots cannot
       // own a newly accepted task's configuration or block its materialization.
-      if (!root || (queued && (!previousRun || ["completed", "failed", "cancelled"].includes(previousRun.status)))) {
+      if (
+        !root ||
+        (queued &&
+          (queued.execution?.previousRootID === root.info.id ||
+            !rootAvailable ||
+            (!previousRun && !MessageV2.isIndependentRoot(root.info)) ||
+            (previousRun && ["completed", "failed", "cancelled"].includes(previousRun.status))))
+      ) {
         // A parked failure stays in the inbox and is skipped by the next peek,
         // so the loop keeps consuming runnable tasks until none remain.
         const result = await SessionInbox.materializeNextTask(sessionID)
         if (result.status === "empty") break
         if (result.status === "failed") parkedTask = { itemID: result.itemID, reason: result.reason }
         continue
+      }
+      if (!rootAvailable) return root
+      session = SessionExecutionOwners.forRoot(session, root.info)
+      if (!MessageV2.isIndependentRoot(root.info) && !workflowInitialized) {
+        for (const kind of WorkflowPromptRegistry.kinds()) WorkflowPromptRegistry.get(kind)?.init?.()
+        workflowInitialized = true
       }
       const configuration = await RolloutLifecycle.configuration(session, root.info.id)
       const next = await Experiment.provide(configuration, () =>
@@ -617,10 +640,13 @@ export namespace SessionInvoke {
                 SessionManager.setActivity(sessionID, { phase: "preparing_context" }, { generation: lease.generation })
                 log.info("loop", { step, sessionID })
                 if (abort.aborted) break
-                session = await Session.get(sessionID)
+                session = SessionExecutionOwners.forRoot(await Session.get(sessionID), root.info)
                 SessionManager.assertExecutionContext(session, "session loop refresh")
                 scopeID = (session.scope as Scope).id
-                let msgs = await effectiveCompactedMessages(sessionID)
+                let msgs = MessageV2.executionMessages(
+                  await effectiveCompactedMessages(sessionID),
+                  root.info as MessageV2.User,
+                )
 
                 // Find R: the latest root user message. R is the anchor for the entire
                 // loop: rootID, model, agent, system, and compaction anchor all derive
@@ -992,7 +1018,9 @@ export namespace SessionInvoke {
                   ]).then(([env, custom]) => [env, custom] as const),
                   buildCortexExecutionContext(sessionID),
                   buildCortexReminder(sessionID),
-                  SessionExecutionContributions.advisory(sessionID, scopeID, lease.signal),
+                  MessageV2.isIndependentRoot(R)
+                    ? Promise.resolve([])
+                    : SessionExecutionContributions.advisory(sessionID, scopeID, lease.signal),
                   recallMemory(
                     firstModelPreparation,
                     sessionID,
@@ -1070,7 +1098,12 @@ export namespace SessionInvoke {
                 const workflowContext = {
                   deliveryMetadata: channelDeliveryMetadata(msgs, lastFinishedIndex),
                   agentName: agent.name,
-                  toolIDs: Object.freeze(toolDefinitions.map((tool) => tool.id)),
+                  toolIDs: Object.freeze([
+                    ...toolDefinitions
+                      .filter((tool) => !toolAvailability.diagnostics.has(tool.id))
+                      .map((tool) => tool.id),
+                    ...toolAvailability.autoExpandable,
+                  ]),
                 }
                 if (session) {
                   const contribution = workflowKind ? WorkflowPromptRegistry.get(workflowKind) : undefined
@@ -1186,6 +1219,7 @@ export namespace SessionInvoke {
                   messages: sessionMessages,
                   session,
                   agent,
+                  root: R,
                 })
                 const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
                   maxHistoryImages: jobCtx.compactionMaxHistoryImages,
@@ -1471,6 +1505,7 @@ export namespace SessionInvoke {
                   executionTools: resolvedTools.executionTools,
                   executorKinds: resolvedTools.executorKinds,
                   activeToolIDs: resolvedTools.activeToolIDs,
+                  availableToolIDs: resolvedTools.availableToolIDs,
                   codexReplay,
                   autoExpandable: resolvedTools.autoExpandable,
                   intentBindings: resolvedTools.intentBindings,
@@ -1659,7 +1694,11 @@ export namespace SessionInvoke {
                 // acknowledgement is explicit new work and must survive.
                 const fenceQueuedBefore = SessionManager.fenceQueuedBefore(sessionID)
                 if (fenceQueuedBefore === undefined) {
-                  await SessionInbox.removeByModes(sessionID, ["steer", "context"])
+                  const items = (await SessionInbox.peekReady(sessionID)).filter((item) => item.mode !== "task")
+                  await SessionInbox.commitReady(
+                    sessionID,
+                    items.map((item) => item.id),
+                  )
                 } else {
                   await SessionInbox.removeByModes(sessionID, ["task", "steer", "context"], fenceQueuedBefore)
                 }

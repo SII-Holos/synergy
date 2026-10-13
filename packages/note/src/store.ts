@@ -13,6 +13,7 @@ import { SessionPluginHooks } from "@ericsanchezok/synergy-harness/session/plugi
 import { NoteMarkdown } from "./markdown"
 import { NoteDocument } from "./document"
 import { isDeepEqual } from "remeda"
+import { NoteDocumentKinds } from "./document-kinds"
 
 export namespace NoteStore {
   const log = Log.create({ service: "note.store" })
@@ -20,19 +21,12 @@ export namespace NoteStore {
 
   export type Metadata = z.infer<typeof NoteTypes.MetaInfo>
 
-  function normalizeBlueprint(note: z.infer<typeof NoteTypes.Info>): void {
-    if (note.kind !== "blueprint") {
-      note.blueprint = undefined
-      return
-    }
+  function publicInfo(note: z.infer<typeof NoteTypes.Info>) {
+    return NoteTypes.Info.parse(NoteDocumentKinds.project(note))
+  }
 
-    const blueprint = note.blueprint as (z.infer<typeof NoteTypes.Info>["blueprint"] & { status?: unknown }) | undefined
-    if (!blueprint) {
-      note.blueprint = {}
-      return
-    }
-    delete blueprint.status
-    note.blueprint = blueprint
+  function publicMetadata(note: Metadata) {
+    return NoteTypes.MetaInfo.parse(NoteDocumentKinds.project(note))
   }
 
   function normalize(note: z.infer<typeof NoteTypes.Info>): z.infer<typeof NoteTypes.Info> {
@@ -46,7 +40,7 @@ export namespace NoteStore {
     note.time.created ??= note.time.updated ?? 0
     note.time.updated ??= note.time.created
     note.content = NoteDocument.normalize(note.content)
-    normalizeBlueprint(note)
+    NoteDocumentKinds.normalize(note)
     return note
   }
 
@@ -90,7 +84,9 @@ export namespace NoteStore {
     if (before.pinned !== after.pinned) changed.push("pinned")
     if (before.global !== after.global) changed.push("global")
     if (before.kind !== after.kind) changed.push("kind")
-    if (!deepEqual(before.blueprint, after.blueprint)) changed.push("blueprint")
+    const previous = before as Record<string, unknown>
+    const next = after as Record<string, unknown>
+    for (const field of NoteDocumentKinds.fields()) if (!deepEqual(previous[field], next[field])) changed.push(field)
     if (before.archived !== after.archived) changed.push("archived")
     return changed
   }
@@ -108,6 +104,7 @@ export namespace NoteStore {
     const searchText = typeof raw.searchText === "string" && raw.searchText.length > 0 ? raw.searchText : raw.title
 
     const normalized: Metadata = {
+      ...raw,
       id: raw.id,
       title: raw.title,
       pinned: raw.pinned === true,
@@ -119,9 +116,12 @@ export namespace NoteStore {
       searchText,
     }
     if (typeof raw.originScope === "string") normalized.originScope = raw.originScope
-    if (raw.kind === "note" || raw.kind === "blueprint") normalized.kind = raw.kind
+    if (typeof raw.kind === "string") normalized.kind = raw.kind
     if (typeof raw.previewHtml === "string") normalized.previewHtml = raw.previewHtml
-    if (raw.blueprint && typeof raw.blueprint === "object") normalized.blueprint = raw.blueprint
+    for (const field of NoteDocumentKinds.fields()) {
+      const value = (entry as Record<string, unknown>)[field]
+      if (value !== undefined) (normalized as Record<string, unknown>)[field] = value
+    }
     return normalizeMetadata(normalized, scopeID)
   }
 
@@ -244,7 +244,8 @@ export namespace NoteStore {
       const note = await Storage.read<z.infer<typeof NoteTypes.Info>>(StoragePath.note(sid, noteID), {
         silentNotFound: true,
       })
-      return { scopeID, note: normalize(note) }
+      NoteDocumentKinds.require(note)
+      return { scopeID, note: publicInfo(normalize(note)) }
     } catch (error) {
       if (!(error instanceof Storage.NotFoundError)) throw error
     }
@@ -254,7 +255,8 @@ export namespace NoteStore {
         const note = await Storage.read<z.infer<typeof NoteTypes.Info>>(StoragePath.note(globalSid, noteID), {
           silentNotFound: true,
         })
-        return { scopeID: HOME_SCOPE_ID, note: normalize(note) }
+        NoteDocumentKinds.require(note)
+        return { scopeID: HOME_SCOPE_ID, note: publicInfo(normalize(note)) }
       } catch (error) {
         if (!(error instanceof Storage.NotFoundError)) throw error
       }
@@ -267,7 +269,8 @@ export namespace NoteStore {
           StoragePath.note(Identifier.asScopeID(candidate), noteID),
           { silentNotFound: true },
         )
-        return { scopeID: candidate, note: normalize(note) }
+        NoteDocumentKinds.require(note)
+        return { scopeID: candidate, note: publicInfo(normalize(note)) }
       } catch {
         // continue
       }
@@ -295,10 +298,6 @@ export namespace NoteStore {
     const scopeID = Identifier.asScopeID(targetScopeID)
     const isGlobal = targetScopeID === HOME_SCOPE_ID
     const now = Date.now()
-    const blueprint = create.note.blueprint as
-      | (NonNullable<NoteTypes.CreateInput["blueprint"]> & { status?: unknown })
-      | undefined
-    if (blueprint) delete blueprint.status
     const note: z.infer<typeof NoteTypes.Info> = {
       id,
       title: create.note.title,
@@ -308,20 +307,19 @@ export namespace NoteStore {
       archived: false,
       tags: create.note.tags ?? [],
       kind: create.note.kind ?? "note",
-      blueprint: blueprint
-        ? {
-            ...blueprint,
-            runCount: blueprint.runCount ?? 0,
-          }
-        : blueprint,
       version: 1,
       time: { created: now, updated: now },
     }
+    NoteDocumentKinds.create(note, create.note)
     await Storage.transaction(async () => {
       await Storage.write(StoragePath.note(scopeID, id), note)
       await indexSet(targetScopeID, note)
       log.info("created", { id, title: note.title, global: isGlobal, scopeID: targetScopeID })
-      await Bus.publish(NoteEvent.Created, { scopeID: targetScopeID, note, meta: toMetadata(note) })
+      await Bus.publish(NoteEvent.Created, {
+        scopeID: targetScopeID,
+        note: publicInfo(note),
+        meta: publicMetadata(toMetadata(note)),
+      })
     })
     await SessionPluginHooks.trigger(
       "note.create.after",
@@ -333,14 +331,15 @@ export namespace NoteStore {
         note,
       },
     )
-    return note
+    return publicInfo(note)
   }
 
   export async function get(scopeID: string, noteID: string): Promise<z.infer<typeof NoteTypes.Info>> {
     const note = await Storage.read<z.infer<typeof NoteTypes.Info>>(
       StoragePath.note(Identifier.asScopeID(scopeID), noteID),
     )
-    return normalize(note)
+    NoteDocumentKinds.require(note)
+    return publicInfo(normalize(note))
   }
 
   export async function list(
@@ -352,7 +351,9 @@ export namespace NoteStore {
     if (ids.length === 0) return []
     const keys = ids.filter((id) => !id.startsWith("_")).map((id) => StoragePath.note(sid, id))
     const results = await Storage.readMany<z.infer<typeof NoteTypes.Info>>(keys)
-    const notes = results.filter((n): n is z.infer<typeof NoteTypes.Info> => n !== undefined).map(normalize)
+    const notes = results
+      .filter((n): n is z.infer<typeof NoteTypes.Info> => n !== undefined && NoteDocumentKinds.available(n.kind))
+      .map((note) => publicInfo(normalize(note)))
     sortByPinAndTime(notes)
     return filterArchive(notes, archiveFilter ?? "active")
   }
@@ -376,6 +377,7 @@ export namespace NoteStore {
     const groups: NoteTypes.ScopeGroup[] = []
     for (const sid of scopeIDs) {
       const notes = await list(sid, archiveFilter)
+      if (!notes.length) continue
       groups.push({
         scopeID: sid,
         scopeType: sid === HOME_SCOPE_ID ? "home" : "project",
@@ -393,6 +395,7 @@ export namespace NoteStore {
     const sid = Identifier.asScopeID(scopeID)
     const sourcePath = StoragePath.note(sid, noteID)
     const current = normalize(await Storage.read<z.infer<typeof NoteTypes.Info>>(sourcePath))
+    NoteDocumentKinds.require(current)
     const update = await SessionPluginHooks.trigger(
       "note.update.before",
       {
@@ -417,28 +420,14 @@ export namespace NoteStore {
             throw new NoteError.Conflict({
               noteID,
               expectedVersion: update.patch.expectedVersion,
-              note: normalize(draft),
+              note: publicInfo(normalize(draft)),
             })
           }
           if (update.patch.title !== undefined) draft.title = update.patch.title
           if (update.patch.content !== undefined) draft.content = NoteDocument.normalize(update.patch.content)
           if (update.patch.pinned !== undefined) draft.pinned = update.patch.pinned
           if (update.patch.tags !== undefined) draft.tags = update.patch.tags
-          if (update.patch.kind !== undefined) draft.kind = update.patch.kind
-          if (update.patch.blueprint === null) {
-            draft.blueprint = undefined
-          } else if (update.patch.blueprint !== undefined) {
-            const { activeLoopID, ...rest } = update.patch.blueprint as z.infer<
-              typeof NoteTypes.PatchInput
-            >["blueprint"] & {
-              status?: unknown
-            }
-            delete rest.status
-            const next = { ...(draft.blueprint ?? {}), ...rest }
-            if (activeLoopID !== undefined && activeLoopID !== null) next.activeLoopID = activeLoopID
-            if (activeLoopID === null) delete next.activeLoopID
-            draft.blueprint = next
-          }
+          NoteDocumentKinds.update(draft, update.patch)
           if (update.patch.global !== undefined) draft.global = update.patch.global
           if (update.patch.global === true && !wasGlobal) {
             draft.originScope = sid as string
@@ -473,9 +462,14 @@ export namespace NoteStore {
         await indexSet(scopeID, note)
       }
 
-      const meta = toMetadata(note)
+      const meta = publicMetadata(toMetadata(note))
       log.info("updated", { id: noteID, version: note.version })
-      await Bus.publish(NoteEvent.Updated, { scopeID: finalScopeID, note, meta, changed: changedFields(before, note) })
+      await Bus.publish(NoteEvent.Updated, {
+        scopeID: finalScopeID,
+        note: publicInfo(note),
+        meta,
+        changed: changedFields(before, note),
+      })
       if (patch.archived === true) {
         await Bus.publish(NoteEvent.Archived, { ids: [noteID], scopeID: finalScopeID, metas: [meta] })
       } else if (patch.archived === false) {
@@ -493,39 +487,35 @@ export namespace NoteStore {
         note: committed,
       },
     )
-    return committed
+    return publicInfo(committed)
   }
 
-  export async function recordBlueprintRun(input: {
-    scopeID: string
-    noteID: string
-    loopID: string
-    started?: number
-    ended?: boolean
-    archive?: boolean
-  }): Promise<void> {
+  export async function mutateMetadata(
+    scopeID: string,
+    noteID: string,
+    mutate: (document: z.infer<typeof NoteTypes.Info>) => void | false,
+  ): Promise<void> {
     await Storage.transaction(async () => {
-      const key = StoragePath.note(Identifier.asScopeID(input.scopeID), input.noteID)
-      const [stored] = await Storage.readMany<z.infer<typeof NoteTypes.Info>>([key])
-      if (!stored || stored.kind !== "blueprint") return
+      const key = StoragePath.note(Identifier.asScopeID(scopeID), noteID)
+      const stored = await Storage.read<z.infer<typeof NoteTypes.Info>>(key)
+      NoteDocumentKinds.require(stored)
       const before = structuredClone(normalize(stored))
       const note = structuredClone(before)
-      note.blueprint ??= {}
-      if (input.started !== undefined) {
-        note.blueprint.runCount = (note.blueprint.runCount ?? 0) + 1
-        note.blueprint.lastRunAt = input.started
-        note.blueprint.activeLoopID = input.loopID
-      }
-      if (input.ended && note.blueprint.activeLoopID === input.loopID) delete note.blueprint.activeLoopID
-      if (input.archive) note.archived = true
+      if (mutate(note) === false) return
+      NoteDocumentKinds.require(note)
       note.version += 1
       note.time.updated = Date.now()
       await Storage.write(key, note)
-      await indexSet(input.scopeID, note)
-      const meta = toMetadata(note)
-      await Bus.publish(NoteEvent.Updated, { scopeID: input.scopeID, note, meta, changed: changedFields(before, note) })
-      if (input.archive)
-        await Bus.publish(NoteEvent.Archived, { ids: [note.id], scopeID: input.scopeID, metas: [meta] })
+      await indexSet(scopeID, note)
+      const meta = publicMetadata(toMetadata(note))
+      await Bus.publish(NoteEvent.Updated, {
+        scopeID,
+        note: publicInfo(note),
+        meta,
+        changed: changedFields(before, note),
+      })
+      if (!before.archived && note.archived)
+        await Bus.publish(NoteEvent.Archived, { ids: [note.id], scopeID, metas: [meta] })
     })
   }
 
@@ -533,6 +523,7 @@ export namespace NoteStore {
     return Storage.transaction(async () => {
       const sid = Identifier.asScopeID(scopeID)
       const note = normalize(await Storage.read<z.infer<typeof NoteTypes.Info>>(StoragePath.note(sid, noteID)))
+      NoteDocumentKinds.require(note)
       if (!note.archived) {
         throw new NoteError.NotArchived({
           noteID,
@@ -579,10 +570,14 @@ export namespace NoteStore {
             }),
           )
           scopedResults.push(note)
-          results.push(note)
+          results.push(publicInfo(note))
         }
         await indexUpdateMany(resolvedScopeID, scopedResults)
-        const payload = { ids, scopeID: resolvedScopeID, metas: scopedResults.map(toMetadata) }
+        const payload = {
+          ids,
+          scopeID: resolvedScopeID,
+          metas: scopedResults.map((note) => publicMetadata(toMetadata(note))),
+        }
         await Bus.publish(archived ? NoteEvent.Archived : NoteEvent.Unarchived, payload)
       }
       log.info(archived ? "archived" : "unarchived", { ids: noteIDs, count: noteIDs.length })
@@ -602,7 +597,10 @@ export namespace NoteStore {
 
   export async function listMeta(scopeID: string, archiveFilter?: ArchiveFilter): Promise<Metadata[]> {
     const entries = await loadIndex(scopeID)
-    return filterArchive(entries, archiveFilter ?? "active")
+    return filterArchive(
+      entries.filter((entry) => NoteDocumentKinds.available(entry.kind)),
+      archiveFilter ?? "active",
+    ).map((entry) => publicMetadata(entry))
   }
 
   export async function listMetaWithGlobal(scopeID: string, archiveFilter?: ArchiveFilter): Promise<Metadata[]> {
@@ -660,6 +658,15 @@ export namespace NoteStore {
   ): Promise<z.infer<typeof NoteTypes.Info>> {
     const { scopeID: resolved } = await resolveScope(scopeID, noteID)
     return update(resolved, noteID, patch)
+  }
+
+  export async function mutateMetadataAny(
+    scopeID: string,
+    noteID: string,
+    mutate: (document: z.infer<typeof NoteTypes.Info>) => void | false,
+  ): Promise<void> {
+    const { scopeID: resolved } = await resolveScope(scopeID, noteID)
+    return mutateMetadata(resolved, noteID, mutate)
   }
 
   export async function removeAny(scopeID: string, noteID: string): Promise<void> {

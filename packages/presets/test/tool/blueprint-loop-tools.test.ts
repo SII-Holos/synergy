@@ -1,17 +1,17 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
-import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
-import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
+import { AgendaStore } from "@ericsanchezok/synergy-agenda/agenda/store"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
-import { BlueprintLoopReviewAccess } from "@ericsanchezok/synergy-workflows/blueprint/review-access"
-import { BlueprintContinuationPolicy } from "@ericsanchezok/synergy-workflows/blueprint/continuation"
+import { BlueprintLoopReviewAccess } from "@ericsanchezok/synergy-blueprint/blueprint/review-access"
+import { BlueprintContinuationPolicy } from "@ericsanchezok/synergy-blueprint/blueprint/continuation"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
-import { BlueprintLoopApproveTool } from "@ericsanchezok/synergy-workflows/blueprint/tools/blueprint-loop-approve"
-import { BlueprintLoopRejectTool } from "@ericsanchezok/synergy-workflows/blueprint/tools/blueprint-loop-reject"
-import { BlueprintLoopStopTool } from "@ericsanchezok/synergy-workflows/blueprint/tools/blueprint-loop-stop"
+import { BlueprintLoopApproveTool } from "@ericsanchezok/synergy-blueprint/blueprint/tools/blueprint-loop-approve"
+import { BlueprintLoopRejectTool } from "@ericsanchezok/synergy-blueprint/blueprint/tools/blueprint-loop-reject"
+import { BlueprintLoopStopTool } from "@ericsanchezok/synergy-blueprint/blueprint/tools/blueprint-loop-stop"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 // Product domains register tools and the agenda guard via the L4 manifest
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
@@ -273,7 +273,12 @@ describe("blueprint_loop_stop", () => {
           expect(reviewing.status).toBe("auditing")
           expect(reviewing.auditTaskID).toBeDefined()
           const reviewSession = await Session.get(reviewing.auditSessionID!)
-          expect(reviewSession.blueprint).toEqual({ loopID: loop.id, loopRole: "audit", phase: "auditing" })
+          expect(reviewSession.blueprint).toEqual({
+            loopID: loop.id,
+            loopRole: "audit",
+            phase: "auditing",
+            source: "lattice",
+          })
         },
       })
     }))

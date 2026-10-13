@@ -123,16 +123,7 @@ export const AP = {
       id: "app.fatalError.connection.description",
       message: "The Synergy server is not responding right now. The state of running tasks is unknown.",
     },
-    initialization: {
-      id: "app.fatalError.initialization.description",
-      message: "A configuration, provider, or setup error prevented Synergy from starting.",
-    },
-    scope: {
-      id: "app.fatalError.scope.description",
-      message: "The workspace could not be loaded. This may be temporary or due to a configuration issue.",
-    },
   },
-  fatalErrorSummaryLabel: { id: "app.fatalError.summaryLabel", message: "Summary" },
   fatalErrorAction: {
     "reload-interface": { id: "app.fatalError.action.reloadInterface", message: "Reload interface" },
     "try-again": { id: "app.fatalError.action.tryAgain", message: "Try again" },

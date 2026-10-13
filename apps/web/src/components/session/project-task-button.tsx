@@ -1,3 +1,4 @@
+import { useGlobalSDK } from "@/context/global-sdk"
 import { createMediaQuery } from "@solid-primitives/media"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { useGlobalSync } from "@/context/global-sync"
@@ -31,6 +32,7 @@ export function ProjectTaskButton(props: {
 }) {
   const { _ } = useLingui()
   const sdk = useSDK()
+  const { capabilities } = useGlobalSDK()
   const sync = useSync()
   const prompt = usePrompt()
   const params = useParams()
@@ -52,6 +54,7 @@ export function ProjectTaskButton(props: {
     document.querySelector<HTMLButtonElement>("[data-project-task-selector]")?.focus({ preventScroll: true })
   }
   const create = () => {
+    if (!capabilities.has("workbench")) return
     closeMenu()
     dialog.show(() => (
       <DialogCreateProject
@@ -80,22 +83,24 @@ export function ProjectTaskButton(props: {
       : dialog.show(() => (
           <DialogSelectProject selected={sdk.scopeID} onSelect={select} onCreate={create} onSettings={settings} />
         ))
-  command.register(() => [
-    {
-      id: "project.create",
-      title: _(projectEntryCopy.create),
-      disabled: props.disabled || props.uploading,
-      onSelect: create,
-    },
-    {
-      id: "project.select",
-      title: _(copy.choose),
-      disabled: props.disabled || props.uploading,
-      onSelect: () => {
-        open()
+  command.register(() =>
+    [
+      {
+        id: "project.create",
+        title: _(projectEntryCopy.create),
+        disabled: props.disabled || props.uploading,
+        onSelect: create,
       },
-    },
-  ])
+      {
+        id: "project.select",
+        title: _(copy.choose),
+        disabled: props.disabled || props.uploading,
+        onSelect: () => {
+          open()
+        },
+      },
+    ].filter((entry) => entry.id !== "project.create" || capabilities.has("workbench")),
+  )
   async function select(scopeID: string) {
     if (props.disabled || props.uploading || disposed) return false
     const client = sdk.client

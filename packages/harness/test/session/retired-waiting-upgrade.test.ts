@@ -26,8 +26,8 @@ function storedKey(scopeID: string, sessionID: string) {
 /**
  * A store written before the workflow's own pause authority was retired can
  * carry *both* retired markers on the same session: the old `pendingReply` flag
- * and a `blueprint.phase` of `waiting`. Two migrations in this change then
- * target the same latch, and they must agree about it.
+ * and a `blueprint.phase` of `waiting`. Core owns only the pending-reply
+ * conversion; the unregistered Blueprint record must remain untouched.
  *
  * Both facts were true at once in practice — the flag tracked an unanswered
  * reply while the loop held the session waiting — so the agreeing shape is the
@@ -54,8 +54,8 @@ async function seedBothRetiredMarkers(scopeID: string) {
   return { sessionID: session.id, key, rootID: root.id }
 }
 
-describe("retired waiting state upgrade", () => {
-  test("one latch results when both retired markers describe the same stop", () =>
+describe("core retired reply upgrade preserves unavailable workflow data", () => {
+  test("the reply latch upgrades without rewriting the unregistered Blueprint phase", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -68,14 +68,10 @@ describe("retired waiting state upgrade", () => {
           await runMigration(WAITING_PHASE_ID)
 
           const info = await Storage.read<Record<string, unknown>>(key)
-          // The phase is carried forward, or the record fails `safeParse` and the
-          // session is dropped from the navigation projection entirely.
-          expect((info?.blueprint as { phase?: string } | undefined)?.phase).toBe("running")
+          expect((info?.blueprint as { phase?: string } | undefined)?.phase).toBe("waiting")
           // The retired flag is gone rather than rewritten.
           expect(info?.pendingReply).toBeUndefined()
-          // Exactly one latch, and the cause recorded first wins: the flag
-          // migration runs first and its reason is the accurate one — the runtime
-          // stopped with a reply owed.
+          // The session flag alone owns this stop: the runtime owed a reply.
           expect(info?.paused).toMatchObject({ reason: "interrupted" })
         },
       })
@@ -104,7 +100,7 @@ describe("retired waiting state upgrade", () => {
       })
     }))
 
-  test("a waiting phase on its own still carries the loop-held stop onto the latch", () =>
+  test("a historical owner phase alone cannot pause an ordinary session without its owner", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -122,11 +118,8 @@ describe("retired waiting state upgrade", () => {
           await runMigration(WAITING_PHASE_ID)
 
           const info = await Storage.read<Record<string, unknown>>(key)
-          expect((info?.blueprint as { phase?: string } | undefined)?.phase).toBe("running")
-          expect(info?.paused).toMatchObject({
-            reason: "workflow",
-            description: "Stopped by BlueprintLoop; continue or abandon",
-          })
+          expect((info?.blueprint as { phase?: string } | undefined)?.phase).toBe("waiting")
+          expect(info?.paused).toBeUndefined()
         },
       })
     }))
@@ -151,7 +144,7 @@ describe("retired waiting state upgrade", () => {
           await runMigration(WAITING_PHASE_ID)
 
           const info = await Storage.read<Record<string, unknown>>(key)
-          expect((info?.blueprint as { phase?: string } | undefined)?.phase).toBe("running")
+          expect((info?.blueprint as { phase?: string } | undefined)?.phase).toBe("waiting")
           // First pause wins: the user's own stop, including its `since`, survives
           // the upgrade that only exists to carry the record forward.
           expect(info?.paused).toEqual(ownLatch)

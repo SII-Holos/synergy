@@ -92,6 +92,8 @@ export function createNoteDocumentController(input: {
   let timer: ReturnType<typeof setTimeout> | undefined
   let writes = Promise.resolve()
   let disposed = false
+  let available = true
+  let generation = 0
   let pending: NotePatchInput | undefined
   const view: DocumentEditorRetention = { scroll: recovered?.scroll ?? 0, selection: recovered?.selection }
 
@@ -125,7 +127,7 @@ export function createNoteDocumentController(input: {
   }
   function schedule() {
     clearTimer()
-    if (disposed) return
+    if (disposed || !available) return
     timer = setTimeout(() => {
       timer = undefined
       void flush()
@@ -175,6 +177,8 @@ export function createNoteDocumentController(input: {
     return job
   }
   async function saveDirty() {
+    if (!available || disposed) return false
+    const started = generation
     if (deleted()) return !hasDirtyFields(dirty())
     let retry = 0
     while (hasDirtyFields(dirty()) && !conflict() && !deleted()) {
@@ -188,6 +192,7 @@ export function createNoteDocumentController(input: {
       try {
         pending = patch
         const saved = await input.update(patch)
+        if (!available || disposed || generation !== started) return false
         batch(() => {
           setDirty((current) => clearCapturedDirty(current, captured))
           if (!base() || saved.version > base()!.version) setBase(saved)
@@ -199,6 +204,7 @@ export function createNoteDocumentController(input: {
         })
         persist()
       } catch (failure) {
+        if (!available || disposed || generation !== started) return false
         const remote = noteConflictSnapshot(failure)
         if (remote && retry++ === 0 && ingest(remote)) continue
         setError(() => failure)
@@ -227,12 +233,14 @@ export function createNoteDocumentController(input: {
       setSaving(true)
       try {
         if (!(await saveDirty())) return false
+        const started = generation
         for (let attempt = 0; attempt < 2; attempt++) {
           const snapshot = base()
           if (!snapshot || deleted()) return false
           try {
             pending = build(snapshot)
             const saved = await input.update(pending)
+            if (!available || disposed || generation !== started) return false
             // Metadata responses cannot replace edits made while the request was in flight.
             if (!base() || saved.version > base()!.version) setBase(saved)
             if (!dirty().title) setTitle(saved.title)
@@ -242,6 +250,7 @@ export function createNoteDocumentController(input: {
             persist()
             return true
           } catch (failure) {
+            if (!available || disposed || generation !== started) return false
             const remote = noteConflictSnapshot(failure)
             if (remote && attempt === 0 && ingest(remote)) continue
             setError(() => failure)
@@ -293,7 +302,15 @@ export function createNoteDocumentController(input: {
       clearTimer()
       persist()
     },
+    setAvailable(value: boolean) {
+      if (available === value) return
+      available = value
+      generation++
+      clearTimer()
+      persist()
+    },
     dispose() {
+      generation++
       disposed = true
       clearTimer()
       persist()

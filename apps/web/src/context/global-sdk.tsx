@@ -14,7 +14,7 @@ import {
 } from "@/components/performance/browser-metrics"
 import { useServer } from "./server"
 import { streamingTokenReceipt } from "./streaming-token-event"
-import { createRuntimeCapabilities } from "./runtime-capabilities"
+import { createRuntimeCapabilities, discoverRuntimeCapabilities } from "./runtime-capabilities"
 import { createContentSubscriptions, projectContentSummary } from "./content-subscriptions"
 import { createSessionPreparationCache } from "./session-preparation-cache"
 
@@ -28,7 +28,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     const server = useServer()
     const platform = usePlatform()
     const sdk = createSynergyClient({ baseUrl: server.url, fetch: platform.fetch, throwOnError: true })
-    const capabilities = createRuntimeCapabilities(async () => (await sdk.global.capabilities()).data!)
+    const capabilities = createRuntimeCapabilities((signal) => discoverRuntimeCapabilities(sdk, signal))
     const drafts = createDraftSessionIndex(server.url)
     const sessionPreparation = createSessionPreparationCache()
     onCleanup(() => drafts.dispose())
@@ -293,6 +293,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     onCleanup(() => {
       disposed = true
+      capabilities.dispose()
       clearPingTimers()
       if (reconnectTimer) clearTimeout(reconnectTimer)
       ws?.close()

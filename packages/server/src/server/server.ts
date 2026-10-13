@@ -8,7 +8,10 @@ import {
   type ViewProjectionContribution as ProjectionContribution,
 } from "./view-projection"
 import { SessionLocationError } from "@ericsanchezok/synergy-local-runtime/session-api"
+import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { WorkflowKindRegistry } from "@ericsanchezok/synergy-harness/session/workflow-kind-registry"
+import { WorkflowRoute } from "./routes/workflow"
 import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
 import { timingSafeEqual } from "node:crypto"
 import { SessionPreparingError } from "@ericsanchezok/synergy-harness/persistence"
@@ -489,6 +492,7 @@ export namespace Server {
 
   export type ViewProjectionContribution = ProjectionContribution
   export interface Contributions {
+    features?: readonly string[]
     projections?: ViewProjectionContribution[]
     routes?: Partial<Record<RouteStage, Hono>>
     providerRoutes?: Hono
@@ -550,6 +554,17 @@ export namespace Server {
       listening: (url) => contributions.forEach((contribution) => contribution.listening?.(url)),
     }
     instanceState.contributionOwners.set(owner, value)
+  }
+
+  export function features(): string[] {
+    const selected = new Set(RuntimeComponents.selected().map((component) => component.id))
+    return [
+      ...new Set(
+        [...runtimeState().contributionOwners].flatMap(([owner, contribution]) =>
+          selected.has(owner) ? (contribution.features ?? []) : [],
+        ),
+      ),
+    ].sort()
   }
 
   function contributionRoutes(stage: RouteStage): Hono {
@@ -628,6 +643,7 @@ export namespace Server {
             err instanceof Environment.Stale ||
             err instanceof Scope.WorkspaceUnavailableError ||
             err instanceof Session.ForkPointMissingError ||
+            err instanceof SessionExecutionOwners.UnavailableError ||
             err.name === "SessionModelSelectionConflictError"
           )
             status = 409
@@ -834,7 +850,8 @@ export namespace Server {
         "/global/capabilities",
         describeRoute({
           summary: "Get runtime capabilities",
-          description: "List the components selected for this running instance. Installed changes apply after restart.",
+          description:
+            "List active services with HTTP adapters and selected components. Installed changes apply after restart.",
           operationId: "global.capabilities",
           responses: {
             200: {
@@ -847,6 +864,7 @@ export namespace Server {
                         apiVersion: z.literal(1),
                         hostVersion: z.string(),
                         components: z.array(RuntimeComponents.Info),
+                        features: z.array(z.string()),
                         transports: z
                           .object({ displayManifest: z.literal(1), projection: z.literal("projection-v2").optional() })
                           .optional(),
@@ -856,15 +874,31 @@ export namespace Server {
                 },
               },
             },
+            503: {
+              description: "Runtime services are still starting or shutting down",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.union([
+                      z.object({ error: z.string() }).meta({ ref: "RuntimeNotReadyError" }),
+                      RuntimeShuttingDownError,
+                    ]),
+                  ),
+                },
+              },
+            },
           },
         }),
-        (c) =>
-          c.json({
+        (c) => {
+          if (!RuntimeContext.isReady()) return c.json({ error: "Runtime services are not ready" }, 503)
+          return c.json({
             apiVersion: 1 as const,
             hostVersion: Installation.VERSION,
             components: RuntimeComponents.selected(),
+            features: features(),
             transports: { displayManifest: 1 as const, projection: "projection-v2" as const },
-          }),
+          })
+        },
       )
       .get(
         "/global/health",
@@ -1322,6 +1356,7 @@ export namespace Server {
       .use(validator("query", z.object({ directory: z.string().optional(), scopeID: z.string().optional() })))
 
       .route("/scope", createScopeRoute(instanceState.contributions?.scopeConflictSchema))
+      .route("/workflow", WorkflowKindRegistry.ids().length ? WorkflowRoute() : new Hono())
       .route("/scope", createScopeBootstrapRoute(instanceState.contributions?.bootstrap))
       .route("/pty", PtyRoute())
       .route("/config", ConfigRoute())
@@ -1539,7 +1574,7 @@ export namespace Server {
           assertWorktreeSessionIdle(sessionID)
           await Worktree.enter({ sessionID, target: body.target, force: body.force })
           const session = await Session.get(sessionID)
-          return c.json(session)
+          return c.json(Session.publicInfo(session))
         },
       )
       .post(
@@ -1570,7 +1605,7 @@ export namespace Server {
           const sessionID = c.req.valid("param").sessionID
           assertWorktreeSessionIdle(sessionID)
           const session = await Worktree.leave(sessionID)
-          return c.json(session)
+          return c.json(Session.publicInfo(session))
         },
       )
       .post(

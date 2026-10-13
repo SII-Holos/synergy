@@ -16,6 +16,7 @@ import { ExecutionProjection } from "./execution/projection"
 export function registerHttp() {
   Server.registerContributions(
     {
+      features: ["workbench"],
       projections: [ExecutionProjection.contribution()],
       routes: {
         "global-tools": new Hono()

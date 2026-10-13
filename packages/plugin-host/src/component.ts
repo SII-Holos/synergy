@@ -1,3 +1,6 @@
+import { registerResourceSource } from "./resource-source"
+import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
+import { PluginEvent } from "./plugin/event"
 import { registerReload } from "./reload"
 import { PluginMarketplaceRegistry } from "./plugin/marketplace-registry"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
@@ -46,6 +49,8 @@ export function plugins(): RuntimeComponent {
     }),
     adapters: { http: new URL("./http.ts", import.meta.url) },
     register() {
+      registerResourceSource()
+      BusEvent.register(...Object.values(PluginEvent))
       registerReload()
       registerConfig()
       registerPluginMigrations()

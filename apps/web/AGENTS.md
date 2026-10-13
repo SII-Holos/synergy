@@ -2,11 +2,11 @@
 
 These rules apply under `apps/web`. Root [AGENTS.md](../../AGENTS.md) and [PRODUCT.md](PRODUCT.md) still apply.
 
-Load `develop-frontend` for the complete Web/shared UI workflow, `change-server-api` when the change needs a new or modified server contract, `change-channel-runtime` for Channel account/navigation surfaces, `change-browser-runtime` for Browser presentation/control, and `change-plugin-runtime` for the built-in plugin host or registries.
+Load `develop-frontend`; server contracts also require `change-server-api`, Channel surfaces `change-channel-runtime`, Browser controls `change-browser-runtime`, and plugin hosts/registries `change-plugin-runtime`.
 
 ## Protect the Active App
 
-Do not restart or stop the Web app or server carrying the current task. Inspect the current dev URL before testing; do not assume port `3000`. Use the existing app for non-disruptive inspection or start an isolated second runtime through the `develop-synergy` skill.
+Never stop the app/server carrying this task. Inspect its URL; do not assume port `3000`. Reuse it for non-disruptive inspection or use `develop-synergy` for an isolated runtime.
 
 ## Solid State and Frontend Sync
 
@@ -21,7 +21,7 @@ Read [Frontend data sync](../../docs/architecture/frontend-data-sync.md) before 
 - Keep conversation rows and large Markdown blocks virtualized, preserving prepend anchors, focused controls, selections and full-history operations. Parts stay fine-grained store reads and must not move into the turn projection.
 - Reconcile single messages into the sorted window incrementally (binary-search insertion) rather than re-merging and re-sorting the whole window; window order and eviction semantics stay canonical.
 
-Discover active components through the generated capabilities API before optional API calls. Keep startup requests, settings, navigation, composer controls and workbench registrations consistent with that selection; reconnect discards the previous selection and never assumes a full product.
+Discover available services through the generated capabilities API `features` before optional API calls; `components` is diagnostic metadata. Keep startup requests, settings, navigation, composer controls and workbench registrations consistent with that selection; reconnect discards the previous selection and never assumes a full product.
 
 Use generated SDK methods for internal HTTP APIs. Add OpenAPI metadata and regenerate the SDK when a required route is missing. Keep raw browser APIs for WebSocket/EventSource, external URLs, local file/blob operations, downloads/uploads without an SDK contract, and platform fetch injection.
 
@@ -51,13 +51,15 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 
 ## Verification
 
-Keep App tests under `test/`, mirroring the relevant `src/` or `script/` domain. Never colocate `*.test.*` or `*.spec.*` files with App implementation files.
+Keep tests under `test/`, mirroring their `src/` or `script/` domain; never colocate tests with implementation.
 
-Keep browser conditions, isolation lists and batch timeouts in `script/test-options.ts`; the package runner and CI planner share that executable batch definition.
+Keep browser conditions, isolation and timeouts in `script/test-options.ts`, shared by the package runner and CI planner.
 
 Run the narrow UI/context test while iterating, then `bun run verify local --test apps/web/test/<domain>/<file>.test.ts` from the root with relevant tests selected. It uses the canonical executor and static gates. Complete Web/UI inventories and thresholds belong to CI; use `bun run verify coverage --package apps/web` when changing coverage policy, instrumentation or removing substantial coverage. See [develop-frontend](../../.synergy/skill/develop-frontend/SKILL.md#verify) for checks triggered by other risks.
 
 Browser capability or bootstrap changes also run `bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts` and, after the production build, `bun apps/web/script/private-http-smoke.ts` from the repository root.
+
+Optional-feature changes verify unknown, absent, selected, removed and reinstalled states through rendered controls and request counts. Hold replies across a same-URL reconnect epoch; old results must not restore features, resume autosave or erase retained drafts.
 
 For product copy, accessibility text, locale-sensitive formatting, or language settings, also run:
 

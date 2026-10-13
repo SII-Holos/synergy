@@ -1,3 +1,4 @@
+import { AgentBuiltins } from "./builtins"
 import { PrimaryAgentIdentity } from "./primary-identity"
 import { PermissionNext } from "../permission/next"
 import type { Provider } from "../provider/provider"
@@ -8,7 +9,6 @@ export interface BuiltinAgentContext {
   defaults: PermissionNext.Ruleset
   user: PermissionNext.Ruleset
   role: (role: Provider.ModelRole) => { providerID: string; modelID: string } | undefined
-  evolutionActive: boolean
 }
 
 export type SubagentPermissionProfile =
@@ -21,20 +21,16 @@ export type SubagentPermissionProfile =
   | "docsWrite"
   | "anchoredDocsWrite"
   | "quality"
-  | "memory"
-  | "note"
   | "sessionHistory"
   | "externalResearch"
   | "research"
-  | "supervisor"
-  | "lightLoopReviewer"
 
 export interface SubagentDefinition {
   name: string
   description: string
   prompt: string
   model?: Provider.ModelRole
-  permission: SubagentPermissionProfile
+  permission: SubagentPermissionProfile | PermissionNext.Ruleset
   visibleTo?: string[]
   delegationGroups?: string[]
   hidden?: boolean
@@ -62,10 +58,8 @@ function classicReadTools(): PermissionNext.Ruleset {
   return PermissionNext.fromConfig({
     read: "allow",
     grep: "allow",
-    ast_grep: "allow",
     view_file: "deny",
     scan_files: "deny",
-    parse_code: "deny",
   })
 }
 
@@ -73,11 +67,8 @@ function anchoredReadTools(): PermissionNext.Ruleset {
   return PermissionNext.fromConfig({
     read: "deny",
     grep: "deny",
-    ast_grep: "deny",
     view_file: "allow",
     scan_files: "allow",
-    parse_code: "allow",
-    scan_document: "allow",
   })
 }
 
@@ -96,7 +87,6 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     "*": "deny",
     expand_tools: "allow",
     search_tools: "allow",
-    "browser_*": "allow",
     question: "deny",
     dagwrite: "deny",
     dagread: "deny",
@@ -112,17 +102,8 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     process: "allow",
     skill: "allow",
     webfetch: "allow",
-    look_at: "allow",
     glob: "allow",
     list: "allow",
-    note_list: "allow",
-    note_read: "allow",
-    note_search: "allow",
-    blueprint_loop_stop: "allow",
-    blueprint_loop_approve: "allow",
-    blueprint_loop_reject: "allow",
-    agenda_list: "allow",
-    agenda_logs: "allow",
     external_directory: {
       "*": "ask",
       [Truncate.directory()]: "allow",
@@ -145,35 +126,6 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     return PermissionNext.merge(common, anchoredReadTools(), anchoredWriteTools())
   }
 
-  if (profile === "memory") {
-    return PermissionNext.merge(
-      common,
-      classicReadTools(),
-      PermissionNext.fromConfig({
-        memory_search: "allow",
-        memory_get: "allow",
-        memory_write: "allow",
-        memory_edit: "allow",
-      }),
-    )
-  }
-
-  if (profile === "note") {
-    return PermissionNext.merge(
-      common,
-      classicReadTools(),
-      PermissionNext.fromConfig({
-        note_list: "allow",
-        note_read: "allow",
-        note_search: "allow",
-        note_write: "allow",
-        note_edit: "allow",
-        note_archive: "allow",
-        note_delete: "allow",
-      }),
-    )
-  }
-
   if (profile === "sessionHistory") {
     return PermissionNext.merge(
       common,
@@ -189,84 +141,20 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     )
   }
 
-  if (profile === "externalResearch" || profile === "research") {
-    return PermissionNext.merge(
-      common,
-      classicReadTools(),
-      PermissionNext.fromConfig({
-        "mcp__*": "allow",
-      }),
-    )
-  }
-
-  if (profile === "supervisor") {
-    return PermissionNext.merge(
-      common,
-      anchoredReadTools(),
-      PermissionNext.fromConfig({
-        dagwrite: "allow",
-        dagread: "allow",
-        dagpatch: "allow",
-        task: "allow",
-        task_list: "allow",
-        task_output: "allow",
-        task_cancel: "allow",
-        session_list: "allow",
-        scope_list: "allow",
-        session_read: "allow",
-        session_search: "allow",
-        session_send: "deny",
-        session_control: "deny",
-        note_list: "allow",
-        note_read: "allow",
-        note_search: "allow",
-        note_write: "deny",
-        note_edit: "deny",
-      }),
-    )
-  }
-
-  if (profile === "lightLoopReviewer") {
-    return PermissionNext.merge(
-      common,
-      anchoredReadTools(),
-      PermissionNext.fromConfig({
-        dagwrite: "allow",
-        dagread: "allow",
-        dagpatch: "allow",
-        task: "allow",
-        task_list: "allow",
-        task_output: "allow",
-        task_cancel: "allow",
-        session_list: "allow",
-        scope_list: "allow",
-        session_read: "allow",
-        session_search: "allow",
-        session_send: "deny",
-        session_control: "deny",
-        note_list: "allow",
-        note_read: "allow",
-        note_search: "allow",
-        note_write: "deny",
-        note_edit: "deny",
-        memory_write: "deny",
-        memory_edit: "deny",
-        light_loop_approve: "allow",
-        light_loop_reject: "allow",
-      }),
-    )
-  }
-
   return PermissionNext.merge(common, classicReadTools())
 }
 
 export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDefinition): Agent.Info {
-  return {
+  const agent: Agent.Info = {
     name: definition.name,
     description: definition.description,
     prompt: definition.prompt,
     options: {},
-    permission: PermissionNext.merge(ctx.defaults, baseToolPermissions(definition.permission), ctx.user),
+    permission: PermissionNext.merge(
+      ctx.defaults,
+      typeof definition.permission === "string" ? baseToolPermissions(definition.permission) : definition.permission,
+      ctx.user,
+    ),
     mode: "subagent",
     native: true,
     visibleTo: definition.visibleTo ?? [PrimaryAgentIdentity.names.coding, "supervisor"],
@@ -277,4 +165,6 @@ export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDef
     temperature: definition.temperature,
     topP: definition.topP,
   }
+  if (typeof definition.permission === "string") AgentBuiltins.tagProfile(agent, definition.permission)
+  return agent
 }

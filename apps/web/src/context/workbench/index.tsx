@@ -1,3 +1,7 @@
+import { executionDetailAvailable } from "@/components/session/execution-detail-model"
+import { runtimeFeatureAvailable } from "@/components/runtime-features"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { useViewActivity } from "@/context/view-residency"
 import { useWorkbenchPanelRegistry } from "./registry"
 import { createWorkbenchClosePolicy } from "./close-policy"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
@@ -22,6 +26,7 @@ import {
 } from "@/plugin/registries/workbench-panel-registry"
 import {
   closeWorkbenchPanelTab,
+  mergeVisibleWorkbenchTabs,
   createTabCloseGuard,
   isWorkbenchPanelAvailable,
   moveWorkbenchPanelTab,
@@ -48,10 +53,29 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
   gate: false,
   init: () => {
     const registry = useWorkbenchPanelRegistry()
-    const getWorkbenchPanel = registry.get,
-      listWorkbenchPanels = registry.list,
+    const listWorkbenchPanels = registry.list,
       subscribeWorkbenchPanels = registry.subscribe
     const layout = useLayout()
+    const { capabilities } = useGlobalSDK()
+    const active = useViewActivity()
+    const retainedPanels = new Map<
+      string,
+      { selection: NonNullable<ReturnType<typeof capabilities.current>>; entry: WorkbenchPanelEntry }
+    >()
+    onCleanup(() => retainedPanels.clear())
+    const pluginPanel = (entry: WorkbenchPanelEntry) => !!entry.pluginId && entry.pluginId !== "builtin"
+    function getWorkbenchPanel(id: string) {
+      const entry = registry.get(id)
+      const selection = capabilities.current()
+      if (!active()) {
+        const retained = retainedPanels.get(id)
+        if (retained && retained.selection === selection && capabilities.has("plugin-host")) return retained.entry
+        return entry && !pluginPanel(entry) ? entry : undefined
+      }
+      if (entry && pluginPanel(entry) && entry.retention === "pause" && selection && capabilities.has("plugin-host"))
+        retainedPanels.set(id, { selection, entry })
+      return entry
+    }
     const params = useParams()
     const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
     const hasSession = createMemo(() => !!params.id)
@@ -135,13 +159,29 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       )
     }
 
+    function visibleTab(tab: WorkbenchPanelTab) {
+      if (!visibleEntry(tab.panelId)) return false
+      if (tab.panelId === "execution-detail" && !executionDetailAvailable(tab.state, capabilities.has)) return false
+      const state = tab.state
+      return (
+        tab.panelId !== "notes" ||
+        !state ||
+        typeof state !== "object" ||
+        !("kind" in state) ||
+        state.kind !== "blueprint" ||
+        capabilities.has("blueprint")
+      )
+    }
+
     function projectedTabs(boundSession: string, surfaceName: WorkbenchPanelSurface) {
       const tabs = layout
         .surface(boundSession, surfaceName)
         .tabs()
-        .filter((tab) => !openings[tab.id])
+        .filter((tab) => !openings[tab.id] && visibleTab(tab))
       for (const opening of Object.values(openings)
-        .filter((opening) => opening.session === boundSession && opening.surface === surfaceName)
+        .filter(
+          (opening) => opening.session === boundSession && opening.surface === surfaceName && visibleTab(opening.tab),
+        )
         .sort((a, b) => a.index - b.index)) {
         tabs.splice(Math.min(opening.index, tabs.length), 0, opening.tab)
       }
@@ -161,7 +201,11 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       const value = layout.surface(boundSession, surfaceName)
       const key = JSON.stringify([boundSession, surfaceName])
       const tabs = () => projectedTabs(boundSession, surfaceName)
-      const active = () => openingActive[key] ?? value.active()
+      const active = () => {
+        const id = openingActive[key] ?? value.active()
+        const visible = tabs()
+        return visible.some((tab) => tab.id === id) ? id : visible[0]?.id
+      }
       return {
         ...value,
         savedTabs: value.tabs,
@@ -174,7 +218,13 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
             next.forEach((tab, index) => {
               if (openings[tab.id]) setOpenings(tab.id, "index", index)
             })
-            value.setTabs(next.filter((tab) => !openings[tab.id]))
+            value.setTabs(
+              mergeVisibleWorkbenchTabs(
+                value.tabs(),
+                next.filter((tab) => !openings[tab.id]),
+                visibleTab,
+              ),
+            )
           }),
         setActive: (id: string | undefined) => {
           changeSelection(boundSession, surfaceName)
@@ -212,7 +262,12 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     const entries = (surfaceName: WorkbenchPanelSurface) =>
       createMemo(() => {
         registryVersion()
-        return listWorkbenchPanels(surfaceName).filter((entry) => isWorkbenchPanelAvailable(entry, hasSession()))
+        return listWorkbenchPanels(surfaceName).filter(
+          (entry) =>
+            isWorkbenchPanelAvailable(entry, hasSession()) &&
+            (!pluginPanel(entry) || capabilities.has("plugin-host")) &&
+            runtimeFeatureAvailable("panel", entry.id, capabilities.has),
+        )
       })
 
     const sideEntries = entries("side")
@@ -247,7 +302,8 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     function visibleEntry(panelId: string): WorkbenchPanelEntry | undefined {
       registryVersion()
       const entry = getWorkbenchPanel(panelId)
-      if (!entry) return undefined
+      if (!entry || !runtimeFeatureAvailable("panel", panelId, capabilities.has)) return undefined
+      if (pluginPanel(entry) && !capabilities.has("plugin-host")) return undefined
       if (!isWorkbenchPanelAvailable(entry, hasSession())) return undefined
       return entry
     }
@@ -255,8 +311,16 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     async function openPanel(panelId: string, options: OpenWorkbenchPanelOptions = {}) {
       const entry = visibleEntry(panelId)
       if (!entry) return undefined
+      if (panelId === "execution-detail" && !executionDetailAvailable(options.init?.state, capabilities.has))
+        return undefined
       if (options.canCommit?.() === false) return undefined
       const boundSession = sessionKey()
+      if (
+        options.intent === "restore" &&
+        !capabilities.current() &&
+        layout.surface(boundSession, entry.surface).tabs().length
+      )
+        return undefined
       if ((options.intent ?? "user") === "user" && !options.canCommit) changeSelection(boundSession, entry.surface)
       if (
         !entry.openingComponent ||
@@ -606,8 +670,9 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
 
     function moveTab(surfaceName: WorkbenchPanelSurface, tabId: string, index: number) {
       const target = surface(surfaceName)
-      const next = moveWorkbenchPanelTab(target.tabs(), tabId, index)
-      if (next === target.tabs()) return
+      const tabs = target.tabs()
+      const next = moveWorkbenchPanelTab(tabs, tabId, index)
+      if (next === tabs) return
       target.setTabs(next)
     }
 
@@ -623,7 +688,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     function panelForTab(tab: WorkbenchPanelTab | undefined) {
       registryVersion()
       if (!tab) return undefined
-      return getWorkbenchPanel(tab.panelId)
+      return visibleTab(tab) ? visibleEntry(tab.panelId) : undefined
     }
 
     return {

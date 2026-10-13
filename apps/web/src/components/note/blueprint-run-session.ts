@@ -17,11 +17,16 @@ export type BlueprintScopeSummary = {
 export type BlueprintLoopSummary = {
   id: string
   status?: string
+  source?: string
 }
 
 export type BlueprintRunNoteSummary = {
   blueprint?: {
     activeLoopID?: string | null
+    activeLoopSource?: string
+    lastRunSource?: string
+    runCount?: number
+    lastRunAt?: number
   }
 }
 
@@ -72,11 +77,38 @@ export function isActiveBlueprintLoopStatus(status?: string | null) {
   return status === "armed" || status === "running" || status === "auditing"
 }
 
+export function blueprintLoopFeatureAvailable(loop: { source?: string }, hasFeature: (id: string) => boolean) {
+  if (!hasFeature("blueprint")) return false
+  if (!loop.source || loop.source === "user") return true
+  if (loop.source === "lattice") return hasFeature("lattice")
+  if (loop.source === "plugin") return hasFeature("plugin-host") && hasFeature("plugin-blueprint")
+  return false
+}
+
+export function blueprintRunHistory(
+  note: BlueprintRunNoteSummary & { time: { updated: number } },
+  loops: Array<{ time: { updated: number } }>,
+  hasFeature: (id: string) => boolean,
+) {
+  const metadata = note.blueprint
+  const history = blueprintLoopFeatureAvailable({ source: metadata?.lastRunSource }, hasFeature) ? metadata : undefined
+  return {
+    count: history?.runCount ?? loops.length,
+    updated: history?.lastRunAt ?? loops[0]?.time.updated ?? note.time.updated,
+    activeLoopID: blueprintLoopFeatureAvailable({ source: metadata?.activeLoopSource }, hasFeature)
+      ? metadata?.activeLoopID
+      : undefined,
+  }
+}
+
 export function activeBlueprintLoop<T extends BlueprintLoopSummary>(
   note: BlueprintRunNoteSummary,
   loops: T[],
+  hasFeature: (id: string) => boolean = () => true,
 ): T | undefined {
-  const active = loops.filter((loop) => isActiveBlueprintLoopStatus(loop.status))
+  const active = loops.filter(
+    (loop) => blueprintLoopFeatureAvailable(loop, hasFeature) && isActiveBlueprintLoopStatus(loop.status),
+  )
 
   const activeLoopID = note.blueprint?.activeLoopID
   if (activeLoopID) {

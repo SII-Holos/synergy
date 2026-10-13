@@ -1,3 +1,4 @@
+import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
 import { expect, test } from "bun:test"
 import { openAgentRuntime } from "../src"
 import { lsp } from "@ericsanchezok/synergy-lsp/component"
@@ -68,3 +69,29 @@ for (const invalid of ["version", "duplicate"] as const)
       context.dispose()
     }
   })
+
+for (const role of ["agent", "policy"] as const) {
+  test(`verified ${role} worker selection is isolated and sealed`, async () => {
+    await using fixture = await runtimeHome()
+    const plan = workerPlan([localRuntime({ workers: false }), lsp()])
+    const context = RuntimeContext.create({
+      ...fixture.host,
+      env: { ...fixture.host.env, SYNERGY_WORKER_COMPONENTS: JSON.stringify(plan) },
+    })
+    const independent = RuntimeContext.create(fixture.host)
+    try {
+      await context.run(async () => {
+        expect(RuntimeComponents.selected()).toEqual([])
+        await registerWorkerComponents(role)
+        expect(RuntimeComponents.selected().map(({ id }) => id)).toEqual(plan[role].map(({ id }) => id).sort())
+        expect(() => RuntimeComponents.registerSelection([{ id: "late", version: "local", apiVersion: 1 }])).toThrow(
+          "before opening",
+        )
+      })
+      expect(independent.run(RuntimeComponents.selected)).toEqual([])
+    } finally {
+      context.dispose()
+      independent.dispose()
+    }
+  })
+}

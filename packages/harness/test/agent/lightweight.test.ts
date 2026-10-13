@@ -5,6 +5,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Agent } from "../../src/agent/agent"
 import { AgentDelegation } from "../../src/agent/delegation"
 import { PermissionNext } from "../../src/permission/next"
+import { ToolRegistry } from "../../src/tool/registry"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -29,14 +30,14 @@ test("lightweight primary keeps the classic execution surface with file_search a
         expect(evalPerm(flash, "view_file")).toBe("deny")
         expect(evalPerm(flash, "task")).toBe("allow")
         expect(evalPerm(flash, "dagwrite")).toBe("allow")
-        expect(evalPerm(flash, "memory_write")).toBe("allow")
-        expect(evalPerm(flash, "memory_edit")).toBe("allow")
+        expect(flash!.permission.filter((rule) => /^(memory_|ast_grep$)/.test(rule.permission))).toEqual([])
+        for (const id of ["memory_write", "memory_edit", "ast_grep"])
+          expect(await ToolRegistry.find(id)).toBeUndefined()
         expect(evalPerm(flash, "question")).toBe("allow")
         expect(evalPerm(flash, "expand_tools")).toBe("allow")
         expect(evalPerm(flash, "file_search")).not.toBe("deny")
         expect(evalPerm(flash, "glob")).toBe("deny")
         expect(evalPerm(flash, "grep")).toBe("deny")
-        expect(evalPerm(flash, "ast_grep")).toBe("deny")
       },
     })
   }))

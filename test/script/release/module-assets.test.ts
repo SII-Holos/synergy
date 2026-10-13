@@ -36,10 +36,10 @@ test("the Library module initializes its own WASM backend outside the repository
   }
 }, 60_000)
 
-test("Connections modules carry the SVG raster fonts, notices and WASM", async () => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-connections-modules-"))
+test("Feishu owns the SVG raster assets independently of the Connections preset", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-channel-assets-"))
   try {
-    const { output } = await buildWorkspace("packages/connections", { output: directory })
+    const { output } = await buildWorkspace("packages/channel-feishu", { output: path.join(directory, "feishu") })
     for (const name of [
       "index_bg.wasm",
       "THIRD_PARTY_NOTICES.txt",
@@ -47,6 +47,8 @@ test("Connections modules carry the SVG raster fonts, notices and WASM", async (
       "fonts/LICENSE-OFL-1.1.txt",
     ])
       expect(await Bun.file(path.join(output, "lib/resvg-wasm", name)).exists()).toBe(true)
+    const facade = await buildWorkspace("packages/connections", { output: path.join(directory, "connections") })
+    expect(await Bun.file(path.join(facade.output, "lib/resvg-wasm/index_bg.wasm")).exists()).toBe(false)
   } finally {
     await fs.rm(directory, { recursive: true, force: true })
   }

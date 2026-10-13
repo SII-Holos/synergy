@@ -17,7 +17,7 @@ Read [Frontend localization](../../../../docs/architecture/localization.md) befo
 4. Use the shared active-locale formatter for dates, time, numbers, percentages, currency, lists, and relative time. Do not hard-code locale tags or use a regional locale to imply an unrelated preference such as 24-hour time.
 5. `apps/web` owns locale state, catalog loading, Settings, persistence, bootstrap mirror reconciliation, and the global `I18nProvider`. `packages/ui` consumes that provider through peer dependencies; it does not create a second runtime, import App contexts, inspect browser locale, or own catalogs.
 6. Keep the Settings language control global, responsive, and recoverable: Follow System, English, and Simplified Chinese apply without refresh, do not follow project Scope, and must preserve language self-names so a user can switch back after a mistake.
-7. Run extraction after each coherent copy change, translate every new `zh-CN` message, remove obsolete entries, and keep strict compilation green. Finish with the repository localization contract so new hard-coded product text cannot bypass the catalog.
+7. Run extraction after each coherent copy change, translate every new `zh-CN` message, remove obsolete entries, and keep strict compilation green. When removing or renaming IDs, update affected terminology assertions and include `apps/web/test/script/i18n-check.test.ts` in focused verification; do not restore unused copy to satisfy a stale assertion. Finish with the repository localization contract so new hard-coded product text cannot bypass the catalog.
 
 ## Use Semantic Icons
 
@@ -43,6 +43,8 @@ Compile repeated Review acceptance fixtures before serving them, so development 
 ## Preserve Product Presentation
 
 Do not introduce focus-triggered borders, outlines, rings, inset strokes or glows in any color, including `:focus-within`, Tailwind variants, composite-control proxies and embedded Synergy controls. Text inputs and their containers must retain their resting appearance through hover, pointer press and focus, with no background overlay; preserve the caret. Other controls use the shared neutral focus surface or text treatment. Run `bun run verify local --test apps/web/test/testing/focus-presentation.browser.test.ts` when changing focus presentation; extend its real control fixtures for new kinds of widgets. Keep pointer and keyboard activation, focus return, resting borders and error states intact.
+
+When reviewing optional-feature UI, trace displayed descriptors and server errors through their actual presentation paths. Apply the minimal-copy rule in [PRODUCT.md](../../../../apps/web/PRODUCT.md): confirmed absence is a quiet normal state; a failed user action keeps concise recovery feedback. Check that missing integrations are not advertised by retained settings descriptions and that raw startup diagnostics remain available only through explicit disclosure. Preserve useful field consequences and validation instead of replacing them with generic explanations.
 
 For workbench visual changes, read the column, input anchor, surface and motion rules in [PRODUCT.md](../../../../apps/web/PRODUCT.md) before changing a component. Compare the real new-task → first-send → reply → switch-and-return flow in both themes, with the same data and viewport. Check the actual computed surface after workbench overrides and portal scoping, not just the theme source. Reserve trailing action space and verify hover, focus and touch without changing the title's width. Keep greeting and Composer extension views mounted once.
 

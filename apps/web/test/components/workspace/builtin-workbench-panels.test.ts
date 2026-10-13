@@ -209,7 +209,7 @@ describe("built-in workbench panels", () => {
   })
 
   test("Browser registration requires both the native bridge and the runtime capability", async () => {
-    setSelected(["browser-runtime"])
+    setSelected(["browser"])
     setNativeBrowser(false)
     const dispose = createRoot((done) => {
       BuiltinWorkbenchPanelsProvider({ children: null })
@@ -224,7 +224,7 @@ describe("built-in workbench panels", () => {
       setSelected([])
       await Bun.sleep(1)
       expect(panelIds()).not.toContain("browser")
-      setSelected(["browser-runtime"])
+      setSelected(["browser"])
       await Bun.sleep(1)
       expect(panelIds()).toContain("browser")
       setNativeBrowser(false)
@@ -242,6 +242,21 @@ describe("built-in workbench panels", () => {
     })
     try {
       expect(listWorkbenchPanels().find((panel) => panel.id === "resource-home")?.cardinality).toBe("multi")
+    } finally {
+      dispose()
+    }
+  })
+
+  test("the resource home remains immediately renderable during a disconnected capability transition", () => {
+    setSelected([])
+    const dispose = createRoot((done) => {
+      BuiltinWorkbenchPanelsProvider({ children: null })
+      return done
+    })
+    try {
+      const home = listWorkbenchPanels().find((panel) => panel.id === "resource-home")!
+      expect(typeof home.component).toBe("function")
+      expect(home.loader).toBeUndefined()
     } finally {
       dispose()
     }
@@ -266,7 +281,7 @@ describe("built-in workbench panels", () => {
         launchable: false,
         loader: expect.any(Function),
       })
-      setSelected(["browser-runtime"])
+      setSelected(["browser"])
       await Bun.sleep(1)
       expect(panelIds().includes("notes")).toBe(false)
       expect(panelIds().includes("browser")).toBe(true)

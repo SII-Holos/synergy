@@ -19,6 +19,9 @@ import {
   stringLiteral,
   writeGenerated,
   type ObjectField,
+  inlineDescribe,
+  isOptionalExpr,
+  zodTypeOf,
 } from "./shared"
 
 const SCHEMA = path.join(REPO_ROOT, "packages/harness/src/config/schema.ts")
@@ -152,12 +155,36 @@ async function infoFields(): Promise<ObjectField[]> {
   const owners = await ownerSchemaPaths()
   const sources = await Promise.all([SCHEMA, ...owners].map((file) => readFile(file, "utf8")))
   return sources.flatMap((source, index) => {
-    const block =
-      index === 0
-        ? findBlock(source, "const CoreInfo = z", "(", ")")
-        : findBlock(source, "export const ConfigShape = ", "{", "}")
-    if (!block) throw new Error(`Configuration schema fields missing for ${index === 0 ? SCHEMA : owners[index - 1]}`)
-    return parseObjectFields(index === 0 ? block : `{${block}}`)
+    if (index === 0) {
+      const block = findBlock(source, "const CoreInfo = z", "(", ")")
+      if (!block) throw new Error(`Configuration schema fields missing for ${SCHEMA}`)
+      return parseObjectFields(block)
+    }
+    const parsed = ts.createSourceFile(owners[index - 1]!, source, ts.ScriptTarget.Latest, true)
+    const fields: ObjectField[] = []
+    function visit(node: ts.Node) {
+      if (ts.isVariableDeclaration(node) && node.name.getText(parsed) === "ConfigShape" && node.initializer) {
+        const expression = ts.isSatisfiesExpression(node.initializer) ? node.initializer.expression : node.initializer
+        if (!ts.isObjectLiteralExpression(expression))
+          throw new Error(`Configuration fields must be an object in ${owners[index - 1]}`)
+        for (const property of expression.properties) {
+          if (!ts.isPropertyAssignment(property))
+            throw new Error(`Configuration fields must be explicit in ${owners[index - 1]}`)
+          const name = ts.isStringLiteral(property.name) ? property.name.text : property.name.getText(parsed)
+          const expr = property.initializer.getText(parsed)
+          fields.push({
+            name,
+            expr,
+            type: zodTypeOf(expr),
+            optional: isOptionalExpr(expr),
+            description: inlineDescribe(expr),
+          })
+        }
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(parsed)
+    return fields
   })
 }
 

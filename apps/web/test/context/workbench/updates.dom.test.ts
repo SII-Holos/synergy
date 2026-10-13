@@ -20,6 +20,8 @@ test("a panel publishing the same title and dirty state performs no repeated lay
     const side = {tabs, setTabs(value) { if (++window.writes > 10) throw Error("Repeated layout write"); setTabs(value) }, active:()=>"note", opened:()=>true}
     export const useLayout = () => ({ surface: (_,name) => name === "side" ? side : {tabs:()=>[],active:()=>undefined}, sidebar:{occupiedWidth:()=>0} })
     export const useParams = () => ({ dir:"scope",id:"session" })
+    const selection = {features:["note"]}
+    export const useGlobalSDK = () => ({capabilities:{current:()=>selection,has:id=>selection.features.includes(id)}})
     export const useLocale = () => ({i18n:{_:value=>value.message}})
     export const useConfirm = () => ({ask:async()=>true})
     export const useDialog = () => ({})
@@ -31,6 +33,8 @@ test("a panel publishing the same title and dirty state performs no repeated lay
     import { render } from "solid-js/web"
     import { createEffect, createSignal } from "solid-js"
     import { WorkbenchPanelsProvider, useWorkbenchPanels } from "@/context/workbench"
+    import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
+    registerWorkbenchPanel({id:"notes",pluginId:"builtin",label:"Notes",icon:"file",surface:"side",cardinality:"multi",component:()=>null})
     function Panel() {
       const panels = useWorkbenchPanels()
       const [title, setTitle] = createSignal("Edited note")
@@ -47,6 +51,7 @@ test("a panel publishing the same title and dirty state performs no repeated lay
     aliases: [
       ...[
         "@/context/session-route",
+        "@/context/global-sdk",
         "@/context/locale",
         "@/components/dialog/confirm-dialog",
         "@ericsanchezok/synergy-ui/context/dialog",

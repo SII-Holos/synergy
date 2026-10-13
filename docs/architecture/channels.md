@@ -4,6 +4,27 @@
 
 The Channel domain adapts external accounts into Synergy-owned Scope and Session behavior. Providers own remote protocol details; Channel core owns target identity, account lifecycle, managed Project ownership, task routing, diagnostics, and integration with the durable Session inbox.
 
+`channels` owns the provider-neutral runtime and requires only Local Runtime. Provider and neighboring account domains are independent packages:
+
+| Component        | Required product capabilities | Owned behavior                                                          |
+| ---------------- | ----------------------------- | ----------------------------------------------------------------------- |
+| `channel-feishu` | Channels                      | Feishu transport, account schema, setup, tools and SVG rendering assets |
+| `github`         | Local Runtime                 | GitHub credentials and connected account configuration                  |
+| `channel-github` | Channels, GitHub              | Repository event polling, Channel ingress and dispatch agents           |
+| `holos`          | Local Runtime                 | Holos identity, contacts, native tunnel, profiles and CLI assets        |
+| `channel-clarus` | Channels, Holos, Agenda       | Clarus provider, task operations, account provisioning and deadlines    |
+| `email`          | Local Runtime                 | Email accounts, credentials, service, tools and HTTP routes             |
+
+`connectionComponents()` in `packages/connections` is an assembly facade returning these independent factories, including Channels. Its pure compatibility exports do not register providers. Channels registers only explicitly selected provider schemas, CLI setup choices, factories and tools. Holos account configuration invokes Clarus provisioning only when `channel-clarus` has registered its hook. The `boss-feishu` and `github-agenda` bridges own the respective cross-domain behavior and declare both sides as requirements. The named `channel-blueprint`, `channel-light-loop` and `channel-lattice` bridges explicitly register `/blueprint` (`/plan`), `/lightloop` and `/lattice` with `ChannelCommand`. A registered workflow descriptor alone does not expose a Channel command or help entry. Full composition selects all three; standalone Channels selects none.
+
+An unloaded provider has no transports, reconnect loops, tools, HTTP features, settings schema or CLI setup choice. Retained account configuration and managed resource data are preserved for reinstallation. Public resolved configuration exposes selected provider records only; editing one selected provider must preserve stored records belonging to unloaded providers. Runtime registration, shutdown and failed startup are isolated to the selected instance.
+
+Email keeps each SMTP pool and its idle timer inside the owning Runtime. Successful sends renew the idle deadline; credential changes and transport failures discard that pool. Component disposal closes the pool and cancels its timer, with idempotent cleanup that leaves other Runtimes connected.
+
+Channels and Holos startup status polling belongs to its Runtime. Completion, timeout and disposal cancel both the poll and its deadline. A cancelled status request returns no rows and cannot install subscriptions after Scope disposal.
+
+Holos registers its own configuration catchup. Core retains historical migration receipts without converting `channel.holos` or removing retired Holos settings. The selected Holos owner converts known fields from legacy monolithic or Channel domain files, preserves unknown fields, and publishes the destination before removing the converted source fields. Existing destination settings take precedence, including changes made after an earlier uninstall.
+
 Providers report typed ingress facts through `ChannelHost` and may support one or both ingress families:
 
 - Conversation ingress translates remote messages into endpoint Sessions through `host.conversations.receive()`. Matching provider capabilities may supply replies, proactive pushes, media, reactions, and streaming.
@@ -107,7 +128,7 @@ Exact assignment replay reuses the Session and delivery key. Clarus assignment d
 
 ## Native Clarus Task Flow
 
-Clarus account configuration lives in the Channel domain and uses the active Holos agent credentials. Holos login provisions a disabled matching account, and the Holos migration runner backfills that account for existing active identities. The configured account ID must equal the active Holos agent ID. Server startup registers and starts Channels before it initializes Holos, allowing borrowed providers to install their transport observers first; while the Agent Tunnel is still connecting or reconnecting, the Clarus account remains in `waiting_for_transport` until the matching authenticated transport becomes ready.
+Clarus account configuration lives in the Channel domain and uses the active Holos agent credentials. When Clarus is selected, its account hook provisions a disabled matching account after Holos login, and its migration backfills existing active identities while retaining the historical Holos migration receipt. The configured account ID must equal the active Holos agent ID. Server startup registers and starts Channels before it initializes Holos, allowing borrowed providers to install their transport observers first; while the Agent Tunnel is still connecting or reconnecting, the Clarus account remains in `waiting_for_transport` until the matching authenticated transport becomes ready.
 
 On connect or manual refresh, Clarus:
 

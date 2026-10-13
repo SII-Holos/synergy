@@ -359,7 +359,7 @@ export default function Layout(props: ParentProps) {
       })
     }
 
-    return commands
+    return commands.filter((entry) => entry.id !== "project.create" || globalSDK.capabilities.has("workbench"))
   })
 
   function connectProvider() {
@@ -402,6 +402,7 @@ export default function Layout(props: ParentProps) {
     if (nav && scopeID) navigateToProject(scopeID)
   }
   function createProject() {
+    if (!globalSDK.capabilities.has("workbench")) return
     dialog.show(() => (
       <DialogCreateProject
         onCreated={async (id, url) => {

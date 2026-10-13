@@ -1,28 +1,25 @@
-import { registerSessionSchema } from "../../src/session-schema"
+import { agendaBlueprint } from "@ericsanchezok/synergy-agenda-blueprint/component"
+import { agendaLightLoop } from "@ericsanchezok/synergy-agenda-light-loop/component"
 import { testRuntime as harnessRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
-import { registerConfig } from "../../src/config-schema"
-import { registerWorkflowSessions } from "../../src/session/register"
-import { registerBlueprintDomain } from "../../src/blueprint/register"
-import { registerWorkflowsAgents } from "../../src/agents"
-import { registerLatticeDomain } from "../../src/lattice/register"
-import { registerBossDomain } from "../../src/boss/register"
-import { registerLightLoopDomain } from "../../src/light-loop/register"
-
+import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
+import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
+import { workflowComponents } from "../../src/component"
+import { note } from "@ericsanchezok/synergy-note/component"
+import { library } from "@ericsanchezok/synergy-library/component"
 export function testRuntime(env?: Record<string, string | undefined>) {
+  const composition = RuntimeComponents.compose([
+    localRuntime({ workers: false, environment: false }),
+    library(),
+    note(),
+    ...workflowComponents(),
+    agendaBlueprint(),
+    agendaLightLoop(),
+  ])
   return harnessRuntime({
     env,
     composition: {
       register() {
-        registerLocalRuntime()
-        registerConfig()
-        registerSessionSchema()
-        registerWorkflowSessions()
-        registerBlueprintDomain()
-        registerWorkflowsAgents()
-        registerLatticeDomain()
-        registerBossDomain()
-        registerLightLoopDomain()
+        composition.register()
       },
     },
   })

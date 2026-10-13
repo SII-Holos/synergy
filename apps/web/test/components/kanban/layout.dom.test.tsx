@@ -24,6 +24,7 @@ beforeAll(async () => {
     `
     import {useLingui} from "@lingui/solid"
     export function useLocale() { const {i18n}=useLingui(); return {i18n:i18n(),controller:{activeLocale:()=>"en"}} }
+    export const useGlobalSDK=()=>({capabilities:{has:id=>["blueprint","lattice","boss"].includes(id)}})
   `,
   )
   await Bun.write(
@@ -94,6 +95,7 @@ beforeAll(async () => {
     styled: true,
     aliases: [
       { find: "@/context/locale", replacement: path.join(directory, "locale.ts") },
+      { find: "@/context/global-sdk", replacement: path.join(directory, "locale.ts") },
       { find: "@", replacement: source },
     ],
   })
