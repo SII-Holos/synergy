@@ -199,6 +199,7 @@ test("a replacement dialog owns focus before an older return frame runs", async 
   await openImage()
   await closeImage()
   await page.evaluate(() => (window as FixtureWindow).fixture.replaceDialog())
+  await page.waitForFunction(() => !!document.activeElement?.closest('[data-component="dialog"]'))
   await page.getByRole("button", { name: "Replacement action", exact: true }).focus()
   await flushFrames()
   expect(await focusedButton()).toBe("Replacement action")

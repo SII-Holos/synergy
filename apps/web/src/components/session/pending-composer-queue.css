@@ -16,11 +16,6 @@
   scrollbar-width: thin;
 }
 
-.pending-composer-list:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
-}
-
 .pending-composer-queue [data-slot="pending-timeline-item"] {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-weak-base);

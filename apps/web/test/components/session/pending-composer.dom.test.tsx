@@ -359,7 +359,8 @@ for (const lock of ["rollback", "first-task"] as const) {
     expect(await list.evaluate((el) => el === document.activeElement)).toBe(true)
     expect(await list.getAttribute("role")).toBe("group")
     expect(await list.getAttribute("aria-label")).toBe("Inbox")
-    expect(await list.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe("solid")
+    expect(await list.evaluate((el) => el.matches(":focus-visible"))).toBe(true)
+    expect(await list.evaluate((el) => getComputedStyle(el).backgroundImage)).not.toBe("none")
     await page.keyboard.press("End")
     await page.waitForFunction(() => {
       const el = document.querySelector(".pending-composer-list")!

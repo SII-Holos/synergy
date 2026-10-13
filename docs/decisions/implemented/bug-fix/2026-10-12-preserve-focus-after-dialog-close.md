@@ -23,3 +23,5 @@ Caller-owned dynamic focus targets remain resolved at close time, including reso
 ## Consequences
 
 Explicit focus choices take precedence without additional timers, retries or persisted state. The deterministic Chromium regression holds animation frames, closes the real shared Dialog, selects the next control, releases the old frame and verifies native Enter activates only that control. Separate cases retain body-focus recovery, child-to-parent return, replacement Dialog ownership, detached openers, provider unmount and dynamic resource-control replacement. Existing attachment browser acceptance remains unchanged; local evidence does not establish platform CI or merge readiness.
+
+The replacement-dialog regression waits for its normal initial focus before selecting a control and releasing the older return frame. This isolates stale focus restoration from the new dialog’s asynchronous opening autofocus.
