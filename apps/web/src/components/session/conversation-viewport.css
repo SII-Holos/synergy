@@ -1,14 +1,5 @@
-.conversation-viewport-admission {
-  opacity: 1;
-  transition: opacity var(--motion-duration-base) var(--motion-ease-standard);
-}
-
-.conversation-viewport-admission[data-ready="false"] {
-  transition: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .conversation-viewport-admission {
-    transition: none;
-  }
+[data-conversation-viewport][data-ready="false"] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }

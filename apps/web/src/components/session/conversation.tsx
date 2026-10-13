@@ -67,43 +67,35 @@ function SessionConversationView(input: SessionConversationProps) {
   const transitions = useSessionTransition()
   const props = input.context
   const [admitted, setAdmitted] = createSignal(!input.initialScrollSettled)
-  createEffect(() => {
-    if (!input.initialScrollSettled || admitted()) return
-    if (!active() || !input.initialScrollSettled()) return
-    let frame = requestAnimationFrame(() => {
-      frame = requestAnimationFrame(() => {
-        input.onAdmitted?.(props.sessionID)
-        setAdmitted(true)
-      })
-    })
-    onCleanup(() => cancelAnimationFrame(frame))
-  })
   const preparation = useSessionPreparation()
   const execution = useExecution()
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const sdk = useSDK()
-  const animateAdmission = !untrack(
+  const settleHistory = !untrack(
     () => transitions.get(props.sessionID)?.draft ?? transitions.get(draftTransitionKey(sdk.url, sdk.scopeKey))?.draft,
   )
   const globalSync = useGlobalSync()
   const [arrivalView, setArrivalView] = createSignal<ReturnType<typeof globalSync.partArrival.open>>()
+  const [visible, setVisible] = createSignal(document.visibilityState === "visible")
+  const visibility = () => setVisible(document.visibilityState === "visible")
+  window.addEventListener("visibilitychange", visibility)
+  onCleanup(() => window.removeEventListener("visibilitychange", visibility))
   createEffect(() => {
+    if (!active() || !visible()) return
     const view = globalSync.partArrival.open([sdk.url, sdk.scopeKey, props.sessionID])
     setArrivalView(view)
-    onCleanup(() => view.release())
+    onCleanup(() => {
+      view.release()
+      setArrivalView(undefined)
+    })
   })
   createEffect(() => {
     const view = arrivalView()
-    const root = props.lastUserMessage()
-    const latest = root ? (props.turnProjection().turnMessagesFor(root).at(-1) ?? root) : undefined
-    const snapshot = globalSync.peekScopeState(sdk.scopeKey)?.[0].messageWindow[props.sessionID]
-    if (snapshot && (!latest || !props.content || props.content.page(latest.id))) view?.ready(true)
+    view?.ready(admitted())
   })
-  const takePartArrival = (partID: string) => {
-    const arrival = arrivalView()?.take(partID) ?? false
-    return active() && document.visibilityState === "visible" && arrival
-  }
+  const takePartArrival = (partID: string) =>
+    active() && (arrivalView()?.take(partID) ?? false) && document.visibilityState === "visible"
   const takeUserArrival = (messageID: string) =>
     transitions.messageArrival.take([sdk.url, sdk.scopeKey, props.sessionID], messageID)
   const messageKey = (messageID: string) =>
@@ -120,7 +112,7 @@ function SessionConversationView(input: SessionConversationProps) {
   let stateRequest: AbortController | undefined
   const executionRequest = createMemo(
     () => {
-      if (!active() || !preparation.ready() || !data().sessionFor(props.sessionID)) return undefined
+      if (!preparation.ready() || !data().sessionFor(props.sessionID)) return undefined
       const roots = (props.timeline() ?? []).filter((message) => message.role === "user").map((message) => message.id)
       const latest = props.lastUserMessage()
       const last = latest ? props.turnProjection().turnMessagesFor(latest).at(-1) : undefined
@@ -163,20 +155,27 @@ function SessionConversationView(input: SessionConversationProps) {
   let queued = false
   const versions = new Map<string, number>()
   const dirtyRoots = new Set<string>()
+  let pendingRoots: string[] = []
+  const [executionPending, setExecutionPending] = createSignal(false)
   const scheduleExecutions = () => {
-    if (disposed || queued || stateRequest || !dirtyRoots.size) return
+    if (disposed || !active() || queued || stateRequest || !dirtyRoots.size) return
     queued = true
+    setExecutionPending(true)
     queueMicrotask(() => {
       queued = false
-      if (disposed || stateRequest || !baseline) return
+      if (disposed || !active() || stateRequest || !baseline) return
       const request = baseline
       const rootIDs = request.rootIDs.filter((rootID) => dirtyRoots.has(rootID))
-      if (!rootIDs.length) return
+      if (!rootIDs.length) {
+        setExecutionPending(false)
+        return
+      }
       const capturedVersions = new Map(rootIDs.map((rootID) => [rootID, versions.get(rootID)]))
       for (const rootID of rootIDs) dirtyRoots.delete(rootID)
       const epoch = identityEpoch
       const controller = new AbortController()
       stateRequest = controller
+      pendingRoots = rootIDs
       const isCurrent = () =>
         !disposed &&
         !controller.signal.aborted &&
@@ -201,16 +200,12 @@ function SessionConversationView(input: SessionConversationProps) {
             }
           })
         } catch {
-          if (!isCurrent()) return
-          batch(() => {
-            for (const rootID of rootIDs) {
-              if (versions.has(rootID) && versions.get(rootID) === capturedVersions.get(rootID))
-                setExecutionStates(rootID, undefined)
-            }
-          })
+          // A failed refresh is not evidence that accepted execution state disappeared.
         } finally {
           if (stateRequest === controller) {
             stateRequest = undefined
+            pendingRoots = []
+            setExecutionPending(false)
             scheduleExecutions()
           }
         }
@@ -242,6 +237,8 @@ function SessionConversationView(input: SessionConversationProps) {
         identityEpoch++
         stateRequest?.abort()
         stateRequest = undefined
+        pendingRoots = []
+        setExecutionPending(false)
         versions.clear()
         dirtyRoots.clear()
         setExecutionStates(reconcile({}))
@@ -264,6 +261,20 @@ function SessionConversationView(input: SessionConversationProps) {
         else if (previous.revision !== request.revision) invalidateExecution(request.latestRootID)
       }
       scheduleExecutions()
+    })
+  })
+  createEffect(() => {
+    const visible = active()
+    untrack(() => {
+      if (visible) {
+        scheduleExecutions()
+        return
+      }
+      for (const rootID of pendingRoots) if (versions.has(rootID)) dirtyRoots.add(rootID)
+      stateRequest?.abort()
+      stateRequest = undefined
+      pendingRoots = []
+      setExecutionPending(false)
     })
   })
   onCleanup(() => {
@@ -330,7 +341,12 @@ function SessionConversationView(input: SessionConversationProps) {
   const [rowsReady, setRowsReady] = createSignal(!props.content)
   let hydrated = false
   createEffect(() => {
-    if (!input.onHydrated || hydrated || !active() || !admitted() || !rowsReady()) return
+    if (hydrated || !active() || (input.initialScrollSettled && !input.initialScrollSettled())) return
+    if ((!settleHistory || !props.content) && !admitted()) {
+      input.onAdmitted?.(props.sessionID)
+      setAdmitted(true)
+    }
+    if (!rowsReady() || executionPending() || execution.state?.loading) return
     const viewport = scrollRef()
     const surface = viewport?.querySelector<HTMLElement>("[data-conversation-motion]")
     if (!surface) return
@@ -338,16 +354,20 @@ function SessionConversationView(input: SessionConversationProps) {
     let frame: number | undefined
     const pending = () => surface.querySelector("[data-markdown-pending]") || document.fonts?.status === "loading"
     const schedule = () => {
-      if (frame !== undefined) cancelAnimationFrame(frame)
-      frame = undefined
-      if (!current || pending()) return
+      if (!current || frame !== undefined || pending()) return
       frame = requestAnimationFrame(() => {
         frame = requestAnimationFrame(() => {
           frame = undefined
           if (!current || pending()) return
           hydrated = true
           cleanup()
-          input.onHydrated?.(props.sessionID)
+          batch(() => {
+            if (!admitted()) {
+              input.onAdmitted?.(props.sessionID)
+              setAdmitted(true)
+            }
+            input.onHydrated?.(props.sessionID)
+          })
         })
       })
     }
@@ -385,7 +405,6 @@ function SessionConversationView(input: SessionConversationProps) {
     <ConversationMotionProvider takeArrival={takePartArrival} liveRevision={() => arrivalView()?.revision() ?? 0}>
       <ConversationViewport
         ready={admitted()}
-        animateAdmission={animateAdmission && !input.onAdmitted}
         scrolledUp={props.scrolledUp()}
         hasUnseenLatest={props.historyPendingLatest() || sync.data.messageWindow[props.sessionID]?.tailMissingLatest}
         onScrolledUpChange={props.onScrolledUpChange}

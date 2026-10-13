@@ -8,6 +8,8 @@ The conversation's execution query owner reads the latest 64 transcript roots. A
 
 ## Decision
 
+[Retained conversation readiness](2026-10-13-retained-conversation-readiness.md) supersedes failure-driven state clearing and distinguishes inactive retained views from request-identity loss. Targeted invalidation, singleflight, coherent successful publication and stale-response fences remain in force.
+
 `SessionConversation` retains a local request baseline, a keyed execution-state store, per-root versions and a dirty-root set. The generated `session.turnExecution` method initially reads the latest 64 roots. Membership changes dirty only added roots and remove evicted cache entries. A same-turn microtask coalesces invalidations, and one request per identity runs at a time. Events received during a request stay queued without aborting it; only roots whose versions still match may accept the response. Completion drains independently dirtied roots once, merging partial responses by root rather than replacing the window.
 
 Each asynchronous success or failure settles its still-current root writes inside one Solid `batch`, retaining targeted `reconcile` for accepted states. The real virtual conversation's process-state memo subscribes to the root collection, so separate per-root store transactions would repeat a whole-window projection for each changed root. Synchronous membership pruning stays inside its existing effect update cycle.

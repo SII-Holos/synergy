@@ -8,6 +8,8 @@ Cold admission, navigation, recovery and virtualization share mutable presentati
 
 ## Decision
 
+[Retained conversation readiness](../bug-fix/2026-10-13-retained-conversation-readiness.md) supersedes the initial transcript fade and refines execution-read and arrival-receipt activity within the retained lifetime. The identity, recovery and bounded-layout decisions remain in force.
+
 The native transcript owns a keyed Solid subtree identified by server URL, Scope and Session. Its virtual rows, execution reads, arrival receipts and admission latch share that lifetime. Composer and workbench owners remain outside the transcript. A captured first-send uses its preallocated Session identity, preserving the same transcript through canonical admission.
 
 Recovery preserves accepted summaries, bodies and their byte accounting while marking loaded Part pages stale. Each accepted bounded Part interval is recorded independently. Revalidation reads only those intervals, preserves intervening live writes, removes authoritative missing Parts and publishes one coherent result. Accepted page readiness does not become a loading gap. Failed recovery retains readable content and the existing explicit retry surface. Request completion validates its captured Scope store, generation and cancellation lifetime before writing session metadata, diff or runtime projections.

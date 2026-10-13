@@ -2,9 +2,8 @@ import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solid from "vite-plugin-solid"
-let server: ViteDevServer, browser: Browser, page: Page, directory: string, base: string
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
+let server: BrowserFixture, browser: Browser, page: Page, directory: string, base: string
 const appSrc = path.resolve(import.meta.dir, "../../../src")
 const errors: string[] = []
 const frames = () =>
@@ -41,29 +40,13 @@ beforeAll(async () => {
     else render(()=>{const scroll=createAutoScroll({working:()=>false});return <I18nProvider i18n={setupI18n()}><ConversationViewport ready={true} scrolledUp={false} onScrolledUpChange={()=>{}} autoScroll={scroll} setScrollRef={scroll.scrollRef} contentClass="fixture-column"><article style="width:100%"><p>{"A naturally wrapping conversation paragraph. ".repeat(25)}</p></article></ConversationViewport></I18nProvider>},document.getElementById("flow"))
   `,
   )
-  const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
-  const port = reservation.port
-  await reservation.stop(true)
-  server = await createServer({
-    configFile: false,
-    root: directory,
-    cacheDir: path.join(directory, ".vite"),
-    resolve: { alias: { "@": appSrc } },
-    plugins: [solid()],
-    optimizeDeps: {
-      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid"],
-      noDiscovery: true,
-    },
-    server: { host: "127.0.0.1", port, strictPort: true, fs: { allow: [path.resolve(appSrc, "../../.."), directory] } },
-  })
-  await server.listen()
-  base = server.resolvedUrls!.local[0]!
-  await server.warmupRequest("/main.tsx")
+  server = await createBrowserFixture({ root: directory, aliases: [{ find: "@", replacement: appSrc }] })
+  base = server.url
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage()
   page.setDefaultTimeout(5000)
   page.on("pageerror", (e) => errors.push(e.message))
-}, 30000)
+}, 90000)
 afterAll(async () => {
   await browser?.close()
   await server?.close()
