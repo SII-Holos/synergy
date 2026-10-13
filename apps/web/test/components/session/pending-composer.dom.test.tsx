@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, webkit, type Browser, type Page } from "playwright"
 import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
@@ -19,7 +19,7 @@ beforeAll(async () => {
   )
   await Bun.write(
     path.join(directory, "locale.ts"),
-    `import { setupI18n } from "@lingui/core"; const i18n = setupI18n({locale:"en",messages:{}}); export const useLocale = () => ({i18n}); export {i18n}`,
+    `import { setupI18n } from "@lingui/core"; import { createSignal } from "solid-js"; import { createReactiveI18n } from ${JSON.stringify(`/@fs/${source}/context/locale/reactive-i18n.ts`)}; import { messages as en } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}; import { messages as zh } from ${JSON.stringify(`/@fs/${source}/locales/zh-CN/messages.po`)}; const i18n = setupI18n({locale:new URLSearchParams(location.search).get("locale") ?? "en",messages:{en,"zh-CN":zh}}); const [generation, setGeneration] = createSignal(0); const reactive = createReactiveI18n(i18n, generation); export const useLocale = () => ({i18n:reactive}); export const setLocale = value => {i18n.activate(value);setGeneration(value=>value+1)}; export {i18n}`,
   )
   await Bun.write(path.join(directory, "decisions.tsx"), "export const SessionDecisionOutlet = () => null")
   await Bun.write(
@@ -29,7 +29,10 @@ beforeAll(async () => {
     import { For, createMemo, createSignal, onCleanup } from "solid-js"
     import { I18nProvider } from "@lingui/solid"
     import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
-    import { i18n } from "./locale"
+    import { applyThemeToDocument, resolveThemeVariant, synergyTheme } from "@ericsanchezok/synergy-ui/theme"
+    const theme = mode => applyThemeToDocument(document, resolveThemeVariant(synergyTheme[mode]), mode, "synergy")
+    theme("light")
+    import { i18n, setLocale } from "./locale"
     import { PromptDock } from "@/components/session/prompt-dock"
     import { PendingComposerQueue } from "@/components/session/pending-composer-queue"
     import { selectPendingTimelineItems } from "@/components/session/conversation-pending"
@@ -59,10 +62,10 @@ beforeAll(async () => {
       editor: {label: () => "Composer", mount: () => () => {}, placeholder: () => "Write a message", completion: () => undefined},
     }
     onCleanup(bindComposerPresentation(input, {state:presentation, preview: () => ({text:"",references:[]})}))
-    window.fixture = {setItems: (count) => setItems(Array.from({length:count}, (_,i) => make(String(i)))), deliver: () => setMessages(items().map(item => ({id:item.messageID}))), rollback:setRollback, root:setRoot, mode: mode => setItems(items().map(item => ({...item,mode}))), fail: () => setItems(items().map(item => ({...item,status:"failed"}))), expand: () => presentation.expand(), collapse: () => presentation.collapse(), switch: () => {setSession("s2");setItems([make("other")]);setMessages([])}, append: () => setReplies([...replies(), "New output"]), guideCalls:0, removeCalls:0, hold:false}
+    window.fixture = {theme, locale: setLocale, setMessage: (parts, metadata) => setItems([{...make("media"),message:{origin:{type:"user"},parts,metadata}}]), editCalls: 0, setItems: (count) => setItems(Array.from({length:count}, (_,i) => make(String(i)))), deliver: () => setMessages(items().map(item => ({id:item.messageID}))), rollback:setRollback, root:setRoot, mode: mode => setItems(items().map(item => ({...item,mode}))), fail: () => setItems(items().map(item => ({...item,status:"failed"}))), expand: () => presentation.expand(), collapse: () => presentation.collapse(), switch: () => {setSession("s2");setItems([make("other")]);setMessages([])}, append: () => setReplies([...replies(), "New output"]), guideCalls:0, removeCalls:0, hold:false}
     const guide = async () => {window.fixture.guideCalls++; if(window.fixture.hold) await new Promise(resolve => window.fixture.finish = resolve)}
     const dock = createPromptDockHeight(setHeight)
-    const renderDock = () => <PromptDock context={{input:()=>input,mount:dock.mount,ready:()=>true,readOnly:()=>false,links:()=>[],render:()=>null}} pending={<PendingComposerQueue identity={session()} items={visible()} rollbackActive={rollback()} hasCanonicalRoot={root()} onGuide={guide} onRemove={async item => {window.fixture.removeCalls++;setItems(items().filter(value=>value.id!==item.id))}} />} />
+    const renderDock = () => <PromptDock context={{input:()=>input,mount:dock.mount,ready:()=>true,readOnly:()=>false,links:()=>[],render:()=>null}} pending={<PendingComposerQueue identity={session()} items={visible()} rollbackActive={rollback()} hasCanonicalRoot={root()} serverUrl={location.origin} onEdit={async item => {window.fixture.editCalls++;setItems(items().filter(value=>value.id!==item.id))}} onGuide={guide} onRemove={async item => {window.fixture.removeCalls++;setItems(items().filter(value=>value.id!==item.id))}} />} />
     render(() => {
       if (!scrolling) return <I18nProvider i18n={i18n}><MarkedProvider><div class="session-workbench-pane" style={{height:"100dvh",position:"relative"}} data-height={height()}>
         <div data-conversation-current><div data-session-top-bar style={{height:"48px"}} /><p>Current answer</p></div>{renderDock()}
@@ -102,6 +105,10 @@ afterAll(async () => {
 })
 
 interface Fixture {
+  theme(mode: "light" | "dark"): void
+  locale(value: "en" | "zh-CN"): void
+  setMessage(parts: Array<Record<string, unknown>>, metadata?: Record<string, unknown>): void
+  editCalls: number
   setItems(count: number): void
   deliver(): void
   rollback(value: boolean): void
@@ -179,13 +186,13 @@ test("first-task lock, failed withdrawal and rollback retain their existing sema
   await page.getByRole("region", { name: "Inbox", exact: true }).waitFor()
   await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.root(false))
   expect(await page.getByRole("button", { name: "Guide", exact: true }).count()).toBe(0)
-  expect(await page.getByRole("button", { name: "Withdraw", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Delete", exact: true }).count()).toBe(0)
   await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.fail())
-  await page.getByRole("button", { name: "Withdraw", exact: true }).waitFor()
+  await page.getByRole("button", { name: "Delete", exact: true }).waitFor()
   await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.rollback(true))
-  expect(await page.getByRole("button", { name: "Withdraw", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Delete", exact: true }).count()).toBe(0)
   await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.rollback(false))
-  await page.getByRole("button", { name: "Withdraw", exact: true }).click()
+  await page.getByRole("button", { name: "Delete", exact: true }).click()
   expect(await page.getByRole("region", { name: "Inbox", exact: true }).count()).toBe(0)
 })
 
@@ -200,7 +207,7 @@ test("many queued rows stay bounded and all actions remain reachable at narrow a
     return el && el.scrollHeight > el.clientHeight
   })
   expect((await list.boundingBox())!.height).toBeLessThanOrEqual(180)
-  const action = page.getByRole("button", { name: "Withdraw", exact: true }).last()
+  const action = page.getByRole("button", { name: "Delete", exact: true }).last()
   await action.focus()
   expect(
     await action.evaluate((element) => {
@@ -208,6 +215,105 @@ test("many queued rows stay bounded and all actions remain reachable at narrow a
       return r.x >= 0 && r.right <= innerWidth && r.bottom <= innerHeight
     }),
   ).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("queued media, references and editing stay readable in both locales and themes at narrow widths", async () => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(server.url + "?locale=zh-CN")
+  await page.getByRole("button", { name: "编辑消息", exact: true }).waitFor()
+  await page.evaluate(() => {
+    const canvas = document.createElement("canvas")
+    canvas.width = 160
+    canvas.height = 100
+    const paint = canvas.getContext("2d")!
+    paint.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--surface-inset-base")
+    paint.fillRect(0, 0, canvas.width, canvas.height)
+    paint.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--text-weak")
+    paint.lineWidth = 3
+    paint.strokeRect(16, 30, 40, 40)
+    paint.strokeRect(104, 30, 40, 40)
+    paint.beginPath()
+    paint.moveTo(56, 50)
+    paint.lineTo(104, 50)
+    paint.stroke()
+    ;(window as unknown as { fixture: Fixture }).fixture.setMessage(
+      [
+        { type: "text", text: "Review this diagram and recording" },
+        { type: "attachment", id: "image", mime: "image/png", filename: "diagram.png", url: canvas.toDataURL() },
+        { type: "attachment", id: "audio", mime: "audio/wav", filename: "recording.wav", url: "asset://recording.wav" },
+        { type: "attachment", id: "pdf", mime: "application/pdf", filename: "notes.pdf", url: "asset://notes.pdf" },
+      ],
+      {
+        promptDraft: {
+          version: 1,
+          prompt: [
+            { type: "text", content: "Review this diagram and recording", start: 0, end: 33 },
+            { type: "note", id: "note", noteId: "nte_plan", title: "Implementation plan", content: "Retain note" },
+            { type: "session", id: "session", sessionId: "ses_previous", scopeID: "home", title: "Previous task" },
+          ],
+          context: { items: [{ type: "file", path: "src/file.ts" }] },
+        },
+      },
+    )
+  })
+  const queue = page.locator(".pending-composer-queue")
+  await queue.locator('[data-component="attachment-card"]').first().waitFor()
+  expect(await queue.locator('[data-component="attachment-card"]').count()).toBe(3)
+  expect(await queue.getByText("notes.pdf", { exact: true }).count()).toBe(1)
+  expect(await queue.getByText("recording.wav", { exact: true }).count()).toBe(1)
+  for (const reference of ["Implementation plan", "Previous task", "src/file.ts"]) {
+    expect(await queue.getByText(reference, { exact: true }).count()).toBe(1)
+  }
+  expect(
+    await queue.locator("img").evaluate(async (image: HTMLImageElement) => {
+      await image.decode()
+      return image.naturalWidth
+    }),
+  ).toBeGreaterThan(0)
+  const backgrounds: string[] = []
+  const output = process.env.SYNERGY_SURFACE_SCREENSHOTS
+  if (output) await mkdir(output, { recursive: true })
+  for (const locale of ["zh-CN", "en"] as const) {
+    await page.evaluate((locale) => (window as unknown as { fixture: Fixture }).fixture.locale(locale), locale)
+    await queue.getByRole("button", { name: locale === "en" ? "Edit message" : "编辑消息", exact: true }).waitFor()
+    const deletion = queue.getByRole("button", { name: locale === "en" ? "Delete" : "删除", exact: true })
+    expect(await deletion.getAttribute("title")).toBe(locale === "en" ? "Delete" : "删除")
+    for (const width of [375, 1000]) {
+      await page.setViewportSize({ width, height: 812 })
+      for (const mode of ["light", "dark"] as const) {
+        await page.evaluate((mode) => (window as unknown as { fixture: Fixture }).fixture.theme(mode), mode)
+        if (locale === "en" && width === 375) {
+          backgrounds.push(await queue.evaluate((element) => getComputedStyle(element).backgroundColor))
+        }
+        const geometry = await queue.evaluate((element) => {
+          const actions = Array.from(element.querySelectorAll<HTMLElement>(".pending-composer-actions button"))
+          return {
+            overflow: document.documentElement.scrollWidth > innerWidth,
+            reachable: actions.every((node) => {
+              const rect = node.getBoundingClientRect()
+              return rect.left >= 0 && rect.right <= innerWidth && rect.height >= (innerWidth < 768 ? 44 : 32)
+            }),
+          }
+        })
+        expect(geometry.overflow).toBe(false)
+        expect(geometry.reachable).toBe(true)
+        if (output && locale === "zh-CN") {
+          await page
+            .locator(".session-prompt-dock")
+            .screenshot({ path: path.join(output, `pending-${mode}-${width}.png`) })
+        }
+      }
+    }
+  }
+  expect(backgrounds[0]).not.toBe(backgrounds[1])
+  const edit = queue.getByRole("button", { name: "Edit message", exact: true })
+  await edit.focus()
+  expect(await edit.evaluate((element) => element === document.activeElement)).toBe(true)
+  await edit.press("Enter")
+  await queue.waitFor({ state: "detached" })
+  expect(await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.editCalls)).toBe(1)
+  expect(await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.removeCalls)).toBe(0)
   expect(errors).toEqual([])
 })
 

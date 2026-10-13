@@ -17050,6 +17050,26 @@ msgid "session.content.syncHint"
 msgstr "This content is still updating. Try again in a moment."
 
 #. js-lingui-explicit-id
+msgid "session.conversation.editPending"
+msgstr "Edit message"
+
+#. js-lingui-explicit-id
+msgid "session.conversation.editPendingChanged"
+msgstr "The draft changed while editing was prepared. Your draft is unchanged and the message remains queued."
+
+#. js-lingui-explicit-id
+msgid "session.conversation.editPendingDraft"
+msgstr "Send or clear the current draft before editing a queued message."
+
+#. js-lingui-explicit-id
+msgid "session.conversation.editPendingFailed"
+msgstr "The queued message could not be moved to the composer. Its saved content is preserved."
+
+#. js-lingui-explicit-id
+msgid "session.conversation.editPendingUnavailable"
+msgstr "This message is no longer available for editing. Refresh the conversation and try again."
+
+#. js-lingui-explicit-id
 msgid "session.conversation.guide"
 msgstr "Guide"
 
@@ -17108,10 +17128,6 @@ msgstr "Remove pending message"
 #. conversation.tsx
 msgid "session.conversation.renderEarlier"
 msgstr "Render earlier messages"
-
-#. js-lingui-explicit-id
-msgid "session.conversation.withdraw"
-msgstr "Withdraw"
 
 #. js-lingui-explicit-id
 msgid "session.decision.collapse"

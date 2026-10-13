@@ -42,7 +42,23 @@ export const S = {
   convMoveToQueue: { id: "session.conversation.moveToQueue", message: "Move back to queue" },
   convGuideRun: { id: "session.conversation.guideRun", message: "Guide current run" },
   convRemovePending: { id: "session.conversation.removePending", message: "Remove pending message" },
-  convWithdraw: { id: "session.conversation.withdraw", message: "Withdraw" },
+  convEditPending: { id: "session.conversation.editPending", message: "Edit message" },
+  convEditPendingFailed: {
+    id: "session.conversation.editPendingFailed",
+    message: "The queued message could not be moved to the composer. Its saved content is preserved.",
+  },
+  convEditPendingDraft: {
+    id: "session.conversation.editPendingDraft",
+    message: "Send or clear the current draft before editing a queued message.",
+  },
+  convEditPendingChanged: {
+    id: "session.conversation.editPendingChanged",
+    message: "The draft changed while editing was prepared. Your draft is unchanged and the message remains queued.",
+  },
+  convEditPendingUnavailable: {
+    id: "session.conversation.editPendingUnavailable",
+    message: "This message is no longer available for editing. Refresh the conversation and try again.",
+  },
 
   // conversation.tsx — pending timeline tooltips (these mirror the conv descriptors above
   // but the checker sees the raw strings in title attributes)

@@ -199,7 +199,7 @@ test("failed initial message has an accurate status and its timeline withdrawal 
   await page.getByText("Failed", { exact: true }).waitFor()
   expect(await page.getByText("Paused", { exact: true }).count()).toBe(0)
   await page.evaluate(() => ((window as unknown as RecoveryWindow).failRemove = true))
-  const withdraw = page.getByRole("button", { name: "Withdraw", exact: true })
+  const withdraw = page.getByRole("button", { name: "Delete", exact: true })
   await withdraw.click()
   await page.waitForFunction(() => (window as unknown as RecoveryWindow).pendingRemove)
   expect(await withdraw.isDisabled()).toBe(true)

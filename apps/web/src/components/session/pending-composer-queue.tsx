@@ -10,8 +10,10 @@ export function PendingComposerQueue(props: {
   items: readonly SessionInboxItem[]
   rollbackActive: boolean
   hasCanonicalRoot: boolean
+  serverUrl?: string
   onGuide(item: SessionInboxItem): void | Promise<void>
   onRemove(item: SessionInboxItem): void | Promise<void>
+  onEdit?(item: SessionInboxItem): void | Promise<void>
 }) {
   const { i18n } = useLocale()
   return (
@@ -26,8 +28,10 @@ export function PendingComposerQueue(props: {
                     item={props.items.find((item) => item.id === id)!}
                     rollbackActive={props.rollbackActive}
                     hasCanonicalRoot={props.hasCanonicalRoot}
+                    serverUrl={props.serverUrl}
                     onGuide={(item) => props.onGuide(item)}
                     onRemove={(item) => props.onRemove(item)}
+                    onEdit={props.onEdit ? (item) => props.onEdit?.(item) : undefined}
                   />
                 )}
               </For>
