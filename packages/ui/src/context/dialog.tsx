@@ -1,6 +1,8 @@
+import { useViewActivity } from "./view-activity"
 import { PortalStyleOwner, UIStyleProvider } from "./ui-style"
 import {
   createContext,
+  createEffect,
   createRoot,
   createSignal,
   onCleanup,
@@ -42,9 +44,10 @@ function init() {
     } finally {
       current.dispose()
       const remaining = stack().at(-1)?.id
-      if (wasTop)
+      const viewActive = runWithOwner(current.owner, useViewActivity)!
+      if (wasTop && viewActive())
         requestAnimationFrame(() => {
-          if (stack().at(-1)?.id !== remaining || !current.returnFocus?.isConnected) return
+          if (!viewActive() || stack().at(-1)?.id !== remaining || !current.returnFocus?.isConnected) return
           const focused = document.activeElement
           if (focused && focused !== document.body && focused.isConnected) return
           current.returnFocus.focus()
@@ -61,6 +64,11 @@ function init() {
   onCleanup(() => closeAll(true))
 
   const mount = (element: DialogElement, owner: Owner, onClose?: () => void, protectedSurface = false) => {
+    const viewActive = runWithOwner(owner, useViewActivity)!
+    if (!viewActive()) {
+      onClose?.()
+      return
+    }
     const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
     const id = generateUUID()
     let dispose: (() => void) | undefined
@@ -68,6 +76,9 @@ function init() {
     const node = runWithOwner(owner, () =>
       createRoot((d) => {
         dispose = d
+        createEffect(() => {
+          if (!viewActive()) close(id)
+        })
         return (
           <Kobalte
             modal
@@ -107,6 +118,10 @@ function init() {
   }
 
   const show = (element: DialogElement, owner: Owner, onClose?: () => void) => {
+    if (!runWithOwner(owner, useViewActivity)!()) {
+      onClose?.()
+      return
+    }
     closeAll()
     return mount(element, owner, onClose)
   }

@@ -1,8 +1,10 @@
+import { useViewActivity } from "../context/view-activity"
 import { OverlayLayerProvider, useOverlayLayer } from "../context/overlay-layer"
 import { PortalStyleOwner } from "../context/ui-style"
 import { Popover as Kobalte } from "@kobalte/core/popover"
 import {
   createSignal,
+  createEffect,
   ComponentProps,
   JSXElement,
   ParentProps,
@@ -35,6 +37,17 @@ export interface PopoverProps extends ParentProps, Omit<ComponentProps<typeof Ko
 }
 
 export function Popover(props: PopoverProps) {
+  const active = useViewActivity()
+  const [uncontrolledOpen, setUncontrolledOpen] = createSignal(props.defaultOpen ?? false)
+  const requestedOpen = () => props.open ?? uncontrolledOpen()
+  const changeOpen = (open: boolean) => {
+    const next = active() && open
+    setUncontrolledOpen(next)
+    props.onOpenChange?.(next)
+  }
+  createEffect(() => {
+    if (!active() && requestedOpen()) changeOpen(false)
+  })
   const parentLayer = useOverlayLayer()
   const [layer, setLayer] = createSignal<HTMLElement>()
   let triggerElement: HTMLElement | undefined
@@ -52,7 +65,7 @@ export function Popover(props: PopoverProps) {
   ])
 
   return (
-    <Kobalte gutter={4} {...rest}>
+    <Kobalte gutter={4} {...rest} open={active() && requestedOpen()} onOpenChange={changeOpen}>
       <Show
         when={local.triggerAs}
         fallback={
@@ -72,6 +85,10 @@ export function Popover(props: PopoverProps) {
               {...local.contentProps}
               ref={setLayer}
               onCloseAutoFocus={(event) => {
+                if (!active()) {
+                  event.preventDefault()
+                  return
+                }
                 local.contentProps?.onCloseAutoFocus?.(event)
                 if (event.defaultPrevented) return
                 event.preventDefault()

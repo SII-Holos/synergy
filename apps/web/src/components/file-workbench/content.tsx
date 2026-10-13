@@ -1,7 +1,7 @@
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { fileWorkspaceLabel } from "@/context/file/workspace"
 import DOMPurify from "dompurify"
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -29,6 +29,7 @@ import { FileSourceView, type FileSourceViewApi } from "./source-view"
 import "./styles.css"
 import { panels as P, fileWorkbench as F } from "@/locales/messages"
 import { useLocale } from "@/context/locale"
+import { useViewActivity } from "@/context/view-residency"
 import "@/components/attachment-workbench/styles.css"
 import type { PdfDocumentState } from "@/context/file"
 
@@ -329,6 +330,7 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
 }
 
 function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
+  const active = useViewActivity()
   const file = useFile()
   const platform = usePlatform()
   const sdk = useSDK()
@@ -377,6 +379,7 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   const [saving, setSaving] = createSignal(false)
   const [moreOpen, setMoreOpen] = createSignal(false)
   const [navigator, setNavigator] = createSignal<WorkspaceNavigatorController>()
+  let host!: HTMLDivElement
   let sourceApi: FileSourceViewApi | undefined
   const canEdit = createMemo(
     () => mode() === "source" && !!textContent()?.contentVersion && textContent()?.truncationReason !== "size",
@@ -446,16 +449,21 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
     if (capability().kind === "pdf") void file.pdf.load(path())
   })
 
-  onMount(() => {
+  createEffect(() => {
+    if (!active()) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-        if (!editing()) return
+      if (!active() || event.defaultPrevented || event.isComposing || event.altKey) return
+      const focused = document.activeElement
+      if (!(focused instanceof HTMLElement) || !host.contains(focused)) return
+      if (!(event.metaKey || event.ctrlKey)) return
+      const input = focused.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])")
+      if (event.key.toLowerCase() === "s" && !event.shiftKey) {
+        if (!editing() || (input && !focused.closest(".file-source-view"))) return
         event.preventDefault()
         void runSave()
         return
       }
-      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.key.toLowerCase() !== "v") return
-      if (!capability().dual) return
+      if (!event.shiftKey || event.key.toLowerCase() !== "v" || input || !capability().dual) return
       event.preventDefault()
       file.view.setMode(path(), mode() === "source" ? "preview" : "source")
     }
@@ -464,7 +472,7 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   })
 
   return (
-    <div class="file-workbench">
+    <div ref={host} class="file-workbench">
       <div class="file-workbench-toolbar">
         <nav
           class="file-breadcrumb"
