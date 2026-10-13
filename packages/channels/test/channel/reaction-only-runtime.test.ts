@@ -11,6 +11,8 @@ import {
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -181,6 +183,79 @@ const replyMetadata = {
 }
 
 describe("Channel reaction-only terminal delivery", () => {
+  deliveryTest("an ambiguous attempt survives a closed database and a fresh Runtime without redelivery", async () => {
+    await using home = await tmpdir()
+    const calls: Calls = { reactions: [], replies: [], pushes: [] }
+    let saved: { sessionID: string; rootID: string; terminalMessageID: string } | undefined
+    for (const restarted of [false, true]) {
+      await using reopened = await testRuntime({ home: home.path })
+      await reopened.run(async () =>
+        ScopeContext.provide({
+          scope: (await Scope.fromDirectory(home.path)).scope,
+          fn: async () => {
+            const selected = provider("feishu", calls)
+            if (!restarted) {
+              const session = await Session.create({
+                endpoint: SessionEndpoint.fromChannel({
+                  type: "feishu",
+                  accountId: "acct_test",
+                  chatId: "chat_test",
+                }),
+              })
+              const rootID = await channelRoot({ sessionID: session.id, inboundId: "inbound" })
+              const terminal = await reactionOnlyRequest({
+                sessionID: session.id,
+                rootID,
+                reaction: "SILENT",
+                metadata: replyMetadata,
+              })
+              saved = { sessionID: session.id, rootID, terminalMessageID: terminal.id }
+              selected.addReaction = async (input) => {
+                calls.reactions.push(input)
+                throw new DOMException("Applied, acknowledgement lost", "TimeoutError")
+              }
+              expect(
+                await deliverReactionOnlyReaction({
+                  ...saved,
+                  provider: selected,
+                  accountId: "acct_test",
+                  messageId: "inbound",
+                  reaction: "SILENT",
+                }),
+              ).toMatchObject({ status: "ambiguous" })
+              return
+            }
+            const input = saved!
+            const terminal = (await SessionHistory.turnInfos(input)).find(
+              (info) => info.id === input.terminalMessageID,
+            )!
+            expect(terminal.metadata).toMatchObject({ channelReactionOnlyAttempted: "SILENT" })
+            expect(terminal.metadata?.channelOutboundSent).toBeUndefined()
+            const dispose = ChannelOutbound.init({ getProvider: () => selected })
+            try {
+              using bodies = spyOn(MessageV2, "parts")
+              await Promise.all([1, 2].map(() => Bus.publish(MessageV2.Event.Updated, { info: terminal })))
+              expect(calls.reactions).toHaveLength(1)
+              expect(calls.replies).toEqual([])
+              expect(bodies).not.toHaveBeenCalled()
+              const nextRoot = await channelRoot({ sessionID: input.sessionID })
+              await assistant(input.sessionID, {
+                rootID: nextRoot,
+                text: "A new ordinary reply",
+                metadata: replyMetadata,
+              })
+              expect(calls.replies).toEqual(["msg_topic_root"])
+            } finally {
+              dispose()
+            }
+            using headers = spyOn(SessionHistory, "turnInfos")
+            await Bus.publish(MessageV2.Event.Updated, { info: { ...terminal, metadata: replyMetadata } })
+            expect(headers).not.toHaveBeenCalled()
+          },
+        }),
+      )
+    }
+  })
   for (const stop of ["bridge disposal", "account stop"] as const)
     deliveryTest(`${stop} cancels a pending read before any external delivery`, async () => {
       await using tmp = await tmpdir({ git: true })

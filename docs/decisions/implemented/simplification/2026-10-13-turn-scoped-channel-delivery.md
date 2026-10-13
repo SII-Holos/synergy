@@ -26,6 +26,6 @@ The selected Feishu component owns the tool, visibility policy and termination j
 
 ## Consequences
 
-Work-count tests use real storage with 500 and 5,000 unrelated historical messages, three terminals, and more than 2,000 Parts in one terminal. Enumeration and duplicate checks read zero bodies; all three deliveries share four target-message body reads. Cancellation, deletion, rollback, concurrent reaction attempts and bridge disposal are tested separately from model context work.
+Work-count tests use real storage with 500 and 5,000 unrelated historical messages, three terminals, and more than 2,000 Parts in one terminal. Enumeration and duplicate checks read zero bodies; all three deliveries share four target-message body reads. Cancellation, deletion, rollback, concurrent reaction attempts and bridge disposal are tested separately from model context work. A fresh Runtime reopens the same database after an ambiguous send, skips repeated terminal events without body reads, and still delivers a new ordinary root. Disposing that bridge leaves no delivery subscription processing later events.
 
 Real component/worker and model-loop fixtures replace only inference and external network behavior. They cover tool termination, ordinary and reaction replies in both orders, queued roots, ambiguous outcomes, metadata re-entry and no-delivery cleanup. The account feature remains disabled by default, unavailable on streaming or disabled accounts and Boss explicit-delivery sessions, and cannot let the model choose an emoji.
