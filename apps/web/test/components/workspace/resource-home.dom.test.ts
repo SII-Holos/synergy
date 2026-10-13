@@ -485,7 +485,7 @@ for (const colorScheme of ["light", "dark"] as const) {
   })
 }
 
-test("capability loss removes resource controls and old tabs without deleting their saved drafts", async () => {
+test("capability revalidation hides resource controls while retaining native content and saved drafts", async () => {
   await cards().getByText("Files", { exact: true }).click()
   await page.getByText("Files content", { exact: true }).waitFor()
   await page.evaluate(async () => {
@@ -494,20 +494,27 @@ test("capability loss removes resource controls and old tabs without deleting th
     fixture.draft(fixture.active()!)
   })
   await page.getByText("Notes content", { exact: true }).waitFor()
+  const original = await page.getByText("Notes content", { exact: true }).elementHandle()
   const saved = await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())
   await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.features(undefined))
-  await page.getByText("Notes content", { exact: true }).waitFor({ state: "detached" })
+  await page.getByText("Notes content", { exact: true }).waitFor({ state: "hidden" })
+  expect(await original!.evaluate((element) => element.isConnected && !!element.closest("[inert]"))).toBe(true)
   expect(await page.getByRole("tab").allTextContents()).toEqual(["Files"])
   expect(await menuLabels()).toEqual(["Files"])
   expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(saved)
   expect(await page.getByText("This panel is unavailable.", { exact: true }).count()).toBe(0)
   await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.features(["note"]))
   await page.getByText("Notes content", { exact: true }).waitFor()
+  expect(
+    await page
+      .getByText("Notes content", { exact: true })
+      .evaluate((element, previous) => element === previous, original),
+  ).toBe(true)
   expect(await page.getByRole("tab").allTextContents()).toEqual(["Files", "Notes"])
   expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(saved)
 })
 
-test("unknown capabilities retire the sole resource without replacing its saved active selection", async () => {
+test("unknown capabilities pause the sole resource and confirmed removal disposes its instance", async () => {
   await cards().getByText("Notes", { exact: true }).click()
   const content = page.getByText("Notes content", { exact: true })
   await content.waitFor()
@@ -519,20 +526,22 @@ test("unknown capabilities retire the sole resource without replacing its saved 
     fixture.features(undefined)
     fixture.remove("notes")
   })
-  await content.waitFor({ state: "detached" })
-  expect(await original!.evaluate((element) => element.isConnected)).toBe(false)
+  await content.waitFor({ state: "hidden" })
+  expect(await original!.evaluate((element) => element.isConnected && !!element.closest("[inert]"))).toBe(true)
   expect(await page.getByRole("tab").count()).toBe(0)
   expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(saved)
   await page.evaluate(() => {
     const fixture = (window as unknown as ResourceHomeWindow).fixture
-    fixture.features(["note"])
     fixture.register({ id: "notes", label: "Notes" })
+    fixture.features(["note"])
   })
   expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())).toBe(active)
   await content.waitFor()
+  expect(await content.evaluate((element, previous) => element === previous, original)).toBe(true)
   expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(saved)
   await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.features([]))
   await content.waitFor({ state: "detached" })
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(false)
   await page.getByRole("tab", { name: "New tab", exact: true }).waitFor()
   expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(
     expect.arrayContaining(saved),

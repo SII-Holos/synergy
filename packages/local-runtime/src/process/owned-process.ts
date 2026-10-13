@@ -100,6 +100,8 @@ export namespace OwnedProcess {
     let prepared = false
     let started = false
     let stage = "preparing"
+    let outputsDrained = false
+    let drainageAcknowledged = false
     let stopping: Promise<void> | undefined
     let observing: Promise<void> | undefined
     let abandoned: Promise<void> | undefined
@@ -109,6 +111,13 @@ export namespace OwnedProcess {
       connected.reject(error)
       activated.reject(error)
       if (reference) void stop().catch(() => {})
+    }
+    const acknowledgeDrainage = () => {
+      if (!outputsDrained || stage !== "streams-drained" || drainageAcknowledged || stopping) return
+      const control = sockets.get("control")
+      if (!control || control.destroyed || control.readableEnded || control.writableEnded) return
+      drainageAcknowledged = true
+      OwnedProtocol.send(control, { type: "drained" })
     }
     const server = net.createServer((socket) => {
       accepted.add(socket)
@@ -157,7 +166,10 @@ export namespace OwnedProcess {
                   prepared = true
                   if (sockets.size === 4) connected.resolve(workerPID!)
                 }
-                if (event.type === "stage") stage = event.stage
+                if (event.type === "stage") {
+                  stage = event.stage
+                  acknowledgeDrainage()
+                }
                 if (event.type === "ready") {
                   child.pid = event.pid
                   activated.resolve()
@@ -382,9 +394,8 @@ export namespace OwnedProcess {
       ])
       void Promise.all(drains)
         .then(() => {
-          const control = sockets.get("control")
-          if (!stopping && control && !control.destroyed && !control.readableEnded && !control.writableEnded)
-            OwnedProtocol.send(control, { type: "drained" })
+          outputsDrained = true
+          acknowledgeDrainage()
         })
         .catch(fail)
       reference = OwnedTree.capture(pid)

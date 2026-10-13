@@ -1,7 +1,7 @@
 export function createScrollMotion(target: () => HTMLElement | undefined) {
   let animation: Animation | undefined
   let element: HTMLElement | undefined
-  let position: { viewport: HTMLElement; top: number } | undefined
+  let position: { viewport: HTMLElement; top: number; height: number } | undefined
   const reduced = typeof window !== "undefined" ? window.matchMedia?.("(prefers-reduced-motion: reduce)") : undefined
   const offset = () => {
     if (!element || !animation) return 0
@@ -28,9 +28,17 @@ export function createScrollMotion(target: () => HTMLElement | undefined) {
         position?.viewport === viewport &&
         position.top > maximum &&
         Math.abs(viewport.scrollTop - maximum) < 1
-      const previous = clamped ? position!.top : viewport.scrollTop
+      // Content contraction already moves the following rows with native clamping.
+      // Only a taller viewport still needs compensation for its part of the clamp.
+      const correction = clamped
+        ? Math.min(position!.top - viewport.scrollTop, Math.max(0, viewport.clientHeight - position!.height))
+        : 0
+      const previous = viewport.scrollTop + correction
       const destination = Math.max(0, Math.min(top, maximum))
-      if (animate && next === element && Math.abs(destination - previous) < 0.5) return
+      if (animate && next === element && Math.abs(destination - previous) < 0.5) {
+        position = { viewport, top: viewport.scrollTop, height: viewport.clientHeight }
+        return
+      }
       // Child disclosure resizes must carry the painted offset without extending
       // the following transition on every height sample.
       const remaining =
@@ -40,7 +48,7 @@ export function createScrollMotion(target: () => HTMLElement | undefined) {
       cancel()
       element = next
       viewport.scrollTo({ top, behavior: "auto" })
-      position = { viewport, top: viewport.scrollTop }
+      position = { viewport, top: viewport.scrollTop, height: viewport.clientHeight }
       const delta = viewport.scrollTop - previous + carry
       if (!animate || reduced?.matches || !next?.animate || Math.abs(delta) < 0.5) return
       if (Math.abs(delta) >= viewport.clientHeight) return

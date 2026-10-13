@@ -96,16 +96,15 @@ test("a dynamic reduced-motion preference settles a running transition", async (
   expect(await page.locator("#viewport").evaluate((node) => node.scrollTop)).toBe(232)
 })
 
-test("shrinking content compensates native scroll clamping before the resize delivery", async () => {
+test("a growing viewport compensates native scroll clamping before the resize delivery", async () => {
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await page.goto(server.url.href)
   await page.waitForFunction(() => !!(window as unknown as { motion: unknown }).motion)
   const result = await page.evaluate(() => {
     const viewport = document.querySelector<HTMLElement>("#viewport")!
-    const target = document.querySelector<HTMLElement>("#target")!
     const anchor = document.querySelector<HTMLElement>("#anchor")!
     const before = anchor.getBoundingClientRect().top
-    target.style.height = "268px"
+    viewport.style.height = "132px"
     ;(window as unknown as { motion: { move(v: HTMLElement, top: number, animate: boolean): void } }).motion.move(
       viewport,
       viewport.scrollHeight,
@@ -115,6 +114,52 @@ test("shrinking content compensates native scroll clamping before the resize del
   })
   expect(result.top).toBe(168)
   expect(Math.abs(result.after - result.before)).toBeLessThan(1)
+})
+
+test.each([
+  { running: false, viewportGrowth: false },
+  { running: true, viewportGrowth: false },
+  { running: false, viewportGrowth: true },
+  { running: true, viewportGrowth: true },
+])("collapsing disclosure compensates only concurrent viewport growth (%j)", async (input) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await page.goto(server.url.href)
+  await page.waitForFunction(() => !!(window as unknown as { motion: unknown }).motion)
+  const shifts = await page.evaluate(async ({ running, viewportGrowth }) => {
+    const viewport = document.querySelector<HTMLElement>("#viewport")!
+    const target = document.querySelector<HTMLElement>("#target")!
+    const anchor = document.querySelector<HTMLElement>("#anchor")!
+    const motion = (
+      window as unknown as {
+        motion: { move(v: HTMLElement, top: number, animate: boolean, resizing?: boolean): void }
+      }
+    ).motion
+    const range = document.createRange()
+    range.selectNodeContents(anchor)
+    const y = () => range.getBoundingClientRect().top
+    let height = 300
+    if (running) {
+      height += 32
+      target.style.height = `${height}px`
+      motion.move(viewport, viewport.scrollHeight, true)
+      await new Promise((resolve) => setTimeout(resolve, 40))
+    }
+    const shifts = []
+    for (let step = 1; step <= 4; step++) {
+      const before = y()
+      target.style.height = `${height - step * 16}px`
+      anchor.style.paddingTop = `${200 - step * 16}px`
+      if (viewportGrowth) viewport.style.height = `${100 + step * 8}px`
+      motion.move(viewport, viewport.scrollHeight, true, true)
+      shifts.push(y() - before)
+      await new Promise(requestAnimationFrame)
+    }
+    const before = y()
+    motion.move(viewport, viewport.scrollHeight, true)
+    shifts.push(y() - before)
+    return shifts
+  }, input)
+  expect(Math.max(...shifts.map(Math.abs)), JSON.stringify(shifts)).toBeLessThan(1)
 })
 
 test.each(["growth", "navigation"])("distant %s keeps the destination visible and fully opaque", async (mode) => {

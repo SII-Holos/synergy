@@ -87,6 +87,17 @@ export function upgradeOwnerSession(key: string[], value: Record<string, unknown
       delete metadata[field]
   }
 }
+async function upgradeSession(owner: { scopeID: string; sessionID: string }) {
+  const key = ["sessions", owner.scopeID, owner.sessionID, "info"]
+  await Storage.transaction(async () => {
+    const [value] = await Storage.readMany<Record<string, unknown>>([key])
+    if (!value) return
+    const before = JSON.stringify(value)
+    upgradeOwnerSession(key, value)
+    if (before !== JSON.stringify(value)) await Storage.write(key, value)
+  })
+}
+
 export const migrations: Migration[] = [
   waitingPhaseMigration,
   bindingSourceMigration,
@@ -95,21 +106,15 @@ export const migrations: Migration[] = [
   {
     id: "20261012-blueprint-session-owner",
     description: "Upgrade retained blueprint Session state when its owner is selected",
-    scope: "global",
-    execution: "startup",
+    scope: "session",
+    execution: "record",
+    onAccess: true,
+    upSession: upgradeSession,
     upgradeRecord: upgradeOwnerSession,
     async up(progress) {
       let count = 0
-      for (const key of await Storage.list(["sessions"])) {
-        if (
-          !(key.length === 4 && key[3] === "info") &&
-          !(key.length === 6 && key[3] === "messages" && key[5] === "info")
-        )
-          continue
-        const value = await Storage.read<Record<string, unknown>>(key)
-        const before = JSON.stringify(value)
-        upgradeOwnerSession(key, value)
-        if (before !== JSON.stringify(value)) await Storage.write(key, value)
+      for await (const { key } of Storage.records({ kind: "session" })) {
+        await upgradeSession({ scopeID: key[1]!, sessionID: key[2]! })
         progress(++count, 0)
       }
       progress(count, count)

@@ -91,12 +91,24 @@ test.each(["index.mjs", "index.jsx"] as const)(
         const before = y()
         window.keyedLayout.append()
         const samples = []
-        for (let frame = 0; frame < 35; frame++) {
+        const deadline = performance.now() + 3000
+        let settled = false
+        while (performance.now() < deadline) {
           await new Promise(requestAnimationFrame)
+          await new Promise((resolve) => setTimeout(resolve, 0))
           samples.push(y())
+          if (
+            samples.length > 2 &&
+            !document.querySelector("[data-motion-resizing]") &&
+            !document.getAnimations().length
+          ) {
+            settled = true
+            break
+          }
         }
-        return { before, samples }
+        return { before, samples, settled }
       })
+      expect(result.settled).toBe(true)
       expect(result.samples.at(-1)).toBeCloseTo(result.before - 33, 0)
       for (let index = 0; index < result.samples.length; index++) {
         expect(result.samples[index], JSON.stringify(result)).toBeGreaterThanOrEqual(result.before - 34)
@@ -114,6 +126,28 @@ test.each(["index.mjs", "index.jsx"] as const)(
   },
   30000,
 )
+
+test("first overflowing row follows its measured height without a rebound", async () => {
+  await page.goto(`${url}keyed.html?following&underflow`)
+  await page.waitForFunction(() => window.keyedLayout?.measure()[0]?.size === 580)
+  const result = await page.evaluate(async () => {
+    const anchor = document.querySelector('[data-row="history-11"]')!
+    const before = anchor.getBoundingClientRect().top
+    window.keyedLayout.append()
+    const samples = []
+    for (let frame = 0; frame < 30; frame++) {
+      await new Promise(requestAnimationFrame)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      samples.push(anchor.getBoundingClientRect().top)
+    }
+    return { before, samples }
+  })
+  expect(result.samples.at(-1)).toBeCloseTo(result.before - 13, 0)
+  expect(
+    Math.max(...result.samples.map((y, index) => y - (result.samples[index - 1] ?? result.before))),
+    JSON.stringify(result),
+  ).toBeLessThanOrEqual(1)
+})
 
 test("a tool entrance preserves an in-flight following offset instead of snapping the transcript", async () => {
   await page.goto(`${url}keyed.html?following`)
@@ -151,6 +185,221 @@ test("a tool entrance preserves an in-flight following offset instead of snappin
     return { before, samples }
   })
   expect(Math.max(...result.samples.map((y) => Math.abs(result.before - y))), JSON.stringify(result)).toBeLessThan(1)
+}, 30000)
+
+test("terminal process collection preserves the visible answer while following its painted position", async () => {
+  await page.goto(`${url}?scrolling&motion`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.grow(20)
+    window.__conversationProcess.stream(
+      "Final answer remains readable while the completed process collects. ".repeat(30),
+    )
+    window.__conversationProcess.latest()
+  })
+  await page.waitForFunction(
+    () =>
+      !document.querySelector("[data-motion-resizing]") &&
+      !document.querySelector("[data-follow-motion]")!.getAnimations().length,
+  )
+  const result = await page.evaluate(async () => {
+    const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+    const current = () => document.querySelector('[data-part-id="answer"]')?.closest("[data-display-row]")
+    const answer = current()!
+    const initial = answer.getBoundingClientRect().top
+    const height = viewport.scrollHeight
+    window.__conversationProcess.complete()
+    const samples = []
+    for (let frame = 0; frame < 60; frame++) {
+      await new Promise(requestAnimationFrame)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      samples.push({
+        y: answer.getBoundingClientRect().top,
+        height: viewport.scrollHeight,
+        same: answer === current(),
+        connected: answer.isConnected,
+      })
+    }
+    return { initial, height, samples }
+  })
+  expect(result.height - result.samples.at(-1)!.height).toBeGreaterThan(100)
+  for (let index = 0; index < result.samples.length; index++) {
+    const sample = result.samples[index]
+    expect(sample.same, JSON.stringify(result)).toBe(true)
+    expect(sample.y - (result.samples[index - 1]?.y ?? result.initial), JSON.stringify(result)).toBeLessThanOrEqual(1)
+    expect(sample.y, JSON.stringify(result)).toBeGreaterThanOrEqual(result.samples.at(-1)!.y - 1)
+  }
+}, 30000)
+
+test.each([false, true])(
+  "a first overflowing activity does not rebound after initial admission (pending page: %j)",
+  async (pending) => {
+    await page.goto(`${url}?scrolling&motion&content=tool-follow&underflow&empty${pending ? "&initial-page" : ""}`)
+    await page.waitForFunction(() => !!window.__conversationProcess)
+    await frames()
+    await page.evaluate(() => window.__conversationProcess.prepare())
+    await frames()
+    if (pending) {
+      await page.locator('[data-display-row="root:load"]').waitFor()
+      await page.evaluate(() => window.__conversationProcess.hydrateBefore(0))
+      await frames()
+      await page.evaluate(() => window.__conversationProcess.continuationReady())
+      await page.locator('[data-display-row="root:load"]').waitFor({ state: "detached" })
+    }
+    await page.evaluate(() =>
+      window.__conversationProcess.phase({ phase: "waiting_model", startedAt: 1, rootID: "root" }),
+    )
+    await page.evaluate(() => window.__conversationProcess.nextTool("next"))
+    await frames()
+    await page.waitForFunction(
+      () =>
+        !document.querySelector("[data-motion-resizing]") &&
+        !document.querySelector("[data-follow-motion]")!.getAnimations().length,
+    )
+    await page.evaluate(() => {
+      const view = document.querySelector<HTMLElement>("[data-scroller]")!
+      const content = document.querySelector<HTMLElement>("[data-follow-motion]")!
+      const outside = document.querySelector<HTMLElement>("[data-outside-control]")!
+      view.style.height = `${content.offsetHeight + outside.offsetHeight + 20}px`
+    })
+    await frames()
+    const result = await page.evaluate(async () => {
+      const view = document.querySelector<HTMLElement>("[data-scroller]")!
+      const anchor = document.querySelector('[data-display-row][data-part-id="next-progress"]')!
+      const samples = [anchor.getBoundingClientRect().top]
+      const before = view.scrollTop
+      window.__conversationProcess.nextTool("next", "pending")
+      for (let frame = 0; frame < 40; frame++) {
+        await new Promise(requestAnimationFrame)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        samples.push(anchor.getBoundingClientRect().top)
+      }
+      return { before, after: view.scrollTop, samples }
+    })
+    expect(result.before).toBe(0)
+    expect(result.after).toBeGreaterThan(0)
+    expect(
+      Math.max(...result.samples.slice(1).map((y, index) => y - result.samples[index])),
+      JSON.stringify(result),
+    ).toBeLessThanOrEqual(1)
+  },
+)
+
+test.each(["pending", "generating"] as const)(
+  "a %s tool does not add and remove a phantom body before its input is displayable",
+  async (status) => {
+    await page.goto(`${url}?scrolling&motion&content=tool-follow`)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    await page.evaluate(() => {
+      window.__conversationProcess.grow(20)
+      window.__conversationProcess.nextTool("next")
+      window.__conversationProcess.latest()
+    })
+    await frames()
+    await page.waitForFunction(
+      () =>
+        !document.querySelector("[data-motion-resizing]") &&
+        !document.querySelector("[data-follow-motion]")!.getAnimations().length,
+    )
+    const arrival = await page.evaluate(async (status) => {
+      const anchor = document.querySelector('[data-display-row][data-part-id="next-progress"]')!
+      const samples = [anchor.getBoundingClientRect().top]
+      window.__conversationProcess.nextTool("next", status)
+      for (let frame = 0; frame < 40; frame++) {
+        await new Promise(requestAnimationFrame)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        samples.push(anchor.getBoundingClientRect().top)
+      }
+      return samples
+    }, status)
+    expect(
+      Math.max(...arrival.slice(1).map((y, index) => y - arrival[index])),
+      JSON.stringify(arrival),
+    ).toBeLessThanOrEqual(1)
+    await page.locator('[data-part-id="next-tool"][data-content-pending]').waitFor()
+    await page.waitForFunction(
+      () =>
+        !document.querySelector("[data-motion-resizing]") &&
+        !document.querySelector("[data-follow-motion]")!.getAnimations().length,
+    )
+    const result = await page.evaluate(async () => {
+      const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+      const anchor = document.querySelector('[data-display-row][data-part-id="next-progress"]')!
+      const before = anchor.getBoundingClientRect().top
+      const height = viewport.scrollHeight
+      const animate = Element.prototype.animate
+      Element.prototype.animate = function (...args) {
+        const next = animate.apply(this, args)
+        if (this.hasAttribute("data-follow-motion")) {
+          next.pause()
+          next.currentTime = 0
+        }
+        return next
+      }
+      const samples = []
+      try {
+        window.__conversationProcess.contentFinish("next-tool")
+        for (let frame = 0; frame < 30; frame++) {
+          await new Promise(requestAnimationFrame)
+          await new Promise((resolve) => setTimeout(resolve, 0))
+          samples.push({ y: anchor.getBoundingClientRect().top, connected: anchor.isConnected })
+        }
+        return { before, height, finalHeight: viewport.scrollHeight, samples }
+      } finally {
+        Element.prototype.animate = animate
+      }
+    })
+    expect(Math.abs(result.height - result.finalHeight), JSON.stringify(result)).toBeLessThanOrEqual(1)
+    expect(await page.locator('[data-part-id="next-tool"][data-content-pending]').count()).toBe(0)
+    expect(result.samples.every((sample) => sample.connected)).toBe(true)
+    expect(
+      Math.max(...result.samples.map((sample) => Math.abs(sample.y - result.before))),
+      JSON.stringify(result),
+    ).toBeLessThanOrEqual(1)
+  },
+  30000,
+)
+
+test("an empty live continuation loads without inserting and removing a transcript gap", async () => {
+  await page.goto(`${url}?scrolling&motion`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.grow(20)
+    window.__conversationProcess.nextTool("next")
+    window.__conversationProcess.latest()
+  })
+  await frames()
+  await page.waitForFunction(
+    () => !document.querySelector("[data-motion-resizing]") && !document.getAnimations().length,
+  )
+  const result = await page.evaluate(async () => {
+    const view = document.querySelector<HTMLElement>("[data-scroller]")!
+    const anchor = document.querySelector('[data-display-row][data-part-id="next-progress"]')!
+    const before = anchor.getBoundingClientRect().top
+    const reads = window.__conversationProcess.contentPageLoads()
+    window.__conversationProcess.continuation()
+    const samples = []
+    for (let frame = 0; frame < 70; frame++) {
+      if (frame === 35) window.__conversationProcess.continuationReady()
+      await new Promise(requestAnimationFrame)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const pending = view.querySelector('[data-display-row="continuation:load"]')
+      samples.push({
+        y: anchor.getBoundingClientRect().top,
+        pending: pending?.getBoundingClientRect().height,
+        connected: anchor.isConnected,
+      })
+    }
+    return { before, samples, requests: window.__conversationProcess.contentPageLoads() - reads }
+  })
+  expect(result.requests).toBe(1)
+  expect(result.samples.every((sample) => sample.connected)).toBe(true)
+  expect(result.samples.some((sample) => sample.pending !== undefined)).toBe(true)
+  expect(Math.max(...result.samples.map((sample) => sample.pending ?? 0))).toBe(0)
+  expect(
+    Math.max(...result.samples.map((sample) => Math.abs(sample.y - result.before))),
+    JSON.stringify(result),
+  ).toBeLessThanOrEqual(1)
 }, 30000)
 
 test("focus outside a large conversation does not reread its summaries", async () => {

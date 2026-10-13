@@ -250,6 +250,8 @@ Native process input uses bounded forwarding and a declared final byte count. Th
 
 Once the worker confirms whole-tree drainage, the parent stops forwarding queued stdin EOF controls because no input reader remains. Output drainage and the formal completion record still own release; pre-completion transport failures remain errors. See [input completion after tree drainage](../decisions/implemented/bug-fix/2026-10-01-native-input-completion-after-tree-drain.md).
 
+The final drain acknowledgement requires both local output-consumer completion and delivery of the worker's stream-drain phase. Empty output must not let that acknowledgement overtake the phase that disables late stdin controls.
+
 After the native worker acknowledges exit, a control-channel `ECONNRESET` or `EPIPE` preserves the reported exit and finite output. The same failures before acknowledgement remain execution errors; stdin closure is handled separately. See [acknowledged native exit](../decisions/implemented/bug-fix/2026-09-30-preserve-acknowledged-native-exit.md).
 
 The native worker runs under the Runtime executable's own macOS permission identity. It does not inherit another application's TCC grants or add a Seatbelt profile to `full_access`; commands can still install their own sandbox. OS access failures remain ordinary runtime failures. Native worker entrypoints execute before global storage initialization in both core and full artifacts.

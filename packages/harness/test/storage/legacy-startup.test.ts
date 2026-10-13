@@ -26,14 +26,14 @@ async function write(root: string, relative: string, value: unknown) {
   return bytes
 }
 
-async function home() {
+async function home(currentNavigation = navigation) {
   const root = path.join(fixtures, crypto.randomUUID(), ".synergy")
   for (const record of released.records) await write(root, `data/${record.key.join("/")}.json`, record.value)
   const prepared = await StorageBootstrap.prepare({ root })
   try {
     await prepared.store.write(["meta", "migration", "log-scope"], scopeLedger)
     await prepared.store.write(["meta", "migration", "log-config"], configLedger)
-    await prepared.store.write(["session_nav_v2", "home"], navigation)
+    await prepared.store.write(["session_nav_v2", "home"], currentNavigation)
     await prepared.store.write(["plugin-lock"], pluginLock)
     await prepared.store.write(["plugin-approvals"], [])
     await prepared.store.write(["plugin-incompatible"], [])
@@ -58,48 +58,53 @@ function reclaimed(root: string) {
   }
 }
 
-test("active startup preserves SQL authority and original bytes when an old startup recreates only metadata", () =>
-  runtime.run(async () => {
-    const root = await home()
-    const residues = [
-      ["data/meta/migration/log-scope.json", { "20260424-scope-reclaim-orphans": 2 }],
-      ["data/meta/migration/log-config.json", { "20260625-provider-catalog-config": 2 }],
-      ["data/session_nav_v2/home.json", { ...navigation, updatedAt: 2, entries: [] }],
-      ["data/projects/__reclaimed__.json", reclaimed(root)],
-      ["data/plugin-approvals.json", []],
-      ["data/plugin-incompatible.json", []],
-      ["plugin.lock", pluginLock],
-    ] as const
-    const originals = await Promise.all(residues.map(([relative, value]) => write(root, relative, value)))
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const reopened = await StorageBootstrap.prepare({ root })
-      try {
-        expect(reopened.manifest.phase).toBe("active")
-        for (const record of released.records)
-          expect(await reopened.store.read<unknown>(record.key)).toEqual(record.value)
-        expect(await reopened.store.read<unknown>(["meta", "migration", "log-scope"])).toEqual(scopeLedger)
-        expect(await reopened.store.read<unknown>(["meta", "migration", "log-config"])).toEqual(configLedger)
-        expect(await reopened.store.read<unknown>(["session_nav_v2", "home"])).toEqual(navigation)
-        expect(await reopened.store.readMany([["projects", "__reclaimed__"]])).toEqual([undefined])
-        expect(await reopened.store.read<unknown>(["plugin-lock"])).toEqual(pluginLock)
-        expect(await reopened.store.read<unknown>(["plugin-approvals"])).toEqual([])
-        await StorageCompat.rejectForeignWriters(path.join(root, "data"), reopened.store)
-      } finally {
-        await reopened.store.close()
+test.each([undefined, "selected-owner-generation"])(
+  "active startup preserves SQL authority and original metadata bytes with navigation composition %s",
+  (composition) =>
+    runtime.run(async () => {
+      const currentNavigation = { ...navigation, ...(composition === undefined ? {} : { composition }) }
+      const root = await home(currentNavigation)
+      const residues = [
+        ["data/meta/migration/log-scope.json", { "20260424-scope-reclaim-orphans": 2 }],
+        ["data/meta/migration/log-config.json", { "20260625-provider-catalog-config": 2 }],
+        ["data/session_nav_v2/home.json", { ...navigation, updatedAt: 2, entries: [] }],
+        ["data/projects/__reclaimed__.json", reclaimed(root)],
+        ["data/plugin-approvals.json", []],
+        ["data/plugin-incompatible.json", []],
+        ["plugin.lock", pluginLock],
+      ] as const
+      const originals = await Promise.all(residues.map(([relative, value]) => write(root, relative, value)))
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const reopened = await StorageBootstrap.prepare({ root })
+        try {
+          expect(reopened.manifest.phase).toBe("active")
+          for (const record of released.records)
+            expect(await reopened.store.read<unknown>(record.key)).toEqual(record.value)
+          expect(await reopened.store.read<unknown>(["meta", "migration", "log-scope"])).toEqual(scopeLedger)
+          expect(await reopened.store.read<unknown>(["meta", "migration", "log-config"])).toEqual(configLedger)
+          expect(await reopened.store.read<unknown>(["session_nav_v2", "home"])).toEqual(currentNavigation)
+          expect(await reopened.store.readMany([["projects", "__reclaimed__"]])).toEqual([undefined])
+          expect(await reopened.store.read<unknown>(["plugin-lock"])).toEqual(pluginLock)
+          expect(await reopened.store.read<unknown>(["plugin-approvals"])).toEqual([])
+          await StorageCompat.rejectForeignWriters(path.join(root, "data"), reopened.store)
+        } finally {
+          await reopened.store.close()
+        }
+        expect(await Promise.all(residues.map(([relative]) => Bun.file(path.join(root, relative)).text()))).toEqual(
+          originals,
+        )
       }
-      expect(await Promise.all(residues.map(([relative]) => Bun.file(path.join(root, relative)).text()))).toEqual(
-        originals,
-      )
-    }
-    await write(root, "data/session_nav_v2/home.json", { ...navigation, entries: [{ sessionID: "foreign" }] })
-    await expect(StorageBootstrap.prepare({ root })).rejects.toThrow("Legacy JSON records appeared")
-  }))
+      await write(root, "data/session_nav_v2/home.json", { ...navigation, entries: [{ sessionID: "foreign" }] })
+      await expect(StorageBootstrap.prepare({ root })).rejects.toThrow("Legacy JSON records appeared")
+    }),
+)
 
 test.each([
   ["data/meta/migration/log-config.json", "{broken"],
   ["data/meta/migration/log-config.json", { migration: "not a completion timestamp" }],
   ["data/meta/migration/log-unknown.json", { migration: 2 }],
   ["data/session_nav_v2/home.json", { ...navigation, entries: [], unknown: true }],
+  ["data/session_nav_v2/home.json", { ...navigation, entries: [], composition: "foreign-writer" }],
   ["data/session_nav_v2/home.json", { ...navigation, scopeID: "other", entries: [] }],
   ["data/session_nav_v2/home.json", navigation],
   ["data/projects/unexpected.json", {}],

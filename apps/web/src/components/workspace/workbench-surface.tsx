@@ -470,6 +470,8 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
   createRenderEffect(() => {
     const bound = state()
     const tabs = bound.tabs()
+    const revalidating = workbench.revalidating()
+    const savedTabs = revalidating ? bound.savedTabs() : tabs
     const key = panelMountKey()
     const panel = activePanel()
     const opened = bound.opened() && viewActive()
@@ -477,14 +479,21 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
       for (const [id, resident] of residents) {
         const entry = resident.entry
         const current = workbench.panelForTab(resident.tab())
-        const retain = !entry.pluginId || entry.pluginId === "builtin" || entry.retention === "pause"
+        const builtin = !entry.pluginId || entry.pluginId === "builtin"
+        const retain = builtin || entry.retention === "pause"
+        const pending = revalidating && builtin && savedTabs.some((tab) => workbenchPanelMountKey(tab) === id)
         const replaced =
           entry.pluginId &&
           entry.pluginId !== "builtin" &&
           viewActive() &&
           current &&
           (entry.generation ? current.generation !== entry.generation : current.moduleKey !== entry.moduleKey)
-        if (!tabs.some((tab) => workbenchPanelMountKey(tab) === id) || (id !== key && !retain) || replaced) retire(id)
+        if (
+          (!pending && !tabs.some((tab) => workbenchPanelMountKey(tab) === id)) ||
+          (id !== key && !retain) ||
+          replaced
+        )
+          retire(id)
         else residency.active(resident, id === key && opened)
       }
       if (!key || !panel || !opened || residents.has(key)) return

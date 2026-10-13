@@ -98,6 +98,7 @@ const [data, setData] = createStore<Data>({
   },
 })
 const [status, setStatus] = createSignal<TurnExecutionState["status"]>("running")
+if (new URL(location.href).searchParams.has("empty")) setData("message", "session", [])
 const [activity, setActivity] = createSignal<SessionActivity | undefined>({
   phase: "waiting_model",
   startedAt: 1,
@@ -113,6 +114,8 @@ const [versions, setVersions] = createStore<Record<string, string>>({})
 const [historyMore, setHistoryMore] = createSignal(true)
 const historyControls = new URL(location.href).searchParams.has("history-controls")
 const [hasPage, setHasPage] = createSignal(true)
+const [pendingPage, setPendingPage] = createSignal<string>()
+let continuationReady = Promise.withResolvers<void>()
 const [pageStale, setPageStale] = createSignal(false)
 const [mounted, setMounted] = createSignal(true)
 const arrivals = createPartArrivalState()
@@ -147,7 +150,7 @@ if (scenario) {
     part("work", "command-0", "tool"),
   ])
   if (scenario === "pending-refresh") faults.set("progress", "pending")
-  else if (scenario !== "late-reconnect")
+  else if (scenario !== "late-reconnect" && scenario !== "tool-follow")
     faults.set(
       "progress",
       scenario === "mixed"
@@ -191,6 +194,10 @@ if (scenario === "cold-user") {
   setData("message", "session", [root, { ...final, time: { created: 2, completed: 10 } }])
   setStatus("completed")
   for (const item of data.part.root) faults.set(item.id, "pending")
+}
+if (new URL(location.href).searchParams.has("initial-page")) {
+  setData("part", "root", [])
+  setPendingPage("root")
 }
 const canonicalParts =
   scenario === "late-reconnect" ||
@@ -351,9 +358,13 @@ const context: Partial<PluginConversationService> = {
         content: { version: versions[p.id] ?? "v1", bytes: 64 },
       }))
     },
-    page: () => (hasPage() ? { hasMore: false, stale: pageStale() } : undefined),
-    load: async () => {
+    page: (id) => (hasPage() && pendingPage() !== id ? { hasMore: false, stale: pageStale() } : undefined),
+    load: async (id) => {
       pageLoads++
+      if (pendingPage() === id) {
+        await continuationReady.promise
+        setPendingPage(undefined)
+      }
       await pageReady
       await pageRefresh
       setPageStale(false)
@@ -376,6 +387,18 @@ const context: Partial<PluginConversationService> = {
 }
 let toolCaseSequence = 0
 window.__conversationProcess = {
+  continuation() {
+    continuationReady = Promise.withResolvers<void>()
+    setData("part", "continuation", [])
+    setPendingPage("continuation")
+    setData("message", "session", (messages) => [
+      ...messages,
+      { ...assistant("continuation"), finish: undefined, time: { created: 4 } },
+    ])
+  },
+  continuationReady() {
+    continuationReady.resolve()
+  },
   fragments(count: number) {
     setData("message", "session", [root, work])
     setData("part", "work", [
@@ -394,6 +417,36 @@ window.__conversationProcess = {
     arrivals.add(arrivalOwner, id, { source, render: true, previous: data.part.more.some((part) => part.id === id) })
     setData("part", "more", (parts) => [...parts.filter((part) => part.id !== id), part("more", id, "tool")])
   },
+  nextTool(id: string, status?: "pending" | "generating") {
+    const tool = `${id}-tool`
+    if (!status) {
+      setData("part", id, [
+        part(
+          id,
+          `${id}-progress`,
+          "text",
+          "The readable progress stays in place while the next tool becomes ready. ".repeat(40),
+        ),
+      ])
+      setData("message", "session", (messages) => [...messages, assistant(id)])
+      return
+    }
+    faults.set(tool, "pending")
+    setData("part", id, (parts): Part[] => [
+      ...parts,
+      {
+        id: tool,
+        sessionID: "session",
+        messageID: id,
+        type: "tool",
+        tool: "bash",
+        callID: tool,
+        state:
+          status === "generating" ? { status, input: {}, raw: "", charsReceived: 0 } : { status, input: {}, raw: "" },
+      },
+    ])
+  },
+
   remount() {
     setMounted(false)
     queueMicrotask(() => setMounted(true))
@@ -646,9 +699,11 @@ const resource = {
   open: async () => ({ status: "cancelled" as const }),
 }
 function Scroller(props: ParentProps) {
+  const [motionTarget, setMotionTarget] = createSignal<HTMLElement>()
   const autoScroll = scrolling
     ? createAutoScroll({
         working: context.isWorking!,
+        motionTarget: new URL(location.href).searchParams.has("motion") ? motionTarget : undefined,
         captureReadingAnchor: ({ reading, target }) => {
           const element = scroll()
           if (!element || !reading) return
@@ -667,26 +722,33 @@ function Scroller(props: ParentProps) {
       ref={setScroll}
       onScroll={() => autoScroll?.handleScroll()}
       onClick={(event) => autoScroll?.handleInteraction(event)}
-      style="height:600px;overflow:auto;width:700px;max-width:100%"
+      style={{
+        height: new URL(location.href).searchParams.has("underflow") ? "4000px" : "600px",
+        overflow: "auto",
+        width: "700px",
+        "max-width": "100%",
+      }}
       data-scroller
     >
-      <div ref={(element) => autoScroll?.contentRef(element)}>
-        <Show when={historyControls && historyMore()}>
-          <button
-            type="button"
-            style="height:40px;display:block;margin-bottom:20px"
-            onClick={async () => {
-              await Promise.resolve()
-              window.__conversationProcess.prependTurns(
-                120,
-                new URL(location.href).searchParams.has("keep-history-control"),
-              )
-            }}
-          >
-            Load earlier messages
-          </button>
-        </Show>
-        {props.children}
+      <div ref={(element) => autoScroll?.contentRef(element)} style={{ overflow: "clip" }}>
+        <div ref={setMotionTarget} data-follow-motion>
+          <Show when={historyControls && historyMore()}>
+            <button
+              type="button"
+              style="height:40px;display:block;margin-bottom:20px"
+              onClick={async () => {
+                await Promise.resolve()
+                window.__conversationProcess.prependTurns(
+                  120,
+                  new URL(location.href).searchParams.has("keep-history-control"),
+                )
+              }}
+            >
+              Load earlier messages
+            </button>
+          </Show>
+          {props.children}
+        </div>
       </div>
       <button type="button" data-outside-control>
         Outside conversation
