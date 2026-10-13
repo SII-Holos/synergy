@@ -473,6 +473,7 @@ async function run() {
       const view = window.contentView.children.at(-1)
       assert.ok(view instanceof WebContentsView)
       const controls = view.webContents
+      controls.setBackgroundThrottling(false)
       await stateRequested
       controls.focus()
       const maximizeLabel = () =>

@@ -340,6 +340,7 @@ async function createWindow() {
     mainWindow.setMenuBarVisibility(false)
   }
   nativePagePool ??= new BrowserNativePagePool({
+    captureWindow: () => mainWindow,
     onVisit: (partition, url, title) => localBrowserData().visit(partition, url, title),
   })
   nativeViews = new BrowserNativeViewManager(mainWindow, nativePagePool, (event) => {

@@ -58,8 +58,8 @@ async function run() {
   const redirectAddress = redirectServer.address()
   assert(redirectAddress && typeof redirectAddress !== "string")
   redirectOrigin = `http://127.0.0.1:${redirectAddress.port}`
-  const pool = new BrowserNativePagePool()
   const window = new BrowserWindow({ width: 1000, height: 720, show: false })
+  const pool = new BrowserNativePagePool({ captureWindow: () => window })
   const popups: BrowserNativePageHandle[] = []
   const events: string[] = []
   const recovery: string[] = []

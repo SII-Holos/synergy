@@ -43,6 +43,7 @@ interface Generation {
   navigationTimer: ReturnType<typeof setTimeout> | null
   navigationRetries: number
   unresponsiveTimer: ReturnType<typeof setTimeout> | null
+  capture?: { window: BrowserWindow; users: number; visible: boolean }
 }
 
 interface Entry extends BrowserNativePageHandle {
@@ -81,6 +82,7 @@ export class BrowserNativePagePool {
       unresponsiveGraceMs?: number
       navigationTimeoutMs?: number
       resumeRecoveryCooldownMs?: number
+      captureWindow?(): BrowserWindow | null | undefined
       onVisit?(partition: string, url: string, title: string): Promise<void>
     } = {},
   ) {}
@@ -138,7 +140,8 @@ export class BrowserNativePagePool {
   detach(window: BrowserWindow, ownerKey: string, pageId: string): void {
     const entry = this.find(ownerKey, pageId)
     if (!entry || !entry.attached) return
-    window.contentView.removeChildView(entry.generation.view)
+    if (entry.generation.capture) entry.generation.view.setVisible(false)
+    else window.contentView.removeChildView(entry.generation.view)
     entry.attached = false
     this.updateNativeViewport(entry)
   }
@@ -191,6 +194,7 @@ export class BrowserNativePagePool {
         throw restartingError(entry.state().id, entry.failed ? "failed" : "restarting")
       }
     }
+    const releaseCapture = command.type === "screenshot" ? this.retainCapture(entry) : undefined
     try {
       return await entry.generation.control.execute(command)
     } catch (error) {
@@ -199,6 +203,39 @@ export class BrowserNativePagePool {
         throw restartingError(entry.state().id, "restarting", error)
       }
       throw error
+    } finally {
+      releaseCapture?.()
+    }
+  }
+
+  private retainCapture(entry: Entry): () => void {
+    const generation = entry.generation
+    if (!generation.capture) {
+      const window = this.options.captureWindow?.()
+      if (!window || window.isDestroyed()) {
+        throw new BrowserProtocolError({
+          code: "browser_native_window_unavailable",
+          message: "The Desktop window is unavailable for Browser capture.",
+          retryable: true,
+          pageId: entry.input.page.id,
+          suggestedAction: "Open the Desktop window and retry the screenshot.",
+        })
+      }
+      const visible = generation.view.getVisible()
+      if (!entry.attached) {
+        generation.view.setVisible(false)
+        window.contentView.addChildView(generation.view)
+      }
+      generation.capture = { window, users: 0, visible }
+    }
+    const capture = generation.capture
+    capture.users++
+    return () => {
+      if (--capture.users) return
+      generation.capture = undefined
+      if (entry.generation === generation && entry.attached) return
+      if (!capture.window.isDestroyed()) capture.window.contentView.removeChildView(generation.view)
+      if (!generation.contents.isDestroyed()) generation.view.setVisible(capture.visible)
     }
   }
 

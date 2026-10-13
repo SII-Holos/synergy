@@ -65,12 +65,13 @@ class ElectronCdpTransport implements CdpTransport {
   }
 
   private applyViewport<T = void>(params?: Record<string, unknown>): Promise<T> {
+    const dontSetVisibleSize = this.nativeViewport === null
     const pending = this.viewportFlight
       .catch(() => undefined)
       .then(() =>
         this.sendCommand<T>(
           params ? "Emulation.setDeviceMetricsOverride" : "Emulation.clearDeviceMetricsOverride",
-          params ? { ...params, dontSetVisibleSize: true } : undefined,
+          params ? { ...params, dontSetVisibleSize } : undefined,
         ),
       )
     this.viewportFlight = pending.then(() => undefined)

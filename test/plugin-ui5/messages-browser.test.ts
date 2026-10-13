@@ -73,7 +73,10 @@ describe("production conversation history", () => {
         return scroller && scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop < 10
       })
       await page.unroute("**/session/**/message/**/part/**")
-      await roots.last().hover()
+      const readableViewport = page.locator(
+        '[data-session-resident]:not([hidden]) [data-conversation-viewport][data-ready="true"]',
+      )
+      await readableViewport.hover({ position: { x: 30, y: 50 } })
       await page.mouse.wheel(0, -1000)
       let oldestTime = conversation.messages.at(-1)!.info.time.created
       for (let pageIndex = 0; pageIndex < 2; pageIndex++) {

@@ -243,7 +243,7 @@ describe("Browser WebContents control", () => {
     await control.setNativeViewport({ width: 1280, height: 720 })
     expect(metrics().at(-1)).toMatchObject({
       method: "Emulation.setDeviceMetricsOverride",
-      params: { width: 1280, height: 720, dontSetVisibleSize: true },
+      params: { width: 1280, height: 720, dontSetVisibleSize: false },
     })
     await control.setNativeViewport(null)
     expect(metrics().at(-1)?.method).toBe("Emulation.clearDeviceMetricsOverride")
@@ -259,7 +259,7 @@ describe("Browser WebContents control", () => {
     await control.execute({ type: "setViewport", mode: "fit", width: 1, height: 1 })
     expect(metrics().at(-1)).toMatchObject({
       method: "Emulation.setDeviceMetricsOverride",
-      params: { width: 800, height: 600, dontSetVisibleSize: true },
+      params: { width: 800, height: 600, dontSetVisibleSize: false },
     })
     expect(target.state.resized).toEqual([])
     expect(contents.focused).toBe(0)

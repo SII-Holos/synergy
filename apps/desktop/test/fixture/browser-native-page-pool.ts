@@ -18,7 +18,10 @@ async function run() {
   await app.whenReady()
   console.log("Native Browser geometry smoke: ready")
   try {
-    const pool = new BrowserNativePagePool()
+    const window = new BrowserWindow({ width: 1300, height: 800, show: false })
+    await window.loadURL("about:blank")
+    window.showInactive()
+    const pool = new BrowserNativePagePool({ captureWindow: () => window })
     let hostReady = false
     let onDialog: ((event: Extract<BrowserHostPageEvent, { type: "dialog.opened" }>) => void) | undefined
     const input = {
@@ -53,13 +56,22 @@ async function run() {
       { width: 1280, height: 720 },
       "Detached pages need a usable default viewport",
     )
+    const initialChildren = [...window.contentView.children]
+    const initialFocus = window.webContents.isFocused()
     assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+    assert.deepEqual(
+      window.contentView.children,
+      initialChildren,
+      "A background capture releases its native attachment",
+    )
+    assert.equal(window.webContents.isFocused(), initialFocus, "A background capture cannot steal focus")
     await first.execute({ type: "setViewport", width: 900, height: 600 })
     assert.deepEqual(
       await viewportSize(),
       { width: 900, height: 600 },
       "Legacy explicit viewport remains fixed when detached",
     )
+    assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
     await first.execute({ type: "setViewport", mode: "fit", width: 1, height: 1 })
     assert.deepEqual(await viewportSize(), { width: 1280, height: 720 }, "Detached fit restores the native viewport")
     for (const answer of ["Edited draft", "", null]) {
@@ -104,8 +116,7 @@ async function run() {
       restored.y + restored.height > area.y + area.height
     )
       throw new Error("Restored window is outside the available work area.")
-    const window = new BrowserWindow({ ...restored, show: false })
-    await window.loadURL("about:blank")
+    window.setBounds(restored)
     window.webContents.setZoomFactor(1.25)
     const firstManager = new BrowserNativeViewManager(window, pool, () => {})
     const firstRequest = {
@@ -148,6 +159,7 @@ async function run() {
     await first.execute({ type: "setViewport", mode: "fixed", width: 600, height: 400 })
     assert.deepEqual(view.getBounds(), nativeBounds, "Fixed viewport must not resize native presentation")
     assert.deepEqual(await viewportSize(), { width: 600, height: 400 })
+    assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
     firstManager.resize(input.ownerKey, input.page.id, { x: 256, y: 40, width: 560, height: 360 })
     const resizedBounds = { x: 320, y: 50, width: 700, height: 450 }
     assert.deepEqual(view.getBounds(), resizedBounds)
@@ -158,10 +170,13 @@ async function run() {
     )
     await first.execute({ type: "setViewport", mode: "fit", width: 1, height: 1 })
     assert.deepEqual(view.getBounds(), resizedBounds, "Fit ignores supplied dimensions for native bounds")
-    assert.deepEqual(
-      await viewportSize(),
-      { width: 700, height: 450 },
-      "Fit restores natural viewport after fixed metrics",
+    await waitFor(
+      async () => {
+        const size = await viewportSize()
+        return size.width === 700 && size.height === 450
+      },
+      2_000,
+      "fit restores natural viewport after fixed metrics",
     )
     firstManager.resize(input.ownerKey, input.page.id, { x: 256, y: 40, width: 512, height: 320 })
     await waitFor(
@@ -176,16 +191,25 @@ async function run() {
     const contentId = view.webContents.id
     firstManager.detach(input.ownerKey, input.page.id)
     assert.deepEqual(await viewportSize(), { width: 640, height: 400 }, "Detached fit retains the last native size")
+    assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
     await first.execute({ type: "setViewport", width: 500, height: 300 })
     await firstManager.attach({ ...firstRequest, bounds: { x: 256, y: 40, width: 512, height: 320 } })
     assert.equal(view.webContents.id, contentId, "Attachment must preserve the browsing context")
     assert.deepEqual(await viewportSize(), { width: 500, height: 300 }, "Attachment preserves explicit Agent viewport")
     firstManager.detach(input.ownerKey, input.page.id)
     assert.deepEqual(await viewportSize(), { width: 500, height: 300 }, "Detach preserves explicit Agent viewport")
+    assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
     await first.execute({ type: "setViewport", mode: "fit", width: 1, height: 1 })
     assert.deepEqual(await viewportSize(), { width: 640, height: 400 }, "Detached fit restores the last native size")
     await firstManager.attach({ ...firstRequest, bounds: { x: 256, y: 40, width: 512, height: 320 } })
-    assert.deepEqual(await viewportSize(), { width: 640, height: 400 })
+    await waitFor(
+      async () => {
+        const size = await viewportSize()
+        return size.width === 640 && size.height === 400
+      },
+      2_000,
+      "reattached fit viewport",
+    )
     console.log(
       "ACCEPTED: one bounds owner, zoom-scaled natural viewport, detached/attached fixed-fit and roundtrip identity",
     )

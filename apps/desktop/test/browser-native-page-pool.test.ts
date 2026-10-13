@@ -13,6 +13,7 @@ let nextControlError: Error | null = null
 let nextDiagnosticsError: Error | null = null
 let failDispose = false
 let viewCreationAttempts = 0
+let captureOperation: (() => Promise<void>) | undefined
 
 class MockDebugger extends EventEmitter {
   attached = false
@@ -164,6 +165,7 @@ mock.module("../src/browser-webcontents-control.js", () => ({
         throw error
       }
       commands.push(command)
+      if ((command as { type: string }).type === "screenshot") await captureOperation?.()
       return { type: "void" }
     }
 
@@ -197,6 +199,76 @@ async function until(predicate: () => boolean, timeoutMs = 500): Promise<void> {
 }
 
 describe("Browser native page pool", () => {
+  test("leases one hidden native attachment for concurrent captures without undoing a human selection", async () => {
+    const children = new Set<MockWebContentsView>()
+    const window = {
+      isDestroyed: () => false,
+      contentView: {
+        addChildView: (view: MockWebContentsView) => children.add(view),
+        removeChildView: (view: MockWebContentsView) => children.delete(view),
+      },
+    }
+    const pool = new BrowserNativePagePool({ captureWindow: () => window as never })
+    const initial = input("capture")
+    const page = await pool.create(initial)
+    const view = views.at(-1)!
+    const releases: Array<() => void> = []
+    captureOperation = () => new Promise<void>((resolve) => releases.push(resolve))
+    const first = page.execute({ type: "screenshot" })
+    const second = page.execute({ type: "screenshot" })
+    try {
+      await until(() => releases.length === 2)
+      expect(children.size).toBe(1)
+      expect(view.getVisible()).toBe(false)
+      releases[0]()
+      await first
+      expect(children.size).toBe(1)
+      pool.attach(window as never, initial.ownerKey, initial.page.id)
+      view.setVisible(true)
+      releases[1]()
+      await second
+      expect(children.has(view)).toBe(true)
+      expect(view.getVisible()).toBe(true)
+      const third = page.execute({ type: "screenshot" })
+      await until(() => releases.length === 3)
+      pool.detach(window as never, initial.ownerKey, initial.page.id)
+      expect(children.has(view)).toBe(true)
+      expect(view.getVisible()).toBe(false)
+      releases[2]()
+      await third
+      expect(children.size).toBe(0)
+    } finally {
+      for (const release of releases) release()
+      await Promise.allSettled([first, second])
+      captureOperation = undefined
+      await pool.destroy()
+    }
+  })
+
+  test("releases a failed background capture without retaining its view", async () => {
+    const children = new Set<MockWebContentsView>()
+    const window = {
+      isDestroyed: () => false,
+      contentView: {
+        addChildView: (view: MockWebContentsView) => children.add(view),
+        removeChildView: (view: MockWebContentsView) => children.delete(view),
+      },
+    }
+    const pool = new BrowserNativePagePool({ captureWindow: () => window as never })
+    const page = await pool.create(input("failed-capture"))
+    captureOperation = async () => {
+      expect(children.size).toBe(1)
+      throw new Error("Capture refused")
+    }
+    try {
+      await expect(page.execute({ type: "screenshot" })).rejects.toThrow("Capture refused")
+      expect(children.size).toBe(0)
+    } finally {
+      captureOperation = undefined
+      await pool.destroy()
+    }
+  })
+
   test("hands a usable detached viewport to native presentation and retains the last size on detach", async () => {
     commands.length = 0
     nativeViewports.length = 0
