@@ -294,6 +294,10 @@ globalThis.__chronologyHarness = {
   },
   remount: () => setMount((value) => value + 1),
   setFollowing,
+  newText: (id: string) => {
+    partArrivals.add(id)
+    setData("part", assistantID, (parts) => [...parts, { ...answerPart, id, text: "New live answer." }])
+  },
   fastTool: () => {
     partArrivals.add("tool-fast")
     setData("part", assistantID, (parts) => [

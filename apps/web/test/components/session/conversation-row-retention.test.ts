@@ -102,6 +102,12 @@ declare global {
   interface Window {
     __setTimeline: (messages: unknown[]) => void
     __enableContent(): void
+    __viewActive(value: boolean): void
+    __partArrival: {
+      add(session: string, partID: string, source?: "live" | "replay" | "discovery"): void
+      peer(): void
+      take(partID: string): boolean
+    }
     __historyControls: {
       set(value: { more?: boolean; history?: boolean; pending?: boolean; tail?: boolean }): void
       returns(): number
@@ -177,6 +183,7 @@ beforeAll(async () => {
       stubPath,
       `
         import { createMemo, createSignal } from "solid-js"
+        import { useConversationMotion } from "@ericsanchezok/synergy-ui/conversation-motion"
         import { ExecutionCompletion } from ${JSON.stringify(`/@fs/${completionPath}`)}
         import { createPartArrivalState } from ${JSON.stringify(`/@fs/${arrivalPath}`)}
         import { createSessionTransitionState } from ${JSON.stringify(`/@fs/${transitionPath}`)}
@@ -199,6 +206,7 @@ beforeAll(async () => {
         export function SessionTurn(props: any) {
           const [mounted] = createSignal(++mountCount)
           const root = createMemo(() => props.rootMessage)
+          window.__partArrival.take = useConversationMotion()
           return (
             <div data-slot="session-turn-stub" data-message-id={props.messageID} data-mount={mounted()} data-part-count={props.segment?.parts.length} data-execution={props.executionState?.status}>
               <span data-root-text>{root()?.text ?? ""}</span>
@@ -345,7 +353,12 @@ beforeAll(async () => {
         export const useSync = () => ({data: content})
         export const useSessionPreparation = () => ({ready})
         const partArrival = createPartArrivalState()
-        export const useGlobalSync = () => ({partArrival, peekScopeState: () => undefined, reconnectVersion: recovery, ready: true, scopeRecoveryPending: () => false})
+        window.__partArrival = {
+          add: (id, partID, source = "live") => partArrival.add([server(), scope(), id], partID, {source, render: true, previous: false}),
+          peer: () => partArrival.open([server(), scope(), "ses_peer"]).ready(true),
+          take: () => false,
+        }
+        export const useGlobalSync = () => ({partArrival, peekScopeState: () => [{messageWindow: {[session()]: {}}}], reconnectVersion: recovery, ready: true, scopeRecoveryPending: () => false})
         export const SessionSubmissionStatus = () => null
         const transitions = createSessionTransitionState()
         export const useSessionTransition = () => transitions
@@ -372,6 +385,7 @@ beforeAll(async () => {
         import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
         import { DataProvider } from "@ericsanchezok/synergy-ui/context/data"
         import { SessionConversation } from ${JSON.stringify(`/@fs/${conversationPath}`)}
+        import { ViewActivityProvider } from "@/context/view-residency"
         import ${JSON.stringify(`/@fs/${path.resolve(import.meta.dir, "../../../../../packages/ui/src/styles/theme.css")}`)}
         import { fixtureSession, setFixtureSession, fixtureMessages, setFixtureMessages, readProjectionPage, historyState, returnLatest } from "./stubs"
         console.info("[conversation-boot] main")
@@ -464,8 +478,10 @@ beforeAll(async () => {
         }
 
         const i18n = setupI18n({locale: "en", messages: {en: {}}})
+        const [active, setActive] = createSignal(true)
+        window.__viewActive = setActive
         console.info("[conversation-boot] render:start")
-        const dispose = render(() => <I18nProvider i18n={i18n}><DataProvider data={{session:[], session_diff:{}, message:{[fixtureSession()]:fixtureMessages()}, part:{}}} directory={null} serverUrl="http://fixture"><DialogProvider><Suspense fallback={<p data-test-loading>Loading conversation</p>}><App /></Suspense></DialogProvider></DataProvider></I18nProvider>, document.querySelector("#root")!)
+        const dispose = render(() => <I18nProvider i18n={i18n}><DataProvider data={{session:[], session_diff:{}, message:{[fixtureSession()]:fixtureMessages()}, part:{}}} directory={null} serverUrl="http://fixture"><DialogProvider><Suspense fallback={<p data-test-loading>Loading conversation</p>}><ViewActivityProvider active={active}><App /></ViewActivityProvider></Suspense></DialogProvider></DataProvider></I18nProvider>, document.querySelector("#root")!)
         window.__executionOwner.dispose = dispose
         console.info("[conversation-boot] render:end")
       `,
@@ -869,7 +885,7 @@ async function paintedConversationPixels() {
   }, screenshot)
 }
 
-test("keeps target rows visible while individual bodies and initial scroll settle without a second entrance animation", async () => {
+test("cold admission paints only the settled reading window and never rearms for later content", async () => {
   await page.goto(new URL("?admission", page.url()).href)
   await page.waitForFunction(() => typeof window.__setTimeline === "function")
   await page.addStyleTag({ content: "[data-display-row] { background: rgb(0, 255, 0); min-height: 32px; }" })
@@ -887,17 +903,15 @@ test("keeps target rows visible while individual bodies and initial scroll settl
   })
   await page.waitForSelector("[data-display-row]", { state: "attached" })
   const viewport = page.locator("[data-conversation-viewport]")
-  expect(await viewport.getAttribute("aria-hidden")).toBeNull()
+  expect(await viewport.getAttribute("aria-hidden")).toBe("true")
   const pendingBounds = await page.locator("[data-display-row]").first().boundingBox()
   expect(pendingBounds?.height).toBeGreaterThan(0)
   expect(pendingBounds?.width).toBeGreaterThan(0)
-  expect(await paintedConversationPixels()).toBeGreaterThan(0)
+  expect(await paintedConversationPixels()).toBe(0)
   await page.evaluate(() => (window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true))
-  await page.evaluate(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-  )
-  expect(await viewport.getAttribute("aria-hidden")).toBeNull()
-  expect(await paintedConversationPixels()).toBeGreaterThan(0)
+  await executionFrames()
+  expect(await viewport.getAttribute("aria-hidden")).toBe("true")
+  expect(await paintedConversationPixels()).toBe(0)
   await page.evaluate(() => (window as unknown as { __settleBodies(): void }).__settleBodies())
   await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   expect(await viewport.evaluate((element) => element.getAnimations().length)).toBe(0)
@@ -928,15 +942,40 @@ test("keeps target rows visible while individual bodies and initial scroll settl
     fixture.__sessionID("ses_2")
     fixture.__setTimeline([{ id: "next", sessionID: "ses_2", role: "user", text: "next", time: { created: 3 } }])
   })
-  await page.locator('[data-display-row="next:user"]').waitFor()
-  expect(await viewport.getAttribute("aria-hidden")).toBeNull()
-  expect(await paintedConversationPixels()).toBeGreaterThan(0)
+  await page.locator('[data-display-row="next:user"]').waitFor({ state: "attached" })
+  expect(await viewport.getAttribute("aria-hidden")).toBe("true")
+  expect(await paintedConversationPixels()).toBe(0)
   await page.evaluate(() => {
     const fixture = window as unknown as { __settleBodies(): void; __layoutReady(value: boolean): void }
     fixture.__settleBodies()
     fixture.__layoutReady(true)
   })
   await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
+  expect(pageErrors).toEqual([])
+})
+
+test("cold admission cannot be starved by continuous live text mutations", async () => {
+  await page.goto(new URL("?admission", page.url()).href)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.evaluate(() => {
+    window.__setTimeline([{ id: "streaming", sessionID: "ses_1", role: "user", time: { created: 1 } }])
+    window.__enableContent()
+  })
+  await page.waitForSelector("[data-display-row]", { state: "attached" })
+  const frames = await page.evaluate(async () => {
+    const surface = document.querySelector("[data-conversation-motion]")!
+    const text = document.createTextNode("Live text")
+    surface.append(text)
+    ;(window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true)
+    const admitted: boolean[] = []
+    for (let frame = 0; frame < 30; frame++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      text.appendData(" next")
+      admitted.push(document.querySelector<HTMLElement>("[data-conversation-viewport]")?.dataset.ready === "true")
+    }
+    return admitted
+  })
+  expect(frames.some(Boolean)).toBe(true)
   expect(pageErrors).toEqual([])
 })
 
@@ -956,7 +995,7 @@ test("terminal body failures reveal an actionable retry instead of stranding ini
     fixture.__layoutReady(true)
   })
   await page.waitForSelector("[data-display-row]", { state: "attached" })
-  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBeNull()
+  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("true")
   await page.evaluate(() => (window as unknown as { __failBodies(): void }).__failBodies())
   await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   expect(await page.locator("[data-content-error] button").count()).toBe(1)
@@ -984,8 +1023,9 @@ test("cold hydration waits for bodies and Markdown, releases once, and rejects t
     fixture.__enableContent()
     fixture.__layoutReady(true)
   })
-  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="false"]', { state: "attached" })
   await executionFrames()
+  expect(await paintedConversationPixels()).toBe(0)
   const hydrated = () =>
     page.evaluate(() => (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions())
   expect(await hydrated()).toEqual([])
@@ -997,7 +1037,7 @@ test("cold hydration waits for bodies and Markdown, releases once, and rejects t
     fixture.__switchSession("ses_2", [{ id: "second", sessionID: "ses_2", role: "user", time: { created: 2 } }])
     fixture.__layoutReady(true)
   })
-  await page.locator('[data-display-row="second:user"]').waitFor()
+  await page.locator('[data-display-row="second:user"]').waitFor({ state: "attached" })
   await page.evaluate(() => {
     const marker = document.createElement("div")
     marker.dataset.markdownPending = ""
@@ -1060,7 +1100,7 @@ test("session navigation replaces only the transcript owner and releases its bod
   ).toContain(JSON.stringify(["ses_1", "first", "part-0000"]))
   await page.evaluate(() => (window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true))
   await executionFrames()
-  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBeNull()
+  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("true")
   await page.evaluate(() => (window as unknown as { __settleBodies(): void }).__settleBodies())
   await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   const mount = await page
@@ -1103,7 +1143,7 @@ test("the same session identifier on another connection has an independent viewp
       return fixture.priorViewport.isConnected
     }),
   ).toBe(false)
-  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBeNull()
+  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("true")
   await page.evaluate(() => (window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true))
   await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   expect(pageErrors).toEqual([])
@@ -1142,6 +1182,93 @@ async function startExecutionOwner(options: ExecutionTransportOptions = {}) {
   await waitExecutionCalls(1)
 }
 
+test("retained activation preserves accepted execution state and refreshes only hidden invalidations", async () => {
+  await startExecutionOwner({ deliverAfterAbort: true })
+  await page.evaluate(() => window.__executionOwner.settle(0, "completed"))
+  await waitExecutionStatus("r69", "completed")
+  const row = page.locator('[data-slot="session-turn-stub"][data-message-id="r69"]')
+  const mount = await row.getAttribute("data-mount")
+  await page.evaluate(() => window.__viewActive(false))
+  await executionFrames()
+  expect(await executionStatus("r69")).toBe("completed")
+  await page.evaluate(() => window.__viewActive(true))
+  await executionFrames()
+  expect(await row.getAttribute("data-mount")).toBe(mount)
+  expect(await executionStatus("r69")).toBe("completed")
+  expect((await executionCalls()).length).toBe(1)
+
+  await page.evaluate(() => {
+    window.__executionOwner.event("r8")
+  })
+  await waitExecutionCalls(2)
+  await page.evaluate(() => {
+    window.__viewActive(false)
+    window.__executionOwner.event("r9")
+    window.__executionOwner.settle(1, "stopped")
+  })
+  await executionFrames()
+  expect((await executionCalls())[1].aborted).toBe(true)
+  expect((await executionCalls()).length).toBe(2)
+  expect(await executionStatus("r8")).toBe("completed")
+  await page.evaluate(() => window.__viewActive(true))
+  await waitExecutionCalls(3)
+  expect((await executionCalls())[2].rootIDs).toEqual(["r8", "r9"])
+  expect(await executionStatus("r8")).toBe("completed")
+  await page.evaluate(() => window.__executionOwner.settle(2, "failed", true))
+  await executionFrames()
+  expect(await executionStatus("r8")).toBe("completed")
+  expect(await executionStatus("r9")).toBe("completed")
+  expect((await executionCalls()).length).toBe(3)
+  expect(pageErrors).toEqual([])
+})
+
+test("retained activation rebinds live arrival ownership without replaying hidden or historical parts", async () => {
+  await page.goto(new URL("/", page.url()).href)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.evaluate(() =>
+    window.__setTimeline([{ id: "arrival", sessionID: "ses_1", role: "user", time: { created: 1 } }]),
+  )
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
+  await executionFrames()
+  const take = (id: string) => page.evaluate((id) => window.__partArrival.take(id), id)
+  await page.evaluate(() => window.__partArrival.add("ses_1", "before"))
+  expect(await take("before")).toBe(true)
+  expect(await take("before")).toBe(false)
+  await page.evaluate(() => {
+    window.__partArrival.add("ses_1", "abandoned")
+    window.__viewActive(false)
+    window.__partArrival.peer()
+    window.__partArrival.add("ses_1", "hidden")
+  })
+  await page.evaluate(() => window.__viewActive(true))
+  await executionFrames()
+  await page.evaluate(() => {
+    window.__partArrival.add("ses_1", "returned")
+    window.__partArrival.add("ses_1", "replay", "replay")
+    window.__partArrival.add("ses_1", "snapshot", "discovery")
+  })
+  expect(await take("returned")).toBe(true)
+  for (const id of ["before", "returned", "abandoned", "hidden", "replay", "snapshot"])
+    expect(await take(id)).toBe(false)
+  await page.evaluate(() => {
+    window.__partArrival.add("ses_1", "before-tab-hidden")
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" })
+    window.dispatchEvent(new Event("visibilitychange"))
+    window.__partArrival.add("ses_1", "hidden-tab-mounted")
+    window.__partArrival.add("ses_1", "hidden-tab-unmounted")
+  })
+  expect(await take("hidden-tab-mounted")).toBe(false)
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+    window.dispatchEvent(new Event("visibilitychange"))
+  })
+  for (const id of ["before-tab-hidden", "hidden-tab-mounted", "hidden-tab-unmounted"])
+    expect(await take(id)).toBe(false)
+  await page.evaluate(() => window.__partArrival.add("ses_1", "after-tab-return"))
+  expect(await take("after-tab-return")).toBe(true)
+  expect(pageErrors).toEqual([])
+})
+
 describe("conversation execution request owner", () => {
   test.each(["success", "failure"] as const)(
     "commits a 64-root %s response in one real virtual projection",
@@ -1173,16 +1300,16 @@ describe("conversation execution request owner", () => {
         await executionFrames()
         const counts = await page.evaluate(() => window.__virtualExecutionWork.counts())
         diagnose("virtual-response:work", { outcome, roots: 64, ...counts })
-        expect(counts).toEqual({ processRootReads: 1, projectionRootReads: 1 })
+        expect(counts).toEqual(
+          outcome === "success"
+            ? { processRootReads: 1, projectionRootReads: 1 }
+            : { processRootReads: 0, projectionRootReads: 0 },
+        )
         const rows = page.locator('[data-slot="session-turn-stub"][data-message-id="r69"]')
         expect(await rows.count()).toBeGreaterThan(0)
         expect(
-          await rows.evaluateAll(
-            (elements, outcome) =>
-              elements.every(
-                (element) => element.getAttribute("data-execution") === (outcome === "failure" ? null : "running"),
-              ),
-            outcome,
+          await rows.evaluateAll((elements) =>
+            elements.every((element) => element.getAttribute("data-execution") === "running"),
           ),
         ).toBe(true)
         expect(await page.evaluate(() => window.__pendingExecutions())).toBe(0)
