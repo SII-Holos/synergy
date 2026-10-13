@@ -2,6 +2,7 @@ import { expect, jest, spyOn, test } from "bun:test"
 import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { observePollingTimers } from "@ericsanchezok/synergy-harness/test/support/polling-timers"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { holos } from "../src/component"
@@ -20,23 +21,26 @@ test("holos polling in another Runtime survives disposal and settles when connec
   })
   jest.useFakeTimers()
   try {
+    using timers = observePollingTimers()
+    setTimeout(() => {}, 60_000)
     const pendingFirst = first.run(() =>
-      ScopeContext.provide({ scope: Scope.home(), fn: () => connectionStatusRows() }),
+      ScopeContext.provide({ scope: Scope.home(), fn: () => timers.run(() => connectionStatusRows()) }),
     )
     const pendingSecond = second.run(() =>
-      ScopeContext.provide({ scope: Scope.home(), fn: () => connectionStatusRows() }),
+      ScopeContext.provide({ scope: Scope.home(), fn: () => timers.run(() => connectionStatusRows()) }),
     )
     await entered.promise
     await Promise.resolve()
     await Promise.resolve()
-    expect(jest.getTimerCount()).toBe(4)
+    expect(timers.count()).toBe(4)
     await first.close()
     expect(await pendingFirst).toEqual([])
-    expect(jest.getTimerCount()).toBe(2)
+    expect(timers.count()).toBe(2)
     status.mockResolvedValue({ status: "connected" })
     jest.advanceTimersByTime(320)
     expect(await pendingSecond).toEqual([{ label: "Holos", value: "agent network connected", kind: "success" }])
-    expect(jest.getTimerCount()).toBe(0)
+    expect(timers.count()).toBe(0)
+    expect(jest.getTimerCount()).toBeGreaterThan(0)
   } finally {
     jest.clearAllTimers()
     jest.useRealTimers()
@@ -60,11 +64,12 @@ for (const finish of ["timeout", "close"] as const) {
           })
           jest.useFakeTimers()
           try {
-            const pending = connectionStatusRows()
+            using timers = observePollingTimers()
+            const pending = timers.run(() => connectionStatusRows())
             await entered.promise
             await Promise.resolve()
             await Promise.resolve()
-            expect(jest.getTimerCount()).toBe(2)
+            expect(timers.count()).toBe(2)
             if (finish === "timeout") {
               jest.advanceTimersByTime(15_000)
               expect(await pending).toEqual([
@@ -72,10 +77,10 @@ for (const finish of ["timeout", "close"] as const) {
               ])
             } else {
               await runtime.close()
-              expect(jest.getTimerCount()).toBe(0)
+              expect(timers.count()).toBe(0)
               expect(await pending).toEqual([])
             }
-            expect(jest.getTimerCount()).toBe(0)
+            expect(timers.count()).toBe(0)
           } finally {
             jest.clearAllTimers()
             jest.useRealTimers()
