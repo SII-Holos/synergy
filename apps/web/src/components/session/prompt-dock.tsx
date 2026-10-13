@@ -81,7 +81,9 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
               </For>
               <div class="relative">
                 <div data-prompt-pending>{props.pending}</div>
-                <Show when={layout.input()}>{(input) => <DefaultComposer context={{ input: input() }} />}</Show>
+                <Show when={layout.input()} keyed>
+                  {(input) => <DefaultComposer context={{ input }} />}
+                </Show>
               </div>
             </Show>
           </div>

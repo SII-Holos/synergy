@@ -871,6 +871,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     serverDraft: () => snapshotSettingsDraft(settings),
     domainSummaries: () => domainSummaries() ?? [],
     hasAnyChanges,
+    hasUnsavedResources: () => providerSetupDrafts.dirty(),
     editingLabel,
     refreshAfterConfigChange,
     preparePatchSave: (patch) => prepareLocaleSettingsSave(patch, locale.controller),
@@ -878,7 +879,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       await rejectLocaleSettingsSave(patch, locale.controller, globalSync.data.config.locale)
     },
     discardChanges,
-    closeBlocked: () => saving() || personalizeController.status() === "saving",
+    closeBlocked: () => saving() || personalizeController.status() === "saving" || providerSetupDrafts.pending(),
     closeDialog: () => {
       if (props.onClose) props.onClose()
       else dialog.close()
@@ -890,7 +891,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   async function openBossSession() {
     const requireSavedChanges = () => {
-      if (hasAnyChanges() || saving())
+      if (hasAnyChanges() || saving() || providerSetupDrafts.dirty() || providerSetupDrafts.pending())
         throw new Error(
           _({
             id: "settings.runtime.boss.saveFirst",
@@ -1129,7 +1130,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       saving: saving(),
       refreshPending: save.refreshPending(),
       loading:
-        !initialized() ||
+        (configSections.includes(activeTab()) && !initialized()) ||
         sectionLoading() ||
         (activeTab() === "voice" && voiceController.status() === "loading") ||
         (activeTab() === "boss" && bossNameController.status() === "loading"),
@@ -1627,7 +1628,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
         type="button"
         class="settings-panel-close"
         aria-label={_(copy.closeLabel)}
-        disabled={saving() || save.status() === "saving" || personalizeController.status() === "saving"}
+        disabled={
+          saving() ||
+          save.status() === "saving" ||
+          personalizeController.status() === "saving" ||
+          providerSetupDrafts.pending()
+        }
         onClick={save.closeWithGuard}
       >
         <Icon name={getSemanticIcon("action.close")} size="small" />
@@ -1881,7 +1887,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   type="button"
                   variant="ghost"
                   size="large"
-                  disabled={saving() || save.status() === "saving" || personalizeController.status() === "saving"}
+                  disabled={
+                    saving() ||
+                    save.status() === "saving" ||
+                    personalizeController.status() === "saving" ||
+                    providerSetupDrafts.pending()
+                  }
                   onClick={save.closeWithGuard}
                 >
                   {_(copy.cancel)}

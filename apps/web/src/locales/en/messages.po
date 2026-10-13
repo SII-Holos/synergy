@@ -13184,7 +13184,11 @@ msgstr "Checked {time}"
 
 #. js-lingui-explicit-id
 msgid "project.entry.chooseFolder"
-msgstr "Choose folder"
+msgstr "Choose another folder"
+
+#. js-lingui-explicit-id
+msgid "project.entry.chooseFolderFailed"
+msgstr "Could not choose a folder. Try again."
 
 #. js-lingui-explicit-id
 msgid "project.entry.chooseFolders"
@@ -13267,6 +13271,10 @@ msgid "project.entry.folderActions"
 msgstr "Folder actions"
 
 #. js-lingui-explicit-id
+msgid "project.entry.folderChanged"
+msgstr "The folder at this location has changed since it was added to the project."
+
+#. js-lingui-explicit-id
 msgid "project.entry.folderImpact"
 msgstr "The main folder applies to new tasks. Other folders are shared with existing tasks; disk files will not be moved or deleted."
 
@@ -13281,6 +13289,10 @@ msgstr "Folders"
 #. js-lingui-explicit-id
 msgid "project.entry.folderUnbound"
 msgstr "This folder is unavailable on this computer. Choose its location here."
+
+#. js-lingui-explicit-id
+msgid "project.entry.folderUnverified"
+msgstr "Synergy cannot verify that this is the folder added to the project."
 
 #. js-lingui-explicit-id
 msgid "project.entry.loading"
@@ -13335,12 +13347,16 @@ msgid "project.entry.originalMain"
 msgstr "Previous main folder"
 
 #. js-lingui-explicit-id
+msgid "project.entry.partialSave"
+msgstr "Some changes were saved: {sections}. Save again to retry the remaining changes."
+
+#. js-lingui-explicit-id
 msgid "project.entry.recoverAction"
-msgstr "Confirm and restore"
+msgstr "Continue using this folder"
 
 #. js-lingui-explicit-id
 msgid "project.entry.recoverDescription"
-msgstr "Confirm the folders you want to use. This also restores access for tasks using these folders."
+msgstr "No task will start automatically. Existing tasks keep their recorded locations."
 
 #. js-lingui-explicit-id
 msgid "project.entry.recovered"
@@ -13351,16 +13367,24 @@ msgid "project.entry.recoverFailed"
 msgstr "Could not restore all project folders. Restored folders are kept; retry the remaining folders."
 
 #. js-lingui-explicit-id
+msgid "project.entry.recoverFoldersAction"
+msgstr "Continue using these folders"
+
+#. js-lingui-explicit-id
 msgid "project.entry.recovering"
 msgstr "Restoring…"
 
 #. js-lingui-explicit-id
 msgid "project.entry.recoverTitle"
-msgstr "Confirm project folders"
+msgstr "Restore project folders"
 
 #. js-lingui-explicit-id
 msgid "project.entry.recoverUnavailable"
 msgstr "A project folder is unavailable. Review its location in project settings."
+
+#. js-lingui-explicit-id
+msgid "project.entry.refreshSavedFailed"
+msgstr "Changes were saved, but the updated settings could not be loaded. Save again to retry."
 
 #. js-lingui-explicit-id
 msgid "project.entry.remove"
@@ -13369,6 +13393,10 @@ msgstr "Remove"
 #. js-lingui-explicit-id
 msgid "project.entry.retry"
 msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "project.entry.selectedFolder"
+msgstr "Selected folder"
 
 #. js-lingui-explicit-id
 msgid "project.entry.setMain"
@@ -13405,6 +13433,10 @@ msgstr "Use Worktree"
 #. js-lingui-explicit-id
 msgid "project.entry.using"
 msgstr "{count} linked tasks"
+
+#. js-lingui-explicit-id
+msgid "project.entry.worktreeRequiresGit"
+msgstr "Worktree needs a Git folder. Choose Main folder or select a Git main folder before saving."
 
 #. js-lingui-explicit-id
 msgid "project.entry.worktrees"
@@ -22705,6 +22737,10 @@ msgid "settings.productUpdate.web.versionMismatch"
 msgstr "Web client {appVersion} is running with server {serverVersion}."
 
 #. js-lingui-explicit-id
+msgid "settings.providers.account.actions"
+msgstr "Account actions"
+
+#. js-lingui-explicit-id
 msgid "settings.providers.account.add"
 msgstr "Add another account"
 
@@ -22717,20 +22753,20 @@ msgid "settings.providers.account.cancel"
 msgstr "Cancel"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.connectAnother"
-msgstr "Connect another account"
+msgid "settings.providers.account.credentials"
+msgstr "Credentials"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.connectAnother.description"
-msgstr "Give this account an optional remark, then choose how to connect. Interrupted connections can be continued from your account list."
+msgid "settings.providers.account.discard.description"
+msgstr "Your account changes have not been saved."
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.discardSetup"
+msgstr "This account has not been connected."
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.edit"
 msgstr "Edit account"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.edit.title"
-msgstr "Edit provider account"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.enabled"
@@ -22749,20 +22785,8 @@ msgid "settings.providers.account.endpoint.placeholder"
 msgstr "https://api.example.com/v1"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.finishSetup"
-msgstr "Account added. Finish connecting below, or continue later from your account list."
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.manage"
-msgstr "Manage account"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.name"
-msgstr "Account name"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.name.placeholder"
-msgstr "Work account"
+msgid "settings.providers.account.keepEditing"
+msgstr "Keep editing"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.numbered"
@@ -22857,10 +22881,6 @@ msgid "settings.providers.connectAction"
 msgstr "Connect"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.connected"
-msgstr "Connected"
-
-#. js-lingui-explicit-id
 msgid "settings.providers.connection.refreshFailed"
 msgstr "Connection saved. Could not refresh the account."
 
@@ -22875,10 +22895,6 @@ msgstr "Add a service to start choosing models."
 #. js-lingui-explicit-id
 msgid "settings.providers.empty.title"
 msgstr "No connected services"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.immediate"
-msgstr "Account actions take effect immediately. You can leave Settings without saving them again."
 
 #. js-lingui-explicit-id
 msgid "settings.providers.method.apiKey"
@@ -22925,20 +22941,12 @@ msgid "settings.providers.modelCount"
 msgstr "{count, plural, one {# model} other {# models}}"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.needsAttention"
-msgstr "Needs attention"
-
-#. js-lingui-explicit-id
 msgid "settings.providers.noMatch"
 msgstr "No providers match this search."
 
 #. js-lingui-explicit-id
 msgid "settings.providers.other"
 msgstr "Other"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.page.description"
-msgstr "Connect model providers and manage runtime availability."
 
 #. js-lingui-explicit-id
 msgid "settings.providers.page.title"
@@ -22951,10 +22959,6 @@ msgstr "Recommended"
 #. js-lingui-explicit-id
 msgid "settings.providers.search.placeholder"
 msgstr "Search providers..."
-
-#. js-lingui-explicit-id
-msgid "settings.providers.selectHint"
-msgstr "Select a provider to connect it."
 
 #. js-lingui-explicit-id
 msgid "settings.providers.service.anthropic"

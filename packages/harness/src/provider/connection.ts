@@ -256,13 +256,16 @@ export namespace ProviderConnection {
   export async function update(providerID: string, input: UpdateInput) {
     const parsedProviderID = z.string().min(1).parse(providerID)
     const parsed = UpdateInput.parse(input)
+    const canonicalCatalog = await ProviderCatalog.resolve({ includeLive: false })
     const { change } = await Config.domainMutateWithChange(
       "providers",
       (domain) => {
-        const current = domain.provider?.[parsedProviderID]
-        if (!current) throw new NotFound({ providerID: parsedProviderID })
-        const ownerID = current.profile ?? current.modelsDevProviderID
-        if (!ownerID || parsedProviderID === ownerID) throw new NotManaged({ providerID: parsedProviderID })
+        const current = Object.hasOwn(domain.provider ?? {}, parsedProviderID)
+          ? domain.provider?.[parsedProviderID]
+          : undefined
+        if (!current && !Object.hasOwn(canonicalCatalog, parsedProviderID)) {
+          throw new NotFound({ providerID: parsedProviderID })
+        }
         const provider: ProviderConfig = {
           ...current,
           ...(parsed.name !== undefined ? { name: parsed.name } : {}),

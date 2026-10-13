@@ -19,12 +19,17 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     import { createSignal } from "solid-js"
     const [connected, setConnected] = createSignal(false)
     export const connect = () => setConnected(true)
+    const [dir, setDir] = createSignal(undefined)
+    export const useParams = () => ({get dir(){return dir()}})
+    export const selectHome = () => setDir("aG9tZQ")
     export const optionalRequests = []
     export const requests = []
     export const modelRequests = []
     export const replays = []
     export const lists = []
     export const inboxRequests = []
+    let catalogVersion = "home-one"
+    export const setCatalogVersion = value => {catalogVersion=value}
     let preferWorkBrief = false
     export const setPreference = value => { preferWorkBrief = value }
     let inboxReady
@@ -35,7 +40,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     export const seedStatuses = () => Promise.resolve({data:{"remote-runner":{type:"busy"},"remote-paused":{type:"paused",reason:"aborted",since:1}},response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
     export function createSynergyClient(options) {
       return {
-        scope: { bootstrapCore: () => (options.scopeID === "home" || options.scopeID.startsWith("background.")) ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{preferWorkBrief}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve})) },
+        scope: { bootstrapCore: () => (options.scopeID === "home" || options.scopeID.startsWith("background.")) ? ok({scopeID:options.scopeID,provider:{all:[{id:"test",models:{}}],connected:["test"],...(options.scopeID==="home"?{version:catalogVersion,complete:false}:{})},agent:[],config:{preferWorkBrief}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve})) },
         command: {list:()=>ok([])},
         provider:{modelsById:()=>new Promise(resolve=>modelRequests.push(resolve)),catalogPage:()=>new Promise(resolve=>modelRequests.push(resolve))},
         permission: {list:()=>ok([])}, question: {list:()=>ok([])},
@@ -67,15 +72,16 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { createPartMaterializer } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/context/part-materializer.ts"))}
+    import { useProviders } from ${JSON.stringify(path.resolve(import.meta.dir, "../../src/hooks/use-providers.ts"))}
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
-    import { requests, modelRequests, replays, lists, emit, inboxRequests, inboxArrived, optionalRequests, connect, setPreference } from ${JSON.stringify(stub)}
+    import { requests, modelRequests, replays, lists, emit, inboxRequests, inboxArrived, optionalRequests, connect, setPreference, selectHome, setCatalogVersion } from ${JSON.stringify(stub)}
     const bodyLifetimes=[]
     export function mount(root) {
-      let api, ready
+      let api, ready, providers
       const started = new Promise(resolve=>ready=resolve)
-      function Child(){api=useGlobalSync();ready();return <output>{String(api.data.config.preferWorkBrief)}</output>}
+      function Child(){api=useGlobalSync();providers=useProviders();ready();return <output>{String(api.data.config.preferWorkBrief)}</output>}
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
-      return {started,dispose,requests,modelRequests,emit,replays,lists,inboxRequests,inboxArrived,optionalRequests,connect,setPreference,api:()=>api,
+      return {started,dispose,requests,modelRequests,emit,replays,lists,inboxRequests,inboxArrived,optionalRequests,connect,setPreference,selectHome,setCatalogVersion,resolved:()=>providers.resolved({providerID:"test",modelID:"missing"}),models:()=>providers.all().flatMap(p=>Object.keys(p.models)),api:()=>api,
         seedInbox(key) {api.ensureScopeState(key)[1]("inbox","fixture-session",[{id:"pending"}])},
         seedWindow(key) {api.ensureScopeState(key)[1]("message","session",[{id:"message",sessionID:"session",role:"user",time:{created:1}}])},
         bodyLifetimes,
@@ -113,6 +119,11 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
           name: "scope-services",
           enforce: "pre",
           resolveId(source, importer) {
+            if (
+              importer?.endsWith("/hooks/use-providers.ts") &&
+              (source === "@/context/session-route" || source.endsWith("/context/session-route"))
+            )
+              return stub
             if (
               importer === globalSync &&
               (stubbed.includes(source) ||
@@ -176,6 +187,10 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         emit(key: string, seq: number): void
         connect(): void
         setPreference(value: boolean): void
+        selectHome(): void
+        setCatalogVersion(value: string): void
+        resolved(): boolean
+        models(): string[]
         seedInbox(key: string): void
         seedWindow(key: string): void
         bodyLifetimes: AbortSignal[]
@@ -226,6 +241,23 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       expect(api.data.config.preferWorkBrief).toBe(false)
       expect(preferences.state[0].config.preferWorkBrief).toBe(false)
       expect(root.querySelector("output")?.textContent).toBe("false")
+      h.selectHome()
+      const catalog = api.loadModelCatalog("home")
+      h.modelRequests.at(-1)!({
+        data: { version: "home-one", models: [{ providerID: "test", model: { id: "catalog-model" } }], total: 1 },
+      })
+      await catalog
+      expect(h.models()).toContain("catalog-model")
+      await api.refreshTargeted(["provider"])
+      expect(h.models()).toContain("catalog-model")
+      const missingModel = api.ensureModels("home", [{ providerID: "test", modelID: "missing" }])
+      h.modelRequests.at(-1)!({ data: { version: "home-one", models: [], total: 0 } })
+      await missingModel
+      expect(h.resolved()).toBe(true)
+      h.setCatalogVersion("home-two")
+      await api.refreshTargeted(["provider"])
+      expect(h.models()).toEqual([])
+      expect(h.resolved()).toBe(false)
       preferences.release()
       let eviction = 0
       const evictInactive = async () => {

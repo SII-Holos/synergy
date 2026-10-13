@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
-import { cp, mkdir, realpath, rename, writeFile } from "node:fs/promises"
+import { cp, mkdir, mkdtemp, realpath, rename, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
-import { homedir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
@@ -19,9 +19,9 @@ const paths = (await client.path.get({ scopeID: "home" }, options)).data
 const root = await realpath(home)
 assert.equal(await realpath(paths.home), root)
 assert.notEqual(root, await realpath(homedir()))
-const fixture = path.join(root, "directory-recovery-fixtures", String(Date.now()))
+const fixture = await realpath(await mkdtemp(path.join(tmpdir(), "synergy-directory-recovery-")))
 const folders = ["main", "shared"].map((name) => path.join(fixture, name))
-const output = path.join(fixture, "evidence")
+const output = path.join(root, "evidence", path.basename(fixture))
 await mkdir(output, { recursive: true })
 for (const folder of folders) {
   await mkdir(folder)
@@ -89,12 +89,15 @@ page.on("pageerror", (error) => errors.push(error.message))
 const route = url.origin + "/" + Buffer.from(scopeID).toString("base64url") + "/session"
 const trigger = page.locator("[data-worktree-task-selector]")
 const editor = page.getByRole("textbox", { name: /发送消息|Send message/ })
-const recovery = page.getByRole("dialog", { name: /确认项目目录|Confirm project folders/ })
+const recovery = page.getByRole("dialog", { name: /恢复项目目录|Restore project folders/ })
+const continueRecovery = recovery.getByRole("button", {
+  name: /^(继续使用这些目录|Continue using these folders)$/,
+})
 async function openRecovery() {
   await trigger.click()
   const menu = page.getByRole("dialog", { name: /^Worktrees?$/ })
   await menu.getByRole("button", { name: /^(新建 Worktree|New Worktree)/ }).click()
-  await recovery.getByRole("button", { name: /^(确认并恢复|Confirm and restore)$/ }).waitFor()
+  await continueRecovery.waitFor()
 }
 try {
   await page.goto(route)
@@ -118,7 +121,12 @@ try {
     await page.setViewportSize({ width: theme === "light" ? 1280 : 375, height: theme === "light" ? 900 : 812 })
     await openRecovery()
     for (const folder of folders) assert.equal(await recovery.getByText(folder, { exact: true }).isVisible(), true)
-    assert.equal(await recovery.getByRole("button", { name: /^(选择目录|Choose folder)$/ }).count(), 0)
+    assert.equal(await recovery.getByRole("button", { name: /^(选择其他目录|Choose another folder)$/ }).count(), 2)
+    for (const reason of await recovery.locator(".project-recovery-reason").all()) {
+      assert.equal(await reason.isVisible(), true)
+      assert.ok((await reason.innerText()).trim())
+    }
+    assert.equal(await recovery.getByRole("textbox").count(), 0)
     await page.screenshot({ path: path.join(output, `${theme}-confirmation.png`), animations: "disabled" })
     await recovery.getByRole("button", { name: /^(取消|Cancel)$/ }).click()
     await recovery.waitFor({ state: "hidden" })
@@ -128,7 +136,7 @@ try {
     assert.deepEqual((await client.workspace.list({ scopeID }, options)).data, original)
   }
   await openRecovery()
-  await recovery.getByRole("button", { name: /^(确认并恢复|Confirm and restore)$/ }).click()
+  await continueRecovery.click()
   await recovery.waitFor({ state: "hidden" })
   assert.match((await trigger.getAttribute("aria-label"))!, /新建 Worktree|New Worktree/)
   const restored = (await client.project.directories({ scopeID }, options)).data
@@ -165,6 +173,7 @@ try {
       {
         checks: [
           "structured failure reasons",
+          "visible recovery reasons and alternative folder actions",
           "no setup tooltips",
           "light and dark confirmation",
           "narrow viewport",
@@ -177,6 +186,7 @@ try {
           "original source ownership",
         ],
         viewport: page.viewportSize(),
+        fixture,
         errors,
       },
       null,

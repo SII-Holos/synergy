@@ -13184,7 +13184,11 @@ msgstr "检查于 {time}"
 
 #. js-lingui-explicit-id
 msgid "project.entry.chooseFolder"
-msgstr "选择目录"
+msgstr "选择其他目录"
+
+#. js-lingui-explicit-id
+msgid "project.entry.chooseFolderFailed"
+msgstr "无法选择目录，请重试。"
 
 #. js-lingui-explicit-id
 msgid "project.entry.chooseFolders"
@@ -13267,6 +13271,10 @@ msgid "project.entry.folderActions"
 msgstr "文件夹操作"
 
 #. js-lingui-explicit-id
+msgid "project.entry.folderChanged"
+msgstr "此位置的目录与加入项目时记录的目录不一致。"
+
+#. js-lingui-explicit-id
 msgid "project.entry.folderImpact"
 msgstr "更换主目录只影响新任务。其他文件夹与已有任务共享；不会移动或删除磁盘文件。"
 
@@ -13281,6 +13289,10 @@ msgstr "文件夹"
 #. js-lingui-explicit-id
 msgid "project.entry.folderUnbound"
 msgstr "此电脑无法使用该目录，请选择它在此电脑上的位置。"
+
+#. js-lingui-explicit-id
+msgid "project.entry.folderUnverified"
+msgstr "Synergy 无法确认这是否是加入项目时记录的目录。"
 
 #. js-lingui-explicit-id
 msgid "project.entry.loading"
@@ -13335,12 +13347,16 @@ msgid "project.entry.originalMain"
 msgstr "原主目录"
 
 #. js-lingui-explicit-id
+msgid "project.entry.partialSave"
+msgstr "已保存：{sections}。其余更改尚未保存，请再次点击保存重试。"
+
+#. js-lingui-explicit-id
 msgid "project.entry.recoverAction"
-msgstr "确认并恢复"
+msgstr "继续使用此目录"
 
 #. js-lingui-explicit-id
 msgid "project.entry.recoverDescription"
-msgstr "请确认要使用的目录。使用这些目录的任务也将恢复访问。"
+msgstr "不会自动开始任务。已有任务仍保留记录的位置。"
 
 #. js-lingui-explicit-id
 msgid "project.entry.recovered"
@@ -13351,16 +13367,24 @@ msgid "project.entry.recoverFailed"
 msgstr "部分项目目录未能恢复。已恢复的目录会保留，请重试其余目录。"
 
 #. js-lingui-explicit-id
+msgid "project.entry.recoverFoldersAction"
+msgstr "继续使用这些目录"
+
+#. js-lingui-explicit-id
 msgid "project.entry.recovering"
 msgstr "正在恢复…"
 
 #. js-lingui-explicit-id
 msgid "project.entry.recoverTitle"
-msgstr "确认项目目录"
+msgstr "恢复项目目录"
 
 #. js-lingui-explicit-id
 msgid "project.entry.recoverUnavailable"
 msgstr "项目目录不可用，请在项目设置中检查其位置。"
+
+#. js-lingui-explicit-id
+msgid "project.entry.refreshSavedFailed"
+msgstr "更改已保存，但未能载入更新后的设置。请再次点击保存重试。"
 
 #. js-lingui-explicit-id
 msgid "project.entry.remove"
@@ -13369,6 +13393,10 @@ msgstr "移除"
 #. js-lingui-explicit-id
 msgid "project.entry.retry"
 msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "project.entry.selectedFolder"
+msgstr "已选择的目录"
 
 #. js-lingui-explicit-id
 msgid "project.entry.setMain"
@@ -13405,6 +13433,10 @@ msgstr "使用 Worktree"
 #. js-lingui-explicit-id
 msgid "project.entry.using"
 msgstr "{count} 个关联任务"
+
+#. js-lingui-explicit-id
+msgid "project.entry.worktreeRequiresGit"
+msgstr "Worktree 需要 Git 目录。请改选主目录模式，或选择 Git 主目录后再保存。"
 
 #. js-lingui-explicit-id
 msgid "project.entry.worktrees"
@@ -22705,6 +22737,10 @@ msgid "settings.productUpdate.web.versionMismatch"
 msgstr "Web 客户端 {appVersion} 正在与服务器 {serverVersion} 配合运行。"
 
 #. js-lingui-explicit-id
+msgid "settings.providers.account.actions"
+msgstr "账号操作"
+
+#. js-lingui-explicit-id
 msgid "settings.providers.account.add"
 msgstr "添加另一个账号"
 
@@ -22717,20 +22753,20 @@ msgid "settings.providers.account.cancel"
 msgstr "取消"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.connectAnother"
-msgstr "连接另一个账号"
+msgid "settings.providers.account.credentials"
+msgstr "凭据"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.connectAnother.description"
-msgstr "可以给账号添加备注，然后选择连接方式。连接中断后，可从账号列表继续连接。"
+msgid "settings.providers.account.discard.description"
+msgstr "账号更改尚未保存。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.discardSetup"
+msgstr "此账号尚未连接。"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.edit"
 msgstr "编辑账号"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.edit.title"
-msgstr "编辑提供商账号"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.enabled"
@@ -22749,20 +22785,8 @@ msgid "settings.providers.account.endpoint.placeholder"
 msgstr "https://api.example.com/v1"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.finishSetup"
-msgstr "账号已添加。可以在下方完成连接，也可以稍后从账号列表继续。"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.manage"
-msgstr "管理账号"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.name"
-msgstr "账号名称"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.name.placeholder"
-msgstr "工作账号"
+msgid "settings.providers.account.keepEditing"
+msgstr "继续编辑"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.numbered"
@@ -22857,10 +22881,6 @@ msgid "settings.providers.connectAction"
 msgstr "连接"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.connected"
-msgstr "已连接"
-
-#. js-lingui-explicit-id
 msgid "settings.providers.connection.refreshFailed"
 msgstr "连接已保存，但账户状态刷新失败。"
 
@@ -22875,10 +22895,6 @@ msgstr "添加服务后即可选择模型。"
 #. js-lingui-explicit-id
 msgid "settings.providers.empty.title"
 msgstr "暂无已连接服务"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.immediate"
-msgstr "账号操作提交后立即生效，无需再点击底部的“保存更改”。"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.method.apiKey"
@@ -22925,20 +22941,12 @@ msgid "settings.providers.modelCount"
 msgstr "{count, plural, one {# 个模型} other {# 个模型}}"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.needsAttention"
-msgstr "需要注意"
-
-#. js-lingui-explicit-id
 msgid "settings.providers.noMatch"
 msgstr "没有匹配的提供商。"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.other"
 msgstr "其他"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.page.description"
-msgstr "连接模型提供商并查看模型可用状态。"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.page.title"
@@ -22951,10 +22959,6 @@ msgstr "推荐"
 #. js-lingui-explicit-id
 msgid "settings.providers.search.placeholder"
 msgstr "搜索提供商…"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.selectHint"
-msgstr "选择要连接的提供商。"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.service.anthropic"

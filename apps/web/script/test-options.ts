@@ -73,6 +73,8 @@ const playwrightIsolated = [
   "test/components/dialog/workspace-dialog.dom.test.ts",
   "test/components/dialog/directory-navigation.dom.test.ts",
   "test/components/dialog/directory-selection.dom.test.ts",
+  "test/components/dialog/project-settings.dom.test.ts",
+  "test/components/dialog/project-directory-recovery.dom.test.ts",
   "test/components/dialog/environment-dialog.dom.test.ts",
   "test/components/dialog/project-capabilities.dom.test.ts",
   "test/components/dialog/file-entry-dialog.dom.test.ts",
