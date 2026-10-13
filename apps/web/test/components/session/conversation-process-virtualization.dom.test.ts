@@ -127,6 +127,28 @@ test.each(["index.mjs", "index.jsx"] as const)(
   30000,
 )
 
+test("first overflowing row follows its measured height without a rebound", async () => {
+  await page.goto(`${url}keyed.html?following&underflow`)
+  await page.waitForFunction(() => window.keyedLayout?.measure()[0]?.size === 580)
+  const result = await page.evaluate(async () => {
+    const anchor = document.querySelector('[data-row="history-11"]')!
+    const before = anchor.getBoundingClientRect().top
+    window.keyedLayout.append()
+    const samples = []
+    for (let frame = 0; frame < 30; frame++) {
+      await new Promise(requestAnimationFrame)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      samples.push(anchor.getBoundingClientRect().top)
+    }
+    return { before, samples }
+  })
+  expect(result.samples.at(-1)).toBeCloseTo(result.before - 13, 0)
+  expect(
+    Math.max(...result.samples.map((y, index) => y - (result.samples[index - 1] ?? result.before))),
+    JSON.stringify(result),
+  ).toBeLessThanOrEqual(1)
+})
+
 test("a tool entrance preserves an in-flight following offset instead of snapping the transcript", async () => {
   await page.goto(`${url}keyed.html?following`)
   await page.waitForFunction(() => window.keyedLayout?.viewport().scrollTop > 1000)
@@ -208,6 +230,44 @@ test("terminal process collection preserves the visible answer while following i
     expect(sample.y, JSON.stringify(result)).toBeGreaterThanOrEqual(result.samples.at(-1)!.y - 1)
   }
 }, 30000)
+
+test("a first overflowing activity does not move preceding progress backwards", async () => {
+  await page.goto(`${url}?scrolling&motion&content=tool-follow&underflow`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => window.__conversationProcess.nextTool("next"))
+  await frames()
+  await page.waitForFunction(
+    () =>
+      !document.querySelector("[data-motion-resizing]") &&
+      !document.querySelector("[data-follow-motion]")!.getAnimations().length,
+  )
+  await page.evaluate(() => {
+    const view = document.querySelector<HTMLElement>("[data-scroller]")!
+    const content = document.querySelector<HTMLElement>("[data-follow-motion]")!
+    const outside = document.querySelector<HTMLElement>("[data-outside-control]")!
+    view.style.height = `${content.offsetHeight + outside.offsetHeight + 20}px`
+  })
+  await frames()
+  const result = await page.evaluate(async () => {
+    const view = document.querySelector<HTMLElement>("[data-scroller]")!
+    const anchor = document.querySelector('[data-display-row][data-part-id="next-progress"]')!
+    const samples = [anchor.getBoundingClientRect().top]
+    const before = view.scrollTop
+    window.__conversationProcess.nextTool("next", "pending")
+    for (let frame = 0; frame < 40; frame++) {
+      await new Promise(requestAnimationFrame)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      samples.push(anchor.getBoundingClientRect().top)
+    }
+    return { before, after: view.scrollTop, samples }
+  })
+  expect(result.before).toBe(0)
+  expect(result.after).toBeGreaterThan(0)
+  expect(
+    Math.max(...result.samples.slice(1).map((y, index) => y - result.samples[index])),
+    JSON.stringify(result),
+  ).toBeLessThanOrEqual(1)
+})
 
 test.each(["pending", "generating"] as const)(
   "a %s tool does not add and remove a phantom body before its input is displayable",

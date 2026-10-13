@@ -717,7 +717,12 @@ function Scroller(props: ParentProps) {
       ref={setScroll}
       onScroll={() => autoScroll?.handleScroll()}
       onClick={(event) => autoScroll?.handleInteraction(event)}
-      style="height:600px;overflow:auto;width:700px;max-width:100%"
+      style={{
+        height: new URL(location.href).searchParams.has("underflow") ? "4000px" : "600px",
+        overflow: "auto",
+        width: "700px",
+        "max-width": "100%",
+      }}
       data-scroller
     >
       <div ref={(element) => autoScroll?.contentRef(element)} style={{ overflow: "clip" }}>

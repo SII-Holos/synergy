@@ -12,10 +12,13 @@ const process = [
 const answer = { id: "answer", height: 2034.75 }
 const footer = { id: "footer", height: 40 }
 const following = new URL(location.href).searchParams.has("following")
+const underflow = new URL(location.href).searchParams.has("underflow")
 const [rows, setRows] = createSignal(
-  following
-    ? Array.from({ length: 12 }, (_, index) => ({ id: `history-${index}`, height: 212 }))
-    : [prefix, header, ...process, answer, footer],
+  underflow
+    ? [{ id: "history-11", height: 580 }]
+    : following
+      ? Array.from({ length: 12 }, (_, index) => ({ id: `history-${index}`, height: 212 }))
+      : [prefix, header, ...process, answer, footer],
 )
 const [shift, setShift] = createSignal(false)
 let viewport!: HTMLDivElement
@@ -51,7 +54,7 @@ render(() => {
             {(row) => {
               const motion = createDisclosureMotionRef({
                 visible: () => true,
-                animate: () => following,
+                animate: () => following && !underflow,
                 appear: () => row.id.startsWith("append"),
                 resize: true,
               })
