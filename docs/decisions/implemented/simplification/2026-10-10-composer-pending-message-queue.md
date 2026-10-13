@@ -12,7 +12,9 @@ The built-in Session page renders its existing pending Inbox projection in a com
 
 Composer motion remeasures the expanded or collapsed target without cancelling its captured transition for the expected pending-height reservation change. It tracks pane space independently of that reservation, so simultaneous external viewport, pane-height or header changes still invalidate stale geometry.
 
-The page keeps the existing user-origin, task/steer, visibility and materialized-message filters. Rows retain stable Inbox IDs, and the queue owner is isolated by connection, Scope and Session identity. Guide/Queue, withdrawal, action errors, first-task locks and rollback freezing keep their existing semantics. First-send optimistic messages and their process status remain in the conversation. Task details retains the complete Inbox with context, retry and removed history. Public plugin conversation and Composer layout services remain unchanged.
+The page keeps the existing user-origin, task/steer, visibility and materialized-message filters. Rows retain stable Inbox IDs, and the queue owner is isolated by connection, Scope and Session identity. Rows use the raised content surface rather than navigation chrome, combine authored text Parts and show the shared compact attachment gallery plus saved note, Session and file-context references. Guide/Queue, deletion, action errors, first-task locks and rollback freezing keep their existing semantics. Delete names queue removal explicitly rather than suggesting that the content returns to the draft. First-send optimistic messages and their process status remain in the conversation. Task details retains the complete Inbox with context, retry and removed history. Public plugin conversation and Composer layout services remain unchanged.
+
+Edit message moves a confirmed removed item into the existing empty Prompt draft using its saved promptDraft metadata, with authored Parts as the legacy fallback. It neither sends nor edits a transcript message. Existing drafts block the operation; revision, generation and owner checks retain new typing and requeue original input after a concurrent draft or Session change. The removed-item read verifies uncertain removal replies before the client repeats a write. Edited input uses ordinary explicit submission and current Composer execution choices rather than silently changing Agent or model selectors.
 
 Recovery controls obey the same current first-task and rollback restrictions as ordinary queue actions. Withdrawal retry is hidden while frozen, and every activation rechecks eligibility as well as the in-flight operation lock so a retained control cannot bypass a later state change.
 
@@ -29,6 +31,10 @@ Local adaptation: Adopt the attached pending-input placement and quiet row hiera
 **Mount the complete Inbox through the public Composer layout slot.** Includes context and history that belong in Task details, changes replacement-layout behavior, and duplicates the full management surface. An internal Dock prop preserves the public service while rendering only the existing pending-user projection.
 
 **Create a separate client-side queue.** Adds competing state and delivery races. The durable Inbox already supplies the required identities and lifecycle.
+
+**Edit a copy while the original remains queued.** Allows the runtime to consume the original while the user edits. Confirmed removal plus the existing recovery record preserves one runnable input without adding another editor or scheduling state.
+
+**Replace a nonempty draft or merge it silently.** Destroys or mixes unrelated intent. The editor requires an empty draft, and a concurrent draft change requeues the original input.
 
 ## Consequences
 

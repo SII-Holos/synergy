@@ -19,6 +19,7 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 import { SessionInbox } from "@/components/session/session-inbox"
 import { PendingComposerQueue } from "@/components/session/pending-composer-queue"
+import { editPendingMessage, takePendingMessage } from "@/components/session/conversation-pending"
 import { SubagentSessionFooter } from "@/components/session/subagent-session-footer"
 import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
 import {
@@ -1029,6 +1030,69 @@ function SessionPageContent() {
       await client.session.inboxRemove({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
     }
     await sync.session.refresh(item.sessionID)
+  }
+
+  const editPending = async (item: SessionInboxItem) => {
+    const client = sdk.client
+    const owner = sessionKey()
+    const binding = prompt.capture()
+    const eligible = () =>
+      active() &&
+      sessionKey() === owner &&
+      sdk.client === client &&
+      binding.isCurrent() &&
+      params.id === item.sessionID &&
+      !rollbackActive() &&
+      !sessionMeta().isReadOnly &&
+      !composer()?.input.submitting() &&
+      (item.mode !== "task" || item.status === "failed" || rootMessages().length > 0)
+    const removedItem = async () => {
+      const { data } = await client.session.inboxRemoved({ sessionID: item.sessionID }, { throwOnError: true })
+      return data?.find((entry) => entry.id === item.id)
+    }
+    const requeue = async () => {
+      await client.session.inboxRestore({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
+    }
+    try {
+      const result = await editPendingMessage({
+        item,
+        directory: sdk.directory,
+        draft: binding.draft,
+        eligible,
+        take: () =>
+          takePendingMessage({
+            removed: removedItem,
+            eligible,
+            restore: requeue,
+            remove: async () => {
+              await client.session.inboxRemove({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
+            },
+            unavailable: () => new Error(i18n._(S.convEditPendingUnavailable)),
+          }),
+        requeue,
+      })
+      if (result !== "edited" && sessionKey() === owner) {
+        showToast({
+          type: "warning",
+          description: i18n._(
+            result === "draft-not-empty"
+              ? S.convEditPendingDraft
+              : result === "draft-changed"
+                ? S.convEditPendingChanged
+                : S.convEditPendingUnavailable,
+          ),
+        })
+      }
+      if (result === "edited" && eligible()) {
+        composer()?.input.setMode("normal")
+        queueMicrotask(() => {
+          if (eligible()) inputRef?.focus({ preventScroll: true })
+        })
+      }
+      await sync.session.refresh(item.sessionID)
+    } finally {
+      binding.release()
+    }
   }
 
   const timeline = createMemo(() => {
@@ -2412,8 +2476,10 @@ function SessionPageContent() {
               items={pendingTimeline()}
               rollbackActive={rollbackActive()}
               hasCanonicalRoot={rootMessages().length > 0}
+              serverUrl={sdk.url}
               onGuide={guidePending}
               onRemove={removePending}
+              onEdit={editPending}
             />
           }
         />

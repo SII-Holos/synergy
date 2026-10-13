@@ -2,10 +2,10 @@
   position: relative;
   margin: 0 12px -10px;
   padding-bottom: 10px;
-  border: 1px solid var(--border-base);
+  border: 1px solid var(--border-weak-base);
   border-bottom: 0;
   border-radius: 20px 20px 0 0;
-  background: var(--background-weak);
+  background: var(--surface-raised-base);
   color: var(--text-base);
 }
 
@@ -68,6 +68,31 @@
   color: var(--text-base);
 }
 
+.pending-composer-attachments {
+  margin-top: 6px;
+  min-width: 0;
+}
+
+.pending-composer-attachments [data-component="attachment-gallery"] {
+  padding: 0;
+}
+
+.pending-composer-references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  color: var(--text-weak);
+  font-size: var(--font-size-small);
+}
+
+.pending-composer-references span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pending-composer-feedback {
   margin-top: 6px;
   color: var(--text-weak);
@@ -90,6 +115,19 @@
 
   .pending-composer-queue [data-slot="pending-timeline-item"] {
     padding: 4px 8px;
+  }
+
+  .pending-composer-row {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+
+  .pending-composer-label {
+    min-width: 96px;
+  }
+
+  .pending-composer-actions {
+    margin-inline-start: auto;
   }
 
   .pending-composer-actions [data-component="button"] {

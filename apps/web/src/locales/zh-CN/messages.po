@@ -17050,6 +17050,26 @@ msgid "session.content.syncHint"
 msgstr "内容仍在更新，请稍后重试。"
 
 #. js-lingui-explicit-id
+msgid "session.conversation.editPending"
+msgstr "编辑消息"
+
+#. js-lingui-explicit-id
+msgid "session.conversation.editPendingChanged"
+msgstr "准备编辑时草稿发生了变化。当前草稿未被修改，原消息仍在队列中。"
+
+#. js-lingui-explicit-id
+msgid "session.conversation.editPendingDraft"
+msgstr "请先发送或清空当前草稿，再编辑队列消息。"
+
+#. js-lingui-explicit-id
+msgid "session.conversation.editPendingFailed"
+msgstr "无法将队列消息移回输入框。已保存的内容仍然保留。"
+
+#. js-lingui-explicit-id
+msgid "session.conversation.editPendingUnavailable"
+msgstr "这条消息已无法编辑。请刷新会话后重试。"
+
+#. js-lingui-explicit-id
 msgid "session.conversation.guide"
 msgstr "引导"
 
@@ -17108,10 +17128,6 @@ msgstr "移除待处理消息"
 #. conversation.tsx
 msgid "session.conversation.renderEarlier"
 msgstr "渲染更早的消息"
-
-#. js-lingui-explicit-id
-msgid "session.conversation.withdraw"
-msgstr "撤回"
 
 #. js-lingui-explicit-id
 msgid "session.decision.collapse"
