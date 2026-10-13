@@ -11,6 +11,21 @@ import { testRuntime } from "./support/runtime"
 const runtime = await testRuntime()
 
 describe("note migrations", () => {
+  test("historical Note migrations preserve unloaded document kinds", () =>
+    runtime.run(async () => {
+      const key = ["notes", "home", "nte_unloaded_blueprint"]
+      const retained = {
+        id: "nte_unloaded_blueprint",
+        title: "Retained owner data",
+        kind: "blueprint",
+        contentText: "Legacy Blueprint body",
+        blueprint: { status: "ready", defaultAgent: "atlas", future: [1, 2] },
+      }
+      await Storage.write(key, retained)
+      for (const migration of migrations) await migration.up(() => {})
+      expect(await Storage.read<typeof retained>(key)).toEqual(retained)
+    }))
+
   test("adds unique blockId attrs to legacy editable blocks without changing rendered text", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir()

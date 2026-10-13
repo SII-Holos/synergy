@@ -1,7 +1,7 @@
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createMemo, createRoot, onCleanup } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useSDK } from "../sdk"
 import { Persist, persisted } from "@/utils/persist"
 

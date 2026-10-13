@@ -42,10 +42,6 @@
 .project-flow-row[aria-pressed="true"] {
   background: var(--surface-float-base-hover);
 }
-.project-flow-row:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
-}
 .project-flow-row:disabled {
   opacity: 0.5;
 }
@@ -119,9 +115,6 @@
   min-height: 36px;
   padding: 6px 10px;
   width: 100%;
-}
-.project-flow-field select:focus-visible {
-  outline: 2px solid var(--border-focus);
 }
 .project-flow-path,
 .project-flow dl dd {
@@ -356,11 +349,6 @@
 .project-flow-row:has(small) {
   min-height: 52px;
 }
-.project-form button:focus-visible,
-.project-folder-name:focus-visible {
-  outline: 2px solid var(--border-selected);
-  outline-offset: 2px;
-}
 .project-form button:disabled {
   opacity: 0.5;
 }
@@ -403,10 +391,6 @@
   margin-bottom: 6px;
   border-radius: 10px;
   color: var(--icon-weak-base);
-}
-.project-menu-search:has(:focus-visible) {
-  outline: 2px solid var(--border-selected);
-  outline-offset: -2px;
 }
 .project-menu-search [data-slot="input-wrapper"]:has(:focus-visible) {
   outline: none;

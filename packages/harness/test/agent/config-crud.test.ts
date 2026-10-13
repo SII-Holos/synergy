@@ -4,12 +4,26 @@ import path from "path"
 import fs from "fs/promises"
 import { AgentConfig } from "../../src/agent/config-crud"
 import { Agent } from "../../src/agent/agent"
+import { AgentBuiltins } from "../../src/agent/builtins"
 import { Config } from "../../src/config/config"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({
+  register() {
+    AgentBuiltins.register("fixture", () => ({
+      "hidden-primary-fixture": {
+        name: "hidden-primary-fixture",
+        mode: "primary",
+        hidden: true,
+        native: true,
+        permission: [],
+        options: {},
+      },
+    }))
+  },
+})
 
 let originalAgentsConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
 
@@ -450,7 +464,7 @@ describe("AgentConfig.setDefault", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          await expect(AgentConfig.setDefault("boss-synergy")).rejects.toThrow(/hidden/i)
+          await expect(AgentConfig.setDefault("hidden-primary-fixture")).rejects.toThrow(/hidden/i)
         },
       })
     }))
@@ -548,7 +562,7 @@ describe("Agent.defaultAgent fallback", () => {
 
   test("falls back to synergy when default_agent points to a hidden agent", () =>
     runtime.run(async () => {
-      await using tmp = await tmpdir({ config: { default_agent: "boss-synergy" } })
+      await using tmp = await tmpdir({ config: { default_agent: "hidden-primary-fixture" } })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {

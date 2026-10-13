@@ -247,10 +247,6 @@ msgid "app.agenda.action.submittedHint"
 msgstr "执行结果可在历史中查看。"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.activity.description"
-msgstr "按发生时间查看真实执行、结果和关联会话。"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.activity.loaded"
 msgstr "已加载 {shown} / {total} 条执行记录"
 
@@ -329,10 +325,6 @@ msgid "app.agenda.arrangements.count"
 msgstr "{count, plural, one {# 次预计触发} other {# 次预计触发}}"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.arrangements.description"
-msgstr "查看已启用任务的预计触发时间；选择日期即可更改展示范围。"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.arrangements.empty"
 msgstr "这段时间没有未来安排"
 
@@ -363,10 +355,6 @@ msgstr "这段时间已过去，可在历史中查看实际执行。"
 #. js-lingui-explicit-id
 msgid "app.agenda.arrangements.predicted"
 msgstr "预计触发时间 · {timezone}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.arrangements.relative"
-msgstr "部分间隔或延迟任务的时间取决于启用和实际执行；这里只显示已知的下一次触发。"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.arrangements.weekRange"
@@ -906,14 +894,6 @@ msgid "app.agenda.runStatus.skipped"
 msgstr "已跳过"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.scope.all"
-msgstr "所有范围"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.scope.filter"
-msgstr "范围"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.search.clear"
 msgstr "清除搜索"
 
@@ -952,10 +932,6 @@ msgstr "已结束"
 #. js-lingui-explicit-id
 msgid "app.agenda.tasks.count"
 msgstr "{count, plural, one {# 项任务} other {# 项任务}}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.tasks.description"
-msgstr "管理全部任务规则，包括手动、事件触发、未启用和已结束的任务。"
 
 #. js-lingui-explicit-id
 msgid "app.agenda.tasks.empty"
@@ -2833,11 +2809,6 @@ msgstr "Synergy 服务器当前无响应，无法确认正在运行的任务状�
 msgid "app.fatalError.connection.title"
 msgstr "无法连接到服务器"
 
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.initialization.description"
-msgstr "配置、Provider 或设置错误导致 Synergy 无法完成启动。"
-
 #. ── pages/fatal-error.tsx ───────────────────────────────────────────
 msgid "app.fatalError.initialization.title"
 msgstr "Synergy 启动失败"
@@ -2851,19 +2822,9 @@ msgstr "重新加载此页面不会停止服务器上已在运行的任务。"
 msgid "app.fatalError.renderer.title"
 msgstr "界面遇到了问题"
 
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.scope.description"
-msgstr "工作区无法加载，可能是临时故障或配置问题。"
-
 #. ── pages/fatal-error.tsx ───────────────────────────────────────────
 msgid "app.fatalError.scope.title"
 msgstr "无法加载此项目"
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.summaryLabel"
-msgstr "摘要"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
@@ -3759,10 +3720,6 @@ msgstr "假设"
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.blueprintDetails"
 msgstr "Blueprint 详情"
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintDetailsHint"
-msgstr "目标、验收标准、假设与执行尝试"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.blueprintVersion"
@@ -10501,7 +10458,7 @@ msgstr "错误"
 msgid "brand.logo.alt"
 msgstr "Holos"
 
-#. js-lingui-explicit-id
+#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
 msgid "brand.workbench.synergy"
 msgstr "Synergy 工作台"
 
@@ -13923,6 +13880,13 @@ msgstr "从中断处恢复"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.continueUnavailable"
+msgstr "当前任务无法继续，请发送新消息。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.control.disabledHint"
 msgstr "输入消息后可发送"
 
@@ -17118,10 +17082,6 @@ msgid "session.conversation.moveToQueueTitle"
 msgstr "移回队列"
 
 #. js-lingui-explicit-id
-msgid "session.conversation.newMessagesReturnLatest"
-msgstr "有新消息，返回最新消息"
-
-#. js-lingui-explicit-id
 msgid "session.conversation.paused"
 msgstr "已暂停"
 
@@ -17148,10 +17108,6 @@ msgstr "移除待处理消息"
 #. conversation.tsx
 msgid "session.conversation.renderEarlier"
 msgstr "渲染更早的消息"
-
-#. js-lingui-explicit-id
-msgid "session.conversation.returnLatest"
-msgstr "返回最新消息"
 
 #. js-lingui-explicit-id
 msgid "session.conversation.withdraw"
@@ -19301,8 +19257,12 @@ msgid "settings.catalog.import.searchTerms"
 msgstr "导入 | 配置"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.learning.autonomy.searchTerms"
+msgstr "anima | 自动整理 | 自动 | 后台例程"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.learning.description"
-msgstr "设置如何从对话中学习并在后台整理经验。"
+msgstr "设置知识库的学习方式。"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.label"
@@ -19310,7 +19270,7 @@ msgstr "学习"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.searchTerms"
-msgstr "知识库 | 学习 | 自动整理 | 后台反思 | 规划"
+msgstr "知识库 | 学习"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.lsp.description"
@@ -21461,24 +21421,12 @@ msgid "settings.library.learning.autonomyRow.title"
 msgstr "后台反思与规划"
 
 #. js-lingui-explicit-id
-msgid "settings.library.learning.capture.desc"
-msgstr "允许记录知识和后台反思。"
-
-#. js-lingui-explicit-id
-msgid "settings.library.learning.capture.title"
-msgstr "自动整理"
-
-#. js-lingui-explicit-id
 msgid "settings.library.learning.learnRow.desc"
 msgstr "从有价值的对话中提取并整理可复用的记忆。"
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.learnRow.title"
 msgstr "允许学习"
-
-#. js-lingui-explicit-id
-msgid "settings.library.learning.page.desc"
-msgstr "设置 Synergy 如何从对话中学习并整理知识。"
 
 #. ---------- page / section descriptors ----------
 msgid "settings.library.learning.page.title"
@@ -23181,16 +23129,8 @@ msgid "settings.runtime.boss.conversation.open"
 msgstr "任务入口"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.desc"
-msgstr "一个入口，统筹任务与项目。"
-
-#. js-lingui-explicit-id
 msgid "settings.runtime.boss.enable"
 msgstr "启用 Boss 模式"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.enabled.desc"
-msgstr "飞书消息汇入对应入口。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.name"
@@ -23215,10 +23155,6 @@ msgstr "打开"
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.busy"
 msgstr "正在打开…"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.openSession.desc"
-msgstr "首次使用时创建。"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.failed"

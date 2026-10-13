@@ -51,6 +51,12 @@ const abortCalls: Array<{ sessionID?: string }> = []
 const continueCalls: Array<{ sessionID?: string }> = []
 const abandonCalls: Array<{ sessionID?: string }> = []
 let abandonBarrier: Promise<void> | undefined
+const installedFeatures = ["blueprint", "lattice", "light-loop", "boss", "note", "workbench"]
+const [selection, setSelection] = createSignal<{ features: string[] } | undefined>({ features: installedFeatures })
+const [sessionBinding, setSessionBinding] = createSignal<{ loopID: string; source?: "user" | "lattice" | "plugin" }>()
+const loopGetCalls: string[] = []
+const loopGetSignals: AbortSignal[] = []
+let loopReply: Promise<unknown> | undefined
 
 const message = (content: string): Prompt => [{ type: "text", content, start: 0, end: content.length }]
 
@@ -85,6 +91,11 @@ const sdkClient = () => ({
   },
   blueprint: {
     loop: {
+      get: async (input: { id: string }, options?: { signal?: AbortSignal }) => {
+        loopGetCalls.push(input.id)
+        if (options?.signal) loopGetSignals.push(options.signal)
+        return { data: await loopReply }
+      },
       cancel: async () => ({ data: {} }),
     },
   },
@@ -92,7 +103,7 @@ const sdkClient = () => ({
 
 mock.module("../../../src/context/global-sdk", () => ({
   useGlobalSDK: () => ({
-    capabilities: { has: () => true },
+    capabilities: { current: selection, has: (id: string) => selection()?.features.includes(id) ?? false },
     url: "http://127.0.0.1:0",
     client: { config: { domain: { update: async () => ({ data: { changedFields: [] } }) } } },
   }),
@@ -148,7 +159,14 @@ mock.module("../../../src/context/sync", () => ({
         path: { directory: "/tmp/fixture" },
       }
     },
-    session: { get: () => ({ id: "ses_prompt", controlProfile: undefined, scope: { id: "scope_fixture" } }) },
+    session: {
+      get: () => ({
+        id: "ses_prompt",
+        blueprint: sessionBinding(),
+        controlProfile: undefined,
+        scope: { id: "scope_fixture" },
+      }),
+    },
     planBlueprintOffer: { equip: () => {}, dismiss: () => {}, mute: () => {} },
   }),
 }))
@@ -337,10 +355,49 @@ afterEach(() => {
   abandonFails = false
   draftResets = 0
   toastTitles.length = 0
+  setSessionBinding(undefined)
+  setSelection({ features: installedFeatures })
+  loopGetCalls.length = 0
+  loopGetSignals.length = 0
+  loopReply = undefined
   document.body.innerHTML = ""
 })
 
 describe("single composer control", () => {
+  test.each(["lattice", "plugin"] as const)(
+    "a removed Blueprint source cannot issue its first GET or lock the ordinary composer (%s)",
+    async (source) => {
+      const baseFeatures = ["blueprint", "note", "plugin-host"]
+      setSelection({ features: baseFeatures })
+      setSessionBinding({ loopID: "source-loop", source })
+      setPromptParts(message("Keep my ordinary draft"))
+      const harness = mount()
+      try {
+        await settle()
+        expect(loopGetCalls).toEqual([])
+        expect(primaryControl(PI.sendMessage.message)?.disabled).toBe(false)
+        primaryControl(PI.sendMessage.message)!.dispatchEvent(new FocusEvent("focus"))
+        await settle()
+        expect(document.querySelector('[role="tooltip"]')?.textContent).not.toContain(PI.abandonHint.message)
+        const pending = Promise.withResolvers<unknown>()
+        loopReply = pending.promise
+        setSelection({ features: [...baseFeatures, "lattice", "plugin-blueprint"] })
+        await settle()
+        expect(loopGetCalls).toEqual(["source-loop"])
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(PI.abandonHint.message)
+        setSelection({ features: baseFeatures })
+        pending.resolve({ id: "source-loop", source, status: "running" })
+        await settle()
+        expect(loopGetCalls).toEqual(["source-loop"])
+        expect(loopGetSignals[0]?.aborted).toBe(true)
+        expect(primaryControl(PI.sendMessage.message)?.disabled).toBe(false)
+        expect(document.querySelector('[role="tooltip"]')?.textContent).not.toContain(PI.abandonHint.message)
+        expect(promptParts()).toEqual(message("Keep my ordinary draft"))
+      } finally {
+        harness.dispose()
+      }
+    },
+  )
   test("a recovery reason appears once and describes the disabled send action", async () => {
     setTransitionError(true)
     setPromptParts(message("Keep after recovery"))

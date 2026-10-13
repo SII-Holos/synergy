@@ -1,5 +1,6 @@
 import { TEST_AGENT_NAME } from "@ericsanchezok/synergy-testing/agent-fixture"
 import { I18nProvider } from "@lingui/solid"
+import { createSignal } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { DataProvider } from "../../../src/context/data.tsx"
@@ -97,6 +98,7 @@ const mediaPart = {
     time: { start: 1, end: 2 },
   },
 }
+const [features, setFeatures] = createSignal<string[] | undefined>(["plugin-host", "media"])
 const mediaCompletedState = structuredClone(mediaPart.state)
 const [data, setData] = createStore({
   session: [],
@@ -127,7 +129,13 @@ render(
         <ResourceOpenProvider value={resourceController}>
           <MarkedProvider>
             <DiffComponentProvider component={EmptyDiff}>
-              <DataProvider data={data} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
+              <DataProvider
+                hasFeature={(id) => features()?.includes(id) ?? false}
+                data={data}
+                runtime={runtime}
+                directory="/workspace"
+                serverUrl="http://localhost"
+              >
                 <SessionTurn
                   sessionID={sessionID}
                   messageID={rootID}
@@ -145,8 +153,11 @@ render(
   document.querySelector("#root"),
 )
 ;(
-  globalThis as typeof globalThis & { __mediaLifecycleHarness: { move: (status: string) => void } }
+  globalThis as typeof globalThis & {
+    __mediaLifecycleHarness: { move: (status: string) => void; features: (value: string[] | undefined) => void }
+  }
 ).__mediaLifecycleHarness = {
+  features: setFeatures,
   move(status: string) {
     const state =
       status === "completed"

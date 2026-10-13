@@ -17,7 +17,7 @@ import {
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ environment: true })
 
 async function worktreeFixture() {
   const fixture = await tmpdir({

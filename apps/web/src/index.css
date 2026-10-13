@@ -166,7 +166,6 @@ a {
   --shadow-xs-border: inset 0 0 0 1px var(--workbench-border);
   --shadow-xs-border-base: inset 0 0 0 1px var(--workbench-border);
   --shadow-xs-border-select: inset 0 0 0 1px color-mix(in srgb, var(--text-strong) 20%, transparent);
-  --shadow-xs-border-focus: 0 0 0 2px color-mix(in srgb, var(--text-strong) 12%, transparent);
   background-color: var(--workbench-canvas-bg);
 }
 
@@ -216,11 +215,6 @@ a {
   text-align: center;
   gap: 16px;
   padding: clamp(24px, 6vh, 72px) 0 12px;
-}
-
-.session-starter-actions button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 3px;
 }
 .session-starter-actions button:disabled {
   opacity: 0.5;
@@ -314,11 +308,6 @@ a {
 .composer-resize-handle:hover span,
 .composer-resize-handle:focus-visible span {
   background: var(--text-weak);
-}
-.composer-resize-handle:focus-visible,
-.composer-expand-control:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 .composer-resize-cue {
   position: absolute;
@@ -626,10 +615,6 @@ a {
   background: var(--surface-hover-base);
   color: var(--text-strong);
 }
-.session-work-context-button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 1px;
-}
 .session-work-context-button:disabled {
   opacity: 0.5;
 }
@@ -843,10 +828,6 @@ a {
   box-shadow: none;
 }
 
-.synergy-workbench-canvas :where(.workbench-input-surface:hover, .workbench-input-surface:focus-within) {
-  background-color: var(--workbench-input-bg-hover);
-}
-
 .synergy-workbench-canvas :where(.workbench-popover-surface) {
   background-color: var(--workbench-popover-bg);
   border-color: var(--workbench-border);
@@ -1040,11 +1021,6 @@ a {
   color: var(--icon-strong-base);
 }
 
-.synergy-workbench-canvas [data-component="icon-button"].browser-nav-button:focus-visible:not(:active) {
-  outline: 2px solid var(--border-selected);
-  outline-offset: 1px;
-}
-
 .synergy-workbench-canvas [data-component="icon-button"].browser-nav-button:disabled {
   background: transparent;
   color: var(--icon-weaker);
@@ -1067,15 +1043,6 @@ a {
   transition:
     background-color var(--motion-duration-fast) var(--motion-ease-standard),
     box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.synergy-workbench-canvas .browser-address-field:hover,
-.synergy-workbench-canvas .browser-address-field:focus-within {
-  background: var(--browser-input-bg-hover);
-}
-
-.synergy-workbench-canvas .browser-address-field:has(input:focus-visible) {
-  box-shadow: inset 0 0 0 1px var(--border-selected);
 }
 
 .synergy-workbench-canvas .browser-address-input {
@@ -1201,9 +1168,6 @@ a {
   border: 1px solid var(--border-weak-base);
   border-radius: 999px;
   background: var(--browser-input-bg);
-}
-.synergy-workbench-canvas .browser-new-tab-search:focus-within {
-  border-color: var(--border-interactive-base);
 }
 .synergy-workbench-canvas .browser-new-tab-search input {
   width: 100%;
@@ -1359,8 +1323,6 @@ a {
 
 .synergy-workbench-canvas .browser-options-menu .browser-menu-row:focus-visible {
   box-shadow: none;
-  outline: 2px solid var(--border-selected);
-  outline-offset: -2px;
 }
 
 .synergy-workbench-canvas .browser-menu-shortcut {
@@ -1399,11 +1361,6 @@ a {
   background: var(--browser-control-bg-hover);
 }
 
-.synergy-workbench-canvas .browser-zoom-controls button:focus-visible {
-  outline: 2px solid var(--border-selected);
-  outline-offset: -2px;
-}
-
 .synergy-workbench-canvas .browser-options-menu summary {
   list-style: none;
 }
@@ -1423,7 +1380,6 @@ a {
 
 .synergy-workbench-canvas .browser-menu-row:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--text-strong) 13%, transparent);
 }
 
 .synergy-workbench-canvas .browser-menu-row-copy {
@@ -1528,7 +1484,6 @@ a {
 
 .synergy-workbench-canvas .browser-segment-button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--text-strong) 13%, transparent);
 }
 
 .synergy-workbench-canvas .browser-menu-check {
@@ -1569,10 +1524,6 @@ a {
   transition:
     border-color var(--motion-duration-fast) var(--motion-ease-standard),
     box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.synergy-workbench-canvas .prompt-input-shell:focus-within {
-  border-color: var(--border-interactive-base);
 }
 
 .synergy-workbench-canvas .prompt-input-shell.prompt-input-shell-dragging {
@@ -1620,19 +1571,8 @@ a {
   background-color: color-mix(in srgb, var(--input-base) 97%, var(--text-strong));
 }
 
-.synergy-workbench-canvas .prompt-input-toolbar-button:focus-visible,
-.synergy-workbench-canvas .prompt-input-toolbar-icon-button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 1px;
-}
-
 .synergy-workbench-canvas [data-component="icon-button"].prompt-input-submit {
   box-shadow: none;
-}
-
-.synergy-workbench-canvas [data-component="icon-button"].prompt-input-submit:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 3px;
 }
 
 .prompt-abandon-ring {

@@ -52,6 +52,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
      */
     runtime?: SessionDataRuntime
     view?: SessionDataView
+    hasFeature?: (id: string) => boolean
     onPermissionRespond?: PermissionRespondFn
     onNavigateToSession?: NavigateToSessionFn
   }) => {
@@ -68,6 +69,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       get serverUrl() {
         return props.serverUrl
       },
+      hasFeature: (id: string) => props.hasFeature?.(id) ?? false,
       respondToPermission: props.onPermissionRespond,
       navigateToSession: props.onNavigateToSession,
     }

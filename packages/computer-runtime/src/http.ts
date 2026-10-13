@@ -5,6 +5,7 @@ import { Hono } from "hono"
 export function registerHttp() {
   Server.registerContributions(
     {
+      features: ["computer"],
       routes: { "scoped-after-assets": new Hono().route("", createComputerRoute()) },
     },
     "computer-runtime",

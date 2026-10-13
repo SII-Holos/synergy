@@ -9,6 +9,7 @@ export type BuildPatchParams = {
   cfg: Config
   state: SettingsState
   originalMcps: Record<string, Record<string, unknown>>
+  hasFeature?: (id: string) => boolean
 }
 
 /**
@@ -41,6 +42,12 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
   buildChannelPatch(cfg, state, patch)
   buildGithubIntegrationPatch(cfg, state, patch)
   buildLibraryPatch(cfg, state, patch)
+  if (
+    (params.hasFeature?.("anima") ?? true) &&
+    state.library.autonomy !== (cfg.anima?.enabled === false ? "false" : "true")
+  ) {
+    patch.anima = { ...cfg.anima, enabled: state.library.autonomy !== "false" }
+  }
   buildSkillsPatch(cfg, state, patch)
 
   return patch
@@ -624,7 +631,6 @@ function buildLibraryPatch(cfg: Config, state: SettingsState, patch: Record<stri
     origMemory?.enabled === false && origExperience?.encode === false && origExperience?.retrieve === false
       ? "false"
       : "true"
-  const origAutonomy = origLibrary?.autonomy !== undefined ? (origLibrary.autonomy ? "true" : "false") : "true"
   const origMemoryRetrieve = typeof origMemory?.retrieval === "object" ? origMemory.retrieval : undefined
   const origExperienceRetrieve = typeof origExperience?.retrieve === "object" ? origExperience.retrieve : undefined
   const origMemorySim = origMemoryRetrieve?.simThreshold !== undefined ? String(origMemoryRetrieve.simThreshold) : "0.7"
@@ -637,7 +643,6 @@ function buildLibraryPatch(cfg: Config, state: SettingsState, patch: Record<stri
 
   const changed =
     library.learning !== origLearning ||
-    library.autonomy !== origAutonomy ||
     library.memorySimThreshold !== origMemorySim ||
     library.memoryTopK !== origMemoryTopK ||
     library.experienceSimThreshold !== origExperienceSim ||
@@ -674,7 +679,6 @@ function buildLibraryPatch(cfg: Config, state: SettingsState, patch: Record<stri
     encode: learningBool,
     retrieve: Object.keys(experienceRetrieve).length ? experienceRetrieve : learningBool,
   }
-  nextLibrary.autonomy = library.autonomy !== "false"
 
   patch.library = nextLibrary
 }

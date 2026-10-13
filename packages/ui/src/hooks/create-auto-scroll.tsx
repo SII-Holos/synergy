@@ -9,6 +9,7 @@ export interface AutoScrollReadingAnchor {
 }
 
 export interface AutoScrollOptions {
+  enabled?: () => boolean
   motionTarget?: () => HTMLElement | undefined
   working: () => boolean
   onUserInteracted?: () => void
@@ -32,6 +33,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let cleanup: (() => void) | undefined
   let readingAnchor: AutoScrollReadingAnchor | undefined
   let anchoredScrollTop: number | undefined
+  let anchoredScrollHeight: number | undefined
   let movementOffset: number | undefined
   let resumeRequested = false
   let previousOffset = 0
@@ -45,11 +47,13 @@ export function createAutoScroll(options: AutoScrollOptions) {
   })
   const [readingAnchorOwner, setReadingAnchorOwner] = createSignal<HTMLElement>()
 
-  const active = () => options.working() || settling || followingLatest
+  const enabled = () => options.enabled?.() !== false
+  const active = () => enabled() && (options.working() || settling || followingLatest)
   const clearReadingAnchor = () => {
     readingAnchor = undefined
     setReadingAnchorOwner(undefined)
     anchoredScrollTop = undefined
+    anchoredScrollHeight = undefined
     movementOffset = undefined
   }
   const preserveReadingAnchor = (target?: Element) => {
@@ -60,6 +64,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     readingAnchor = options.captureReadingAnchor?.({ reading: store.userScrolled, target })
     setReadingAnchorOwner(readingAnchor?.owner)
     anchoredScrollTop = scroll?.scrollTop
+    anchoredScrollHeight = scroll?.scrollHeight
   }
 
   const distanceFromBottom = () => {
@@ -83,10 +88,11 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const scheduleMeasure = () => {
+    if (!enabled()) return
     if (measureFrame !== undefined) return
     measureFrame = requestAnimationFrame(() => {
       measureFrame = undefined
-      options.onMeasure?.(distanceFromBottom())
+      if (enabled()) options.onMeasure?.(distanceFromBottom())
     })
   }
 
@@ -94,6 +100,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     scrollFrame = undefined
     const force = forceNextScroll
     forceNextScroll = false
+    if (!enabled()) return
     if (!force && !active()) return
     if (!scroll) return
 
@@ -104,13 +111,13 @@ export function createAutoScroll(options: AutoScrollOptions) {
     const distance = bottom - scroll.clientHeight - scroll.scrollTop
     if (Math.abs(distance) < 2 && !options.motionTarget) return
 
-    const animate =
-      !!options.motionTarget && (!force || smoothForce) && !store.contentRef?.querySelector("[data-motion-resizing]")
-    motion.move(scroll, bottom, animate)
+    const animate = !!options.motionTarget && (!force || smoothForce)
+    motion.move(scroll, bottom, animate, animate && !!store.contentRef?.querySelector("[data-motion-resizing]"))
     smoothForce = false
   }
 
   const scrollToBottom = (force: boolean) => {
+    if (!enabled()) return
     if (!force && !active()) return
     if (!scroll) return
     if (!force && store.userScrolled) return
@@ -201,8 +208,16 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handleScroll = () => {
-    if (!scroll) return
-    const compensated = anchoredScrollTop !== undefined && Math.abs(scroll.scrollTop - anchoredScrollTop) < 1
+    if (!scroll || !enabled()) return
+    // Virtual layout compensation can deliver scroll before ResizeObserver; retain the pre-layout reading offset.
+    if (readingAnchor && movementOffset === undefined && anchoredScrollHeight !== scroll.scrollHeight) {
+      readingAnchor.restore()
+      anchoredScrollTop = scroll.scrollTop
+      anchoredScrollHeight = scroll.scrollHeight
+    }
+    const compensated =
+      (anchoredScrollTop !== undefined && Math.abs(scroll.scrollTop - anchoredScrollTop) < 1) ||
+      (!!readingAnchor && movementOffset === undefined && Math.abs(scroll.scrollTop - previousOffset) < 1)
     anchoredScrollTop = undefined
     const advancing = scroll.scrollTop > previousOffset
     previousOffset = scroll.scrollTop
@@ -227,8 +242,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   createResizeObserver(
-    () => store.contentRef,
+    () => (enabled() ? store.contentRef : undefined),
     () => {
+      if (!enabled()) return
       // While pinned-follow, resizes only re-pin (and extend an active settle
       // window). Otherwise content grows without scroll events, so report the
       // distance so "scrolled up" state stays honest in idle sessions.
@@ -247,10 +263,28 @@ export function createAutoScroll(options: AutoScrollOptions) {
       if (!readingAnchor || !readingAnchor.owner.isConnected) preserveReadingAnchor()
       if (scroll && readingAnchor) {
         anchoredScrollTop = scroll.scrollTop
+        anchoredScrollHeight = scroll.scrollHeight
         if (movementOffset !== undefined) movementOffset = scroll.scrollTop
       }
       scheduleMeasure()
     },
+  )
+
+  createEffect(
+    on(enabled, (value) => {
+      if (value) {
+        if (!store.userScrolled) scrollToBottom(false)
+        return
+      }
+      motion.settle()
+      if (settleTimer) clearTimeout(settleTimer)
+      settleTimer = undefined
+      settling = forcedSettling = false
+      if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+      if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
+      scrollFrame = measureFrame = undefined
+      forceNextScroll = false
+    }),
   )
 
   createEffect(

@@ -6,6 +6,7 @@ import { RenderRoute } from "./render/routes"
 export function registerHttp() {
   Server.registerContributions(
     {
+      features: ["media"],
       routes: { "scoped-after-assets": new Hono().route("/voice", VoiceRoute()).route("/render", RenderRoute()) },
       isScopeRequiredRoute: (pathname) => matchesPath(pathname, ["/voice", "/render"]),
     },

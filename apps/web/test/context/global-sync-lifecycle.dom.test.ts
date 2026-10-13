@@ -43,7 +43,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         session:{list:()=>new Promise(resolve=>lists.push(resolve)),inbox:()=>{inboxRequests.push(options.scopeID);inboxReady();return ok([])}},
       }
     }
-    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>false},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>false,current:()=>undefined},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>{optionalRequests.push("agenda");return ok([])}}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:seedStatuses},cortex:{list:()=>ok([])},
     }})
@@ -422,7 +422,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       expect(api.scopeReconnectVersion("home")).toBe(api.reconnectVersion())
       expect(home.state[0].partSummary.message[0]).toBe(summary)
       expect(home.state[0].part.message[0]).toBe(body)
-      expect(home.state[0].partPage.message).toMatchObject({ stale: true, hasMore: false, hasEarlier: false })
+      expect(home.state[0].partPage.message).toMatchObject({ stale: false, hasMore: false, hasEarlier: false })
       expect(api.contentBudget.bytes).toBe(retainedBytes)
       reader.release()
       cache.release()

@@ -219,11 +219,6 @@
   background: var(--surface-raised-base-hover);
 }
 
-.stb-menu-item:focus-visible {
-  outline: 2px solid var(--border-interactive-base);
-  outline-offset: -2px;
-}
-
 .stb-menu-item:disabled {
   cursor: default;
   opacity: 0.58;

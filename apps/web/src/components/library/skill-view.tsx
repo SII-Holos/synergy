@@ -521,7 +521,7 @@ export function SkillView(props: {
                         id: "app.library.skills.import.urlPlaceholder",
                         message: "https://example.com/skill.zip",
                       })}
-                      class="w-full rounded-[0.95rem] border border-border-base/38 bg-surface-inset-base px-3 py-2.5 app-panel-control text-text-base outline-none ring-1 ring-inset ring-border-base/35 transition-colors placeholder:text-text-weak focus:border-border-base/50 focus:bg-surface-inset-base"
+                      class="w-full rounded-[0.95rem] border border-border-base/38 bg-surface-inset-base px-3 py-2.5 app-panel-control text-text-base outline-none ring-1 ring-inset ring-border-base/35 transition-colors placeholder:text-text-weak"
                       value={importUrl()}
                       onInput={(e) => setImportUrl(e.currentTarget.value)}
                       onKeyDown={(e) => {

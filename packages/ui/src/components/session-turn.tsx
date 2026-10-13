@@ -50,7 +50,7 @@ import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
 import { resolveAttachmentPresentation } from "./attachment-card-utils"
 import { MediaGenerationCard } from "./media-generation-card"
-import { isMediaGenerationToolPart, isToolCardHidden } from "./tool-result-presentation"
+import { isMediaGenerationToolPart, toolFeatureAvailable, isToolCardHidden } from "./tool-result-presentation"
 import { isSpeakTool, noteSpeakPartActive } from "./session-turn-speak-autoplay"
 import "./session-turn.css"
 import "./tool-renders"
@@ -601,12 +601,18 @@ function TimelineItemDisplay(props: {
   }
   if (props.item.kind === "media") {
     const current = () => props.item as Extract<SessionTurnTimelineItem, { kind: "media" }>
+    const data = useData()
+    const available = () => toolFeatureAvailable(current().part, data.hasFeature)
     createEffect(() => {
       const part = current().part
-      if (isSpeakTool(part.tool) && !["completed", "error"].includes(part.state.status))
+      if (available() && isSpeakTool(part.tool) && !["completed", "error"].includes(part.state.status))
         noteSpeakPartActive(`speak:${part.id}`)
     })
-    return <MediaGenerationCard part={current().part} files={current().files} serverUrl={props.serverUrl} />
+    return (
+      <Show when={available()} fallback={<AttachmentGallery files={current().files} serverUrl={props.serverUrl} />}>
+        <MediaGenerationCard part={current().part} files={current().files} serverUrl={props.serverUrl} />
+      </Show>
+    )
   }
   return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} />
 }

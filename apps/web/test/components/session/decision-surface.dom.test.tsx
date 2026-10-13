@@ -39,6 +39,7 @@ beforeAll(async () => {
       sdkStubPath,
       `
         export const SDKProvider = (props) => props.children
+        export const useGlobalSDK = () => ({ capabilities: { has: () => false } })
         export const useSDK = () => ({
           connected: () => true,
           url: "http://fixture",
@@ -322,6 +323,7 @@ beforeAll(async () => {
     aliases: Object.entries({
       "@/context/locale": localeStubPath,
       "@/context/sdk": sdkStubPath,
+      "@/context/global-sdk": sdkStubPath,
       "@/context/session-data-view": viewStubPath,
       "@/context/global-sync": path.join(fixtureDirectory, "sync-stub.ts"),
       "@/context/sync": path.join(fixtureDirectory, "scope-sync-stub.ts"),

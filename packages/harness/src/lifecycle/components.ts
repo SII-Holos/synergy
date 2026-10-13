@@ -30,6 +30,18 @@ export namespace RuntimeComponents {
     return [...selection().values()].map((item) => ({ ...item })).sort((a, b) => a.id.localeCompare(b.id))
   }
 
+  export function registerSelection(components: readonly z.infer<typeof Info>[]) {
+    RuntimeContext.assertCompositionOpen("runtime component selection")
+    const entries = z.array(Info.strict()).parse(components)
+    const ids = new Set<string>()
+    for (const entry of entries) {
+      if (!entry.id || !entry.version) throw new Error("Component identity and version are required")
+      if (ids.has(entry.id) || selection().has(entry.id)) throw new Error(`Duplicate component: ${entry.id}`)
+      ids.add(entry.id)
+    }
+    for (const entry of entries) selection().set(entry.id, Object.freeze(entry))
+  }
+
   export function resolve(components: readonly RuntimeComponent[]): RuntimeComponent[] {
     const byID = new Map<string, RuntimeComponent>()
     for (const component of components) {
@@ -77,8 +89,7 @@ export namespace RuntimeComponents {
         if (state().registered) return
         RuntimeContext.assertCompositionOpen("runtime components")
         for (const component of ordered) component.register()
-        for (const { id, version, apiVersion } of ordered)
-          selection().set(id, Object.freeze({ id, version, apiVersion }))
+        registerSelection(ordered.map(({ id, version, apiVersion }) => ({ id, version, apiVersion })))
         state().registered = true
       },
       services() {

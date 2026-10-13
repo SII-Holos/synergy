@@ -62,6 +62,46 @@ test(
 )
 
 test(
+  "a removed native root settles initialization and can be watched after explicit reload",
+  () =>
+    runtime.run(() =>
+      withWatcher(async () => {
+        await using directory = await tmpdir({ git: true })
+        const scope = await directory.scope()
+        await ScopeContext.provide({ scope, fn: () => FileWatcher.init() })
+        await ScopedState.disposeAll()
+        const retained = directory.path + ".retained"
+        await fs.rename(directory.path, retained)
+        try {
+          await ScopeContext.provide({
+            scope,
+            fn: async () => {
+              await expect(FileWatcher.init()).resolves.toBeUndefined()
+              await Bun.sleep(1100)
+              await fs.rename(retained, directory.path)
+              await FileWatcher.reload()
+              await waitForLinuxSubscription(directory.path)
+              const observed = Promise.withResolvers<string>()
+              const unsubscribe = Bus.subscribe(FileWatcher.Event.Updated, (event) => {
+                if (event.properties.file === "restored.txt") observed.resolve(event.properties.event)
+              })
+              try {
+                await Bun.write(path.join(directory.path, "restored.txt"), "restored")
+                expect(await observed.promise).toBe("added")
+              } finally {
+                unsubscribe()
+              }
+            },
+          })
+        } finally {
+          if (await Bun.file(path.join(retained, ".git", "config")).exists()) await fs.rename(retained, directory.path)
+        }
+      }),
+    ),
+  10000,
+)
+
+test(
   "native home watcher publishes global config file changes",
   () =>
     runtime.run(() =>

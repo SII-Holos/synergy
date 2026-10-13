@@ -27,7 +27,10 @@ export const FatalErrorPage: Component<FatalErrorPageProps> = (props) => {
   })
 
   const title = () => i18n._(AP.fatalErrorTitle[presentation().title].id)
-  const description = () => i18n._(AP.fatalErrorDescription[presentation().description].id)
+  const description = () => {
+    const source = presentation().description
+    return source ? i18n._(AP.fatalErrorDescription[source].id) : undefined
+  }
 
   return (
     <div class="relative flex-1 h-screen w-screen min-h-0 flex flex-col items-center justify-center bg-background-base font-sans">
@@ -35,27 +38,8 @@ export const FatalErrorPage: Component<FatalErrorPageProps> = (props) => {
         <Logo class="w-58.5 opacity-12 shrink-0" />
         <div class="flex flex-col items-center gap-2 text-center">
           <h1 class="text-lg font-medium text-text-strong">{title()}</h1>
-          <p class="text-sm text-text-weak">{description()}</p>
+          <Show when={description()}>{(value) => <p class="text-sm text-text-weak">{value()}</p>}</Show>
         </div>
-        <Show when={presentation().summary}>
-          <TextField
-            value={presentation().summary}
-            readOnly
-            multiline
-            class="max-h-36 w-full font-mono text-xs no-scrollbar"
-            label={i18n._(AP.fatalErrorSummaryLabel.id)}
-            hideLabel
-          />
-        </Show>
-        <TextField
-          value={presentation().details}
-          readOnly
-          copyable
-          multiline
-          class="max-h-96 w-full font-mono text-xs no-scrollbar"
-          label={i18n._(AP.errorDetailsLabel.id)}
-          hideLabel
-        />
         <div class="flex items-center gap-3">
           <Button size="large" onClick={() => presentation().primaryAction.run()}>
             {i18n._(AP.fatalErrorAction[presentation().primaryAction.label].id)}
@@ -68,6 +52,18 @@ export const FatalErrorPage: Component<FatalErrorPageProps> = (props) => {
             )}
           </Show>
         </div>
+        <details class="w-full text-sm text-text-weak">
+          <summary class="cursor-pointer">{i18n._(AP.errorDetailsLabel.id)}</summary>
+          <TextField
+            value={presentation().details}
+            readOnly
+            copyable
+            multiline
+            class="mt-3 max-h-64 w-full font-mono text-xs no-scrollbar"
+            label={i18n._(AP.errorDetailsLabel.id)}
+            hideLabel
+          />
+        </details>
         <div class="flex flex-col items-center gap-2">
           <a
             href="https://github.com/SII-Holos/synergy/issues"

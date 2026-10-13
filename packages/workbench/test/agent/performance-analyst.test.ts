@@ -10,7 +10,6 @@ const ctx = {
   defaults: [],
   user: [],
   role: () => undefined,
-  evolutionActive: false,
 }
 
 describe("performance analyst agent", () => {

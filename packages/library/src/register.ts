@@ -1,8 +1,10 @@
+import { registerLibraryPrompts } from "./agent-prompts"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { SessionModePolicy } from "@ericsanchezok/synergy-harness/session/tool-mode-policy"
 import { registerConfig } from "./config-schema"
 import { registerLibraryMigrations } from "./migration"
 import { registerLibraryAgents } from "./agents"
+import { registerLibraryAgentPermissions } from "./agent-permissions"
 import { registerLibraryTools } from "./tools"
 import { registerLibrarySessionRecall } from "./session-recall"
 import { registerScopeLibraryStore } from "./scope-migration-store"
@@ -22,6 +24,8 @@ export function registerLibrary() {
   registerConfig()
   registerLibraryMigrations()
   registerLibraryAgents()
+  registerLibraryAgentPermissions()
+  registerLibraryPrompts()
   registerLibraryTools()
   registerLibrarySessionRecall()
   registerScopeLibraryStore()

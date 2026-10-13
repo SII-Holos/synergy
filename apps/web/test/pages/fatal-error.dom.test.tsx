@@ -33,7 +33,11 @@ beforeAll(async () => {
         import { setupI18n } from "@lingui/core"
         const i18n = setupI18n({
           locale: "en",
-          messages: { en: { "app.error.versionLabel": "Version: {version}" } },
+          messages: { en: {
+            "app.error.versionLabel": "Version: {version}",
+            "app.error.detailsLabel": "Error Details",
+            "app.fatalError.action.tryAgain": "Try again",
+          } },
         })
         export const useLocale = () => ({ i18n })
       `,
@@ -72,7 +76,9 @@ beforeAll(async () => {
               i18n: useLocale().i18n,
               get children() {
                 return createComponent(component, {
-                  error: new Error("Version rendering probe"),
+                  error: new Error("Unsupported runtime capabilities API"),
+                  source: "initialization",
+                  onRecover: () => { window.retries = (window.retries || 0) + 1 },
                 })
               },
             }),
@@ -117,7 +123,28 @@ afterAll(async () => {
   if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true })
 })
 
-describe("fatal error page version footer", () => {
+describe("fatal error page", () => {
+  test("keeps recovery visible and shows diagnostics only on explicit disclosure", async () => {
+    for (const width of [1280, 375]) {
+      await page.setViewportSize({ width, height: 800 })
+      await page.goto(baseUrl)
+      const retry = page.getByRole("button", { name: "Try again", exact: true })
+      await retry.waitFor()
+      expect(await page.getByRole("textbox").count()).toBe(0)
+      await retry.click()
+      expect(await page.evaluate(() => (window as unknown as { retries: number }).retries)).toBe(1)
+      const details = page.locator("summary").filter({ hasText: "Error Details" })
+      await details.focus()
+      await details.press("Enter")
+      const diagnostic = page.getByRole("textbox")
+      await diagnostic.waitFor()
+      expect(await diagnostic.inputValue()).toContain("Unsupported runtime capabilities API")
+      expect(await diagnostic.count()).toBe(1)
+      await details.press("Space")
+      expect(await page.getByRole("textbox").count()).toBe(0)
+    }
+  })
+
   test("renders the platform version string, not the Show accessor", async () => {
     await page.goto(baseUrl)
     const versionLine = page.getByText("Version: 9.9.9-test", { exact: true })

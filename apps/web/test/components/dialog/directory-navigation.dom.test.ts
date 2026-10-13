@@ -252,6 +252,8 @@ test("long paths leave the edit action and its keyboard focus unobstructed in ei
     for (const width of [1280, 375, 320]) {
       await page.setViewportSize({ width, height: 768 })
       await open()
+      await page.mouse.move(0, 0)
+      const restingColor = await edit().evaluate((element) => getComputedStyle(element).color)
       await edit().click()
       const focus = await editor().evaluate((element) => {
         const wrapper = getComputedStyle(element.closest('[data-slot="input-wrapper"]')!)
@@ -266,25 +268,30 @@ test("long paths leave the edit action and its keyboard focus unobstructed in ei
       await editor().fill("/projects/research/working-files/current-project-folder-with-a-long-name")
       await editor().press("Enter")
       await editor().waitFor({ state: "detached" })
-      const facts = await edit().evaluate((element) => {
+      await page.mouse.move(0, 0)
+      const facts = await edit().evaluate(async (element) => {
+        await Promise.all(element.getAnimations().map((animation) => animation.finished))
         const button = element.getBoundingClientRect()
         const navigation = element.parentElement!.querySelector("nav")!.getBoundingClientRect()
         const style = getComputedStyle(element)
-        const ring = Math.max(0, parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth))
         const current = element.parentElement!.querySelector('[aria-current="page"]')!.getBoundingClientRect()
         const target = document.elementFromPoint(button.x + button.width / 2, button.y + button.height / 2)
         return {
           focused: document.activeElement === element,
-          visibleFocus: element.matches(":focus-visible") && style.outlineStyle !== "none",
+          visibleFocus: element.matches(":focus-visible"),
+          focusColor: style.color,
+          outline: style.outlineStyle,
           hit: element === target || element.contains(target),
-          gap: button.left - ring - navigation.right,
+          gap: button.left - navigation.right,
           currentRight: current.right - navigation.right,
-          right: button.right + ring,
+          right: button.right,
           height: button.height,
         }
       })
       expect(facts.focused).toBe(true)
       expect(facts.visibleFocus).toBe(true)
+      expect(facts.focusColor).not.toBe(restingColor)
+      expect(facts.outline).toBe("none")
       expect(facts.hit).toBe(true)
       expect(facts.gap).toBeGreaterThanOrEqual(0)
       expect(facts.currentRight).toBeLessThanOrEqual(1)

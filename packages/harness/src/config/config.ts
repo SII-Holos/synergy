@@ -74,6 +74,19 @@ export namespace Config {
     return ConfigExtensions.resolveSchema(Info)
   }
 
+  function storedSchema() {
+    return ConfigExtensions.persistenceSchema(Info)
+  }
+
+  function project(config: Info): Info {
+    const visible = structuredClone(config)
+    for (const key of Object.keys(visible)) {
+      if (!Object.hasOwn(schema().shape, key)) delete (visible as Record<string, unknown>)[key]
+    }
+    ConfigExtensions.project(visible)
+    return Info.parse(visible)
+  }
+
   export function jsonSchema() {
     const output = z.toJSONSchema(schema(), { unrepresentable: "any" })
     if (output.properties) {
@@ -272,7 +285,7 @@ export namespace Config {
         const fragments = await loadFragments(fragmentDir, { strict: strictExecution.getStore() })
         for (const fragment of fragments) {
           merge(
-            Info.parse(LegacyExecutionConfig.migrate(fragment)),
+            storedSchema().parse(LegacyExecutionConfig.migrate(fragment)),
             dir === Flag.SYNERGY_CONFIG_DIR ? "explicit_file" : "project_config",
           )
         }
@@ -367,8 +380,9 @@ export namespace Config {
     merge(LegacyExecutionConfig.environment(), "legacy_environment")
 
     normalizeRoleNulls(result)
-    ConfigExtensions.normalize(result)
-    const config = Info.parse(result)
+    const projected = project(result)
+    ConfigExtensions.normalize(projected)
+    const config = Info.parse(projected)
     mark(config, "default", "", true)
 
     return {
@@ -568,7 +582,7 @@ export namespace Config {
   export const global = Object.assign(
     () => {
       const source = ConfigSource.get()
-      return source ? hostConfig(source, Scope.home()) : globalConfig()()
+      return source ? hostConfig(source, Scope.home()) : globalConfig()().then(project)
     },
     { reset: () => globalConfig().reset() },
   )
@@ -613,7 +627,7 @@ export namespace Config {
         await quarantineDomainFile(domain.id, filepath, error)
       }
     }
-    return Info.parse(result)
+    return storedSchema().parse(result)
   }
 
   /**
@@ -706,7 +720,7 @@ export namespace Config {
   }
 
   function deferUnregisteredMigration(config: Info) {
-    return !ConfigExtensions.isComplete() && Object.keys(config).some((key) => !ConfigDomain.domainForKey(key))
+    return Object.keys(config).some((key) => !ConfigDomain.domainForKey(key))
   }
 
   async function migrateLegacyGlobalConfig() {
@@ -776,7 +790,7 @@ export namespace Config {
         const filepath = path.join(tempDir, domain.filename)
         const existing = await loadFile(filepath, { addSchema: false })
         const fragment = split.get(domain.id) ?? {}
-        await Bun.write(filepath, serializeConfig(mergeConfigConcatArrays(existing, fragment as Info)), {
+        await Bun.write(filepath, serializeConfig(mergeConfigConcatArrays(fragment as Info, existing)), {
           mode: DOMAIN_FRAGMENT_MODE,
         })
       }
@@ -858,7 +872,6 @@ export namespace Config {
       .readdir(domainDir)
       .then((entries) => entries.some((entry) => ConfigDomain.domainForFile(entry)))
       .catch(() => false)
-    if (existingDomainFiles && ConfigExtensions.isComplete()) return
 
     const candidates = [
       path.join(projectRoot, "synergy.jsonc"),
@@ -877,7 +890,7 @@ export namespace Config {
     if (sources.length === 0) return
 
     if (deferUnregisteredMigration(migrated)) return migrated
-    if (existingDomainFiles) return
+    if (existingDomainFiles) return migrated
 
     log.info("migrating legacy project config to domain fragments", { sources, target: domainDir })
     for (const [id, fragment] of ConfigDomain.split(migrated)) {
@@ -987,7 +1000,7 @@ export namespace Config {
       })
     }
 
-    const parsed = Info.safeParse(
+    const parsed = storedSchema().safeParse(
       data && typeof data === "object" && !Array.isArray(data) ? upgradeImportedConfig(data) : data,
     )
     if (parsed.success) {
@@ -1051,7 +1064,7 @@ export namespace Config {
       delete (data as Record<string, unknown>)[key]
     }
 
-    const retried = Info.safeParse(data)
+    const retried = storedSchema().safeParse(data)
     if (retried.success) {
       if (options.addSchema !== false && !retried.data.$schema) {
         retried.data.$schema = Global.Path.configSchemaUrl
@@ -1206,11 +1219,12 @@ export namespace Config {
 
   /** Deep-clone config and replace secrets with REDACTED_SENTINEL for safe client exposure. */
   export function redactForClient(config: Info): Info {
-    const result = structuredClone(config) as Record<string, any>
+    const visible = structuredClone(config)
     // An absent owner cannot classify its secrets; retain those fields on disk only.
-    for (const key of Object.keys(result)) {
-      if (!(key in Info.shape)) delete result[key]
+    for (const key of Object.keys(visible)) {
+      if (!(key in Info.shape)) delete (visible as Record<string, unknown>)[key]
     }
+    const result = project(visible) as Record<string, any>
 
     if (result.provider) {
       for (const provider of Object.values(result.provider) as any[]) {
@@ -1337,7 +1351,7 @@ export namespace Config {
     const synergyDir = path.join(ScopeContext.current.directory, ".synergy")
     for (const [id, fragment] of ConfigDomain.split(config)) {
       if (ConfigDomain.byId().get(id)?.globalOnly) throw new Error("Resource configuration must be global")
-      await writeDomainFile(id, fragment, synergyDir)
+      await domainUpdate(id, fragment, { root: synergyDir, mode: "replace-domain" })
     }
     const { ScopeRuntime } = await import("../scope/runtime")
     await ScopeRuntime.dispose()
@@ -1398,6 +1412,10 @@ export namespace Config {
   }
 
   export async function domainGet(id: ConfigDomain.Id, root = Global.Path.config): Promise<Info> {
+    return project(await domainStored(id, root))
+  }
+
+  async function domainStored(id: ConfigDomain.Id, root = Global.Path.config): Promise<Info> {
     const parsed = ConfigDomain.Id.parse(id)
     const source = ConfigSource.get()
     if (source) return ConfigDomain.split(await hostConfig(source, Scope.home())).get(parsed) ?? {}
@@ -1435,7 +1453,7 @@ export namespace Config {
     try {
       const config = await loadFile(filepath, { addSchema: false })
       ConfigDomain.validateKeys(config as Record<string, unknown>, parsed, { preserveUnregistered: true })
-      return { config }
+      return { config: project(config) }
     } catch (error) {
       return { config: {}, error: sanitizeErrorForIssue(error) }
     }
@@ -1470,17 +1488,16 @@ export namespace Config {
     )
       throw new Error("Resource configuration must be global")
     ConfigDomain.validateKeys(patch as Record<string, unknown>, parsed)
-    const stored = await domainGet(parsed, options.root)
+    const stored = await domainStored(parsed, options.root)
     const mergedPatch = mergeRedactedSecrets(patch as Info, stored)
-    const next = mergeDomainConfig(stored, mergedPatch, options.mode ?? ConfigDomain.byId().get(parsed)!.mergePolicy)
-    if (!ConfigExtensions.isComplete()) {
-      for (const [key, value] of Object.entries(stored)) {
-        if (!ConfigDomain.domainForKey(key)) (next as Record<string, unknown>)[key] = value
-      }
-    }
+    const mode = options.mode ?? ConfigDomain.byId().get(parsed)!.mergePolicy
+    const visible = project(stored)
+    const next = Info.parse(mergeDomainConfig(visible, mergedPatch, mode))
+    Info.parse(mergeConfigConcatArrays(project(await globalRaw()), next))
+    ConfigExtensions.preserveStored(stored, visible, next)
 
-    const aggregate = mergeConfigConcatArrays(await globalRaw(), next as Info)
-    Info.parse(aggregate)
+    const aggregate = mergeConfigConcatArrays(await globalConfig()(), next as Info)
+    storedSchema().parse(aggregate)
     await writeDomainFile(parsed, next, options.root)
     global.reset()
     await state.resetAll()

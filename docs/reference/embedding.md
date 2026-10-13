@@ -25,6 +25,8 @@ const client = runtime.client({ directory: process.cwd() })
 
 `home` is the data directory itself. The required component list selects every capability, including Local Runtime and Plugin Host. An empty list has no default execution Environment. HTTP, Browser, Library and other optional domains require their component factories. The component graph validates versions and dependencies before opening storage. See the [Agent Runtime API](../../packages/agent-runtime/README.md) for session execution.
 
+Select `agenda()` from `@ericsanchezok/synergy-agenda/component`, `lightLoop()` from `@ericsanchezok/synergy-light-loop/component`, or other leaf factories independently. `blueprint()` requires `note()`; include both in the component array. `workflowComponents()` and `connectionComponents()` return explicit complete preset arrays. Integration factories such as `agendaBlueprint()` are separate selections; importing a factory does not register it. See the [package map](packages.md) for requirements and adapters.
+
 For the complete backend, install `@ericsanchezok/synergy-presets` and use its explicit composition. The programmatic preset does not assume a repository or bundled Web directory:
 
 ```ts
@@ -110,10 +112,10 @@ This client does not own the service. For a filesystem project, resolve its Scop
 
 ## Runtime capabilities
 
-`GET /global/capabilities` reports the active component IDs, versions and component API versions for this runtime. Use the generated `client.global.capabilities()` method before calling optional APIs. The endpoint requires no project Scope. Installed changes take effect at the next runtime start; the active response never claims that a newly installed component is already running. Component availability is distinct from permission approval.
+`GET /global/capabilities` reports stable `features` plus diagnostic component IDs, versions and component API versions for this Runtime. Use `features` from the generated `client.global.capabilities()` method before calling optional APIs. Features require selected owners, registered HTTP adapters and completed service initialization; discovery returns 503 while the Runtime is starting or shutting down. The endpoint requires no project Scope. Installed changes take effect at the next Runtime start. Component availability is distinct from permission approval.
 
 Managed SDK processes require the private bearer credential on HTTP requests. Existing service deployments retain their configured transport/authentication boundary; attaching does not create or replace credentials.
 
-The Web application discovers this selection before optional requests. Navigation, settings, composer mechanisms and workbench panels follow the active components; reconnecting replaces the previous selection. A Web client can therefore attach to a core server or a selected subset without polling absent component routes.
+The Web application discovers features before optional requests. Navigation, settings, composer mechanisms and workbench panels follow that selection; reconnecting invalidates the previous discovery epoch, including when the URL stays the same. Absent owners contribute no requests or controls. Their stored data and local drafts remain available after reinstall.
 
 Environment selection and resource ownership follow [Environments](../architecture/environments.md). Embedded hosts select `localRuntime({ environment: false })` when they need native services without a default execution destination. `openLocalRuntime` accepts `environment: false` directly.

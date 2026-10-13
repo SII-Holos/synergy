@@ -1,5 +1,6 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
+import { z } from "zod"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { WorkflowSessionService, WorkflowConflictError } from "@ericsanchezok/synergy-workflows/session/workflow"
 import { ContinuationKernel } from "@ericsanchezok/synergy-harness/session/continuation-kernel"
@@ -13,8 +14,7 @@ import { registerFullPreset } from "../../src/registration"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
-import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
-const runtime = await migrationFixture({ register: registerFullPreset })
+import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 
 /**
  * H3 acceptance: a test-only workflow kind (descriptor + prompt contribution
@@ -30,6 +30,10 @@ const TEST_KIND = "testonly_kind"
 function registerTestOnlyKind() {
   WorkflowKindRegistry.register({
     id: TEST_KIND,
+    schema: z.object({
+      kind: z.literal("extension"),
+      extension: z.object({ kind: z.literal(TEST_KIND), payload: z.unknown().optional() }),
+    }),
     conflicts: ["plan", "lightloop", "lattice", "boss"],
     async enable(input) {
       const session = await Session.get(input.sessionID)
@@ -80,6 +84,15 @@ function registerTestOnlyKind() {
   ])
 }
 
+const runtime = await testRuntime({
+  composition: {
+    register() {
+      registerFullPreset()
+      registerTestOnlyKind()
+    },
+  },
+})
+
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
   return ScopeContext.provide({ scope: await tmp.scope(), fn })
@@ -89,7 +102,7 @@ describe("workflow kind registry (H3 test-only kind)", () => {
   test("extension kind enables, persists, wraps, conflicts, and disables without L1 edits", () =>
     runtime.run(async () => {
       await withScope(async () => {
-        registerTestOnlyKind()
+        expect(() => registerTestOnlyKind()).toThrow("before opening")
         expect(WorkflowKindRegistry.ids()).toContain(TEST_KIND)
         expect(ContinuationKernel.registeredPolicyIDs()).toContain(`${TEST_KIND}_policy`)
 

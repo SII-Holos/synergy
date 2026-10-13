@@ -46,10 +46,9 @@ Search for structural patterns to find similar or related code.
 
 ## Search Tool Selection
 
-- **structural search** (`parse_code`): when you know the syntax shape. Example: finding all calls that register handlers, schemas, commands, or exported components.
+- **available structural search**: when you know the syntax shape. Example: finding all calls that register handlers, schemas, commands, or exported components.
 - **text search** (`scan_files`): when you need a specific string, error message, or non-syntax pattern. Example: finding all references to a deprecated config key.
 - **file inspection** (`view_file`): when you need to read a specific file's content to understand its structure.
-- **document reading** (`scan_document`): for PDF, DOCX, or other non-code files.
 
 Prefer structural search when the target has a known code shape. It excludes false positives from comments and strings.
 

@@ -21,7 +21,7 @@ The parent composes the handoff (goal, settled decisions, evidence, scope, deliv
 - Reading full/default output acknowledges the completion and clears its notification. Diagnostic modes do not acknowledge completion.
 - `task_output` diagnostic modes are `summary` (status, health, elapsed time), `progress` (tool activity, health, duration), and `tail` (recent conversation). Use them for one-shot diagnosis when evidence, a stale health signal or a cancellation decision warrants it. Do not poll or loop to refresh progress. Use `task_list()` for an overview when needed.
 - `task_output(..., block: true)` is only valid with `mode="full"` or the default mode; it waits up to 300 seconds. Diagnostic modes with blocking are rejected.
-- Do NOT use `agenda_watch` or `agenda_schedule` for subagent completion; automatic notifications already handle it.
+- Do NOT schedule additional wake-ups for subagent completion; automatic notifications already handle it.
 
 Provide `session_id` to continue an idle session owned by this parent. Its prior context is retained, so focus on new information. A busy or differently owned session is rejected.
 

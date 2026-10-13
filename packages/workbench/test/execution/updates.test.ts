@@ -19,6 +19,7 @@ afterAll(() => runtime.close())
 test("a delayed inbox read cannot attach a newer revision to stale active intervals", () =>
   runtime.run(() =>
     fixture(async ({ session, rootID, call }) => {
+      const releaseSubscription = ExecutionService.subscribe(session.id)
       await complete(call)
       const segment = await RolloutLedger.beginSegment({ owner: call.owner, runID: rootID, input: {} })
       await RolloutExecution.provide({ owner: call.owner, runID: rootID }, () => RolloutExecution.start(segment))
@@ -56,11 +57,13 @@ test("a delayed inbox read cannot attach a newer revision to stale active interv
         release.resolve()
         await pending
         read.mockRestore()
+        releaseSubscription()
       }
     }),
   ))
 
 function nextUpdate(sessionID: string, predicate: (event: ExecutionSchema.Summary) => boolean) {
+  const release = ExecutionService.subscribe(sessionID)
   let dispose = () => {}
   const result = new Promise<{ type: string; properties: z.infer<typeof ExecutionSchema.Updated.properties> }>(
     (resolve, reject) => {
@@ -76,11 +79,41 @@ function nextUpdate(sessionID: string, predicate: (event: ExecutionSchema.Summar
       dispose = () => {
         clearTimeout(timer)
         unsubscribe()
+        release()
       }
     },
   )
   return { result, dispose: () => dispose() }
 }
+
+test("unsubscribed execution caches do no scheduled presentation work and the last lease cancels refresh", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID }) => {
+      await ExecutionService.summary(session.id)
+      let updates = 0
+      const off = Bus.subscribeGlobal(ExecutionSchema.Updated, (event) => {
+        if (event.properties.sessionID === session.id) updates++
+      })
+      try {
+        await Session.update(session.id, (info) => {
+          info.title = "Unsubscribed"
+        })
+        await Bun.sleep(850)
+        expect(updates).toBe(0)
+        const release = ExecutionService.subscribe(session.id)
+        await ExecutionService.summary(session.id)
+        await Session.update(session.id, (info) => {
+          info.title = "Released"
+        })
+        release()
+        await Bun.sleep(850)
+        expect(updates).toBe(0)
+        expect((await ExecutionService.summary(session.id)).sessionID).toBe(session.id)
+      } finally {
+        off()
+      }
+    }),
+  ))
 
 test("persisted delegation status updates the parent's cancellation controls without rollout changes", () =>
   runtime.run(() =>

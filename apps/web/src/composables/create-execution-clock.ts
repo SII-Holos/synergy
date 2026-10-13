@@ -1,7 +1,9 @@
+import { useViewActivity } from "@/context/view-residency"
 import { createEffect, createSignal, on, onCleanup, type Accessor } from "solid-js"
 import { ExecutionClock, type ExecutionSample } from "@/utils/execution-time"
 
 export function createExecutionClock(sample: Accessor<ExecutionSample | undefined>, connected: Accessor<boolean>) {
+  const active = useViewActivity()
   const clock = new ExecutionClock()
   const [advance, setAdvance] = createSignal(0)
   const update = () => setAdvance(clock.advance(performance.now()))
@@ -20,7 +22,11 @@ export function createExecutionClock(sample: Accessor<ExecutionSample | undefine
       update()
     }),
   )
-  const timer = setInterval(update, 1000)
-  onCleanup(() => clearInterval(timer))
+  createEffect(() => {
+    if (!active() || !connected()) return
+    update()
+    const timer = setInterval(update, 1000)
+    onCleanup(() => clearInterval(timer))
+  })
   return advance
 }

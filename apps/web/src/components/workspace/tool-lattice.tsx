@@ -1,5 +1,5 @@
 import { Show } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useLingui } from "@lingui/solid"
 import { useConfirm } from "@/components/dialog"

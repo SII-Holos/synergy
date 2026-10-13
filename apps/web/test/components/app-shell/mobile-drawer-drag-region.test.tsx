@@ -106,6 +106,7 @@ const stubModules: Record<string, string> = {
       return {
         surface: () => ({ opened: () => false, activeTab: () => undefined }),
         openPanel: async () => {},
+        getPanel: (id) => ({ id }),
       }
     }
   `,
@@ -273,8 +274,13 @@ beforeAll(async () => {
   const warmup = await browser.newPage({ viewport: { width: 375, height: 667 } })
   const warmupErrors: string[] = []
   warmup.on("pageerror", (error) => warmupErrors.push(String(error)))
+  warmup.on("console", (message) => {
+    if (message.type() === "error") warmupErrors.push(message.text())
+  })
   try {
     await warmup.goto(fixtureUrl)
+    await warmup.waitForLoadState("networkidle")
+    expect(warmupErrors, `fixture errors: ${warmupErrors.join(" | ")}`).toEqual([])
     await warmup.waitForSelector(".mobile-drawer-overlay", { timeout: 60_000 })
     await warmup.waitForSelector(".desktop-window-chrome", { timeout: 60_000 })
     expect(warmupErrors, `fixture page errors: ${warmupErrors.join(" | ")}`).toEqual([])

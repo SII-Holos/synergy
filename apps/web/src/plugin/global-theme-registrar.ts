@@ -6,6 +6,7 @@ const GLOBAL_THEME_RETRY_DELAY_MS = 2000
 
 export interface GlobalThemeRegistrarDeps {
   serverUrl: () => string | undefined
+  available: () => boolean
   fetchContributions: (serverUrl: string) => Promise<PluginContribution[]>
   loadAssets: (contributions: PluginContribution[], serverUrl: string) => Promise<PluginUIAssets>
   replaceThemes: (themes: Iterable<PluginThemeDefinition>) => void
@@ -39,13 +40,18 @@ export function createGlobalThemeRegistrar(deps: GlobalThemeRegistrarDeps): Glob
 
   async function refresh(isRetry = false): Promise<void> {
     const serverUrl = deps.serverUrl()
-    if (!serverUrl) return
     const current = ++generation
     clearRetry()
+    if (!deps.available()) {
+      deps.clearThemes()
+      return
+    }
+    if (!serverUrl) return
     try {
       const contributions = await deps.fetchContributions(serverUrl)
+      if (current !== generation || !deps.available()) return
       const assets = await deps.loadAssets(contributions, serverUrl)
-      if (current !== generation) return
+      if (current !== generation || !deps.available()) return
       // loadPluginUIAssets reports per-asset failures through `errors`
       // instead of rejecting. Publishing a partial generation would silently
       // unregister themes without entering the retry path, so treat it as a
@@ -61,7 +67,7 @@ export function createGlobalThemeRegistrar(deps: GlobalThemeRegistrarDeps): Glob
   }
 
   function scheduleRetry(current: number, isRetry: boolean) {
-    if (current !== generation) return
+    if (current !== generation || !deps.available()) return
     if (!isRetry) retryTimer = setTimeout(() => void refresh(true), retryDelayMs)
   }
 

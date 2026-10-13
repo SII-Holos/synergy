@@ -8,7 +8,7 @@ import type {
   SessionThinkingSelection,
 } from "@ericsanchezok/synergy-sdk"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useSDK } from "./sdk"
 import { useSessionDataView } from "@/context/session-data-view"
 import { useSync } from "./sync"
@@ -51,6 +51,7 @@ type ModelVariantCacheEntry = {
 
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
+  gate: false,
   init: () => {
     const sdk = useSDK()
     const params = useParams()

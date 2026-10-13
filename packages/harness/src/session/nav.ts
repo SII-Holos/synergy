@@ -163,6 +163,7 @@ export interface ScopeNavEntry {
 }
 export interface ScopeNavIndex {
   version: 1
+  composition?: string
   scopeID: string
   updatedAt: number
   entries: SessionNavEntry[]
@@ -209,7 +210,7 @@ export namespace SessionNav {
     return {
       ...(blueprint ? { blueprint } : {}),
       ...(workspaceType ? { workspaceType } : {}),
-      ...(kind
+      ...(kind && WorkflowKindRegistry.get(kind)
         ? {
             workflow: {
               kind,
@@ -241,15 +242,32 @@ export namespace SessionNav {
     return { items: slice, nextCursor, total }
   }
 
-  async function buildNavIndexUnlocked(scopeID: string): Promise<ScopeNavIndex> {
+  async function buildNavIndexUnlocked(scopeID: string, previous?: ScopeNavIndex): Promise<ScopeNavIndex> {
+    const { Session } = await import(".")
     const sid = Identifier.asScopeID(scopeID)
-    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(sid))
+    const sessionIDs = previous?.entries.map((entry) => entry.id) ?? (await Storage.scan(StoragePath.sessionsRoot(sid)))
+    const activity = new Map(previous?.entries.map((entry) => [entry.id, entry.lastActivityAt]))
     const entries: SessionNavEntry[] = []
     if (sessionIDs.length > 0) {
       const keys = sessionIDs.map((id) => StoragePath.sessionInfo(sid, Identifier.asSessionID(id)))
       const storedSessions = await SessionRecords.readMany(keys)
       for (const storedSession of storedSessions) {
-        const parsed = SessionInfo.safeParse(storedSession)
+        let projected = storedSession
+        try {
+          if (storedSession)
+            projected = {
+              ...storedSession,
+              endpoint: Session.indexEndpoint(storedSession.endpoint, storedSession.time?.archived),
+            }
+        } catch (error) {
+          log.warn("skipping malformed session endpoint", {
+            scopeID,
+            sessionID: storedSession?.id,
+            error: String(error),
+          })
+          continue
+        }
+        const parsed = SessionInfo.safeParse(projected)
         if (!parsed.success) {
           log.warn("skipping malformed session info", {
             scopeID,
@@ -281,7 +299,7 @@ export namespace SessionNav {
           title: session.title,
           tags: session.tags,
           category,
-          lastActivityAt: session.time.updated,
+          lastActivityAt: activity.get(session.id) ?? session.time.updated,
           createdAt: session.time.created,
           updatedAt: session.time.updated,
           pinned: session.pinned ?? 0,
@@ -304,7 +322,13 @@ export namespace SessionNav {
       }
     }
     entries.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id))
-    const index: ScopeNavIndex = { version: 1, scopeID, updatedAt: Date.now(), entries }
+    const index: ScopeNavIndex = {
+      version: 1,
+      composition: SessionSchemaRegistry.projectionKey(),
+      scopeID,
+      updatedAt: Date.now(),
+      entries,
+    }
     const key = StoragePath.sessionNavIndex(sid)
     // An empty namespace has no navigation to materialize. Existing indexes
     // must still be replaced when their last Session disappeared.
@@ -322,8 +346,8 @@ export namespace SessionNav {
     const sid = Identifier.asScopeID(scopeID)
     const key = StoragePath.sessionNavIndex(sid)
     const existing = await Storage.read<ScopeNavIndex>(key).catch(() => undefined)
-    if (existing) return existing
-    return buildNavIndexUnlocked(scopeID).catch<ScopeNavIndex>((error) => {
+    if (existing?.composition === SessionSchemaRegistry.projectionKey()) return existing
+    return buildNavIndexUnlocked(scopeID, existing).catch<ScopeNavIndex>((error) => {
       log.warn("failed to lazily build nav index", { scopeID, error: String(error) })
       return { version: 1, scopeID, updatedAt: 0, entries: [] }
     })
@@ -334,7 +358,8 @@ export namespace SessionNav {
       const index = await Storage.read<ScopeNavIndex>(StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID))).catch(
         () => undefined,
       )
-      if (index) return SessionCompat.mergeNavIndex(scopeID, index)
+      if (index?.composition === SessionSchemaRegistry.projectionKey())
+        return SessionCompat.mergeNavIndex(scopeID, index)
     })
     if (existing) return existing
     return Storage.transaction(async () => {

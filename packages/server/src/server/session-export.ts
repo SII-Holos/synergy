@@ -5,6 +5,7 @@ import { errors } from "./error"
 import { SessionExport } from "@ericsanchezok/synergy-harness/session/session-export"
 import { RolloutArchive } from "@ericsanchezok/synergy-harness/session/rollout/archive"
 import { SessionImport } from "@ericsanchezok/synergy-harness/session/session-import"
+import { Session } from "@ericsanchezok/synergy-harness/session"
 
 export const SessionExportRoute = () =>
   new Hono()
@@ -115,7 +116,10 @@ export const SessionExportRoute = () =>
         if (!(file instanceof File)) return c.json({ message: "Missing file field" }, 400)
         try {
           const result = await SessionImport.fromBlob(file)
-          return c.json(result)
+          return c.json({
+            ...result,
+            sessions: result.sessions.map((item) => ({ ...item, session: Session.publicInfo(item.session) })),
+          })
         } catch (error) {
           return c.json({ message: error instanceof Error ? error.message : String(error) }, 400)
         }

@@ -5,6 +5,7 @@ export type ConversationContentState = {
   partSummary: Record<string, SessionPartSummary[]>
   partPage: Record<string, unknown>
   partVersion: Record<string, string>
+  messageVersion?: Record<string, string | undefined>
 }
 
 export function clearConversationContent(
@@ -17,4 +18,5 @@ export function clearConversationContent(
   delete state.part[messageID]
   if (!options?.preserveSummaries) delete state.partSummary[messageID]
   delete state.partPage[messageID]
+  if (!options?.preserveSummaries && state.messageVersion) delete state.messageVersion[messageID]
 }

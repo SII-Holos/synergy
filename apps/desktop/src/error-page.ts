@@ -21,7 +21,8 @@ export function desktopErrorPage(title: string, details: string, theme: DesktopT
     p { overflow-wrap: anywhere; margin: 0; color: var(--error-muted); line-height: 1.55; }
     .error-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
     button { padding: 8px 14px; border: 1px solid var(--error-panel-border); border-radius: 7px; background: var(--error-panel-bg); color: var(--error-text); cursor: pointer; }
-    button:hover:not(:disabled), button:focus-visible { border-color: var(--error-text); }
+    button:hover:not(:disabled) { border-color: var(--error-text); }
+    button:focus-visible { outline: none; text-decoration: underline; }
     button:disabled { cursor: wait; opacity: .55; }
     .error-status { min-height: 1.5em; margin-top: 10px; font-size: 13px; }
     pre { min-height: 0; flex-shrink: 1; max-height: 50vh; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 16px; padding: 16px; overflow: auto; border: 1px solid var(--error-panel-border); border-radius: 8px; background: var(--error-panel-bg); color: var(--error-code); }

@@ -100,6 +100,41 @@ function stateEvent(type: string, sessionID: string, extra: Record<string, unkno
 }
 
 describe("createEventQueue cadence", () => {
+  test("yields after 64 state events and preserves order across incoming batches", () => {
+    const harness = createHarness()
+    for (let seq = 1; seq <= 160; seq++) {
+      harness.queue.push("scope", { type: "session.updated", seq })
+    }
+    harness.runScheduled()
+    expect(harness.emitted).toHaveLength(64)
+    harness.queue.push("scope", { type: "session.updated", seq: 161 })
+    harness.runScheduled()
+    expect(harness.emitted).toHaveLength(128)
+    harness.runScheduled()
+    expect(harness.emitted.map((entry) => (entry.payload as { seq: number }).seq)).toEqual(
+      Array.from({ length: 161 }, (_, i) => i + 1),
+    )
+  })
+
+  test("yields at the time budget even before reaching the event count", () => {
+    let clock = 0
+    const seen: number[] = []
+    const harness = createHarness({
+      now: () => clock,
+      emit: (_scope, event) => {
+        seen.push((event as { seq: number }).seq)
+        clock += 2
+      },
+    })
+    for (let seq = 1; seq <= 5; seq++) harness.queue.push("scope", { type: "session.updated", seq })
+    harness.runScheduled()
+    expect(seen).toEqual([1, 2])
+    harness.runScheduled()
+    expect(seen).toEqual([1, 2, 3, 4])
+    harness.runScheduled()
+    expect(seen).toEqual([1, 2, 3, 4, 5])
+  })
+
   test("visible cadence schedules flush at 16ms and emits in push order", () => {
     const harness = createHarness()
 
@@ -330,7 +365,7 @@ describe("createEventQueue capacity", () => {
     // flush before enqueueing. The triggering event itself lands in the next
     // batch, so run the scheduled flush to emit it too.
     harness.queue.push("global", stateEvent("session.updated", "ses_final"))
-    harness.runScheduled()
+    while (harness.scheduled.length) harness.runScheduled()
 
     const stateEmitted = harness.emitted.filter(
       (entry) => (entry.payload as { type?: string }).type === "session.updated",

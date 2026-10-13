@@ -12,9 +12,6 @@
   --mcp-control-bg-hover: var(--surface-inset-base-hover);
   --mcp-border: color-mix(in oklch, var(--border-base) 38%, transparent);
   --mcp-border-weak: color-mix(in oklch, var(--border-base) 24%, transparent);
-  --mcp-focus-ring:
-    0 0 0 1px color-mix(in srgb, var(--text-strong) 24%, transparent),
-    0 0 0 3px color-mix(in srgb, var(--text-strong) 7%, transparent);
 
   min-height: 0;
   border-radius: 14px;
@@ -143,12 +140,6 @@
     box-shadow 150ms ease;
 }
 
-.mcp-search-shell:focus-within {
-  border-color: color-mix(in oklch, var(--text-strong) 24%, transparent);
-  background: var(--mcp-control-bg-hover);
-  box-shadow: var(--mcp-focus-ring);
-}
-
 .mcp-search-icon {
   flex: 0 0 auto;
   color: var(--icon-weak);
@@ -202,7 +193,6 @@
 
 .mcp-search-clear:focus-visible {
   outline: none;
-  box-shadow: var(--mcp-focus-ring);
 }
 
 .mcp-server-list {
@@ -251,7 +241,6 @@
 
 .mcp-server-main:focus-visible {
   outline: none;
-  box-shadow: var(--mcp-focus-ring);
 }
 
 .mcp-server-main:disabled {

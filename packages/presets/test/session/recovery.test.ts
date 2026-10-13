@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint/loop-store"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint/loop-store"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
-import { LatticeStore } from "@ericsanchezok/synergy-workflows/lattice/store"
+import { LatticeStore } from "@ericsanchezok/synergy-lattice/lattice/store"
 import { NoteStore } from "@ericsanchezok/synergy-note"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -156,7 +156,7 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
 
           const refreshedSession = await Session.get(session.id)
           const refreshedNote = await NoteStore.get(ScopeContext.current.scope.id, note.id)
-          expect(refreshedSession.blueprint).toEqual({ loopID: loop.id, loopRole: "execution" })
+          expect(refreshedSession.blueprint).toEqual({ loopID: loop.id, loopRole: "execution", source: "user" })
           expect(refreshedNote.blueprint?.activeLoopID).toBe(loop.id)
 
           // A loop with a live driver is not stopped: the loop record is preserved
@@ -603,8 +603,8 @@ describe("SessionRecovery BlueprintLoop audit binding", () => {
           const refreshedExec = await Session.get(execSession.id)
           const refreshedAudit = await Session.get(auditSession.id)
           const refreshedNote = await NoteStore.get(ScopeContext.current.scope.id, note.id)
-          expect(refreshedExec.blueprint).toEqual({ loopID: loop.id, loopRole: "execution" })
-          expect(refreshedAudit.blueprint).toEqual({ loopID: loop.id, loopRole: "audit" })
+          expect(refreshedExec.blueprint).toEqual({ loopID: loop.id, loopRole: "execution", source: "user" })
+          expect(refreshedAudit.blueprint).toEqual({ loopID: loop.id, loopRole: "audit", source: "user" })
           expect(refreshedNote.blueprint?.activeLoopID).toBe(loop.id)
         },
       })

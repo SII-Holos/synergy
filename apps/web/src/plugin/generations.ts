@@ -1,4 +1,4 @@
-import { batch } from "solid-js"
+import { batch, createSignal } from "solid-js"
 import type { PluginContribution } from "./api"
 
 export interface PreparedPluginUI {
@@ -9,6 +9,30 @@ export interface PreparedPluginUI {
 
 function identity(plugin: PluginContribution) {
   return JSON.stringify([plugin.scopeId, plugin.generation, plugin.capabilities.toSorted(), plugin.contributions])
+}
+
+export function createPluginScopeVersions() {
+  const versions = new Map<string, string>()
+  const [revision, setRevision] = createSignal(0)
+  return {
+    get(server: string, scope: string) {
+      revision()
+      return versions.get(JSON.stringify([server, scope])) ?? "[]"
+    },
+    accept(server: string, scope: string, plugins: PluginContribution[]) {
+      const key = JSON.stringify([server, scope])
+      const value = JSON.stringify(plugins.map((plugin) => [plugin.pluginId, identity(plugin)]).sort())
+      if (versions.get(key) === value) return
+      versions.delete(key)
+      versions.set(key, value)
+      while (versions.size > 64) versions.delete(versions.keys().next().value!)
+      setRevision((value) => value + 1)
+    },
+    clear() {
+      versions.clear()
+      setRevision((value) => value + 1)
+    },
+  }
 }
 
 export function createPluginGenerations(input: {

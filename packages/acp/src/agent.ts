@@ -1,4 +1,4 @@
-import * as McpConfigSchema from "@ericsanchezok/synergy-mcp/config-schema"
+import type { McpLocalConfig, McpRemoteConfig } from "@ericsanchezok/synergy-sdk"
 import {
   RequestError,
   type Agent as ACPAgent,
@@ -365,8 +365,19 @@ export namespace ACP {
       })
     }
 
+    private async mcpAvailable() {
+      const result = await this.sdk.global.capabilities({ throwOnError: true }).catch(() => undefined)
+      return result?.data?.apiVersion === 1 && result.data.features.includes("mcp")
+    }
+
+    private async requireMcp(servers: NewSessionRequest["mcpServers"]) {
+      if (servers.length && !(await this.mcpAvailable()))
+        throw RequestError.invalidParams(undefined, "MCP is not available in this Runtime")
+    }
+
     async initialize(params: InitializeRequest): Promise<InitializeResponse> {
       log.info("initialize", { protocolVersion: params.protocolVersion })
+      const mcp = await this.mcpAvailable()
 
       const authMethod: AuthMethod = {
         description: "Run `synergy auth login` in the terminal",
@@ -390,8 +401,8 @@ export namespace ACP {
         agentCapabilities: {
           loadSession: true,
           mcpCapabilities: {
-            http: true,
-            sse: true,
+            http: mcp,
+            sse: mcp,
           },
           promptCapabilities: {
             embeddedContext: true,
@@ -411,6 +422,7 @@ export namespace ACP {
     }
 
     async newSession(params: NewSessionRequest) {
+      await this.requireMcp(params.mcpServers)
       const directory = params.cwd
       try {
         const model = await defaultModel(this.config, directory)
@@ -447,6 +459,7 @@ export namespace ACP {
     }
 
     async loadSession(params: LoadSessionRequest) {
+      await this.requireMcp(params.mcpServers)
       const directory = params.cwd
       const sessionId = params.sessionId
 
@@ -780,7 +793,7 @@ export namespace ACP {
       const defaultAgentName = await AgentModule.defaultAgent()
       const currentModeId = availableModes.find((m) => m.name === defaultAgentName)?.id ?? availableModes[0].id
 
-      const mcpServers: Record<string, McpConfigSchema.Mcp> = {}
+      const mcpServers: Record<string, McpLocalConfig | McpRemoteConfig> = {}
       for (const server of params.mcpServers) {
         if ("type" in server) {
           mcpServers[server.name] = {
@@ -805,18 +818,14 @@ export namespace ACP {
 
       await Promise.all(
         Object.entries(mcpServers).map(async ([key, mcp]) => {
-          await this.sdk.mcp
-            .add(
-              {
-                directory,
-                name: key,
-                config: mcp,
-              },
-              { throwOnError: true },
-            )
-            .catch((error) => {
-              log.error("failed to add mcp server", { name: key, error })
-            })
+          await this.sdk.mcp.add(
+            {
+              directory,
+              name: key,
+              config: mcp,
+            },
+            { throwOnError: true },
+          )
         }),
       )
 

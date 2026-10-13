@@ -5,8 +5,9 @@ import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/works
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import path from "node:path"
 
-export function testRuntime() {
+export function testRuntime(options: { home?: string; register?: () => void } = {}) {
   return harnessRuntime({
+    home: options.home,
     composition: {
       register() {
         registerLocalRuntime({
@@ -15,6 +16,7 @@ export function testRuntime() {
           }),
         })
         registerNote()
+        options.register?.()
       },
     },
   })

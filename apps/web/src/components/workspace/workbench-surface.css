@@ -251,8 +251,9 @@
 .workbench-surface-add-group:has([aria-expanded="true"]) {
   background-color: var(--workbench-control-bg, var(--surface-inset-base));
 }
+.workbench-surface-add-group [data-component="icon-button"]:is(:hover, :focus-visible):not(:disabled),
 .workbench-surface-add-group [data-component="icon-button"][aria-expanded="true"]:not(:disabled) {
-  background-color: var(--workbench-control-bg-hover, var(--surface-inset-base-hover));
+  background-color: var(--surface-inset-strong);
 }
 .workbench-surface-add-group [data-component="icon-button"]:active:not(:disabled) {
   background-color: var(--surface-inset-strong-hover);
@@ -278,10 +279,6 @@
 }
 .workbench-surface-add-group > [data-component="icon-button"] {
   border-radius: 8px 0 0 8px;
-}
-.workbench-surface-controls [data-component="icon-button"]:focus-visible {
-  outline: 2px solid var(--border-interactive-base);
-  outline-offset: -2px;
 }
 
 .workbench-surface-add-menu {
@@ -418,10 +415,6 @@
 .resource-home-card:hover {
   background: var(--surface-raised-base-hover);
 }
-.resource-home-card:focus-visible {
-  outline: 2px solid var(--border-interactive-base);
-  outline-offset: 2px;
-}
 @media (hover: none) {
   .workbench-surface-tab-close {
     opacity: 1;
@@ -470,14 +463,6 @@
 .workbench-surface-launcher-row:hover .workbench-surface-launcher-icon {
   background: var(--workbench-control-bg, var(--surface-raised-base));
   color: var(--icon-strong);
-}
-
-.workbench-surface-launcher-row:focus-visible,
-.workbench-surface-add-row:focus-visible,
-.workbench-surface-tab-main:focus-visible,
-.workbench-surface-tab-close:focus-visible {
-  outline: 2px solid var(--border-focus, var(--border-strong-base));
-  outline-offset: 2px;
 }
 
 .workbench-surface-launcher-icon {

@@ -8,9 +8,6 @@
   --rewind-border-strong: color-mix(in oklch, var(--border-base) 44%, transparent);
   --rewind-row-bg: color-mix(in srgb, var(--dialog-control-bg) 62%, transparent);
   --rewind-row-bg-hover: color-mix(in srgb, var(--dialog-control-bg-hover) 78%, transparent);
-  --rewind-focus-ring:
-    0 0 0 1px color-mix(in srgb, var(--text-strong) 24%, transparent),
-    0 0 0 3px color-mix(in srgb, var(--text-strong) 7%, transparent);
 
   width: min(460px, calc(100vw - 32px));
   max-width: min(460px, calc(100vw - 32px));
@@ -115,7 +112,7 @@
 
 .rewind-confirm-file-option:focus-within {
   outline: none;
-  box-shadow: var(--rewind-focus-ring);
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 
 .rewind-confirm-file-option-copy {

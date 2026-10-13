@@ -5,6 +5,7 @@ export type MigrationOwner =
 export interface Migration {
   id: string
   description: string
+  configuration?: "files"
   up(progress: (current: number, total: number, phase?: number) => void): Promise<void>
   upgradeConfig?(config: Record<string, unknown>): void
   upgradeRecord?(key: string[], record: Record<string, unknown>): void

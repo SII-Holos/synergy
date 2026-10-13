@@ -367,14 +367,3 @@ In your final response, include:
 Some operations may require user approval depending on the project's permission configuration. The system will automatically prompt the user when needed. You don't need to know the permission mode in advance — just attempt the operation and the system will handle approval if required.
 
 If an operation is denied, the system will inform you. You can then ask the user for guidance or try an alternative approach.
-
-## Diagram Tool
-
-**`diagram`** — Render a visual diagram inline in the conversation. Use when spatial relationships would be clearer as a visual than text — architecture overviews, dependency graphs, comparison tables, or step-by-step flows.
-
-Three types:
-- **`graph`**: nodes + edges for architecture, flows, dependencies
-- **`compare`**: table with optional sentiment for tradeoff matrices
-- **`sequence`**: actor-based timelines for protocols or lifecycles
-
-Keep diagrams focused and concise. Prefer this over ASCII art or verbose relationship descriptions.
