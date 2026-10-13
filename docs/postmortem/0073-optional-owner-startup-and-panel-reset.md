@@ -29,3 +29,5 @@ The [managed startup test](../../packages/presets/test/cli/managed-readiness.tes
 ## Lessons
 
 An optional owner becoming available must obey the same startup work limits as core code. A visible navigation projection is not the authority for destroying a retained native resource. Test both unknown and absent capabilities with real mounted state.
+
+Real-provider acceptance also exposed repeated native-clamp compensation during terminal process collection. The previous conversation fixture omitted the following transform and could not reproduce the visible rebound. The [follow-contraction decision](../decisions/implemented/bug-fix/2026-10-13-follow-content-contraction.md) records the correction and tests with production presentation geometry.

@@ -646,9 +646,11 @@ const resource = {
   open: async () => ({ status: "cancelled" as const }),
 }
 function Scroller(props: ParentProps) {
+  const [motionTarget, setMotionTarget] = createSignal<HTMLElement>()
   const autoScroll = scrolling
     ? createAutoScroll({
         working: context.isWorking!,
+        motionTarget: new URL(location.href).searchParams.has("motion") ? motionTarget : undefined,
         captureReadingAnchor: ({ reading, target }) => {
           const element = scroll()
           if (!element || !reading) return
@@ -670,23 +672,25 @@ function Scroller(props: ParentProps) {
       style="height:600px;overflow:auto;width:700px;max-width:100%"
       data-scroller
     >
-      <div ref={(element) => autoScroll?.contentRef(element)}>
-        <Show when={historyControls && historyMore()}>
-          <button
-            type="button"
-            style="height:40px;display:block;margin-bottom:20px"
-            onClick={async () => {
-              await Promise.resolve()
-              window.__conversationProcess.prependTurns(
-                120,
-                new URL(location.href).searchParams.has("keep-history-control"),
-              )
-            }}
-          >
-            Load earlier messages
-          </button>
-        </Show>
-        {props.children}
+      <div ref={(element) => autoScroll?.contentRef(element)} style={{ overflow: "clip" }}>
+        <div ref={setMotionTarget} data-follow-motion>
+          <Show when={historyControls && historyMore()}>
+            <button
+              type="button"
+              style="height:40px;display:block;margin-bottom:20px"
+              onClick={async () => {
+                await Promise.resolve()
+                window.__conversationProcess.prependTurns(
+                  120,
+                  new URL(location.href).searchParams.has("keep-history-control"),
+                )
+              }}
+            >
+              Load earlier messages
+            </button>
+          </Show>
+          {props.children}
+        </div>
       </div>
       <button type="button" data-outside-control>
         Outside conversation

@@ -91,12 +91,24 @@ test.each(["index.mjs", "index.jsx"] as const)(
         const before = y()
         window.keyedLayout.append()
         const samples = []
-        for (let frame = 0; frame < 35; frame++) {
+        const deadline = performance.now() + 3000
+        let settled = false
+        while (performance.now() < deadline) {
           await new Promise(requestAnimationFrame)
+          await new Promise((resolve) => setTimeout(resolve, 0))
           samples.push(y())
+          if (
+            samples.length > 2 &&
+            !document.querySelector("[data-motion-resizing]") &&
+            !document.getAnimations().length
+          ) {
+            settled = true
+            break
+          }
         }
-        return { before, samples }
+        return { before, samples, settled }
       })
+      expect(result.settled).toBe(true)
       expect(result.samples.at(-1)).toBeCloseTo(result.before - 33, 0)
       for (let index = 0; index < result.samples.length; index++) {
         expect(result.samples[index], JSON.stringify(result)).toBeGreaterThanOrEqual(result.before - 34)
@@ -151,6 +163,50 @@ test("a tool entrance preserves an in-flight following offset instead of snappin
     return { before, samples }
   })
   expect(Math.max(...result.samples.map((y) => Math.abs(result.before - y))), JSON.stringify(result)).toBeLessThan(1)
+}, 30000)
+
+test("terminal process collection preserves the visible answer while following its painted position", async () => {
+  await page.goto(`${url}?scrolling&motion`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.grow(20)
+    window.__conversationProcess.stream(
+      "Final answer remains readable while the completed process collects. ".repeat(30),
+    )
+    window.__conversationProcess.latest()
+  })
+  await page.waitForFunction(
+    () =>
+      !document.querySelector("[data-motion-resizing]") &&
+      !document.querySelector("[data-follow-motion]")!.getAnimations().length,
+  )
+  const result = await page.evaluate(async () => {
+    const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+    const current = () => document.querySelector('[data-part-id="answer"]')?.closest("[data-display-row]")
+    const answer = current()!
+    const initial = answer.getBoundingClientRect().top
+    const height = viewport.scrollHeight
+    window.__conversationProcess.complete()
+    const samples = []
+    for (let frame = 0; frame < 60; frame++) {
+      await new Promise(requestAnimationFrame)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      samples.push({
+        y: answer.getBoundingClientRect().top,
+        height: viewport.scrollHeight,
+        same: answer === current(),
+        connected: answer.isConnected,
+      })
+    }
+    return { initial, height, samples }
+  })
+  expect(result.height - result.samples.at(-1)!.height).toBeGreaterThan(100)
+  for (let index = 0; index < result.samples.length; index++) {
+    const sample = result.samples[index]
+    expect(sample.same, JSON.stringify(result)).toBe(true)
+    expect(sample.y - (result.samples[index - 1]?.y ?? result.initial), JSON.stringify(result)).toBeLessThanOrEqual(1)
+    expect(sample.y, JSON.stringify(result)).toBeGreaterThanOrEqual(result.samples.at(-1)!.y - 1)
+  }
 }, 30000)
 
 test("focus outside a large conversation does not reread its summaries", async () => {

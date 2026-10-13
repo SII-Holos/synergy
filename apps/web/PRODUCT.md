@@ -547,4 +547,6 @@ Keep the six most recent session views and eight resource panels resident, inclu
 
 Cold historical body hydration keeps the latest viewport pinned without a whole-transcript translation or fade. Ordinary following motion becomes available after the mounted body window and its Markdown layout settle. This is an animation condition, not a barrier to reading or using the composer; later generation keeps the normal following behavior. Corrections spanning at least one viewport and distant Latest navigation land immediately at full opacity; they never dim the existing transcript.
 
+Automatic process collection preserves the visible answer while following. Removing preceding content and resizing the viewport may happen together; the transcript must not compensate the same movement twice or leave the viewport and rebound.
+
 Inactive presentations are hidden and non-interactive. They pause detailed subscriptions, clocks and layout measurements. Residency follows LRU and the existing content budget; draft and resource ownership stays in the owning domain when DOM is evicted. Browser pages and Terminal processes are not closed by presentation eviction. Third-party instances require an explicit pause/resume contract; module loading is deduplicated for every panel.
