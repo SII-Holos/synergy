@@ -16,6 +16,7 @@ export type SaveContext<TDraft> = {
   domainSummaries: () => ConfigDomainSummary[]
   hasAnyChanges: () => boolean
   editingLabel: () => string
+  hasUnsavedResources?: () => boolean
   refreshAfterConfigChange: (
     changedFields: string[],
     submittedDraft: TDraft,
@@ -131,7 +132,7 @@ export function useSettingsSave<TDraft>(ctx: SaveContext<TDraft>) {
 
   function closeWithGuard() {
     if (status() === "saving" || ctx.closeBlocked?.()) return
-    if (!ctx.hasAnyChanges() && !domains.pending()) {
+    if (!ctx.hasAnyChanges() && !ctx.hasUnsavedResources?.() && !domains.pending()) {
       void Promise.resolve(ctx.discardChanges()).then(ctx.closeDialog)
       return
     }

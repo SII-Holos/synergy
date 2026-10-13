@@ -18241,7 +18241,7 @@
           }
         ],
         "summary": "Update provider account connection",
-        "description": "Update the name, endpoint, or enabled state of a managed provider account connection.",
+        "description": "Update the name, endpoint, or enabled state of an existing provider account connection.",
         "responses": {
           "200": {
             "description": "Provider account connection updated",

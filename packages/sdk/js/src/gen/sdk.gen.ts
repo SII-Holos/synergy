@@ -10595,7 +10595,7 @@ export class Connection extends HeyApiClient {
   /**
    * Update provider account connection
    *
-   * Update the name, endpoint, or enabled state of a managed provider account connection.
+   * Update the name, endpoint, or enabled state of an existing provider account connection.
    */
   public update<ThrowOnError extends boolean = false>(
     parameters: {

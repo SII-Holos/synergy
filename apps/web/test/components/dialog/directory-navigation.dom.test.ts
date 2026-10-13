@@ -255,6 +255,16 @@ test("long paths leave the edit action and its keyboard focus unobstructed in ei
       await page.mouse.move(0, 0)
       const restingColor = await edit().evaluate((element) => getComputedStyle(element).color)
       await edit().click()
+      const focus = await editor().evaluate((element) => {
+        const wrapper = getComputedStyle(element.closest('[data-slot="input-wrapper"]')!)
+        const rgb = wrapper.outlineColor
+          .match(/[\d.]+/g)!
+          .slice(0, 3)
+          .map(Number)
+        return { width: parseFloat(wrapper.outlineWidth), chroma: Math.max(...rgb) - Math.min(...rgb) }
+      })
+      expect(focus.width).toBeGreaterThanOrEqual(2)
+      expect(focus.chroma).toBeLessThan(20)
       await editor().fill("/projects/research/working-files/current-project-folder-with-a-long-name")
       await editor().press("Enter")
       await editor().waitFor({ state: "detached" })

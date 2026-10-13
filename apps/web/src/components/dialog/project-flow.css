@@ -303,6 +303,11 @@
   gap: 6px;
   min-width: 0;
 }
+.project-recovery-reason {
+  color: var(--text-base);
+  font-size: 14px;
+  line-height: 20px;
+}
 .project-recovery-path {
   font-size: 13px;
   line-height: 20px;
@@ -419,6 +424,19 @@
     --dialog-width: calc(100vw - 16px);
   }
 }
+.project-settings-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.project-settings-footer > [role="status"] {
+  flex: 1 1 180px;
+}
+.project-settings-footer > [data-slot="dialog-actions"] {
+  flex-shrink: 0;
+}
 .project-settings-section {
   display: flex;
   flex-direction: column;
@@ -441,14 +459,24 @@
   border-radius: 10px;
 }
 .project-start-options button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
   min-height: 36px;
   border-radius: 6px;
   color: var(--text-weak);
 }
-.project-start-options button:hover:not(:disabled),
+.project-start-options button:hover:not(:disabled):not([aria-pressed="true"]) {
+  background: var(--surface-float-base-hover);
+}
 .project-start-options button[aria-pressed="true"] {
-  background: var(--workbench-selected-bg);
+  background: var(--surface-raised-base-active);
+  border-color: var(--border-selected);
   color: var(--text-strong);
+  font-weight: var(--font-weight-medium);
 }
 .project-worktree-row {
   display: flex;

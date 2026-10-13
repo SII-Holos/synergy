@@ -11,6 +11,7 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useLingui } from "@lingui/solid"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useGlobalSync } from "@/context/global-sync"
 import type { LocalScope } from "@/context/layout"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useProjectDirectoryPicker } from "./project-directory-picker"
@@ -23,9 +24,10 @@ import { ProjectFolderFields } from "./project-folder-fields"
 import { useComputerLabel } from "./computer-menu"
 import "./project-flow.css"
 
-export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void }) {
+export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void | Promise<unknown> }) {
   const dialog = useDialog()
   const sdk = useGlobalSDK()
+  const sync = useGlobalSync()
   const client = sdk.client
   createEffect(() => {
     if (sdk.client !== client) dialog.close()
@@ -44,9 +46,10 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
   const [loadedFolders, setLoadedFolders] = createSignal<ProjectDirectories>()
   const [defaults, setDefaults] = createSignal<ProjectTaskDefaults>({})
   const [loaded, setLoaded] = createSignal<ProjectTaskDefaultsResult>()
-  const [pending, setPending] = createSignal<string>()
+  const [pending, setPending] = createSignal<"load" | "save">()
   const [error, setError] = createSignal<{ section: string; message: string }>()
-  const [saved, setSaved] = createSignal<string>()
+  const [saved, setSaved] = createSignal<string[]>([])
+  const [refreshError, setRefreshError] = createSignal("")
   const initialFolders = () => loadedFolders()?.folders.map((folder) => folder.path) ?? []
   const initialMain = () =>
     loadedFolders()?.folders.find((folder) => folder.workspaceID === loadedFolders()?.mainWorkspaceID)?.path ?? ""
@@ -55,6 +58,18 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
   const defaultsDirty = () => JSON.stringify(defaults()) !== JSON.stringify(loaded()?.defaults ?? {})
   const dirty = () => basicsDirty() || filesDirty() || defaultsDirty()
   const mainGit = createMemo(() => loadedFolders()?.folders.find((folder) => folder.path === main())?.git)
+  const selectedStart = () =>
+    defaults().defaultSessionWorkspace ?? loaded()?.effective.defaultSessionWorkspace ?? "main"
+  const invalidStart = () => selectedStart() === "worktree" && mainGit() === false
+  const canSave = () =>
+    !pending() &&
+    (dirty() || !!refreshError()) &&
+    !!name().trim() &&
+    !!loadedFolders() &&
+    !!loaded() &&
+    !!main() &&
+    !invalidStart() &&
+    (!defaultsDirty() || loaded()!.editable)
   async function close() {
     if (pending()) return
     if (
@@ -69,24 +84,74 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
       return
     dialog.close()
   }
-  async function perform(section: string, action: () => Promise<void>) {
-    if (pending() || controller.signal.aborted) return
-    setPending(section)
+  async function save() {
+    if (!canSave() || controller.signal.aborted) return
+    const completed = refreshError() ? [...saved()] : []
+    setPending("save")
     setError(undefined)
-    setSaved(undefined)
+    setSaved([])
+    setRefreshError("")
+    let section = "folders"
     try {
-      await action()
-      if (!controller.signal.aborted && section !== "load") {
-        setSaved(section)
-        props.onSaved?.()
+      if (filesDirty()) {
+        const result = await client.project.updateDirectories(
+          {
+            scopeID: props.scope.id,
+            projectDirectoriesUpdate: {
+              directories: folders(),
+              mainDirectory: main(),
+              revision: loadedFolders()!.revision,
+            },
+          },
+          options,
+        )
+        if (controller.signal.aborted) return
+        setLoadedFolders(result.data)
+        setFolders(result.data.folders.map((folder) => folder.path))
+        setMain(result.data.folders.find((folder) => folder.workspaceID === result.data.mainWorkspaceID)?.path ?? "")
+        completed.push(_(copy.folders))
+      }
+      section = "defaults"
+      if (invalidStart()) return
+      if (defaultsDirty()) {
+        const result = await client.project.taskDefaults.update(
+          { scopeID: props.scope.id, projectTaskDefaultsInput: { defaults: defaults(), expected: loaded()!.defaults } },
+          options,
+        )
+        if (controller.signal.aborted) return
+        setLoaded(result.data)
+        setDefaults(result.data.defaults)
+        completed.push(_(copy.start))
+      }
+      section = "name"
+      if (basicsDirty()) {
+        const submittedName = name().trim()
+        await client.scope.update({ ...scopeUpdateRequest(props.scope, {}), name: submittedName }, options)
+        if (controller.signal.aborted) return
+        setSavedName(submittedName)
+        setName(submittedName)
+        completed.push(_(copy.name))
       }
     } catch (failure) {
       if (!controller.signal.aborted) setError({ section, message: scopeUpdateErrorMessage(failure, _(copy.failed)) })
     } finally {
-      if (!controller.signal.aborted) setPending(undefined)
+      if (!controller.signal.aborted && completed.length) {
+        const results = await Promise.allSettled([
+          Promise.resolve().then(() => sync.refreshConfig(props.scope.id)),
+          Promise.resolve().then(() => props.onSaved?.()),
+        ])
+        const failure = results.find((result) => result.status === "rejected")
+        if (failure && !controller.signal.aborted)
+          setRefreshError(scopeUpdateErrorMessage(failure.reason, _(copy.failed)))
+      }
+      if (!controller.signal.aborted) {
+        setSaved([...new Set(completed)])
+        setPending(undefined)
+      }
     }
   }
   async function load() {
+    if (pending() || controller.signal.aborted) return
     if (
       dirty() &&
       !(await confirm.ask({
@@ -97,7 +162,10 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
       }))
     )
       return
-    await perform("load", async () => {
+    setPending("load")
+    setError(undefined)
+    if (!refreshError()) setSaved([])
+    try {
       const [configuration, result] = await Promise.all([
         sdk.client.project.directories({ scopeID: props.scope.id }, options),
         sdk.client.project.taskDefaults.get({ scopeID: props.scope.id }, options),
@@ -111,56 +179,21 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
       )
       setLoaded(result.data)
       setDefaults(result.data.defaults)
-    })
+    } catch (failure) {
+      if (!controller.signal.aborted)
+        setError({ section: "load", message: scopeUpdateErrorMessage(failure, _(copy.failed)) })
+    } finally {
+      if (!controller.signal.aborted) setPending(undefined)
+    }
   }
   onMount(() => void load())
-  const saveName = () =>
-    perform("name", async () => {
-      await sdk.client.scope.update({ ...scopeUpdateRequest(props.scope, {}), name: name().trim() }, options)
-      setSavedName(name())
-    })
-  const saveFolders = () =>
-    perform("folders", async () => {
-      const result = await sdk.client.project.updateDirectories(
-        {
-          scopeID: props.scope.id,
-          projectDirectoriesUpdate: {
-            directories: folders(),
-            mainDirectory: main(),
-            revision: loadedFolders()!.revision,
-          },
-        },
-        options,
-      )
-      setLoadedFolders(result.data)
-      setFolders(result.data.folders.map((folder) => folder.path))
-      setMain(result.data.folders.find((folder) => folder.workspaceID === result.data.mainWorkspaceID)?.path ?? "")
-    })
-  const saveDefaults = () =>
-    perform("defaults", async () => {
-      const result = await sdk.client.project.taskDefaults.update(
-        { scopeID: props.scope.id, projectTaskDefaultsInput: { defaults: defaults(), expected: loaded()!.defaults } },
-        options,
-      )
-      setLoaded(result.data)
-      setDefaults(result.data.defaults)
-    })
   const feedback = (section: string) => (
-    <>
-      <Show when={error()?.section === section}>
-        <p role="alert" class="project-inline-error">
-          {error()?.message}
-        </p>
-      </Show>
-      <Show when={saved() === section}>
-        <p role="status" class="project-inline-note">
-          {_(common.saved)}
-        </p>
-      </Show>
-    </>
+    <Show when={error()?.section === section}>
+      <p role="alert" class="project-inline-error">
+        {error()?.message}
+      </p>
+    </Show>
   )
-  const selectedStart = () =>
-    defaults().defaultSessionWorkspace ?? loaded()?.effective.defaultSessionWorkspace ?? "main"
   return (
     <Dialog
       title={_(copy.settings)}
@@ -184,10 +217,31 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
         </button>
       }
       footer={
-        <div data-slot="dialog-actions">
-          <Button variant="secondary" size="large" disabled={!!pending()} onClick={() => void close()}>
-            {_(common.cancel)}
-          </Button>
+        <div class="project-settings-footer">
+          <p role="status" class="project-inline-note">
+            {!pending() &&
+              saved().length > 0 &&
+              (error() || invalidStart()
+                ? _({
+                    id: "project.entry.partialSave",
+                    message: "Some changes were saved: {sections}. Save again to retry the remaining changes.",
+                    values: { sections: saved().join(", ") },
+                  })
+                : refreshError()
+                  ? _({
+                      id: "project.entry.refreshSavedFailed",
+                      message: "Changes were saved, but the updated settings could not be loaded. Save again to retry.",
+                    })
+                  : !dirty() && _(common.saved))}
+          </p>
+          <div data-slot="dialog-actions">
+            <Button variant="secondary" size="large" disabled={!!pending()} onClick={() => void close()}>
+              {_(common.cancel)}
+            </Button>
+            <Button variant="primary" size="large" disabled={!canSave()} onClick={() => void save()}>
+              {_(pending() === "save" ? copy.loading : common.save)}
+            </Button>
+          </div>
         </div>
       }
     >
@@ -195,15 +249,6 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
         <section class="project-settings-section">
           <TextField label={_(copy.name)} value={name()} onChange={setName} disabled={!!pending()} />
           {feedback("name")}
-          <div class="project-flow-actions">
-            <Button
-              variant="secondary"
-              disabled={!!pending() || !basicsDirty() || !name().trim()}
-              onClick={() => void saveName()}
-            >
-              {_(pending() === "name" ? copy.loading : common.save)}
-            </Button>
-          </div>
         </section>
         <section class="project-settings-section">
           <ProjectFolderFields
@@ -226,15 +271,6 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
           <Show when={filesDirty()}>
             <p class="project-inline-note">{_(copy.folderImpact)}</p>
           </Show>
-          <div class="project-flow-actions">
-            <Button
-              variant="secondary"
-              disabled={!!pending() || !loadedFolders() || !filesDirty() || !main()}
-              onClick={() => void saveFolders()}
-            >
-              {_(pending() === "folders" ? copy.loading : common.save)}
-            </Button>
-          </div>
         </section>
         <section class="project-settings-section">
           <label>{_(copy.start)}</label>
@@ -246,6 +282,9 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
               onClick={() => setDefaults((previous) => ({ ...previous, defaultSessionWorkspace: "main" }))}
             >
               {_(copy.main)}
+              <Show when={selectedStart() === "main"}>
+                <Icon name={getSemanticIcon("state.success")} size="small" />
+              </Show>
             </button>
             <button
               type="button"
@@ -254,19 +293,34 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
               onClick={() => setDefaults((previous) => ({ ...previous, defaultSessionWorkspace: "worktree" }))}
             >
               {_(copy.newWorktree)}
+              <Show when={selectedStart() === "worktree"}>
+                <Icon name={getSemanticIcon("state.success")} size="small" />
+              </Show>
             </button>
           </div>
+          <Show when={invalidStart()}>
+            <p role="alert" class="project-inline-error">
+              {_({
+                id: "project.entry.worktreeRequiresGit",
+                message: "Worktree needs a Git folder. Choose Main folder or select a Git main folder before saving.",
+              })}
+            </p>
+          </Show>
           {feedback("defaults")}
-          <div class="project-flow-actions">
-            <Button variant="secondary" disabled={!!pending() || !defaultsDirty()} onClick={() => void saveDefaults()}>
-              {_(pending() === "defaults" ? copy.loading : common.save)}
-            </Button>
-          </div>
         </section>
-        <Button variant="ghost" onClick={() => dialog.push(() => <DialogWorktrees scopeID={props.scope.id} />)}>
+        <Button
+          variant="ghost"
+          disabled={!!pending()}
+          onClick={() => dialog.push(() => <DialogWorktrees scopeID={props.scope.id} />)}
+        >
           {_(copy.manageWorktrees)}
         </Button>
         {feedback("load")}
+        <Show when={refreshError()}>
+          <p role="alert" class="project-inline-error">
+            {refreshError()}
+          </p>
+        </Show>
         <Show when={error()}>
           <Button variant="ghost" disabled={!!pending()} onClick={() => void load()}>
             {_(copy.retry)}

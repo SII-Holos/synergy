@@ -84,10 +84,6 @@
     opacity: 0.55;
     cursor: default;
   }
-  :focus-visible {
-    outline: 2px solid var(--text-interactive-base);
-    outline-offset: 2px;
-  }
   [data-render-type="slider"] {
     display: flex;
     gap: 12px;

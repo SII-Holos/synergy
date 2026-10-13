@@ -178,6 +178,8 @@ Provider authentication health changes only in response to real model, usage, or
 
 When credential health is `action_required`, stored provider credentials can be cleared through Disconnect. Disconnect removes the Synergy-managed stored credential entry but preserves the provider catalog, model catalog, and configuration; the provider remains visible and can be reconnected. Environment and plugin-supplied credentials are unaffected because they are not stored by Synergy and remain active.
 
+Providers lists connected and unfinished accounts. Edit account opens the remark, credential update, enabled state and advanced endpoint controls for both default and named accounts. The optional remark is the connection's display name; changing it preserves model references and account identity. Add model service selects a service type and connects a first or additional account through the same form. The account's More menu can preselect that service or remove a named account. Unsaved inputs survive switching Settings sections; leaving an edited form asks before discarding them.
+
 Named provider account connections can be removed only after their model references are cleared. Synergy rejects removal while the connection is selected by a default or role model, an agent, command, category, Quick Switcher preference, or Feishu/Lark account; the response identifies the referencing configuration paths and leaves both the connection and its credentials unchanged.
 
 MCP tools still pass through Synergy's tool exposure, capability, approval, timeout, and plugin-hook pipeline. See [Execution Boundaries](../architecture/execution-boundaries.md).
