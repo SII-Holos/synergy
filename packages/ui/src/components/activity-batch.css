@@ -198,6 +198,33 @@
   width: 20px;
   height: 20px;
 }
+[data-slot="process-reasoning-status"] {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+[data-slot="process-reasoning-label"] {
+  flex: 0 0 auto;
+}
+
+[data-slot="process-reasoning-progress"] {
+  display: inline-flex;
+  align-items: baseline;
+  flex: 0 1 auto;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-subtle);
+  white-space: nowrap;
+}
+
+[data-slot="process-reasoning-progress-unit"] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 [data-reasoning-part] + [data-reasoning-part] {
   margin-block-start: var(--conversation-flow-gap, 8px);

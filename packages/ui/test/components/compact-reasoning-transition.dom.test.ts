@@ -34,7 +34,7 @@ test("streaming reasoning remains readable while a new Match awaits a transition
           started()
         }))
         const item = { kind: "reasoning", part: { get text() { return text() } } }
-        const Detail = props => <CompactReasoningLine fullText={props.item.part.text} running={false} />
+        const Detail = props => <CompactReasoningLine fullText={props.item.part.text} running={false} identity="transition-reasoning" />
         api = { errors, setText, entered, enter: () => startTransition(() => { setVisible(true); refetch() }), release: () => release() }
         return <ErrorBoundary fallback={error => { errors.push(error.message); return <pre>{error.message}</pre> }}>
           <Suspense fallback="loading"><span>{resource()}</span><Show when={visible()}><Switch>

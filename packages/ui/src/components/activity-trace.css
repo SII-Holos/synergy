@@ -362,61 +362,6 @@
   }
 }
 
-[data-component="animated-activity-count"] {
-  display: inline-grid;
-  min-width: 1ch;
-  overflow: hidden;
-  color: inherit;
-  font-variant-numeric: tabular-nums;
-  text-align: end;
-  vertical-align: baseline;
-
-  [data-slot="activity-count-grid"] {
-    display: grid;
-    min-width: 0;
-  }
-
-  [data-slot="activity-count-old"],
-  [data-slot="activity-count-new"] {
-    grid-area: 1 / 1;
-    justify-self: end;
-    min-width: 100%;
-    text-align: end;
-  }
-
-  &[data-animating] [data-slot="activity-count-old"] {
-    animation: activity-count-out var(--motion-duration-base, 180ms)
-      var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1)) both;
-  }
-
-  &[data-animating] [data-slot="activity-count-new"] {
-    animation: activity-count-in var(--motion-duration-base, 180ms)
-      var(--motion-ease-standard, cubic-bezier(0.2, 0, 0, 1)) both;
-  }
-}
-
-@keyframes activity-count-out {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-}
-
-@keyframes activity-count-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @media (max-width: 420px) {
   [data-component="activity-trace"] {
     [data-slot="activity-step-trigger"] [data-slot="activity-state"] span {
@@ -445,12 +390,6 @@
     transition: none;
     animation: none !important;
   }
-
-  [data-component="animated-activity-count"] [data-slot="activity-count-old"],
-  [data-component="animated-activity-count"] [data-slot="activity-count-new"] {
-    animation: none !important;
-  }
-
   [data-component="activity-trace"] [data-component="spinner"] rect,
   [data-component="reasoning-summary"] [data-component="spinner"] rect {
     animation: none !important;
