@@ -3090,11 +3090,6 @@
   color: var(--text-strong);
 }
 
-.providers-advanced > summary:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
-}
-
 .providers-account-setup {
   display: flex;
   flex-direction: column;
@@ -4399,11 +4394,6 @@
 .providers-connected-open:hover {
   color: var(--text-strong);
   background: var(--settings-control-bg);
-}
-.providers-more:focus-visible,
-.providers-connected-open:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 .providers-connected-copy > span {
   overflow-wrap: anywhere;

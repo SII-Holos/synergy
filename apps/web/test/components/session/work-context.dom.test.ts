@@ -105,7 +105,9 @@ beforeAll(async () => {
         editor:{label:()=>"Message",completion:()=>undefined,placeholder:()=>undefined,mount:()=>()=>{},beforeInput:()=>{},input:()=>{},paste:async()=>{},keyDown:()=>{}},
         render:part=>part==="leading"?<><div data-extension>Composer extension</div><SessionWorkContext directories={directories()} directoryError={state.error} onRefresh={()=>patch("error","")} workspaceSelection={state.deriveSelection&&state.selection.mode==="workspace"?{...state.selection,workspaceGeneration:state.gen}:state.selection} workspaceSelectionKey={JSON.stringify(state.selection)} running={state.running} disabled={state.disabled} environmentProfile={state.profile} startOptions={[]} onSelect={selection=>{window.fixture.selection=selection;patch("selection",selection)}}>{state.extras&&<><button data-shortcuts>Quick actions</button><span data-agenda>Scheduled wake</span></>}</SessionWorkContext></>:part==="context"?<><button data-attachment>Attachment</button><p data-permission>Permission request</p><p role="alert" data-error>Request failed</p></>:part==="toolbar"?<button type="submit" data-send>Send</button>:null}
       if(new URLSearchParams(location.search).has("welcome")) {
-        const composer={input:()=>input,mount:dock.mount,ready:()=>true,readOnly:()=>false,links:()=>[],render:()=>null}
+        const [controller,setController]=createSignal(input)
+        window.fixture.replaceController=()=>setController({...input,editor:{...input.editor,mount:element=>{element.textContent="Restored project draft";return ()=>{}}}})
+        const composer={input:controller,mount:dock.mount,ready:()=>true,readOnly:()=>false,links:()=>[],render:()=>null}
         return <div data-pane style={{width:state.width+"px",height:"100dvh","max-width":"100%"}}><DefaultSession context={{layout:{
           minimumWidth:()=>undefined,promptHeight:height,
           render:part=>part==="composer"?<PromptDock context={composer}/>:part==="conversation"?<div class="flex-1 min-h-0"><div class="session-empty-view" data-interactive><div class="session-welcome-region"><WelcomeStage definition={welcomeScenes.find(scene=>scene.id==="flight")} seed={8} memory={memory} blocked={!!dialog.active}/></div></div></div>:null
@@ -730,3 +732,12 @@ test("project directory failures stay local and a late connection response canno
   expect(await menu.getByText("projects/main-folder", { exact: true }).count()).toBe(0)
   expect(errors).toEqual([])
 }, 30_000)
+
+test("a replacement Composer controller renders its own restored project draft", async () => {
+  await open(true)
+  await page.evaluate(() =>
+    (window as unknown as { fixture: { replaceController(): void } }).fixture.replaceController(),
+  )
+  expect(await page.getByRole("textbox", { name: "Message", exact: true }).innerText()).toBe("Restored project draft")
+  expect(errors).toEqual([])
+}, 20_000)

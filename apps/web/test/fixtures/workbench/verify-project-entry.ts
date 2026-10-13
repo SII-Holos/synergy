@@ -403,6 +403,13 @@ try {
     .getByRole("button", { name: /合并并切换/ })
     .click()
   await page.waitForURL(route(scopeID))
+  await page.waitForFunction(
+    (expected) =>
+      document
+        .querySelector<HTMLElement>('[contenteditable="true"][role="textbox"]')
+        ?.innerText.replace(/\u200b/g, "") === expected,
+    "目标草稿\n\n当前草稿",
+  )
   check(
     (await editor.innerText()).replace(/\u200b/g, "") === "目标草稿\n\n当前草稿",
     "draft merge keeps destination before source",

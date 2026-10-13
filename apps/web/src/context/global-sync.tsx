@@ -32,7 +32,7 @@ import type { SessionViewportContent } from "./session-viewport-content"
 import { partSummaryPageState, type PartSummaryPageState } from "./part-summary-loader"
 import { createPartArrivalState } from "./part-arrival"
 import type { createPartMaterializer } from "./part-materializer"
-import { mergeModelDirectory, type ProviderSnapshot } from "./model-directory"
+import { mergeModelDirectory, mergeProviderSelection, type ProviderSnapshot } from "./model-directory"
 import { projectWorkspaceBinding } from "./workspace-catalog"
 import { QuestionSnapshotGate, type QuestionSnapshotToken } from "./question-snapshot"
 import { createScopeRetention } from "./scope-retention"
@@ -929,7 +929,7 @@ function createGlobalSync() {
   async function loadGlobalProviders() {
     return Promise.all([
       coreSnapshot(HOME_SCOPE_KEY).then((x) => {
-        if (x.data) setGlobalStore("provider", x.data.provider)
+        if (x.data) setGlobalStore("provider", reconcile(mergeProviderSelection(globalStore.provider, x.data.provider)))
       }),
       globalSDK.client.provider.auth().then((x) => {
         setGlobalStore("provider_auth", x.data ?? {})
@@ -1197,7 +1197,7 @@ function createGlobalSync() {
     const tracker = writeTrackers.get(scopeKey)
     batch(() => {
       setStore("scopeID", data.scopeID)
-      setStore("provider", data.provider)
+      setStore("provider", reconcile(mergeProviderSelection(store.provider, data.provider)))
       setStore("agent", reconcile(data.agent, { key: "name" }))
       setStore("config", reconcile(data.config))
       if (data.path) setStore("path", reconcile(data.path))
@@ -2639,7 +2639,8 @@ function createGlobalSync() {
       ),
       retry(() =>
         coreSnapshot(HOME_SCOPE_KEY).then((result) => {
-          if (result.data) setGlobalStore("provider", result.data.provider)
+          if (result.data)
+            setGlobalStore("provider", reconcile(mergeProviderSelection(globalStore.provider, result.data.provider)))
         }),
       ),
       retry(() =>

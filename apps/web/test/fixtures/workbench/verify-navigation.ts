@@ -85,7 +85,7 @@ try {
     const before = (await toggle.boundingBox())!
     await toggle.click()
     await page.waitForTimeout(350)
-    const close = page.getByRole("button", { name: /隐藏侧边工作区|Hide side workspace/ })
+    const close = page.getByRole("button", { name: /收起工作区|Collapse workspace/ })
     const after = (await close.boundingBox())!
     check(
       Math.abs(before.x - after.x) <= 1 && Math.abs(before.y - after.y) <= 1,
@@ -94,8 +94,7 @@ try {
     check(after.x + after.width > 1440 - 60, "side toggle remains at the outer right edge")
     const side = page.locator(".workbench-surface--side")
     if (sidebarOpen) await side.getByRole("button", { name: /^笔记|^Notes/ }).click()
-    const tabs = side.getByRole("tablist")
-    const lastAction = await tabs.getByRole("button", { name: /添加侧边面板|Add side panel/ }).boundingBox()
+    const lastAction = await side.getByRole("button", { name: /打开资源|Open a resource/ }).boundingBox()
     check(lastAction && lastAction.x + lastAction.width < after.x, "workspace tabs leave the corner control clear")
     await close.press("Space")
     await page.waitForTimeout(350)
@@ -244,7 +243,7 @@ try {
       const before = (await toggle.boundingBox())!
       await toggle.click()
       await page.waitForTimeout(350)
-      const close = page.getByRole("button", { name: /隐藏侧边工作区|Hide side workspace/ })
+      const close = page.getByRole("button", { name: /收起工作区|Collapse workspace/ })
       const after = (await close.boundingBox())!
       check(
         Math.abs(before.x - after.x) <= 1 && Math.abs(before.y - after.y) <= 1,
@@ -325,6 +324,7 @@ try {
     await page.getByRole("button", { name: "Workbench Chat", exact: true }).click()
     const popup = page.locator(".model-selector-popover")
     await popup.waitFor()
+    await popup.getByRole("button", { name: new RegExp(samples[0].name) }).waitFor()
     const list = popup.locator('[data-slot="list-scroll"]')
     check(await list.evaluate((el) => el.scrollHeight > el.clientHeight), "many models scroll within the results area")
     const search = popup.getByRole("textbox")

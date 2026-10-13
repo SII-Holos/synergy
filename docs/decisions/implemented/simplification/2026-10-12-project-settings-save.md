@@ -31,3 +31,7 @@ The [project-entry product rules](../../../../apps/web/PRODUCT.md#project-first-
 ## Consequences
 
 One action confirms the edited settings and successful sections are not rewritten on retry. This is not an all-or-nothing transaction: an earlier section can remain saved when a later section fails. The UI reports that condition and Cancel discards only the remaining drafts. Unverified or concurrently changed filesystem state is still validated by the server rather than guessed by the client.
+
+Production navigation acceptance targets the current workspace collapse and resource-opening controls, and its provider fixture allowlists the synthetic catalog. This keeps account-loading and layout assertions independent of ambient provider credentials and retired control labels. Project-switch acceptance waits for the destination draft to render after route activation before checking merge order.
+
+The dock keys its Composer binding by the input controller identity. Retained view activation can replace a controller without an intervening rendered empty state; keeping the old editor binding then hides the restored project draft. Readiness changes within one controller preserve the editor, while a new controller mounts its own draft. The existing work-context DOM fixture covers both stable loading and controller replacement.

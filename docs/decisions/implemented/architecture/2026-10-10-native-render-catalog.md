@@ -37,3 +37,5 @@ The catalog and keyed reconciliation are informed by [the Intelligent UI impleme
 ## Consequences
 
 The initial catalog covers headings, text, rows, cards, metrics, sliders, selects, checkboxes, bars and confirmed follow-up buttons. Arithmetic is intentionally finite and ordered; unsupported designs use HTML. Catalog and state byte limits bound validation and interaction costs. Native content follows host typography and theme without an iframe or source re-execution. This does not establish a token or latency improvement for real models; that requires a separate measured evaluation.
+
+Native controls inherit the shared focus-visible treatment. The catalog does not add a local outline that conflicts with the host focus contract; the compiled focus-presentation browser check covers this integration.
