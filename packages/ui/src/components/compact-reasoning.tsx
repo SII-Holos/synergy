@@ -5,11 +5,13 @@ import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { Spinner } from "./spinner"
 import { Collapsible } from "./collapsible"
-import { SESSION_TURN_DESC } from "./tool-title-descriptors"
+import { AnimatedActivityCount } from "./animated-activity-count"
+import { countReasoningWords } from "./reasoning-word-count"
+import { REASONING_DESC, SESSION_TURN_DESC } from "./tool-title-descriptors"
 import "./compact-reasoning.css"
 
-export function CompactReasoningLine(props: { fullText: string; running: boolean }) {
-  const { _ } = useLingui()
+export function CompactReasoningLine(props: { fullText: string; running: boolean; identity: string }) {
+  const { _, i18n } = useLingui()
   const [open, setOpen] = createSignal(false)
   const [userScrolled, setUserScrolled] = createSignal(false)
   let scroller: HTMLElement | undefined
@@ -17,6 +19,18 @@ export function CompactReasoningLine(props: { fullText: string; running: boolean
 
   const summary = createMemo(() =>
     props.running ? compactReasoningText(props.fullText) : compactReasoningFirstLine(props.fullText),
+  )
+
+  const wordCount = createMemo(() => countReasoningWords([props.fullText], i18n().locale))
+  const progress = () => (
+    <Show when={wordCount() > 0}>
+      <span data-slot="compact-reasoning-progress">
+        <AnimatedActivityCount value={wordCount()} identity={props.identity} />
+        <span data-slot="compact-reasoning-progress-unit">
+          {_({ ...REASONING_DESC.words, values: { count: wordCount() } })}
+        </span>
+      </span>
+    </Show>
   )
 
   const flushToTail = () => {
@@ -56,7 +70,10 @@ export function CompactReasoningLine(props: { fullText: string; running: boolean
               <span data-slot="compact-reasoning-leading" aria-hidden="true">
                 <Icon name={getSemanticIcon("performance.trace")} size="small" />
               </span>
-              <span data-slot="compact-reasoning-label">{_(SESSION_TURN_DESC.compactReasoningThinking)}</span>
+              <span data-slot="compact-reasoning-label">
+                {_({ id: "session.reasoning.title", message: "Reasoning" })}
+              </span>
+              {progress()}
               <span data-slot="compact-reasoning-summary">{summary()}</span>
               <span data-slot="compact-reasoning-chevron" aria-hidden="true">
                 <Icon name={getSemanticIcon(open() ? "navigation.collapse" : "navigation.expand")} size="small" />
@@ -74,6 +91,7 @@ export function CompactReasoningLine(props: { fullText: string; running: boolean
           <Spinner />
         </span>
         <span data-slot="compact-reasoning-label">{_(SESSION_TURN_DESC.compactReasoningThinking)}</span>
+        {progress()}
         <span data-slot="compact-reasoning-scroller" ref={(el) => (scroller = el)} onScroll={handleScroll}>
           <span data-slot="compact-reasoning-text">{summary()}</span>
         </span>

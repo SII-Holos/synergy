@@ -12,6 +12,9 @@ import type { ActivityReasoningSummaryItem } from "./session-turn-activity"
 import "./activity-batch.css"
 import { useProcessViewport, useProcessDisclosure } from "./process-viewport"
 import { useConversationMotion } from "./conversation-motion"
+import { AnimatedActivityCount } from "./animated-activity-count"
+import { countReasoningWords } from "./reasoning-word-count"
+import { REASONING_DESC } from "./tool-title-descriptors"
 
 export function ActivityReasoning(props: {
   item: ActivityReasoningSummaryItem
@@ -56,7 +59,7 @@ export function ProcessReasoning(props: {
   onInspect?: () => void
   onBeforeLayoutChange?: (event: Event) => void
 }) {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const contained = useProcessViewport()
   const disclosure = useProcessDisclosure()
   let releaseDisclosure: (() => void) | undefined
@@ -65,6 +68,21 @@ export function ProcessReasoning(props: {
   const [explicit, setExplicit] = createSignal<boolean>()
   const open = createMemo(() => props.view?.getExpanded(props.identity) ?? explicit() ?? props.defaultOpen === true)
   const text = () => props.entries.map((part) => part.text).join("\n\n")
+  const wordCount = createMemo(() =>
+    countReasoningWords(
+      props.entries.map((part) => part.text),
+      i18n().locale,
+    ),
+  )
+  const statusLabel = () =>
+    wordCount() > 0
+      ? _({
+          ...(open() ? REASONING_DESC.hideStatus : REASONING_DESC.viewStatus),
+          values: { state: props.running ? "thinking" : "reasoning", count: wordCount() },
+        })
+      : open()
+        ? _({ id: "session.process.hideReasoning", message: "Hide reasoning" })
+        : _({ id: "session.process.viewReasoning", message: "View reasoning" })
   const panelID = () => `${props.identity}:${props.entries[0]?.id ?? "empty"}:detail`
   const segments = createMemo(() => {
     const result: { messageID: string; entries: ReasoningPart[] }[] = []
@@ -111,11 +129,7 @@ export function ProcessReasoning(props: {
             data-slot="process-reasoning-trigger"
             aria-expanded={open()}
             aria-controls={panelID()}
-            aria-label={
-              open()
-                ? _({ id: "session.process.hideReasoning", message: "Hide reasoning" })
-                : _({ id: "session.process.viewReasoning", message: "View reasoning" })
-            }
+            aria-label={statusLabel()}
             onClick={(event) => {
               if (!contained) scroll.handleInteraction(event)
               releaseDisclosure = disclosure?.disclose(event)
@@ -127,10 +141,20 @@ export function ProcessReasoning(props: {
             }}
           >
             <Icon name={getSemanticIcon("performance.trace")} size="small" />
-            <span>
-              {props.running
-                ? _({ id: "session.process.thinking", message: "Thinking" })
-                : _({ id: "session.reasoning.title", message: "Reasoning" })}
+            <span data-slot="process-reasoning-status">
+              <span data-slot="process-reasoning-label">
+                {props.running
+                  ? _({ id: "session.process.thinking", message: "Thinking" })
+                  : _({ id: "session.reasoning.title", message: "Reasoning" })}
+              </span>
+              <Show when={wordCount() > 0}>
+                <span data-slot="process-reasoning-progress">
+                  <AnimatedActivityCount value={wordCount()} identity={props.identity} />
+                  <span data-slot="process-reasoning-progress-unit">
+                    {_({ ...REASONING_DESC.words, values: { count: wordCount() } })}
+                  </span>
+                </span>
+              </Show>
             </span>
             <Show when={props.running}>
               <span data-slot="activity-live-indicator" aria-hidden="true" />

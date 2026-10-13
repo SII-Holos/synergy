@@ -364,6 +364,19 @@ export const SESSION_TURN_DESC = {
   ),
 } as const
 
+// ── Reasoning progress ──────────────────────────────────────────────
+export const REASONING_DESC = {
+  words: d("session.reasoning.words", "{count, plural, one {generated word} other {generated words}}"),
+  viewStatus: d(
+    "session.process.viewReasoningStatus",
+    "View reasoning. {state, select, thinking {Thinking} other {Reasoning}}, {count, plural, one {1 generated word} other {# generated words}}",
+  ),
+  hideStatus: d(
+    "session.process.hideReasoningStatus",
+    "Hide reasoning. {state, select, thinking {Thinking} other {Reasoning}}, {count, plural, one {1 generated word} other {# generated words}}",
+  ),
+} as const
+
 // ── Tool misc labels ────────────────────────────────────────────────
 export const TOOL_MISC_DESC = {
   htmlPreview: d("tool.misc.html-preview", "HTML preview"),
