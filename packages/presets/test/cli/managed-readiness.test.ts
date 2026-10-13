@@ -79,6 +79,10 @@ test("managed CLI upgrades retained owners without scanning cold history and wai
       }),
     )
   }
+  await Bun.write(
+    `${home.host.root}/data/session_nav_v2/home.json`,
+    JSON.stringify({ version: 1, scopeID: "home", updatedAt: 1, entries: [] }),
+  )
   for (const state of ["fresh", "restart"]) {
     const child = Bun.spawn(
       [
@@ -140,6 +144,8 @@ test("managed CLI upgrades retained owners without scanning cold history and wai
       await readUntil(() => events().some((event) => event.phase === "runtime" && event.state === "ready"))
       expect(output.indexOf('"state":"ready"')).toBeGreaterThan(output.indexOf("fixture-factory-returning"))
       expect(events().filter((event) => event.phase === "runtime" && event.state === "ready")).toHaveLength(1)
+      const navigation = await client.session.index({ scopeID: "home" }, { throwOnError: true })
+      expect(navigation.response.status, state).toBe(200)
       for (const session of sessions) {
         const result = await client.session.get({ scopeID: "home", sessionID: session.id }, { throwOnError: true })
         expect(result.data?.workflow?.kind, state).toBe(session.kind)

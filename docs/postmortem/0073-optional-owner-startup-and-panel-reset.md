@@ -14,6 +14,8 @@ Independent integration acceptance first reproduced the native panel remount wit
 
 A reported managed Desktop startup failure showed the same Blueprint migration timeout after successful index preparation. Its underlying server failure, rather than the loading screen, is covered by an actual managed CLI process regression.
 
+Restart after real-history navigation exposed a second startup failure: the current SQL navigation index included a composition stamp, but the legacy-residue classifier only accepted the prior SQL shape. An unchanged, empty historical navigation file was then mistaken for a foreign writer. Admission now accepts the recognized SQL stamp while preserving strict checks on historical files, including rejection of a stamp in those files. Tests cover both ordinary and deferred guards, unchanged bytes and complete managed startup after navigation.
+
 ## Root cause
 
 Extracted owner migrations used global startup execution and listed every key below Sessions before filtering to metadata. Filtering after enumeration did not bound SQL work. Panel residency treated removal from the visible projection as resource deletion, conflating unknown capabilities with a confirmed absent feature. Plugin disposal tests correctly required cancellation but did not exercise native editor continuity.

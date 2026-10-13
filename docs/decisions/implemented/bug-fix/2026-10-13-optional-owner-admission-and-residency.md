@@ -12,6 +12,8 @@ Blueprint, Light Loop and Lattice retain their existing owner migration IDs and 
 
 The workbench retains already mounted native panels during an unknown capability snapshot if their saved resource identity still exists. Those presentations are hidden, inert and paused inside the existing eight-instance budget. Confirmed absence and saved-tab closure retire them. Third-party presentations retain the stricter capability and generation lifetime rules described by [frontend synchronization](../../../architecture/frontend-data-sync.md).
 
+The legacy startup guard recognizes the current optional `composition` stamp on the authoritative SQL navigation index. The inert legacy empty-navigation file still must match the strict historical shape. Current navigation reads must not make the next restart misclassify unchanged historical residue as a foreign writer; neither SQL authority nor original legacy bytes are modified by admission.
+
 ## Alternatives considered
 
 **Increase startup deadlines.** This retains work proportional to all historical descendants and makes ordinary startup depend on storage size. It does not address the admission contract.
