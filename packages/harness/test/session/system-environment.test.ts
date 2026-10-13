@@ -7,6 +7,128 @@ import { SystemPrompt } from "../../src/session/system"
 import { WorkspaceBinding } from "../../src/workspace/binding"
 import { WorkspaceCatalog } from "../../src/workspace/catalog"
 import { testRuntime } from "../support/runtime"
+import { configureRuntimeEndpoint } from "../../src/util/runtime-endpoint"
+import { RuntimeAdvisory } from "../../src/session/runtime-context"
+import { RuntimeHandle } from "../../src/lifecycle/runtime"
+import { TransactionalStore } from "../../src/storage/transactional-store"
+import { runtimeHome } from "../support/runtime-home"
+
+test("runtime identity is stable, Runtime-local and separate from the session Workspace", async () => {
+  await using first = await testRuntime({ env: { SYNERGY_SERVER_TOKEN: "secret-not-for-the-model" } })
+  await using second = await testRuntime()
+  const firstText = await first.run(() => {
+    configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 45171, generation: "first-listener" })
+    return SystemPrompt.runtime()
+  })
+  const secondText = await second.run(() => {
+    configureRuntimeEndpoint({ hostname: "0.0.0.0", port: 45172, generation: "second-listener" })
+    return SystemPrompt.runtime()
+  })
+  expect(firstText).toContain("<synergy-runtime>")
+  expect(firstText).toContain("Runtime mode: oneshot")
+  expect(firstText).toContain(`Runtime home: ${first.host.home}`)
+  expect(firstText).toContain(`Data root: ${first.host.root}`)
+  expect(firstText).toContain("Backend URL: http://127.0.0.1:45171")
+  expect(firstText).toContain("Listener generation: first-listener")
+  expect(firstText).not.toContain("secret-not-for-the-model")
+  expect(secondText).toContain("Backend URL: http://127.0.0.1:45172")
+  expect(secondText).toContain("Listener generation: second-listener")
+  expect(secondText).not.toContain(first.host.home)
+  expect(await first.run(() => SystemPrompt.runtime())).toBe(firstText)
+  expect(await second.run(() => SystemPrompt.runtime())).toBe(secondText)
+  await first.run(async () => {
+    const { scope } = await Scope.fromDirectory(first.host.home)
+    await ScopeContext.provide({
+      scope,
+      workspace: null,
+      fn: async () => {
+        expect(SystemPrompt.runtime()).toBe(firstText)
+        expect((await SystemPrompt.environment()).join("\n")).not.toContain("<synergy-runtime>")
+      },
+    })
+    configureRuntimeEndpoint(undefined)
+    expect(SystemPrompt.runtime()).toContain("Backend URL: none (this Runtime has no HTTP listener)")
+    expect(SystemPrompt.runtime()).not.toContain("45171")
+  })
+  expect(await second.run(() => SystemPrompt.runtime())).toBe(secondText)
+  const observation = RuntimeAdvisory.prepare({
+    scope: "same-session",
+    sources: [RuntimeAdvisory.present("synergy-runtime", firstText)],
+    previous: [],
+  })!
+  expect(
+    RuntimeAdvisory.prepare({
+      scope: "same-session",
+      sources: [RuntimeAdvisory.present("synergy-runtime", firstText)],
+      previous: [observation.metadata],
+    }),
+  ).toBeUndefined()
+  const switched = RuntimeAdvisory.prepare({
+    scope: "same-session",
+    sources: [RuntimeAdvisory.present("synergy-runtime", secondText)],
+    previous: [observation.metadata],
+  })!
+  expect(switched.text).toContain(secondText)
+  expect(switched.text).not.toContain(firstText)
+})
+
+test("runtime identity uses the actual ephemeral listener and refreshes after restarting the same Home", async () => {
+  await using fixture = await runtimeHome()
+  const open = () =>
+    RuntimeHandle.open({
+      host: {
+        ...fixture.host,
+        launch: {
+          entry: "dev-web" as const,
+          distribution: "source" as const,
+          version: "fixture",
+          channel: "local",
+          sourceCheckout: "/runtime/source",
+          revision: "a".repeat(40),
+        },
+      },
+      mode: "oneshot",
+      network: { hostname: "127.0.0.1", port: 0 },
+      composition: {
+        register() {},
+        services: () => ({
+          transport: {
+            closeAdmission() {},
+            listen: (network) => Bun.serve({ ...network, fetch: () => new Response("fixture") }),
+          },
+        }),
+      },
+      storage: {
+        kind: "owned",
+        async open() {
+          const store = await TransactionalStore.open({
+            backend: "sqlite",
+            filename: path.join(fixture.host.root, "authority.sqlite"),
+            namespace: "identity",
+          })
+          return {
+            handle: { store, artifactDirectory: path.join(fixture.host.root, "data") },
+            needsValidation: false,
+            async activate() {},
+          }
+        },
+      },
+    })
+  await using first = await open()
+  const before = first.run(() => SystemPrompt.runtime())
+  expect(first.server!.port).toBeGreaterThan(0)
+  expect(before).toContain(`Backend URL: http://127.0.0.1:${first.server!.port}`)
+  expect(before).toContain("Launch entry: bun dev web")
+  expect(before).toContain("Runtime source checkout: /runtime/source")
+  expect(before).not.toContain("Backend URL: http://127.0.0.1:0")
+  await first.close()
+  await using restarted = await open()
+  const after = restarted.run(() => SystemPrompt.runtime())
+  expect(after).toContain(`Runtime home: ${fixture.host.home}`)
+  expect(after).toContain(`Backend URL: http://127.0.0.1:${restarted.server!.port}`)
+  expect(after).not.toBe(before)
+  expect(() => first.run(() => SystemPrompt.runtime())).toThrow("closed")
+}, 30_000)
 
 test("environment attributes a shared write-root failure without declaring all Workspace files unavailable", async () => {
   await using runtime = await testRuntime()

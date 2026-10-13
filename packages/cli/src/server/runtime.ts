@@ -2,7 +2,7 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { RuntimeHandle } from "@ericsanchezok/synergy-harness/lifecycle"
 import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
 import { runtimeReadyLine } from "@ericsanchezok/synergy-sdk/runtime-ready"
-import type { LocalRuntimeOptions } from "@ericsanchezok/synergy-local-runtime"
+import { createLocalHost, type LocalRuntimeOptions } from "@ericsanchezok/synergy-local-runtime"
 import { DEFAULT_SERVER_PORT } from "@ericsanchezok/synergy-harness/util/server-defaults"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -47,6 +47,7 @@ export async function run(options: RuntimeOptions) {
   const reporter = options.printBanner ? StartupReporter.create() : undefined
   options.startupReporter?.({ phase: "runtime", state: "opening", stage: "initializing" })
   await using handle = await options.runtimeFactory({
+    host: createLocalHost({ entry: process.env.SYNERGY_DAEMON === "1" ? "daemon" : "cli-server" }),
     mode: "server",
     logging: options.logging,
     startupReporter: options.startupReporter

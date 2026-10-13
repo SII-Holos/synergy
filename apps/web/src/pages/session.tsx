@@ -6,6 +6,7 @@ import { submissionPartPage } from "@/context/session-submission-view"
 import { catalogFileWorkspace } from "@/context/file/workspace"
 import { projectEntryCopy } from "@/components/dialog/project-entry-copy"
 import { projectTaskIntent } from "@/components/session/project-task-intent"
+import { createProjectDirectoryResource } from "@/components/session/project-directory-resource"
 import { handleComposerTypingAutofocus } from "@/components/prompt-input/typing-autofocus"
 import { useGlobalSDK } from "@/context/global-sdk"
 import {
@@ -38,19 +39,7 @@ import { PluginPageOutlet } from "@/plugin/shell-outlet"
 import { WorkspaceOutputEffects } from "@/components/workspace/workspace-output-effects"
 import { createPromptInputController } from "@/components/prompt-input/prompt-controller"
 import { SessionDecisionHost } from "@/components/session/decision-surface"
-import {
-  Show,
-  Match,
-  Switch,
-  createMemo,
-  createResource,
-  createEffect,
-  createSignal,
-  on,
-  onCleanup,
-  untrack,
-  type JSX,
-} from "solid-js"
+import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup, untrack, type JSX } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -1051,22 +1040,10 @@ function SessionPageContent() {
     return mergeTimelineMessages([...turns, ...mailbox, ...actionCommands])
   }, emptyTimeline)
 
-  const [projectDirectories, { refetch: refreshProjectDirectories, mutate: updateProjectDirectories }] = createResource(
-    () =>
+  const [projectDirectories, { refetch: refreshProjectDirectories, mutate: updateProjectDirectories }] =
+    createProjectDirectoryResource(() =>
       !sdk.isHome && globalSDK.capabilities.has("workbench") ? { client: sdk.client, scopeID: sdk.scopeID } : false,
-    async ({ client, scopeID }) => {
-      try {
-        return {
-          client,
-          scopeID,
-          data: (await client.project.directories({ scopeID }, { throwOnError: true })).data,
-          error: "",
-        }
-      } catch (error) {
-        return { client, scopeID, data: undefined, error: error instanceof Error ? error.message : String(error) }
-      }
-    },
-  )
+    )
   const projectDirectorySnapshot = () => {
     const snapshot = projectDirectories.latest
     return snapshot?.client === sdk.client && snapshot.scopeID === sdk.scopeID ? snapshot : undefined

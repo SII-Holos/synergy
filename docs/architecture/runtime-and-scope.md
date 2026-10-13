@@ -21,6 +21,8 @@ The same runtime can be launched through several ownership surfaces:
 
 `SYNERGY_HOME` redirects the complete installation home, including config, data, state, logs, credentials, daemon records, and locks. One writing runtime owns a given `SYNERGY_HOME` at a time.
 
+`RuntimeHost.launch` captures typed launch provenance independently of Scope and Workspace. Source development entrypoints supply `SYNERGY_RUNTIME_ENTRY`; CLI handlers supply foreground server or one-shot defaults, Desktop supplies managed ownership, and daemon ownership takes precedence. Installed generation pins and build metadata distinguish installed execution from source; Desktop's dev/stable channel alone does not. Local source hosts capture their own module checkout and Git revision once, not the user's project directory. `RuntimeContext.Instance` owns a fixed ID, start time and execution mode. Prompt assembly consumes this snapshot and the Runtime-owned actual listener through the [fixed advisory identity source](llm-loop.md#prompt-assembly); attached clients cannot relabel the backend.
+
 ## Composition and migration registration
 
 `RuntimeComponents` validates the selected dependency graph before registration. Each component owns its schemas, migrations, tools, reload handlers, lifecycle and optional transport adapters. Required predecessors and present optional predecessors determine a stable registration order. Services and registration completion are Runtime-scoped; component objects can be reused across instances. Extension cleanup drains started owners in reverse order, including the owner whose initialization failed. Resident startup prepares every selected service before ready hooks activate scheduling, and shutdown drains the reverse order.
