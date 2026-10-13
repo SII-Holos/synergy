@@ -5,6 +5,7 @@ import { chromium, type Browser, type Page } from "playwright"
 import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 type Fixture = {
+  remove(): void
   pause(): void
   resume(): void
   features(features?: string[]): void
@@ -32,7 +33,7 @@ beforeAll(async () => {
     export const [selection,setSelection]=createSignal({features:["plugin-host","note","blueprint","lattice"]})
     export const [active,setActive]=createSignal(true)
     const surfaces = Object.fromEntries(["side","bottom"].map(name=>{
-      const [tabs,setTabs]=createSignal(name==="side"?[{id:"plugin",panelId:"fixture:panel",title:"Plugin"}]:[])
+      const [tabs,setTabs]=createSignal(name==="side"?[{id:"plugin",panelId:location.search==="?builtin"?"notes":"fixture:panel",title:"Plugin"}]:[])
       const [selected,setSelected]=createSignal(name==="side"?"plugin":undefined)
       const [opened,setOpened]=createSignal(name==="side")
       const [size,setSize]=createSignal(name==="side"?360:200)
@@ -40,6 +41,7 @@ beforeAll(async () => {
       return [name,{tabs,setTabs,active:selected,setActive:setSelected,opened,open:()=>setOpened(true),close:()=>setOpened(false),size,setSize,fullscreen,setFullscreen,reveal:()=>({interacted:false}),setReveal(){}}]
     }))
     export const saved=()=>surfaces.side.tabs().length
+    export const remove=()=>surfaces.side.setTabs([])
     export const useGlobalSDK=()=>({capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false}})
     export const useLayout=()=>({surface:(_,name)=>surfaces[name],isDesktop:()=>true,sidebar:{opened:()=>false,width:()=>260,occupiedWidth:()=>0}})
     export const useParams=()=>({dir:"scope-a",id:"session-a"})
@@ -60,7 +62,7 @@ beforeAll(async () => {
     import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
     import { createPluginSurfaceLifetime } from "@/plugin/surface-lifetime"
     import { ViewActivityProvider,useViewActivity } from "@/context/view-residency"
-    import { active,setActive,setSelection,saved } from "./services"
+    import { active,setActive,setSelection,saved,remove } from "./services"
     const requests=[],activities=[]
     let mounts=0,disposed=0,panels
     const [draft,setDraft]=createSignal("")
@@ -76,9 +78,11 @@ beforeAll(async () => {
     }
     let generation="one"
     let release=()=>{}
-    const register=()=>{release();release=registerWorkbenchPanel({id:"fixture:panel",pluginId:"fixture",retention:"pause",generation,component:Panel,label:"Plugin",icon:"file",surface:"side",cardinality:"multi"})}
+    const builtin=location.search==="?builtin"
+    const register=()=>{release();release=registerWorkbenchPanel({id:builtin?"notes":"fixture:panel",pluginId:builtin?"builtin":"fixture",retention:"pause",generation,component:Panel,label:"Plugin",icon:"file",surface:"side",cardinality:"multi"})}
     register()
     window.fixture={
+      remove,
       pause(){batch(()=>{setActive(false);release()})},
       resume(){batch(()=>{register();setActive(true)})},
       features:features=>setSelection(features?{features}:undefined),
@@ -167,6 +171,47 @@ test("capability loss removes an active plugin even before its registry entry is
   await input.fill("Active draft")
   await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features([]))
   expect(await facts()).toMatchObject({ mounts: 1, disposed: 1, aborted: [true], saved: 1, visible: 0 })
+  expect(await input.count()).toBe(0)
+  expect(errors).toEqual([])
+})
+
+test("capability revalidation pauses a built-in panel without replacing its draft or selection", async () => {
+  await page.goto(`${fixture.url}?builtin`)
+  const input = page.getByRole("textbox", { name: "Plugin draft" })
+  await input.fill("Retained native draft")
+  await input.evaluate((element) => (element as HTMLInputElement).setSelectionRange(3, 8))
+  const original = await input.elementHandle()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features(undefined))
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(true)
+  expect(await facts()).toMatchObject({ mounts: 1, disposed: 0, active: [false], visible: 0, saved: 1 })
+  expect(await original!.isVisible()).toBe(false)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features(["note"]))
+  expect(await input.evaluate((element, previous) => element === previous, original)).toBe(true)
+  expect(await input.inputValue()).toBe("Retained native draft")
+  expect(
+    await input.evaluate((element) => [
+      (element as HTMLInputElement).selectionStart,
+      (element as HTMLInputElement).selectionEnd,
+    ]),
+  ).toEqual([3, 8])
+  expect(await facts()).toMatchObject({ mounts: 1, disposed: 0, active: [true], visible: 1 })
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features([]))
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(false)
+  expect(await facts()).toMatchObject({ disposed: 1, visible: 0, saved: 1 })
+  expect(errors).toEqual([])
+})
+
+test("closing a saved native tab during capability revalidation releases its instance permanently", async () => {
+  await page.goto(`${fixture.url}?builtin`)
+  const input = page.getByRole("textbox", { name: "Plugin draft" })
+  await input.waitFor()
+  const original = await input.elementHandle()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features(undefined))
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(true)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.remove())
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(false)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features(["note"]))
+  expect(await facts()).toMatchObject({ mounts: 1, disposed: 1, aborted: [true], saved: 0, visible: 0 })
   expect(await input.count()).toBe(0)
   expect(errors).toEqual([])
 })

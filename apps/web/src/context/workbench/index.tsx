@@ -693,6 +693,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
 
     return {
       sessionKey,
+      revalidating: () => !capabilities.current(),
       isCurrent(boundSession: string) {
         return !disposed() && sessionKey() === boundSession
       },
