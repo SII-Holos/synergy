@@ -1192,7 +1192,7 @@ export namespace Worktree {
     await updateBinding(info, sessionID, "add")
     try {
       const session = await Session.updateWorkspace(sessionID, selected)
-      ScopeContext.refreshWorkspace(session.workspace)
+      ScopeContext.refreshWorkspace(session.workspace, sessionID)
     } catch (error) {
       await updateBinding(info, sessionID, "remove").catch(() => undefined)
       throw error
@@ -1231,7 +1231,7 @@ export namespace Worktree {
     const mainWorkspace = { type: "main" as const, path: mainPath, scopeID: scope.id }
     options?.signal?.throwIfAborted()
     const result = await Session.updateWorkspace(sessionID, mainWorkspace, options)
-    ScopeContext.refreshWorkspace(result.workspace)
+    ScopeContext.refreshWorkspace(result.workspace, sessionID)
     return result
   }
 
