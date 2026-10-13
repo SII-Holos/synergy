@@ -7,6 +7,7 @@ const Interest = z.object({
   messageID: z.string(),
   partID: z.string(),
   generation: z.number().int().nonnegative(),
+  version: z.string().optional(),
 })
 export const ContentInterests = z.object({
   parts: Interest.array().max(4096),

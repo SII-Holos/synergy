@@ -96,15 +96,21 @@ test("running request estimates stay out of accounting and calibrate with provid
     }),
   ))
 
-test("execution updates deliver classification while the model and tool cleanup are still open", () =>
+test("execution rebuilds deliver live classification without repeating unchanged contexts", () =>
   runtime.run(() =>
     fixture(async ({ session, rootID, call }) => {
       await ExecutionService.contextHistory(session.id, { limit: 30 })
       const draft = Promise.withResolvers<ReturnType<typeof contextDraft>>()
       const delivered = Promise.withResolvers<void>()
+      const unchanged = Promise.withResolvers<ExecutionSchema.ContextSnapshot[]>()
+      let classified = false
       let callID = ""
       const unsubscribe = Bus.subscribeGlobal(ExecutionSchema.Updated, (event) => {
         if (event.properties.sessionID !== session.id) return
+        if (classified) {
+          unchanged.resolve(event.properties.contextUpserts ?? [])
+          return
+        }
         const snapshot = event.properties.contextUpserts?.find((entry) => entry.callID === callID && entry.estimate)
         if (!snapshot) return
         expect(snapshot.status).toBe("running")
@@ -128,7 +134,8 @@ test("execution updates deliver classification while the model and tool cleanup 
         }),
       )
       callID = stream.rollout!.callID
-      const timer = setTimeout(
+      const release = ExecutionService.subscribe(session.id)
+      let timer = setTimeout(
         () => delivered.reject(new Error("Classification update missing during model execution")),
         3000,
       )
@@ -139,9 +146,17 @@ test("execution updates deliver classification while the model and tool cleanup 
           await app.request(`/session/${session.id}/execution/context/snapshots/${callID}`)
         ).json()
         expect(snapshot.estimate.categories.userMessages.estimatedTokens).toBe(80)
+        clearTimeout(timer)
+        timer = setTimeout(() => unchanged.reject(new Error("Unchanged context update missing")), 3000)
+        classified = true
+        await Session.update(session.id, (info) => {
+          info.title = "Same context, updated session"
+        })
+        expect(await unchanged.promise).toEqual([])
       } finally {
         clearTimeout(timer)
         unsubscribe()
+        release()
         await stream.dispose()
       }
     }),

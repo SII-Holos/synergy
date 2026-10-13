@@ -64,7 +64,7 @@ export type SettingsCatalogCopy = {
   description: MessageDescriptor
   searchTerms: MessageDescriptor
   rowLabels: MessageDescriptor[]
-  fieldAliases?: { label: MessageDescriptor; aliases: MessageDescriptor }[]
+  fieldAliases?: { label: MessageDescriptor; aliases: MessageDescriptor; feature?: string }[]
 }
 
 export type SettingsCatalogSection = {
@@ -245,13 +245,24 @@ const BUILTIN_SETTINGS_COPY = {
   },
   learning: {
     label: { id: "settings.catalog.learning.label", message: "Learning" },
-    description: { id: "settings.catalog.learning.description", message: "Library learning and autonomy controls." },
+    description: { id: "settings.catalog.learning.description", message: "Library learning controls." },
     searchTerms: {
       id: "settings.catalog.learning.searchTerms",
-      message: "library | learning | autonomy",
+      message: "library | learning",
       comment: SEARCH_TERMS_COMMENT,
     },
-    rowLabels: [settingsFieldCopy.learningLearn, settingsFieldCopy.learningAutonomy],
+    rowLabels: [settingsFieldCopy.learningLearn],
+    fieldAliases: [
+      {
+        feature: "anima",
+        label: settingsFieldCopy.learningAutonomy,
+        aliases: {
+          id: "settings.catalog.learning.autonomy.searchTerms",
+          message: "anima | autonomy | automatic | routines",
+          comment: SEARCH_TERMS_COMMENT,
+        },
+      },
+    ],
   },
   memory: {
     label: { id: "settings.catalog.memory.label", message: "Memory" },

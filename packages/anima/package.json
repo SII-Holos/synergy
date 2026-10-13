@@ -1,0 +1,75 @@
+{
+  "name": "@ericsanchezok/synergy-anima",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./agent-prompts": "./src/agent-prompts.ts",
+    "./agents": "./src/agents.ts",
+    "./anima-schedule": "./src/anima-schedule.ts",
+    "./component": "./src/component.ts",
+    "./config-migration": "./src/config-migration.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./http": "./src/http.ts",
+    "./prompts/anima.txt": "./src/prompts/anima.txt",
+    "./reload": "./src/reload.ts",
+    "./schedule": "./src/schedule.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/anima",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-agenda": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-library": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-note": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "croner": "10.0.1",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "anima",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "anima",
+    "requires": {
+      "local-runtime": "1.1.26",
+      "library": "1.1.26",
+      "note": "1.1.26",
+      "agenda": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-library": "1.1.26",
+      "@ericsanchezok/synergy-note": "1.1.26",
+      "@ericsanchezok/synergy-agenda": "1.1.26"
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}

@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test"
-import { executionDetailState, executionDetailSelection } from "../../../src/components/session/execution-detail-model"
+import {
+  executionDetailAvailable,
+  executionDetailState,
+  executionDetailSelection,
+} from "../../../src/components/session/execution-detail-model"
 const owner = { server: "https://server.test", scope: "scope", sessionID: "session" }
 const first = { sessionID: "session", messageID: "message-a", partID: "part-a", callID: "call-a" }
 test("execution selection stays on the explicit invocation even with old follow state", () => {
@@ -20,4 +24,15 @@ test("system event selections do not require a tool part and reject unknown kind
     expect(executionDetailState(value, owner)).toEqual(value)
   }
   expect(executionDetailState({ ...owner, ...first, kind: "unknown" }, owner)).toBeUndefined()
+})
+
+test("execution detail keeps owner requirements across restore without hiding ordinary tools or events", () => {
+  const state = executionDetailState({ ...owner, ...first, requiredFeatures: ["note", "blueprint"] }, owner)!
+  expect(state).toHaveProperty("requiredFeatures", ["note", "blueprint"])
+  expect(executionDetailAvailable(state, () => false)).toBe(false)
+  expect(executionDetailAvailable(state, (id) => id === "note")).toBe(false)
+  expect(executionDetailAvailable(state, () => true)).toBe(true)
+  expect(executionDetailAvailable({ ...owner, ...first, requiredFeatures: [] }, () => false)).toBe(true)
+  expect(executionDetailAvailable({ ...owner, ...first }, () => false)).toBe(true)
+  expect(executionDetailAvailable({ ...owner, messageID: "message", kind: "compaction" }, () => false)).toBe(true)
 })

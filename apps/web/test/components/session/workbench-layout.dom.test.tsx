@@ -33,7 +33,7 @@ beforeAll(async () => {
   )
   await Bun.write(
     path.join(directory, "execution.ts"),
-    `export const useExecution = () => ({ available: () => false, state: {} });
+    `export const useExecution = () => ({retain() {},  available: () => false, state: {} });
      export const useSDK = () => ({ client: {} });
      export const useParams = () => ({ id: "fixture" })`,
   )

@@ -10,7 +10,7 @@ import {
   Show,
   Switch,
 } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useLingui } from "@lingui/solid"
 import { useSDK } from "@/context/sdk"
 import { useFile } from "@/context/file"

@@ -63,7 +63,7 @@ export function createExecutionSummary(input: {
       setFresh(false)
       if (id && enabled && connected) {
         setConnectionVersion((value) => value + 1)
-        if (requestedSession === id) void refresh()
+        if (requestedSession === id && input.visible()) void refresh()
       }
     }),
   )
@@ -82,11 +82,15 @@ export function createExecutionSummary(input: {
     on(
       input.visible,
       (visible) => {
-        setFresh(false)
-        if (visible && input.connected()) {
-          setConnectionVersion((value) => value + 1)
-          if (requestedSession && requestedSession === input.sessionID()) void refresh()
+        if (!visible && state.loading) {
+          request++
+          abort?.abort()
+          setState("loading", false)
+          setFresh(false)
+          return
         }
+        if (visible && input.connected() && !fresh() && !state.loading && requestedSession === input.sessionID())
+          void refresh()
       },
       { defer: true },
     ),

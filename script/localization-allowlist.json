@@ -338,24 +338,8 @@
   {
     "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
-    "literal": "initialization",
-    "occurrence": 2,
-    "category": "machine-identifier",
-    "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
-  },
-  {
-    "path": "apps/web/src/pages/error-presentation.ts",
-    "kind": "user-visible-property",
     "literal": "scope",
     "occurrence": 1,
-    "category": "machine-identifier",
-    "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
-  },
-  {
-    "path": "apps/web/src/pages/error-presentation.ts",
-    "kind": "user-visible-property",
-    "literal": "scope",
-    "occurrence": 2,
     "category": "machine-identifier",
     "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
   },

@@ -4,6 +4,7 @@ export type EventQueueOptions = {
   batch: <T>(fn: () => T) => T
   schedule?: (fn: () => void, ms: number) => void
   now?: () => number
+  onDrain?: (count: number, duration: number, pending: number) => void
 }
 
 export type EventQueue = {
@@ -15,6 +16,8 @@ export type EventQueue = {
 export const EVENT_QUEUE_CAP = 4000
 export const VISIBLE_FLUSH_MS = 16
 export const HIDDEN_FLUSH_MS = 1000
+export const EVENT_BATCH_SIZE = 64
+export const EVENT_BATCH_MS = 4
 
 type Queued = { scopeID: string; payload: unknown }
 
@@ -73,11 +76,14 @@ export function createEventQueue(options: EventQueueOptions): EventQueue {
         }
 
   let queue: Array<Queued | undefined> = []
+  let head = 0
   const coalesced = new Map<string, number>()
   // Streaming deltas are unsequenced and self-healing (a full checkpoint
   // follows), so while hidden they can be coalesced per part and flushed later.
   const pendingDelta = new Map<string, PendingDelta>()
   let timer: ReturnType<typeof setTimeout> | undefined
+  let scheduled = false
+  let scheduleVersion = 0
   let last = 0
   let disposed = false
 
@@ -86,32 +92,69 @@ export function createEventQueue(options: EventQueueOptions): EventQueue {
       clearTimeout(timer)
       timer = undefined
     }
-
-    const events = queue
-    queue = []
-    coalesced.clear()
-    pendingDelta.clear()
-    if (events.length === 0) return
+    scheduled = false
+    scheduleVersion++
+    if (head === queue.length) return
 
     last = now()
+    let count = 0
     batch(() => {
-      for (const event of events) {
+      while (head < queue.length && count < EVENT_BATCH_SIZE && (count === 0 || now() - last < EVENT_BATCH_MS)) {
+        const index = head++
+        const event = queue[index]
+        queue[index] = undefined
+        count++
         if (!event) continue
+        const key = eventKey(event.scopeID, event.payload)
+        if (key && coalesced.get(key) === index) coalesced.delete(key)
+        if (
+          isRecord(event.payload) &&
+          event.payload.type === "message.part.delta" &&
+          isRecord(event.payload.properties)
+        ) {
+          const { messageID, partID } = event.payload.properties
+          if (typeof messageID === "string" && typeof partID === "string") {
+            const key = deltaKey(event.scopeID, messageID, partID)
+            if (pendingDelta.get(key)?.index === index) pendingDelta.delete(key)
+          }
+        }
         emit(event.scopeID, event.payload)
       }
     })
+    options.onDrain?.(count, now() - last, queue.length - head)
+    if (head === queue.length) {
+      queue = []
+      head = 0
+      coalesced.clear()
+      pendingDelta.clear()
+    } else {
+      if (head >= EVENT_QUEUE_CAP) {
+        queue = queue.slice(head)
+        for (const [key, index] of coalesced) coalesced.set(key, index - head)
+        for (const pending of pendingDelta.values()) pending.index -= head
+        head = 0
+      }
+      if (!disposed) scheduleFlush(true)
+    }
   }
 
-  const scheduleFlush = () => {
-    if (timer !== undefined) return
+  const scheduleFlush = (continuation = false) => {
+    if (scheduled) return
+    scheduled = true
+    const version = ++scheduleVersion
     const cadence = isHidden() ? HIDDEN_FLUSH_MS : VISIBLE_FLUSH_MS
     const elapsed = now() - last
-    timer = scheduleTimer(flush, Math.max(0, cadence - elapsed))
+    timer = scheduleTimer(
+      () => {
+        if (version === scheduleVersion) flush()
+      },
+      continuation ? 0 : Math.max(0, cadence - elapsed),
+    )
   }
 
   const push = (scopeID: string, payload: unknown) => {
     if (disposed) return
-    if (queue.length >= EVENT_QUEUE_CAP) flush()
+    if (queue.length - head >= EVENT_QUEUE_CAP) flush()
 
     if (isRecord(payload)) {
       if (isHidden() && payload.type === "message.part.delta") {
@@ -171,7 +214,7 @@ export function createEventQueue(options: EventQueueOptions): EventQueue {
       clearTimeout(timer)
       timer = undefined
     }
-    flush()
+    while (head < queue.length) flush()
   }
 
   return { push, flush, dispose }

@@ -13,6 +13,8 @@ For startup or migration changes, seed an isolated installed database with cold 
 
 Read [Development reference](../../../docs/reference/development.md) before choosing a mode.
 
+Check both `bun --version` and the executable selected by the current version manager against `package.json`. Invoke the pinned runtime with its directory on `PATH` so nested package scripts also use it; selecting an absolute parent executable alone does not pin `bun` commands inside those scripts. `bun dev` rejects incompatible parent or `BUN_BIN` runtimes before preparation or startup. Do not treat dependency installation as a runtime upgrade, and do not restart a shared running instance to apply a version change.
+
 ## Prepare an Isolated Home
 
 1. Choose a dedicated parent directory and explicit free ports. Check listeners with `lsof -nP -iTCP -sTCP:LISTEN` or the platform equivalent; do not assume `4097` and `3001` are free.
@@ -75,7 +77,7 @@ bun run --cwd apps/desktop build
 bun apps/desktop/test/fixture/isolated-desktop.ts "$DEV_HOME" http://127.0.0.1:3001
 ```
 
-Choose free ports first. Both Web fixtures validate the server's actual Home before mutation; seeding refuses an existing manifest. The provider records chat, auxiliary and embedding calls separately at `/journal`, and `[long]` selects a delayed long response. Keep the manifest and logs private. The Desktop helper sets isolated Electron `userData` before importing main and acquiring the single-instance lock, writes its child PID/log under the selected Home, and forwards termination only to that child. Reuse that Home for restart/persistence checks. A real-provider check and native IME check remain separate evidence.
+Choose free ports first. Both Web fixtures validate the server's actual Home before mutation; seeding refuses an existing manifest. The provider allowlists its fixture catalog so ambient provider environment variables cannot add real accounts or change small-catalog geometry. The provider records chat, auxiliary and embedding calls separately at `/journal`, and `[long]` selects a delayed long response. Keep the manifest and logs private. The Desktop helper sets isolated Electron `userData` before importing main and acquiring the single-instance lock, writes its child PID/log under the selected Home, and forwards termination only to that child. Reuse that Home for restart/persistence checks. A real-provider check and native IME check remain separate evidence.
 
 For final acceptance, build Web and point Desktop at the isolated server's production Web origin. Record source revision, lockfile hash, viewport/zoom/theme, fixture manifest and observed result. Exercise the same built origin in Web and Desktop, including real status details on new tasks, project context, task starters, draft/attachment preservation, native chrome and split-pane menus. Save light/dark screenshots and a short hover/menu/split recording; isolated component tests do not establish whole-page visual acceptance. Stop only the helper/server/provider processes whose PID and Home were recorded, then verify their ports are free.
 

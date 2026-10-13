@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Server } from "@ericsanchezok/synergy-server/server/server"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -284,6 +285,42 @@ describe("OpenAPI spec generation", () => {
       }
     })
   })
+
+  test("documents the actual capabilities startup and shutdown responses", () =>
+    runtime.run(async () => {
+      const app = Server.App()
+      try {
+        RuntimeContext.setReady(false)
+        const starting = await app.request("/global/capabilities")
+        expect(starting.status).toBe(503)
+        expect(await starting.json()).toEqual({ error: "Runtime services are not ready" })
+        RuntimeContext.setReady(true)
+        expect((await app.request("/global/capabilities")).status).toBe(200)
+        Server.beginShutdown()
+        const closing = await app.request("/global/capabilities")
+        expect(closing.status).toBe(503)
+        expect(await closing.json()).toEqual({
+          name: "RuntimeShuttingDown",
+          data: { message: "Synergy runtime is shutting down" },
+        })
+      } finally {
+        RuntimeContext.setReady(true)
+        Server.resumeRequests()
+      }
+      const spec = await Server.openapi()
+      const response = spec.paths["/global/capabilities"]?.get?.responses?.["503"]
+      expect(response && "content" in response ? response.content?.["application/json"]?.schema : undefined).toEqual({
+        anyOf: [
+          { $ref: "#/components/schemas/RuntimeNotReadyError" },
+          { $ref: "#/components/schemas/RuntimeShuttingDownError" },
+        ],
+      })
+      expect(spec.components?.schemas?.RuntimeNotReadyError).toMatchObject({
+        type: "object",
+        properties: { error: { type: "string" } },
+        required: ["error"],
+      })
+    }))
 
   test("documents runtime shutdown for every API operation", () =>
     runtime.run(async () => {

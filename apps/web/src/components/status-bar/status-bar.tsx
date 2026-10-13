@@ -3,7 +3,7 @@ import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
 import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useHolos } from "@/context/holos"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -398,7 +398,7 @@ function SubsessionsButton(props: {
           </span>
         </div>
 
-        <label class="mt-2 flex h-8 items-center gap-2 rounded-md bg-[var(--workbench-input-bg,var(--input-base))] px-2 text-text-subtle ring-1 ring-inset ring-border-weaker-base focus-within:ring-border-strong-base">
+        <label class="mt-2 flex h-8 items-center gap-2 rounded-md bg-[var(--workbench-input-bg,var(--input-base))] px-2 text-text-subtle ring-1 ring-inset ring-border-weaker-base">
           <Icon name={getSemanticIcon("action.search")} size="small" class="shrink-0 text-icon-weak-base" />
           <input
             value={search()}
@@ -424,7 +424,7 @@ function SubsessionsButton(props: {
                   <div class="text-12-medium text-text-base">{i18n._(copy.loadError)}</div>
                   <button
                     type="button"
-                    class="rounded-md px-2 py-1 text-12-medium text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-1 focus-visible:ring-border-strong-base"
+                    class="rounded-md px-2 py-1 text-12-medium text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none"
                     onClick={() => void retry()}
                   >
                     {i18n._(copy.retry)}
@@ -442,7 +442,7 @@ function SubsessionsButton(props: {
                     return (
                       <button
                         type="button"
-                        class="grid w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)_4.5rem] items-start gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:bg-surface-raised-base-hover focus-visible:ring-1 focus-visible:ring-border-strong-base"
+                        class="grid w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)_4.5rem] items-start gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:bg-surface-raised-base-hover"
                         onClick={() => {
                           setOpen(false)
                           props.onSelect(session)

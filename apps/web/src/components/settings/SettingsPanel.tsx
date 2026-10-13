@@ -395,7 +395,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
     removeMemory: (id) => globalSDK.client.library.remove({ id }, { throwOnError: true }),
   })
   createEffect(() => {
-    if (activeTab() === "boss" && !bossNameController.loaded()) untrack(() => void bossNameController.load())
+    if (activeTab() === "boss" && globalSDK.capabilities.has("library") && !bossNameController.loaded())
+      untrack(() => void bossNameController.load())
   })
   const voiceController = createVoiceController({
     get: async () =>
@@ -409,7 +410,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
       ).data?.config.voice,
   })
   createEffect(() => {
-    if (activeTab() === "voice" && !voiceController.loaded()) untrack(() => void voiceController.load())
+    if (activeTab() === "voice" && globalSDK.capabilities.has("media") && !voiceController.loaded())
+      untrack(() => void voiceController.load())
   })
 
   const configSections = [
@@ -436,7 +438,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
   ]
   const sectionResourceStates: { sections: readonly string[]; state: SettingsResourceState }[] = []
   function sectionResource<T>(loader: () => Promise<T>, sections: readonly string[]) {
-    const resource = createSettingsResource(loader, () => sections.includes(activeTab()))
+    const resource = createSettingsResource(
+      loader,
+      () =>
+        sections.includes(activeTab()) && runtimeFeatureAvailable("settings", activeTab(), globalSDK.capabilities.has),
+      globalSDK.capabilities.current,
+    )
     sectionResourceStates.push({ sections, state: resource[1] })
     return resource
   }
@@ -448,7 +455,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const [channelStatuses, channelStatusesResource] = sectionResource(async () => {
     await globalSDK.capabilities.load()
-    if (!globalSDK.capabilities.has("connections")) return {} as Record<string, ChannelStatus>
+    if (!globalSDK.capabilities.has("channels")) return {} as Record<string, ChannelStatus>
     const res = await globalSDK.client.channel.status({}, { throwOnError: true })
     return (res.data ?? {}) as Record<string, ChannelStatus>
   }, ["channels"])
@@ -796,6 +803,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       cfg: config()!,
       state: settings,
       originalMcps: originalMcpsRef.current,
+      hasFeature: globalSDK.capabilities.has,
     })
   })
 
@@ -822,7 +830,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       font.dirty() ||
       desktopUpdateDirty() ||
       voiceController.dirty() ||
-      bossNameController.dirty(),
+      (globalSDK.capabilities.has("library") && bossNameController.dirty()),
   )
   const draftFingerprint = createMemo(() =>
     JSON.stringify({
@@ -863,6 +871,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     serverDraft: () => snapshotSettingsDraft(settings),
     domainSummaries: () => domainSummaries() ?? [],
     hasAnyChanges,
+    hasUnsavedResources: () => providerSetupDrafts.dirty(),
     editingLabel,
     refreshAfterConfigChange,
     preparePatchSave: (patch) => prepareLocaleSettingsSave(patch, locale.controller),
@@ -870,7 +879,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       await rejectLocaleSettingsSave(patch, locale.controller, globalSync.data.config.locale)
     },
     discardChanges,
-    closeBlocked: () => saving() || personalizeController.status() === "saving",
+    closeBlocked: () => saving() || personalizeController.status() === "saving" || providerSetupDrafts.pending(),
     closeDialog: () => {
       if (props.onClose) props.onClose()
       else dialog.close()
@@ -882,7 +891,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   async function openBossSession() {
     const requireSavedChanges = () => {
-      if (hasAnyChanges() || saving())
+      if (hasAnyChanges() || saving() || providerSetupDrafts.dirty() || providerSetupDrafts.pending())
         throw new Error(
           _({
             id: "settings.runtime.boss.saveFirst",
@@ -971,7 +980,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     {
       name: _({ id: "settings.runtime.boss.name", message: "Assistant name" }),
       page: "boss",
-      dirty: bossNameController.dirty,
+      dirty: () => globalSDK.capabilities.has("library") && bossNameController.dirty(),
       save: bossNameController.save,
     },
     { name: _(copy.pluginsGroup), page: activeTab(), dirty: hasPluginChanges, save: savePluginChanges },
@@ -1121,7 +1130,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       saving: saving(),
       refreshPending: save.refreshPending(),
       loading:
-        !initialized() ||
+        (configSections.includes(activeTab()) && !initialized()) ||
         sectionLoading() ||
         (activeTab() === "voice" && voiceController.status() === "loading") ||
         (activeTab() === "boss" && bossNameController.status() === "loading"),
@@ -1280,7 +1289,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
       />
     ),
     learning: () => (
-      <LearningPanel library={settings.library} onLibraryChange={(key, value) => setSettings("library", key, value)} />
+      <LearningPanel
+        showAutonomy={globalSDK.capabilities.has("anima")}
+        library={settings.library}
+        onLibraryChange={(key, value) => setSettings("library", key, value)}
+      />
     ),
     memory: () => (
       <MemoryPanel
@@ -1486,6 +1499,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       <BossModePanel
         runtime={settings.runtime}
         nameController={bossNameController}
+        nameAvailable={globalSDK.capabilities.has("library")}
         configDirty={hasAnyChanges()}
         onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
         onOpenBossSession={openBossSession}
@@ -1525,7 +1539,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return filterSettingsSections(getSettingsSections(), developerMode())
       .filter((section) => runtimeFeatureAvailable("settings", section.id, globalSDK.capabilities.has))
       .map((section) => {
-        const localized = localizeSettingsSection(section, _)
+        const localized = localizeSettingsSection(section, _, globalSDK.capabilities.has)
         const base = isBuiltinSettingsId(section.id) ? { ...localized, component: components[section.id] } : localized
         if (!desktopZoom || section.id !== "general") return base
         const zoomLabel = _(copy.interfaceZoomRow)
@@ -1569,6 +1583,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
   })
 
   const activeSection = createMemo(() => settingsSections().find((section) => section.id === activeTab()))
+  createEffect(() => {
+    if (!activeSection() && settingsSections().length) setActiveTab(settingsSections()[0].id)
+  })
 
   const selectSection = (id: string) => {
     setSearchTarget(undefined)
@@ -1611,7 +1628,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
         type="button"
         class="settings-panel-close"
         aria-label={_(copy.closeLabel)}
-        disabled={saving() || save.status() === "saving" || personalizeController.status() === "saving"}
+        disabled={
+          saving() ||
+          save.status() === "saving" ||
+          personalizeController.status() === "saving" ||
+          providerSetupDrafts.pending()
+        }
         onClick={save.closeWithGuard}
       >
         <Icon name={getSemanticIcon("action.close")} size="small" />
@@ -1694,7 +1716,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
               <button
                 ref={mobileBackButton}
                 type="button"
-                class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus-base"
+                class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base"
                 aria-label={_(copy.backLabel)}
                 onClick={showMobileSectionList}
               >
@@ -1865,7 +1887,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   type="button"
                   variant="ghost"
                   size="large"
-                  disabled={saving() || save.status() === "saving" || personalizeController.status() === "saving"}
+                  disabled={
+                    saving() ||
+                    save.status() === "saving" ||
+                    personalizeController.status() === "saving" ||
+                    providerSetupDrafts.pending()
+                  }
                   onClick={save.closeWithGuard}
                 >
                   {_(copy.cancel)}

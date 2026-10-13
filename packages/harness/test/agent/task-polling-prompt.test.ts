@@ -70,8 +70,10 @@ describe("background task polling guidance", () => {
     expect(TASK_DESCRIPTION).toMatch(blockFullOnly)
   })
 
-  test("agenda_watch and agenda_schedule are explicitly prohibited for subagent completion", () => {
-    const noAgendaForSubagents = /Do NOT use.*agenda_watch|do not.*agenda_watch.*subagent|No watch.*is needed/i
-    expect(TASK_DESCRIPTION).toMatch(noAgendaForSubagents)
+  test("shared task guidance uses automatic notification without requiring a scheduler product", () => {
+    for (const prompt of [TASK_DESCRIPTION, CORTEX_REMINDER]) {
+      expect(prompt).toMatch(/Do NOT schedule additional wake-ups/i)
+      expect(prompt).not.toMatch(/agenda_\w+/)
+    }
   })
 })

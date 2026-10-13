@@ -67,7 +67,12 @@ export type ConversationRow = {
 // Provenance: docs/postmortem/0059-cold-process-disclosure-jank.md
 // Local adaptation: Pending process bodies reserve compact summary lines until accepted content can be measured.
 export const estimateConversationRowSize = (row: ConversationRow) =>
-  28 * (row.kind === "body" ? Math.max(1, row.parts.length) : 1)
+  row.kind === "body" &&
+  row.activity &&
+  row.parts.length > 0 &&
+  row.parts.every((part) => part.type === "tool" && (part.status === "pending" || part.status === "generating"))
+    ? 2
+    : 28 * (row.kind === "body" ? Math.max(1, row.parts.length) : 1)
 
 export function buildConversationRows(input: {
   previous?: readonly ConversationRow[]

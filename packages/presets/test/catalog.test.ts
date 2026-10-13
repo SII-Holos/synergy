@@ -19,6 +19,13 @@ test("published component metadata agrees with the source composition", async ()
     expect(factory.apiVersion).toBe(metadata.apiVersion)
     expect(factory.version).toBe(metadata.version)
     expect(factory.requires).toEqual(metadata.requires)
+    for (const [packageName, version] of Object.entries(metadata.packages ?? {})) {
+      const dependencyOwner = packageName.replace("@ericsanchezok/synergy-", "")
+      const dependency = await Bun.file(new URL(`../../${dependencyOwner}/package.json`, import.meta.url)).json()
+      const dependencyMetadata = SynergyPackage.parse(dependency.synergy)
+      expect(dependencyMetadata.version).toBe(version)
+      if (dependencyMetadata.kind === "component") expect(metadata.requires?.[dependencyMetadata.id]).toBe(version)
+    }
     factories.delete(metadata.id)
   }
   expect(factories.size).toBe(0)

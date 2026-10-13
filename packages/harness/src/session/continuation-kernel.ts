@@ -1,3 +1,4 @@
+import { SessionExecutionOwners } from "./execution-owners"
 import { RuntimeContext } from "../lifecycle/context"
 import { Log } from "../util/log"
 import type { Scope } from "../scope"
@@ -114,9 +115,12 @@ export namespace ContinuationKernel {
   }
 
   export async function passesSharedGate(sessionID: string): Promise<Gate | undefined> {
-    const session = await SessionManager.getSession(sessionID)
-    if (!session || session.time.archived) return undefined
-    if (await ContinuationWait.has(sessionID)) return undefined
+    const stored = await SessionManager.getSession(sessionID)
+    if (!stored || stored.time.archived) return undefined
+    if (!(await SessionExecutionOwners.allowsResume(stored))) return undefined
+    const root = await SessionExecutionOwners.latestRoot(sessionID)
+    const session = SessionExecutionOwners.forRoot(stored, root)
+    if (!MessageV2.isIndependentRoot(root) && (await ContinuationWait.has(sessionID))) return undefined
 
     const terminalMessageID = await terminalAssistantMessageID(sessionID)
     if (!terminalMessageID) return undefined

@@ -1,3 +1,4 @@
+import { ResourceSources } from "@ericsanchezok/synergy-harness/observability/resource-sources"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Diagnostics } from "@ericsanchezok/synergy-harness/observability/diagnostics"
@@ -13,9 +14,6 @@ import { PerformanceSchema } from "./schema"
 import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
 import { readRuntimeStats } from "@ericsanchezok/synergy-harness/lifecycle"
 import { PolicyWorker } from "@ericsanchezok/synergy-harness/enforcement/policy-worker"
-import { pluginRuntimeManager } from "@ericsanchezok/synergy-plugin-host/plugin/runtime"
-import { BrowserRuntime } from "@ericsanchezok/synergy-browser-runtime/runtime"
-import { McpSupervisor } from "@ericsanchezok/synergy-mcp/supervisor"
 import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
 import { SessionMemoryPressure } from "@ericsanchezok/synergy-harness/session/memory-pressure"
 
@@ -98,9 +96,7 @@ export namespace PerformanceDashboard {
     const agentWorkers = AgentTurn.stats()
     const policyWorkers = PolicyWorker.stats()
     const { toolTasks } = readRuntimeStats()
-    const pluginRuntimes = pluginRuntimeManager().resourceStats()
-    const browser = BrowserRuntime.resourceStats()
-    const mcp = await McpSupervisor().resourceStats()
+    const contributedResources = await ResourceSources.read()
     const localProcesses = await ProcessRegistry.resourceStats()
     const controlPlane = SessionMemoryPressure.stats()
     const messageCacheStats = SessionMessageCache.stats()
@@ -215,45 +211,7 @@ export namespace PerformanceDashboard {
         attributes: { active: policyWorkers.active, queued: policyWorkers.queued },
         lastRecovery: policyWorkers.lastRecovery,
       },
-      {
-        owner: "plugin",
-        ...pluginRuntimes,
-        source: "plugin_monitor",
-        completeness:
-          pluginRuntimes.processCount === 0 || pluginRuntimes.measuredProcessCount === pluginRuntimes.processCount
-            ? "full"
-            : "partial",
-        attributes: {},
-      },
-      {
-        owner: "browser",
-        ...browser,
-        source: "browser_runtime",
-        completeness:
-          browser.processCount === 0 || browser.measuredProcessCount === browser.processCount ? "full" : "partial",
-        attributes: {
-          owners: browser.ownerCount,
-          sessionOwners: browser.sessionOwnerCount,
-          scopeOwners: browser.scopeOwnerCount,
-          activePages: browser.activePageCount,
-          hostPages: browser.hostPageCount,
-          headlessPages: browser.headlessPageCount,
-          suspendedPages: browser.suspendedPageCount,
-        },
-      },
-      {
-        owner: "mcp",
-        ...mcp,
-        source: "mcp_stdio",
-        completeness: mcp.processCount === 0 || mcp.measuredProcessCount === mcp.processCount ? "full" : "partial",
-        attributes: {
-          stdioOpen: mcp.stdio.open,
-          stdioClosing: mcp.stdio.closing,
-          stdioClosed: mcp.stdio.closed,
-          closeTimedOut: mcp.stdio.timedOut,
-          descendantPipeGraceMs: 2_000,
-        },
-      },
+      ...contributedResources,
       {
         owner: "local_process",
         ...localProcesses,

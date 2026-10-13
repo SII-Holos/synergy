@@ -227,9 +227,6 @@ describe.serial("performance observability store", () => {
           "control_plane",
           "agent",
           "policy",
-          "plugin",
-          "browser",
-          "mcp",
           "local_process",
         ])
         expect(summary.resources.owners.find((owner) => owner.owner === "local_process")).toMatchObject({

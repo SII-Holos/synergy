@@ -21,6 +21,7 @@ test("composer uploads use current Scope limits and observe config reloads", asy
        export const uploaded = [], toasts = []
        export const configure = (attachment) => setData("config", reconcile({ attachment }))
        export const useSync = () => ({ data })
+       export const useGlobalSDK = () => ({ capabilities: { has: () => false } })
        export const useGlobalSync = () => ({ data: { config: { attachment: { maxFiles: 20, maxFileBytes: 100, maxTotalBytes: 1000 } } } })
        export const useSDK = () => ({ client: { asset: { upload: async ({ file }) => {
          uploaded.push(file.name)

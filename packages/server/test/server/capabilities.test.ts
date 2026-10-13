@@ -4,6 +4,22 @@ import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/regis
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { Server } from "../../src/server/server"
 
+test("capabilities are unavailable until runtime service initialization completes", async () => {
+  let during: Response | undefined
+  await using runtime = await testRuntime({
+    composition: {
+      register: registerLocalRuntime,
+      services: () => ({
+        async initializeExtensions() {
+          during = await Server.App().request("/global/capabilities")
+        },
+      }),
+    },
+  })
+  expect(during?.status).toBe(503)
+  expect((await runtime.run(() => Server.App().request("/global/capabilities"))).status).toBe(200)
+})
+
 test("capabilities are global and report only the components selected for that runtime", async () => {
   const component = (id: string) => ({ id, apiVersion: 1 as const, version: "1.0.0", register() {} })
   const open = (ids: string[]) =>
@@ -19,10 +35,37 @@ test("capabilities are global and report only the components selected for that r
   expect(response.status).toBe(200)
   expect(await response.json()).toMatchObject({
     apiVersion: 1,
+    features: [],
     components: [{ id: "local-runtime", version: "1.0.0", apiVersion: 1 }],
   })
   const selected = await extended.run(async () => (await Server.App().request("/global/capabilities")).json())
   expect(selected.components.map((item: { id: string }) => item.id).sort()).toEqual(["local-runtime", "lsp", "mcp"])
+  expect(selected.features).toEqual([])
+})
+
+test("features require a selected service and its HTTP contribution in the same Runtime", async () => {
+  const open = (selected: boolean) =>
+    testRuntime({
+      composition: RuntimeComponents.compose([
+        { id: "local-runtime", apiVersion: 1, version: "1.0.0", register: registerLocalRuntime },
+        ...(selected ? [{ id: "fixture", apiVersion: 1 as const, version: "1.0.0", register() {} }] : []),
+        {
+          id: "server",
+          apiVersion: 1,
+          version: "1.0.0",
+          register() {
+            Server.registerContributions({ features: ["fixture-ui"] }, "fixture")
+          },
+        },
+      ]),
+    })
+  await using active = await open(true)
+  await using absent = await open(false)
+  const read = (runtime: typeof active) =>
+    runtime.run(async () => (await Server.App().request("/global/capabilities")).json())
+  expect((await read(active)).features).toEqual(["fixture-ui"])
+  expect((await read(absent)).features).toEqual([])
+  expect((await read(active)).features).toEqual(["fixture-ui"])
 })
 
 test("managed runtime credentials protect every HTTP route without changing a separately owned runtime", async () => {

@@ -87,11 +87,6 @@
   text-decoration-color: currentColor;
 }
 
-[data-component="markdown"] a[data-resource-reference]:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 3px;
-}
-
 [data-component="markdown"] [data-reference-icon] {
   display: inline-block;
   width: 1em;
@@ -234,7 +229,6 @@
   outline: none;
   background-color: color-mix(in srgb, var(--surface-focus) 72%, transparent);
   color: var(--text-strong);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-weaker-focus) 34%, transparent);
 }
 
 [data-component="markdown"] [data-slot="markdown-code-copy"][data-copy-state="copied"] {

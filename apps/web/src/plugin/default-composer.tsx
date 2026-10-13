@@ -14,7 +14,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
   const [version, setVersion] = createSignal(0)
   const [animating, setAnimating] = createSignal(false)
   let motion: ReturnType<typeof createComposerMotion> | undefined
-  let measure = () => {}
+  let measure = (_transition = false) => {}
   let previousExpanded = !!binding?.state.expanded && input.current().mode === "normal"
   if (binding)
     onCleanup(
@@ -25,7 +25,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
         if (!changed) motion?.cancel()
         previousExpanded = next
         setVersion((value) => value + 1)
-        if (token !== undefined) queueMicrotask(() => motion?.play(next, token, measure))
+        if (token !== undefined) queueMicrotask(() => motion?.play(next, token, () => measure(true)))
       }),
     )
   const expanded = createMemo(() => {
@@ -46,8 +46,10 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
     const dockContainer = root.closest<HTMLElement>(".session-prompt-dock")
     const activity = dock?.querySelector(".prompt-dock-float-layer")
     const outlet = dock?.querySelector("[data-session-decision-outlet]")
+    const pending = dock?.querySelector("[data-prompt-pending]")
     let paneWidth: number | undefined
-    measure = () => {
+    let previousUnreservedHeight: number | undefined
+    measure = (transition = false) => {
       const viewport = window.visualViewport
       const rect = pane?.getBoundingClientRect()
       const dockSpacing = dockContainer ? Number.parseFloat(getComputedStyle(dockContainer).paddingBottom) : 0
@@ -61,45 +63,51 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
       const reserved = expanded()
         ? 0
         : (activity?.getBoundingClientRect().height ?? 0) +
+          (pending?.getBoundingClientRect().height ?? 0) +
           (request
             ? [
                 ...request.querySelectorAll(".decision-header, .decision-origin, .decision-footer, .decision-notice"),
               ].reduce((height, element) => height + element.getBoundingClientRect().height, 0) + 36
             : 0)
-      const height = Math.max(
-        64,
+      const unreservedHeight =
         Math.min(
           rect?.bottom ?? window.innerHeight,
           viewport ? viewport.offsetTop + viewport.height : window.innerHeight,
         ) -
-          Math.max(rect?.top ?? 0, topbar?.bottom ?? 0, viewport?.offsetTop ?? 0) -
-          footer -
-          reserved -
-          dockSpacing -
-          8,
+        Math.max(rect?.top ?? 0, topbar?.bottom ?? 0, viewport?.offsetTop ?? 0) -
+        footer -
+        dockSpacing -
+        8
+      const height = Math.max(64, unreservedHeight - reserved)
+      if (
+        (!transition && Math.abs(height - availableHeight()) > 0.5) ||
+        (previousUnreservedHeight !== undefined && Math.abs(unreservedHeight - previousUnreservedHeight) > 0.5) ||
+        (paneWidth !== undefined && paneWidth !== rect?.width)
       )
-      if (Math.abs(height - availableHeight()) > 0.5 || (paneWidth !== undefined && paneWidth !== rect?.width))
         motion?.cancel()
       paneWidth = rect?.width
+      previousUnreservedHeight = unreservedHeight
       setAvailableHeight(height)
       const form = root.querySelector("form")
       const editor = root.querySelector(".session-composer-editor")
       if (form && editor) setChromeHeight(form.getBoundingClientRect().height - editor.getBoundingClientRect().height)
     }
-    const observer = new ResizeObserver(measure)
+    const refreshGeometry = () => measure()
+    const observer = new ResizeObserver(refreshGeometry)
     if (pane) observer.observe(pane)
     if (dockContainer) observer.observe(dockContainer, { box: "border-box" })
     if (activity) observer.observe(activity)
     if (outlet) observer.observe(outlet)
+    if (pending) observer.observe(pending)
     const form = root.querySelector("form")
     if (form) observer.observe(form)
     measure()
-    window.visualViewport?.addEventListener("resize", measure)
-    window.addEventListener("resize", measure)
+    window.visualViewport?.addEventListener("resize", refreshGeometry)
+    window.addEventListener("resize", refreshGeometry)
     onCleanup(() => {
       observer.disconnect()
-      window.visualViewport?.removeEventListener("resize", measure)
-      window.removeEventListener("resize", measure)
+      window.visualViewport?.removeEventListener("resize", refreshGeometry)
+      window.removeEventListener("resize", refreshGeometry)
       motion?.dispose()
     })
   })

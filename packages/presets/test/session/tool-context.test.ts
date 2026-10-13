@@ -1,4 +1,4 @@
-import { BlueprintToolAccess } from "@ericsanchezok/synergy-workflows/blueprint/tool-access"
+import { BlueprintToolAccess } from "@ericsanchezok/synergy-blueprint/blueprint/tool-access"
 import { describe, expect, test } from "bun:test"
 import { SessionToolContext } from "@ericsanchezok/synergy-harness/session/tool-context"
 import { ToolMcpSource } from "@ericsanchezok/synergy-harness/tool/mcp-source"

@@ -1,8 +1,9 @@
 # note Package
 
-Note documents, content rules, backend service, tools, routes, configuration and migrations. Expose content operations for workflow consumers and `NoteStore.invalidateStorageIndexes()` for Home imports. Tool and route handlers use the same domain service and preserve version/conflict semantics. Independent hosts compose the package through `registerNote()` from `./register`; routes and CLI presentation are separate exports. Read the root AGENTS.md and the owning architecture document before changes.
+Note documents, content rules, backend service, tools, routes and migrations. Expose content operations for consumers and `NoteStore.invalidateStorageIndexes()` for Home imports. Document owners register kinds through `NoteDocumentKinds`; their lifecycle updates use `NoteStore.mutateMetadata()` to preserve version, index and event semantics. Note must not own Blueprint metadata, workflow policy or prompts. Unavailable kinds are hidden from every public read and mutation, while their stored data and unknown extension fields remain intact. Independent hosts compose the package through `registerNote()` from `./register`; routes and CLI presentation are separate exports. Read the root AGENTS.md and the owning architecture document before changes.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
+- Owner public projection hooks receive a copy of their declared fields; never persist their output over canonical metadata. Lifecycle owners use `mutateMetadata` or `mutateMetadataAny` for derived fields that are absent from authoring input schemas.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Tests live under test/ and use isolated homes through the testing support package.
 

@@ -69,7 +69,7 @@ export function SessionTagMenu(props: {
           disabled={pending()}
           aria-label={_(sessionTags.filterOrCreate)}
           placeholder={_(sessionTags.filterOrCreate)}
-          class="w-full px-2 py-1.5 text-12-regular rounded-md bg-surface-inset-base border border-border-base outline-none focus:border-border-interactive-base"
+          class="w-full px-2 py-1.5 text-12-regular rounded-md bg-surface-inset-base border border-border-base outline-none"
           onInput={(event) => setQuery(event.currentTarget.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {

@@ -97,3 +97,49 @@ test("switching sessions aborts details and rejects a late response even when re
     setup.dispose()
   }
 })
+
+test("activating a requested detail shares its pending read and hiding aborts it before resuming", async () => {
+  const pending: { request: Request; resolve(response: Response): void }[] = []
+  const client = createSynergyClient({
+    baseUrl: "http://fixture.test",
+    fetch: Object.assign(
+      (request: RequestInfo | URL) =>
+        new Promise<Response>((resolve) => {
+          pending.push({ request: request as Request, resolve })
+        }),
+      { preconnect: fetch.preconnect },
+    ),
+  })
+  const [visible, show] = createSignal(false)
+  const setup = createRoot((dispose) => ({
+    dispose,
+    summary: createExecutionSummary({
+      client,
+      visible,
+      sessionID: () => "session",
+      connected: () => true,
+      available: () => true,
+      subscribe: () => () => {},
+    }),
+  }))
+  try {
+    const loading = setup.summary.refresh()
+    show(true)
+    await Bun.sleep(0)
+    expect(pending).toHaveLength(1)
+    expect(pending[0].request.signal.aborted).toBe(false)
+    show(false)
+    expect(pending[0].request.signal.aborted).toBe(true)
+    pending[0].resolve(Response.json({ sessionID: "session", clockID: "server", revision: 1, sampledAt: 1 }))
+    await loading
+    expect(setup.summary.state.summary).toBeUndefined()
+    show(true)
+    await Bun.sleep(0)
+    expect(pending).toHaveLength(2)
+    pending[1].resolve(Response.json({ sessionID: "session", clockID: "server", revision: 2, sampledAt: 2 }))
+    await Bun.sleep(0)
+    expect(setup.summary.state.summary?.revision).toBe(2)
+  } finally {
+    setup.dispose()
+  }
+})

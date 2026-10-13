@@ -4,7 +4,7 @@ import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLingui } from "@lingui/solid"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import type {
   ExecutionContextItem,
   ExecutionContextSnapshot,

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
+import { parse as parseJsonc } from "jsonc-parser"
 import { testRuntime } from "../support/runtime"
 import { tmpdir } from "../support/fixture"
 import { Scope } from "../../src/scope"
@@ -79,7 +80,8 @@ test("project config discovered after startup reuses the same owner upgrade", as
       async fn() {
         expect(await Agent.defaultAgent()).toBe("forge")
         expect((await Config.current()).agent?.forge?.model).toBe("fixture/model")
-        expect(JSON.parse(await Bun.file(filepath).text())).toMatchObject({
+        expect(await Bun.file(filepath).json()).toEqual({})
+        expect(parseJsonc(await Bun.file(path.join(path.dirname(filepath), "60-agents.jsonc")).text())).toMatchObject({
           default_agent: "forge",
           agent: { forge: { model: "fixture/model" } },
         })

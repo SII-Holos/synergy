@@ -1,5 +1,6 @@
+import { useGlobalSDK } from "@/context/global-sdk"
 import { createMemo, Show, type ParentProps } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
@@ -29,6 +30,7 @@ export default function Layout(props: ParentProps) {
               const sync = useSync()
               const sdk = useSDK()
               const globalSync = useGlobalSync()
+              const globalSDK = useGlobalSDK()
               const decisions = useSessionDecision()
               const navigateToSession = useNavigateToSession()
               const respond = (input: {
@@ -41,6 +43,7 @@ export default function Layout(props: ParentProps) {
 
               return (
                 <DataProvider
+                  hasFeature={globalSDK.capabilities.has}
                   data={sync.data}
                   runtime={createSessionDataRuntime(globalSync)}
                   directory={

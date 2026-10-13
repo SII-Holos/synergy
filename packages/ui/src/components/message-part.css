@@ -247,11 +247,15 @@
       border-color var(--motion-duration-fast) var(--motion-ease-standard),
       background-color var(--motion-duration-fast) var(--motion-ease-standard);
 
+    &:hover {
+      border-color: var(--border-strong-base);
+    }
+
     &:hover,
     &:focus-within {
       --user-message-bubble-bg: var(--workbench-control-bg-hover, var(--surface-base-hover));
-      border-color: var(--border-strong-base);
       background: var(--user-message-bubble-bg);
+      background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
     }
 
     &[data-collapsed] {
@@ -326,7 +330,6 @@
 
     &:focus-visible {
       outline: none;
-      box-shadow: var(--shadow-xs-border-focus);
     }
   }
 
@@ -378,7 +381,6 @@
 
     &:focus-visible {
       outline: none;
-      box-shadow: var(--shadow-xs-border-focus);
       border-radius: var(--radius-sm);
     }
   }
@@ -934,11 +936,6 @@
     &:hover {
       border-color: var(--border-strong-base);
       color: var(--text-base);
-    }
-
-    &:focus-visible {
-      outline: 1px solid var(--border-interactive-base);
-      outline-offset: 1px;
     }
 
     [data-slot="icon-svg"] {

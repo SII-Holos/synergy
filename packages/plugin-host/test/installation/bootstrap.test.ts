@@ -21,6 +21,62 @@ async function fixture() {
       await write(id, {
         synergy: { formatVersion: 1, kind: "preset", id, version, compatibility: { synergy: version }, packages: {} },
       })
+    for (const id of [
+      "workflows",
+      "connections",
+      "agenda",
+      "light-loop",
+      "blueprint",
+      "lattice",
+      "boss",
+      "anima",
+      "agenda-blueprint",
+      "agenda-light-loop",
+      "plugin-agenda",
+      "plugin-blueprint",
+      "plugin-light-loop",
+      "channels",
+      "channel-feishu",
+      "github",
+      "channel-github",
+      "holos",
+      "channel-clarus",
+      "email",
+      "boss-feishu",
+      "github-agenda",
+      "channel-blueprint",
+      "channel-light-loop",
+      "channel-lattice",
+    ]) {
+      await Bun.write(path.join(modules, name(id), "component.js"), 'throw new Error("No bootstrap component imports")')
+      await write(id, {
+        synergy: {
+          formatVersion: 1,
+          kind: "component",
+          id,
+          version,
+          compatibility: { synergy: version },
+          apiVersion: 1,
+          entry: "./component.js",
+          export: "component",
+        },
+      })
+    }
+    await Bun.write(
+      path.join(modules, "third-party/package.json"),
+      JSON.stringify({
+        name: "third-party",
+        version: "1.7.0",
+        synergy: {
+          formatVersion: 1,
+          kind: "preset",
+          id: "third-party",
+          version: "1.7.0",
+          compatibility: { synergy: ">=2.0.0" },
+          packages: {},
+        },
+      }),
+    )
     return path.join(modules, name("cli"))
   }
   return {
@@ -30,6 +86,40 @@ async function fixture() {
     [Symbol.asyncDispose]: () => fs.rm(directory, { recursive: true, force: true }),
   }
 }
+
+test.each(["2.0.0", "2.1.0"])(
+  "legacy aggregate roots upgrade to removable leaves while retaining third-party pins and old generations (%s)",
+  async (version) => {
+    await using temp = await fixture()
+    const first = await seedInstalledCore(temp.root, await temp.release("2.0.0"), "2.0.0", {
+      roots: { [name("workflows")]: "2.0.0", [name("connections")]: "2.0.0", "third-party": "^1.7.0" },
+    })
+    const options = { version, installedCore: await temp.release(version) }
+    const upgraded = await prepareInstalledLaunch(temp.root, options)
+    expect(upgraded.roots[name("workflows")]).toBeUndefined()
+    expect(upgraded.roots[name("connections")]).toBeUndefined()
+    for (const id of [
+      "agenda",
+      "blueprint",
+      "channels",
+      "channel-clarus",
+      "boss-feishu",
+      "github-agenda",
+      "channel-blueprint",
+      "channel-light-loop",
+      "channel-lattice",
+    ]) {
+      expect(upgraded.roots[name(id)]).toBe(version)
+      expect(upgraded.packages[name(id)].metadata?.id).toBe(id)
+    }
+    expect(upgraded.roots["third-party"]).toBe("^1.7.0")
+    expect(upgraded.packages["third-party"].version).toBe("1.7.0")
+    expect((await prepareInstalledLaunch(temp.root, options)).id).toBe(upgraded.id)
+    expect((await InstallationGenerations.pin(temp.root, { id: first.id, sha256: first.sha256 })).roots).toEqual(
+      first.roots,
+    )
+  },
+)
 
 test("upgrading the launcher replaces the core, preserves explicit selection and old worker pins", async () => {
   await using temp = await fixture()
@@ -64,6 +154,33 @@ test("an existing core selection remains minimal when a full launcher is install
   expect(upgraded.hostVersion).toBe("2.1.0")
   expect(upgraded.roots).toEqual({})
   expect(Object.keys(upgraded.packages)).toEqual([name("cli")])
+})
+
+test("a fresh aggregate preset selection retains its current declared closure", async () => {
+  await using temp = await fixture()
+  const cli = await temp.release("2.1.0")
+  await Bun.write(
+    path.join(cli, "../synergy-workflows/package.json"),
+    JSON.stringify({
+      name: name("workflows"),
+      version: "2.1.0",
+      synergy: {
+        formatVersion: 1,
+        kind: "preset",
+        id: "workflows",
+        version: "2.1.0",
+        compatibility: { synergy: "2.1.0" },
+        packages: { [name("agenda")]: "2.1.0" },
+      },
+    }),
+  )
+  const seed = await seedInstalledCore(path.join(temp.directory, "seed"), cli, "2.1.0", {
+    roots: { [name("workflows")]: "2.1.0" },
+  })
+  const selected = await prepareInstalledLaunch(temp.root, { version: "2.1.0", seed: seed.directory })
+  expect(selected.roots).toEqual({ [name("workflows")]: "2.1.0" })
+  expect(selected.packages[name("agenda")]).toBeDefined()
+  expect(selected.packages[name("plugin-blueprint")]).toBeUndefined()
 })
 
 test("legacy homes retain the full Web backend without installing another Desktop application", async () => {

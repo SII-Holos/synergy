@@ -48,6 +48,7 @@ test("fixture identity tracks Lingui configuration, HTML style sources and trans
     "apps/web/src/component.tsx",
     "packages/util/dist/index.js",
     "bun.lock",
+    "patches/virtua@0.42.3.patch",
   ]) {
     await Bun.write(path.join(f.repository, filename), `changed ${filename}`)
     const current = await f.input()

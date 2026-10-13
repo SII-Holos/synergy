@@ -25,11 +25,6 @@
   color: var(--text-base);
 }
 
-.menu-field-trigger:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
-}
-
 .menu-field-trigger:disabled {
   opacity: 0.5;
   cursor: default;
@@ -127,11 +122,6 @@
 .menu-field-item.is-active {
   background: var(--menu-field-selected-bg, var(--workbench-selected-bg, var(--surface-raised-stronger-hover)));
   color: var(--text-strong);
-}
-
-.menu-field-item:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
 }
 
 .menu-field-item-label {

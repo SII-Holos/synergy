@@ -20,12 +20,21 @@ export type WatermarkObservation = {
 
 export function observeWatermark(
   current: Watermark | undefined,
-  incoming: { epoch?: string; seq?: number } | undefined,
+  incoming: { epoch?: string; seq?: number; fromSeq?: number; toSeq?: number } | undefined,
 ): WatermarkObservation {
   // Streaming / non-state events (no seq) don't move the watermark.
   if (!incoming || incoming.seq === undefined || incoming.epoch === undefined) {
     return { next: current, replayFrom: undefined, gap: false, epochChanged: false }
   }
+  const range = incoming.fromSeq !== undefined || incoming.toSeq !== undefined
+  if (
+    range &&
+    (!Number.isSafeInteger(incoming.fromSeq) ||
+      incoming.fromSeq! < 0 ||
+      incoming.toSeq !== incoming.seq ||
+      incoming.fromSeq! > incoming.seq)
+  )
+    return { next: current, replayFrom: current, gap: true, epochChanged: false }
   if (!current) {
     return {
       next: { epoch: incoming.epoch, seq: incoming.seq },
@@ -41,7 +50,7 @@ export function observeWatermark(
     // Duplicate or already-applied event; keep the watermark, drop nothing else.
     return { next: current, replayFrom: undefined, gap: false, epochChanged: false }
   }
-  const gap = incoming.seq > current.seq + 1
+  const gap = (incoming.fromSeq ?? incoming.seq) > current.seq + 1
   if (gap) return { next: current, replayFrom: current, gap: true, epochChanged: false }
   return {
     next: { epoch: incoming.epoch, seq: incoming.seq },

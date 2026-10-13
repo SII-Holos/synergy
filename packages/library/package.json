@@ -28,7 +28,6 @@
     "./register": "./src/register.ts",
     "./script/embedding-runtime-assets": "./script/embedding-runtime-assets.ts",
     "./script/embedding-onnxruntime-web": "./script/embedding-onnxruntime-web.ts",
-    "./anima-schedule": "./src/anima-schedule.ts",
     "./cli/data": "./src/cli/data.ts",
     "./component": "./src/component.ts",
     "./http": "./src/http.ts"

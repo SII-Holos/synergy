@@ -51,7 +51,7 @@ export function ModelUnavailableBanner() {
           <button
             type="button"
             onClick={() => openProviders(state())}
-            class="rounded-md border border-border-warning-base/60 px-2.5 py-1 text-12-medium text-text-on-warning-base transition-colors hover:bg-surface-warning-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus"
+            class="rounded-md border border-border-warning-base/60 px-2.5 py-1 text-12-medium text-text-on-warning-base transition-colors hover:bg-surface-warning-base"
           >
             {actionLabel(state())}
           </button>

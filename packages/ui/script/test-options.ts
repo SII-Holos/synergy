@@ -39,6 +39,7 @@ export const testOptions = {
     "test/components/render-interactive.browser.test.ts",
     "test/components/render-html.test.ts",
     "test/context/render.test.ts",
+    "test/context/dialog.browser.test.ts",
     "test/markdown-terminal-transition.test.ts",
     "test/components/session-turn-timeline.test.ts",
     "test/components/session-turn-timeline-boundary.test.ts",

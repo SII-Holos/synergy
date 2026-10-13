@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { JsonValue } from "./json-value"
+import { RenderUI } from "./render-ui"
 
 /** Portable render protocol shared by the Media owner and its untrusted UI runtime. */
 export namespace RenderArtifact {
@@ -9,7 +10,7 @@ export namespace RenderArtifact {
   export const IMAGE_URL_LIMIT = 350 * 1024
   export const Library = z.enum(["d3", "chart", "mermaid"])
   export const ID = z.string().uuid()
-  export const Source = z
+  const SourceFields = z
     .object({
       format: z.literal("synergy.visual"),
       version: z.literal(1),
@@ -18,6 +19,8 @@ export namespace RenderArtifact {
       title: z.string().min(1).max(160),
       layout: z.enum(["normal", "wide"]),
       libraries: z.array(Library).max(3),
+      renderer: z.enum(["native", "html"]).optional(),
+      ui: RenderUI.Spec.optional(),
       html: z
         .string()
         .min(1)
@@ -25,9 +28,14 @@ export namespace RenderArtifact {
       replaces: ID.optional(),
     })
     .strict()
-    .meta({ ref: "RenderSource" })
+  export const Source = SourceFields.superRefine((source, ctx) => {
+    if ((source.renderer === "native") !== (source.ui !== undefined))
+      ctx.addIssue({ code: "custom", message: "Native sources require ui; HTML sources cannot contain ui" })
+    if (source.ui && source.libraries.length)
+      ctx.addIssue({ code: "custom", message: "Native sources cannot load libraries" })
+  }).meta({ ref: "RenderSource" })
   export type Source = z.infer<typeof Source>
-  export const Descriptor = Source.omit({ html: true })
+  export const Descriptor = SourceFields.omit({ html: true, ui: true })
     .extend({
       source: z.string().regex(/^asset:\/\/[a-f0-9]{16}\.bin$/),
     })

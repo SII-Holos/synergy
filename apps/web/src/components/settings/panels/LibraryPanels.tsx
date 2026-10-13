@@ -177,15 +177,6 @@ function stepOption(_: (desc: MessageDescriptor) => string, def: L10nStepOption)
 /* ---------- page / section descriptors ---------- */
 
 const learningPageTitle = { id: "settings.library.learning.page.title", message: "Learning" }
-const learningPageDesc = {
-  id: "settings.library.learning.page.desc",
-  message: "Decide how Synergy captures and maintains library knowledge.",
-}
-const captureSectionTitle = { id: "settings.library.learning.capture.title", message: "Capture" }
-const captureSectionDesc = {
-  id: "settings.library.learning.capture.desc",
-  message: "Allow knowledge capture and background reflection.",
-}
 const learnRowTitle = settingsFieldCopy.learningLearn
 const learnRowDesc = {
   id: "settings.library.learning.learnRow.desc",
@@ -354,12 +345,13 @@ function estimateDescriptor(callCount: number) {
 
 export function LearningPanel(props: {
   library: LibrarySettingsStore
+  showAutonomy?: boolean
   onLibraryChange: (key: keyof LibrarySettingsStore, value: string) => void
 }) {
   const { _ } = useLingui()
   return (
-    <SettingsPage title={_(learningPageTitle)} description={_(learningPageDesc)}>
-      <SettingsSection title={_(captureSectionTitle)} description={_(captureSectionDesc)}>
+    <SettingsPage title={_(learningPageTitle)}>
+      <SettingsSection>
         <SettingRow
           title={_(learnRowTitle)}
           description={_(learnRowDesc)}
@@ -376,22 +368,24 @@ export function LearningPanel(props: {
             </>
           }
         />
-        <SettingRow
-          title={_(autonomyRowTitle)}
-          description={_(autonomyRowDesc)}
-          stateLabel={props.library.autonomy !== "false" ? _(autonomyOn) : _(autonomyOff)}
-          trailing={
-            <>
-              <Switch
-                checked={props.library.autonomy !== "false"}
-                hideLabel
-                onChange={(value) => props.onLibraryChange("autonomy", value ? "true" : "false")}
-              >
-                {_(autonomyRowTitle)}
-              </Switch>
-            </>
-          }
-        />
+        <Show when={props.showAutonomy}>
+          <SettingRow
+            title={_(autonomyRowTitle)}
+            description={_(autonomyRowDesc)}
+            stateLabel={props.library.autonomy !== "false" ? _(autonomyOn) : _(autonomyOff)}
+            trailing={
+              <>
+                <Switch
+                  checked={props.library.autonomy !== "false"}
+                  hideLabel
+                  onChange={(value) => props.onLibraryChange("autonomy", value ? "true" : "false")}
+                >
+                  {_(autonomyRowTitle)}
+                </Switch>
+              </>
+            }
+          />
+        </Show>
       </SettingsSection>
     </SettingsPage>
   )

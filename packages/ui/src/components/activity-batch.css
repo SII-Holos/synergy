@@ -40,13 +40,6 @@
   cursor: default;
 }
 
-[data-slot="turn-process-trigger"]:focus-visible,
-[data-slot="activity-batch-trigger"]:focus-visible,
-[data-slot="process-reasoning-trigger"]:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
-}
-
 [data-slot="turn-process-trigger"] [data-component="icon"],
 [data-slot="activity-batch-trigger"] > [data-component="icon"]:last-child,
 [data-slot="process-reasoning-trigger"] > [data-component="icon"]:last-child {
@@ -131,13 +124,6 @@
 
 [data-component="activity-batch"] > [data-component="collapsible"] > [data-slot="activity-batch-trigger"]:hover {
   color: var(--text-base);
-}
-
-[data-component="activity-batch"]
-  > [data-component="collapsible"]
-  > [data-slot="activity-batch-trigger"]:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 
 [data-slot="turn-process-meta"] {
@@ -236,13 +222,6 @@
 [data-slot="activity-history-pages"] button:disabled {
   color: var(--text-subtle);
   cursor: default;
-}
-
-[data-slot="activity-history-pages"] button:focus-visible,
-[data-slot="reasoning-toolbar"] button:focus-visible,
-[data-slot="process-reasoning-detail"]:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 
 [data-slot="reasoning-segment"] + [data-slot="reasoning-segment"] {

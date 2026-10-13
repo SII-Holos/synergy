@@ -2,6 +2,8 @@ export function createContentBudget(limit = 128 * 1024 * 1024) {
   const entries = new Map<string, { version: string; bytes: number; evict(): void }>()
   const readers = new Map<string, number>()
   let bytes = 0
+  let trimming = false
+  const pressure = new Set<() => void>()
   const remove = (key: string, version?: string) => {
     const entry = entries.get(key)
     if (!entry || (version !== undefined && entry.version !== version)) return
@@ -9,14 +11,27 @@ export function createContentBudget(limit = 128 * 1024 * 1024) {
     bytes -= entry.bytes
   }
   const trim = () => {
-    for (const [key, entry] of entries) {
-      if (bytes <= limit) break
-      if (readers.has(key)) continue
-      remove(key)
-      entry.evict()
+    if (trimming || bytes <= limit) return
+    trimming = true
+    try {
+      for (const release of pressure) release()
+      for (const [key, entry] of entries) {
+        if (bytes <= limit) break
+        if (readers.has(key)) continue
+        remove(key)
+        entry.evict()
+      }
+    } finally {
+      trimming = false
     }
   }
   return {
+    onPressure(listener: () => void) {
+      pressure.add(listener)
+      return () => {
+        pressure.delete(listener)
+      }
+    },
     get bytes() {
       return bytes
     },
@@ -45,6 +60,7 @@ export function createContentBudget(limit = 128 * 1024 * 1024) {
     dispose() {
       entries.clear()
       readers.clear()
+      pressure.clear()
       bytes = 0
     },
   }

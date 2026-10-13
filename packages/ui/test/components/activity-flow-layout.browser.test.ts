@@ -8,11 +8,14 @@ let css: string
 
 beforeAll(async () => {
   css = (
-    await Promise.all(
-      ["collapsible", "session-turn", "activity-batch", "activity-trace", "markdown"].map((name) =>
-        Bun.file(path.resolve(import.meta.dir, `../../src/components/${name}.css`)).text(),
+    await Promise.all([
+      ...["collapsible", "session-turn", "activity-batch", "activity-trace", "markdown"].map((name) =>
+        Bun.file(path.resolve(import.meta.dir, `../../src/components/${name}.css`))
+          .text()
+          .then((css) => `@layer components { ${css} }`),
       ),
-    )
+      Bun.file(path.resolve(import.meta.dir, "../../src/styles/focus.css")).text(),
+    ])
   ).join("\n")
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage()
@@ -107,23 +110,27 @@ test("selection emphasizes text without retaining a hover surface", async () => 
 
 test("keyboard focus remains distinct from selection and hover", async () => {
   await mount()
+  await page.addStyleTag({ content: ":root { --surface-focus: rgb(225 225 225); }" })
+  const row = page.locator('[data-slot="activity-step-trigger"]').first()
+  const restingBackground = await row.evaluate((element) => getComputedStyle(element).backgroundImage)
   await page.locator('[data-slot="turn-process-trigger"]').focus()
   await page.keyboard.press("Tab")
   await page.keyboard.press("Tab")
   await page.keyboard.press("Tab")
-  const row = page.locator('[data-slot="activity-step-trigger"]').first()
   const focus = await row.evaluate((element) => {
     const style = getComputedStyle(element)
     return {
       active: document.activeElement === element,
       visible: element.matches(":focus-visible"),
-      outline: parseFloat(style.outlineWidth),
+      outline: style.outlineStyle,
+      focusSurface: style.backgroundImage,
       background: style.backgroundColor,
     }
   })
   expect(focus.active).toBe(true)
   expect(focus.visible).toBe(true)
-  expect(focus.outline).toBeGreaterThanOrEqual(2)
+  expect(focus.outline).toBe("none")
+  expect(focus.focusSurface).not.toBe(restingBackground)
   expect(focus.background).toBe("rgba(0, 0, 0, 0)")
 })
 

@@ -67,13 +67,6 @@
   color: var(--text-base);
   border-bottom-color: var(--text-base);
 }
-[data-component="execution-detail"] button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
-}
-[data-slot="execution-detail-toolbar"] [role="tab"]:focus-visible {
-  outline-offset: -3px;
-}
 [data-slot="execution-detail-body"] {
   flex: 1;
   overflow: auto;

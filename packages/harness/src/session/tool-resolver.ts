@@ -22,6 +22,7 @@ import { Log } from "../util/log"
 import { TimeoutConfig } from "../util/timeout-config"
 import { Session } from "."
 import { SessionManager } from "./manager"
+import { SessionExecutionOwners } from "./execution-owners"
 import type { Info } from "./types"
 import { MessageV2 } from "./message-v2"
 import type { SessionProcessor } from "./processor"
@@ -253,6 +254,7 @@ export namespace ToolResolver {
     executionTools: Record<string, AITool>
     executorKinds: Record<string, ToolExecutorKind>
     activeToolIDs: string[]
+    availableToolIDs: string[]
     autoExpandable: Set<string>
     intentBindings?: ReadonlyMap<string, import("./tool-intent").ToolIntent.Binding>
   }
@@ -1423,8 +1425,31 @@ export namespace ToolResolver {
       )
         autoExpandable.add(item.id)
     }
+    const groups = new Map<string, { title: string; tools: string[] }>()
+    for (const item of eligible) {
+      if (!visibility.available.has(item.id) || failed.has(item.id)) continue
+      const exposure = ToolExposure.normalize(item.id, item.exposure)
+      if (exposure.mode !== "group") continue
+      const group = groups.get(exposure.group) ?? { title: exposure.title ?? exposure.group, tools: [] }
+      group.tools.push(item.id)
+      groups.set(exposure.group, group)
+    }
+    const visible = loaded
+      .filter((item) => visibility.visible.has(item.id))
+      .map((item) =>
+        item.id !== "expand_tools" || !groups.size
+          ? item
+          : {
+              ...item,
+              description: [
+                item.description,
+                "Available groups:",
+                ...[...groups].map(([id, group]) => `${id} (${group.title}): ${group.tools.join(", ")}`),
+              ].join("\n"),
+            },
+      )
     return {
-      visible: loaded.filter((item) => visibility.visible.has(item.id)),
+      visible,
       diagnostics,
       autoExpandable,
       intentBindings,
@@ -2399,6 +2424,10 @@ export namespace ToolResolver {
       executionTools,
       executorKinds,
       activeToolIDs,
+      availableToolIDs: [
+        ...activeToolIDs.filter((id) => !availabilityResult.diagnostics.has(id)),
+        ...availabilityResult.autoExpandable,
+      ],
       autoExpandable: availabilityResult.autoExpandable,
       intentBindings: availabilityResult.intentBindings,
     }
@@ -2448,7 +2477,8 @@ export namespace ToolResolver {
     toolName: string,
   ): Promise<{ tool: AITool; executor: ToolExecutorKind; inputSchema?: JSONSchema7 } | undefined> {
     using _ = log.time("runtimeToolFor")
-    const session = input.session ?? (await Session.get(input.sessionID).catch(() => undefined))
+    const stored = input.session ?? (await Session.get(input.sessionID).catch(() => undefined))
+    const session = stored ? await SessionExecutionOwners.currentSession(stored) : undefined
     const availabilityResult = await applyAvailability(await collectDefinitions({ ...input, session }), {
       ...input,
       session,
@@ -2473,7 +2503,8 @@ export namespace ToolResolver {
    */
   export async function autoExpandTool(input: Input, toolName: string): Promise<AutoExpandedTool | undefined> {
     using _ = log.time("autoExpandTool")
-    const session = await Session.get(input.sessionID).catch(() => undefined)
+    const stored = await Session.get(input.sessionID).catch(() => undefined)
+    const session = stored ? await SessionExecutionOwners.currentSession(stored) : undefined
     if (!session) return undefined
     const { ToolDiscovery } = await import("../tool/discovery")
     const catalog = await ToolDiscovery.collect({
@@ -2506,7 +2537,8 @@ export namespace ToolResolver {
     })
     // Re-fetch the session so the fresh toolState is visible to the
     // availability re-check; the pre-update snapshot would still hide the tool.
-    const freshSession = await Session.get(input.sessionID).catch(() => undefined)
+    const freshStored = await Session.get(input.sessionID).catch(() => undefined)
+    const freshSession = freshStored ? await SessionExecutionOwners.currentSession(freshStored) : undefined
     if (!freshSession) return undefined
     const resolved = await runtimeToolFor({ ...input, session: freshSession }, toolName)
     if (!resolved) return undefined

@@ -3,6 +3,7 @@ import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
 import { Session } from "../../src/session"
 import { SessionNav, type ScopeNavIndex } from "../../src/session/nav"
+import { SessionSchemaRegistry } from "../../src/session/schema-registry"
 import { ScopeContext } from "../../src/scope/context"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
@@ -127,7 +128,13 @@ test("a cold navigation read rechecks the index after its writer admission", asy
     const scopeID = "home"
     const key = StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID))
     await Storage.remove(key)
-    const published: ScopeNavIndex = { version: 1, scopeID, updatedAt: 123, entries: [] }
+    const published: ScopeNavIndex = {
+      version: 1,
+      composition: SessionSchemaRegistry.projectionKey(),
+      scopeID,
+      updatedAt: 123,
+      entries: [],
+    }
     const entered = Promise.withResolvers<void>()
     const queued = Promise.withResolvers<void>()
     const release = Promise.withResolvers<void>()

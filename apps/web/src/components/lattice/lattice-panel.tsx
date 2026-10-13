@@ -13,6 +13,7 @@ import type {
   LatticeEvent,
 } from "@ericsanchezok/synergy-sdk/client"
 import { useConfirm } from "@/components/dialog"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocale } from "@/context/locale"
 import type { SDKContext } from "@/context/sdk"
 import { translateDescriptor } from "@/locales/translate"
@@ -73,6 +74,7 @@ export function LatticePanel(props: {
   sessionID: string
   onConfigure?: (options?: { confirmRestart?: boolean }) => void
 }) {
+  const { capabilities } = useGlobalSDK()
   const { _ } = useLingui()
   const { fmt, i18n } = useLocale()
   const confirm = useConfirm()
@@ -134,6 +136,7 @@ export function LatticePanel(props: {
   }
 
   const refreshLoops = async (sessionID = props.sessionID, token = generation) => {
+    if (!capabilities.has("blueprint")) return
     try {
       const result = await props.sdk.client.blueprint.loop.list()
       if (token !== generation || sessionID !== props.sessionID) return
@@ -166,6 +169,8 @@ export function LatticePanel(props: {
   }
 
   createEffect(() => {
+    const available = capabilities.has("lattice")
+    capabilities.current()
     const sessionID = props.sessionID
     const token = ++generation
     setRun(null)
@@ -177,6 +182,7 @@ export function LatticePanel(props: {
     setLoadError(undefined)
     setEventsError(undefined)
     resetActionState()
+    if (!available) return
 
     const acceptRun = (event: LatticeRunEvent) => {
       const incoming = event.properties.run
@@ -187,6 +193,7 @@ export function LatticePanel(props: {
       if (expanded() === "history") void refreshEvents(incoming, token)
     }
     const acceptLoop = (event: LatticeLoopEvent) => {
+      if (!capabilities.has("blueprint")) return
       const incoming = event.properties.loop
       if (incoming.sessionID !== sessionID || incoming.source !== "lattice" || token !== generation) return
       setLoops((current) => mergeLoops(current, [incoming]))
@@ -201,6 +208,7 @@ export function LatticePanel(props: {
     void refreshRun(sessionID, token)
     void refreshLoops(sessionID, token)
     onCleanup(() => {
+      generation++
       for (const unsubscribe of unsubscribers) unsubscribe()
     })
   })
@@ -517,7 +525,11 @@ export function LatticePanel(props: {
                                         {step.failureReason}
                                       </p>
                                     </Show>
-                                    <Show when={step.blueprint || step.loopHistory.length > 0}>
+                                    <Show
+                                      when={
+                                        capabilities.has("blueprint") && (step.blueprint || step.loopHistory.length > 0)
+                                      }
+                                    >
                                       <p class="mt-1 text-11-regular text-text-weak">
                                         <Show when={step.blueprint}>
                                           {(binding) =>
@@ -557,7 +569,7 @@ export function LatticePanel(props: {
                                   >
                                     <button
                                       type="button"
-                                      class="flex w-full min-w-0 gap-3 py-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus-base"
+                                      class="flex w-full min-w-0 gap-3 py-3 text-left"
                                       aria-expanded={isExpanded()}
                                       onClick={() =>
                                         setExpandedPathwayStepID((current) =>
@@ -581,164 +593,161 @@ export function LatticePanel(props: {
                       </section>
                     </Show>
 
-                    <section class="border-b border-border-weaker-base">
-                      <button
-                        type="button"
-                        class="flex w-full items-center gap-3 py-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus-base"
-                        aria-expanded={expanded() === "blueprints"}
-                        onClick={() => toggleDetails("blueprints")}
-                      >
-                        <span class="min-w-0 flex-1">
-                          <span class="block text-13-medium text-text-strong">
-                            {_({ id: "app.lattice.panel.blueprintDetails", message: "Blueprint details" })}
+                    <Show when={capabilities.has("blueprint")}>
+                      <section class="border-b border-border-weaker-base">
+                        <button
+                          type="button"
+                          class="flex w-full items-center gap-3 py-4 text-left"
+                          aria-expanded={expanded() === "blueprints"}
+                          onClick={() => toggleDetails("blueprints")}
+                        >
+                          <span class="min-w-0 flex-1">
+                            <span class="block text-13-medium text-text-strong">
+                              {_({ id: "app.lattice.panel.blueprintDetails", message: "Blueprint details" })}
+                            </span>
                           </span>
-                          <span class="mt-0.5 block text-11-regular text-text-weak">
-                            {_({
-                              id: "app.lattice.panel.blueprintDetailsHint",
-                              message: "Objectives, acceptance criteria, assumptions, and execution attempts",
-                            })}
-                          </span>
-                        </span>
-                        <Icon
-                          name={getSemanticIcon(
-                            expanded() === "blueprints" ? "navigation.collapse" : "navigation.expand",
-                          )}
-                          size="small"
-                        />
-                      </button>
-                      <Show when={expanded() === "blueprints"}>
-                        <div class="pb-5">
-                          <For
-                            each={blueprintSteps()}
-                            fallback={
-                              <p class="text-12-regular text-text-weak">
-                                {_({
-                                  id: "app.lattice.panel.noBlueprints",
-                                  message: "No Blueprint has been prepared yet.",
-                                })}
-                              </p>
-                            }
-                          >
-                            {(step) => (
-                              <article class="border-t border-border-weaker-base py-4 first:border-t-0 first:pt-0">
-                                <div class="text-13-medium text-text-strong">{step.title}</div>
-                                <p class="mt-1 text-12-regular leading-5 text-text-base">{step.objective}</p>
-                                <Show when={step.blueprint}>
-                                  {(binding) => (
-                                    <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-11-regular text-text-weak">
-                                      <span>
-                                        {_({
-                                          id: "app.lattice.panel.boundVersion",
-                                          message: "Bound version {version}",
-                                          values: { version: binding().boundVersion },
-                                        })}
-                                      </span>
-                                      <Show when={binding().reviewedVersion !== undefined}>
+                          <Icon
+                            name={getSemanticIcon(
+                              expanded() === "blueprints" ? "navigation.collapse" : "navigation.expand",
+                            )}
+                            size="small"
+                          />
+                        </button>
+                        <Show when={expanded() === "blueprints"}>
+                          <div class="pb-5">
+                            <For
+                              each={blueprintSteps()}
+                              fallback={
+                                <p class="text-12-regular text-text-weak">
+                                  {_({
+                                    id: "app.lattice.panel.noBlueprints",
+                                    message: "No Blueprint has been prepared yet.",
+                                  })}
+                                </p>
+                              }
+                            >
+                              {(step) => (
+                                <article class="border-t border-border-weaker-base py-4 first:border-t-0 first:pt-0">
+                                  <div class="text-13-medium text-text-strong">{step.title}</div>
+                                  <p class="mt-1 text-12-regular leading-5 text-text-base">{step.objective}</p>
+                                  <Show when={step.blueprint}>
+                                    {(binding) => (
+                                      <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-11-regular text-text-weak">
                                         <span>
                                           {_({
-                                            id: "app.lattice.panel.reviewedVersion",
-                                            message: "Reviewed version {version}",
-                                            values: { version: binding().reviewedVersion },
+                                            id: "app.lattice.panel.boundVersion",
+                                            message: "Bound version {version}",
+                                            values: { version: binding().boundVersion },
                                           })}
                                         </span>
-                                      </Show>
+                                        <Show when={binding().reviewedVersion !== undefined}>
+                                          <span>
+                                            {_({
+                                              id: "app.lattice.panel.reviewedVersion",
+                                              message: "Reviewed version {version}",
+                                              values: { version: binding().reviewedVersion },
+                                            })}
+                                          </span>
+                                        </Show>
+                                      </div>
+                                    )}
+                                  </Show>
+                                  <Show when={step.acceptanceCriteria.length > 0}>
+                                    <div class="mt-4">
+                                      <div class="text-11-medium text-text-weak">
+                                        {_({
+                                          id: "app.lattice.panel.acceptanceCriteria",
+                                          message: "Acceptance criteria",
+                                        })}
+                                      </div>
+                                      <ul class="mt-2 space-y-1.5">
+                                        <For each={step.acceptanceCriteria}>
+                                          {(criterion) => (
+                                            <li class="flex gap-2 text-12-regular leading-5 text-text-base">
+                                              <span aria-hidden="true" class="text-text-weaker">
+                                                —
+                                              </span>
+                                              <span>{criterion}</span>
+                                            </li>
+                                          )}
+                                        </For>
+                                      </ul>
                                     </div>
-                                  )}
-                                </Show>
-                                <Show when={step.acceptanceCriteria.length > 0}>
-                                  <div class="mt-4">
-                                    <div class="text-11-medium text-text-weak">
-                                      {_({
-                                        id: "app.lattice.panel.acceptanceCriteria",
-                                        message: "Acceptance criteria",
-                                      })}
+                                  </Show>
+                                  <Show when={step.assumptions.length > 0}>
+                                    <div class="mt-4">
+                                      <div class="text-11-medium text-text-weak">
+                                        {_({ id: "app.lattice.panel.assumptions", message: "Assumptions" })}
+                                      </div>
+                                      <ul class="mt-2 space-y-1.5">
+                                        <For each={step.assumptions}>
+                                          {(assumption) => (
+                                            <li class="flex gap-2 text-12-regular leading-5 text-text-base">
+                                              <span aria-hidden="true" class="text-text-weaker">
+                                                —
+                                              </span>
+                                              <span>{assumption}</span>
+                                            </li>
+                                          )}
+                                        </For>
+                                      </ul>
                                     </div>
-                                    <ul class="mt-2 space-y-1.5">
-                                      <For each={step.acceptanceCriteria}>
-                                        {(criterion) => (
-                                          <li class="flex gap-2 text-12-regular leading-5 text-text-base">
-                                            <span aria-hidden="true" class="text-text-weaker">
-                                              —
-                                            </span>
-                                            <span>{criterion}</span>
-                                          </li>
-                                        )}
-                                      </For>
-                                    </ul>
-                                  </div>
-                                </Show>
-                                <Show when={step.assumptions.length > 0}>
-                                  <div class="mt-4">
-                                    <div class="text-11-medium text-text-weak">
-                                      {_({ id: "app.lattice.panel.assumptions", message: "Assumptions" })}
-                                    </div>
-                                    <ul class="mt-2 space-y-1.5">
-                                      <For each={step.assumptions}>
-                                        {(assumption) => (
-                                          <li class="flex gap-2 text-12-regular leading-5 text-text-base">
-                                            <span aria-hidden="true" class="text-text-weaker">
-                                              —
-                                            </span>
-                                            <span>{assumption}</span>
-                                          </li>
-                                        )}
-                                      </For>
-                                    </ul>
-                                  </div>
-                                </Show>
-                                <Show when={step.loopHistory.length > 0}>
-                                  <div class="mt-4">
-                                    <div class="text-11-medium text-text-weak">
-                                      {_({ id: "app.lattice.panel.executionHistory", message: "Execution attempts" })}
-                                    </div>
-                                    <div class="mt-2">
-                                      <For each={step.loopHistory}>
-                                        {(attempt) => {
-                                          const loop = () => loopByID().get(attempt.loopID)
-                                          const status = () =>
-                                            loop()?.status ?? (attempt.status === "created" ? "armed" : attempt.status)
-                                          return (
-                                            <div class="border-t border-border-weaker-base py-2.5 first:border-t-0">
-                                              <div class="flex items-center gap-3">
-                                                <span class="min-w-0 flex-1 text-12-regular text-text-base">
-                                                  {fmt.dateTime(
-                                                    attempt.time.started ??
-                                                      attempt.time.completed ??
-                                                      attempt.time.created,
-                                                  )}
-                                                </span>
-                                                <span class="text-11-regular text-text-weak">
-                                                  {_(LOOP_STATUS_DESCRIPTORS[status()])}
-                                                </span>
+                                  </Show>
+                                  <Show when={step.loopHistory.length > 0}>
+                                    <div class="mt-4">
+                                      <div class="text-11-medium text-text-weak">
+                                        {_({ id: "app.lattice.panel.executionHistory", message: "Execution attempts" })}
+                                      </div>
+                                      <div class="mt-2">
+                                        <For each={step.loopHistory}>
+                                          {(attempt) => {
+                                            const loop = () => loopByID().get(attempt.loopID)
+                                            const status = () =>
+                                              loop()?.status ??
+                                              (attempt.status === "created" ? "armed" : attempt.status)
+                                            return (
+                                              <div class="border-t border-border-weaker-base py-2.5 first:border-t-0">
+                                                <div class="flex items-center gap-3">
+                                                  <span class="min-w-0 flex-1 text-12-regular text-text-base">
+                                                    {fmt.dateTime(
+                                                      attempt.time.started ??
+                                                        attempt.time.completed ??
+                                                        attempt.time.created,
+                                                    )}
+                                                  </span>
+                                                  <span class="text-11-regular text-text-weak">
+                                                    {_(LOOP_STATUS_DESCRIPTORS[status()])}
+                                                  </span>
+                                                </div>
+                                                <Show when={loop()?.summary ?? attempt.summary}>
+                                                  <p class="mt-1 text-11-regular leading-4 text-text-weak">
+                                                    {loop()?.summary ?? attempt.summary}
+                                                  </p>
+                                                </Show>
+                                                <Show when={attempt.error}>
+                                                  <p class="mt-1 text-11-regular leading-4 text-text-on-critical-base">
+                                                    {attempt.error}
+                                                  </p>
+                                                </Show>
                                               </div>
-                                              <Show when={loop()?.summary ?? attempt.summary}>
-                                                <p class="mt-1 text-11-regular leading-4 text-text-weak">
-                                                  {loop()?.summary ?? attempt.summary}
-                                                </p>
-                                              </Show>
-                                              <Show when={attempt.error}>
-                                                <p class="mt-1 text-11-regular leading-4 text-text-on-critical-base">
-                                                  {attempt.error}
-                                                </p>
-                                              </Show>
-                                            </div>
-                                          )
-                                        }}
-                                      </For>
+                                            )
+                                          }}
+                                        </For>
+                                      </div>
                                     </div>
-                                  </div>
-                                </Show>
-                              </article>
-                            )}
-                          </For>
-                        </div>
-                      </Show>
-                    </section>
+                                  </Show>
+                                </article>
+                              )}
+                            </For>
+                          </div>
+                        </Show>
+                      </section>
+                    </Show>
 
                     <section>
                       <button
                         type="button"
-                        class="flex w-full items-center gap-3 py-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus-base"
+                        class="flex w-full items-center gap-3 py-4 text-left"
                         aria-expanded={expanded() === "history"}
                         onClick={() => toggleDetails("history")}
                       >

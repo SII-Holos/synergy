@@ -1,0 +1,100 @@
+{
+  "name": "@ericsanchezok/synergy-agenda",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./agenda": "./src/agenda/index.ts",
+    "./agenda/clock": "./src/agenda/clock.ts",
+    "./agenda/dedup": "./src/agenda/dedup.ts",
+    "./agenda/delivery": "./src/agenda/delivery.ts",
+    "./agenda/event": "./src/agenda/event.ts",
+    "./agenda/github-source": "./src/agenda/github-source.ts",
+    "./agenda/github-watch-policy": "./src/agenda/github-watch-policy.ts",
+    "./agenda/hooks": "./src/agenda/hooks.ts",
+    "./agenda/item-owners": "./src/agenda/item-owners.ts",
+    "./agenda/migration": "./src/agenda/migration.ts",
+    "./agenda/prompt": "./src/agenda/prompt.ts",
+    "./agenda/reactor": "./src/agenda/reactor.ts",
+    "./agenda/routes/agenda": "./src/agenda/routes/agenda.ts",
+    "./agenda/routes/session-agenda": "./src/agenda/routes/session-agenda.ts",
+    "./agenda/scope-migration": "./src/agenda/scope-migration.ts",
+    "./agenda/session-signals": "./src/agenda/session-signals.ts",
+    "./agenda/session-trigger": "./src/agenda/session-trigger.ts",
+    "./agenda/session-wakeup": "./src/agenda/session-wakeup.ts",
+    "./agenda/store": "./src/agenda/store.ts",
+    "./agenda/tools": "./src/agenda/tools.ts",
+    "./agenda/tools/agenda-cancel": "./src/agenda/tools/agenda-cancel.ts",
+    "./agenda/tools/agenda-cancel.txt": "./src/agenda/tools/agenda-cancel.txt",
+    "./agenda/tools/agenda-list": "./src/agenda/tools/agenda-list.ts",
+    "./agenda/tools/agenda-list.txt": "./src/agenda/tools/agenda-list.txt",
+    "./agenda/tools/agenda-logs": "./src/agenda/tools/agenda-logs.ts",
+    "./agenda/tools/agenda-logs.txt": "./src/agenda/tools/agenda-logs.txt",
+    "./agenda/tools/agenda-schedule": "./src/agenda/tools/agenda-schedule.ts",
+    "./agenda/tools/agenda-schedule.txt": "./src/agenda/tools/agenda-schedule.txt",
+    "./agenda/tools/agenda-trigger": "./src/agenda/tools/agenda-trigger.ts",
+    "./agenda/tools/agenda-trigger.txt": "./src/agenda/tools/agenda-trigger.txt",
+    "./agenda/tools/agenda-update": "./src/agenda/tools/agenda-update.ts",
+    "./agenda/tools/agenda-update.txt": "./src/agenda/tools/agenda-update.txt",
+    "./agenda/tools/agenda-watch": "./src/agenda/tools/agenda-watch.ts",
+    "./agenda/tools/agenda-watch.txt": "./src/agenda/tools/agenda-watch.txt",
+    "./agenda/tools/agent-item": "./src/agenda/tools/agent-item.ts",
+    "./agenda/tools/github-watch-preflight": "./src/agenda/tools/github-watch-preflight.ts",
+    "./agenda/types": "./src/agenda/types.ts",
+    "./agenda/watcher": "./src/agenda/watcher.ts",
+    "./agenda/webhook": "./src/agenda/webhook.ts",
+    "./agent-contributions": "./src/agent-contributions.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts",
+    "./session-schema": "./src/session-schema.ts",
+    "./tool-group-agenda": "./src/tool-group-agenda.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/agenda",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "croner": "10.0.1",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "agenda",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "agenda",
+    "requires": {
+      "local-runtime": "1.1.26"
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}

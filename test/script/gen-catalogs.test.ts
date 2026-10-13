@@ -196,6 +196,7 @@ describe("generated catalog completeness", () => {
       "models",
       "providers",
       "library",
+      "anima",
       "mcp",
       "plugins",
       "agents",
@@ -211,6 +212,7 @@ describe("generated catalog completeness", () => {
     }
     expect(body).toContain("| `00-general.jsonc` |")
     expect(body).toContain("| `55-skills.jsonc` |")
+    expect(body).toContain("| `35-anima.jsonc` |")
     for (const key of ["embedding", "library", "channel", "plugin", "voice", "mcp", "theme", "skills", "boss"]) {
       expect(body).toContain(`| \`${key}\` |`)
       expect(body).not.toContain(`| \`${key}\` | - |`)

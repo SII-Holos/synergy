@@ -36,12 +36,13 @@ export const projectEntryCopy = {
   onSend: { id: "project.entry.onSend", message: "Created when you start the task." },
   notGit: { id: "project.entry.notGit", message: "The main folder is not a Git repository." },
   confirmFolder: { id: "project.entry.confirmFolder", message: "Confirm the project folders to restore access." },
-  recoverTitle: { id: "project.entry.recoverTitle", message: "Confirm project folders" },
+  recoverTitle: { id: "project.entry.recoverTitle", message: "Restore project folders" },
   recoverDescription: {
     id: "project.entry.recoverDescription",
-    message: "Confirm the folders you want to use. This also restores access for tasks using these folders.",
+    message: "No task will start automatically. Existing tasks keep their recorded locations.",
   },
-  recoverAction: { id: "project.entry.recoverAction", message: "Confirm and restore" },
+  recoverAction: { id: "project.entry.recoverAction", message: "Continue using this folder" },
+  recoverFoldersAction: { id: "project.entry.recoverFoldersAction", message: "Continue using these folders" },
   recovering: { id: "project.entry.recovering", message: "Restoring…" },
   recovered: { id: "project.entry.recovered", message: "Ready" },
   recoverFailed: {
@@ -60,8 +61,18 @@ export const projectEntryCopy = {
     id: "project.entry.folderUnbound",
     message: "This folder is unavailable on this computer. Choose its location here.",
   },
+  folderChanged: {
+    id: "project.entry.folderChanged",
+    message: "The folder at this location has changed since it was added to the project.",
+  },
+  folderUnverified: {
+    id: "project.entry.folderUnverified",
+    message: "Synergy cannot verify that this is the folder added to the project.",
+  },
+  selectedFolder: { id: "project.entry.selectedFolder", message: "Selected folder" },
+  chooseFolderFailed: { id: "project.entry.chooseFolderFailed", message: "Could not choose a folder. Try again." },
   additionalFolder: { id: "project.entry.additionalFolder", message: "Shared folder" },
-  chooseFolder: { id: "project.entry.chooseFolder", message: "Choose folder" },
+  chooseFolder: { id: "project.entry.chooseFolder", message: "Choose another folder" },
   cancel: { id: "project.entry.cancel", message: "Cancel" },
   folderImpact: {
     id: "project.entry.folderImpact",

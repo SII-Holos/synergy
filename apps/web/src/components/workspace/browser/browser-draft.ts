@@ -1,4 +1,4 @@
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { usePrompt, type UploadedAttachmentPart } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
 import { uploadPromptAttachment } from "@/utils/prompt-attachment"

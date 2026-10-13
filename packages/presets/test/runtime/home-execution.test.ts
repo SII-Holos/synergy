@@ -82,7 +82,10 @@ test("Home tasks run in independent core and full workers, and full task data su
         controlProfile: "full_access",
         execution: { agentWorkers: 1, agentWorkerMinIdle: 0 },
         ...(owner === "full"
-          ? { library: { memory: { enabled: false }, experience: { retrieve: false, encode: false }, autonomy: false } }
+          ? {
+              library: { memory: { enabled: false }, experience: { retrieve: false, encode: false } },
+              anima: { enabled: false },
+            }
           : {}),
         provider: {
           fixture: {

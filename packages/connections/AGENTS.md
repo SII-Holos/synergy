@@ -1,19 +1,7 @@
 # connections Package
 
-Email, Channels, Holos and GitHub domains, each including its service, tools, routes, configuration, storage and commands. Keep Email tool and HTTP operations on the same service. Preserve ChannelHost Scope/Session ownership and provider lifecycle; do not create parallel session models. Read the root AGENTS.md and the owning architecture document before changes.
+Assembly and import-compatibility facade for Channels, Feishu Channel, GitHub, GitHub Channel, Holos, Clarus Channel and Email. `./component` exports `connectionComponents()` returning the independent leaf factories. This package owns no resident service, HTTP registration, worker selection, domain configuration or migration execution.
 
-- Keep domain tools, routes, configuration and migrations with their implementation.
-- Own Channel Workspace upgrades in `src/channel/migration.ts`; Presets registers them before storage startup.
-- Own configuration schemas, normalization, reference checks and secret handling in `src/config-schema.ts`; consumers use its typed reader and the host composes its registration.
-- Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
-- StreamingSession separates terminal delivery (`close`) from no-delivery finalization (`closeWithoutDelivery`); provider lifecycle contracts follow `docs/architecture/channels.md`.
-- Own Holos CLI and SVG raster asset staging under `script/`, including SVG fonts and notices. Product packaging consumes these public helpers. Expose GitHub watch and Boss account facts through `workflow-settings`; the product connects them to Workflow ports.
-- Tests live under test/ and use isolated homes through the testing support package.
+Keep compatibility exports pure and point them to declared public leaf exports. Never recreate a single factory that silently registers all leaves, and never infer cross-owner bridges from installed packages. Published preset metadata must match the factory array; full product bridge selection belongs to Presets.
 
-Run bun run typecheck and the affected tests, then the root package and dependency checks.
-
-Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.
-
-Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.
-
-Published modules own SVG WASM, fonts and notices under `dist/lib/resvg-wasm`. Resolve Holos through its declared npm dependency; executable-relative assets are only an explicit legacy probe input.
+Leaf behavior tests belong to their owning package. Keep only cross-owner assembly and compatibility checks here. Run `bun run typecheck`, focused package tests and the root installed-composition and dependency checks when facade exports change.

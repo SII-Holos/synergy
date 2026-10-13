@@ -40,7 +40,17 @@ Local adaptation: [the pinned patch](virtua@0.42.3.patch) exposes `initialSizes`
 
 Virtua `restoreToIndex(index, offset)` synchronously accepts currently mounted content-box measurements through its existing resizer, consumes estimate compensation and commits one native-idle position. It has no imperative scroll waiter; identical-offset delivery retains public scroll callbacks without changing the native scroll direction. The mounted registry has one owner and releases entries on unmount/disposal. Both Solid entrypoints and declarations carry this contract. The compiled entrypoint is generated from the patched JSX using the installed `babel-preset-solid` DOM transform and Bun browser minification with `solid-js` and `solid-js/web` external.
 
+Solid Virtualizer also batches initial content-box measurements of newly mounted, unmeasured rows after mount and disclosure preparation microtasks, before parent resize delivery can follow an estimated tail. Only connected targets with layout boxes participate; unobserve and disposal drop pending targets. All reads precede one resize publication. History prepend keeps the existing shift compensation and observer ordering; subsequent growth retains the frame-coalesced ResizeObserver path. [Following regressions](../apps/web/test/components/session/conversation-process-virtualization.dom.test.ts) compose real disclosure motion and automatic scrolling through both entrypoints and inspect every frame for overshoot or rebound; see the [admission decision](../docs/decisions/implemented/bug-fix/2026-10-12-measure-new-rows-before-following.md).
+
 [Browser regression](../packages/ui/test/markdown-virtual.browser.test.ts) exercises the JavaScript and JSX entrypoints before their first paint and the real Markdown worker handoff. Keep this input until an upgraded dependency supports equivalent measured initialization and passes these checks after a fresh frozen-lockfile install.
+
+## Virtua Solid measurement identity
+
+Provenance: [Virtua 0.42.3 indexed size cache](https://github.com/inokawa/virtua/blob/0.42.3/src/core/cache.ts) and [Solid Virtualizer](https://github.com/inokawa/virtua/blob/0.42.3/src/solid/Virtualizer.tsx).
+
+Local adaptation: [the pinned patch](virtua@0.42.3.patch) adds optional `itemKey` to Solid Virtualizer. Callers provide stable unique string or number identities. Before publishing a changed order, retained keys carry their measurements to the new indices; new keys start unmeasured and removed keys release their sizes. Cached offsets are invalidated together, including equal-length reorderings. Existing `shift` compensation still applies to history prepend. Conversation and inner process virtualizers opt in; other consumers retain their existing behavior. Both Solid entrypoints and the declaration share this contract.
+
+[Measurement regressions](../apps/web/test/components/session/conversation-process-virtualization.dom.test.ts) check long retained rows through middle deletion, insertion, reordering and prepend through both entrypoints. [Disclosure regressions](../apps/web/test/components/session/conversation-process-disclosure.dom.test.ts) sample every frame with a long answer and retain its DOM identity. Keep the adaptation until an upgraded dependency preserves these invariants without it; verify a fresh frozen-lockfile install before accepting a replacement.
 
 ## Streaming Markdown consumed source spans
 

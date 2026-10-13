@@ -1,59 +1,22 @@
-import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { expect, test } from "bun:test"
+import { Agent } from "../../src/agent/agent"
 import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
-import { AgentDelegation } from "../../src/agent/delegation"
-import { getDelegatableAgents } from "../../src/agent/prompt/agent-table"
-import { afterAll as afterRuntimeTests } from "bun:test"
+import { Scope } from "../../src/scope"
+import { ScopeContext } from "../../src/scope/context"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
 
-const ctx = {
-  defaults: [],
-  user: [],
-  role: () => undefined,
-  evolutionActive: false,
-}
-
-test("hidden recursive reviewer agents stay off primary tables but can delegate through groups", () =>
-  runtime.run(() => {
-    const agents = createBuiltinMaxSubagents(ctx)
-    const supervisor = agents["supervisor"]
-    const reviewer = agents["lightloop-reviewer"]
-    expect(supervisor, "supervisor agent should exist").toBeDefined()
-    expect(reviewer, "lightloop-reviewer agent should exist").toBeDefined()
-    expect(supervisor.hidden, "supervisor must be marked hidden").toBe(true)
-    expect(reviewer.hidden, "lightloop-reviewer must be marked hidden").toBe(true)
-    expect(supervisor.visibleTo, "supervisor must only be visible to itself").toEqual(["supervisor"])
-    expect(reviewer.visibleTo, "lightloop-reviewer must only be visible to itself").toEqual(["lightloop-reviewer"])
-    expect(reviewer.delegationGroups).toEqual(["supervisor"])
-
-    const asAgentInfo = (a: (typeof agents)[string]) => ({
-      name: a.name,
-      description: a.description ?? "",
-      mode: a.mode,
-      hidden: a.hidden,
-      visibleTo: a.visibleTo,
-      delegationGroups: a.delegationGroups,
-    })
-    const agentInfos = Object.values(agents).map(asAgentInfo)
-
-    const synergyMaxDelegatable = getDelegatableAgents(agentInfos, PrimaryAgentIdentity.names.coding)
-    const synergyDelegatable = getDelegatableAgents(agentInfos, PrimaryAgentIdentity.names.general)
-    const namesForMax = synergyMaxDelegatable.map((a) => a.name)
-    const namesForSynergy = synergyDelegatable.map((a) => a.name)
-    expect(namesForMax).not.toContain("supervisor")
-    expect(namesForMax).not.toContain("lightloop-reviewer")
-    expect(namesForSynergy).not.toContain("supervisor")
-    expect(namesForSynergy).not.toContain("lightloop-reviewer")
-    expect(namesForMax.length, "non-hidden subagents should still be present").toBeGreaterThan(0)
-
-    const reviewerDelegatable = getDelegatableAgents(agentInfos, asAgentInfo(reviewer))
-    const reviewerNames = reviewerDelegatable.map((a) => a.name)
-    expect(reviewerNames).toContain("implementation-engineer")
-    expect(reviewerNames).toContain("quality-gatekeeper")
-    expect(reviewerNames).not.toContain("supervisor")
-    expect(reviewerNames).not.toContain("lightloop-reviewer")
-    expect(AgentDelegation.canDelegateTo(agents["implementation-engineer"], undefined)).toBe(false)
-  }))
-
-afterRuntimeTests(() => runtime.close())
+test("Core does not register workflow reviewers through the max agent family", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      async fn() {
+        const agents = createBuiltinMaxSubagents({ defaults: [], user: [], role: () => undefined })
+        for (const name of ["supervisor", "lightloop-reviewer"]) {
+          expect(agents[name]).toBeUndefined()
+          expect(await Agent.get(name)).toBeUndefined()
+        }
+      },
+    }),
+  )
+})

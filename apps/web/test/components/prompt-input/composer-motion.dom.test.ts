@@ -150,10 +150,10 @@ test("the empty editor stays readable and can resize and expand inside conversat
   await page.goto(server.resolvedUrls!.local[0]!)
 })
 
-test("retaining an outgoing conversation does not replace the current header's height measurement", async () => {
+test("switching conversation shells preserves the current header measurement without cloning the old DOM", async () => {
   await page.reload()
   await page.getByRole("button", { name: "Switch conversation" }).click()
-  await page.locator("[data-conversation-retained] > div").waitFor()
+  expect(await page.locator("[data-conversation-retained]").count()).toBe(0)
   await page.setViewportSize({ width: 960, height: 820 })
   try {
     await page.getByRole("button", { name: "Expand editor" }).focus()

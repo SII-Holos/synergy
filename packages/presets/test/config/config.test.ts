@@ -14,11 +14,25 @@ import fs from "fs/promises"
 import { pathToFileURL } from "url"
 import { parse as parseJsonc } from "jsonc-parser"
 import { resetMigrations, runMigrations } from "@ericsanchezok/synergy-harness/migration"
+import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime({ env: { TEST_VAR: "test_theme" } })
+
+function libraryConfigFixture(home: string) {
+  return compositionFixture({
+    home,
+    register() {
+      const migration = MigrationRegistry.list()
+        .get("library")!
+        .find((item) => item.id === "20261012-library-config-owner")!
+      MigrationRegistry.unregister("library")
+      MigrationRegistry.register("library", [migration])
+    },
+  })
+}
 
 test("loads config with defaults when no files exist", () =>
   runtime.run(async () => {
@@ -435,7 +449,7 @@ test("handles file inclusion substitution", () =>
     })
   }))
 
-test("legacy monolithic config with a retired root key stays intact as a migration signal", () =>
+test("legacy monolithic config retains an unregistered root key until its migration runs", () =>
   runtime.run(async () => {
     const home = path.join(os.tmpdir(), `synergy-config-migration-signal-${Math.random().toString(36).slice(2)}`)
 
@@ -451,18 +465,14 @@ test("legacy monolithic config with a retired root key stays intact as a migrati
         // migration path actually runs against this isolated home.
         Config.global.reset()
 
-        // The load must fail loudly instead of stripping the retired key,
-        // splitting the file into fragments, and archiving it — that would
-        // silently drop the value the rewrite migration still needs to port.
-        await expect(Config.globalRaw()).rejects.toThrow()
+        const current = await Config.globalRaw()
+        expect(current.theme).toBe("test_theme")
+        expect(current).not.toHaveProperty("auto_classifier")
         expect(JSON.parse(await Bun.file(legacy).text())).toEqual({ auto_classifier: true, theme: "test_theme" })
 
         await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
         resetMigrations()
         await runMigrations({ targetDomain: "config" })
-        // The lazy global cache is still holding the rejected load from the
-        // migration-signal step; drop it so the next read re-resolves against
-        // the migrated file.
         Config.global.reset()
         const migrated = JSON.parse(await Bun.file(legacy).text())
         expect(migrated.smartAllow).toBe(true)
@@ -1441,9 +1451,9 @@ test("migrates legacy channel holos config to top-level holos", () =>
 }`,
         )
 
-        await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
+        await Storage.remove(StoragePath.metaMigrationLogDomain("holos"))
         resetMigrations()
-        await runMigrations({ targetDomain: "config" })
+        await runMigrations({ targetDomain: "holos" })
 
         const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
         expect(migrated.holos).toEqual({
@@ -1494,9 +1504,9 @@ test("removes legacy channel holos config when top-level holos already exists", 
 }`,
         )
 
-        await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
+        await Storage.remove(StoragePath.metaMigrationLogDomain("holos"))
         resetMigrations()
-        await runMigrations({ targetDomain: "config" })
+        await runMigrations({ targetDomain: "holos" })
 
         const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
         expect(migrated.holos).toEqual({
@@ -1700,7 +1710,7 @@ test("migrates legacy identity config to valid library config", () =>
   runtime.run(async () => {
     const home = path.join(os.tmpdir(), `synergy-config-identity-migration-${Math.random().toString(36).slice(2)}`)
     try {
-      await using isolated = await compositionFixture({ home })
+      await using isolated = await libraryConfigFixture(home)
       await isolated.run(async () => {
         const configHome = path.join(home, ".synergy", "config")
         await fs.mkdir(configHome, { recursive: true })
@@ -1748,9 +1758,12 @@ test("migrates legacy identity config to valid library config", () =>
 }`,
         )
 
-        await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
+        const ledgerKey = StoragePath.metaMigrationLogDomain("library")
+        const ledger = await Storage.read<Record<string, number>>(ledgerKey).catch(() => ({}) as Record<string, number>)
+        delete ledger["20261012-library-config-owner"]
+        await Storage.write(ledgerKey, ledger)
         resetMigrations()
-        await runMigrations({ targetDomain: "config" })
+        await runMigrations({ targetDomain: "library" })
 
         const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
         expect(migrated.identity).toBeUndefined()
@@ -1778,7 +1791,8 @@ test("migrates legacy identity config to valid library config", () =>
             alpha: 0.4,
           },
         })
-        expect(migrated.library.autonomy).toBe(false)
+        expect(migrated.library.autonomy).toBeUndefined()
+        expect(migrated.anima).toEqual({ enabled: false })
         expect(Config.Info.safeParse(migrated).success).toBe(true)
       })
     } finally {
@@ -1793,7 +1807,7 @@ test("migrates legacy engram domain config to library and general domains", () =
       `synergy-config-library-domain-migration-${Math.random().toString(36).slice(2)}`,
     )
     try {
-      await using isolated = await compositionFixture({ home })
+      await using isolated = await libraryConfigFixture(home)
       await isolated.run(async () => {
         const domainDir = path.join(home, ".synergy", "config", "synergy.d")
         await fs.mkdir(domainDir, { recursive: true })
@@ -1829,11 +1843,14 @@ test("migrates legacy engram domain config to library and general domains", () =
           }),
         )
 
-        await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
+        const ledgerKey = StoragePath.metaMigrationLogDomain("library")
+        const ledger = await Storage.read<Record<string, number>>(ledgerKey).catch(() => ({}) as Record<string, number>)
+        delete ledger["20261012-library-config-owner"]
+        await Storage.write(ledgerKey, ledger)
         resetMigrations()
-        await runMigrations({ targetDomain: "config" })
+        await runMigrations({ targetDomain: "library" })
 
-        expect(await Bun.file(legacyFile).exists()).toBe(false)
+        expect(parseJsonc(await Bun.file(legacyFile).text())).toEqual({})
         const general = parseJsonc(await Bun.file(generalFile).text()) as Record<string, any>
         const library = parseJsonc(await Bun.file(libraryFile).text()) as Record<string, any>
         expect(general.theme).toBe("system")
@@ -1841,7 +1858,9 @@ test("migrates legacy engram domain config to library and general domains", () =
         expect(general.rerank.model).toBe("rerank-model")
         expect(library.library.memory.retrieval).toEqual({ simThreshold: 0.6, topK: 4 })
         expect(library.library.experience.retrieve).toEqual({ topK: 9 })
-        expect(library.library.autonomy).toBe(false)
+        expect(library.library.autonomy).toBeUndefined()
+        const anima = parseJsonc(await Bun.file(path.join(domainDir, "35-anima.jsonc")).text())
+        expect(anima.anima).toEqual({ enabled: false })
         expect(Config.Info.safeParse({ ...general, ...library }).success).toBe(true)
       })
     } finally {
@@ -1853,7 +1872,7 @@ test("repairs invalid library shapes written by legacy identity migration", () =
   runtime.run(async () => {
     const home = path.join(os.tmpdir(), `synergy-config-library-repair-${Math.random().toString(36).slice(2)}`)
     try {
-      await using isolated = await compositionFixture({ home })
+      await using isolated = await libraryConfigFixture(home)
       await isolated.run(async () => {
         const configHome = path.join(home, ".synergy", "config")
         await fs.mkdir(configHome, { recursive: true })
@@ -1873,9 +1892,12 @@ test("repairs invalid library shapes written by legacy identity migration", () =
           }),
         )
 
-        await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
+        const ledgerKey = StoragePath.metaMigrationLogDomain("library")
+        const ledger = await Storage.read<Record<string, number>>(ledgerKey).catch(() => ({}) as Record<string, number>)
+        delete ledger["20261012-library-config-owner"]
+        await Storage.write(ledgerKey, ledger)
         resetMigrations()
-        await runMigrations({ targetDomain: "config" })
+        await runMigrations({ targetDomain: "library" })
 
         const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
         expect(migrated.library.memory.enabled).toBe(false)

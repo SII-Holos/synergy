@@ -1,3 +1,7 @@
+import { registerAgentPermissions } from "./agent-permissions"
+import { registerResourceSource } from "./resource-source"
+import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
+import { Ready, Failed, ToolsChanged, PromptsChanged, ResourcesChanged } from "./supervisor"
 import { registerReload } from "./reload"
 import { MCP } from "."
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
@@ -27,6 +31,9 @@ export function mcp(): RuntimeComponent {
     }),
     adapters: { cli: new URL("./cli-adapter.ts", import.meta.url), http: new URL("./http.ts", import.meta.url) },
     register() {
+      registerAgentPermissions()
+      registerResourceSource()
+      BusEvent.register(Ready, Failed, ToolsChanged, PromptsChanged, ResourcesChanged)
       registerReload()
       registerConfig()
       registerMcpCommandSource()

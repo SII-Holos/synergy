@@ -11,7 +11,9 @@ mock.module("@ericsanchezok/synergy-ui/context", () => ({
     use: () => value,
   }),
 }))
-mock.module("@/context/global-sdk", () => ({ useGlobalSDK: () => ({ url: "http://note-runtime", client: {} }) }))
+mock.module("@/context/global-sdk", () => ({
+  useGlobalSDK: () => ({ url: "http://note-runtime", client: {}, capabilities: { has: () => true } }),
+}))
 const { NoteDocumentsProvider, useNoteDocuments } = await import("../../../src/components/note/documents")
 let dispose: (() => void) | undefined
 afterEach(() => {

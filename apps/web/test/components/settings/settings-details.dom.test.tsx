@@ -61,6 +61,8 @@ beforeAll(async () => {
     import { TextField } from "@ericsanchezok/synergy-ui/text-field"
     import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
     import { EmailPanel } from "/@fs/${source}/components/settings/panels/EmailPanel.tsx"
+    import { LearningPanel } from "/@fs/${source}/components/settings/panels/LibraryPanels.tsx"
+    import { BossModePanel } from "/@fs/${source}/components/settings/panels/BossModePanel.tsx"
     import { ImportPanel } from "/@fs/${source}/components/settings/panels/ImportPanel.tsx"
     import { LanguageToolsPanel } from "/@fs/${source}/components/settings/panels/LanguageToolsPanel.tsx"
     import { ControlProfilePanel } from "/@fs/${source}/components/settings/panels/SafetyPanels.tsx"
@@ -85,6 +87,9 @@ beforeAll(async () => {
       useTheme().setColorScheme(query.get("theme") || "light")
       const [view, setView] = createSignal("email")
       const [email, setEmail] = createStore(defaultSettingsState().email)
+      const [library, setLibrary] = createStore(defaultSettingsState().library)
+      const [runtime, setRuntime] = createStore(defaultSettingsState().runtime)
+      const [anima, setAnima] = createSignal(false)
       const [choice, setChoice] = createSignal("ask")
       const [font, setFont] = createSignal("")
       const [layer, setLayer] = createSignal()
@@ -96,6 +101,9 @@ beforeAll(async () => {
       const expanded = new Map()
       return <OverlayLayerProvider layer={layer}><div class="settings-panel-frame"><nav><button onClick={() => setView("import")}>Import page</button><button onClick={() => setView("formatter")}>Formatter page</button><button onClick={() => setView("controls")}>Controls page</button><button onClick={() => setView("paths")}>Config files page</button><button onClick={() => setView("profiles")}>Permissions page</button><button onClick={() => setView("models")}>Models page</button><button onClick={() => setView("plugin")}>Plugin page</button><button onClick={() => setView("mcp")}>MCP page</button></nav><main class="settings-panel-content">
         <Show when={view() === "email"}><EmailPanel email={email} onEmailChange={(key, value) => setEmail(key, value)} /></Show>
+        <div><button onClick={() => setView("learning")}>Learning page</button><button onClick={() => setAnima(value => !value)}>Toggle Anima</button><button onClick={() => setView("boss")}>Boss page</button></div>
+        <Show when={view() === "learning"}><LearningPanel library={library} showAutonomy={anima()} onLibraryChange={(key, value) => setLibrary(key, value)} /></Show>
+        <Show when={view() === "boss"}><BossModePanel runtime={runtime} onRuntimeChange={(key, value) => setRuntime(key, value)} nameAvailable={false} nameController={{ content: () => "", setContent: () => {}, dirty: () => false, loaded: () => true, status: () => "idle", error: () => undefined, load: async () => {}, save: async () => true, discard: () => {} }} onOpenBossSession={async () => { window.bossOpens = (window.bossOpens || 0) + 1 }} /></Show>
         <Show when={view() === "import"}><ImportPanel domains={domains} scopes={scopes} onImported={refresh} /></Show>
         <Show when={view() === "formatter"}><LanguageToolsPanel kind="formatter" title="Formatter" description="Formatter configuration" config={{ formatter: { custom: { command: ["fixture"], extensions: [".tsx"] } }, lsp: { unrelated: { command: ["do-not-show"] } }, timeout: { invoke: 123 } }} scopes={scopes} domains={[]} /></Show>
         <Show when={view() === "paths"}><SettingsPage title="Config Files"><SettingsPathRow compact label="90-channels.jsonc" path={"/fixture/config/" + "long-directory/".repeat(12) + "90-channels.jsonc"} status="Empty" ownedKeys={["channel"]} mergePolicy="merge" /></SettingsPage></Show>
@@ -166,6 +174,45 @@ afterAll(async () => {
   await browser?.close()
   await server?.close()
   if (fixture) await rm(fixture, { recursive: true, force: true })
+})
+
+test("Library learning hides Anima controls until selected and restores the retained draft", async () => {
+  await page.getByRole("button", { name: "Learning page", exact: true }).click()
+  const autonomy = page.getByRole("switch", { name: "Autonomous routines", exact: true })
+  expect(await autonomy.count()).toBe(0)
+  expect(
+    await page
+      .getByText("Allow reflection and planning jobs to run quietly in the background.", { exact: true })
+      .count(),
+  ).toBe(0)
+  await page.getByRole("button", { name: "Toggle Anima", exact: true }).click()
+  await autonomy.waitFor()
+  await autonomy.press("Space")
+  expect(await autonomy.getAttribute("aria-checked")).toBe("false")
+  await page.getByRole("button", { name: "Toggle Anima", exact: true }).click()
+  expect(await autonomy.count()).toBe(0)
+  await page.getByRole("button", { name: "Toggle Anima", exact: true }).click()
+  expect(await autonomy.getAttribute("aria-checked")).toBe("false")
+  expect(errors).toEqual([])
+})
+
+test("Boss settings keep task actions without promising an optional channel integration", async () => {
+  for (const variant of [
+    { locale: "en", theme: "light", width: 1280, open: "Open task entry" },
+    { locale: "zh-CN", theme: "dark", width: 375, open: "打开任务入口" },
+  ]) {
+    await page.setViewportSize({ width: variant.width, height: 800 })
+    await page.goto(`${url}?locale=${variant.locale}&theme=${variant.theme}`)
+    await page.getByRole("button", { name: "Boss page", exact: true }).click()
+    const panel = page.locator(".ds-content-inner")
+    expect(await panel.getByText(/Feishu|飞书|Created on first use|首次使用时创建/).count()).toBe(0)
+    const open = page.getByRole("button", { name: variant.open, exact: true })
+    expect(await open.isDisabled()).toBe(true)
+    await page.getByRole("switch").press("Space")
+    await open.click()
+    expect(await page.evaluate(() => (window as unknown as { bossOpens: number }).bossOpens)).toBe(1)
+  }
+  expect(errors).toEqual([])
 })
 
 test("MCP separates its server list from focused editing and restores the entry after Escape", async () => {
@@ -416,6 +463,7 @@ test("settings dropdowns distinguish the saved choice from hover and keep a visi
     await page.getByRole("button", { name: "Controls page", exact: true }).click()
     const trigger = page.getByRole("button", { name: "Font: System default", exact: true })
     await page.mouse.move(0, 0)
+    const restingBackground = await trigger.evaluate((element) => getComputedStyle(element).backgroundImage)
     expect(await trigger.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
     expect(await trigger.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
     await trigger.press("Enter")
@@ -455,7 +503,10 @@ test("settings dropdowns distinguish the saved choice from hover and keep a visi
     await selected.waitFor({ state: "detached" })
     await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Font: Serif")
     const updated = page.getByRole("button", { name: "Font: Serif", exact: true })
-    expect(await updated.evaluate((element) => getComputedStyle(element).boxShadow)).not.toBe("none")
+    expect(await updated.evaluate((element) => element.matches(":focus-visible"))).toBe(true)
+    expect(await updated.evaluate((element) => getComputedStyle(element).backgroundImage)).not.toBe(restingBackground)
+    expect(await updated.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+    expect(await updated.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("none")
     await updated.press("Enter")
     await page.getByRole("option", { name: "Serif", exact: true }).press("Escape")
     expect(errors).toEqual([])

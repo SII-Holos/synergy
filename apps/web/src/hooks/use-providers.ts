@@ -1,6 +1,7 @@
+import { isHomeScope } from "@/utils/scope"
 import { useGlobalSync } from "@/context/global-sync"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { createMemo } from "solid-js"
 import { isRecommendedProvider } from "@/components/provider/provider-recommendation"
 
@@ -9,7 +10,7 @@ export function useProviders() {
   const params = useParams()
   const currentDirectory = createMemo(() => base64Decode(params.dir ?? ""))
   const providers = createMemo(() => {
-    if (currentDirectory()) {
+    if (currentDirectory() && !isHomeScope(currentDirectory())) {
       const [projectStore] = globalSync.ensureScopeState(currentDirectory())
       return projectStore.provider
     }

@@ -1,13 +1,13 @@
 import type { PresetPackage } from "@ericsanchezok/synergy-plugin/package"
 
 export const PRESET_IDS = ["core", "full", "web", "desktop"] as const
+export const ASSEMBLY_PRESET_IDS = ["workflows", "connections"] as const
 export type PresetID = (typeof PRESET_IDS)[number]
 
 export const FULL_COMPONENTS = [
   "acp",
   "code-tools",
   "computer-runtime",
-  "connections",
   "external-agents",
   "formatter",
   "library",
@@ -19,7 +19,29 @@ export const FULL_COMPONENTS = [
   "presets",
   "server",
   "workbench",
-  "workflows",
+  "agenda",
+  "light-loop",
+  "blueprint",
+  "lattice",
+  "boss",
+  "anima",
+  "channels",
+  "channel-feishu",
+  "github",
+  "channel-github",
+  "holos",
+  "channel-clarus",
+  "email",
+  "agenda-blueprint",
+  "agenda-light-loop",
+  "plugin-agenda",
+  "plugin-blueprint",
+  "plugin-light-loop",
+  "boss-feishu",
+  "github-agenda",
+  "channel-blueprint",
+  "channel-light-loop",
+  "channel-lattice",
 ] as const
 
 export function presetPackage(id: PresetID, version: string) {
@@ -50,7 +72,7 @@ export function presetPackage(id: PresetID, version: string) {
 
 export function resolveBuiltinPackage(spec: string, version: string) {
   const id = spec === "browser" ? "desktop" : spec === "computer" ? "computer-runtime" : spec
-  return ([...PRESET_IDS, ...FULL_COMPONENTS] as readonly string[]).includes(id)
+  return ([...PRESET_IDS, ...ASSEMBLY_PRESET_IDS, ...FULL_COMPONENTS] as readonly string[]).includes(id)
     ? `@ericsanchezok/synergy-${id}@${version}`
     : spec
 }

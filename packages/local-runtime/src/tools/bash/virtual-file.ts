@@ -1,13 +1,12 @@
 import type { Node } from "web-tree-sitter"
 import type { Executor } from "@ericsanchezok/synergy-harness/environment/executor"
-import { ToolNoteSource } from "@ericsanchezok/synergy-harness/tool/note-source"
 import { BashVirtualPath } from "@ericsanchezok/synergy-harness/tool/virtual-path"
 
 export namespace BashVirtualFile {
   export interface Reference {
     startIndex: number
     endIndex: number
-    provider: BashVirtualPath.Provider
+    provider: string
     id: string
   }
 
@@ -17,28 +16,6 @@ export namespace BashVirtualFile {
     digest?: string
     cleanup(): Promise<void>
   }
-
-  interface Provider {
-    extension: string
-    read(scopeID: string, id: string): Promise<string>
-  }
-
-  const noteSource = () => {
-    const source = ToolNoteSource.get()
-    if (!source) throw new Error("Note virtual-file source is not registered")
-    return source
-  }
-
-  const providers = {
-    note: {
-      get extension() {
-        return noteSource().noteExtension
-      },
-      read(scopeID: string, id: string) {
-        return noteSource().readNoteMarkdown(scopeID, id)
-      },
-    },
-  } satisfies Record<BashVirtualPath.Provider, Provider>
 
   export function references(root: Node): Reference[] {
     const result: Reference[] = []
@@ -84,7 +61,7 @@ export namespace BashVirtualFile {
       const files: { name: string; data: string }[] = []
       let index = 0
       for (const [key, reference] of unique.entries()) {
-        const provider = providers[reference.provider]
+        const provider = BashVirtualPath.source(reference.provider)
         const content = await provider.read(input.scopeID, reference.id)
         const name = `${index++}${provider.extension}`
         files.push({ name, data: Buffer.from(content).toString("base64") })

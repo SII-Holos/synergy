@@ -4,7 +4,52 @@ import {
   reconcileBrowserTabs,
 } from "../../../../src/components/workspace/browser/browser-workbench-model"
 const route = { mode: "session" as const, sessionID: "session-one", path_directory: "home", scopeID: "home" }
+const shared = {
+  mode: "scope" as const,
+  path_directory: "home",
+  scopeID: "home",
+  ownerKey: "scope-owner",
+  serverUrl: "http://one",
+}
 const page = (id: string, title = id) => ({ id, title, url: `https://${id}.test` })
+test("shared pages update only the browser tabs opened in each task", () => {
+  const one = browserPageTab(page("one"), shared)
+  const two = browserPageTab(page("two"), shared)
+  const pages = [page("one", "Updated"), page("two"), page("background")]
+  const first = reconcileBrowserTabs({ tabs: [one], active: one.id, pages, route: shared })
+  const second = reconcileBrowserTabs({ tabs: [two], active: two.id, pages, route: shared })
+  expect(first.tabs.map((tab) => tab.resourceId)).toEqual(["one"])
+  expect(first.tabs[0]?.title).toBe("Updated")
+  expect(first.active).toBe(one.id)
+  expect(second.tabs).toEqual([two])
+  expect(second.active).toBe(two.id)
+  expect(reconcileBrowserTabs({ tabs: [], active: undefined, pages, route: shared })).toEqual({
+    tabs: [],
+    active: undefined,
+  })
+  const closed = reconcileBrowserTabs({ ...first, pages: [page("two")], route: shared })
+  expect(closed).toEqual({ tabs: [], active: undefined })
+})
+
+test("shared popups follow an opened ancestor without importing another task's pages", () => {
+  const one = browserPageTab(page("one"), shared)
+  const pages = [
+    { ...page("nested"), openerId: "popup" },
+    { ...page("popup"), openerId: "one" },
+    { ...page("foreign-popup"), openerId: "two" },
+    { ...page("cycle-one"), openerId: "cycle-two" },
+    { ...page("cycle-two"), openerId: "cycle-one" },
+    page("one"),
+    page("two"),
+  ]
+  const next = reconcileBrowserTabs({ tabs: [one], active: one.id, pages, route: shared })
+  expect(next.tabs.map((tab) => tab.resourceId)).toEqual(["one", "nested", "popup"])
+  expect(next.active).toBe(one.id)
+  expect(reconcileBrowserTabs({ ...next, pages, route: shared }).tabs).toBe(next.tabs)
+  const closed = reconcileBrowserTabs({ ...next, pages: pages.filter((page) => page.id !== "one"), route: shared })
+  expect(closed.tabs.map((tab) => tab.resourceId)).toEqual(["nested", "popup"])
+})
+
 test("each native page becomes a peer tab without changing the active file or order", () => {
   const tabs = [
     { id: "file", panelId: "file" },
@@ -76,18 +121,11 @@ test("page menu address follows navigation even when the website title is unchan
 })
 
 test("a shared catalog preserves historical owners and separates identical page IDs across runtimes", () => {
-  const shared = {
-    mode: "scope" as const,
-    path_directory: "home",
-    scopeID: "home",
-    ownerKey: "scope-owner",
-    serverUrl: "http://one",
-  }
   const old = browserPageTab(page("same"), { ...route, ownerKey: "session-owner", serverUrl: "http://one" })
   const other = browserPageTab(page("same"), { ...shared, serverUrl: "http://two" })
   const current = browserPageTab(page("same"), shared)
   expect(new Set([old.id, other.id, current.id]).size).toBe(3)
   const next = reconcileBrowserTabs({ tabs: [old, other], active: old.id, pages: [page("same")], route: shared })
-  expect(next.tabs).toEqual([old, other, current])
+  expect(next.tabs).toEqual([old, other])
   expect(next.active).toBe(old.id)
 })

@@ -4,7 +4,7 @@ import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint
 import { SessionInteraction } from "@ericsanchezok/synergy-harness/session/interaction"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { Question } from "@ericsanchezok/synergy-local-runtime/question"
-import { AppChannel } from "@ericsanchezok/synergy-connections/channel/app"
+import { AppChannel } from "@ericsanchezok/synergy-channels/channel/app"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"

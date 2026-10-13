@@ -1,0 +1,77 @@
+{
+  "name": "@ericsanchezok/synergy-light-loop",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./agents": "./src/agents.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts",
+    "./light-loop/continuation": "./src/light-loop/continuation.ts",
+    "./light-loop/register": "./src/light-loop/register.ts",
+    "./light-loop/runtime": "./src/light-loop/runtime.ts",
+    "./light-loop/terminal-hook": "./src/light-loop/terminal-hook.ts",
+    "./light-loop/tools/light-loop-approve": "./src/light-loop/tools/light-loop-approve.ts",
+    "./light-loop/tools/light-loop-approve.txt": "./src/light-loop/tools/light-loop-approve.txt",
+    "./light-loop/tools/light-loop-reject": "./src/light-loop/tools/light-loop-reject.ts",
+    "./light-loop/tools/light-loop-reject.txt": "./src/light-loop/tools/light-loop-reject.txt",
+    "./light-loop/tools/loop-stop": "./src/light-loop/tools/loop-stop.ts",
+    "./light-loop/tools/loop-stop.txt": "./src/light-loop/tools/loop-stop.txt",
+    "./prompts/lightloop-reviewer/base.txt": "./src/prompts/lightloop-reviewer/base.txt",
+    "./prompts/lightloop-reviewer/builder": "./src/prompts/lightloop-reviewer/builder.ts",
+    "./routes/workflow": "./src/routes/workflow.ts",
+    "./session-migration": "./src/session-migration.ts",
+    "./session-schema": "./src/session-schema.ts",
+    "./session/light-loop-review-access": "./src/session/light-loop-review-access.ts",
+    "./session/light-loop-state": "./src/session/light-loop-state.ts",
+    "./session/register": "./src/session/register.ts",
+    "./session/workflow": "./src/session/workflow.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/light-loop",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "light-loop",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "lightLoop",
+    "requires": {
+      "local-runtime": "1.1.26"
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}
