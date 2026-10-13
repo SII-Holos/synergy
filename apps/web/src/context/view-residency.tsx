@@ -55,7 +55,6 @@ const ResidencyContext = createContext<{
   sessions: ReturnType<typeof createResidencyBudget>
   panels: ReturnType<typeof createResidencyBudget>
 }>()
-const ActivityContext = createContext<Accessor<boolean>>(() => true)
 
 export function ViewResidencyProvider(props: ParentProps) {
   const value = {
@@ -71,9 +70,4 @@ export function useViewResidency() {
   return useContext(ResidencyContext)
 }
 
-export function ViewActivityProvider(props: ParentProps<{ active: Accessor<boolean> }>) {
-  const parent = useContext(ActivityContext)
-  return <ActivityContext.Provider value={() => parent() && props.active()}>{props.children}</ActivityContext.Provider>
-}
-
-export const useViewActivity = () => useContext(ActivityContext)
+export { ViewActivityProvider, useViewActivity } from "@ericsanchezok/synergy-ui/context/view-activity"

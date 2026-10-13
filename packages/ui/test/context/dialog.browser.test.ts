@@ -12,6 +12,9 @@ interface DialogFixture {
   removeOrigin(): void
   replaceDialog(): void
   unmount(): void
+  setActive(value: boolean): void
+  removeControls(): void
+  pushProtected(): void
 }
 type FixtureWindow = typeof window & { fixture: DialogFixture }
 let directory: string
@@ -37,6 +40,10 @@ beforeAll(async () => {
     import { I18nProvider } from "@lingui/solid"
     import { DialogProvider, useDialog } from ${source("context/dialog")}
     import { Dialog } from ${source("components/dialog")}
+    import { ViewActivityProvider } from ${source("context/view-activity")}
+    const [active, setActive] = createSignal(true)
+    const [controlsMounted, setControlsMounted] = createSignal(true)
+    const [closed, setClosed] = createSignal(0)
     const [mounted, setMounted] = createSignal(true)
     const [origin, setOrigin] = createSignal("streaming")
     const [imageOpens, setImageOpens] = createSignal(0)
@@ -60,6 +67,8 @@ beforeAll(async () => {
       replaceOrigin: () => setOrigin("settled"),
       removeOrigin: () => setOrigin(undefined),
       unmount: () => setMounted(false),
+      setActive,
+      removeControls: () => setControlsMounted(false),
     }
     function Controls() {
       const dialog = useDialog()
@@ -67,7 +76,8 @@ beforeAll(async () => {
       const onClose = new URLSearchParams(location.search).has("dynamic")
         ? () => queueMicrotask(() => document.getElementById("image-origin")?.focus())
         : undefined
-      window.fixture.replaceDialog = () => dialog.show(() => panel("Replacement"))
+      window.fixture.replaceDialog = () => dialog.show(() => panel("Replacement"), () => setClosed(value => value + 1))
+      window.fixture.pushProtected = () => dialog.push(() => panel("Protected"), () => setClosed(value => value + 1), { protected: true })
       const openImage = () => {
         setImageOpens(imageOpens() + 1)
         dialog.show(() => panel("Image preview"), onClose)
@@ -79,7 +89,8 @@ beforeAll(async () => {
     }
     const i18n = setupI18n({locale:"en",messages:{en:{}}})
     render(() => <I18nProvider i18n={i18n}>
-      <Show when={mounted()}><DialogProvider><Controls /></DialogProvider></Show>
+      <Show when={mounted()}><DialogProvider><Show when={controlsMounted()}><ViewActivityProvider active={active}><div hidden={!active()} inert={!active()}><Controls /></div></ViewActivityProvider></Show></DialogProvider></Show>
+      <output data-testid="closed">{closed()}</output>
       <button onClick={() => setDocumentOpens(documentOpens() + 1)}>Report.txt</button>
       <output data-testid="image-opens">{imageOpens()}</output>
       <output data-testid="document-opens">{documentOpens()}</output>
@@ -145,6 +156,27 @@ async function flushFrames() {
 async function focusedButton() {
   return page.evaluate(() => document.activeElement?.textContent)
 }
+
+test("retained owner inactivity closes protected dialogs and rejects background reopen", async () => {
+  await page.goto(server.url.toString())
+  await page.evaluate(() => (window as FixtureWindow).fixture.pushProtected())
+  await page.getByRole("dialog", { name: "Protected", exact: true }).waitFor()
+  await page.evaluate(() => (window as FixtureWindow).fixture.setActive(false))
+  expect(await page.getByRole("dialog").count()).toBe(0)
+  expect(await page.getByTestId("closed").textContent()).toBe("1")
+  await page.getByRole("button", { name: "Report.txt", exact: true }).focus()
+  await page.evaluate(() => (window as FixtureWindow).fixture.replaceDialog())
+  expect(await page.getByRole("dialog").count()).toBe(0)
+  expect(await page.getByTestId("closed").textContent()).toBe("2")
+  await page.evaluate(() => (window as FixtureWindow).fixture.setActive(true))
+  expect(await page.getByRole("dialog").count()).toBe(0)
+  expect(await focusedButton()).toBe("Report.txt")
+  await page.evaluate(() => (window as FixtureWindow).fixture.pushProtected())
+  await page.getByRole("dialog", { name: "Protected", exact: true }).waitFor()
+  await page.evaluate(() => (window as FixtureWindow).fixture.removeControls())
+  expect(await page.getByRole("dialog").count()).toBe(0)
+  expect(await page.getByTestId("closed").textContent()).toBe("3")
+})
 
 test("a delayed dialog return cannot override the next control's focus or Enter activation", async () => {
   await openImage(true)
