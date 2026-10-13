@@ -36,12 +36,8 @@ export const { use: useBrowserCatalog, provider: BrowserCatalogProvider } = crea
           { throwOnError: true },
         )
         const snapshot = response.data
-        if (!snapshot || disposed || snapshot.ownerKey !== catalog.route.ownerKey) return
-        if (epoch !== catalog.store.session.epoch && snapshot.epoch !== catalog.store.session.epoch) return
-        if (catalog.store.session.epoch === snapshot.epoch && catalog.store.session.seq > snapshot.seq) return
-        catalog.store.replacePages(snapshot.pages)
-        catalog.store.setSession("seq", snapshot.seq)
-        catalog.store.setSession("epoch", snapshot.epoch)
+        if (!snapshot || disposed) return
+        catalog.transport.applySnapshot(snapshot, epoch)
       },
       get(route: BrowserWorkbenchRoute) {
         const key = JSON.stringify([sdk.url, route.mode, route.scopeID, route.sessionID])

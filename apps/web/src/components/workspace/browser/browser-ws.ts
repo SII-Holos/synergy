@@ -4,13 +4,14 @@ import {
   BROWSER_HOST_START_TIMEOUT_MS,
   BROWSER_PROTOCOL_VERSION,
   BrowserEventSchema,
+  type BrowserAPISessionState,
   type BrowserHostStatus,
   type BrowserControlRequest,
 } from "@ericsanchezok/synergy-browser-core"
 import { useSDK } from "@/context/sdk"
 import { usePlatform } from "@/context/platform"
 import type { BrowserStoreAPI } from "./browser-store"
-import { applyBrowserControlResult, browserControlCommandFromMessage, createBrowserCommandId } from "./browser-command"
+import { browserControlCommandFromMessage, createBrowserCommandId } from "./browser-command"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 import { normalizeBrowserError } from "./browser-error"
 import { NativePresentationCoordinator, type BrowserClientPresentationMode } from "./native-presentation-coordinator"
@@ -50,6 +51,7 @@ function isBrowserHostStatus(value: unknown): value is BrowserHostStatus {
 function createBrowserHttpControlSender(
   store: BrowserStoreAPI,
   options: BrowserWebSocketUrlOptions & { client: ReturnType<typeof useSDK>["client"] },
+  applySnapshot: (snapshot: BrowserAPISessionState, requestEpoch: string | null) => void,
   createNativeTicket?: () => Promise<string>,
 ) {
   const controllers = new Set<AbortController>()
@@ -59,7 +61,7 @@ function createBrowserHttpControlSender(
     const controller = new AbortController()
     controllers.add(controller)
     const pageId = typeof msg.pageId === "string" ? msg.pageId : undefined
-    void (async () => {
+    return (async () => {
       const route = {
         path_directory: options.routeDirectory ?? options.directory ?? options.scopeID ?? options.scopeKey ?? "",
         query_directory: options.directory,
@@ -81,15 +83,20 @@ function createBrowserHttpControlSender(
           },
           { signal: controller.signal, throwOnError: true },
         )
-        if (response.data) {
-          store.upsertPage(response.data)
-          store.selectPage(response.data.id)
-          store.setHostStatus(response.data.id, "ready")
+        if (!response.data || controller.signal.aborted) return
+        const openedId = response.data.id
+        if (!store.session.pages.some((page) => page.id === openedId)) {
+          const epoch = store.session.epoch
+          const state = await options.client.browser.session(
+            { ...route, presentation: "auto", protocolVersion: BROWSER_PROTOCOL_VERSION },
+            { signal: controller.signal, throwOnError: true },
+          )
+          if (state.data && !controller.signal.aborted) applySnapshot(state.data, epoch)
         }
-        return
+        return store.session.pages.find((page) => page.id === openedId)
       }
       if (!pageId) return
-      const response = await options.client.browser.control(
+      await options.client.browser.control(
         {
           ...route,
           browserControlRequest: {
@@ -102,7 +109,6 @@ function createBrowserHttpControlSender(
         },
         { signal: controller.signal, throwOnError: true },
       )
-      if (response.data) applyBrowserControlResult(store, response.data.result)
       if (command?.type === "close") store.removePage(pageId)
     })()
       .catch((error) => {
@@ -140,12 +146,13 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           serverUrl,
           ownerKey: options.ownerKey,
           onState(state) {
-            const pageId = store.pageId()
-            if (pageId && (state.phase !== "ready" || store.page()?.status === "active"))
+            for (const page of store.session.pages) {
+              if (page.status !== "active") continue
               store.setHostStatus(
-                pageId,
+                page.id,
                 state.phase === "ready" ? "ready" : state.phase === "failed" ? "failed" : "restarting",
               )
+            }
             if (state.phase === "ready") {
               store.clearTransientHostError()
               return
@@ -164,6 +171,19 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     }
     return nativeCoordinator.createTicket()
   }
+  // HTTP snapshots cover page metadata, not pending dialogs or the event replay cursor.
+  let catalogSnapshot = { epoch: store.session.epoch, seq: store.session.seq }
+  const applySnapshot = (snapshot: BrowserAPISessionState, requestEpoch: string | null) => {
+    if (disposed || snapshot.ownerKey !== options.ownerKey) return
+    if (requestEpoch !== store.session.epoch && snapshot.epoch !== store.session.epoch) return
+    if (store.session.epoch && snapshot.epoch !== store.session.epoch) return
+    if (snapshot.epoch === store.session.epoch && snapshot.seq < store.session.seq) return
+    if (snapshot.epoch === catalogSnapshot.epoch && snapshot.seq < catalogSnapshot.seq) return
+    catalogSnapshot = { epoch: snapshot.epoch, seq: snapshot.seq }
+    store.replacePages(snapshot.pages)
+    for (const page of snapshot.pages)
+      store.setHostStatus(page.id, page.status === "active" ? snapshot.hostStatus : "detached")
+  }
   const controlSender = createBrowserHttpControlSender(
     store,
     {
@@ -178,6 +198,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       traceId: store.browserTraceId(),
       presentation: options.presentation,
     },
+    applySnapshot,
     options.presentation === "native" ? createNativeTicket : undefined,
   )
   const send = controlSender.send
@@ -285,6 +306,13 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
 
       if (shouldLogBrowserMessage(msg)) browserDebug("ws.message", summarizeBrowserMessage(msg))
       if (!acceptSequencedMessage(msg, socket, store)) return
+      if (
+        "epoch" in msg &&
+        msg.epoch === catalogSnapshot.epoch &&
+        msg.seq <= catalogSnapshot.seq &&
+        ["page.created", "page.updated", "page.closed", "page.loading", "page.loaded", "host.status"].includes(msg.type)
+      )
+        return
       switch (msg.type) {
         case "session.state": {
           if (msg.ownerKey !== options.ownerKey) {
@@ -297,9 +325,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
             return
           }
           store.setPresentation(msg.presentation)
-          store.replacePages(msg.pages)
-          for (const page of msg.pages)
-            store.setHostStatus(page.id, page.status === "active" ? msg.hostStatus : "detached")
+          applySnapshot(msg, msg.epoch)
           if (msg.error) {
             store.setSession("connectionStatus", "failed")
             store.setBrowserError({ severity: "error", code: msg.error.code, message: msg.error.message })
@@ -343,7 +369,8 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           break
         }
         case "page.error": {
-          store.setPageLoading(msg.pageId, false)
+          if (msg.epoch !== catalogSnapshot.epoch || msg.seq > catalogSnapshot.seq)
+            store.setPageLoading(msg.pageId, false)
           store.setBrowserError({
             pageId: msg.pageId,
             severity: "error",
@@ -463,6 +490,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
 
   return {
     send,
+    applySnapshot,
     createNativeTicket,
     connect,
     reconnect: () => {
@@ -502,6 +530,7 @@ function acceptSequencedMessage(
     store.setSession({ seq: message.seq, epoch: message.epoch })
     return true
   }
+  if (message.epoch === currentEpoch && message.seq <= store.session.seq) return false
   if (message.epoch !== currentEpoch || message.seq !== store.session.seq + 1) {
     browserDebug("ws.sequence.gap", {
       currentEpoch,

@@ -68,8 +68,9 @@ beforeAll(async () => {
           isLoading: false,
           lastActiveAt: null,
         }
-        const store = createBrowserStore()
-        store.replacePages([{ ...pageState, profileId: "personal", status: "active" }])
+        const browserCatalog = createBrowserStore()
+        const store = browserCatalog.forPage(() => pageState.id, () => {})
+        browserCatalog.replacePages([{ ...pageState, profileId: "personal", status: "active" }])
         store.setSession("connectionStatus", "connected")
         const nativePresentation = {
           protocolVersion: 5,

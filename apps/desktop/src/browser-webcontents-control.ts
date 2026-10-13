@@ -25,8 +25,8 @@ export interface BrowserWebContentsControlTarget {
   pageId: string
   contents(): Electron.WebContents | undefined
   diagnostics?(): BrowserHostDiagnostics | undefined
-  resize?(width: number, height: number): void
   pageState(): BrowserWebContentsPageState
+  initialNavigationURL?: string
   onWindowOpen?(details: Electron.HandlerDetails): Electron.WindowOpenHandlerResponse
   onNavigationBlocked?(url: string, reason: string): void
 }
@@ -35,13 +35,50 @@ class ElectronCdpTransport implements CdpTransport {
   private listeners = new Map<string, Set<(params: unknown) => void>>()
   private attachedContents: Electron.WebContents | null = null
   private ownsAttachment = false
+  private nativeViewport: { width: number; height: number } | null = null
+  private fixedViewport = false
+  private viewportFlight: Promise<void> = Promise.resolve()
   private messageListener = (_event: Electron.Event, method: string, params: unknown) => {
     for (const listener of this.listeners.get(method) ?? []) listener(params)
   }
 
   constructor(private contents: () => Electron.WebContents | undefined) {}
 
+  setNativeViewport(viewport: { width: number; height: number } | null): Promise<void> {
+    this.nativeViewport = viewport
+    if (this.fixedViewport) return this.viewportFlight
+    return this.applyViewport(viewport ? { ...viewport, deviceScaleFactor: 1, mobile: false } : undefined)
+  }
+
   async send<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {
+    if (method === "Emulation.setDeviceMetricsOverride") {
+      this.fixedViewport = true
+      return this.applyViewport<T>(params)
+    }
+    if (method === "Emulation.clearDeviceMetricsOverride") {
+      this.fixedViewport = false
+      const viewport = this.nativeViewport
+      return this.applyViewport<T>(viewport ? { ...viewport, deviceScaleFactor: 1, mobile: false } : undefined)
+    }
+    await this.viewportFlight
+    return this.sendCommand<T>(method, params)
+  }
+
+  private applyViewport<T = void>(params?: Record<string, unknown>): Promise<T> {
+    const pending = this.viewportFlight
+      .catch(() => undefined)
+      .then(() =>
+        this.sendCommand<T>(
+          params ? "Emulation.setDeviceMetricsOverride" : "Emulation.clearDeviceMetricsOverride",
+          params ? { ...params, dontSetVisibleSize: true } : undefined,
+        ),
+      )
+    this.viewportFlight = pending.then(() => undefined)
+    void this.viewportFlight.catch(() => undefined)
+    return pending
+  }
+
+  private async sendCommand<T>(method: string, params?: Record<string, unknown>): Promise<T> {
     const contents = this.requireContents()
     if (method === "Input.dispatchMouseEvent" && params?.type === "mouseMoved") {
       contents.sendInputEvent({
@@ -79,6 +116,7 @@ class ElectronCdpTransport implements CdpTransport {
   }
 
   async dispose(): Promise<void> {
+    await this.viewportFlight.catch(() => undefined)
     this.listeners.clear()
     if (this.attachedContents && !this.attachedContents.isDestroyed()) {
       this.attachedContents.debugger.off("message", this.messageListener)
@@ -124,7 +162,10 @@ export class BrowserWebContentsControl {
   private transport: ElectronCdpTransport
   private controller: CdpPageController
   private navigation: BrowserNavigationPolicy
+  private initialNavigation: { url: string; policy: BrowserNavigationPolicy } | null = null
   private navigationListener: (event: Electron.Event, url: string) => void
+  private redirectListener: (event: Electron.Event, url: string, isInPlace: boolean, isMainFrame: boolean) => void
+  private stoppedListener: () => void
   private committedListener: (_event: Electron.Event, url: string) => void
   private mouseListener: (_event: Electron.Event, input: Electron.MouseInputEvent) => void
   private keyListener: (_event: Electron.Event, input: Electron.Input) => void
@@ -133,8 +174,8 @@ export class BrowserWebContentsControl {
 
   constructor(private target: BrowserWebContentsControlTarget) {
     this.transport = new ElectronCdpTransport(target.contents)
-    this.navigation = new BrowserNavigationPolicy({
-      allowUserNavigation: (url) => {
+    const navigationOptions = {
+      allowUserNavigation: (url: string) => {
         try {
           const protocol = new URL(url).protocol
           return protocol === "http:" || protocol === "https:"
@@ -142,16 +183,36 @@ export class BrowserWebContentsControl {
           return false
         }
       },
-    })
-    this.navigationListener = (event, url) => {
-      const decision = this.navigation.decide(url)
+    }
+    this.navigation = new BrowserNavigationPolicy(navigationOptions)
+    if (target.initialNavigationURL && navigationOptions.allowUserNavigation(target.initialNavigationURL)) {
+      const policy = new BrowserNavigationPolicy(navigationOptions)
+      policy.begin(target.initialNavigationURL, "user")
+      this.initialNavigation = { url: target.initialNavigationURL, policy }
+    }
+    const checkNavigation = (event: Electron.Event, url: string, policy = this.navigation) => {
+      const decision = policy.decide(url)
       if (decision.allowed) return
+      if (policy === this.initialNavigation?.policy) this.initialNavigation = null
       event.preventDefault()
       const reason = decision.reason ?? "Browser navigation policy denied the request."
       if (this.commandInFlight) this.navigationBlocked = { url, reason }
       target.onNavigationBlocked?.(url, reason)
     }
-    this.committedListener = (_event, url) => this.navigation.noteCommitted(url)
+    this.navigationListener = (event, url) => {
+      if (url !== this.initialNavigation?.url) this.initialNavigation = null
+      checkNavigation(event, url, this.initialNavigation?.policy)
+    }
+    this.redirectListener = (event, url, _isInPlace, isMainFrame) => {
+      checkNavigation(event, url, isMainFrame ? this.initialNavigation?.policy : undefined)
+    }
+    this.stoppedListener = () => {
+      this.initialNavigation = null
+    }
+    this.committedListener = (_event, url) => {
+      this.initialNavigation = null
+      this.navigation.noteCommitted(url)
+    }
     this.mouseListener = (_event, input) => {
       if (input.type === "mouseDown") this.navigation.noteUserGesture()
     }
@@ -160,8 +221,9 @@ export class BrowserWebContentsControl {
     }
     const contents = target.contents()
     contents?.on("will-navigate", this.navigationListener)
-    contents?.on("will-redirect", this.navigationListener)
+    contents?.on("will-redirect", this.redirectListener)
     contents?.on("did-navigate", this.committedListener)
+    contents?.on("did-stop-loading", this.stoppedListener)
     contents?.on("before-mouse-event", this.mouseListener)
     contents?.on("before-input-event", this.keyListener)
     contents?.setWindowOpenHandler((details) => {
@@ -187,11 +249,12 @@ export class BrowserWebContentsControl {
     })
   }
 
+  setNativeViewport(viewport: { width: number; height: number } | null): Promise<void> {
+    return this.transport.setNativeViewport(viewport)
+  }
+
   dispatchInput(payload: Record<string, unknown>): void {
-    if (payload.type === "input.resize") {
-      this.resize(payload.width, payload.height)
-      return
-    }
+    if (payload.type === "input.resize") return
 
     const contents = this.requireContents()
     contents.focus()
@@ -218,13 +281,15 @@ export class BrowserWebContentsControl {
     const command = BrowserBackendCommandSchema.parse(input)
     const diagnostics = this.target.diagnostics?.()
 
-    if (command.type === "navigate") this.navigation.begin(command.url, command.source)
+    if (command.type === "navigate") {
+      this.initialNavigation = null
+      this.navigation.begin(command.url, command.source)
+    }
     if (command.type === "checkpoint" && command.action === "restore") {
       if (!command.checkpoint) throw new Error("checkpoint is required for restore.")
+      this.initialNavigation = null
       this.navigation.begin(command.checkpoint.url, "agent")
     }
-
-    if (command.type === "setViewport") this.resize(command.width, command.height)
 
     if (command.type === "dialog.respond") {
       await diagnostics?.respondToDialog(command.requestId, command.accept, command.promptText)
@@ -282,8 +347,9 @@ export class BrowserWebContentsControl {
     const contents = this.target.contents()
     if (contents && !contents.isDestroyed()) {
       contents.off("will-navigate", this.navigationListener)
-      contents.off("will-redirect", this.navigationListener)
+      contents.off("will-redirect", this.redirectListener)
       contents.off("did-navigate", this.committedListener)
+      contents.off("did-stop-loading", this.stoppedListener)
       contents.off("before-mouse-event", this.mouseListener)
       contents.off("before-input-event", this.keyListener)
       contents.setWindowOpenHandler(() => ({ action: "deny" }))
@@ -294,13 +360,6 @@ export class BrowserWebContentsControl {
     ])
     const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
     if (failures.length) throw new AggregateError(failures, "Browser WebContents control did not dispose cleanly.")
-  }
-
-  private resize(widthInput: unknown, heightInput: unknown): void {
-    if (!this.target.resize) return
-    const width = Math.max(1, Math.round(Number(widthInput ?? 1280)))
-    const height = Math.max(1, Math.round(Number(heightInput ?? 720)))
-    this.target.resize(width, height)
   }
 
   private requireContents(): Electron.WebContents {

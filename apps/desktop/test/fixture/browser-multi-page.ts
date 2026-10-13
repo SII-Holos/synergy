@@ -1,4 +1,4 @@
-import { app, BrowserWindow, safeStorage } from "electron"
+import { app, BrowserWindow, safeStorage, type WebContents } from "electron"
 import { createServer } from "node:http"
 import assert from "node:assert/strict"
 import { BrowserDataStore } from "../../src/browser-data-store"
@@ -18,9 +18,19 @@ void run().catch((error) => {
 })
 async function run() {
   await app.whenReady()
+  console.log("Native Browser smoke: ready")
+  let releaseRedirect!: () => void
+  const adoptionStarted = new Promise<void>((resolve) => (releaseRedirect = resolve))
+  let redirectOrigin = ""
   const server = createServer(async (req, res) => {
     let body = ""
     for await (const chunk of req) body += chunk
+    if (req.url === "/post-redirect") {
+      await adoptionStarted
+      res.writeHead(307, { Location: `${redirectOrigin}/post` })
+      res.end()
+      return
+    }
     if (req.url === "/download") {
       res.setHeader("Content-Disposition", "attachment; filename=fixture.csv")
       res.setHeader("Content-Type", "text/csv")
@@ -36,11 +46,25 @@ async function run() {
   const address = server.address()
   assert(address && typeof address !== "string")
   const url = `http://127.0.0.1:${address.port}`
+  const redirectServer = createServer(async (req, res) => {
+    let body = ""
+    for await (const chunk of req) body += chunk
+    res.setHeader("Content-Type", "text/html")
+    res.end(
+      `<title>Redirected POST</title><script>window.received=${JSON.stringify(body)}; window.method=${JSON.stringify(req.method)}</script>`,
+    )
+  })
+  await new Promise<void>((resolve) => redirectServer.listen(0, "127.0.0.1", resolve))
+  const redirectAddress = redirectServer.address()
+  assert(redirectAddress && typeof redirectAddress !== "string")
+  redirectOrigin = `http://127.0.0.1:${redirectAddress.port}`
   const pool = new BrowserNativePagePool()
   const window = new BrowserWindow({ width: 1000, height: 720, show: false })
   const popups: BrowserNativePageHandle[] = []
   const events: string[] = []
   const recovery: string[] = []
+  const popupFailures: string[] = []
+  const deniedNavigations: Array<{ pageId: string; url?: string }> = []
   let download: import("@ericsanchezok/synergy-browser-core").BrowserHostDownloadEntry | undefined
   const base: Omit<BrowserNativePageInput, "page"> = {
     ownerKey: "task-one",
@@ -52,7 +76,11 @@ async function run() {
       if (event.type === "download.updated") {
         download = { ...event.entry }
       }
-      if (event.type === "page.error") console.log(event)
+      if (event.type === "page.error") {
+        console.log(event)
+        if (event.message.startsWith("Popup could not open:")) popupFailures.push(event.message)
+        else deniedNavigations.push(event)
+      }
       if (event.type === "host.status" && event.pageId === "page-2") {
         recovery.push(event.status)
         console.log(`Recovery: ${event.status}`)
@@ -70,6 +98,7 @@ async function run() {
       }),
     ),
   )
+  console.log("Native Browser smoke: eight pages created")
   const views = pages.map((page) => pool.attach(window, base.ownerKey, page.state().id))
   assert.equal(new Set(views.map((view) => view.webContents.id)).size, 8)
   pool.attach(window, base.ownerKey, "page-0")
@@ -174,12 +203,89 @@ async function run() {
   await evaluate(popups[0]!, "window.opener.postMessage('login-complete','*'); true")
   await until(async () => (await evaluate(pages[0]!, "messages.includes('login-complete')")) === true)
   assert.match(String(await evaluate(popups[0]!, "document.cookie")), /identity=personal/)
+  let postChild!: WebContents
+  const popupFocusEvents: number[] = []
+  app.once("web-contents-created", (_event, contents) => {
+    postChild = contents
+    contents.on("focus", () => popupFocusEvents.push(contents.id))
+    const sendCommand = contents.debugger.sendCommand.bind(contents.debugger)
+    contents.debugger.sendCommand = async (method, ...args) => {
+      if (method === "Page.enable") {
+        contents.debugger.sendCommand = sendCommand
+        const redirected = new Promise<void>((resolve) => {
+          contents.once("will-redirect", () => setImmediate(resolve))
+        })
+        releaseRedirect()
+        await redirected
+      }
+      return sendCommand(method, ...args)
+    }
+  })
+  first.focus()
+  console.log("Native popup regression: redirect during adoption")
+  const attachedBeforePopup = window.contentView.children
   await evaluate(
     pages[1]!,
-    `let form=document.createElement('form'); form.method='POST'; form.action='${url}/post'; form.target='_blank'; form.innerHTML='<input name="token" value="fixture-value">'; document.body.append(form); form.submit(); true`,
+    `let form=document.createElement('form'); form.method='POST'; form.action='${url}/post-redirect'; form.target='_blank'; form.rel='opener'; form.innerHTML='<input name="token" value="fixture-value">'; document.body.append(form); form.submit(); true`,
   )
-  await until(() => popups.length === 2)
-  await until(async () => (await evaluate(popups[1]!, "window.received")) === "token=fixture-value")
+  await until(() => popups.length === 2 || popupFailures.length > 0, "redirected POST adoption")
+  assert.equal(await evaluate(pages[1]!, "window.marker"), 1, "A popup failure must not destroy its opener")
+  assert.deepEqual(popupFailures, [], "The authorized initial popup redirect must survive diagnostics adoption")
+  await until(
+    async () => (await evaluate(popups[1]!, "window.received")) === "token=fixture-value",
+    "redirected POST body",
+  )
+  assert.equal(await evaluate(popups[1]!, "window.method"), "POST")
+  assert.equal(await evaluate(popups[1]!, "!!window.opener"), true)
+  assert.equal(popups[1]!.state().url, `${redirectOrigin}/post`)
+  assert.equal(postChild.session, first.session)
+  await evaluate(popups[1]!, "window.opener.postMessage('post-complete','*'); true")
+  await until(async () => (await evaluate(pages[1]!, "messages.includes('post-complete')")) === true)
+  assert.equal(popupFocusEvents.length, 0, "Adopted popup must not take native focus")
+  assert.deepEqual(window.contentView.children, attachedBeforePopup)
+  console.log("Native popup regression: commit before adoption")
+  let earlyChild!: WebContents
+  let resumeAdoption!: () => void
+  const adoptionResumed = new Promise<void>((resolve) => (resumeAdoption = resolve))
+  app.once("web-contents-created", (_event, contents) => {
+    earlyChild = contents
+    contents.on("focus", () => popupFocusEvents.push(contents.id))
+    const sendCommand = contents.debugger.sendCommand.bind(contents.debugger)
+    contents.debugger.sendCommand = async (method, ...args) => {
+      if (method === "Page.enable") {
+        contents.debugger.sendCommand = sendCommand
+        await adoptionResumed
+      }
+      return sendCommand(method, ...args)
+    }
+  })
+  await evaluate(pages[0]!, `window.open('${url}/early'); true`)
+  await until(
+    () => earlyChild?.getURL() === `${url}/early` && !earlyChild.isLoading(),
+    "initial commit before adoption",
+  )
+  assert.equal(popups.length, 2, "Initial commit must be observable while diagnostics adoption is held")
+  await earlyChild.executeJavaScript(`location.assign('${url}/early-next'); true`)
+  await until(
+    () => earlyChild.getURL() === `${url}/early-next` && !earlyChild.isLoading(),
+    "same-origin commit before adoption",
+  )
+  const unsolicitedURL = `${redirectOrigin}/unsolicited`
+  const rejected = new Promise<void>((resolve) => {
+    earlyChild.once("will-navigate", (event) => {
+      assert.equal(event.defaultPrevented, true, "A committed child cannot reuse its initial navigation grant")
+      resolve()
+    })
+  })
+  await earlyChild.executeJavaScript(`location.assign('${unsolicitedURL}'); true`)
+  await rejected
+  resumeAdoption()
+  await until(() => popups.length === 3)
+  assert.equal(popups[2]!.state().url, `${url}/early-next`)
+  assert.ok(deniedNavigations.some((event) => event.pageId === popups[2]!.state().id && event.url === unsolicitedURL))
+  assert.equal(popupFocusEvents.length, 0, "Adopted popup must not take native focus")
+  assert.deepEqual(window.contentView.children, attachedBeforePopup)
+  await popups[2]!.destroy()
   await evaluate(popups[0]!, "setTimeout(()=>window.close(),0); true")
   await until(() => !pool.find(base.ownerKey, popups[0]!.state().id))
   await until(() => events.includes("page.closed"))
@@ -236,8 +342,9 @@ async function run() {
   await pool.destroy()
   window.destroy()
   server.close()
+  redirectServer.close()
   console.log(
-    "ACCEPTED: 8 real pages, identity sharing/isolation, popup opener/POST/close, independent recovery, download approval and temporary cleanup",
+    "ACCEPTED: 8 real pages, identity sharing/isolation, popup opener/cross-origin POST redirect/close without focus theft, independent recovery, download approval and temporary cleanup",
   )
   app.exit(0)
 }
@@ -246,11 +353,11 @@ async function evaluate(page: BrowserNativePageHandle, expression: string) {
   assert.equal(result.type, "evaluation")
   return result.type === "evaluation" ? result.value : undefined
 }
-async function until(read: () => boolean | Promise<boolean>) {
+async function until(read: () => boolean | Promise<boolean>, label = "Condition") {
   const end = Date.now() + 12000
   while (Date.now() < end) {
     if (await read()) return
-    await new Promise((r) => setTimeout(r, 50))
+    await new Promise((resolve) => setTimeout(resolve, 50))
   }
-  throw new Error("Condition did not converge")
+  throw new Error(`${label} did not converge`)
 }

@@ -6,7 +6,7 @@ Browser is the Desktop workspace for using websites alongside tasks. Ordinary we
 
 Use the main plus button or choose Browser from its resource menu to create a real page without creating a task or calling a model. Each webpage is a peer tab beside files and other panels, with its website title or New tab. Website popups become peer tabs and retain normal login-window behavior. Closing a tab closes that page; switching tabs or hiding the side workspace keeps its native context alive. Startup and workbench restoration read metadata without opening new pages. Each task keeps its own Workspace page tabs, order and selection. A page opened in another task appears only when explicitly opened in this Workspace. Popups follow an already-open page. Explicitly opening an empty Workspace creates a blank page using the default login profile. Hiding the Workspace preserves pages and selection.
 
-The user's selected tab stays selected while the Agent works elsewhere. The follow-agent action is an explicit way to inspect the Agent's page. Human interaction does not pause an entire identity or task. Page dialogs, file selections and errors stay with their own page when switching tabs.
+The user's selected tab stays selected while the Agent works elsewhere. The follow-agent action is an explicit way to inspect the Agent's page. Human interaction does not pause an entire identity or task. Each tab keeps its own browsing controls and Developer tools view; title and address updates do not reset an unfinished address edit. Page dialogs, file selections and errors stay with their own page when switching tabs.
 
 The address bar, history controls, viewport choices, annotations and diagnostic panels operate on the selected page. Agent tools use explicit page IDs returned by their page list. Each page owner supports 16 active pages and 64 saved pages, within a Desktop-wide limit of 64 active pages; capacity errors ask for an unused page to be closed.
 
@@ -16,7 +16,7 @@ The tab context menu offers reload, copy address, external opening, close, close
 
 ## Saved website logins
 
-Website logins are remembered automatically and reused by other tasks and Scopes in the same Desktop installation. Ordinary browsing needs no account setup in Synergy. Browser options → Browser settings contains login profiles and website permissions. Add a separate profile only when another account needs an independent login store. Opening a page copy with that profile creates a new peer tab; existing pages retain their original profile.
+Website logins are remembered automatically and reused by other tasks and Scopes in the same Desktop installation. Ordinary browsing needs no account setup in Synergy. Browser options → Browser settings contains login profiles and website permissions. Add a separate profile only when another account needs an independent login store. Opening a page copy with that profile creates a new peer tab; existing pages retain their original profile. If you switch tabs while the copy opens, it is added without replacing your later selection. A reply after you change tasks does not add a tab to the new task's Workspace.
 
 Temporary identities have no persistent login store and are discarded when their last page closes. They are excluded from task recovery. Website login remains a direct user interaction; the Agent can continue after the user completes login, including popup-based authentication.
 
@@ -31,6 +31,8 @@ Downloads appear as waiting until accepted. Chromium can already have buffered t
 ## Recovery and evidence
 
 Project and historical task pages restore as suspended after restart. Task completion, cancellation, archiving and Workspace changes preserve shared project pages; explicit page close destroys them. Resume restores the address and identity when available. A failed page offers a local retry without changing other tabs. Browser storage can preserve a website login; unsaved forms, JavaScript state, navigation history and one-use login transactions are not recovery guarantees.
+
+Page errors appear above the webpage with Dismiss and applicable recovery actions. A failed operation, including a popup that cannot open, does not by itself hide an otherwise usable page. Menus and dialogs still temporarily cover the page until they close.
 
 Agent results distinguish dispatched actions, settling and observed page state. A timeout does not establish that a submission failed. After an uncertain action, inspect the page before deciding whether another action is needed. Screenshots and feedback are added to the captured task or new-task editable draft with their source URL and capture time. A marked point refers to the captured image, not a reusable live element handle. A changed task or reset draft cancels the addition; ordinary typing during capture is retained. Sending remains a separate composer action. Completed downloads remain available after their source page closes and can be saved, saved and opened, or added to the task draft.
 

@@ -156,10 +156,11 @@ beforeAll(async () => {
     window.navigationPanel = () => <NavigatorProbe width="100%" layers />
     window.browserPanel = () => {
       let container
-      const store = createBrowserStore()
-      store.replacePages([{id:"page-one",profileId:"personal",status:"active",url:"https://example.test",title:"Test",isLoading:false,lastActiveAt:null}])
-      store.setPresentation({kind:"native",protocolVersion:BROWSER_PROTOCOL_VERSION,capabilities:{native:true},reason:"desktop-local"})
-      window.setBrowserError = store.setBrowserError
+      const browserCatalog = createBrowserStore()
+      const store = browserCatalog.forPage(() => "page-one", () => {})
+      browserCatalog.replacePages([{id:"page-one",profileId:"personal",status:"active",url:"https://example.test",title:"Test",isLoading:false,lastActiveAt:null}])
+      browserCatalog.setPresentation({kind:"native",protocolVersion:BROWSER_PROTOCOL_VERSION,capabilities:{native:true},reason:"desktop-local"})
+      window.setBrowserControlsOpen = store.setControlsOpen
       return <BrowserStoreProvider store={store}><div data-native-surface ref={container} style="position:relative;width:100%;height:400px"><NativeBrowserSurface container={() => container} ownerKey="owner-one" /></div></BrowserStoreProvider>
     }
     function Fixture() {
@@ -250,7 +251,7 @@ interface WorkbenchWindow extends Window {
   mounts: Record<string, number>
   attachments: Array<{ pageId: string; visible: boolean }>
   detachments: unknown[]
-  setBrowserError(error: { severity: "error"; message: string } | null): void
+  setBrowserControlsOpen(value: boolean): void
   nativeEvent(event: { type: "native.cover"; pageId: string; url: string; dataUrl: string }): void
   fixture: {
     open(id: string): void
@@ -284,14 +285,14 @@ for (const width of [375, 1200]) {
         url: "https://example.test",
         dataUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
       })
-      fixture.setBrowserError({ severity: "error", message: "Page error" })
+      fixture.setBrowserControlsOpen(true)
     })
     await page.locator("[data-native-surface] img").waitFor()
     await page.keyboard.press("Escape")
     await page.getByRole("menu").waitFor({ state: "detached" })
     await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Open a resource")
     expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible)).toBe(false)
-    await page.evaluate(() => (window as unknown as WorkbenchWindow).setBrowserError(null))
+    await page.evaluate(() => (window as unknown as WorkbenchWindow).setBrowserControlsOpen(false))
     await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
     expect(await page.locator("[data-native-surface] img").count()).toBe(0)
 
@@ -787,7 +788,7 @@ test("the resource backdrop dismisses navigation without focusing the covered do
   await drawer.waitFor()
   const backdrop = page.locator(".workspace-navigator-overlay")
   const bounds = (await backdrop.boundingBox())!
-  await page.mouse.click(bounds.x + bounds.width - 8, bounds.y + 80)
+  await backdrop.click({ position: { x: bounds.width - 8, y: 80 } })
   await drawer.waitFor({ state: "detached" })
   await page.waitForFunction(() => document.activeElement?.textContent === "Toggle navigation")
   expect(await page.getByRole("textbox", { name: "Document draft" }).inputValue()).toBe("")
