@@ -307,7 +307,7 @@ Plugin Marketplace should share Agenda and Library's compact workbench language:
 
 Each Desktop Browser page occupies one resource tab in the shared workbench strip beside files and other panels. Do not place a second strip inside a Browser container. Add → Browser creates a real new page; a tab shows its website title or New tab, without a default profile suffix. The canonical page catalog adds popups, updates background titles and removes closed pages without selecting them. Human selection stays independent of Agent targets. Closing a page tab closes that native page; switching tabs or hiding the side workspace only detaches presentation. State reads and panel mounting allocate nothing. Keep prompts, errors, downloads and activity scoped to their page. Native failures offer per-page recovery without mounting a remote fallback. The server owner key is canonical for native tickets and attachment.
 
-Browser controls should read as a compact product menu, not a debug drawer: use standard switch, segmented, selected-row, and local-navigation affordances with workbench spacing and surface tokens.
+Browser controls should read as a compact product menu, not a debug drawer: use standard switch, segmented, selected-row, and local-navigation affordances with workbench spacing and surface tokens. Automatic focus and focus restoration are not requests to open an overlay; keep address suggestions tied to the explicit interactions described in [Browser workspace](../../docs/product/browser.md#local-browser-data).
 
 Session MCP controls should read as connection management, not raw runtime status. Use settings-style search, summary, status rows, and switches; keep error details secondary and avoid debug-list styling in the session modal.
 
