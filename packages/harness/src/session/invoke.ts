@@ -1064,6 +1064,9 @@ export namespace SessionInvoke {
                   advisorySources.push(RuntimeAdvisory.present(id, text))
                 }
 
+                // Keep host identity in this advisory slot, outside the stable system cache prefix.
+                appendAdvisory("synergy-runtime", SystemPrompt.runtime())
+
                 // Layer 1: Static — AGENTS.md instructions (stable within session)
                 systemParts.push(...customParts)
                 if (systemParts.length > 0) systemCacheBreakpoint = systemParts.length - 1

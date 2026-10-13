@@ -123,7 +123,7 @@ export namespace RuntimeHandle {
 
   export async function open(options: OpenOptions) {
     options.startupReporter?.({ phase: "runtime", state: "opening", stage: "initializing" })
-    const instance = RuntimeContext.create(options.host)
+    const instance = RuntimeContext.create(options.host, options.mode)
     return instance.run(async () => {
       let runtime: Awaited<ReturnType<typeof openRuntime>> | undefined
       try {

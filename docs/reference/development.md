@@ -70,6 +70,8 @@ The development orchestrator tags each spawned command so shutdown can recover d
 
 ## Developing Synergy with Synergy
 
+The Agent receives the [hosting Runtime identity](../architecture/llm-loop.md#prompt-assembly) separately from its Session Workspace and selected Environment. It includes the launch entry, actual backend listener, Home/data root and source revision captured at launch. `bun dev web`, external Desktop, managed Desktop and source `send` register their owning entrypoints; `--attach` retains the existing backend's identity. Web/Vite ports do not describe the backend listener. Source edits and later Git commits do not rewrite a running instance's launch snapshot.
+
 Do not restart or stop the Synergy instance carrying your current session. Run the source checkout against an isolated home and explicit alternate ports:
 
 ```bash
