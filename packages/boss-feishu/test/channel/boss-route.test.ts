@@ -87,6 +87,7 @@ describe("Feishu boss routing", () => {
     async update() {},
     async updateToolProgress() {},
     async close() {},
+    async closeWithoutDelivery() {},
     isActive: () => false,
     ownsTerminalDelivery: () => true,
   })

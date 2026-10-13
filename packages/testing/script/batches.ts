@@ -128,8 +128,15 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/presets/test/project/worktree.test.ts",
   "packages/channel-clarus/test/channel/clarus-invite-accept.test.ts",
   "packages/channel-feishu/test/channel/feishu-provider.test.ts",
+  "packages/channel-feishu/test/channel/feishu-reaction-only.test.ts",
+  // Real Channel drain fixture observes the process-wide invoke boundary while owning its Runtime composition.
+  "packages/channel-feishu/test/channel/foreground-reaction-only.test.ts",
   "packages/channels/test/channel/host.test.ts",
+  "packages/channel-feishu/test/channel/loop-jobs.test.ts",
   "packages/channels/test/channel/managed-project-ownership.test.ts",
+  "packages/channels/test/channel/reaction-only-runtime.test.ts",
+  // Delivery work counters intercept shared history APIs inside a real Runtime.
+  "packages/channels/test/channel/delivery-work.test.ts",
   "packages/channel-feishu/test/channel/svg-raster-standalone.test.ts",
   "packages/presets/test/config/import.test.ts",
   "packages/email/test/email/imap.test.ts",

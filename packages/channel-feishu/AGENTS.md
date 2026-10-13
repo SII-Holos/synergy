@@ -1,6 +1,6 @@
 # channel-feishu Package
 
-Feishu accounts, transport, messages, streaming, cards, setup and provider tools. Required components: Channels. See [owning architecture](../../docs/architecture/channels.md).
+Feishu accounts, transport, messages, streaming, cards, setup, provider tools, availability policy and intent-closing loop jobs. Component and Agent worker tool registration share `src/tools.ts`. Required components: Channels. See [owning architecture](../../docs/architecture/channels.md).
 
 Own SVG raster worker, fonts and notices under script/ and published dist/lib/resvg-wasm. Boss routing is an explicit boss-feishu bridge; do not activate it from the provider.
 

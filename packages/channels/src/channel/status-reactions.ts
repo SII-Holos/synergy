@@ -14,11 +14,22 @@ export type StatusReactionEmojis = {
   error: string
 }
 
+export type StatusReactionOutcome = { delivered: boolean; error?: unknown }
+
 export type StatusReactionController = {
   setQueued: () => Promise<void>
   setTool: (toolName?: string) => Promise<void>
   setDone: () => Promise<void>
   setError: () => Promise<void>
+  /**
+   * Finish the turn with a caller-supplied emoji instead of the configured
+   * done emoji, reporting whether it was actually written. Reaction-only
+   * delivery uses this so the message ends with the single reaction the user
+   * asked for: a plain `setDone()` alongside it would stack two reactions on
+   * the same inbound message. The outcome is what lets the caller mark the
+   * turn delivered only on a real success.
+   */
+  setFinishedWith: (emoji: string) => Promise<StatusReactionOutcome>
 }
 
 export const FEISHU_DEFAULT_STATUS_REACTION_EMOJIS: StatusReactionEmojis = {
@@ -49,9 +60,13 @@ export function createStatusReactionController(params: {
     log.warn("status reaction update failed", { error })
   }
 
-  function enqueue(fn: () => Promise<void>) {
-    chain = chain.then(fn, fn)
-    return chain
+  function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const result = chain.then(fn, fn)
+    chain = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return result
   }
 
   async function applyEmoji(emoji: string): Promise<void> {
@@ -87,10 +102,27 @@ export function createStatusReactionController(params: {
     })
   }
 
+  /**
+   * `applyEmoji` treats an already-current emoji as a no-op success, which is
+   * the correct reading here: the desired reaction is on the message. Only a
+   * throw from `setReaction` counts as a failure to deliver.
+   */
+  async function finishWith(emoji: string): Promise<StatusReactionOutcome> {
+    finished = true
+    try {
+      await enqueue(() => applyEmoji(emoji.trim() || emojis.done))
+      return { delivered: true }
+    } catch (error) {
+      handleError(error)
+      return { delivered: false, error }
+    }
+  }
+
   return {
     setQueued: () => setIntermediate(emojis.queued),
     setTool: (_toolName?: string) => setIntermediate(emojis.tool),
     setDone: () => setTerminal(emojis.done),
     setError: () => setTerminal(emojis.error),
+    setFinishedWith: finishWith,
   }
 }

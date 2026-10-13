@@ -118,6 +118,14 @@ Outbound channel delivery uses a message-scoped reply anchor instead of a generi
 
 The Feishu/Lark provider supports per-account `replyInThread: true` in account configuration. When enabled, `provider.replyMessage()` includes `reply_in_thread: true` in the request body so the reply appears in a thread rather than at the top level of the chat.
 
+### Reaction-Only Replies
+
+A Feishu/Lark model can end a turn with only a reaction on the user's message — no text, no card, no attachment, and no new message or thread. The model triggers it through the typed `channel_reaction_only` tool, which records a terminal intent; the Channel runtime then applies one Feishu reaction to the inbound message and delivers nothing else. Trailing emoji in reply text are never treated as a trigger, and the intent is exclusive: it never accompanies another delivery.
+
+The capability is opt-in per account and is only offered to the model when the account explicitly enables `reactionOnlyReply.enabled: true` and resolves to a non-streaming configuration (the streaming card is created before the model runs and cannot be retracted, so a turn that must post nothing is only correct outside streaming). When it is not offered, delivery behaves exactly as before. The reaction is forced by the account's `reactionOnlyReply.forceReaction` (fallback `SILENT`) — the model never names one.
+
+Because the Feishu streaming card is created before the model runs, the reaction targets the user's own message rather than the reply anchor — in a threaded reply that anchor is the topic root. A successful turn records a delivered marker so a recovered or re-delivered run never reacts twice. A reaction call that fails is recorded as a failure and is never converted into a text reply.
+
 ### Continuation Delivery
 
 `SessionInvoke` propagates channel delivery metadata through continuation steps. When a steer message injected by Cortex (or another source) carries `channelPush`, `channelReply`, and `channelReplyToMessageId`, every assistant message produced in that continuation round inherits them. An unrelated user message that starts a new task root does not inherit the delivery metadata. If one continuation contains conflicting reply anchors, it keeps reply intent but omits the target so outbound delivery fails closed instead of replying to the wrong topic.

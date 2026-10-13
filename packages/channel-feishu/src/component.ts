@@ -2,6 +2,7 @@ import { ChannelSetup } from "@ericsanchezok/synergy-channels/channel/setup"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
 import { registerConfig } from "./config-schema"
+import { registerFeishuTools } from "./tools"
 import { FeishuProvider } from "./channel/provider/feishu"
 import { Channel } from "@ericsanchezok/synergy-channels/channel"
 export function channelFeishu(): RuntimeComponent {
@@ -22,6 +23,7 @@ export function channelFeishu(): RuntimeComponent {
         },
       })
       registerConfig()
+      registerFeishuTools()
       Channel.registerProvider(new FeishuProvider())
     },
   }

@@ -174,7 +174,7 @@ try {
     ]) {
       assert.equal(field! in Config.Info.shape, enabled(domain!), `unexpected config owner ${domain}`)
     }
-    for (const domain of ["browser", "library", "note"]) {
+    for (const domain of ["browser", "library", "note", "channel-feishu"]) {
       assert.equal(ToolRegistry.toolProviderIDs().includes(domain), enabled(domain), `unexpected tool owner ${domain}`)
     }
     if (!full) {

@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { ConfigDomain } from "@ericsanchezok/synergy-harness/config/domain"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
+import { FeishuReactionEmoji } from "./channel/provider/feishu/reaction-only"
 export const FeishuGroupSessionScope = z
   .enum(["group", "group_sender", "group_topic", "group_topic_sender", "group_thread"])
   .describe(
@@ -58,6 +59,22 @@ export const ChannelFeishuAccount = z
       .default(true)
       .describe("Resolve sender display names via Feishu contact API"),
     replyInThread: z.boolean().optional().default(false).describe("Reply in thread when message is part of a topic"),
+    reactionOnlyReply: z
+      .object({
+        enabled: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe(
+            "Let the model end a turn with a reaction on the inbound message instead of a reply (non-streaming accounts only)",
+          ),
+        forceReaction: FeishuReactionEmoji.optional().describe(
+          "Feishu emoji_type forced for every reaction-only turn; the model cannot choose one",
+        ),
+      })
+      .strict()
+      .optional()
+      .describe("Reaction-only terminal delivery for this Feishu account; disabled unless enabled is true"),
   })
   .strict()
   .meta({ ref: "ChannelFeishuAccountConfig" })

@@ -22,7 +22,7 @@ import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { ChannelCommand } from "./command"
 import { resolveChannelAccountInvocation, resolveChannelAccountAgent } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
-import { buildAssistantTranscript, resolveFinalResponseText } from "./response-text"
+import { buildAssistantTranscript } from "./response-text"
 import { ManagedProjectOwnership } from "./managed-project-ownership"
 import { externalIdentityHash } from "@ericsanchezok/synergy-harness/util/identity"
 import { ChannelHost } from "./host"
@@ -32,12 +32,8 @@ import {
   iterate as iterateDiagnostics,
   DiagnosticRecord,
 } from "./diagnostics"
-import {
-  collectChannelTaskTerminals,
-  deliverForegroundTaskTerminal,
-  loadChannelTaskMessages,
-  replyChannelTaskAttachments,
-} from "./outbound-parts"
+import { collectChannelTerminalInfos, loadChannelDeliveryPlans } from "./delivery-plan"
+import { executeChannelDeliveryPlan } from "./delivery"
 import { ResponseCardRuntime } from "./response-card"
 import { QuestionCardRuntime } from "./question-card"
 import { QuestionCardBridge } from "./question-card-bridge"
@@ -289,7 +285,7 @@ export namespace Channel {
       const projectRefreshes = new Map<string, ProjectRefresh>()
       const unsubscribeScopeRuntimeStarting = ScopeRuntime.onStarting((scope) => {
         const ownsScope = Array.from(connections.values()).some((connection) => connection.scope.id === scope.id)
-        if (ownsScope) initializeScopeBridges()
+        if (ownsScope) initializeScopeBridges({ connections, attempts })
       })
 
       for (const [channelType, channelConfig] of Object.entries(channels)) {
@@ -363,7 +359,7 @@ export namespace Channel {
     // scope, so the rebuilt state must land there regardless of the caller's
     // ambient scope, or the next home-scoped access would create a second
     // state and duplicate connections.
-    await ScopeContext.provide({ scope: Scope.home(), fn: () => state() })
+    await ScopeContext.provide({ scope: Scope.home(), fn: init })
     log.info("channel state reloaded")
   }
 
@@ -371,9 +367,15 @@ export namespace Channel {
     await state.resetAll()
   }
 
-  function initializeScopeBridges() {
+  function initializeScopeBridges(input: Pick<State, "connections" | "attempts">) {
     QuestionCardBridge.init()
-    ChannelOutbound.init({ getProvider })
+    ChannelOutbound.init({
+      getProvider,
+      getAccountSignal: (type, accountId) => {
+        const key = connectionKey(type, accountId)
+        return (input.attempts.get(key) ?? input.connections.get(key))?.abort.signal ?? AbortSignal.abort()
+      },
+    })
   }
   async function connectAccount(input: ConnectContext & { reconnectAttempt?: number }): Promise<void> {
     const {
@@ -410,7 +412,7 @@ export namespace Channel {
     }
 
     const scope = await resolveAccountScope({ channelType, accountId, accountConfig })
-    await ScopeContext.provide({ scope, fn: initializeScopeBridges })
+    await ScopeContext.provide({ scope, fn: () => initializeScopeBridges({ connections, attempts }) })
 
     if (provider.lifecycle === "borrowed_transport" && provider.waitForTransport) {
       statuses.set(key, { status: "waiting_for_transport" })
@@ -423,7 +425,7 @@ export namespace Channel {
       channelType,
       accountId,
       activateTasks: true,
-      onConversationMessage: (ctx) => handleMessage(provider, ctx, scope, accountConfig),
+      onConversationMessage: (ctx) => handleMessage(provider, ctx, scope, accountConfig, attempt.abort.signal),
       onDiagnostic: async (record) => {
         await recordDiagnostic(channelType, accountId, record)
       },
@@ -612,6 +614,7 @@ export namespace Channel {
     ctx: MessageContext,
     scope: Scope,
     accountConfig: unknown,
+    signal: AbortSignal,
   ): Promise<ChannelHost.ReceiveResult> {
     const conversation = provider.conversation ?? provider
     const replyMessage = conversation.replyMessage?.bind(conversation)
@@ -634,6 +637,7 @@ export namespace Channel {
       scope: conversationScope,
       fn: async () => {
         try {
+          if (signal.aborted) return { accepted: false, reason: "rejected" }
           if (!replyMessage || !addReaction || !createStreamingSession) {
             log.warn("channel provider is missing conversation capabilities", { channelType: provider.type })
             return { accepted: false, reason: "rejected" }
@@ -721,6 +725,11 @@ export namespace Channel {
           const metadata = {
             channelReply: true,
             channelReplyToMessageId: replyToMessageId,
+            // The message this turn was triggered by, distinct from the reply
+            // anchor: a threaded reply anchors to the topic root, while a
+            // reaction-only turn must react to the user's own message. The
+            // bridge has no inbound context, so it reads this instead.
+            channelInboundMessageId: ctx.messageId,
             channelRequesterId: ctx.senderId,
             channelChatId: ctx.chatId,
             channelChatName: ctx.chatName,
@@ -737,9 +746,12 @@ export namespace Channel {
             model: accountInvocation.model,
             variant: accountInvocation.variant,
             execute: async (lease, delivery) => {
+              const deliverySignal = AbortSignal.any([lease.signal, signal])
+              if (deliverySignal.aborted) return
               const reactionController = createStatusReactionController({
                 adapter: {
                   setReaction: async (emoji: string) => {
+                    deliverySignal.throwIfAborted()
                     const result = await addReaction({
                       accountId: ctx.accountId,
                       messageId: ctx.messageId,
@@ -749,6 +761,7 @@ export namespace Channel {
                   },
                   removeReaction: removeReaction
                     ? async (reactionId: string) => {
+                        deliverySignal.throwIfAborted()
                         await removeReaction({
                           accountId: ctx.accountId,
                           messageId: ctx.messageId,
@@ -761,6 +774,11 @@ export namespace Channel {
               })
               void reactionController.setQueued()
 
+              // Boss-route (R6): boss-routed messages never auto-deliver. The boss
+              // replies through an explicit channel_push tool call, so no streaming
+              // card is created and no terminal is posted. In the routing contract
+              // this is expressed as explicit delivery — the two are equivalent
+              // under the current route result.
               const explicitDelivery = route?.delivery === "explicit"
               let streaming: StreamingSession = explicitDelivery
                 ? createSilentSession()
@@ -801,8 +819,21 @@ export namespace Channel {
                 ChannelOutbound.beginForeground(sessionID, delivery.messageID)
               }
 
+              let closePromise: Promise<void> | undefined
+              const closeStreaming = (text?: string, failed?: boolean) =>
+                (closePromise ??= Promise.resolve().then(() => streaming.close(text, failed)))
+              let discardPromise: Promise<void> | undefined
+              const discardStreaming = () =>
+                closePromise
+                  ? Promise.resolve()
+                  : (discardPromise ??= streaming
+                      .closeWithoutDelivery()
+                      .catch((error) =>
+                        log.warn("streaming card no-delivery finalization failed", { sessionID, error }),
+                      ))
+
               const assistantTranscript = new Map<string, string>()
-              const messageRoles = new Map<string, MessageV2.Info["role"]>()
+              const messageInfos = new Map<string, MessageV2.Info>()
               const toolProgress = new Map<
                 string,
                 StreamingSession["updateToolProgress"] extends (progress: infer P) => Promise<void>
@@ -813,11 +844,13 @@ export namespace Channel {
               >()
 
               const unsubMessage = Bus.subscribe(MessageV2.Event.Updated, (event) => {
+                if (deliverySignal.aborted) return
                 if (event.properties.info.sessionID !== sessionID) return
-                messageRoles.set(event.properties.info.id, event.properties.info.role)
+                messageInfos.set(event.properties.info.id, event.properties.info)
               })
 
               const pushToolProgress = async () => {
+                if (deliverySignal.aborted) return
                 const progress = Array.from(toolProgress.values())
                 log.info("tool progress pushed", {
                   sessionID,
@@ -834,11 +867,12 @@ export namespace Channel {
               }
 
               const unsubPart = Bus.subscribe(MessageV2.Event.PartUpdated, async (event) => {
+                if (deliverySignal.aborted) return
                 const part = event.properties.part
                 if (part.sessionID !== sessionID) return
 
-                const role = messageRoles.get(part.messageID)
-                if (role !== "assistant") return
+                const info = messageInfos.get(part.messageID)
+                if (info?.role !== "assistant" || (info.rootID ?? info.parentID) !== delivery.messageID) return
 
                 if (part.type === "text") {
                   if (MessageV2.isSystemPart(part) || !part.text.trim()) return
@@ -865,86 +899,102 @@ export namespace Channel {
                 await pushToolProgress()
               })
 
-              // Snapshot the session's terminal replies before the invoke:
-              // the inbox loop drains queued tasks and returns only the LAST
-              // terminal, so a terminal completed mid-drain for THIS lane's
-              // root would otherwise be skipped by the bridge (foreground
-              // registered) and never delivered. Deliver it here instead.
-              const terminalsBefore = await collectChannelTaskTerminals(sessionID)
+              const releasePresentation = () => {
+                ChannelOutbound.endForeground(sessionID, delivery.messageID)
+                unsubMessage()
+                unsubPart()
+                assistantTranscript.clear()
+                messageInfos.clear()
+                toolProgress.clear()
+              }
+              const cancelPresentation = () => {
+                releasePresentation()
+                void discardStreaming()
+              }
+              deliverySignal.addEventListener("abort", cancelPresentation, { once: true })
               try {
-                const result = await SessionInvoke.invokeInboxWithLease(
-                  {
-                    sessionID,
-                    itemID: delivery.itemID,
-                  },
-                  lease,
-                )
-
-                const responseText = resolveFinalResponseText(assistantTranscript, result.parts)
-                const hasError = result.info.role === "assistant" && "error" in result.info && result.info.error != null
-
-                // If the response failed but tools completed successfully, build a
-                // degraded fallback so the user still receives tool outputs.
-                const fallbackText = hasError ? buildDegradedFallback(toolProgress) : undefined
-                await streaming.close(responseText || fallbackText, hasError)
-                if (result.info.role === "assistant" && ownsTerminalDelivery) {
-                  // The streaming session already delivered this root's terminal
-                  // reply. Persist the sent marker so any later message update
-                  // (context usage, metadata merge) never re-triggers the
-                  // outbound bridge after the foreground registration ends.
-                  await Session.mergeMessageMetadata({
-                    sessionID,
-                    messageID: result.info.id,
-                    metadata: { channelOutboundSent: true },
-                  }).catch((err) => log.warn("failed to mark channel reply as sent", { sessionID, error: err }))
+                deliverySignal.throwIfAborted()
+                const turn = { sessionID, rootID: delivery.messageID, signal: deliverySignal }
+                const terminalIDsBefore = new Set((await collectChannelTerminalInfos(turn)).map((info) => info.id))
+                let drainFailure: { error: unknown } | undefined
+                try {
+                  await SessionInvoke.invokeInboxWithLease({ sessionID, itemID: delivery.itemID }, lease)
+                } catch (error) {
+                  drainFailure = { error }
                 }
-                // Deliver a terminal this lane completed but the loop did not
-                // return (another queued task was drained afterwards). Only the
-                // current lane root is covered; other roots completed by the
-                // drain keep the bridge as their delivery path (they are not
-                // foreground-registered).
-                if (ownsTerminalDelivery && result.info.role === "assistant") {
-                  await deliverForegroundTaskTerminal({
-                    provider,
-                    accountId: ctx.accountId,
-                    messageId: replyToMessageId,
-                    chatId: ctx.chatId,
-                    chatType: ctx.chatType,
-                    scopeKey: ctx.scopeKey,
-                    sessionID,
-                    currentRootID: delivery.messageID,
-                    excludeTerminalID: result.info.id,
-                    terminalsBefore,
-                  }).catch((err) =>
-                    log.warn("foreground terminal compensation delivery failed", { sessionID, error: err }),
+                let plans: Awaited<ReturnType<typeof loadChannelDeliveryPlans>>
+                try {
+                  const completed = await collectChannelTerminalInfos(turn)
+                  const terminalIDs = new Set(
+                    completed
+                      .filter((info) => !terminalIDsBefore.has(info.id) && !info.metadata?.channelOutboundSent)
+                      .map((info) => info.id),
                   )
+                  if (explicitDelivery || terminalIDs.size === 0) {
+                    if (drainFailure && completed.length === 0) throw drainFailure.error
+                    await discardStreaming()
+                    return
+                  }
+                  plans = await loadChannelDeliveryPlans({ ...turn, terminalIDs, replyToMessageId })
+                } catch (error) {
+                  log.error("foreground terminal history unavailable", { sessionID, error })
+                  await discardStreaming()
+                  return
                 }
-                const rootID =
-                  result.info.role === "assistant" ? (result.info.rootID ?? result.info.parentID) : result.info.id
-                if (!explicitDelivery) {
-                  const taskMessages = await loadChannelTaskMessages({ sessionID, rootID, terminal: result })
-                  await ResponseCardRuntime.deliverTaskCards({
-                    provider,
-                    accountId: ctx.accountId,
-                    chatId: ctx.chatId,
-                    chatType: ctx.chatType,
-                    scopeKey: ctx.scopeKey,
-                    replyToMessageId,
-                    sessionID,
-                    terminal: result,
-                    messages: taskMessages,
-                  }).catch((err) => log.warn("response card delivery failed", { sessionID, error: err }))
-                  await replyChannelTaskAttachments({
-                    provider,
-                    accountId: ctx.accountId,
-                    messageId: replyToMessageId,
-                    sessionID,
-                    terminal: result,
-                    messages: taskMessages,
-                  }).catch((err) => log.warn("channel task attachments delivery failed", { sessionID, error: err }))
+                if (!plans.length) {
+                  await discardStreaming()
+                  return
                 }
-                await reactionController.setDone()
+                let reactionSelected = false
+                for (const plan of plans) {
+                  const isFinalTerminal = plan === plans.at(-1)
+                  try {
+                    reactionSelected ||= plan.kind === "reaction"
+                    const outcome = await executeChannelDeliveryPlan({
+                      sessionID,
+                      plan,
+                      provider,
+                      accountId: ctx.accountId,
+                      chatId: ctx.chatId,
+                      chatType: ctx.chatType,
+                      scopeKey: ctx.scopeKey,
+                      replyToMessageId,
+                      signal: deliverySignal,
+                      foreground: {
+                        ownsReply: isFinalTerminal && ownsTerminalDelivery,
+                        close: async (text: string | undefined, failed: boolean) => {
+                          if (!isFinalTerminal) return
+                          await closeStreaming(text, failed)
+                        },
+                        react: async (reaction: string) => {
+                          const status = await reactionController.setFinishedWith(reaction)
+                          if (!status.delivered) throw status.error ?? new Error("Reaction-only delivery failed")
+                        },
+                      },
+                    })
+                    if (outcome.status === "failed") await reactionController.setError()
+                    if (isFinalTerminal && !reactionSelected && outcome.status === "delivered")
+                      await reactionController.setDone()
+                  } catch (error) {
+                    log.error("foreground terminal delivery failed", {
+                      sessionID,
+                      messageID: plan.terminal.info.id,
+                      error,
+                    })
+                  } finally {
+                    if (isFinalTerminal) await discardStreaming()
+                  }
+                }
+                if (drainFailure)
+                  log.warn("another inbox task failed after foreground completion", {
+                    sessionID,
+                    error: drainFailure.error,
+                  })
               } catch (err) {
+                if (deliverySignal.aborted) {
+                  await discardStreaming()
+                  return
+                }
                 // A busy Session must not surface a generation failure: persist the
                 // message as a durable inbox task with stable delivery identity so
                 // the existing ChannelOutbound reply path can deliver it later.
@@ -965,25 +1015,21 @@ export namespace Channel {
                   })
                   // Close the queued card cleanly without pretending the generation
                   // failed; the delayed final reply is delivered by ChannelOutbound.
-                  await streaming
-                    .close(undefined, false)
-                    .catch((closeError) =>
-                      log.warn("streaming card queued finalization failed", { sessionID, error: closeError }),
-                    )
+                  await closeStreaming(undefined, false).catch((closeError) =>
+                    log.warn("streaming card queued finalization failed", { sessionID, error: closeError }),
+                  )
                   return
                 }
                 log.error("prompt failed", { sessionID, error: err })
                 void reactionController.setError()
                 const errorText = buildAssistantTranscript(assistantTranscript) || undefined
-                await streaming
-                  .close(errorText, true)
-                  .catch((closeError) =>
-                    log.warn("streaming card error finalization failed", { sessionID, error: closeError }),
-                  )
+                await closeStreaming(errorText, true).catch((closeError) =>
+                  log.warn("streaming card error finalization failed", { sessionID, error: closeError }),
+                )
               } finally {
-                ChannelOutbound.endForeground(sessionID, delivery.messageID)
-                unsubMessage()
-                unsubPart()
+                deliverySignal.removeEventListener("abort", cancelPresentation)
+                releasePresentation()
+                await discardPromise
               }
             },
           })
@@ -1022,6 +1068,7 @@ export namespace Channel {
           parts: [{ type: "text", text: finalText }],
         })
       },
+      async closeWithoutDelivery() {},
       isActive: () => false,
       ownsTerminalDelivery: () => true,
     }
@@ -1033,6 +1080,7 @@ export namespace Channel {
       async update() {},
       async updateToolProgress() {},
       async close() {},
+      async closeWithoutDelivery() {},
       isActive: () => false,
       ownsTerminalDelivery: () => false,
     }
@@ -1048,26 +1096,6 @@ export namespace Channel {
 
   async function cleanupAttachments(attachments?: Attachment[]) {
     await Promise.all(attachments?.map((attachment) => fs.unlink(attachment.path).catch(() => {})) ?? [])
-  }
-
-  /**
-   * Build a minimal degraded fallback message when the main LLM response failed
-   * (e.g. content-filtered) but tools completed successfully. This ensures the
-   * user still receives file paths, links, or other critical tool outputs.
-   */
-  function buildDegradedFallback(
-    toolProgress: ReadonlyMap<string, { status: string; title?: string; tool: string }>,
-  ): string | undefined {
-    const completedTools = Array.from(toolProgress.values()).filter((t) => t.status === "completed")
-    if (completedTools.length === 0) return undefined
-
-    const lines = ["⚠️ Response generation failed, but these tools completed successfully:"]
-    for (const tool of completedTools) {
-      const title = tool.title ?? tool.tool
-      lines.push(`- ${title}`)
-    }
-    lines.push("\nReview the tool outputs above or try again later.")
-    return lines.join("\n")
   }
 
   export async function status(): Promise<Record<string, Status>> {
@@ -1316,6 +1344,6 @@ export namespace Channel {
     return iterateDiagnostics(channelType, accountId)
   }
   export async function init(): Promise<void> {
-    await state()
+    initializeScopeBridges(await state())
   }
 }

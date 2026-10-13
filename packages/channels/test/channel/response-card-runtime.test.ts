@@ -56,6 +56,7 @@ function provider(type: string, sent: Array<Record<string, unknown>>): Provider 
         async update() {},
         async updateToolProgress() {},
         async close() {},
+        async closeWithoutDelivery() {},
         isActive: () => false,
       }
     },

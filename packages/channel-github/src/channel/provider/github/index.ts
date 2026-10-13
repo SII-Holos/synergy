@@ -143,6 +143,7 @@ class NonStreamingSession implements ChannelTypes.StreamingSession {
   async update(_text: string): Promise<void> {}
   async updateToolProgress(_progress: ChannelTypes.StreamingToolProgress[]): Promise<void> {}
   async close(_finalText?: string, _error?: boolean): Promise<void> {}
+  async closeWithoutDelivery(): Promise<void> {}
   isActive(): boolean {
     return false
   }

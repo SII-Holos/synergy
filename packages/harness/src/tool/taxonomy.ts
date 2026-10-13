@@ -210,6 +210,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   openai_image_edit: entry("communication.visual", { externalIO: true, stateful: true }),
   render: entry("communication.visual"),
   response_card: entry("communication.deliver", { stateful: true, externalIO: true }),
+  channel_reaction_only: entry("communication.deliver", { stateful: true, externalIO: true }),
   speak: entry("communication.audio", { externalIO: true }),
   // browser
   browser_navigation: entry("browser.navigate", { externalIO: true, stateful: true }),

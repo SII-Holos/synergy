@@ -36,6 +36,7 @@ function streaming(): StreamingSession {
     async update() {},
     async updateToolProgress() {},
     async close() {},
+    async closeWithoutDelivery() {},
     isActive: () => false,
   }
 }
@@ -510,6 +511,7 @@ test("waits for provider drain before stopping a channel account", () =>
           async update() {},
           async updateToolProgress() {},
           async close() {},
+          async closeWithoutDelivery() {},
           isActive: () => false,
         }
       },

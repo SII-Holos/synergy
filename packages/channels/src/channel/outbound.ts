@@ -7,14 +7,11 @@ import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
-import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { externalIdentityHash } from "@ericsanchezok/synergy-harness/util/identity"
-import {
-  loadChannelTaskMessages,
-  markChannelTaskAttachmentsDelivered,
-  projectChannelTaskPartsWithUrls,
-} from "./outbound-parts"
-import { ResponseCardRuntime } from "./response-card"
+import { loadChannelDeliveryPlans } from "./delivery-plan"
+import { executeChannelDeliveryPlan } from "./delivery"
+import { reactionOnlyResolved } from "./reaction-only-runtime"
 import type { Provider } from "./types"
 
 const log = Log.create({ service: "channel.outbound" })
@@ -26,11 +23,20 @@ const runtimeState = RuntimeContext.state(() => ({
 }))
 
 export namespace ChannelOutbound {
+  type AccountSignal = (type: string, accountId: string) => AbortSignal | undefined
+
   const state = ScopedState.create(
-    () => ({ unsubscribe: undefined as (() => void) | undefined }),
+    () => ({
+      unsubscribe: undefined as (() => void) | undefined,
+      abort: undefined as AbortController | undefined,
+      getAccountSignal: undefined as AccountSignal | undefined,
+    }),
     async (entry) => {
+      entry.abort?.abort()
       entry.unsubscribe?.()
       entry.unsubscribe = undefined
+      entry.abort = undefined
+      entry.getAccountSignal = undefined
     },
   )
 
@@ -61,14 +67,21 @@ export namespace ChannelOutbound {
     return instanceState.foregroundSessions.has(`${sessionID}:${rootID}`)
   }
 
-  export function init(input: { getProvider: (type: string) => Provider | undefined }): () => void {
+  export function init(input: {
+    getProvider: (type: string) => Provider | undefined
+    getAccountSignal?: AccountSignal
+  }): () => void {
     const bridge = state()
+    bridge.getAccountSignal = input.getAccountSignal
     if (!bridge.unsubscribe) {
+      const abort = new AbortController()
+      bridge.abort = abort
       // Cross-scope subscription: channel sessions may execute in per-thread
       // checkout scopes (e.g. GitHub), where the terminal assistant message
       // is published on that scope's Bus. The scoped Bus would hide the event
       // from this bridge, so observe it globally.
       bridge.unsubscribe = Bus.subscribeGlobal(MessageV2.Event.Updated, async (event) => {
+        if (abort.signal.aborted) return
         const msg = event.properties.info
         if (msg.role !== "assistant") return
 
@@ -77,17 +90,24 @@ export namespace ChannelOutbound {
 
         const eventMetadata = assistant.metadata
         if (!eventMetadata?.mailbox && !eventMetadata?.channelPush && !eventMetadata?.channelReply) return
-        if (eventMetadata.channelOutboundSent) return
+        // A resolved reaction-only turn is terminal for this bridge even if it
+        // never carried `channelOutboundSent`: the failure merge would
+        // re-publish Updated, and without this guard the re-entered handler
+        // re-acquires the same non-reentrant Lock.write key while its holder is
+        // still awaiting the merge publish — a self-deadlock.
+        if (eventMetadata.channelOutboundSent || reactionOnlyResolved(assistant)) return
 
         using _ = await Lock.write(`channel-outbound:${msg.id}`)
-        const current = await MessageV2.get({ sessionID: msg.sessionID, messageID: msg.id }).catch(() => undefined)
-        if (!current || current.info.role !== "assistant") return
-
-        const currentAssistant = current.info as MessageV2.Assistant
+        const rootID = assistant.rootID ?? assistant.parentID
+        const infos = await SessionHistory.turnInfos({ sessionID: msg.sessionID, rootID, signal: abort.signal }).catch(
+          () => [],
+        )
+        const currentAssistant = infos.find((info) => info.id === msg.id)
+        if (!currentAssistant || currentAssistant.role !== "assistant") return
         const metadata = currentAssistant.metadata
         if (!currentAssistant.time.completed || !SessionProgress.isTerminalAssistant(currentAssistant)) return
         if (!metadata?.mailbox && !metadata?.channelPush && !metadata?.channelReply) return
-        if (metadata.channelOutboundSent) return
+        if (metadata.channelOutboundSent || reactionOnlyResolved(currentAssistant)) return
         if (ChannelOutbound.isForeground(msg.sessionID, currentAssistant.rootID ?? currentAssistant.parentID)) {
           log.debug("skipping foreground-delivered channel reply", { sessionID: msg.sessionID, messageID: msg.id })
           return
@@ -123,76 +143,41 @@ export namespace ChannelOutbound {
           return
         }
 
-        const rootID = currentAssistant.rootID ?? currentAssistant.parentID
-        const messages = await loadChannelTaskMessages({
-          sessionID: msg.sessionID,
-          rootID,
-          terminal: current,
-        })
-        const { parts, urls } = await projectChannelTaskPartsWithUrls({
-          messages,
-          rootID,
-          terminalMessageID: currentAssistant.id,
-          includeText: true,
-        })
+        const accountSignal = bridge.getAccountSignal?.(channelInfo.type, channelInfo.accountId)
+        const signal = accountSignal ? AbortSignal.any([abort.signal, accountSignal]) : abort.signal
+        if (signal.aborted) return
 
         try {
-          const cardsHandled = await ResponseCardRuntime.deliverTaskCards({
+          const [plan] = await loadChannelDeliveryPlans({
+            sessionID: msg.sessionID,
+            rootID,
+            terminalIDs: new Set([currentAssistant.id]),
+            replyToMessageId,
+            signal,
+          })
+          if (!plan) return
+          const outcome = await executeChannelDeliveryPlan({
+            sessionID: msg.sessionID,
+            plan,
             provider,
             accountId: channelInfo.accountId,
-            chatId: chatId ?? "",
+            chatId,
             chatType: channelInfo.chatType,
             scopeKey: channelInfo.scopeKey,
             replyToMessageId,
-            sessionID: msg.sessionID,
-            terminal: current,
-            messages,
-          })
-          if (parts.length === 0 && !cardsHandled) return
-          if (parts.length > 0) {
-            const conversation = provider.conversation
-            const replyMessage = conversation?.replyMessage?.bind(conversation) ?? provider.replyMessage?.bind(provider)
-            const pushMessage = conversation?.pushMessage?.bind(conversation) ?? provider.pushMessage?.bind(provider)
-            if (replyRequired && replyToMessageId) {
-              if (!replyMessage) return
-              await replyMessage({
-                accountId: channelInfo.accountId,
-                messageId: replyToMessageId,
-                chatId,
-                chatType: channelInfo.chatType,
-                scopeKey: channelInfo.scopeKey,
-                parts,
-              })
-            } else if (chatId) {
-              if (!pushMessage) return
-              await pushMessage({
-                accountId: channelInfo.accountId,
-                chatId,
-                parts,
-              })
-            }
-          }
-
-          await markChannelTaskAttachmentsDelivered({
-            sessionID: msg.sessionID,
-            rootID,
-            urls,
-            messages,
+            signal,
           })
 
-          await Session.mergeMessageMetadata({
-            sessionID: msg.sessionID,
-            messageID: msg.id,
-            metadata: { channelOutboundSent: true },
-          })
-
-          log.info(replyRequired ? "message replied to channel" : "message pushed to channel", {
+          if (outcome.status !== "delivered") return
+          log.info("channel terminal delivery completed", {
+            kind: plan.kind,
             sessionID: msg.sessionID,
             channelType: channelInfo.type,
             accountHash: externalIdentityHash(channelInfo.accountId),
             chatHash: chatId ? externalIdentityHash(chatId) : undefined,
           })
         } catch (err) {
+          if (signal.aborted) return
           log.error(replyRequired ? "channel outbound reply failed" : "channel outbound push failed", {
             sessionID: msg.sessionID,
             channelType: channelInfo.type,
@@ -207,8 +192,11 @@ export namespace ChannelOutbound {
     const unsubscribe = bridge.unsubscribe
     return () => {
       if (bridge.unsubscribe !== unsubscribe) return
+      bridge.abort?.abort()
       unsubscribe()
       bridge.unsubscribe = undefined
+      bridge.abort = undefined
+      bridge.getAccountSignal = undefined
     }
   }
 }

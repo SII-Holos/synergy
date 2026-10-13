@@ -1431,6 +1431,7 @@ describe("Streaming session compatibility", () => {
         async update() {},
         async updateToolProgress() {},
         async close() {},
+        async closeWithoutDelivery() {},
         isActive() {
           return true
         },
@@ -1486,6 +1487,42 @@ describe("Channel status reactions", () => {
       expect(calls).toEqual([
         { method: "set", value: "Typing" },
         { method: "set", value: "DONE" },
+        { method: "remove", value: "Typing-id" },
+      ])
+    }))
+
+  test("setError still lands after a failed setFinishedWith", () =>
+    runtime.run(async () => {
+      // A reaction-only turn starts with Typing; if setFinishedWith's forced
+      // emoji never lands, closing with setError must replace the dangling
+      // progress signal instead of leaving it on the message.
+      const calls: Array<{ method: string; value: string }> = []
+      let failNext = false
+      const controller = createStatusReactionController({
+        adapter: {
+          async setReaction(emoji) {
+            if (failNext) {
+              failNext = false
+              throw new Error("feishu api unavailable")
+            }
+            calls.push({ method: "set", value: emoji })
+            return `${emoji}-id`
+          },
+          async removeReaction(reactionId) {
+            calls.push({ method: "remove", value: reactionId })
+          },
+        },
+      })
+
+      await controller.setQueued()
+      failNext = true
+      const outcome = await controller.setFinishedWith("SILENT")
+      expect(outcome.delivered).toBe(false)
+      await controller.setError()
+
+      expect(calls).toEqual([
+        { method: "set", value: "Typing" },
+        { method: "set", value: "ERROR" },
         { method: "remove", value: "Typing-id" },
       ])
     }))

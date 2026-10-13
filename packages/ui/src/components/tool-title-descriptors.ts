@@ -125,6 +125,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   generate_image: d("tool.title.generate-image", "Generate Image"),
   edit_image: d("tool.title.edit-image", "Edit Image"),
   response_card: d("tool.title.response-card", "Prepare response card"),
+  channel_reaction_only: d("tool.title.channel-reaction-only", "Reply with reaction only"),
   speak: d("tool.title.speak", "Speak"),
 
   // Platform

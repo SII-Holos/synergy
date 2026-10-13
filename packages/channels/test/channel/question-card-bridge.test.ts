@@ -55,6 +55,7 @@ test("delivers continuation questions from durable channel root metadata after t
               async update() {},
               async updateToolProgress() {},
               async close() {},
+              async closeWithoutDelivery() {},
               isActive: () => false,
             }
           },
@@ -191,6 +192,7 @@ test("delivers to the durable root's real chatId when the session endpoint chatI
               async update() {},
               async updateToolProgress() {},
               async close() {},
+              async closeWithoutDelivery() {},
               isActive: () => false,
             }
           },

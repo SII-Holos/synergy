@@ -117,6 +117,7 @@ describe("Channel account project scope", () => {
         async update() {},
         async updateToolProgress() {},
         async close() {},
+        async closeWithoutDelivery() {},
         isActive: () => false,
       })
       const provider = {
@@ -211,6 +212,7 @@ describe("Channel account project scope", () => {
             async update() {},
             async updateToolProgress() {},
             async close() {},
+            async closeWithoutDelivery() {},
             isActive: () => false,
           }),
         },
