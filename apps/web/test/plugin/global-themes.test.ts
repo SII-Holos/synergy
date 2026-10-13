@@ -46,6 +46,7 @@ function createHarness(
   const published: Array<Array<PluginThemeDefinition>> = []
   const deps: GlobalThemeRegistrarDeps = {
     serverUrl: () => "http://server.local",
+    available: () => true,
     fetchContributions: () => {
       fetchCalls++
       return options.fetchResult ? options.fetchResult() : Promise.resolve([])
@@ -179,4 +180,26 @@ describe("createGlobalThemeRegistrar", () => {
     expect(harness.published).toHaveLength(0)
     expect(harness.cleared()).toBe(1)
   })
+})
+
+test("missing plugin capability clears themes, cancels retries and ignores a late generation", async () => {
+  let available = true
+  let release!: (value: PluginContribution[]) => void
+  const harness = createHarness({
+    fetchResult: () => new Promise((resolve) => (release = resolve)),
+    loadResult: () => assets([THEME_A]),
+  })
+  harness.deps.available = () => available
+  const registrar = createGlobalThemeRegistrar(harness.deps)
+  const pending = registrar.refresh()
+  available = false
+  await registrar.refresh()
+  release([])
+  await pending
+  expect(harness.fetchCalls()).toBe(1)
+  expect(harness.published).toHaveLength(0)
+  expect(harness.cleared()).toBe(1)
+  await registrar.refresh()
+  expect(harness.fetchCalls()).toBe(1)
+  registrar.dispose()
 })

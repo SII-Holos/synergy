@@ -248,10 +248,6 @@
   width: 100%;
   border-radius: 6px;
 }
-.performance-summary-action:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 4px;
-}
 .performance-resource-group {
   min-width: 0;
 }
@@ -325,8 +321,6 @@
   cursor: pointer;
 }
 .performance-issue-details > summary:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
   border-radius: 4px;
 }
 @media (max-width: 639px), (pointer: coarse) {

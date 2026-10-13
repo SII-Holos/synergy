@@ -1,35 +1,34 @@
 import { formatLocalDateTime } from "@ericsanchezok/synergy-harness/util/time-format"
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
-import { NoteStore } from ".."
+import { NoteDocumentKinds, NoteStore } from ".."
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import DESCRIPTION from "./note-list.txt"
 
-const parameters = z.object({
-  scope: z
-    .enum(["current", "global", "all"])
-    .default("all")
-    .describe(
-      "Which scope to list from: 'current' (project only), 'global' (global only), 'all' (current project + global).",
-    ),
-  kind: z
-    .enum(["all", "note", "blueprint"])
-    .default("all")
-    .describe("Filter by document kind. Blueprints are executable notes."),
-  archived: z
-    .enum(["active", "archived", "all"])
-    .default("active")
-    .describe("Filter by archive status: 'active' (default), 'archived', or 'all'."),
-  since: z
-    .string()
-    .optional()
-    .describe(
-      "Only include notes updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00').",
-    ),
-  before: z.string().optional().describe("Only include notes updated before this date (ISO 8601)."),
-  offset: z.coerce.number().default(0).describe("Number of notes to skip."),
-  limit: z.coerce.number().default(20).describe("Maximum number of notes to return (max 100)."),
-})
+const parameters = NoteDocumentKinds.filterSchema(
+  z.object({
+    scope: z
+      .enum(["current", "global", "all"])
+      .default("all")
+      .describe(
+        "Which scope to list from: 'current' (project only), 'global' (global only), 'all' (current project + global).",
+      ),
+    kind: z.string().default("all").describe("Filter by registered document kind."),
+    archived: z
+      .enum(["active", "archived", "all"])
+      .default("active")
+      .describe("Filter by archive status: 'active' (default), 'archived', or 'all'."),
+    since: z
+      .string()
+      .optional()
+      .describe(
+        "Only include notes updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00').",
+      ),
+    before: z.string().optional().describe("Only include notes updated before this date (ISO 8601)."),
+    offset: z.coerce.number().default(0).describe("Number of notes to skip."),
+    limit: z.coerce.number().default(20).describe("Maximum number of notes to return (max 100)."),
+  }),
+)
 
 export const NoteListTool = Tool.define(
   "note_list",
@@ -43,7 +42,7 @@ export const NoteListTool = Tool.define(
         params.scope === "all"
           ? await NoteStore.listMetaWithGlobal(currentScopeID, params.archived)
           : params.scope === "global"
-            ? await NoteStore.listMeta("global", params.archived)
+            ? await NoteStore.listMeta("home", params.archived)
             : await NoteStore.listMeta(currentScopeID, params.archived)
 
       const sinceMs = params.since ? new Date(params.since).getTime() : undefined
@@ -75,10 +74,10 @@ export const NoteListTool = Tool.define(
 
       const lines = page.map((note) => {
         const parts: string[] = [`- [${note.id}] "${note.title}"`]
-        if ((note.kind ?? "note") === "blueprint") parts.push("[blueprint]")
+        if (note.kind && note.kind !== "note") parts.push(`[${note.kind}]`)
         if (note.pinned) parts.push("[pinned]")
         if (note.global) parts.push("[global]")
-        if (note.blueprint?.runCount) parts.push(`[${note.blueprint.runCount} runs]`)
+
         if (note.tags.length > 0) parts.push(`— tags: ${note.tags.join(", ")}`)
         parts.push(`— updated ${formatLocalDateTime(note.time.updated)}`)
         return parts.join(" ")

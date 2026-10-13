@@ -115,6 +115,7 @@ beforeAll(async () => {
               setRuntime((prev) => ({ ...prev, [key]: value }))
             },
             nameController,
+            nameAvailable: true,
             get onOpenBossSession() {
               return openBossSession
             },

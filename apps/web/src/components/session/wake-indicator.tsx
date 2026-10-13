@@ -2,7 +2,6 @@ import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { AgendaItem, SessionAgendaItem, SessionAgendaResponse } from "@ericsanchezok/synergy-sdk/client"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -200,24 +199,22 @@ export function SessionAgendaWakeIndicator(props: { sessionID: string; active: b
           <For each={state.items}>
             {(item) => (
               <div class="execution-compact-row execution-agenda-row">
-                <Tooltip
-                  value={`${item.title}\n${triggerLabel(item, { i18n })} · ${formatWakeTime(item.nextRunAt, { i18n, fmt })}`}
-                  placement="top"
-                  hideWhenDetached
+                <button
+                  type="button"
+                  class="execution-row-main"
+                  aria-description={formatWakeTime(item.nextRunAt, { i18n, fmt })}
+                  onClick={() => void detail(item)}
                 >
-                  <button type="button" class="execution-row-main" onClick={() => void detail(item)}>
-                    <Icon name={getSemanticIcon("agenda.main")} size="small" />
-                    <span class="execution-row-title">{item.title}</span>
-                    <span class="execution-row-meta">{triggerLabel(item, { i18n })}</span>
-                  </button>
-                </Tooltip>
+                  <Icon name={getSemanticIcon("agenda.main")} size="small" />
+                  <span class="execution-row-title">{item.title}</span>
+                  <span class="execution-row-meta">{triggerLabel(item, { i18n })}</span>
+                </button>
                 <div class="execution-row-actions">
                   <Show when={item.status === "active"}>
                     <button
                       type="button"
                       class="execution-icon-action"
                       aria-label={i18n._(A.actionPause)}
-                      title={i18n._(A.actionPause)}
                       disabled={busy(item.itemID)}
                       onClick={() => void action(item, "pause")}
                     >
@@ -228,7 +225,6 @@ export function SessionAgendaWakeIndicator(props: { sessionID: string; active: b
                     type="button"
                     class="execution-icon-action"
                     aria-label={i18n._(A.actionCancel)}
-                    title={i18n._(A.actionCancel)}
                     disabled={busy(item.itemID)}
                     onClick={() => void action(item, "cancel")}
                   >

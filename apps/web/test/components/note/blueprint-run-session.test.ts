@@ -6,6 +6,7 @@ import {
   blueprintExecutionAgentOptions,
   blueprintExecutionAgentPatch,
   blueprintExecutionControlProfile,
+  blueprintRunHistory,
   blueprintSessionWorkspaceSelection,
   canCreateBlueprintWorktree,
   canRunBlueprintInCurrentSession,
@@ -102,5 +103,41 @@ describe("Blueprint run session helpers", () => {
         { id: "loop-auditing", status: "auditing" },
       ])?.id,
     ).toBe("loop-auditing")
+  })
+
+  test("a removed source cannot occupy a Blueprint document's active run", () => {
+    const loops = [
+      { id: "lattice-loop", source: "lattice", status: "running" },
+      { id: "plugin-loop", source: "plugin", status: "auditing" },
+      { id: "user-loop", source: "user", status: "armed" },
+    ]
+    const note = { blueprint: { activeLoopID: "lattice-loop" } }
+    expect(activeBlueprintLoop(note, loops, (id) => id === "blueprint")?.id).toBe("user-loop")
+    expect(activeBlueprintLoop(note, loops, (id) => ["blueprint", "plugin-host"].includes(id))?.id).toBe("user-loop")
+    expect(
+      activeBlueprintLoop(note, loops, (id) => ["blueprint", "plugin-host", "plugin-blueprint"].includes(id))?.id,
+    ).toBe("plugin-loop")
+    expect(activeBlueprintLoop(note, loops, (id) => ["blueprint", "lattice"].includes(id))?.id).toBe("lattice-loop")
+    expect(activeBlueprintLoop(note, loops, () => false)).toBeUndefined()
+  })
+
+  test("retained Note metadata cannot expose an unavailable source's count or active binding", () => {
+    const note = {
+      time: { updated: 10 },
+      blueprint: {
+        activeLoopID: "loop",
+        activeLoopSource: "lattice",
+        lastRunSource: "lattice",
+        runCount: 12,
+        lastRunAt: 20,
+      },
+    }
+    expect(blueprintRunHistory(note, [], (id) => id === "blueprint")).toEqual({
+      count: 0,
+      updated: 10,
+      activeLoopID: undefined,
+    })
+    expect(blueprintRunHistory(note, [], () => true)).toEqual({ count: 12, updated: 20, activeLoopID: "loop" })
+    expect(note.blueprint.activeLoopID).toBe("loop")
   })
 })

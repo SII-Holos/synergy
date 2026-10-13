@@ -136,3 +136,28 @@ test("media generation retains results but removes cancelled output without a re
     Boolean(document.querySelector('[data-component="media-generation-card"] [data-component="attachment-gallery"]')),
   ).toBe(true)
 })
+
+test("removed media owners hide generation controls while retaining delivered attachments", async () => {
+  const harness = (
+    globalThis as typeof globalThis & {
+      __mediaLifecycleHarness: { move(status: string): void; features(value: string[] | undefined): void }
+    }
+  ).__mediaLifecycleHarness
+  for (const features of [undefined, []] as const) {
+    harness.features(features ? [...features] : undefined)
+    for (const status of ["running", "failed", "empty", "completed"]) {
+      harness.move(status)
+      await waitForUpdate()
+      expect(document.querySelector('[data-component="media-generation-card"]')).toBeNull()
+      expect(document.body.textContent).not.toContain("Generating media")
+      const media = document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="media"]')
+      expect(Boolean(media?.querySelector('[data-component="attachment-card"]'))).toBe(status === "completed")
+      expect(document.querySelector('[data-kind="tool-attachments"] [data-component="attachment-card"]')).not.toBeNull()
+    }
+  }
+  harness.features(["plugin-host", "media"])
+  harness.move("running")
+  await waitForUpdate()
+  expect(document.querySelector('[data-slot="media-generation-placeholder"]')).not.toBeNull()
+  harness.move("completed")
+})

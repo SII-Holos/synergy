@@ -8,7 +8,7 @@ Workspace `build` commands compile dependency modules. CLI and Presets modules u
 
 ## Requirements and Preparation
 
-The root manifest pins Bun `1.4.2`. Install that version, then run:
+The root manifest pins Bun `1.4.2`. Development commands validate both the running Bun and any `BUN_BIN` override before installation, builds or startup. Preparation does not change the global runtime selection. With mise, select the installed version using `mise use --global bun@1.4.2`, or run a single command using `mise exec bun@1.4.2 -- bun dev prepare`. Restart existing development processes after selecting a different version. Then run:
 
 ```bash
 bun dev prepare

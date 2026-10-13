@@ -1,3 +1,4 @@
+import { useViewActivity } from "@/context/view-residency"
 import type { Ghostty, Terminal as Term, FitAddon } from "ghostty-web"
 import { ComponentProps, Show, createEffect, createSignal, onCleanup, onMount, splitProps } from "solid-js"
 import { useLingui } from "@lingui/solid"
@@ -32,6 +33,8 @@ function getTerminalFontFamily(): string {
 }
 
 export const Terminal = (props: TerminalProps) => {
+  const active = useViewActivity()
+  const [initialized, setInitialized] = createSignal(false)
   const sdk = useSDK()
   const theme = useTheme()
   let container!: HTMLDivElement
@@ -76,9 +79,11 @@ export const Terminal = (props: TerminalProps) => {
 
   const focusTerminal = () => {
     const t = term
-    if (!t) return
+    if (!t || !active()) return
     t.focus()
-    setTimeout(() => t.textarea?.focus(), 0)
+    setTimeout(() => {
+      if (active() && !disposed) t.textarea?.focus()
+    }, 0)
   }
   const handlePointerDown = () => {
     const activeElement = document.activeElement
@@ -87,6 +92,19 @@ export const Terminal = (props: TerminalProps) => {
     }
     focusTerminal()
   }
+
+  createEffect(() => {
+    if (!initialized() || !active()) return
+    const observer = new ResizeObserver(handleResize)
+    observer.observe(container)
+    window.addEventListener("resize", handleResize)
+    handleResize()
+    onCleanup(() => {
+      observer.disconnect()
+      window.removeEventListener("resize", handleResize)
+      if (term) term.options.cursorBlink = false
+    })
+  })
 
   onMount(async () => {
     const mod = await import("ghostty-web")
@@ -180,15 +198,16 @@ export const Terminal = (props: TerminalProps) => {
         if (local.pty.scrollY) {
           t.scrollToLine(local.pty.scrollY)
         }
-        fitAddon.fit()
+        if (active()) fitAddon.fit()
       })
     }
 
-    fitAddon.observeResize()
-    handleResize = () => fitAddon.fit()
-    window.addEventListener("resize", handleResize)
+    handleResize = () => {
+      if (active() && !disposed) fitAddon.fit()
+    }
+    setInitialized(true)
     t.onResize(async (size) => {
-      if (disposed) return
+      if (disposed || !active()) return
       if (ws?.readyState === WebSocket.OPEN) {
         await sdk.client.pty
           .update({

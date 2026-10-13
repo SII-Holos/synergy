@@ -9,6 +9,7 @@ import { z } from "zod"
 export function registerHttp() {
   Server.registerContributions(
     {
+      features: ["mcp"],
       routes: {
         "scoped-integrations": new Hono().route("/mcp", McpRoute()).get(
           "/experimental/resource",

@@ -1,0 +1,95 @@
+{
+  "name": "@ericsanchezok/synergy-boss",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./agent-prompts": "./src/agent-prompts.ts",
+    "./agents": "./src/agents.ts",
+    "./boss/boss": "./src/boss/boss.ts",
+    "./boss/boss-continuation": "./src/boss/boss-continuation.ts",
+    "./boss/boss-message": "./src/boss/boss-message.ts",
+    "./boss/boss-prompt": "./src/boss/boss-prompt.ts",
+    "./boss/boss-runtime": "./src/boss/boss-runtime.ts",
+    "./boss/identity": "./src/boss/identity.ts",
+    "./boss/persona": "./src/boss/persona.ts",
+    "./boss/register": "./src/boss/register.ts",
+    "./boss/routes/boss": "./src/boss/routes/boss.ts",
+    "./boss/tools/boss-assign": "./src/boss/tools/boss-assign.ts",
+    "./boss/tools/boss-assign.txt": "./src/boss/tools/boss-assign.txt",
+    "./boss/tools/boss-cancel": "./src/boss/tools/boss-cancel.ts",
+    "./boss/tools/boss-cancel.txt": "./src/boss/tools/boss-cancel.txt",
+    "./boss/tools/boss-project": "./src/boss/tools/boss-project.ts",
+    "./boss/tools/boss-project.txt": "./src/boss/tools/boss-project.txt",
+    "./boss/tools/boss-report": "./src/boss/tools/boss-report.ts",
+    "./boss/tools/boss-report.txt": "./src/boss/tools/boss-report.txt",
+    "./boss/tools/boss-spawn": "./src/boss/tools/boss-spawn.ts",
+    "./boss/tools/boss-spawn.txt": "./src/boss/tools/boss-spawn.txt",
+    "./boss/tools/boss-status": "./src/boss/tools/boss-status.ts",
+    "./boss/tools/boss-status.txt": "./src/boss/tools/boss-status.txt",
+    "./component": "./src/component.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./http": "./src/http.ts",
+    "./prompts/boss-synergy.txt": "./src/prompts/boss-synergy.txt",
+    "./reload": "./src/reload.ts",
+    "./session-schema": "./src/session-schema.ts",
+    "./session/register": "./src/session/register.ts",
+    "./session/tool-mode-policy": "./src/session/tool-mode-policy.ts",
+    "./session/workflow": "./src/session/workflow.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/boss",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-agenda": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-library": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "boss",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "boss",
+    "requires": {
+      "local-runtime": "1.1.26",
+      "library": "1.1.26",
+      "agenda": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-library": "1.1.26",
+      "@ericsanchezok/synergy-agenda": "1.1.26"
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}

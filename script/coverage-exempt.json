@@ -1465,6 +1465,26 @@
         {
           "glob": "src/components/workspace/process-event-detail.tsx",
           "reason": "test/components/workspace/execution-detail.dom.test.ts verifies Agent result identity, summary loading, full copying, retry, cancellation and bounded previews in Chromium; Vite/browser execution is outside Bun source LCOV."
+        },
+        {
+          "glob": "src/components/session/retained-session-views.tsx",
+          "reason": "Cross-Scope DOM, disclosure, scroll, owner fencing, deletion and six-view eviction are exercised by test/components/session/retained-session-views.dom.test.ts in Chromium; Vite browser execution does not contribute to Bun lcov."
+        },
+        {
+          "glob": "src/context/view-residency.tsx",
+          "reason": "Real activity composition and global six-view/eight-panel eviction are exercised by retained-session-views.dom.test.ts and workbench-surface.dom.test.ts; the Solid renderer executes in Chromium outside Bun lcov."
+        },
+        {
+          "glob": "src/context/session-route.tsx",
+          "reason": "Owner-bound routes are exercised by the built App in test/performance/browser.mjs and panels.mjs, including cross-Scope switches and delayed reconnect. Browser TSX execution cannot be attributed by Bun lcov."
+        },
+        {
+          "glob": "src/context/workbench/registry.tsx",
+          "reason": "The scoped provider is exercised by the built App panel continuity fixture in test/performance/panels.mjs; its registry ownership model remains measured by test/plugin/registries/workbench-owners.test.ts. Vite browser TSX does not contribute to Bun lcov."
+        },
+        {
+          "glob": "src/pages/session-route.tsx",
+          "reason": "Production route composition is exercised by test/performance/browser.mjs, panels.mjs and the private HTTP build smoke; retained lifetime behavior is covered in retained-session-views.dom.test.ts. Bun cannot instrument the browser renderer."
         }
       ]
     },
@@ -1584,48 +1604,156 @@
       },
       "exempt": [
         {
-          "glob": "src/channel/provider/feishu/api-context.ts",
-          "reason": "channel providers require live external services"
+          "glob": "src/config-schema.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/channel/provider/feishu/feishu-types.ts",
-          "reason": "channel providers require live external services"
+          "glob": "src/compat/agents.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/channel/provider/feishu/index.ts",
-          "reason": "barrel re-export"
+          "glob": "src/compat/channel/app.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/channel/provider/feishu/svg-raster-worker.ts",
-          "reason": "channel providers require live external services"
+          "glob": "src/compat/channel/cli/channel.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/channel/provider/github/index.ts",
-          "reason": "barrel re-export"
+          "glob": "src/compat/channel/command.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/channel/provider/github/poll.ts",
-          "reason": "channel providers require live external services"
+          "glob": "src/compat/channel/host.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/channel/cli/channel.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+          "glob": "src/compat/channel/managed-project-ownership.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/holos/cli/holos.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+          "glob": "src/compat/channel/migration.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/email/imap.ts",
-          "reason": "requires live IMAP/SMTP service"
+          "glob": "src/compat/channel/outbound.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/holos/index.ts",
-          "reason": "barrel re-export"
+          "glob": "src/compat/channel/provider/clarus/agent-tunnel-port.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/holos/startup.ts",
-          "reason": "requires live Holos control plane"
+          "glob": "src/compat/channel/provider/clarus/assignment-runtime.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/provider/clarus/assignment-store.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/provider/clarus.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/provider/feishu/svg-raster-runtime.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/provider/github.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/response-card.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/routes/channel.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/session-projects.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/tools/channel-push.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/tools/clarus-submit-task-result.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/tools/github-deliver-fix.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/tools/response-card.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/tools.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/types.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel/workspace-transfer.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/channel.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/email/tools/email-read.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/email/tools.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/github/identity.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/github/routes.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/holos/cli/holos.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/holos/migration.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/holos/routes/holos.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/holos/runtime.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/holos/security.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/holos/util.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/script/holos-cli-assets.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/script/svg-raster-runtime-assets.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         }
       ]
     },
@@ -2386,12 +2514,284 @@
       },
       "exempt": [
         {
-          "glob": "src/agenda/store.ts",
-          "reason": "agenda store requires the full scheduler runtime"
+          "glob": "src/config-schema.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/lattice/index.ts",
-          "reason": "barrel re-export"
+          "glob": "src/compat/agenda/clock.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/delivery.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/github-trigger.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/github-watch-policy.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/migration.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/reactor.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/routes/agenda.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/routes/session-agenda.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/session-signals.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/session-wakeup.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/store.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/tools/agenda-watch.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/tools.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/types.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/watcher.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda/webhook.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agenda.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/agents.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/anima-schedule.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/continuation.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/loop-store.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/migration.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/plugin-adapter.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/register.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/review-access.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/routes/blueprint.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/session-state.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/tool-access.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/tools/blueprint-loop-approve.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/tools/blueprint-loop-reject.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint/tools/blueprint-loop-stop.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/blueprint.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/boss-prompt.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/boss-runtime.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/boss.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/register.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/routes/boss.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/tools/boss-assign.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/tools/boss-cancel.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/tools/boss-project.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/tools/boss-report.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/tools/boss-spawn.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/boss/tools/boss-status.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/controller.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/machine.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/migration.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/prompt.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/register.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/routes/lattice.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/run-service.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/runtime.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/startup.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/store.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/tools/lattice-submit.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/tools/pathway-read.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/tools/pathway-write.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/lattice/types.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/continuation.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/plugin-adapter.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/register.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/runtime.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/terminal-hook.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/tools/light-loop-approve.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/tools/light-loop-reject.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/light-loop/tools/loop-stop.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/session/blueprint-state.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/session/light-loop-review-access.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/session/light-loop-state.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
+        },
+        {
+          "glob": "src/compat/superplan/session-env.ts",
+          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         }
       ]
     },
@@ -2499,6 +2899,272 @@
           "reason": "Top-level policy worker entry executes only in a child process. test/workers.test.ts verifies real policy IPC readiness/shutdown and missing-plan rejection; the shared worker loader remains measured. Bun does not merge child coverage."
         }
       ]
+    },
+    "packages/agenda": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/agenda/store.ts",
+          "reason": "agenda store requires the full scheduler runtime"
+        }
+      ]
+    },
+    "packages/light-loop": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/blueprint": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/lattice": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/lattice/index.ts",
+          "reason": "barrel re-export"
+        }
+      ]
+    },
+    "packages/boss": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/anima": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/channels": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/channel/cli/channel.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        }
+      ]
+    },
+    "packages/channel-feishu": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/channel/provider/feishu/api-context.ts",
+          "reason": "channel providers require live external services"
+        },
+        {
+          "glob": "src/channel/provider/feishu/feishu-types.ts",
+          "reason": "channel providers require live external services"
+        },
+        {
+          "glob": "src/channel/provider/feishu/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/channel/provider/feishu/svg-raster-worker.ts",
+          "reason": "channel providers require live external services"
+        }
+      ]
+    },
+    "packages/github": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/channel-github": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/channel/provider/github/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/channel/provider/github/poll.ts",
+          "reason": "channel providers require live external services"
+        }
+      ]
+    },
+    "packages/holos": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/holos/cli/holos.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/holos/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/holos/startup.ts",
+          "reason": "requires live Holos control plane"
+        }
+      ]
+    },
+    "packages/channel-clarus": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/email": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/email/imap.ts",
+          "reason": "requires live IMAP/SMTP service"
+        }
+      ]
+    },
+    "packages/agenda-blueprint": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/agenda-light-loop": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/plugin-agenda": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/plugin-blueprint": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/plugin-light-loop": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/boss-feishu": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/github-agenda": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/channel-blueprint": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/channel-light-loop": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/channel-lattice": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
     }
   }
 }

@@ -6,7 +6,7 @@ type Preview = Awaited<ReturnType<typeof startPluginPreview>>
 
 export async function importPreviewConversation(
   preview: Preview,
-  input: { title: string; turns?: number; tool?: string },
+  input: { title: string; turns?: number; tool?: string; answer?: (turn: number) => string },
 ) {
   const { data: source } = await preview.client.session.create(
     { scopeID: "home", title: input.title },
@@ -61,7 +61,7 @@ export async function importPreviewConversation(
           sessionID: source.id,
           messageID: assistant,
           type: "text",
-          text: `Answer ${index + 1}`,
+          text: input.answer?.(index + 1) ?? `Answer ${index + 1}`,
         },
         ...(input.tool && index === 0
           ? [

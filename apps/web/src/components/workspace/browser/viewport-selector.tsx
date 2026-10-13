@@ -92,7 +92,7 @@ export function ViewportSelector() {
 
       <input
         type="number"
-        class="w-[58px] h-7 rounded-md bg-surface-inset-base border border-border-weak-base/60 px-2 text-12 text-text-base placeholder:text-text-subtle outline-none focus:border-border-strong-base transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        class="w-[58px] h-7 rounded-md bg-surface-inset-base border border-border-weak-base/60 px-2 text-12 text-text-base placeholder:text-text-subtle outline-none transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         value={localWidth()}
         onInput={(e) => setLocalWidth(e.currentTarget.value)}
         onKeyDown={handleKeyDown}
@@ -104,7 +104,7 @@ export function ViewportSelector() {
 
       <input
         type="number"
-        class="w-[58px] h-7 rounded-md bg-surface-inset-base border border-border-weak-base/60 px-2 text-12 text-text-base placeholder:text-text-subtle outline-none focus:border-border-strong-base transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        class="w-[58px] h-7 rounded-md bg-surface-inset-base border border-border-weak-base/60 px-2 text-12 text-text-base placeholder:text-text-subtle outline-none transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         value={localHeight()}
         onInput={(e) => setLocalHeight(e.currentTarget.value)}
         onKeyDown={handleKeyDown}

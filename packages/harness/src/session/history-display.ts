@@ -45,8 +45,34 @@ export namespace SessionHistoryDisplay {
       previousCursor: z.string().nullable(),
       hasMore: z.boolean(),
       hasEarlier: z.boolean(),
+      generation: z.number().int().nonnegative().optional(),
     })
     .meta({ ref: "SessionPartPage" })
+  export const DisplayManifestInput = z
+    .object({
+      messages: z
+        .array(
+          z.object({
+            messageID: Identifier.schema("message"),
+            version: z.string().optional(),
+            generation: z.number().int().nonnegative().optional(),
+          }),
+        )
+        .max(100),
+    })
+    .meta({ ref: "SessionDisplayManifestInput" })
+  export const DisplayManifest = z
+    .object({
+      messages: z.array(
+        z.object({
+          messageID: z.string(),
+          status: z.enum(["unchanged", "changed", "deleted", "recovery"]),
+          version: z.string().optional(),
+          generation: z.number().int().nonnegative().optional(),
+        }),
+      ),
+    })
+    .meta({ ref: "SessionDisplayManifest" })
   export const PartContent = z.object({ part: MessageV2.Part, version: z.string() }).meta({ ref: "SessionPartContent" })
   export const MessageDetails = z
     .object({ info: MessageV2.Info, version: z.string() })
@@ -63,6 +89,49 @@ export namespace SessionHistoryDisplay {
     messageID,
   ]
   type PartsState = { version?: 1; ready: boolean; generation: number; cursor?: string; sourceGeneration?: number }
+
+  export async function displayManifest(
+    input: z.infer<typeof DisplayManifestInput> & { sessionID: string },
+    scopeID: string,
+    visibility: { hidden: Set<string>; cut?: string },
+  ): Promise<z.infer<typeof DisplayManifest>> {
+    const messages = DisplayManifestInput.parse(input).messages
+    const [headers, pages] = await Promise.all([
+      Storage.readMany<MessageSummary>(
+        messages.map(({ messageID }) => StoragePath.sessionDisplayMessage(scopeID, input.sessionID, messageID)),
+      ),
+      Storage.readMany<PartsState>(messages.map(({ messageID }) => partStateKey(scopeID, input.sessionID, messageID))),
+    ])
+    const missing = messages.filter((_message, index) => !headers[index])
+    const infos = await Storage.readMany<MessageV2.Info>(
+      missing.map(({ messageID }) =>
+        StoragePath.messageInfo(
+          Identifier.asScopeID(scopeID),
+          Identifier.asSessionID(input.sessionID),
+          Identifier.asMessageID(messageID),
+        ),
+      ),
+    )
+    const recoverable = new Set(missing.filter((_message, index) => infos[index]).map((message) => message.messageID))
+    return {
+      messages: messages.map((message, index) => {
+        const header = headers[index]
+        const page = pages[index]
+        const messageID = message.messageID
+        if (visibility.hidden.has(messageID) || (header && visibility.cut && header.order >= visibility.cut))
+          return { messageID, status: "deleted" }
+        if (!header) return { messageID, status: recoverable.has(messageID) ? "recovery" : "deleted" }
+        if (page?.version !== 1) return { messageID, status: "recovery", version: header.version }
+        return {
+          messageID,
+          version: header.version,
+          generation: page.generation,
+          status:
+            message.version === header.version && message.generation === page.generation ? "unchanged" : "changed",
+        }
+      }),
+    }
+  }
 
   export const summarizePart = MessageV2.summarizePart
 
@@ -609,6 +678,7 @@ export namespace SessionHistoryDisplay {
       items,
       hasMore,
       hasEarlier,
+      generation: prepared?.generation ?? 0,
       nextCursor: hasMore && ordered.length ? encode(ordered.at(-1)!.key) : null,
       previousCursor: hasEarlier && ordered.length ? encode(ordered[0]!.key) : null,
     }

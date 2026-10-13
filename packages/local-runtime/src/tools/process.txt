@@ -20,7 +20,7 @@ Choose according to the next useful action:
 - `running` means the process is alive, not that it is making progress. If output requests input, or an initial wait provides no progress evidence and interaction or a stalled dependency is plausible, inspect the relevant output or process state once before deciding what to do. Redirected output may require reading the command's log file. Confirmed quiet work can continue waiting; silence alone does not prove a stall.
 - Supply input only when its value is known and authorized; do not guess confirmations. If a required decision is unavailable, surface the blocker instead of waiting for nonexistent input. Do not kill or rerun a command merely because a wait ends, and do not replace repeated polls with shell status loops.
 
-For a persistent service, check readiness rather than waiting for exit. If you deliberately end the current turn to check external work later, set one `agenda_watch` with a delay such as `5m`, then yield. Visible running subagents already notify you on completion and prevent watch creation; do not add an Agenda wake-up for them.
+For a persistent service, check readiness rather than waiting for exit. Ending the current turn does not itself arrange a later check of external work. Use a delayed follow-up capability only when the current runtime explicitly provides one. Visible running subagents already notify you on completion; rely on their automatic notification.
 
 ## Usage
 

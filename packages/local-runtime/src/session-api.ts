@@ -4,6 +4,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInvoke, type InvokeInput } from "@ericsanchezok/synergy-harness/session/invoke"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
+import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
@@ -64,13 +65,26 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
     }
     const paused = await SessionLifecycle.snapshot(input.sessionID)
     if (paused && !idleNoReply) await SessionManager.waitForIdle(input.sessionID)
-    const rootID = paused ? await SessionInbox.latestRootID(input.sessionID) : undefined
+    const session = await Session.get(input.sessionID)
+    const canResume = idleNoReply || (await SessionExecutionOwners.allowsResume(session))
+    const newTask = !canResume && MessageV2.isHumanInput(input)
+    if (!canResume && !newTask) await SessionExecutionOwners.assertResume(session)
+    const rootID = paused && canResume ? await SessionInbox.latestRootID(input.sessionID) : undefined
     item = await SessionInbox.enqueueUser(
       input,
-      idleNoReply ? { mode: "steer", admission: "idle_no_reply" } : rootID ? { mode: "steer" } : undefined,
+      idleNoReply
+        ? { mode: "steer", admission: "idle_no_reply" }
+        : newTask
+          ? { mode: "task" }
+          : rootID
+            ? { mode: "steer" }
+            : undefined,
     )
     runID = rootID
-    if (!idleNoReply) await takeSessionBack(input.sessionID)
+    if (!idleNoReply) {
+      if (newTask) await SessionLifecycle.clear(input.sessionID)
+      else await takeSessionBack(input.sessionID)
+    }
   }
   if (idleNoReply) SessionManager.scheduleWake(item.sessionID, "durable-no-reply-input")
   else scheduleInput(item, "user-input")
@@ -256,6 +270,7 @@ export async function continueSession(sessionID: string): Promise<boolean> {
   let interrupted: boolean
   {
     using control = await Lock.write(`session-control:${sessionID}`)
+    await SessionExecutionOwners.assertResume(await Session.get(sessionID))
     await takeSessionBack(sessionID)
     const messages = await SessionHistory.modelMessages({ sessionID })
     interrupted = SessionProgress.pendingReply(messages)

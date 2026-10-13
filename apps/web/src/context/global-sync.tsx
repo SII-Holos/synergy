@@ -183,6 +183,7 @@ type State = {
   partSummary: Record<string, SessionPartSummary[]>
   partPage: Record<string, PartSummaryPageState>
   partVersion: Record<string, string>
+  messageVersion: Record<string, string | undefined>
 }
 
 function setPlanBlueprintOfferState(
@@ -398,20 +399,10 @@ function createGlobalSync() {
   const scopeReconnectRecovery = createScopeReconnectRecovery((scopeKey, generation) => {
     const state = children[scopeKey]
     if (state) {
-      const [store, setStore] = state
-      for (const [sessionID, messages] of Object.entries(store.message)) {
+      const [store] = state
+      for (const sessionID of Object.keys(store.message)) {
         partSnapshotFreshness.releaseSession(scopeKey, sessionID)
-        for (const message of messages) contentCaches.get(scopeKey)?.cache.revalidate(message.id)
       }
-      setStore(
-        produce((draft) => {
-          for (const messages of Object.values(draft.message))
-            for (const message of messages) {
-              const page = draft.partPage[message.id]
-              if (page) page.stale = true
-            }
-        }),
-      )
     }
     setScopeReconnectVersions(scopeKey, generation)
   })
@@ -763,6 +754,7 @@ function createGlobalSync() {
         vcs: undefined,
         sessionTotal: 0,
         message: {},
+        messageVersion: {},
         messageWindow: {},
         latestContextMessage: {},
         part: {},
@@ -865,39 +857,51 @@ function createGlobalSync() {
   async function loadAgenda(scopeKey: string) {
     const [_, setStore] = ensureScopeState(scopeKey)
     await globalSDK.capabilities.load()
-    if (!globalSDK.capabilities.has("workflows")) {
+    if (!globalSDK.capabilities.has("agenda")) {
       setStore("agenda", reconcile([]))
       return
     }
+    const selection = globalSDK.capabilities.current()
     const sdk = createScopedClient(scopeKey)
     return sdk.agenda
       .list()
-      .then((x) =>
+      .then((x) => {
+        if (globalSDK.capabilities.current() !== selection) return
         setStore(
           "agenda",
           reconcile(
             (x.data ?? []).slice().sort((a, b) => a.id.localeCompare(b.id)),
             { key: "id" },
           ),
-        ),
-      )
+        )
+      })
       .catch((err) => {
+        if (globalSDK.capabilities.current() !== selection) return
         console.error("Failed to load agenda", err)
       })
   }
 
+  createEffect(() => {
+    if (globalSDK.capabilities.has("agenda")) return
+    setGlobalStore("agenda", reconcile([]))
+    for (const [, setStore] of Object.values(children)) setStore("agenda", reconcile([]))
+  })
+
   async function loadGlobalAgenda() {
-    if (!globalSDK.capabilities.has("workflows")) {
+    if (!globalSDK.capabilities.has("agenda")) {
       setGlobalStore("agenda", reconcile([]))
       return
     }
+    const selection = globalSDK.capabilities.current()
     return globalSDK.client.global.agenda
       .list()
       .then((x) => {
+        if (globalSDK.capabilities.current() !== selection) return
         const items = (x.data ?? []).slice().sort((a, b) => a.id.localeCompare(b.id))
         setGlobalStore("agenda", reconcile(items, { key: "id" }))
       })
       .catch((err) => {
+        if (globalSDK.capabilities.current() !== selection) return
         console.error("Failed to load global agenda", err)
       })
   }
@@ -1261,7 +1265,7 @@ function createGlobalSync() {
           ),
         )
       }
-      if (!globalSDK.capabilities.has("workflows")) setStore("agenda", reconcile([]))
+      if (!globalSDK.capabilities.has("agenda")) setStore("agenda", reconcile([]))
       if (data.lsp) setStore("lsp", reconcile(data.lsp, { key: "id" }))
       else if (!globalSDK.capabilities.has("lsp")) setStore("lsp", reconcile([]))
       if (data.vcs) setStore("vcs", reconcile(data.vcs))
@@ -1785,6 +1789,7 @@ function createGlobalSync() {
       return
     }
     if (event?.type === "agenda.item.created" || event?.type === "agenda.item.updated") {
+      if (!globalSDK.capabilities.has("agenda")) return
       const item = event.properties.item as AgendaItem
       const result = Binary.search(globalStore.agenda, item.id, (a) => a.id)
       if (result.found) {
@@ -2008,6 +2013,7 @@ function createGlobalSync() {
             setLatestContextMessage(scopeKey, sessionID, latestContextMessage)
             return
           }
+          setStore("messageVersion", info.id, undefined)
           touchMessageBucket(scopeKey, sessionID)
           const existing = messages.some((message) => message.id === info.id)
 
@@ -2091,7 +2097,8 @@ function createGlobalSync() {
         break
       }
       case "message.part.summary": {
-        const { summary, content, discovery } = event.properties as ContentSummaryProperties
+        const { summary, discovery } = event.properties as ContentSummaryProperties
+        let content = (event.properties as ContentSummaryProperties).content
         const loaded = store.message[summary.sessionID]?.some((message) => message.id === summary.messageID)
         if (!loaded) {
           if (store.messageWindow[summary.sessionID]?.mode === "latest")
@@ -2114,7 +2121,15 @@ function createGlobalSync() {
             summary.messageID,
             [...summaries, summary].sort((a, b) => a.id.localeCompare(b.id)),
           )
-        if (!content) break
+        if (!content || content.kind === "reference") break
+        if (content.kind === "anchor") {
+          const part = store.part[summary.messageID]?.find((part) => part.id === summary.id)
+          if (!part || (part.type !== "text" && part.type !== "reasoning") || part.text.length !== content.offset) {
+            globalSDK.content.renewPart(scopeKey, event.properties as ContentSummaryProperties)
+            break
+          }
+          content = { kind: "checkpoint", part: { ...content.part, text: part.text } }
+        }
         setStore("partVersion", summary.id, summary.content.version)
         if (content.kind === "checkpoint") {
           const parts = store.part[summary.messageID] ?? []
@@ -2391,6 +2406,7 @@ function createGlobalSync() {
       }
       case "agenda.item.created":
       case "agenda.item.updated": {
+        if (!globalSDK.capabilities.has("agenda")) break
         const item = event.properties.item
         const result = Binary.search(store.agenda, item.id, (a) => a.id)
         if (result.found) {
@@ -2442,12 +2458,20 @@ function createGlobalSync() {
         ? parseSyncVersion(sequencedDetails)
         : undefined
     if (!resourceFreshness.acceptScopeEvent(e.name, version)) return
-    const observed = observeWatermark(watermarks.get(e.name), sequencedDetails as { epoch?: string; seq?: number })
+    const observed = observeWatermark(watermarks.get(e.name), {
+      ...(sequencedDetails as { epoch?: string; seq?: number }),
+      ...(e.details.type === "server.cursor" ? e.details.properties : {}),
+    })
     if (observed.next) watermarks.set(e.name, observed.next)
     if (observed.epochChanged || observed.gap) {
       void replayOrResync(e.name, observed.replayFrom)
       return
     }
+    if (e.details.type === "server.projection.reset") {
+      void resyncInstance(e.name)
+      return
+    }
+    if (e.details.type === "server.cursor") return
     applyEvent(e.name, e.details, "live")
   })
   onCleanup(() => {
@@ -2477,7 +2501,14 @@ function createGlobalSync() {
     if (!wm) return resyncInstance(scopeKey).catch(() => false)
     try {
       const sdk = createScopedClient(scopeKey)
-      const res = await sdk.event.replay({ since: wm.seq, epoch: wm.epoch, mode: "projection" })
+      const res = await sdk.event.replay({
+        since: wm.seq,
+        epoch: wm.epoch,
+        mode:
+          globalSDK.capabilities?.current()?.transports?.projection === "projection-v2"
+            ? "projection-v2"
+            : "projection",
+      })
       if (!current()) return false
       const data = res.data as
         | { status: "ok"; epoch: string; seq: number; events: any[] }
@@ -2488,7 +2519,15 @@ function createGlobalSync() {
         if (data) resourceFreshness.resetScope(scopeKey, data.epoch, data.seq)
         return resyncInstance(scopeKey).catch(() => false)
       }
-      for (const ev of data.events) applyEvent(scopeKey, ev)
+      let cursor = wm
+      for (const ev of data.events) {
+        const observed = observeWatermark(cursor, { ...ev, ...(ev.type === "server.cursor" ? ev.properties : {}) })
+        if (observed.gap || observed.epochChanged || ev.type === "server.projection.reset")
+          return resyncInstance(scopeKey).catch(() => false)
+        cursor = observed.next ?? cursor
+        if (ev.type !== "server.cursor") applyEvent(scopeKey, ev)
+      }
+      if (cursor.seq !== data.seq) return resyncInstance(scopeKey).catch(() => false)
       watermarks.set(scopeKey, { epoch: data.epoch, seq: data.seq })
       if (!questionSnapshot(scopeKey) && !(await loadPendingRequests(scopeKey))) return false
       return current()

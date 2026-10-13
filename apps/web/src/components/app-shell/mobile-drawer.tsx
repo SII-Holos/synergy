@@ -1,3 +1,4 @@
+import { runtimeFeatureAvailable } from "@/components/runtime-features"
 import { createMemo, createSignal, For, Show, onMount } from "solid-js"
 import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -316,7 +317,13 @@ function ScopeListView(props: {
           <span class="text-11-medium text-text-weak uppercase tracking-wider">{_(appShell.toolsSection)}</span>
         </div>
         <div class="grid grid-cols-3 gap-1 px-3 pb-2">
-          <For each={DRAWER_TOOLS}>
+          <For
+            each={DRAWER_TOOLS.filter((tool) =>
+              tool.panelId
+                ? !!workbench.getPanel(tool.panelId)
+                : runtimeFeatureAvailable("navigation", tool.id, globalSDK.capabilities.has),
+            )}
+          >
             {(tool) => {
               const hasSession = createMemo(() => !!params.id)
               const isDisabled = createMemo(() => tool.panelId === "browser" && !hasSession())

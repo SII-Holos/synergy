@@ -500,14 +500,25 @@ async function run() {
           })
         }
       }
+      const restingControl = await controls.executeJavaScript(
+        `getComputedStyle(document.querySelector('[data-window-action="minimize"]')).backgroundColor`,
+      )
       await press("Tab", "Tab", 9)
       assert.equal(
         await controls.executeJavaScript(`document.activeElement.dataset.windowAction`),
         "minimize",
         "window controls are reachable in order by keyboard",
       )
-      const keyboardFocus = await controls.executeJavaScript(`getComputedStyle(document.activeElement).boxShadow`)
-      assert.notEqual(keyboardFocus, "none", "keyboard focus remains visible")
+      const keyboardFocus = await controls.executeJavaScript(`(async () => {
+        const element = document.activeElement
+        await Promise.all(element.getAnimations().map(animation => animation.finished))
+        const style = getComputedStyle(element)
+        return { visible: element.matches(':focus-visible'), background: style.backgroundColor, shadow: style.boxShadow, outline: style.outlineStyle }
+      })()`)
+      assert.equal(keyboardFocus.visible, true)
+      assert.notEqual(keyboardFocus.background, restingControl, "keyboard focus remains visible")
+      assert.equal(keyboardFocus.shadow, "none")
+      assert.equal(keyboardFocus.outline, "none")
       await press("Enter", "Enter", 13)
       await press("Tab", "Tab", 9)
       assert.equal(await controls.executeJavaScript(`document.activeElement.dataset.windowAction`), "maximize")

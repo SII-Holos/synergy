@@ -1,3 +1,4 @@
+import { createRoot, createSignal } from "solid-js"
 import { expect, test } from "bun:test"
 import { createSettingsResource } from "../../../src/components/settings/settings-resource"
 
@@ -43,4 +44,33 @@ test("failed refresh retains the last good result and concurrent retries share a
   expect(data()).toEqual({ value: "kept" })
   expect(resource.ready()).toBe(true)
   expect(resource.error()).toBeInstanceOf(Error)
+})
+
+test("capability selection changes invalidate late settings replies and wait until the section is available", async () => {
+  const replies: Array<(value: string) => void> = []
+  const [owner, setOwner] = createSignal<object | undefined>({})
+  let dispose = () => {}
+  const [data, resource] = createRoot((rootDispose) => {
+    dispose = rootDispose
+    return createSettingsResource(
+      () => new Promise<string>((resolve) => replies.push(resolve)),
+      () => !!owner(),
+      owner,
+    )
+  })
+  await Bun.sleep(0)
+  expect(replies).toHaveLength(1)
+  setOwner(undefined)
+  replies[0]("previous server")
+  await Bun.sleep(0)
+  expect(data()).toBeUndefined()
+  expect(resource.ready()).toBe(false)
+  expect(replies).toHaveLength(1)
+  setOwner({})
+  await Bun.sleep(0)
+  replies[1]("current server")
+  await Bun.sleep(0)
+  expect(data()).toBe("current server")
+  expect(resource.ready()).toBe(true)
+  dispose()
 })

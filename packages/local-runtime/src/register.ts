@@ -1,3 +1,4 @@
+import { registerLocalEvents } from "./register-events"
 import { registerHarness } from "@ericsanchezok/synergy-harness/lifecycle"
 import { registerPolicyWorkerEntrypoint } from "@ericsanchezok/synergy-harness/enforcement/policy-worker/process-host"
 import { Command } from "./command/command"
@@ -32,6 +33,7 @@ export function registerLocalRuntime(
   const state = registration()
   if (state.complete) return
   registerHarness()
+  registerLocalEvents()
   registerConfig()
   registerLocalSandboxHelper()
   registerLocalNativeRuntime()

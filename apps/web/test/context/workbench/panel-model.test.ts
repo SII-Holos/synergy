@@ -11,6 +11,7 @@ import {
   updateWorkbenchPanelTab,
   workbenchPanelMountKey,
   workbenchForNewSession,
+  mergeVisibleWorkbenchTabs,
 } from "../../../src/context/workbench/panel-model"
 
 test("starting a session preserves resources and dimensions while closing both surfaces", () => {
@@ -404,11 +405,13 @@ describe("workbench tab updates", () => {
 
   test("keeps panel content mounted while tab metadata changes", () => {
     const before = { id: "notes:1", panelId: "notes", resourceId: "note_a", source: "/repo" }
-    const after = { ...before, resourceId: "notes:list" }
+    const after = { ...before, title: "Renamed note", dirty: true }
 
     expect(workbenchPanelMountKey(after)).toBe(workbenchPanelMountKey(before))
     expect(workbenchPanelMountKey({ id: "notes:2", panelId: "notes" })).not.toBe(workbenchPanelMountKey(before))
     expect(workbenchPanelMountKey({ ...before, panelId: "resource-home" })).not.toBe(workbenchPanelMountKey(before))
+    expect(workbenchPanelMountKey({ ...before, resourceId: "note_b" })).not.toBe(workbenchPanelMountKey(before))
+    expect(workbenchPanelMountKey({ ...before, source: "another-scope" })).not.toBe(workbenchPanelMountKey(before))
   })
 
   test("moves a tab to the requested stable index", () => {
@@ -583,4 +586,22 @@ test("Escape only collapses the workspace containing focus", () => {
       focusWithin: true,
     }),
   ).toBe("close-surface")
+})
+
+test("closing visible resources preserves hidden drafts for a later capability selection", () => {
+  const note = { id: "note", panelId: "notes", resourceId: "one", dirty: true, state: { kind: "note" } }
+  const tabs = [note, { id: "file", panelId: "file", resourceId: "readme" }]
+  const available = (tab: WorkbenchPanelTab) => tab.panelId !== "notes"
+  const next = mergeVisibleWorkbenchTabs(tabs, [{ id: "new", panelId: "file", resourceId: "two" }], available)
+  expect(next).toEqual([note, { id: "new", panelId: "file", resourceId: "two" }])
+  expect(mergeVisibleWorkbenchTabs(next, [], () => true)).toEqual([])
+  expect(tabs).toHaveLength(2)
+})
+
+test("a newly classified Blueprint remains saved when its feature is absent", () => {
+  const previous = { id: "note", panelId: "notes", resourceId: "one" }
+  const classified = { ...previous, state: { kind: "blueprint" } }
+  const available = (tab: WorkbenchPanelTab) =>
+    !tab.state || typeof tab.state !== "object" || !("kind" in tab.state) || tab.state.kind !== "blueprint"
+  expect(mergeVisibleWorkbenchTabs([previous], [classified], available)).toEqual([classified])
 })

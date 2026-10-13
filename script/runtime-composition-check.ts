@@ -4,12 +4,46 @@ import { withInstalledPackages, readPackedArchives } from "./package-install-che
 
 export async function checkRuntimeCompositions(
   archiveDirectory: string,
-  modes = ["core", "mcp", "lsp", "server", "browser", "library", "note", "computer", "full"],
+  modes = [
+    "core",
+    "server",
+    "note",
+    "library",
+    "agenda",
+    "light-loop",
+    "email",
+    "channels",
+    "blueprint",
+    "workbench",
+    "mcp",
+    "lsp",
+    "browser",
+    "computer",
+    "full",
+  ],
 ) {
   const archives = await readPackedArchives(archiveDirectory)
   const fixture = await Bun.file(path.resolve(import.meta.dir, "../test/package/fixture/runtime-composition.ts")).text()
   for (const mode of modes) {
-    if (!["core", "mcp", "lsp", "server", "browser", "library", "note", "computer", "full"].includes(mode))
+    if (
+      ![
+        "core",
+        "mcp",
+        "lsp",
+        "server",
+        "browser",
+        "library",
+        "note",
+        "agenda",
+        "light-loop",
+        "email",
+        "channels",
+        "blueprint",
+        "workbench",
+        "computer",
+        "full",
+      ].includes(mode)
+    )
       throw new Error(`Unknown runtime composition: ${mode}`)
     const owners: Record<string, string> = {
       mcp: "mcp",
@@ -18,6 +52,12 @@ export async function checkRuntimeCompositions(
       browser: "browser-runtime",
       library: "library",
       note: "note",
+      agenda: "agenda",
+      "light-loop": "light-loop",
+      email: "email",
+      channels: "channels",
+      blueprint: "blueprint",
+      workbench: "workbench",
       computer: "computer-runtime",
       full: "presets",
     }
@@ -25,7 +65,13 @@ export async function checkRuntimeCompositions(
     const entries =
       mode === "computer"
         ? ["@ericsanchezok/synergy-computer-runtime"]
-        : ["@ericsanchezok/synergy-agent-runtime", ...(owner ? [`@ericsanchezok/synergy-${owner}`] : [])]
+        : [
+            ...new Set([
+              "@ericsanchezok/synergy-agent-runtime",
+              ...(owner ? [`@ericsanchezok/synergy-${owner}`] : []),
+              ...(mode !== "core" && mode !== "full" ? ["@ericsanchezok/synergy-server"] : []),
+            ]),
+          ]
     await withInstalledPackages(archives, entries, async (directory, installedEnv) => {
       const entry = path.join(directory, "composition.ts")
       await Bun.write(
@@ -65,13 +111,12 @@ export async function checkRuntimeCompositions(
               }
             : {}),
           ...(mode === "full" || mode === "mcp" ? { pluginMarketplace: { enabled: false } } : {}),
-          ...(mode === "full" ? { boss: { enabled: false } } : {}),
+          ...(mode === "full" ? { boss: { enabled: false }, anima: { enabled: false } } : {}),
           ...(mode === "full" || mode === "library"
             ? {
                 library: {
                   memory: { enabled: false },
                   experience: { retrieve: false, encode: false },
-                  autonomy: false,
                 },
               }
             : {}),
@@ -105,6 +150,7 @@ export async function checkRuntimeCompositions(
         console.log(JSON.stringify({ mode, ...boundary }))
         if (!result.executed || !result.closed || result.mode !== mode)
           throw new Error(`${mode} did not complete its lifecycle`)
+        if (mode !== "computer" && !result.workerReady) throw new Error(`${mode} did not start its installed worker`)
         console.log(
           `PASS installed ${mode}: operation persisted, resources closed, process exited${mode === "full" ? "" : ", unrelated capabilities absent"}`,
         )

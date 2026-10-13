@@ -17,9 +17,11 @@ import { createGlobalThemeRegistrar } from "./global-theme-registrar"
 export function GlobalPluginThemesRegistrar() {
   const server = useServer()
   const host = usePluginHost()
+  const sdk = useGlobalSDK()
   const params = useParams()
   const registrar = createGlobalThemeRegistrar({
     serverUrl: () => server.url,
+    available: () => sdk.capabilities.has("plugin-host"),
     fetchContributions: fetchGlobalThemeContributions,
     loadAssets: (contributions, serverUrl) => loadPluginUIAssets(contributions, { serverUrl }),
     replaceThemes: (themes) => replacePluginThemes(themes),
@@ -27,6 +29,7 @@ export function GlobalPluginThemesRegistrar() {
   })
   createEffect(() => {
     params.dir
+    sdk.capabilities.current()
     host.plugins()
     if (server.url) void registrar.refresh()
   })

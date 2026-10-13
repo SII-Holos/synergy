@@ -330,12 +330,6 @@
   opacity: 0.6;
 }
 
-.sb-recent-toggle:focus-visible,
-.sb-mark-all-read:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
-}
-
 .sb-section-chevron {
   color: var(--icon-weak);
   flex-shrink: 0;
@@ -1040,11 +1034,6 @@
   box-shadow: inset 0 0 0 1px var(--sb-border);
 }
 
-.sidebar-account-trigger:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
-}
-
 .sidebar-account-avatarWrap {
   position: relative;
   display: inline-flex;
@@ -1235,11 +1224,6 @@
 .sidebar-account-menuItem:hover:not(:disabled),
 .sidebar-account-menuItem:focus-visible:not(:disabled) {
   background: var(--sb-hover-bg);
-}
-
-.sidebar-account-menuItem:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 1px;
 }
 
 .sidebar-account-menuItem:disabled {
@@ -1697,12 +1681,6 @@ button.sb-session-group-header {
   text-align: left;
   cursor: pointer;
 }
-button.sb-projects-header:focus-visible,
-button.sb-session-group-header:focus-visible,
-.sb-projects-section-toggle:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
-}
 
 .sb-logo-caption {
   display: flex;
@@ -1720,12 +1698,6 @@ button.sb-session-group-header:focus-visible,
 }
 .sb-root .sb-globals {
   flex-shrink: 0;
-}
-
-.sb-root button:focus-visible,
-.sb-logo:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
 }
 
 @media (hover: none) {
@@ -1801,10 +1773,6 @@ button.sb-session-group-header:focus-visible,
 .sb-navigation a,
 .sb-navigation [data-component="tooltip-trigger"] {
   -webkit-app-region: no-drag;
-}
-.sb-navigation button:focus-visible {
-  outline: 2px solid var(--border-interactive-base);
-  outline-offset: 2px;
 }
 .sb-navigation-notice {
   position: absolute;

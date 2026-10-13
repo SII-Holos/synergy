@@ -78,3 +78,5 @@ When changing package resolution, keep package-manager install scripts disabled 
 For module upgrades, test old worker pins, minimal selections under a full launcher, existing-home adoption, equal-version local replacements and interrupted API4 activation. Preserve reviewed grants without invoking a second approval path, keep new host-code trust distinct, and verify that component-only installation does not acquire database maintenance. Reused application bytes must come from a verified generation and retain publisher continuity.
 
 Verify sealed installation inventories independently of locale and object-key order, including bundled seeds. Keep manifest digests, file membership, content hashes and symlink targets strict; test an equivalently sealed reordered inventory and an added unlisted file.
+
+Legacy plugin configuration and credential migration belongs to selected Plugin Host. Seed old files before Core startup, install the owner after shared receipts complete, then remove and reinstall it. Retain source stores and unknown settings, and order catch-up after older catalog migrations that clear destination caches.

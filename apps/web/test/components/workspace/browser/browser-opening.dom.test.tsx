@@ -26,12 +26,12 @@ interface Fixture extends Window {
     close(id: string): Promise<void>
     dataRequests: Array<{ pageId: string; action: { type: string } }>
     collapse(): void
-    session(): void
+    session(id?: string): void
     scope(): void
     tabs(): WorkbenchPanelTab[]
     saved(): WorkbenchPanelTab[]
     active(): string | undefined
-    publish(pages: Array<{ id: string; title: string; url: string }>): void
+    publish(pages: Array<{ id: string; title: string; url: string; openerId?: string }>): void
     opened(): boolean
     attempts: string[]
     cancelled: string[]
@@ -53,6 +53,8 @@ beforeAll(async () => {
     export const i18n=setupI18n({locale:"en",messages:{en:messages}})
     export const useLocale=() => ({i18n})
     export const useConfirm=() => ({ask:async () => true})
+    const selection={features:["browser"]}
+    export const useGlobalSDK=() => ({capabilities:{current:() => selection,has:id => selection.features.includes(id)}})
     const surfaces=new Map()
     export function surface(key,name) {
       const id=key+":"+name
@@ -94,7 +96,7 @@ beforeAll(async () => {
       window.fixture={attempts,cancelled,dataRequests:window.dataRequests,
         finish:() => {const item=pending.shift();const init={resourceId:item.index===1 ? "page-one" : "page-"+item.index,title:"Ready browser"};window.pages.push({id:init.resourceId,title:init.title,url:"about:blank",status:"active",profileId:"personal"});item.operation?.onCancel(() => {cancelled.push(init.resourceId)});item.resolve(init)},
         fail:structured => pending.shift().reject(structured ? {code:"browser_native_ticket_rejected",message:"Desktop ticket unavailable",retryable:true} : new Error("Browser unavailable")),
-        open:forceNew => workbench.openPanel("browser",{forceNew}),close:id => workbench.closeTab(id),collapse:() => workbench.surface("side").close(),session:() => navigate("/home/session/other"),scope:() => navigate("/other"),
+        open:forceNew => workbench.openPanel("browser",{forceNew}),close:id => workbench.closeTab(id),collapse:() => workbench.surface("side").close(),session:(id="other") => navigate("/home/session/"+id),scope:() => navigate("/other"),
         publish:pages => {window.pages=pages.map(page => ({status:"active",profileId:"personal",...page}));window.deliverPages(window.pages)},tabs:() => workbench.surface("side").tabs(),saved:() => surface(workbench.sessionKey(),"side").tabs(),active:() => workbench.surface("side").active(),opened:() => workbench.surface("side").opened()
       }
       return <div style="height:600px"><button onClick={() => workbench.surface("side").toggle()}>Workspace</button><button onClick={() => workbench.openPanel("resource-home")}>Other resource</button><WorkbenchSurface surface="side" />{location.search==="?sync" && <BrowserWorkbenchSync route={{mode:"scope",scopeID:"home",path_directory:"home"}} />}</div>
@@ -122,7 +124,7 @@ beforeAll(async () => {
     plugins: [solidPlugin(), tailwindcss(), ...lingui()],
     resolve: {
       alias: [
-        { find: /^@\/context\/(layout|locale)$/, replacement: path.join(directory, "services.ts") },
+        { find: /^@\/context\/(layout|locale|global-sdk)$/, replacement: path.join(directory, "services.ts") },
         { find: "../layout", replacement: path.join(directory, "services.ts") },
         { find: "@/context/sdk", replacement: path.join(directory, "sdk.ts") },
         { find: "@/context/platform", replacement: path.join(directory, "platform.ts") },
@@ -196,7 +198,8 @@ test("catalog events before the open response cannot duplicate the preparing tab
   await page.evaluate(() =>
     (window as unknown as Fixture).fixture.publish([
       { id: "page-one", title: "Created", url: "about:blank" },
-      { id: "popup", title: "Popup", url: "https://example.test" },
+      { id: "popup", openerId: "page-one", title: "Popup", url: "https://example.test" },
+      { id: "background", title: "Another task", url: "https://example.org" },
     ]),
   )
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs())).toHaveLength(1)
@@ -207,6 +210,49 @@ test("catalog events before the open response cannot duplicate the preparing tab
     ["page-one", "popup"],
   )
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.active())).toBe(id)
+  expect(errors).toEqual([])
+})
+
+test("each task keeps its opened Browser tabs and selection while sharing the page catalog", async () => {
+  await page.goto(`${url}?sync`, { timeout: 30_000 })
+  await page.waitForFunction(() => typeof (window as unknown as { deliverPages?: unknown }).deliverPages === "function")
+  await page.getByRole("button", { name: "Workspace", exact: true }).click()
+  await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
+  await page.waitForFunction(() => (window as unknown as Fixture).fixture.saved().length === 1)
+  const first = await page.evaluate(() => (window as unknown as Fixture).fixture.active())
+  await page.evaluate(() => {
+    const fixture = (window as unknown as Fixture).fixture
+    fixture.publish([{ id: "page-one", title: "First task", url: "https://example.com" }])
+    fixture.session()
+  })
+  await page.waitForFunction(() => (window as unknown as Fixture).fixture.tabs().length === 0)
+  await page.getByRole("button", { name: "Workspace", exact: true }).click()
+  await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
+  await page.waitForFunction(() => (window as unknown as Fixture).fixture.saved().length === 1)
+  const second = await page.evaluate(() => (window as unknown as Fixture).fixture.active())
+  await page.evaluate(() =>
+    (window as unknown as Fixture).fixture.publish([
+      { id: "page-one", title: "First task updated", url: "https://example.com/next" },
+      { id: "page-2", title: "Second task", url: "https://example.org" },
+      { id: "popup", openerId: "page-one", title: "First popup", url: "https://example.com/login" },
+    ]),
+  )
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs().map((tab) => tab.resourceId))).toEqual(
+    ["page-2"],
+  )
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.active())).toBe(second)
+  await page.evaluate(() => (window as unknown as Fixture).fixture.session("one"))
+  await page.getByRole("tab", { name: "First popup", exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs().map((tab) => tab.resourceId))).toEqual(
+    ["page-one", "popup"],
+  )
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.active())).toBe(first)
+  await page.evaluate(() => (window as unknown as Fixture).fixture.session())
+  await page.getByRole("tab", { name: "Second task", exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs().map((tab) => tab.resourceId))).toEqual(
+    ["page-2"],
+  )
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.active())).toBe(second)
   expect(errors).toEqual([])
 })
 
@@ -236,13 +282,19 @@ test("a failed opening retains its single tab when catalog events arrive before 
   await page.evaluate(() => (window as unknown as Fixture).fixture.fail())
   await page.getByRole("alert").waitFor()
   await page.evaluate(() =>
-    (window as unknown as Fixture).fixture.publish([{ id: "popup", title: "Popup", url: "https://example.test" }]),
+    (window as unknown as Fixture).fixture.publish([
+      { id: "popup", openerId: "page-2", title: "Popup", url: "https://example.test" },
+      { id: "background", title: "Another task", url: "https://example.org" },
+    ]),
   )
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs())).toHaveLength(1)
   await page.getByRole("button", { name: "Retry", exact: true }).click()
   await page.waitForFunction(() => (window as unknown as Fixture).fixture.attempts.length === 2)
   await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
   await page.waitForFunction(() => (window as unknown as Fixture).fixture.saved().length === 2)
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs().map((tab) => tab.resourceId))).toEqual(
+    ["page-2", "popup"],
+  )
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.active())).toBe(id)
   expect(errors).toEqual([])
 })
@@ -281,6 +333,8 @@ test("collapse and reopen share the pending page and a late result cannot reopen
 })
 
 test("closing a pending tab discards its late page while changing Session only abandons presentation", async () => {
+  await page.goto(`${url}?sync`, { timeout: 30_000 })
+  await page.waitForFunction(() => typeof (window as unknown as { deliverPages?: unknown }).deliverPages === "function")
   await page.getByRole("button", { name: "Workspace", exact: true }).click()
   await page.getByRole("button", { name: "Close Browser", exact: true }).click()
   await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
@@ -290,6 +344,9 @@ test("closing a pending tab discards its late page while changing Session only a
   await page.getByRole("tab", { name: "Browser", exact: true }).waitFor()
   await page.evaluate(() => (window as unknown as Fixture).fixture.session())
   await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
+  await page.evaluate(() =>
+    (window as unknown as Fixture).fixture.publish([{ id: "page-2", title: "Late page", url: "about:blank" }]),
+  )
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs())).toEqual([])
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.cancelled)).toEqual(["page-one"])
   expect(errors).toEqual([])

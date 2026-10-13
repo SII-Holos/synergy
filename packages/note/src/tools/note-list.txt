@@ -11,6 +11,6 @@ Use `since` and `before` to filter notes by last updated time (ISO 8601 dates). 
 
 Use `offset` and `limit` for pagination when there are many notes.
 
-Use `kind:"blueprint"` to list only executable Blueprint notes, `kind:"note"` for plain notes, or `kind:"all"` to include both. Use `archived:"archived"` to list archived notes or `archived:"all"` to include notes regardless of archive status.
+Use `kind:"note"` for plain notes or `kind:"all"` for all available document kinds. Use `archived:"archived"` to list archived notes or `archived:"all"` to include notes regardless of archive status.
 
 The output includes a tag summary at the end showing all tags across listed notes with their frequency. Use these tags with `note_search`'s `tags` parameter to filter by topic, or reuse existing tags when creating/updating notes with `note_write` to keep tagging consistent.

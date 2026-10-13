@@ -1,3 +1,4 @@
+import { runtimeFeatureAvailable } from "@/components/runtime-features"
 import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
 import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
 import { AppPanel } from "@/components/app-panel"
@@ -235,6 +236,11 @@ export function KanbanPanel() {
 
   const setWorkflowFor = (pane: BoardPane) => async (kind: BoardWorkflowKind) => {
     if (pane.kind !== "live") return
+    const current = globalSync
+      .peekScopeState(pane.scopeKey)?.[0]
+      ?.session?.find((session) => session.id === pane.sessionID)?.workflow?.kind
+    if (!runtimeFeatureAvailable("workflow", kind === "none" ? (current ?? "none") : kind, globalSDK.capabilities.has))
+      return
     const workflowSetInput: WorkflowSetInput = kind === "lattice" ? { kind, mode: "auto" } : { kind }
     await clientFor(pane).workflow.session.set({
       id: pane.sessionID,

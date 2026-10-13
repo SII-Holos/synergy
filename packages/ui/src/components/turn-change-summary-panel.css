@@ -112,7 +112,6 @@
 [data-component="turn-change-summary-panel"] [data-slot="turn-change-summary-row"]:focus-visible,
 [data-component="turn-change-summary-panel"] [data-slot="turn-change-summary-toggle"]:focus-visible {
   outline: none;
-  box-shadow: var(--shadow-xs-border-focus);
 }
 
 [data-component="turn-change-summary-panel"] [data-slot="turn-change-summary-list"] {

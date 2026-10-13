@@ -6,11 +6,8 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { WorkflowSessionService } from "@ericsanchezok/synergy-workflows/session/workflow"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
-import { BossService } from "@ericsanchezok/synergy-workflows/boss/boss"
-import {
-  BossProjectTool,
-  DEFAULT_PROJECT_BOSS_INSTRUCTIONS,
-} from "@ericsanchezok/synergy-workflows/boss/tools/boss-project"
+import { BossService } from "@ericsanchezok/synergy-boss/boss/boss"
+import { BossProjectTool, DEFAULT_PROJECT_BOSS_INSTRUCTIONS } from "@ericsanchezok/synergy-boss/boss/tools/boss-project"
 import { SessionSendTool } from "@ericsanchezok/synergy-local-runtime/tools/session-send"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"

@@ -55,7 +55,7 @@ export function browserPageTab(
 export function reconcileBrowserTabs(input: {
   tabs: WorkbenchPanelTab[]
   active: string | undefined
-  pages: Array<{ id: string; title: string; url: string }>
+  pages: Array<{ id: string; title: string; url: string; openerId?: string }>
   route: BrowserWorkbenchRoute
   knownPageIds?: ReadonlySet<string>
 }) {
@@ -66,7 +66,18 @@ export function reconcileBrowserTabs(input: {
   }
   const byId = new Map(input.pages.map((page) => [page.id, page]))
   const represented = new Set(input.tabs.filter(belongs).map((tab) => tab.resourceId))
-  const remaining = input.pages.filter((page) => !represented.has(page.id))
+  const remaining = input.pages.filter((page) => {
+    if (represented.has(page.id)) return false
+    if (input.route.mode === "session") return true
+    const visited = new Set<string>()
+    let openerId = page.openerId
+    while (openerId && !visited.has(openerId)) {
+      if (represented.has(openerId)) return true
+      visited.add(openerId)
+      openerId = byId.get(openerId)?.openerId
+    }
+    return false
+  })
   const tabs = input.tabs.flatMap((tab) => {
     if (!belongs(tab)) return [tab]
     const page = tab.resourceId ? byId.get(tab.resourceId) : remaining.shift()

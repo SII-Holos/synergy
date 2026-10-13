@@ -22,6 +22,8 @@ Replacing identical retention arrays invalidated projection consumers. The resiz
 
 ## Verification
 
+A later full browser run exposed the same focus-out gap in terminal Markdown adoption: moving from an image reference to a document reference replaced the destination before it received focus. The deterministic regression completes parsing while the first reference is focused, presses Tab and verifies that the second reference keeps its DOM identity and focus. It then moves outside Markdown and verifies that the deferred terminal render completes. The original preview-to-document keyboard test also passes with destination-aware retention.
+
 Production builds were compared against one frozen history of 328 messages and 1,730 Parts at a 1440 × 900 viewport. Three alternating baseline/candidate pairs used 4× CPU throttling, native clicks and wheel input, without CPU sampling. Each action accumulated browser metrics over 1.2 seconds; these totals are not individual blocking-task durations. Median results were:
 
 | Action                      | Baseline task time | Corrected task time | Baseline style time | Corrected style time |

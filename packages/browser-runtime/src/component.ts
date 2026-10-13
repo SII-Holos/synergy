@@ -1,3 +1,4 @@
+import { registerResourceSource } from "./resource-source"
 import { disposeBrowser } from "./register"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
@@ -12,6 +13,7 @@ export function browser(): RuntimeComponent {
     services: () => ({ disposeExtensions: disposeBrowser }),
     adapters: { http: new URL("./http.ts", import.meta.url) },
     register() {
+      registerResourceSource()
       registerBrowser()
     },
   }

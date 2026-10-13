@@ -26,7 +26,6 @@ describe("fatal error presentation", () => {
       impact: "reload-interface-only",
       primaryAction: { label: "reload-interface" },
     })
-    expect(presentation.summary).toContain("TypeError: Could not render the session")
     expect(presentation.details).toContain("TypeError: Could not render the session")
     expect(presentation.details).toContain("Caused by:")
     expect(presentation.details).toContain("Error: Session timeline was unavailable")
@@ -35,7 +34,7 @@ describe("fatal error presentation", () => {
     expect(reloads).toBe(1)
   })
 
-  test("keeps actionable configuration errors visible without a task-safety claim", () => {
+  test("preserves configuration diagnostics for disclosure without a task-safety claim", () => {
     let retries = 0
     const presentation = createFatalErrorPresentation({
       source: "initialization",
@@ -51,13 +50,12 @@ describe("fatal error presentation", () => {
 
     expect(presentation.source).toBe("initialization")
     expect(presentation.title).toBe("initialization")
-    expect(presentation.description).toBe("initialization")
+    expect(presentation.description).toBeUndefined()
     expect(presentation.impact).toBeUndefined()
     expect(presentation.primaryAction.label).toBe("try-again")
-    expect(presentation.summary).toContain("Config file at /config/synergy.d/10-models.jsonc is invalid")
-    expect(presentation.summary).toContain("Expected a provider ID models.default")
-    expect(presentation.details).toContain("ConfigInvalidError")
+    expect(presentation.details).toContain("Config file at /config/synergy.d/10-models.jsonc is invalid")
     expect(presentation.details).toContain("Expected a provider ID models.default")
+    expect(presentation.details).toContain("ConfigInvalidError")
 
     presentation.primaryAction.run()
     expect(retries).toBe(1)
@@ -73,12 +71,11 @@ describe("fatal error presentation", () => {
     expect(presentation).toMatchObject({
       source: "scope",
       title: "scope",
-      description: "scope",
       primaryAction: { label: "try-again" },
     })
     expect(presentation.impact).toBeUndefined()
-    expect(presentation.summary).toContain("Error: Scope bootstrap returned no data")
     expect(presentation.details).toContain("Error: Scope bootstrap returned no data")
+    expect(presentation.description).toBeUndefined()
   })
 
   test("treats a lost server as unknown task state with connection recovery actions", () => {
@@ -99,7 +96,7 @@ describe("fatal error presentation", () => {
       secondaryAction: { label: "change-server" },
     })
     expect(presentation.impact).toBeUndefined()
-    expect(presentation.summary).toContain("Error: Could not connect to server at http://localhost:4096")
+    expect(presentation.details).toContain("Error: Could not connect to server at http://localhost:4096")
 
     presentation.primaryAction.run()
     presentation.secondaryAction?.run()

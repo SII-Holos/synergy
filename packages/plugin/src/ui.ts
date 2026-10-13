@@ -72,6 +72,8 @@ export interface PluginSessionLayoutService {
 export interface PluginUILifetime {
   readonly signal: AbortSignal
   onDispose(cleanup: () => void): () => void
+  active?(): boolean
+  onActivity?(listener: (active: boolean) => void): () => void
 }
 
 export interface PluginSurfaceIdentity {

@@ -30,6 +30,8 @@ Explicit Desktop opening restores the most recently viewed project page or creat
 
 ## Consequences
 
+The Workspace tab-membership and empty-Workspace selection rules are refined by [Session Browser Workspace tabs](../bug-fix/2026-10-12-session-browser-workspace-tabs.md); project page ownership and shared login identities remain as described here.
+
 Resource lifetime is stable across presentation changes, and ordinary browsing works independently of model execution. The change costs explicit document controllers, canonical resource identity, task-context leases and catalog reconciliation on Session changes. Dirty, mounted and undoable Notes controllers survive clean-cache eviction; local backup failure is visible and protects unload. Retained editor views disable stale transaction dispatch before unmounting so asynchronous decoration callbacks cannot mutate a replacement view.
 
 Behavioral tests exercise replacement and deduplication, save revision races, draft/baseline recovery, close protection, responsive dimensions, finite reveal policy, shared page authority and native lifecycle. Browser tests retain isolated homes, ports and Electron userData. See [Browser runtime](../../../architecture/browser-runtime.md), [Frontend data sync](../../../architecture/frontend-data-sync.md) and [Web product contract](../../../../apps/web/PRODUCT.md) for current behavior; native page and identity decisions remain in [Desktop browser pages and identities](2026-09-29-desktop-browser-pages-and-identities.md).

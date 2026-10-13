@@ -1,9 +1,8 @@
 import { executionDuration } from "@ericsanchezok/synergy-ui/execution-completion"
 import { createMemo, createSignal, For, Show, onCleanup, type JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { Popover, restorePopoverFocus } from "@ericsanchezok/synergy-ui/popover"
-import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -11,13 +10,7 @@ import { useExecution } from "@/context/execution"
 import { useSDK } from "@/context/sdk"
 import { E } from "./i18n"
 import { CompactExecutionOverview, TaskStatusIcon } from "./compact-overview"
-import {
-  compactTasks,
-  compactTokenText,
-  compactTaskStatus,
-  cancellableTask,
-  type TaskDetailsTask,
-} from "./task-details-model"
+import { compactTasks, compactTaskStatus, cancellableTask, type TaskDetailsTask } from "./task-details-model"
 import "./execution.css"
 import "./task-details.css"
 
@@ -27,11 +20,12 @@ export function TaskDetailsPopover(props: {
   inbox?: (active: () => boolean, history: () => boolean) => JSX.Element
   inboxCount?: number
 }) {
-  const { _, i18n } = useLingui()
+  const { _ } = useLingui()
   const execution = useExecution()
   const sdk = useSDK()
   const params = useParams()
   const [open, setOpen] = createSignal(false)
+  execution.retain({ active: open })
   const [history, setHistory] = createSignal(false)
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [pending, setPending] = createSignal<Set<string>>(new Set())
@@ -82,15 +76,6 @@ export function TaskDetailsPopover(props: {
       if (!disposed) setPending((value) => new Set([...value].filter((id) => id !== task.sessionID)))
     }
   }
-  const taskHelp = (task: TaskDetailsTask) =>
-    [
-      task.title,
-      _(E[compactTaskStatus(task)]),
-      task.cortex?.agent,
-      compactTokenText(task.tokens, task.runs.length, i18n().locale),
-    ]
-      .filter(Boolean)
-      .join(" · ")
   return (
     <Show when={params.id}>
       <Popover
@@ -215,31 +200,28 @@ export function TaskDetailsPopover(props: {
                 <For each={tasks()}>
                   {(task) => (
                     <div class="execution-compact-row execution-task-row" data-state={compactTaskStatus(task)}>
-                      <Tooltip value={taskHelp(task)} placement="top" hideWhenDetached>
-                        <button
-                          type="button"
-                          class="execution-row-main"
-                          onClick={() => showFull(task.nodeID ?? undefined)}
-                        >
-                          <TaskStatusIcon status={compactTaskStatus(task)} />
-                          <span class="execution-row-title">{task.title}</span>
-                          <span class="execution-row-meta">
-                            {task.elapsedMs == null
-                              ? ""
-                              : executionDuration(
-                                  task.elapsedMs + (task.elapsedActive ? now() : 0),
-                                  task.elapsedLowerBound,
-                                )}
-                          </span>
-                        </button>
-                      </Tooltip>
+                      <button
+                        type="button"
+                        class="execution-row-main"
+                        onClick={() => showFull(task.nodeID ?? undefined)}
+                      >
+                        <TaskStatusIcon status={compactTaskStatus(task)} />
+                        <span class="execution-row-title">{task.title}</span>
+                        <span class="execution-row-meta">
+                          {task.elapsedMs == null
+                            ? ""
+                            : executionDuration(
+                                task.elapsedMs + (task.elapsedActive ? now() : 0),
+                                task.elapsedLowerBound,
+                              )}
+                        </span>
+                      </button>
                       <div class="execution-row-actions">
                         <Show when={cancellableTask(task)}>
                           <button
                             type="button"
                             class="execution-icon-action"
                             aria-label={_(E.cancelTask)}
-                            title={_(E.cancelTask)}
                             disabled={pending().has(task.sessionID)}
                             onClick={() => void cancel(task)}
                           >

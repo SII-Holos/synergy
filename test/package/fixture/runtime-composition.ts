@@ -11,7 +11,13 @@ const mode = process.argv[2]!
 const prefix = "@ericsanchezok/synergy-"
 const full = mode === "full"
 const enabled = (domain: string) =>
-  domain === "browser" ? mode === "browser" : full || mode === domain || (domain === "plugin-host" && mode === "mcp")
+  domain === "browser"
+    ? mode === "browser"
+    : full ||
+      mode === domain ||
+      (domain === "plugin-host" && mode === "mcp") ||
+      (domain === "note" && mode === "blueprint") ||
+      (domain === "server" && mode !== "core")
 const { createLocalHost } = await import("@ericsanchezok/synergy-local-runtime")
 const { openAgentRuntime } = await import("@ericsanchezok/synergy-agent-runtime")
 const host = createLocalHost()
@@ -22,12 +28,42 @@ const factories: Record<string, [string, string]> = {
   mcp: ["mcp", "mcp"],
   lsp: ["lsp", "lsp"],
   server: ["server", "server"],
+  agenda: ["agenda", "agenda"],
+  "light-loop": ["light-loop", "lightLoop"],
+  email: ["email", "email"],
+  channels: ["channels", "channels"],
+  blueprint: ["blueprint", "blueprint"],
+  workbench: ["workbench", "workbench"],
 }
 const selected = factories[mode]
+if (mode === "blueprint") {
+  const rejected = path.join(process.cwd(), "missing-required-note")
+  await assert.rejects(
+    openAgentRuntime({
+      home: rejected,
+      components: [
+        (await import("@ericsanchezok/synergy-local-runtime/component")).localRuntime({ workers: false }),
+        (await import("@ericsanchezok/synergy-blueprint/component")).blueprint(),
+      ],
+    }),
+    /requires note/,
+  )
+  assert.equal(
+    await fs.access(rejected).then(
+      () => true,
+      () => false,
+    ),
+    false,
+  )
+}
 const components = [
   (await import("@ericsanchezok/synergy-local-runtime/component")).localRuntime({ workers: false }),
   ...(mode === "mcp" ? [(await import("@ericsanchezok/synergy-plugin-host/component")).plugins()] : []),
+  ...(mode === "blueprint" ? [(await import("@ericsanchezok/synergy-note/component")).note()] : []),
   ...(selected ? [(await import(`${prefix}${selected[0]}/component`))[selected[1]]()] : []),
+  ...(mode !== "core" && mode !== "server" && !full
+    ? [(await import("@ericsanchezok/synergy-server/component")).server()]
+    : []),
 ]
 const runtime = full
   ? await (
@@ -41,7 +77,7 @@ const runtime = full
       home: host.root,
       host,
       components,
-      mode: mode === "server" ? "server" : "oneshot",
+      mode: enabled("server") ? "server" : "oneshot",
       network: { hostname: "127.0.0.1", port: 0 },
     })
 
@@ -64,7 +100,26 @@ try {
     assert.throws(() => MigrationRegistry.register("late-fixture", []), MigrationRegistrationLockedError)
     assert.equal(MigrationRegistry.list().has("late-fixture"), false)
 
-    if (full || mode === "server") {
+    const { spawnAgentWorkerProcess } = await import("@ericsanchezok/synergy-harness/session/agent-turn/process-host")
+    const ready = Promise.withResolvers<number>()
+    const timer = setTimeout(() => ready.reject(new Error("Installed worker did not become ready")), 15_000)
+    const worker = spawnAgentWorkerProcess({
+      onMessage(message) {
+        if (message.type === "ready") ready.resolve(message.pid)
+      },
+      onExit(code) {
+        ready.reject(new Error(`Installed worker exited before readiness: ${code}`))
+      },
+    })
+    try {
+      assert.equal(await ready.promise, worker.process.pid)
+    } finally {
+      clearTimeout(timer)
+      await worker.stop(1000)
+    }
+    assert.equal(await worker.process.exited, 0)
+
+    if (enabled("server")) {
       assert.ok(runtime.server?.port)
       const health = await fetch(`http://127.0.0.1:${runtime.server.port}/global/health`)
       assert.equal(health.status, 200)
@@ -77,11 +132,42 @@ try {
         capabilities.components,
         runtime.components.toSorted((a, b) => a.id.localeCompare(b.id)),
       )
+      for (const owner of [
+        "note",
+        "library",
+        "agenda",
+        "light-loop",
+        "blueprint",
+        "email",
+        "channels",
+        "workbench",
+        "mcp",
+        "lsp",
+      ]) {
+        assert.equal(capabilities.features.includes(owner), enabled(owner), `unexpected HTTP feature ${owner}`)
+      }
+      for (const [owner, prefix] of [
+        ["note", "note."],
+        ["agenda", "agenda."],
+        ["mcp", "mcp."],
+      ]) {
+        if (!enabled(owner))
+          assert.equal(
+            Object.keys(spec.components?.schemas ?? {}).some((name) => name.startsWith(`Event.${prefix}`)),
+            false,
+            `unexpected event owner ${owner}`,
+          )
+      }
+      if (!enabled("blueprint"))
+        assert.equal(
+          Object.keys(spec.paths ?? {}).some((route) => route.startsWith("/blueprint")),
+          false,
+        )
     }
     for (const [domain, field] of [
       ["library", "library"],
       ["media", "voice"],
-      ["connections", "channel"],
+      ["channels", "channel"],
       ["plugin-host", "plugin"],
       ["mcp", "mcp"],
       ["lsp", "lsp"],
@@ -109,13 +195,26 @@ try {
         ["code-tools", "code-tools"],
         ["workflows", "workflows"],
         ["workbench", "workbench"],
+        ["agenda", "agenda"],
+        ["light-loop", "light-loop"],
+        ["blueprint", "blueprint"],
+        ["lattice", "lattice"],
+        ["boss", "boss"],
+        ["anima", "anima"],
+        ["email", "email"],
+        ["channels", "channels"],
+        ["github", "github"],
+        ["holos", "holos"],
+        ["channel-feishu", "channel-feishu"],
+        ["channel-github", "channel-github"],
+        ["channel-clarus", "channel-clarus"],
         ["full", "presets"],
       ]) {
         const installed = await fs.access(path.join(process.cwd(), "node_modules", prefix + pkg)).then(
           () => true,
           () => false,
         )
-        const expected = mode === domain || (domain === "plugin-host" && mode === "mcp")
+        const expected = enabled(domain!)
         assert.equal(installed, expected, `unexpected installed domain ${pkg}`)
         assert.equal(lockfile.includes(JSON.stringify(prefix + pkg)), expected, `unexpected locked domain ${pkg}`)
       }
@@ -236,12 +335,20 @@ try {
           database = LibraryDB.connection()
         }
         if (enabled("note")) {
-          const { NoteStore } = await import("@ericsanchezok/synergy-note")
-          const note = await NoteStore.create({ title: "Installed note", kind: "blueprint" })
-          const { SessionNoteAccess } = await import("@ericsanchezok/synergy-note/session-contract")
-          await SessionNoteAccess.setBlueprintActiveLoop(scope.id, note.id, "installed-loop")
-          assert.equal((await NoteStore.get(scope.id, note.id)).blueprint?.activeLoopID, "installed-loop")
-          assert.equal((await SessionNoteAccess.getBlueprintNote(scope.id, note.id))?.noteID, note.id)
+          const { NoteStore, NoteMarkdown } = await import("@ericsanchezok/synergy-note")
+          const note = await NoteStore.create({
+            title: "Installed note",
+            kind: "note",
+            content: NoteMarkdown.fromMarkdown("Retained document"),
+          })
+          assert.match(NoteMarkdown.toMarkdown((await NoteStore.get(scope.id, note.id)).content), /Retained document/)
+          if (!enabled("blueprint"))
+            await assert.rejects(NoteStore.create({ title: "Unsupported owner", kind: "blueprint" }))
+        }
+        if (enabled("workbench")) {
+          const { PerformanceDashboard } = await import("@ericsanchezok/synergy-workbench/performance/dashboard")
+          const owners = (await PerformanceDashboard.summary()).resources.owners.map((row) => row.owner)
+          if (!full) for (const owner of ["plugin", "browser", "mcp"]) assert.equal(owners.includes(owner), false)
         }
         await Session.update(session.id, (value) => {
           value.title = "Executed installed composition"
@@ -266,4 +373,4 @@ try {
 } finally {
   next.dispose()
 }
-console.log(JSON.stringify({ mode, executed: true, closed: true, optionalOwnersAbsent: !full }))
+console.log(JSON.stringify({ mode, executed: true, workerReady: true, closed: true, optionalOwnersAbsent: !full }))

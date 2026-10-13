@@ -1,4 +1,4 @@
-import { recordSessionSwitchTiming } from "@/components/performance/browser-metrics"
+import { recordSessionSwitchTiming, recordSessionPhase } from "@/components/performance/browser-metrics"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 
 type Nav = {
@@ -157,5 +157,15 @@ export function navMark(input: { dir?: string; to: string; name: string }) {
   if (nav.marks[input.name] !== undefined) return
 
   nav.marks[input.name] = now()
+  if (nav.logged)
+    recordSessionPhase({
+      sessionID: nav.to,
+      scopeID: nav.scopeID,
+      correlationId: nav.id,
+      navigationId: nav.id,
+      sessionSwitchId: nav.id,
+      phase: input.name,
+      duration: nav.marks[input.name] - nav.start,
+    })
   maybeFlush(id)
 }

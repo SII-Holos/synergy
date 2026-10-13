@@ -16,6 +16,7 @@ export namespace RuntimeContext {
   const localContexts: Array<Pick<AsyncLocalStorage<unknown>, "exit">> = []
   const states = new WeakMap<Instance, Map<symbol, unknown>>()
   const sealedCompositions = new WeakSet<Instance>()
+  const readyInstances = new WeakSet<Instance>()
   const transactionOwner = new AsyncLocalStorage<Instance>()
 
   export interface Instance {
@@ -33,6 +34,7 @@ export namespace RuntimeContext {
       host: Object.freeze({ ...host, env: Object.freeze({ ...host.env }) }),
       dispose() {
         instance.storage = undefined
+        readyInstances.delete(instance)
         states.delete(instance)
       },
       run(body) {
@@ -76,6 +78,15 @@ export namespace RuntimeContext {
 
   export function sealComposition() {
     sealedCompositions.add(current())
+  }
+
+  export function isReady(): boolean {
+    return readyInstances.has(current())
+  }
+
+  export function setReady(ready: boolean) {
+    if (ready) readyInstances.add(current())
+    else readyInstances.delete(current())
   }
 
   export function assertCompositionOpen(name: string) {

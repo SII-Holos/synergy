@@ -285,7 +285,12 @@ render(() => {
           <ResourceOpenProvider value={{ open: async () => ({ status: "cancelled" }) }}>
             <MarkedProvider>
               <DiffComponentProvider component={() => null}>
-                <DataProvider data={data} directory="/workspace" serverUrl="http://localhost">
+                <DataProvider
+                  hasFeature={(id) => ["media"].includes(id)}
+                  data={data}
+                  directory="/workspace"
+                  serverUrl="http://localhost"
+                >
                   <SessionTurn
                     sessionID={root.sessionID}
                     messageID={root.id}
