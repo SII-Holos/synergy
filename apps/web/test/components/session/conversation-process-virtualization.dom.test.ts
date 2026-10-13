@@ -209,6 +209,123 @@ test("terminal process collection preserves the visible answer while following i
   }
 }, 30000)
 
+test.each(["pending", "generating"] as const)(
+  "a %s tool does not add and remove a phantom body before its input is displayable",
+  async (status) => {
+    await page.goto(`${url}?scrolling&motion&content=tool-follow`)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    await page.evaluate(() => {
+      window.__conversationProcess.grow(20)
+      window.__conversationProcess.nextTool("next")
+      window.__conversationProcess.latest()
+    })
+    await frames()
+    await page.waitForFunction(
+      () =>
+        !document.querySelector("[data-motion-resizing]") &&
+        !document.querySelector("[data-follow-motion]")!.getAnimations().length,
+    )
+    const arrival = await page.evaluate(async (status) => {
+      const anchor = document.querySelector('[data-display-row][data-part-id="next-progress"]')!
+      const samples = [anchor.getBoundingClientRect().top]
+      window.__conversationProcess.nextTool("next", status)
+      for (let frame = 0; frame < 40; frame++) {
+        await new Promise(requestAnimationFrame)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        samples.push(anchor.getBoundingClientRect().top)
+      }
+      return samples
+    }, status)
+    expect(
+      Math.max(...arrival.slice(1).map((y, index) => y - arrival[index])),
+      JSON.stringify(arrival),
+    ).toBeLessThanOrEqual(1)
+    await page.locator('[data-part-id="next-tool"][data-content-pending]').waitFor()
+    await page.waitForFunction(
+      () =>
+        !document.querySelector("[data-motion-resizing]") &&
+        !document.querySelector("[data-follow-motion]")!.getAnimations().length,
+    )
+    const result = await page.evaluate(async () => {
+      const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+      const anchor = document.querySelector('[data-display-row][data-part-id="next-progress"]')!
+      const before = anchor.getBoundingClientRect().top
+      const height = viewport.scrollHeight
+      const animate = Element.prototype.animate
+      Element.prototype.animate = function (...args) {
+        const next = animate.apply(this, args)
+        if (this.hasAttribute("data-follow-motion")) {
+          next.pause()
+          next.currentTime = 0
+        }
+        return next
+      }
+      const samples = []
+      try {
+        window.__conversationProcess.contentFinish("next-tool")
+        for (let frame = 0; frame < 30; frame++) {
+          await new Promise(requestAnimationFrame)
+          await new Promise((resolve) => setTimeout(resolve, 0))
+          samples.push({ y: anchor.getBoundingClientRect().top, connected: anchor.isConnected })
+        }
+        return { before, height, finalHeight: viewport.scrollHeight, samples }
+      } finally {
+        Element.prototype.animate = animate
+      }
+    })
+    expect(Math.abs(result.height - result.finalHeight), JSON.stringify(result)).toBeLessThanOrEqual(1)
+    expect(await page.locator('[data-part-id="next-tool"][data-content-pending]').count()).toBe(0)
+    expect(result.samples.every((sample) => sample.connected)).toBe(true)
+    expect(
+      Math.max(...result.samples.map((sample) => Math.abs(sample.y - result.before))),
+      JSON.stringify(result),
+    ).toBeLessThanOrEqual(1)
+  },
+  30000,
+)
+
+test("an empty live continuation loads without inserting and removing a transcript gap", async () => {
+  await page.goto(`${url}?scrolling&motion`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.grow(20)
+    window.__conversationProcess.nextTool("next")
+    window.__conversationProcess.latest()
+  })
+  await frames()
+  await page.waitForFunction(
+    () => !document.querySelector("[data-motion-resizing]") && !document.getAnimations().length,
+  )
+  const result = await page.evaluate(async () => {
+    const view = document.querySelector<HTMLElement>("[data-scroller]")!
+    const anchor = document.querySelector('[data-display-row][data-part-id="next-progress"]')!
+    const before = anchor.getBoundingClientRect().top
+    const reads = window.__conversationProcess.contentPageLoads()
+    window.__conversationProcess.continuation()
+    const samples = []
+    for (let frame = 0; frame < 70; frame++) {
+      if (frame === 35) window.__conversationProcess.continuationReady()
+      await new Promise(requestAnimationFrame)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const pending = view.querySelector('[data-display-row="continuation:load"]')
+      samples.push({
+        y: anchor.getBoundingClientRect().top,
+        pending: pending?.getBoundingClientRect().height,
+        connected: anchor.isConnected,
+      })
+    }
+    return { before, samples, requests: window.__conversationProcess.contentPageLoads() - reads }
+  })
+  expect(result.requests).toBe(1)
+  expect(result.samples.every((sample) => sample.connected)).toBe(true)
+  expect(result.samples.some((sample) => sample.pending !== undefined)).toBe(true)
+  expect(Math.max(...result.samples.map((sample) => sample.pending ?? 0))).toBe(0)
+  expect(
+    Math.max(...result.samples.map((sample) => Math.abs(sample.y - result.before))),
+    JSON.stringify(result),
+  ).toBeLessThanOrEqual(1)
+}, 30000)
+
 test("focus outside a large conversation does not reread its summaries", async () => {
   await page.goto(`${url}?scrolling`)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()

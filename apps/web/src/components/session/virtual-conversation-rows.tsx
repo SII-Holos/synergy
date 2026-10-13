@@ -852,6 +852,14 @@ function ConversationDisplayRow(
       return input.located.partID
     return current.kind === "body" ? current.parts[0]?.id : undefined
   }
+  const reserveLoading = () => {
+    const current = row()
+    return (
+      current.kind === "load" &&
+      !current.continuation &&
+      !content.summaries(current.message.id).some((part) => part.content.version.startsWith("optimistic:"))
+    )
+  }
   return (
     <div
       ref={(element) => {
@@ -914,16 +922,7 @@ function ConversationDisplayRow(
       </Show>
       <Show
         when={row().kind !== "load"}
-        fallback={
-          <div
-            classList={{
-              "min-h-6": !content
-                .summaries(row().message.id)
-                .some((part) => part.content.version.startsWith("optimistic:")),
-            }}
-            aria-busy={loading()}
-          />
-        }
+        fallback={<div classList={{ "conversation-load-placeholder": reserveLoading() }} aria-busy={loading()} />}
       >
         <Show
           when={row().kind === "activity"}

@@ -549,4 +549,6 @@ Cold historical body hydration keeps the latest viewport pinned without a whole-
 
 Automatic process collection preserves the visible answer while following. Removing preceding content and resizing the viewport may happen together; the transcript must not compensate the same movement twice or leave the viewport and rebound.
 
+While a tool generates its input, the activity header shows its waiting state. An empty body must not first reserve a line, collapse when fetched, and expand again when input arrives.
+
 Inactive presentations are hidden and non-interactive. They pause detailed subscriptions, clocks and layout measurements. Residency follows LRU and the existing content budget; draft and resource ownership stays in the owning domain when DOM is evicted. Browser pages and Terminal processes are not closed by presentation eviction. Third-party instances require an explicit pause/resume contract; module loading is deduplicated for every panel.

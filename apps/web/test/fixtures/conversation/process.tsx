@@ -113,6 +113,8 @@ const [versions, setVersions] = createStore<Record<string, string>>({})
 const [historyMore, setHistoryMore] = createSignal(true)
 const historyControls = new URL(location.href).searchParams.has("history-controls")
 const [hasPage, setHasPage] = createSignal(true)
+const [pendingPage, setPendingPage] = createSignal<string>()
+let continuationReady = Promise.withResolvers<void>()
 const [pageStale, setPageStale] = createSignal(false)
 const [mounted, setMounted] = createSignal(true)
 const arrivals = createPartArrivalState()
@@ -147,7 +149,7 @@ if (scenario) {
     part("work", "command-0", "tool"),
   ])
   if (scenario === "pending-refresh") faults.set("progress", "pending")
-  else if (scenario !== "late-reconnect")
+  else if (scenario !== "late-reconnect" && scenario !== "tool-follow")
     faults.set(
       "progress",
       scenario === "mixed"
@@ -351,9 +353,13 @@ const context: Partial<PluginConversationService> = {
         content: { version: versions[p.id] ?? "v1", bytes: 64 },
       }))
     },
-    page: () => (hasPage() ? { hasMore: false, stale: pageStale() } : undefined),
-    load: async () => {
+    page: (id) => (hasPage() && pendingPage() !== id ? { hasMore: false, stale: pageStale() } : undefined),
+    load: async (id) => {
       pageLoads++
+      if (pendingPage() === id) {
+        await continuationReady.promise
+        setPendingPage(undefined)
+      }
       await pageReady
       await pageRefresh
       setPageStale(false)
@@ -376,6 +382,18 @@ const context: Partial<PluginConversationService> = {
 }
 let toolCaseSequence = 0
 window.__conversationProcess = {
+  continuation() {
+    continuationReady = Promise.withResolvers<void>()
+    setData("part", "continuation", [])
+    setPendingPage("continuation")
+    setData("message", "session", (messages) => [
+      ...messages,
+      { ...assistant("continuation"), finish: undefined, time: { created: 4 } },
+    ])
+  },
+  continuationReady() {
+    continuationReady.resolve()
+  },
   fragments(count: number) {
     setData("message", "session", [root, work])
     setData("part", "work", [
@@ -394,6 +412,36 @@ window.__conversationProcess = {
     arrivals.add(arrivalOwner, id, { source, render: true, previous: data.part.more.some((part) => part.id === id) })
     setData("part", "more", (parts) => [...parts.filter((part) => part.id !== id), part("more", id, "tool")])
   },
+  nextTool(id: string, status?: "pending" | "generating") {
+    const tool = `${id}-tool`
+    if (!status) {
+      setData("part", id, [
+        part(
+          id,
+          `${id}-progress`,
+          "text",
+          "The readable progress stays in place while the next tool becomes ready. ".repeat(40),
+        ),
+      ])
+      setData("message", "session", (messages) => [...messages, assistant(id)])
+      return
+    }
+    faults.set(tool, "pending")
+    setData("part", id, (parts): Part[] => [
+      ...parts,
+      {
+        id: tool,
+        sessionID: "session",
+        messageID: id,
+        type: "tool",
+        tool: "bash",
+        callID: tool,
+        state:
+          status === "generating" ? { status, input: {}, raw: "", charsReceived: 0 } : { status, input: {}, raw: "" },
+      },
+    ])
+  },
+
   remount() {
     setMounted(false)
     queueMicrotask(() => setMounted(true))

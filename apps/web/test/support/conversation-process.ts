@@ -7,7 +7,10 @@ import { createBrowserFixture, type BrowserFixture } from "./browser-fixture"
 import type { VListHandle } from "virtua/solid"
 
 type Fixture = {
+  continuation(): void
+  continuationReady(): void
   append(id: string, source?: "live" | "replay"): void
+  nextTool(id: string, status?: "pending" | "generating"): void
   remount(): void
   reasoning(text: string, partID?: string): void
 
