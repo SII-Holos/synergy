@@ -285,7 +285,7 @@ export namespace Channel {
       const projectRefreshes = new Map<string, ProjectRefresh>()
       const unsubscribeScopeRuntimeStarting = ScopeRuntime.onStarting((scope) => {
         const ownsScope = Array.from(connections.values()).some((connection) => connection.scope.id === scope.id)
-        if (ownsScope) initializeScopeBridges()
+        if (ownsScope) initializeScopeBridges({ connections, attempts })
       })
 
       for (const [channelType, channelConfig] of Object.entries(channels)) {
@@ -367,9 +367,15 @@ export namespace Channel {
     await state.resetAll()
   }
 
-  function initializeScopeBridges() {
+  function initializeScopeBridges(input: Pick<State, "connections" | "attempts">) {
     QuestionCardBridge.init()
-    ChannelOutbound.init({ getProvider })
+    ChannelOutbound.init({
+      getProvider,
+      getAccountSignal: (type, accountId) => {
+        const key = connectionKey(type, accountId)
+        return (input.attempts.get(key) ?? input.connections.get(key))?.abort.signal ?? AbortSignal.abort()
+      },
+    })
   }
   async function connectAccount(input: ConnectContext & { reconnectAttempt?: number }): Promise<void> {
     const {
@@ -406,7 +412,7 @@ export namespace Channel {
     }
 
     const scope = await resolveAccountScope({ channelType, accountId, accountConfig })
-    await ScopeContext.provide({ scope, fn: initializeScopeBridges })
+    await ScopeContext.provide({ scope, fn: () => initializeScopeBridges({ connections, attempts }) })
 
     if (provider.lifecycle === "borrowed_transport" && provider.waitForTransport) {
       statuses.set(key, { status: "waiting_for_transport" })
@@ -419,7 +425,7 @@ export namespace Channel {
       channelType,
       accountId,
       activateTasks: true,
-      onConversationMessage: (ctx) => handleMessage(provider, ctx, scope, accountConfig),
+      onConversationMessage: (ctx) => handleMessage(provider, ctx, scope, accountConfig, attempt.abort.signal),
       onDiagnostic: async (record) => {
         await recordDiagnostic(channelType, accountId, record)
       },
@@ -608,6 +614,7 @@ export namespace Channel {
     ctx: MessageContext,
     scope: Scope,
     accountConfig: unknown,
+    signal: AbortSignal,
   ): Promise<ChannelHost.ReceiveResult> {
     const conversation = provider.conversation ?? provider
     const replyMessage = conversation.replyMessage?.bind(conversation)
@@ -630,6 +637,7 @@ export namespace Channel {
       scope: conversationScope,
       fn: async () => {
         try {
+          if (signal.aborted) return { accepted: false, reason: "rejected" }
           if (!replyMessage || !addReaction || !createStreamingSession) {
             log.warn("channel provider is missing conversation capabilities", { channelType: provider.type })
             return { accepted: false, reason: "rejected" }
@@ -738,9 +746,12 @@ export namespace Channel {
             model: accountInvocation.model,
             variant: accountInvocation.variant,
             execute: async (lease, delivery) => {
+              const deliverySignal = AbortSignal.any([lease.signal, signal])
+              if (deliverySignal.aborted) return
               const reactionController = createStatusReactionController({
                 adapter: {
                   setReaction: async (emoji: string) => {
+                    deliverySignal.throwIfAborted()
                     const result = await addReaction({
                       accountId: ctx.accountId,
                       messageId: ctx.messageId,
@@ -750,6 +761,7 @@ export namespace Channel {
                   },
                   removeReaction: removeReaction
                     ? async (reactionId: string) => {
+                        deliverySignal.throwIfAborted()
                         await removeReaction({
                           accountId: ctx.accountId,
                           messageId: ctx.messageId,
@@ -807,11 +819,18 @@ export namespace Channel {
                 ChannelOutbound.beginForeground(sessionID, delivery.messageID)
               }
 
+              let closePromise: Promise<void> | undefined
+              const closeStreaming = (text?: string, failed?: boolean) =>
+                (closePromise ??= streaming.close(text, failed))
               let discardPromise: Promise<void> | undefined
               const discardStreaming = () =>
-                (discardPromise ??= streaming
-                  .closeWithoutDelivery()
-                  .catch((error) => log.warn("streaming card no-delivery finalization failed", { sessionID, error })))
+                closePromise
+                  ? Promise.resolve()
+                  : (discardPromise ??= streaming
+                      .closeWithoutDelivery()
+                      .catch((error) =>
+                        log.warn("streaming card no-delivery finalization failed", { sessionID, error }),
+                      ))
 
               const assistantTranscript = new Map<string, string>()
               const messageInfos = new Map<string, MessageV2.Info>()
@@ -825,11 +844,13 @@ export namespace Channel {
               >()
 
               const unsubMessage = Bus.subscribe(MessageV2.Event.Updated, (event) => {
+                if (deliverySignal.aborted) return
                 if (event.properties.info.sessionID !== sessionID) return
                 messageInfos.set(event.properties.info.id, event.properties.info)
               })
 
               const pushToolProgress = async () => {
+                if (deliverySignal.aborted) return
                 const progress = Array.from(toolProgress.values())
                 log.info("tool progress pushed", {
                   sessionID,
@@ -846,6 +867,7 @@ export namespace Channel {
               }
 
               const unsubPart = Bus.subscribe(MessageV2.Event.PartUpdated, async (event) => {
+                if (deliverySignal.aborted) return
                 const part = event.properties.part
                 if (part.sessionID !== sessionID) return
 
@@ -877,8 +899,22 @@ export namespace Channel {
                 await pushToolProgress()
               })
 
+              const releasePresentation = () => {
+                ChannelOutbound.endForeground(sessionID, delivery.messageID)
+                unsubMessage()
+                unsubPart()
+                assistantTranscript.clear()
+                messageInfos.clear()
+                toolProgress.clear()
+              }
+              const cancelPresentation = () => {
+                releasePresentation()
+                void discardStreaming()
+              }
+              deliverySignal.addEventListener("abort", cancelPresentation, { once: true })
               try {
-                const turn = { sessionID, rootID: delivery.messageID, signal: lease.signal }
+                deliverySignal.throwIfAborted()
+                const turn = { sessionID, rootID: delivery.messageID, signal: deliverySignal }
                 const terminalIDsBefore = new Set((await collectChannelTerminalInfos(turn)).map((info) => info.id))
                 let drainFailure: { error: unknown } | undefined
                 try {
@@ -912,7 +948,6 @@ export namespace Channel {
                 let reactionSelected = false
                 for (const plan of plans) {
                   const isFinalTerminal = plan === plans.at(-1)
-                  let hasStartedTerminalClose = false
                   try {
                     reactionSelected ||= plan.kind === "reaction"
                     const outcome = await executeChannelDeliveryPlan({
@@ -924,13 +959,12 @@ export namespace Channel {
                       chatType: ctx.chatType,
                       scopeKey: ctx.scopeKey,
                       replyToMessageId,
-                      signal: lease.signal,
+                      signal: deliverySignal,
                       foreground: {
                         ownsReply: isFinalTerminal && ownsTerminalDelivery,
                         close: async (text: string | undefined, failed: boolean) => {
                           if (!isFinalTerminal) return
-                          hasStartedTerminalClose = true
-                          await streaming.close(text, failed)
+                          await closeStreaming(text, failed)
                         },
                         react: async (reaction: string) => {
                           const status = await reactionController.setFinishedWith(reaction)
@@ -948,12 +982,7 @@ export namespace Channel {
                       error,
                     })
                   } finally {
-                    if (isFinalTerminal && !hasStartedTerminalClose)
-                      await streaming
-                        .closeWithoutDelivery()
-                        .catch((error) =>
-                          log.warn("streaming card terminal failure finalization failed", { sessionID, error }),
-                        )
+                    if (isFinalTerminal) await discardStreaming()
                   }
                 }
                 if (drainFailure)
@@ -962,6 +991,10 @@ export namespace Channel {
                     error: drainFailure.error,
                   })
               } catch (err) {
+                if (deliverySignal.aborted) {
+                  await discardStreaming()
+                  return
+                }
                 // A busy Session must not surface a generation failure: persist the
                 // message as a durable inbox task with stable delivery identity so
                 // the existing ChannelOutbound reply path can deliver it later.
@@ -982,25 +1015,21 @@ export namespace Channel {
                   })
                   // Close the queued card cleanly without pretending the generation
                   // failed; the delayed final reply is delivered by ChannelOutbound.
-                  await streaming
-                    .close(undefined, false)
-                    .catch((closeError) =>
-                      log.warn("streaming card queued finalization failed", { sessionID, error: closeError }),
-                    )
+                  await closeStreaming(undefined, false).catch((closeError) =>
+                    log.warn("streaming card queued finalization failed", { sessionID, error: closeError }),
+                  )
                   return
                 }
                 log.error("prompt failed", { sessionID, error: err })
                 void reactionController.setError()
                 const errorText = buildAssistantTranscript(assistantTranscript) || undefined
-                await streaming
-                  .close(errorText, true)
-                  .catch((closeError) =>
-                    log.warn("streaming card error finalization failed", { sessionID, error: closeError }),
-                  )
+                await closeStreaming(errorText, true).catch((closeError) =>
+                  log.warn("streaming card error finalization failed", { sessionID, error: closeError }),
+                )
               } finally {
-                ChannelOutbound.endForeground(sessionID, delivery.messageID)
-                unsubMessage()
-                unsubPart()
+                deliverySignal.removeEventListener("abort", cancelPresentation)
+                releasePresentation()
+                await discardPromise
               }
             },
           })

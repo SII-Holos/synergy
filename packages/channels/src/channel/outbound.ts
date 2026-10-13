@@ -23,13 +23,20 @@ const runtimeState = RuntimeContext.state(() => ({
 }))
 
 export namespace ChannelOutbound {
+  type AccountSignal = (type: string, accountId: string) => AbortSignal | undefined
+
   const state = ScopedState.create(
-    () => ({ unsubscribe: undefined as (() => void) | undefined, abort: undefined as AbortController | undefined }),
+    () => ({
+      unsubscribe: undefined as (() => void) | undefined,
+      abort: undefined as AbortController | undefined,
+      getAccountSignal: undefined as AccountSignal | undefined,
+    }),
     async (entry) => {
       entry.abort?.abort()
       entry.unsubscribe?.()
       entry.unsubscribe = undefined
       entry.abort = undefined
+      entry.getAccountSignal = undefined
     },
   )
 
@@ -60,8 +67,12 @@ export namespace ChannelOutbound {
     return instanceState.foregroundSessions.has(`${sessionID}:${rootID}`)
   }
 
-  export function init(input: { getProvider: (type: string) => Provider | undefined }): () => void {
+  export function init(input: {
+    getProvider: (type: string) => Provider | undefined
+    getAccountSignal?: AccountSignal
+  }): () => void {
     const bridge = state()
+    bridge.getAccountSignal = input.getAccountSignal
     if (!bridge.unsubscribe) {
       const abort = new AbortController()
       bridge.abort = abort
@@ -132,13 +143,17 @@ export namespace ChannelOutbound {
           return
         }
 
+        const accountSignal = bridge.getAccountSignal?.(channelInfo.type, channelInfo.accountId)
+        const signal = accountSignal ? AbortSignal.any([abort.signal, accountSignal]) : abort.signal
+        if (signal.aborted) return
+
         try {
           const [plan] = await loadChannelDeliveryPlans({
             sessionID: msg.sessionID,
             rootID,
             terminalIDs: new Set([currentAssistant.id]),
             replyToMessageId,
-            signal: abort.signal,
+            signal,
           })
           if (!plan) return
           const outcome = await executeChannelDeliveryPlan({
@@ -150,7 +165,7 @@ export namespace ChannelOutbound {
             chatType: channelInfo.chatType,
             scopeKey: channelInfo.scopeKey,
             replyToMessageId,
-            signal: abort.signal,
+            signal,
           })
 
           if (outcome.status !== "delivered") return
@@ -162,6 +177,7 @@ export namespace ChannelOutbound {
             chatHash: chatId ? externalIdentityHash(chatId) : undefined,
           })
         } catch (err) {
+          if (signal.aborted) return
           log.error(replyRequired ? "channel outbound reply failed" : "channel outbound push failed", {
             sessionID: msg.sessionID,
             channelType: channelInfo.type,
@@ -180,6 +196,7 @@ export namespace ChannelOutbound {
       unsubscribe()
       bridge.unsubscribe = undefined
       bridge.abort = undefined
+      bridge.getAccountSignal = undefined
     }
   }
 }

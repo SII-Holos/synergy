@@ -8,6 +8,8 @@ import { channels } from "@ericsanchezok/synergy-channels/component"
 import { channelFeishu } from "../src/component"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { SessionModePolicy } from "@ericsanchezok/synergy-harness/session/tool-mode-policy"
+import { Config } from "@ericsanchezok/synergy-harness/config"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
 const components = RuntimeComponents.resolve([
   localRuntime({ workers: false, environment: false }),
@@ -43,3 +45,34 @@ for (const selected of [false, true]) {
     })
   })
 }
+
+test("removing and reinstalling Feishu preserves reaction configuration across unrelated config writes", async () => {
+  await using home = await tmpdir()
+  const account = {
+    enabled: false,
+    appId: "fixture-app",
+    appSecret: "fixture-secret",
+    streaming: false,
+    reactionOnlyReply: { enabled: true, forceReaction: "SILENT" },
+  }
+  for (const stage of ["installed", "removed", "reinstalled"]) {
+    const selected = stage !== "removed"
+    await using runtime = await testRuntime({
+      home: home.path,
+      composition: RuntimeComponents.compose([
+        localRuntime({ workers: false, environment: false }),
+        channels(),
+        ...(selected ? [channelFeishu()] : []),
+      ]),
+    })
+    await runtime.run(async () => {
+      if (stage === "installed")
+        await Config.updateGlobal({ channel: { feishu: { type: "feishu", accounts: { fixture: account } } } })
+      else await Config.updateGlobal({ username: stage })
+      const config = await Config.globalResolved()
+      if (selected) expect(config.channel?.feishu?.accounts.fixture).toMatchObject(account)
+      else expect(config.channel?.feishu).toBeUndefined()
+      expect(ToolRegistry.toolProviderIDs().includes("channel-feishu")).toBe(selected)
+    })
+  }
+})

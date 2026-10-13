@@ -41,6 +41,7 @@ type Scenario =
   | "same-root-steer"
   | "reaction-steer-error"
   | "ordinary-no-answer"
+  | "stopped-account"
   | "ordinary-tool-error"
 type ReactionTransport = "acknowledged" | "applied-then-timeout"
 
@@ -149,6 +150,7 @@ async function runScenario(
           if (call === 1) {
             modelStarted.resolve()
             await releaseForeground.promise
+            if (scenario === "stopped-account") return stream([...textChunks(ORDINARY_ANSWER), finish()])
             if (scenario === "same-root-steer") return stream([...textChunks(ORDINARY_ANSWER), finish()])
             if (scenario === "ordinary-no-answer" || scenario === "ordinary-tool-error")
               return stream([
@@ -474,6 +476,24 @@ async function runScenario(
           }
           expect(primaryCalls).toBe(1)
 
+          if (scenario === "stopped-account") {
+            const progressBeforeStop = updates.length + toolProgressUpdates.length
+            const reactionsBeforeStop = reactions.length
+            await Channel.disconnect("feishu", ACCOUNT_ID)
+            expect(cleanups).toEqual([FOREGROUND_TOPIC])
+            expect(activeStreaming).toBe(false)
+            releaseForeground.resolve()
+            await foreground.execution
+            expect(updates.length + toolProgressUpdates.length).toBe(progressBeforeStop)
+            expect(reactions).toHaveLength(reactionsBeforeStop)
+            expect(replies).toEqual([])
+            expect(pushes).toEqual([])
+            expect(closes).toEqual([])
+            expect(cleanups).toEqual([FOREGROUND_TOPIC])
+            const root = (await Session.messages({ sessionID })).find((message) => message.info.role === "user")!
+            expect(ChannelOutbound.isForeground(sessionID, root.info.id)).toBe(false)
+            return
+          }
           releaseForeground.resolve()
           await foreground.execution
           expect(invoke).toHaveBeenCalledTimes(1)
@@ -1010,4 +1030,10 @@ test(
   "rejected normal terminal close never starts no-delivery cleanup again",
   () => runScenario("ordinary-no-answer", "acknowledged", false, false, true, true),
   30_000,
+)
+
+test(
+  "stopping an account releases foreground presentation before the model settles and suppresses late delivery",
+  () => runScenario("stopped-account", "acknowledged", false, false, true),
+  20_000,
 )

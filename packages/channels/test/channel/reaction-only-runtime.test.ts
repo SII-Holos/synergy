@@ -181,51 +181,57 @@ const replyMetadata = {
 }
 
 describe("Channel reaction-only terminal delivery", () => {
-  deliveryTest("disposing a bridge cancels a pending read before any external delivery", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const calls: Calls = { reactions: [], replies: [], pushes: [] }
-        const channelProvider = provider("feishu", calls)
-        const session = await Session.create({
-          endpoint: SessionEndpoint.fromChannel({
-            type: "feishu",
-            accountId: "acct_test",
-            chatId: "chat_test",
-          }),
-        })
-        const rootID = await channelRoot({ sessionID: session.id, inboundId: "inbound" })
-        const terminal = await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "SILENT" })
-        const entered = Promise.withResolvers<void>()
-        const release = Promise.withResolvers<void>()
-        const read = SessionHistory.turnMessages
-        using pending = spyOn(SessionHistory, "turnMessages").mockImplementation(async (input) => {
-          entered.resolve()
-          await release.promise
-          return read(input)
-        })
-        const dispose = ChannelOutbound.init({ getProvider: () => channelProvider })
-        const updating = Session.updateMessage({ ...terminal, metadata: replyMetadata })
-        try {
-          await entered.promise
-          dispose()
-        } finally {
-          release.resolve()
-          await updating
-          dispose()
-        }
-        expect(calls.reactions).toEqual([])
-        const restored = ChannelOutbound.init({ getProvider: () => channelProvider })
-        try {
-          await Session.updateMessage({ ...terminal, metadata: replyMetadata })
-          expect(calls.reactions).toHaveLength(1)
-        } finally {
-          restored()
-        }
-      },
+  for (const stop of ["bridge disposal", "account stop"] as const)
+    deliveryTest(`${stop} cancels a pending read before any external delivery`, async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const calls: Calls = { reactions: [], replies: [], pushes: [] }
+          const channelProvider = provider("feishu", calls)
+          const session = await Session.create({
+            endpoint: SessionEndpoint.fromChannel({
+              type: "feishu",
+              accountId: "acct_test",
+              chatId: "chat_test",
+            }),
+          })
+          const rootID = await channelRoot({ sessionID: session.id, inboundId: "inbound" })
+          const terminal = await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "SILENT" })
+          const entered = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          const read = SessionHistory.turnMessages
+          using pending = spyOn(SessionHistory, "turnMessages").mockImplementation(async (input) => {
+            entered.resolve()
+            await release.promise
+            return read(input)
+          })
+          const account = new AbortController()
+          const dispose = ChannelOutbound.init({
+            getProvider: () => channelProvider,
+            getAccountSignal: () => account.signal,
+          })
+          const updating = Session.updateMessage({ ...terminal, metadata: replyMetadata })
+          try {
+            await entered.promise
+            if (stop === "account stop") account.abort()
+            else dispose()
+          } finally {
+            release.resolve()
+            await updating
+            dispose()
+          }
+          expect(calls.reactions).toEqual([])
+          const restored = ChannelOutbound.init({ getProvider: () => channelProvider })
+          try {
+            await Session.updateMessage({ ...terminal, metadata: replyMetadata })
+            expect(calls.reactions).toHaveLength(1)
+          } finally {
+            restored()
+          }
+        },
+      })
     })
-  })
   deliveryTest("reaction admission and duplicate checks read no bodies", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

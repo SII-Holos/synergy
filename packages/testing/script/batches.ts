@@ -135,6 +135,8 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/channel-feishu/test/channel/loop-jobs.test.ts",
   "packages/channels/test/channel/managed-project-ownership.test.ts",
   "packages/channels/test/channel/reaction-only-runtime.test.ts",
+  // Delivery work counters intercept shared history APIs inside a real Runtime.
+  "packages/channels/test/channel/delivery-work.test.ts",
   "packages/channel-feishu/test/channel/svg-raster-standalone.test.ts",
   "packages/presets/test/config/import.test.ts",
   "packages/email/test/email/imap.test.ts",
