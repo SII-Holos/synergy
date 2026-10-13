@@ -9,7 +9,6 @@ import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Channel } from "./channel"
 import { ChannelCommand } from "./channel/command"
 import { AppChannel } from "./channel/app"
-import { ChannelOutbound } from "./channel/outbound"
 import { ResponseCardRuntime } from "./channel/response-card"
 import { registerReload } from "./reload"
 import { stopStatusPolling } from "./startup-status"
@@ -23,10 +22,9 @@ export function channels(): RuntimeComponent {
     services: () => ({
       disposeExtensions: async () => stopStatusPolling(),
       resident: {
-        async start(config) {
+        async start() {
           await ResponseCardRuntime.pruneExpired()
-          ChannelOutbound.init({ getProvider: Channel.getProvider })
-          if (Object.keys(config.channel ?? {}).length) await Channel.init()
+          await Channel.init()
         },
         stop: () => Channel.stopAll(),
       },

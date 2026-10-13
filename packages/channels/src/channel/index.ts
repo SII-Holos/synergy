@@ -359,7 +359,7 @@ export namespace Channel {
     // scope, so the rebuilt state must land there regardless of the caller's
     // ambient scope, or the next home-scoped access would create a second
     // state and duplicate connections.
-    await ScopeContext.provide({ scope: Scope.home(), fn: () => state() })
+    await ScopeContext.provide({ scope: Scope.home(), fn: init })
     log.info("channel state reloaded")
   }
 
@@ -1344,6 +1344,6 @@ export namespace Channel {
     return iterateDiagnostics(channelType, accountId)
   }
   export async function init(): Promise<void> {
-    await state()
+    initializeScopeBridges(await state())
   }
 }

@@ -13,6 +13,8 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
+import { RuntimeReloadContributions } from "@ericsanchezok/synergy-harness/config/reload-contributions"
+import { channels } from "../../src/component"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -183,6 +185,55 @@ const replyMetadata = {
 }
 
 describe("Channel reaction-only terminal delivery", () => {
+  for (const reload of [false, true])
+    deliveryTest(`resident delivery requires an active account after ${reload ? "reload" : "startup"}`, async () => {
+      await using selectedRuntime = await testRuntime()
+      await selectedRuntime.run(() =>
+        ScopeContext.provide({
+          scope: Scope.home(),
+          fn: async () => {
+            const calls: Calls = { reactions: [], replies: [], pushes: [] }
+            Channel.registerProvider(provider("feishu", calls))
+            const resident = channels().services!().resident!
+            await resident.start({})
+            try {
+              if (reload)
+                await RuntimeReloadContributions.execute("channel", {
+                  scope: "global",
+                  executed: [],
+                  failed: [],
+                  failures: [],
+                  diagnostics: [],
+                  changedFields: new Set(),
+                  restartRequired: new Set(),
+                  liveApplied: new Set(),
+                  warnings: [],
+                  includePrerequisites: true,
+                })
+              await ScopeContext.provide({
+                scope: (await Scope.fromDirectory(selectedRuntime.host.home)).scope,
+                fn: async () => {
+                  const session = await Session.create({
+                    endpoint: SessionEndpoint.fromChannel({ type: "feishu", accountId: "stopped", chatId: "chat" }),
+                  })
+                  const rootID = await channelRoot({ sessionID: session.id, inboundId: "inbound" })
+                  await reactionOnlyRequest({
+                    sessionID: session.id,
+                    rootID,
+                    reaction: "SILENT",
+                    metadata: replyMetadata,
+                  })
+                },
+              })
+              expect(calls.reactions).toEqual([])
+              expect(calls.replies).toEqual([])
+            } finally {
+              await resident.stop()
+            }
+          },
+        }),
+      )
+    })
   deliveryTest("an ambiguous attempt survives a closed database and a fresh Runtime without redelivery", async () => {
     await using home = await tmpdir()
     const calls: Calls = { reactions: [], replies: [], pushes: [] }

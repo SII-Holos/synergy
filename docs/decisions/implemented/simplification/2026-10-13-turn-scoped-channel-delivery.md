@@ -14,7 +14,7 @@ Foreground, compensation and recovered delivery classified the same terminal ind
 
 Reaction delivery keeps the existing persist-attempt, send, confirm sequence and [uncertain-outcome policy](../bug-fix/2026-10-10-reaction-only-delivery-ownership.md). Network requests never run in a storage transaction. Successful foreground text is marked before auxiliary delivery, so an attachment failure cannot resend it. Outbound bridge disposal and account stop cancel pending delivery reads. Foreground presentation releases its subscriptions and closes without delivery on cancellation, independently of model completion. A close already in progress is not restarted. Later registration uses the current account lifetime.
 
-The selected Feishu component owns the tool, visibility policy and termination job through one worker-compatible registration entry point. Tool parameters remain an inline empty object supported by the existing catalog generator. Unrelated rendering, Browser, benchmark and generator changes are excluded from this feature.
+The selected Feishu component owns the tool, visibility policy and termination job through one worker-compatible registration entry point. Tool parameters remain an inline empty object supported by the existing catalog generator. Resident startup, configuration reload and account scopes initialize outbound delivery through Channel lifecycle ownership, including an empty account set; a global subscription must not bypass account admission. Unrelated rendering, Browser, benchmark and generator changes are excluded from this feature.
 
 ## Alternatives considered
 
