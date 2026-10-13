@@ -37,6 +37,7 @@ const THEME_VARIABLES = [
   "background-base",
   "surface-base",
   "surface-raised-base",
+  "surface-focus",
   "surface-raised-stronger-non-alpha",
   "surface-inset-base",
   "surface-brand-base",
@@ -201,7 +202,8 @@ export const BASE_STYLE = `
   button, select { border: 1px solid var(--render-border-base); border-radius: 6px; padding: 6px 10px; background: var(--render-surface-base); }
   button { cursor: pointer; }
   button:disabled { opacity: .55; cursor: default; }
-  :focus-visible { outline: 2px solid var(--render-text-interactive-base); outline-offset: 2px; }
+  :focus { outline: none !important; }
+  :focus-visible:not(:where(input, textarea, [contenteditable], [role="textbox"])) { background-image: linear-gradient(var(--render-surface-focus), var(--render-surface-focus)); }
   [hidden] { display: none !important; }
   [data-render-controls] { margin-top: 16px; padding: 12px 16px; border-top: 1px solid var(--render-border-weak-base); }
   [data-render-controls] fieldset { margin: 0 0 12px; padding: 0; border: 0; min-width: 0; }

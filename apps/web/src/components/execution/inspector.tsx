@@ -5,6 +5,7 @@ import type { ExecutionContextSnapshot, ExecutionNodeDetail } from "@ericsanchez
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useSDK } from "@/context/sdk"
+import { useViewActivity } from "@/context/view-residency"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { E, K } from "./i18n"
 import { D } from "./context-categories"
@@ -29,10 +30,12 @@ export function ExecutionInspector(props: {
 }) {
   const { _, i18n } = useLingui()
   const sdk = useSDK()
+  const viewActive = useViewActivity()
   const navigate = useNavigateToSession()
   const [detail, setDetail] = createSignal<ExecutionNodeDetail>()
   const [fresh, setFresh] = createSignal(false)
   const [visible, setVisible] = createSignal(document.visibilityState !== "hidden")
+  const active = () => viewActive() && visible()
   const advance = createExecutionClock(
     () => detail()?.execution,
     () => sdk.connected() && fresh() && visible(),
@@ -86,6 +89,7 @@ export function ExecutionInspector(props: {
   const calls = () =>
     detail()?.related.filter((node) => node.evidenceKind === "call" && node.runID === detail()?.node.runID) ?? []
   const load = async (reset = false) => {
+    if (!active() || !sdk.connected()) return
     abort?.abort()
     abort = new AbortController()
     const controller = abort
@@ -97,7 +101,7 @@ export function ExecutionInspector(props: {
         { sessionID: props.sessionID, nodeID: props.nodeID, runID: props.runID },
         { signal: controller.signal, throwOnError: true },
       )
-      if (disposed || version !== generation) return
+      if (disposed || version !== generation || controller.signal.aborted) return
       setFresh(true)
       setDetail(response.data)
       if (reset || (tabs().length && !tabs().includes(tab()))) setTab(tabs()[0] ?? "result")
@@ -123,7 +127,24 @@ export function ExecutionInspector(props: {
       sdk.connected,
       (connected) => {
         setFresh(false)
-        if (connected && detail()) void load()
+        if (connected) void load(!detail())
+      },
+      { defer: true },
+    ),
+  )
+  createEffect(
+    on(
+      active,
+      (enabled) => {
+        if (enabled) {
+          void load(!detail())
+          return
+        }
+        generation++
+        abort?.abort()
+        clearTimeout(timer)
+        setFresh(false)
+        setLoading(false)
       },
       { defer: true },
     ),
@@ -131,7 +152,6 @@ export function ExecutionInspector(props: {
   const visibility = () => {
     setVisible(document.visibilityState !== "hidden")
     setFresh(false)
-    if (document.visibilityState === "visible" && sdk.connected()) void load()
   }
   document.addEventListener("visibilitychange", visibility)
   createEffect(
@@ -139,7 +159,7 @@ export function ExecutionInspector(props: {
       () => props.revision,
       () => {
         clearTimeout(timer)
-        if (detail()) timer = setTimeout(() => void load(), 500)
+        if (active() && detail()) timer = setTimeout(() => void load(), 500)
       },
       { defer: true },
     ),
@@ -155,14 +175,14 @@ export function ExecutionInspector(props: {
     value == null
       ? _(E.unknown)
       : new Intl.DateTimeFormat(i18n().locale, { dateStyle: "medium", timeStyle: "medium" }).format(value)
-  const reader = (field: string, label: string) => (
+  const Reader = (field: { name: string; label: string }) => (
     <EvidenceReader
       sessionID={props.sessionID}
       nodeID={props.nodeID}
-      field={field}
-      label={label}
+      field={field.name}
+      label={field.label}
       runID={props.runID}
-      revision={detail()?.sources.find((source) => source.field === field)?.artifact.bytes ?? 0}
+      revision={detail()?.sources.find((source) => source.field === field.name)?.artifact.bytes ?? 0}
     />
   )
   const timing = () => (
@@ -361,9 +381,14 @@ export function ExecutionInspector(props: {
               </Show>
             </section>
             <Show when={sources().includes("request")}>
-              {reader("request", _(detail()?.node.evidenceKind === "attempt" ? E.actualRequest : E.savedRequest))}
+              <Reader
+                name="request"
+                label={_(detail()?.node.evidenceKind === "attempt" ? E.actualRequest : E.savedRequest)}
+              />
             </Show>
-            <Show when={sources().includes("response")}>{reader("response", _(E.response))}</Show>
+            <Show when={sources().includes("response")}>
+              <Reader name="response" label={_(E.response)} />
+            </Show>
             {timing()}
             <Show when={physical().length > 1 || (detail()?.node.group?.callCount ?? 0) > 1}>
               <section class="execution-request-related">
@@ -416,9 +441,12 @@ export function ExecutionInspector(props: {
               <EvidenceBlock label={_(E.errorDetails)} text={failure()} />
             </Show>
             <For each={results()}>
-              {(field) =>
-                reader(field, _(field === "observation" ? E.observation : field === "stream" ? E.output : E.toolOutput))
-              }
+              {(field) => (
+                <Reader
+                  name={field}
+                  label={_(field === "observation" ? E.observation : field === "stream" ? E.output : E.toolOutput)}
+                />
+              )}
             </For>
             <Show when={detail()?.node.source === "messages"}>
               <EvidenceBlock
@@ -433,12 +461,14 @@ export function ExecutionInspector(props: {
             </Show>
             <Show when={!results().length && !failure() && detail()?.node.source !== "messages"}>
               <Show when={sources().includes("initialHistory")} fallback={timing()}>
-                {reader("initialHistory", _(E.context))}
+                <Reader name="initialHistory" label={_(E.context)} />
               </Show>
             </Show>
           </Show>
           <Show when={!isModel() && tab() === "diagnostics"}>
-            <Show when={sources().includes("input")}>{reader("input", _(E.toolInput))}</Show>
+            <Show when={sources().includes("input")}>
+              <Reader name="input" label={_(E.toolInput)} />
+            </Show>
             <Show
               when={
                 detail()?.definitions != null &&

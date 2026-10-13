@@ -118,7 +118,7 @@ try {
       requestAnimationFrame(sample)
     })
     await page.goto(`${url.origin}/aG9tZQ/session/${sessions[0].id}`)
-    const viewport = page.locator('[data-conversation-viewport][aria-hidden="false"]')
+    const viewport = page.locator("[data-conversation-viewport]:visible")
     await viewport.waitFor()
     assert.ok((await viewport.innerText()).includes("Synthetic reading content."), "cold admission contains its body")
     for (const width of [1440, 375]) {

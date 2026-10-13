@@ -9,3 +9,5 @@ Cross-package imports use the explicit entries in `package.json`. Tests and fixt
 Run `bun run typecheck`, `bun run test`, and `bun run test:coverage` from this package. Build an importable library with `bun script/build-workspace.ts packages/library` from the repository root; `bun script/pack-workspace.ts packages/library .artifacts/packages` builds its workspace dependency closure.
 
 Call `registerLibrary()` before opening Harness and wire `disposeLibrary()` into `RuntimeServices.disposeExtensions`. Harness drains execution and background jobs before this cleanup closes the embedding runtime and database.
+
+Library owns a separate Home-scope migration receipt, so installing it after the shared Scope migration still upgrades retained experience and content rows atomically. Retrying this catch-up is safe; it never reruns historical orphan cleanup.

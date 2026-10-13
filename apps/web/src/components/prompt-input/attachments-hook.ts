@@ -1,9 +1,10 @@
+import { useGlobalSDK } from "@/context/global-sdk"
 import { parseSessionDragData } from "@/utils/session-drag"
 import type { Accessor, Setter } from "solid-js"
 import type { SetStoreFunction } from "solid-js/store"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
 import type { ContentPart, NoteAttachmentPart, SessionAttachmentPart, UploadedAttachmentPart } from "@/context/prompt"
@@ -49,6 +50,7 @@ const DROPPABLE_TYPES = [
 
 export function usePromptAttachments(input: PromptAttachmentsInput) {
   const sdk = useSDK()
+  const { capabilities } = useGlobalSDK()
   const prompt = usePrompt()
   const params = useParams()
   const dialog = useDialog()
@@ -188,7 +190,11 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     if (dialog.active) return
 
     event.preventDefault()
-    const hasDroppable = event.dataTransfer?.types.some((type) => DROPPABLE_TYPES.includes(type))
+    const hasDroppable = event.dataTransfer?.types.some((type) => {
+      if (type === "application/x-synergy-blueprint") return capabilities.has("blueprint")
+      if (type === "application/x-synergy-note") return capabilities.has("note")
+      return DROPPABLE_TYPES.includes(type)
+    })
     if (hasDroppable) {
       input.setStore("dragging", true)
     }
@@ -218,6 +224,8 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
 
     const blueprintData = event.dataTransfer?.getData("application/x-synergy-blueprint")
     if (blueprintData) {
+      if (!capabilities.has("blueprint")) return
+      const selection = capabilities.current()
       const binding = prompt.capture()
       try {
         const dropped = JSON.parse(blueprintData) as DroppedBlueprintData
@@ -268,7 +276,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
               return
             }
           }
-          if (!binding.isCurrent()) return
+          if (!binding.isCurrent() || capabilities.current() !== selection) return
           input.clearPendingWorkflows()
         }
         input.setLocalArmedLoop({
@@ -311,7 +319,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     }
 
     const noteData = event.dataTransfer?.getData("application/x-synergy-note")
-    if (noteData) {
+    if (noteData && capabilities.has("note")) {
       try {
         const { id: noteId, title, content } = JSON.parse(noteData)
         const existing = input.noteAttachments().find((note) => note.noteId === noteId)

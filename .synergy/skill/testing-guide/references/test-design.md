@@ -55,6 +55,8 @@ A native readiness wait must also observe operation settlement: preserve early f
 
 Also inject a supervisor error after command activation and let the real root exit normally. A drainage promise and exit code zero cannot replace the process error channel; callers must preserve that error while still draining ownership before returning.
 
+Exercise control-frame delivery independently from output-pipe drainage. Hold a real worker's completion phase while its local output consumers finish, deliver late stdin EOF, then release the phase; verify ordered acknowledgement, preserved output and formal exit, and released claims. Local pipe EOF alone cannot authorize worker shutdown.
+
 Separately exercise a real child closing stdin while unread input is queued, then emitting more stdout and stderr. Input rejection must reach the input stream without terminating the command; require its actual exit, complete output bytes and released claim. Keep output and control transport failures fatal.
 
 When a public operation returns a typed in-progress outcome at its foreground budget, correctness tests must await its documented completion path before asserting durable results. Exercise that outcome with an explicit held-operation fixture; do not raise the product deadline or swallow unrelated failures.

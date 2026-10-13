@@ -3,7 +3,10 @@ import { render } from "solid-js/web"
 import { I18nProvider } from "@lingui/solid"
 import { setupI18n } from "../../../src/testing/i18n.tsx"
 import { CodeComponentProvider } from "../../../src/context/code.tsx"
+import { ToolResultBody } from "../../../src/components/tool-result-body.tsx"
+import { getSpecialUserMessageRenderer } from "../../../src/components/special-user-message.tsx"
 import { DataProvider } from "../../../src/context/data.tsx"
+import { MarkedProvider } from "../../../src/context/marked.tsx"
 import "../../../src/components/tool-renders.tsx"
 import {
   ActivityReasoningSummary,
@@ -21,6 +24,54 @@ const [batchLive, setBatchLive] = createSignal(true)
 const [countIdentity, setCountIdentity] = createSignal("turn-a")
 const batchCount = () => ({ identity: countIdentity(), count: countValue(), pending: batchPending() })
 const [summaryCompleted, setSummaryCompleted] = createSignal(false)
+const [features, setFeatures] = createSignal<string[] | undefined>(["note"])
+const workflowRequest = {
+  id: "workflow-user",
+  sessionID: "s",
+  role: "user",
+  time: { created: 1 },
+  metadata: { workflow: "plan" },
+}
+const blueprintControl = {
+  ...workflowRequest,
+  id: "blueprint-control",
+  metadata: { source: "blueprint_loop_continuation", loopID: "private-loop-id" },
+}
+const blueprintStart = {
+  ...workflowRequest,
+  id: "blueprint-start",
+  metadata: { source: "blueprint_loop_start", userPrompt: "Keep my Blueprint request" },
+}
+const WorkflowRequest = getSpecialUserMessageRenderer(workflowRequest)!
+const BlueprintControl = getSpecialUserMessageRenderer(blueprintControl)!
+const BlueprintStart = getSpecialUserMessageRenderer(blueprintStart)!
+const latticeBlueprintControl = {
+  ...blueprintControl,
+  id: "lattice-blueprint-control",
+  metadata: { ...blueprintControl.metadata, requiredFeatures: ["blueprint", "lattice"] },
+}
+const latticeBlueprintStart = {
+  ...blueprintStart,
+  id: "lattice-blueprint-start",
+  metadata: { ...blueprintStart.metadata, requiredFeatures: ["blueprint", "lattice"] },
+}
+const latticeAttachment = {
+  type: "attachment" as const,
+  id: "lattice-sent-attachment",
+  sessionID: "s",
+  messageID: latticeBlueprintStart.id,
+  filename: "retained-request.txt",
+  mime: "text/plain",
+  url: "data:text/plain,original%20attachment",
+}
+const [latePartsLoaded, setLatePartsLoaded] = createSignal(false)
+const lateParts = () => (latePartsLoaded() ? [latticeAttachment] : [])
+const latticeControl = {
+  ...workflowRequest,
+  id: "lattice-control",
+  metadata: { source: "lattice_resume" },
+}
+const WorkflowControl = getSpecialUserMessageRenderer(latticeControl)!
 const [railState, setRailState] = createSignal<"running" | "done">("running")
 
 const resetCount = (identity: string, value: number) => {
@@ -88,6 +139,34 @@ const group = {
   topic: { state: "stable", text: "Updated the activity presentation" },
 }
 const [activityGroup, setActivityGroup] = createSignal(group)
+const optionalGroup = {
+  ...group,
+  key: "optional-group",
+  topic: undefined,
+  state: "done",
+  steps: [
+    {
+      ...group.steps[0],
+      title: "Created private Note",
+      state: "done",
+      part: {
+        id: "optional-note-step",
+        sessionID: "s",
+        messageID: "m1",
+        callID: "optional-call",
+        type: "tool",
+        tool: "note_write",
+        state: {
+          status: "completed",
+          input: {},
+          metadata: {},
+          output: "Retained timeline output",
+          time: { start: 1, end: 2 },
+        },
+      },
+    },
+  ],
+}
 const railGroup = (state: "running" | "done", key: string) => ({
   ...group,
   key,
@@ -341,12 +420,147 @@ render(
       <DataProvider
         data={data}
         runtime={runtime}
+        hasFeature={(id) => features()?.includes(id) ?? false}
         directory="/workspace"
         serverUrl="http://localhost"
         onPermissionRespond={respondToPermission}
         onNavigateToSession={(id) => navigateCalls.push(id)}
       >
         <CodeComponentProvider component={CodeFixture}>
+          <MarkedProvider>
+            <div id="late-blueprint-start">
+              <BlueprintStart message={latticeBlueprintStart} parts={lateParts()} />
+            </div>
+            <div id="late-workflow-request">
+              <WorkflowRequest message={workflowRequest} parts={lateParts()} />
+            </div>
+            <div id="late-workflow-control">
+              <WorkflowControl message={latticeControl} parts={lateParts()} />
+            </div>
+            <div id="source-blueprint-control">
+              <BlueprintControl message={latticeBlueprintControl} parts={[]} />
+            </div>
+            <div id="source-blueprint-start">
+              <BlueprintStart message={latticeBlueprintStart} parts={[latticeAttachment]} />
+            </div>
+            <div id="source-blueprint-tool">
+              <ToolResultBody
+                hasFeature={(id) => features()?.includes(id) ?? false}
+                part={{
+                  id: "lattice-blueprint-tool",
+                  sessionID: "s",
+                  messageID: "m1",
+                  type: "tool",
+                  callID: "lattice-blueprint-call",
+                  tool: "blueprint_loop_approve",
+                  state: {
+                    status: "completed",
+                    input: {},
+                    metadata: { requiredFeatures: ["blueprint", "lattice"] },
+                    output: JSON.stringify({ loopID: "source-control-id", status: "completed" }),
+                    attachments: [latticeAttachment],
+                    title: "Lattice Blueprint approved",
+                    time: { start: 1, end: 2 },
+                  },
+                }}
+                serverUrl="http://localhost"
+                defaultOpen
+              />
+            </div>
+            <div id="optional-workflow-request">
+              <WorkflowRequest
+                message={workflowRequest}
+                parts={[
+                  {
+                    type: "text",
+                    id: "workflow-part",
+                    messageID: workflowRequest.id,
+                    sessionID: "s",
+                    text: "Keep my original request",
+                  },
+                ]}
+              />
+            </div>
+            <div id="optional-blueprint-control">
+              <BlueprintControl
+                message={blueprintControl}
+                parts={[
+                  {
+                    type: "text",
+                    id: "blueprint-part",
+                    messageID: blueprintControl.id,
+                    sessionID: "s",
+                    text: "Internal Blueprint control instructions",
+                  },
+                ]}
+              />
+            </div>
+            <div id="optional-blueprint-start">
+              <BlueprintStart
+                message={blueprintStart}
+                parts={[
+                  {
+                    type: "text",
+                    id: "blueprint-start-part",
+                    messageID: blueprintStart.id,
+                    sessionID: "s",
+                    text: "Internal Blueprint initialization",
+                  },
+                ]}
+              />
+            </div>
+          </MarkedProvider>
+          <div id="optional-tool-host">
+            <ToolResultBody
+              hasFeature={(id) => features()?.includes(id) ?? false}
+              part={{
+                id: "note-tool",
+                sessionID: "s",
+                messageID: "m1",
+                type: "tool",
+                callID: "note-call",
+                tool: "note_write",
+                state: {
+                  status: "completed",
+                  input: { noteTitle: "Saved note" },
+                  metadata: { title: "Saved note", action: "create" },
+                  output: "Retained historical note text",
+                  title: "Saved note",
+                  time: { start: 1, end: 2 },
+                },
+              }}
+              serverUrl="http://localhost"
+              resultOnly
+              defaultOpen
+            />
+          </div>
+          <div id="optional-trace-host">
+            <ActivityTrace group={optionalGroup} serverUrl="http://localhost" />
+          </div>
+          <div id="optional-structured-tool-host">
+            <ToolResultBody
+              hasFeature={(id) => features()?.includes(id) ?? false}
+              part={{
+                id: "blueprint-tool",
+                sessionID: "s",
+                messageID: "m1",
+                type: "tool",
+                callID: "blueprint-call",
+                tool: "blueprint_loop_approve",
+                state: {
+                  status: "completed",
+                  input: {},
+                  metadata: {},
+                  output: JSON.stringify({ loopID: "hidden-control-id", status: "completed" }),
+                  title: "Blueprint approved",
+                  time: { start: 1, end: 2 },
+                },
+              }}
+              serverUrl="http://localhost"
+              resultOnly
+              defaultOpen
+            />
+          </div>
           <div id="count-host">
             <AnimatedActivityCount value={countValue()} identity={countIdentity()} />
           </div>
@@ -447,6 +661,8 @@ render(
   root,
 )
 ;(globalThis as unknown as { __activityDomHarness: unknown }).__activityDomHarness = {
+  setFeatures,
+  setLatePartsLoaded,
   setBatchPending,
   setBatchLive,
   setSessionPaused,

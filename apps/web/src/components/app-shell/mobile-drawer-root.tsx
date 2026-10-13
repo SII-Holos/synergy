@@ -27,7 +27,7 @@ function MobileDrawerActionButton(props: { label: string; icon: SemanticIconToke
     <button
       type="button"
       aria-label={props.label}
-      class="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-14-medium text-text-base transition-colors hover:bg-surface-raised-base-hover hover:text-text-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-border-focus-base"
+      class="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-14-medium text-text-base transition-colors hover:bg-surface-raised-base-hover hover:text-text-strong"
       onClick={props.onClick}
     >
       <Icon name={getSemanticIcon(props.icon)} size="normal" class="shrink-0" />
@@ -87,7 +87,7 @@ export function MobileDrawerRecent(props: {
                   data-session-id={entry.id}
                   aria-current={active() ? "page" : undefined}
                   classList={{
-                    "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-border-focus-base": true,
+                    "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left transition-colors": true,
                     "bg-surface-raised-base-hover text-text-strong": active(),
                     "text-text-base hover:bg-surface-raised-base-hover hover:text-text-strong": !active(),
                   }}
@@ -122,7 +122,7 @@ export function MobileDrawerRecent(props: {
             <button
               type="button"
               data-action="load-more-recent"
-              class="min-h-11 text-12-medium text-text-weak transition-colors hover:text-text-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus-base"
+              class="min-h-11 text-12-medium text-text-weak transition-colors hover:text-text-base"
               onClick={props.onLoadMore}
             >
               {props.loadMoreLabel}

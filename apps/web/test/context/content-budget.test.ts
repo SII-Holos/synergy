@@ -1,6 +1,21 @@
 import { expect, test } from "bun:test"
 import { createContentBudget } from "../../src/context/content-budget"
 
+test("content pressure retires presentation snapshots before evicting their materialized bodies", () => {
+  const budget = createContentBudget(16)
+  const order: string[] = []
+  const release = budget.retain("inactive")
+  budget.publish("inactive", "one", 12, () => order.push("body"))
+  const off = budget.onPressure(() => {
+    order.push("view")
+    release()
+  })
+  budget.publish("active", "one", 12, () => order.push("active"))
+  expect(order).toEqual(["view", "body"])
+  expect(budget.bytes).toBe(12)
+  off()
+})
+
 test("all Scopes share a byte budget and one released reader cannot evict another reader", () => {
   const evicted: string[] = []
   const budget = createContentBudget(16)

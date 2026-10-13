@@ -44,7 +44,10 @@ function init() {
       const remaining = stack().at(-1)?.id
       if (wasTop)
         requestAnimationFrame(() => {
-          if (stack().at(-1)?.id === remaining && current.returnFocus?.isConnected) current.returnFocus.focus()
+          if (stack().at(-1)?.id !== remaining || !current.returnFocus?.isConnected) return
+          const focused = document.activeElement
+          if (focused && focused !== document.body && focused.isConnected) return
+          current.returnFocus.focus()
         })
     }
   }

@@ -1,3 +1,5 @@
+import { runtimeFeatureAvailable } from "@/components/runtime-features"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { Show } from "solid-js"
 import { useNavigate, useLocation } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -27,6 +29,7 @@ const DRAWER_TOOLS: Array<{
 
 export function MobileToolsDrawer() {
   const layout = useLayout()
+  const { capabilities } = useGlobalSDK()
   const dialog = useDialog()
   const navigate = useNavigate()
   const location = useLocation()
@@ -72,25 +75,27 @@ export function MobileToolsDrawer() {
             </span>
           </div>
           <div class="flex flex-col gap-0.5 px-3">
-            {DRAWER_TOOLS.map((tool) => {
-              const isActive =
-                tool.id === "plugins" ? location.pathname.startsWith("/plugins") : location.pathname === tool.href
+            {DRAWER_TOOLS.filter((tool) => runtimeFeatureAvailable("navigation", tool.id, capabilities.has)).map(
+              (tool) => {
+                const isActive =
+                  tool.id === "plugins" ? location.pathname.startsWith("/plugins") : location.pathname === tool.href
 
-              return (
-                <button
-                  type="button"
-                  classList={{
-                    "flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-colors": true,
-                    "bg-surface-raised-base-hover text-text-strong": isActive,
-                    "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !isActive,
-                  }}
-                  onClick={() => navigateAndClose(tool.href)}
-                >
-                  <Icon name={getSemanticIcon(tool.icon)} size="normal" class="shrink-0" />
-                  <span class="text-14-medium">{toolLabel(tool.id)}</span>
-                </button>
-              )
-            })}
+                return (
+                  <button
+                    type="button"
+                    classList={{
+                      "flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-colors": true,
+                      "bg-surface-raised-base-hover text-text-strong": isActive,
+                      "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover": !isActive,
+                    }}
+                    onClick={() => navigateAndClose(tool.href)}
+                  >
+                    <Icon name={getSemanticIcon(tool.icon)} size="normal" class="shrink-0" />
+                    <span class="text-14-medium">{toolLabel(tool.id)}</span>
+                  </button>
+                )
+              },
+            )}
           </div>
         </div>
         <div class="shrink-0 border-t border-border-weaker-base px-3 py-2 safe-bottom">

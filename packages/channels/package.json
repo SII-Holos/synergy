@@ -1,0 +1,93 @@
+{
+  "name": "@ericsanchezok/synergy-channels",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./channel": "./src/channel/index.ts",
+    "./channel/app": "./src/channel/app.ts",
+    "./channel/busy-handoff": "./src/channel/busy-handoff.ts",
+    "./channel/cli/channel": "./src/channel/cli/channel.ts",
+    "./channel/cli/channel-server": "./src/channel/cli/channel-server.ts",
+    "./channel/command": "./src/channel/command.ts",
+    "./channel/conversation-acceptance": "./src/channel/conversation-acceptance.ts",
+    "./channel/diagnostics": "./src/channel/diagnostics.ts",
+    "./channel/host": "./src/channel/host.ts",
+    "./channel/interaction": "./src/channel/interaction.ts",
+    "./channel/managed-project-ownership": "./src/channel/managed-project-ownership.ts",
+    "./channel/migration": "./src/channel/migration.ts",
+    "./channel/model-selection": "./src/channel/model-selection.ts",
+    "./channel/outbound": "./src/channel/outbound.ts",
+    "./channel/outbound-parts": "./src/channel/outbound-parts.ts",
+    "./channel/provider-registry": "./src/channel/provider-registry.ts",
+    "./channel/question-card": "./src/channel/question-card.ts",
+    "./channel/question-card-bridge": "./src/channel/question-card-bridge.ts",
+    "./channel/response-card": "./src/channel/response-card.ts",
+    "./channel/response-text": "./src/channel/response-text.ts",
+    "./channel/routes/channel": "./src/channel/routes/channel.ts",
+    "./channel/routing": "./src/channel/routing.ts",
+    "./channel/session-projects": "./src/channel/session-projects.ts",
+    "./channel/setup": "./src/channel/setup.ts",
+    "./channel/status-reactions": "./src/channel/status-reactions.ts",
+    "./channel/tool-policy": "./src/channel/tool-policy.ts",
+    "./channel/tools": "./src/channel/tools.ts",
+    "./channel/tools/response-card": "./src/channel/tools/response-card.ts",
+    "./channel/types": "./src/channel/types.ts",
+    "./channel/workspace-transfer": "./src/channel/workspace-transfer.ts",
+    "./cli-adapter": "./src/cli-adapter.ts",
+    "./component": "./src/component.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./http": "./src/http.ts",
+    "./reload": "./src/reload.ts",
+    "./startup-status": "./src/startup-status.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/channels",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "1.0.0-alpha.1",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "channels",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "channels",
+    "requires": {
+      "local-runtime": "1.1.26"
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}

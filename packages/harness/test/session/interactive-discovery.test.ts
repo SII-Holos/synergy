@@ -58,14 +58,20 @@ test("inbox recovery continues past a corrupt page and an unreadable owner", () 
     const store = await TransactionalStore.open({ backend: "sqlite", filename, namespace: "recovery" })
     try {
       await store.transaction(async (tx) => {
-        for (const id of ["ses_bad", "ses_bad_owner", "ses_healthy"]) {
-          await tx.write(["sessions", "scope", id, "info"], { id, scope: { id: "scope" }, time: { created: 1 } })
+        for (const id of ["ses_bad", "ses_bad_owner", "ses_missing_index", "ses_missing_component", "ses_healthy"]) {
+          await tx.write(["sessions", "scope", id, "info"], {
+            id,
+            scope: { id: "scope" },
+            time: { created: 1 },
+            ...(id === "ses_missing_component" ? { blueprint: { loopID: "retained" } } : {}),
+          })
+          if (id !== "ses_missing_index") await tx.write(["session_index", id], { scopeID: "scope" })
         }
         for (let i = 0; i < 257; i++) {
           const id = `bad_${String(i).padStart(3, "0")}`
           await tx.write(["sessions", "scope", "ses_bad", "inbox", id], { id, mode: "task", status: "queued" })
         }
-        for (const sessionID of ["ses_bad_owner", "ses_healthy"]) {
+        for (const sessionID of ["ses_bad_owner", "ses_missing_index", "ses_missing_component", "ses_healthy"]) {
           await tx.write(["sessions", "scope", sessionID, "inbox", "valid"], {
             id: "valid",
             mode: "task",
@@ -90,6 +96,7 @@ test("inbox recovery continues past a corrupt page and an unreadable owner", () 
         expect(await SessionInbox.listRunnableSessions("scope")).toEqual(["ses_healthy"])
         expect(scan.mock.calls).toHaveLength(0)
         expect(await store.query({ kind: "session", sessionID: "ses_healthy" })).toHaveLength(1)
+        expect(await store.query({ kind: "inbox", sessionID: "ses_missing_component" })).toHaveLength(1)
       })
     } finally {
       await store.close()

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
-import { chmod, mkdir, realpath, writeFile } from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises"
 import { createRequire } from "node:module"
-import { homedir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import path from "node:path"
 import { promisify } from "node:util"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
@@ -42,7 +42,7 @@ const { chromium } = requireWeb("playwright") as typeof import("playwright")
 const git = promisify(execFile)
 const stamp = Date.now().toString()
 const output = path.join(home, "evidence", "computer-project", stamp)
-const fixture = path.join(await realpath(home), "project-flow-fixtures", stamp)
+const fixture = await realpath(await mkdtemp(path.join(tmpdir(), "synergy-project-entry-")))
 const folders = ["frontend", "backend", "docs"].map((name) => path.join(fixture, name))
 await mkdir(output, { recursive: true })
 for (const folder of folders) {
@@ -249,7 +249,7 @@ try {
   await page.keyboard.press("Escape")
   await top().getByRole("button", { name: "取消", exact: true }).click()
   check((await name.inputValue()) === "未保存的名称", "cancel discard retains settings")
-  await name.fill(projectName)
+  await name.fill(projectName + " 已更新")
   const filesSection = top().locator(".project-settings-section").nth(1)
   await filesSection
     .locator(".project-folder-row")
@@ -257,12 +257,31 @@ try {
     .getByRole("button", { name: "文件夹操作" })
     .click()
   await top().getByRole("button", { name: "设为主目录", exact: true }).click()
-  await filesSection.getByRole("button", { name: "保存", exact: true }).click()
-  await filesSection.getByRole("status").waitFor()
+  await top().getByRole("button", { name: "新建 Worktree", exact: true }).click()
+  check(
+    (await client.project.directories({ scopeID }, options)).data.mainWorkspaceID === initial.mainWorkspaceID &&
+      (await client.project.taskDefaults.get({ scopeID }, options)).data.effective.defaultSessionWorkspace === "main",
+    "project settings keeps folders and task defaults staged until Save",
+  )
+  check((await top().getByRole("button", { name: "保存", exact: true }).count()) === 1, "settings has one Save action")
+  await top().locator('[data-slot="dialog-footer"]').getByRole("button", { name: "保存", exact: true }).click()
+  await top().getByRole("status").filter({ hasText: "已保存" }).waitFor()
   const updated = (await client.project.directories({ scopeID }, options)).data
   check(
     updated.folders.find((f) => f.workspaceID === updated.mainWorkspaceID)?.path === folders[1],
     "settings changes the actual main folder",
+  )
+  check(
+    (await client.project.taskDefaults.get({ scopeID }, options)).data.effective.defaultSessionWorkspace === "worktree",
+    "the same footer Save updates the actual task default",
+  )
+  check((await name.inputValue()) === projectName + " 已更新", "the same footer Save retains the confirmed name")
+  check(
+    await top()
+      .getByRole("button", { name: "新建 Worktree", exact: true })
+      .locator('[data-component="icon"]')
+      .isVisible(),
+    "selected task starting point has a persistent check",
   )
   check(
     (await client.session.get({ scopeID, sessionID: treeSessionID }, options)).data.workspace?.path === firstTree?.path,
@@ -275,12 +294,52 @@ try {
     "historical Worktree remains listed with original source",
   )
   await shot({ path: path.join(output, "settings-main-changed.png") })
+  const plainMain = path.join(fixture, "new-plain")
+  await mkdir(plainMain)
+  await top().getByRole("button", { name: "添加文件夹", exact: true }).click()
+  await folderPath(plainMain)
+  await top().getByRole("button", { name: "选中当前文件夹", exact: true }).click()
+  await top().getByRole("button", { name: "使用选中的文件夹", exact: true }).click()
+  await top()
+    .locator(".project-folder-row")
+    .filter({ hasText: "new-plain" })
+    .getByRole("button", { name: "文件夹操作" })
+    .click()
+  await top().getByRole("button", { name: "设为主目录", exact: true }).click()
+  await top().getByRole("button", { name: "保存", exact: true }).click()
+  await top().getByRole("alert").waitFor()
+  const incompatible = (await client.project.directories({ scopeID }, options)).data
+  check(
+    incompatible.folders.find((folder) => folder.workspaceID === incompatible.mainWorkspaceID)?.git === false &&
+      (await client.project.taskDefaults.get({ scopeID }, options)).data.effective.defaultSessionWorkspace ===
+        "worktree",
+    "new non-Git main retains the persisted default until explicitly corrected",
+  )
+  check(
+    (await top().getByRole("status").innerText()).includes("其余更改尚未保存"),
+    "incompatible saved default reports partial success instead of Saved",
+  )
+  check(
+    await top().getByRole("button", { name: "保存", exact: true }).isDisabled(),
+    "incompatible saved default requires correction before saving again",
+  )
+  await top()
+    .locator(".project-folder-row")
+    .filter({ hasText: "backend" })
+    .getByRole("button", { name: "文件夹操作" })
+    .click()
+  await top().getByRole("button", { name: "设为主目录", exact: true }).click()
+  await top().getByRole("button", { name: "主目录", exact: true }).click()
+  await top().locator('[data-slot="dialog-footer"]').getByRole("button", { name: "保存", exact: true }).click()
+  await top()
+    .getByRole("status")
+    .filter({ hasText: /^已保存$/ })
+    .waitFor()
   await close()
   const mainSessionID = await submit("验证新任务使用 backend 主目录")
-  check(
-    (await client.session.get({ scopeID, sessionID: mainSessionID }, options)).data.workspace?.path === folders[1],
-    "next task uses changed main folder",
-  )
+  const mainSession = (await client.session.get({ scopeID, sessionID: mainSessionID }, options)).data
+  assert.equal(mainSession.workspace?.path, folders[1], "next task uses changed main folder")
+  checks.push("next task uses changed main folder")
   await open(scopeID)
   await page.locator("[data-worktree-task-selector]").click()
   await top()
@@ -344,6 +403,13 @@ try {
     .getByRole("button", { name: /合并并切换/ })
     .click()
   await page.waitForURL(route(scopeID))
+  await page.waitForFunction(
+    (expected) =>
+      document
+        .querySelector<HTMLElement>('[contenteditable="true"][role="textbox"]')
+        ?.innerText.replace(/\u200b/g, "") === expected,
+    "目标草稿\n\n当前草稿",
+  )
   check(
     (await editor.innerText()).replace(/\u200b/g, "") === "目标草稿\n\n当前草稿",
     "draft merge keeps destination before source",
@@ -495,7 +561,9 @@ try {
         const browser = nativePage.locator(".directory-navigation")
         await browser.waitFor()
         check(
-          !!(await browser.getByRole("textbox", { name: /^(文件夹路径|Folder path)$/ }).inputValue()),
+          !!(await browser
+            .getByRole("navigation", { name: /^(当前位置|Current location)$/ })
+            .getAttribute("aria-label")),
           "external Desktop localhost opens the service directory browser",
         )
         await nativePage.screenshot({
@@ -527,6 +595,7 @@ try {
         timeline,
         errors,
         scopeID,
+        fixture,
         sessions: [treeSessionID, mainSessionID, secondTreeSessionID],
         viewportNote:
           "720x450 checks the effective layout viewport at 200%; native zoom and OS picker are separate checks.",

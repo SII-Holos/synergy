@@ -109,3 +109,9 @@ Read [the domain guidance](references/conversation.md#conversation-process-and-r
 ## Verify File Review and Restoration
 
 Read [the domain guidance](references/resources.md#verify-file-review-and-restoration) when this area is affected.
+
+## Retained view changes
+
+Bind retained trees to immutable server/Scope/Session/plugin owners; audit descendant router reads, callbacks, async responses and native presentation when adding residency. Keep one active composer. Test A→B→A across Scopes with real DOM identity, reading/selection/draft continuity and bounded inactive work. Registry module promises and presentation instances have separate lifetimes. Eviction must preserve domain-owned drafts and native resources.
+
+For projected transport changes, exercise real WebSocket clients and replay with intentional omissions, genuine gaps, old subscription generations, oversized content and disconnect cleanup. Do not equate replay success with complete tool bodies: validate retained page generations after recovery. Keep performance fixtures semantic by creating user messages through `MessageV2.deriveSemantics()` with actual user Parts. Validate fixture visibility before recording timing. Compare identical workloads sequentially against production builds and retain invalid/failed samples separately from accepted measurements.

@@ -1,5 +1,8 @@
 import { RuntimeContext } from "../lifecycle/context"
 import type { Info as SessionInfo } from "./types"
+import { z } from "zod"
+
+export interface WorkflowKinds {}
 
 /**
  * H3 workflow kind registry: product domains register extension workflow
@@ -13,9 +16,14 @@ import type { Info as SessionInfo } from "./types"
  * core kinds.
  */
 export namespace WorkflowKindRegistry {
+  export type Workflow = [keyof WorkflowKinds] extends [never]
+    ? { kind: string; extension?: { kind: string }; [key: string]: unknown }
+    : WorkflowKinds[keyof WorkflowKinds] | { kind: "extension"; extension: { kind: string; payload?: unknown } }
   export interface Descriptor {
     /** Stable kind id persisted as `workflow.kind` (extension member). */
     id: string
+    schema?: z.ZodObject
+    inputSchema?: z.ZodObject
     managesLock?: boolean
     /** Core kinds this extension is mutually exclusive with. */
     conflicts: string[]
@@ -28,6 +36,7 @@ export namespace WorkflowKindRegistry {
     /** Enable the workflow on a session; owns conflict checks and the
      * durable projection write (runs under the workflow lock). */
     enable(input: { sessionID: string; args: Record<string, unknown> }): Promise<unknown>
+    update?(input: { sessionID: string; args: Record<string, unknown> }): Promise<unknown>
     /** Release the domain's durable workflow state when the interactive
      * workflow is cleared. */
     disable?(sessionID: string): Promise<void>
@@ -35,6 +44,7 @@ export namespace WorkflowKindRegistry {
 
   const runtimeState = RuntimeContext.state(() => ({
     descriptors: new Map<string, Descriptor>(),
+    generation: 0,
   }))
 
   export function register(descriptor: Descriptor): void {
@@ -45,6 +55,23 @@ export namespace WorkflowKindRegistry {
     RuntimeContext.assertCompositionOpen("workflow kind")
     if (existing) throw new Error(`Workflow kind ${descriptor.id} is already registered`)
     instanceState.descriptors.set(descriptor.id, descriptor)
+    instanceState.generation++
+  }
+
+  export function generation() {
+    return runtimeState().generation
+  }
+
+  export function schema() {
+    const variants = [...runtimeState().descriptors.values()].flatMap((item) => (item.schema ? [item.schema] : []))
+    return variants.length ? z.union(variants).meta({ ref: "SessionWorkflowInfo" }) : undefined
+  }
+
+  export function inputSchema() {
+    return z.union([
+      z.object({ kind: z.literal("none") }),
+      ...[...runtimeState().descriptors.values()].flatMap((item) => (item.inputSchema ? [item.inputSchema] : [])),
+    ])
   }
 
   export function get(id: string): Descriptor | undefined {
@@ -63,6 +90,7 @@ export namespace WorkflowKindRegistry {
     const instanceState = runtimeState()
 
     instanceState.descriptors.clear()
+    instanceState.generation++
   }
 
   /** Effective kind id of a persisted workflow projection: extension

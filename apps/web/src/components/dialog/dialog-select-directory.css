@@ -27,8 +27,6 @@
   color: var(--text-base);
 }
 .directory-navigation [data-component="button"].directory-navigation-edit:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
   box-shadow: none;
   color: var(--text-base);
 }
@@ -48,10 +46,6 @@
 .directory-navigation
   [data-component="icon-button"].directory-navigation-control:focus:not(:hover):not(:focus-visible) {
   background-color: transparent;
-}
-.directory-navigation [data-component="icon-button"].directory-navigation-control:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 .directory-navigation [data-component="icon-button"].directory-navigation-control:disabled {
   background-color: transparent;
@@ -99,10 +93,6 @@
 .directory-navigation-crumbs button:hover {
   background: var(--surface-float-base-hover);
   color: var(--text-base);
-}
-.directory-navigation-crumbs button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
 }
 .directory-navigation-list {
   padding: 2px;
@@ -181,9 +171,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   border-radius: var(--radius-sm);
-}
-.directory-navigation-selected-name > span:focus-visible {
-  outline: 2px solid var(--border-focus);
 }
 .directory-navigation [data-component="icon-button"].directory-navigation-deselect {
   width: 28px;

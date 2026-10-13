@@ -23,13 +23,16 @@ beforeAll(async () => {
     path.join(directory, "state.tsx"),
     `
     import { createSignal, Show } from "solid-js"
+    import { Dynamic } from "solid-js/web"
     export const [crash, setCrash] = createSignal(false)
+    const [available, setAvailable] = createSignal(true), [generation, setGeneration] = createSignal("one")
+    const registered = () => location.search === "?plugin-residency" ? available() ? entries.map(entry => ({...entry,pluginId:"fixture",retention:"pause",generation:generation()})) : [] : entries
     window.mounts = { side: 0, bottom: 0, extra: 0 }
     const entries = ["side", "bottom", "extra"].map(id => ({
       id, label: id, icon: "file", surfaces: ["side", "bottom"], cardinality: "multi",
       component: () => { window.mounts[id]++; return <div>
         {(() => { if (crash() && id === "side") throw new Error("Panel crashed"); return null })()}
-        {id === "side" && new URLSearchParams(location.search).has("workspace-navigation") ? window.navigationPanel() : <><button>{id} action</button><input aria-label={id + " draft"} /></>}
+        {id === "side" && location.search === "?native-browser" ? <Dynamic component={window.browserPanel} /> : id === "side" && new URLSearchParams(location.search).has("workspace-navigation") ? window.navigationPanel() : <><button>{id} action</button><input aria-label={id + " draft"} /></>}
       </div> }
     }))
     const states = Object.fromEntries(["side", "bottom"].map(id => {
@@ -42,10 +45,11 @@ beforeAll(async () => {
       return [id, { opened, setOpened, close: () => setOpened(false), toggle: () => setOpened(!opened()), size, setSize, tabs, setTabs,
         fullscreen, setFullscreen, activeTab: () => tabs().find(tab => tab.id === active()), active, setActive }]
     }))
-    window.fixture = { retarget: () => states.side.setTabs([{id:"side",panelId:"extra"}]), open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size(), populate: () => states.side.setTabs(Array.from({length:20}, (_,i) => ({ id: i ? 'tab-'+i : 'side', panelId:'side', title: 'Long document title ' + i }))) }
+    window.fixture = { resetTabs: () => states.side.setTabs([{id:"side",panelId:"side"}]), available: setAvailable, generation: setGeneration, select: id => states.side.setActive(id), retarget: () => states.side.setTabs([{id:"side",panelId:"extra"}]), open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size(), populate: () => states.side.setTabs(Array.from({length:20}, (_,i) => ({ id: i ? 'tab-'+i : 'side', panelId:'side', title: 'Long document title ' + i }))) }
     export const useWorkbenchPanels = () => ({
+      revalidating: () => false,
       openingForTab: () => undefined,
-      surface: id => states[id], panels: () => entries, panelForTab: tab => entries.find(x => x.id === tab?.panelId),
+      surface: id => states[id], panels: registered, panelForTab: tab => registered().find(x => x.id === tab?.panelId),
       interact() {}, activateTab(name, id) { states[name].setActive(id) }, getPanel: id => entries.find(entry => entry.id === id),
       panelTitle: tab => tab.title ?? tab.panelId, openPanel: () => {}, closeTab: () => {}, closeOtherTabs: () => {}, moveTab: () => {}
     })
@@ -54,13 +58,24 @@ beforeAll(async () => {
   `,
   )
   await Bun.write(
+    path.join(directory, "platform.ts"),
+    `
+    window.attachments = []; window.detachments = [];
+    export const usePlatform = () => ({ browserNative: {
+      attachView: async input => window.attachments.push(input), resizeView: async () => {},
+      detachView: async input => window.detachments.push(input), focusView: async () => {},
+      onEvent: listener => { window.nativeEvent = listener; return () => { window.nativeEvent = undefined } }
+    } })
+    `,
+  )
+  await Bun.write(
     path.join(directory, "topbar-services.ts"),
     `
     import { useLingui } from "@lingui/solid"
     export const useLocale = () => ({ i18n: useLingui().i18n() })
     export const useGlobalSDK = () => ({ client: {}, capabilities: { has: () => false } })
     export const useSDK = () => ({ connected: () => true, client: {} })
-    export const useExecution = () => ({ available: () => false, state: {} })
+    export const useExecution = () => ({retain() {},  available: () => false, state: {} })
     export const useLocal = () => ({ agent: { current: () => ({}) }, model: {
       current: () => ({ name: "Fixture model" }),
       variant: { list: () => ["high"], displayed: () => undefined, set() {} },
@@ -89,8 +104,12 @@ beforeAll(async () => {
     import { setupI18n } from "@lingui/core"
     import { I18nProvider } from "@lingui/solid"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+    import { ThemeProvider } from "@ericsanchezok/synergy-ui/theme"
     import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
     import { Popover } from "@ericsanchezok/synergy-ui/popover"
+    import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
+    import { NativeBrowserSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/native-browser-surface.tsx`)}
+    import { BrowserStoreProvider, createBrowserStore } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-store.tsx`)}
     import { MobileWorkspaceDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/mobile-workspace-dialog.tsx`)}
     import { WorkbenchSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/workbench-surface.tsx`)}
     import { WorkspaceNavigator } from ${JSON.stringify(`/@fs/${source}/components/workspace/workspace-navigator.tsx`)}
@@ -135,6 +154,14 @@ beforeAll(async () => {
       </div>
     }
     window.navigationPanel = () => <NavigatorProbe width="100%" layers />
+    window.browserPanel = () => {
+      let container
+      const store = createBrowserStore()
+      store.replacePages([{id:"page-one",profileId:"personal",status:"active",url:"https://example.test",title:"Test",isLoading:false,lastActiveAt:null}])
+      store.setPresentation({kind:"native",protocolVersion:BROWSER_PROTOCOL_VERSION,capabilities:{native:true},reason:"desktop-local"})
+      window.setBrowserError = store.setBrowserError
+      return <BrowserStoreProvider store={store}><div data-native-surface ref={container} style="position:relative;width:100%;height:400px"><NativeBrowserSurface container={() => container} ownerKey="owner-one" /></div></BrowserStoreProvider>
+    }
     function Fixture() {
       const dialog = useDialog()
       const [mobileOpen, setMobileOpen] = createSignal(false)
@@ -162,7 +189,7 @@ beforeAll(async () => {
           <div data-plugin-ui="synergy" style="display:contents"><aside class="sb-root sb-integrated sb-expanded" style="width:260px"><div class="sb-navigation"><button>Navigation</button></div></aside></div> : part === "route" ?
           <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <WorkspaceToggleProbe /> : view === "composer" ? <div style="position:absolute;bottom:0;left:0;right:0;z-index:50"><input aria-label="Composer draft" /></div> : null } }} /> : null }}} />
       </div>
-      if (location.search && location.search !== "?restored" && location.search !== "?workspace-navigation") return <NavigatorProbe />
+      if (location.search && location.search !== "?restored" && location.search !== "?workspace-navigation" && location.search !== "?plugin-residency" && location.search !== "?native-browser") return <NavigatorProbe />
       return <>
         <button onClick={() => window.fixture.open("side")}>Open side</button>
         <button onClick={() => window.fixture.open("bottom")}>Open bottom</button>
@@ -172,13 +199,14 @@ beforeAll(async () => {
         <button>After workspaces</button>
       </>
     }
-    render(() => <I18nProvider i18n={i18n}><DialogProvider><Fixture /></DialogProvider></I18nProvider>, document.querySelector("#root"))
+    render(() => <ThemeProvider><I18nProvider i18n={i18n}><DialogProvider><Fixture /></DialogProvider></I18nProvider></ThemeProvider>, document.querySelector("#root"))
   `,
   )
   server = await createBrowserFixture({
     root: directory,
     styled: true,
     aliases: [
+      { find: "@/context/platform", replacement: path.join(directory, "platform.ts") },
       { find: /^@\/context\/(workbench|layout)$/, replacement: path.join(directory, "state.tsx") },
       {
         find: /^@\/context\/(global-sdk|sdk|execution|local|command|sync|session-data-view|locale)$/,
@@ -220,6 +248,10 @@ afterAll(async () => {
 
 interface WorkbenchWindow extends Window {
   mounts: Record<string, number>
+  attachments: Array<{ pageId: string; visible: boolean }>
+  detachments: unknown[]
+  setBrowserError(error: { severity: "error"; message: string } | null): void
+  nativeEvent(event: { type: "native.cover"; pageId: string; url: string; dataUrl: string }): void
   fixture: {
     open(id: string): void
     close(id: string): void
@@ -228,7 +260,73 @@ interface WorkbenchWindow extends Window {
     size(id: string): number
     populate(): void
     retarget(): void
+    select(id: string): void
+    resetTabs(): void
   }
+}
+
+for (const width of [375, 1200]) {
+  test(`Workspace menus yield native Browser presentation and restore the same page at ${width}px`, async () => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.emulateMedia({ colorScheme: width === 375 ? "dark" : "light", reducedMotion: "reduce" })
+    await page.goto(baseUrl + "?native-browser")
+    await page.getByRole("button", { name: "Open side", exact: true }).click()
+    await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
+    const resource = page.getByRole("button", { name: "Open a resource", exact: true })
+    await resource.click()
+    await page.getByRole("menuitem", { name: "extra", exact: true }).focus()
+    expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible)).toBe(false)
+    await page.evaluate(() => {
+      const fixture = window as unknown as WorkbenchWindow
+      fixture.nativeEvent({
+        type: "native.cover",
+        pageId: "page-one",
+        url: "https://example.test",
+        dataUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+      })
+      fixture.setBrowserError({ severity: "error", message: "Page error" })
+    })
+    await page.locator("[data-native-surface] img").waitFor()
+    await page.keyboard.press("Escape")
+    await page.getByRole("menu").waitFor({ state: "detached" })
+    await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Open a resource")
+    expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible)).toBe(false)
+    await page.evaluate(() => (window as unknown as WorkbenchWindow).setBrowserError(null))
+    await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
+    expect(await page.locator("[data-native-surface] img").count()).toBe(0)
+
+    await resource.click()
+    await page.getByRole("menuitem", { name: "extra", exact: true }).click()
+    await page.getByRole("menu").waitFor({ state: "detached" })
+    await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
+
+    await page.getByRole("tab", { name: "side", exact: true }).click({ button: "right" })
+    await page.getByRole("menu").waitFor()
+    expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible)).toBe(false)
+    await page.keyboard.press("Escape")
+    await page.getByRole("menu").waitFor({ state: "detached" })
+    await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
+    await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.populate())
+    await page.getByRole("button", { name: "Tab actions", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Long document title 19", exact: true }).waitFor()
+    expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible)).toBe(false)
+    await page.keyboard.press("Escape")
+    await page.getByRole("menu").waitFor({ state: "detached" })
+    await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
+    await page.getByRole("button", { name: "Tab actions", exact: true }).click()
+    await page.getByRole("menu").waitFor()
+    await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.resetTabs())
+    await page.getByRole("menu").waitFor({ state: "detached" })
+    await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
+    expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).detachments)).toEqual([])
+    expect(
+      await page.evaluate(() => [
+        ...new Set((window as unknown as WorkbenchWindow).attachments.map((item) => item.pageId)),
+      ]),
+    ).toEqual(["page-one"])
+    expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).mounts.side)).toBe(1)
+    expect(errors).toEqual([])
+  })
 }
 
 async function openSurfaces() {
@@ -238,6 +336,28 @@ async function openSurfaces() {
   await page.getByRole("button", { name: "Open bottom", exact: true }).click()
   await page.getByRole("button", { name: "bottom action" }).waitFor()
 }
+
+test("recent panel switches preserve the editor node, selection and draft within a bounded cache", async () => {
+  await openSurfaces()
+  await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.populate())
+  const draft = page.getByRole("textbox", { name: "side draft" })
+  await draft.fill("Retained document")
+  const original = await draft.elementHandle()
+  await draft.evaluate((input: HTMLInputElement) => input.setSelectionRange(3, 8))
+  await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.select("tab-1"))
+  await page.getByRole("textbox", { name: "side draft" }).fill("Second document")
+  await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.select("side"))
+  expect(await draft.inputValue()).toBe("Retained document")
+  expect(await draft.evaluate((input, original) => input === original, original)).toBe(true)
+  expect(await draft.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd])).toEqual([3, 8])
+  expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).mounts.side)).toBe(2)
+  for (let index = 2; index < 20; index++) {
+    await page.evaluate((index) => (window as unknown as WorkbenchWindow).fixture.select(`tab-${index}`), index)
+  }
+  expect(await page.locator('input[aria-label="side draft"]').count()).toBeLessThanOrEqual(8)
+  expect(await page.getByRole("textbox", { name: "side draft" }).count()).toBe(1)
+  expect(errors).toEqual([])
+})
 
 function captureWorkspaceFrames() {
   return page.evaluate(
@@ -514,6 +634,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     await add.hover()
     const addHover = await styles()
     expect(addHover.background).not.toBe("rgba(0, 0, 0, 0)")
+    expect(addHover.buttons[0]).not.toBe("rgba(0, 0, 0, 0)")
     expect(addHover.buttons[0]).not.toBe(addHover.background)
     expect(addHover.buttons[1]).toBe("rgba(0, 0, 0, 0)")
     await page.mouse.down()
@@ -535,7 +656,8 @@ for (const colorScheme of ["light", "dark"] as const) {
     await page.keyboard.press("Escape")
     await page.getByRole("menu").waitFor({ state: "hidden" })
     await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Open a resource")
-    expect(await menu.evaluate((button) => getComputedStyle(button).outlineStyle)).toBe("solid")
+    expect(await menu.evaluate((button) => getComputedStyle(button).outlineStyle)).toBe("none")
+    expect(await menu.evaluate((button) => getComputedStyle(button).backgroundImage)).not.toBe("none")
     await page.keyboard.press("Shift+Tab")
     expect(await add.evaluate((button) => document.activeElement === button)).toBe(true)
     expect((await styles()).buttons[0]).not.toBe((await styles()).background)
@@ -1129,3 +1251,41 @@ test("modal workspace stays accessible and focusable below the dock width limit"
     await page.setViewportSize({ width: 1200, height: 1000 })
   }
 }, 20000)
+
+test("paused plugin panels survive registry reactivation but changed generations replace the instance", async () => {
+  await page.goto(`${baseUrl}?plugin-residency`)
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  const input = page.getByRole("textbox", { name: "side draft" })
+  await input.fill("retained plugin draft")
+  const original = await input.elementHandle()
+  await page.evaluate(() =>
+    (window as unknown as { fixture: { available(value: boolean): void } }).fixture.available(false),
+  )
+  expect(await original!.evaluate((element) => element.isConnected && element.getBoundingClientRect().height > 0)).toBe(
+    true,
+  )
+  expect(await original!.evaluate((element) => !!element.closest("[inert]"))).toBe(true)
+  await page.evaluate(() =>
+    (window as unknown as { fixture: { available(value: boolean): void } }).fixture.available(true),
+  )
+  expect(await input.inputValue()).toBe("retained plugin draft")
+  expect(await input.evaluate((element, previous) => element === previous, original)).toBe(true)
+  await page.evaluate(() =>
+    (window as unknown as { fixture: { generation(value: string): void } }).fixture.generation("two"),
+  )
+  expect(await input.inputValue()).toBe("")
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(false)
+})
+
+test("visiting more than the panel budget evicts old instances and keeps the active editor", async () => {
+  await page.goto(baseUrl)
+  await page.getByRole("button", { name: "Open side", exact: true }).click()
+  await page.evaluate(() => (window as unknown as { fixture: { populate(): void } }).fixture.populate())
+  for (let index = 1; index < 20; index++)
+    await page.evaluate(
+      (index) => (window as unknown as { fixture: { select(id: string): void } }).fixture.select("tab-" + index),
+      index,
+    )
+  expect(await page.locator("[data-resident-panel]").count()).toBe(8)
+  expect(await page.getByRole("textbox", { name: "side draft" }).count()).toBe(1)
+})

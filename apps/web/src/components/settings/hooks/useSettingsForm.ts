@@ -258,7 +258,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   params.setSettings("library", {
     learning:
       memory?.enabled === false && experience?.encode === false && experience?.retrieve === false ? "false" : "true",
-    autonomy: library?.autonomy === undefined ? UI_DEFAULTS.libraryAutonomy : library.autonomy ? "true" : "false",
+    autonomy: cfg.anima?.enabled === undefined ? UI_DEFAULTS.libraryAutonomy : cfg.anima.enabled ? "true" : "false",
     memorySimThreshold:
       memoryRetrieve?.simThreshold !== undefined ? String(memoryRetrieve.simThreshold) : UI_DEFAULTS.memorySimThreshold,
     memoryTopK: memoryRetrieve?.topK !== undefined ? String(memoryRetrieve.topK) : UI_DEFAULTS.memoryTopK,

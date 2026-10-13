@@ -64,7 +64,7 @@ One model step performs the following work:
 6. Build and measure the provider prompt.
 7. Trigger compaction instead of calling the model if the prompt crosses the configured soft budget or leaves no response space.
 8. Resolve a serializable model-facing tool catalog separately from Control Plane execution callbacks.
-9. Queue the provider turn on `AgentTurn`, consume its bounded event frames, and persist one assistant message.
+9. Queue the provider turn on `AgentTurn`, consume its bounded event frames, and persist one assistant message. Delta batches are bounded by 32 KiB and flush after 16 milliseconds for text/reasoning or 250 milliseconds for tool input, preserving serial delivery and acknowledgement backpressure. Partial tool input is presentation data; execution still requires the completed call.
 10. Release the model executor slot, dispatch generation-aware ToolTasks, authorize each operation in the Control Plane before physical execution, and settle results.
 11. Run post-LLM jobs, persist terminal state, and decide whether another model call is needed.
 

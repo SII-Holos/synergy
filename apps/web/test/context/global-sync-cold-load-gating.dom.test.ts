@@ -82,7 +82,7 @@ for (const scenario of ["gating", "removal-race"] as const) {
       return {
         scope: { bootstrapCore: () => (options.scopeID === "home" || options.scopeID.startsWith("background.")) ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve,done:false})) },
         permission: {list:()=>ok([])}, question: {list:()=>ok([])},
-        event:{replay:()=>new Promise(resolve=>replays.push(resolve))},
+        event:{replay:(input)=>new Promise(resolve=>replays.push({resolve,since:input?.since,epoch:input?.epoch}))},
         session:{list:()=>ok({total:0,data:[]}),inbox:()=>ok([]),
           get:()=>ok({id:"cold-session",scope:{id:"scope-cold"},version:1,title:"Cold replay",permission:[],time:{created:0,updated:0}}),
           volatileBatch:()=>ok({sessions:{}}),
@@ -93,7 +93,7 @@ for (const scenario of ["gating", "removal-race"] as const) {
       }
     }
     export const useSDK = () => ({scopeKey:"cold",scopeID:"scope-cold",url:"http://localhost/",directory:"probe",content:{retain:()=>({release(){}})},client:createSynergyClient({scopeID:"cold"})})
-    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true},prepareScopeState(){},connected:()=>false,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true,current:()=>({})},prepareScopeState(){},connected:()=>false,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>ok({})},
     }})
@@ -135,9 +135,12 @@ for (const scenario of ["gating", "removal-race"] as const) {
         startSession(sessionID){setHasSession(true);return syncApi.session.sync(sessionID)},
         completeTimeline(index,page){pages[index].resolve({data:page,response:{headers:{get:name=>name==="x-synergy-seq"?"1":name==="x-synergy-epoch"?"epoch-a":undefined}}})},
         completeReplay(index, events, seq, epoch) {
-          const resolve=replays[index]
-          if (!resolve) throw new Error("no pending replay "+index)
-          resolve({data:{status:"ok",epoch:epoch??"epoch-a",seq,events}})
+          const replay=replays[index]
+          if (!replay) throw new Error("no pending replay "+index)
+          const resolvedEpoch=epoch??replay.epoch??"epoch-a"
+          const since=replay.since??0
+          const cursor=seq>since?[{type:"server.cursor",epoch:replay.epoch??resolvedEpoch,seq,properties:{fromSeq:since,toSeq:seq}}]:[]
+          replay.resolve({data:{status:"ok",epoch:resolvedEpoch,seq,events:[...events,...cursor]}})
         },
         completePage(index, messageID) { pages[index].resolve({data:{items:[{info:{id:messageID,sessionID:"scope-session",role:"user",time:{created:2}},parts:[]}],referencedRoots:[],nextCursor:null,hasMore:false,total:1}}) },
         complete(key,data,version) {

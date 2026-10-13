@@ -1,0 +1,116 @@
+{
+  "name": "@ericsanchezok/synergy-lattice",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts",
+    "./lattice": "./src/lattice/index.ts",
+    "./lattice/action": "./src/lattice/action.ts",
+    "./lattice/action-service": "./src/lattice/action-service.ts",
+    "./lattice/bridge": "./src/lattice/bridge.ts",
+    "./lattice/controller": "./src/lattice/controller.ts",
+    "./lattice/error": "./src/lattice/error.ts",
+    "./lattice/event": "./src/lattice/event.ts",
+    "./lattice/lock": "./src/lattice/lock.ts",
+    "./lattice/machine": "./src/lattice/machine.ts",
+    "./lattice/migration": "./src/lattice/migration.ts",
+    "./lattice/model-calls": "./src/lattice/model-calls.ts",
+    "./lattice/policy": "./src/lattice/policy.ts",
+    "./lattice/prompt": "./src/lattice/prompt.ts",
+    "./lattice/prompt/base.txt": "./src/lattice/prompt/base.txt",
+    "./lattice/prompt/continue-blueprinting.txt": "./src/lattice/prompt/continue-blueprinting.txt",
+    "./lattice/prompt/continue-clarifying.txt": "./src/lattice/prompt/continue-clarifying.txt",
+    "./lattice/prompt/continue-planning.txt": "./src/lattice/prompt/continue-planning.txt",
+    "./lattice/prompt/continue-reviewing-blueprint.txt": "./src/lattice/prompt/continue-reviewing-blueprint.txt",
+    "./lattice/prompt/continue-reviewing-pathway.txt": "./src/lattice/prompt/continue-reviewing-pathway.txt",
+    "./lattice/prompt/entry-blueprinting.txt": "./src/lattice/prompt/entry-blueprinting.txt",
+    "./lattice/prompt/entry-clarifying.txt": "./src/lattice/prompt/entry-clarifying.txt",
+    "./lattice/prompt/entry-planning.txt": "./src/lattice/prompt/entry-planning.txt",
+    "./lattice/prompt/entry-reviewing-blueprint.txt": "./src/lattice/prompt/entry-reviewing-blueprint.txt",
+    "./lattice/prompt/entry-reviewing-pathway.txt": "./src/lattice/prompt/entry-reviewing-pathway.txt",
+    "./lattice/prompt/mode-auto.txt": "./src/lattice/prompt/mode-auto.txt",
+    "./lattice/prompt/mode-collaborative.txt": "./src/lattice/prompt/mode-collaborative.txt",
+    "./lattice/prompt/state-awaiting-execution.txt": "./src/lattice/prompt/state-awaiting-execution.txt",
+    "./lattice/prompt/state-blueprinting.txt": "./src/lattice/prompt/state-blueprinting.txt",
+    "./lattice/prompt/state-clarifying.txt": "./src/lattice/prompt/state-clarifying.txt",
+    "./lattice/prompt/state-planning.txt": "./src/lattice/prompt/state-planning.txt",
+    "./lattice/prompt/state-reviewing-blueprint.txt": "./src/lattice/prompt/state-reviewing-blueprint.txt",
+    "./lattice/prompt/state-reviewing-pathway.txt": "./src/lattice/prompt/state-reviewing-pathway.txt",
+    "./lattice/prompt/validation-repair.txt": "./src/lattice/prompt/validation-repair.txt",
+    "./lattice/register": "./src/lattice/register.ts",
+    "./lattice/routes/lattice": "./src/lattice/routes/lattice.ts",
+    "./lattice/run-service": "./src/lattice/run-service.ts",
+    "./lattice/runtime": "./src/lattice/runtime.ts",
+    "./lattice/session-pause": "./src/lattice/session-pause.ts",
+    "./lattice/startup": "./src/lattice/startup.ts",
+    "./lattice/store": "./src/lattice/store.ts",
+    "./lattice/tools/lattice-submit": "./src/lattice/tools/lattice-submit.ts",
+    "./lattice/tools/lattice-submit.txt": "./src/lattice/tools/lattice-submit.txt",
+    "./lattice/tools/pathway-read": "./src/lattice/tools/pathway-read.ts",
+    "./lattice/tools/pathway-read.txt": "./src/lattice/tools/pathway-read.txt",
+    "./lattice/tools/pathway-write": "./src/lattice/tools/pathway-write.ts",
+    "./lattice/tools/pathway-write.txt": "./src/lattice/tools/pathway-write.txt",
+    "./lattice/types": "./src/lattice/types.ts",
+    "./session-migration": "./src/session-migration.ts",
+    "./session-schema": "./src/session-schema.ts",
+    "./session/register": "./src/session/register.ts",
+    "./session/tool-mode-policy": "./src/session/tool-mode-policy.ts",
+    "./session/workflow": "./src/session/workflow.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/lattice",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-blueprint": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-note": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "lattice",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "lattice",
+    "requires": {
+      "local-runtime": "1.1.26",
+      "blueprint": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-blueprint": "1.1.26"
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}

@@ -28,6 +28,7 @@ description: Add or modify a Synergy CLI command, command group, positional, opt
 2. When the neighboring command family already supports structured output, support stable `--json` output with a documented success shape and machine-readable errors. Never include credentials in error output.
 3. Write self-explanatory help text: every command, positional, and option describes its purpose, and `--help` surfaces every major capability.
 4. Keep a raw escape hatch only where the family needs one. Never expose only a generic raw request command without high-level verbs.
+5. Setup flows must check registered configuration domains before exposing optional commands, showing guidance, probing owner-specific endpoints, constructing defaults or disabling a feature after a failed recommendation. Reject explicit unavailable owner input before requests or writes. Verify Core and Full compositions, including retained settings belonging to unloaded owners; model setup must not create or reset their configuration.
 
 ## Verify
 

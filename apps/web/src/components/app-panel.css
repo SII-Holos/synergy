@@ -97,8 +97,7 @@
   }
 
   [data-slot="radio-group-item-input"]:focus-visible + [data-slot="radio-group-item-label"] {
-    outline: 2px solid var(--border-focus);
-    outline-offset: -2px;
+    background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
   }
 }
 
@@ -184,11 +183,6 @@
       color: var(--text-strong);
       background: transparent;
       border-bottom-color: var(--text-strong);
-    }
-
-    &:focus-visible {
-      outline: 2px solid var(--border-focus);
-      outline-offset: -2px;
     }
   }
 }

@@ -28,7 +28,7 @@ test("history transitions replace branches while reconnect preserves the retaine
 import {createStore} from 'solid-js/store';
 import { SessionPartSnapshotFreshness } from ${JSON.stringify(freshnessPath)};
 const freshness = new SessionPartSnapshotFreshness();
-const state=createStore({status:'ready',path:{directory:''},scopeID:'home',session:[],message:{},messageWindow:{},latestContextMessage:{},part:{},partSummary:{},partPage:{},partVersion:{},permission:{},question:{},inbox:{},todo:{},dag:{},session_diff:{},cortex:[]});
+const state=createStore({status:'ready',path:{directory:''},scopeID:'home',session:[],message:{},messageVersion:{},messageWindow:{},latestContextMessage:{},part:{},partSummary:{},partPage:{},partVersion:{},permission:{},question:{},inbox:{},todo:{},dag:{},session_diff:{},cortex:[]});
 export const calls={messagePage:[],permissionList:[]};
 export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:create(),release(){}}),
   data:{scope:[]},

@@ -4,7 +4,7 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
 import { SessionInteraction } from "@ericsanchezok/synergy-harness/session/interaction"
-import { AppChannel } from "@ericsanchezok/synergy-connections/channel/app"
+import { AppChannel } from "@ericsanchezok/synergy-channels/channel/app"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -17,7 +17,7 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-import { registerSessionSchema } from "@ericsanchezok/synergy-workflows/session-schema"
+import { registerSessionSchema } from "@ericsanchezok/synergy-blueprint/session-schema"
 const runtime = await testRuntime({ register: registerSessionSchema })
 
 runtime.run(() => Log.init({ print: false }))

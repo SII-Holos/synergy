@@ -107,6 +107,7 @@ export interface NavEntry {
   parentID?: string
   blueprint?: {
     loopID?: string
+    source?: string
     loopRole?: "execution" | "audit"
     phase?: "running" | "auditing"
   }

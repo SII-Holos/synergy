@@ -3,9 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { jsonSchema } from "ai"
 import z from "zod"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
-import { createBuiltinMaxSubagents } from "@ericsanchezok/synergy-harness/test/internal/agent/builtin-max-subagents"
-import { createBuiltinLegacySubagents } from "@ericsanchezok/synergy-harness/test/internal/agent/builtin-legacy-subagents"
-import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint"
 import { MCP } from "@ericsanchezok/synergy-mcp"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -72,13 +70,6 @@ const allowAllAgent: Agent.Info = {
   mode: "primary",
   permission: PermissionNext.fromConfig({ "*": "allow" }),
   options: {},
-}
-
-const builtinCtx = {
-  defaults: [],
-  user: [],
-  role: () => undefined,
-  evolutionActive: false,
 }
 
 async function definitionIDs(
@@ -389,7 +380,8 @@ describe("tool exposure", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const agent = createBuiltinMaxSubagents(builtinCtx)["code-cartographer"]
+          const agent = await Agent.get("code-cartographer")
+          expect(agent).toBeDefined()
           const session = await Session.create({})
           let ids = await definitionIDs(session, { agent })
 
@@ -686,7 +678,8 @@ describe("tool exposure", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const agent = createBuiltinMaxSubagents(builtinCtx)["code-cartographer"]
+          const agent = await Agent.get("code-cartographer")
+          expect(agent).toBeDefined()
           const session = await Session.create({})
           const userTools = { "*": false, search_tools: true, expand_tools: true, note_read: true }
           const resolved = await ToolResolver.resolveWithAvailability({
@@ -813,7 +806,8 @@ describe("tool exposure", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const agent = createBuiltinMaxSubagents(builtinCtx)["code-cartographer"]
+            const agent = await Agent.get("code-cartographer")
+            expect(agent).toBeDefined()
             const session = await Session.create({})
             const search = await SearchToolsTool.init({ agent })
             const searchResult = await search.execute({ query: "no-match", limit: 8 }, toolContext(session.id))
@@ -1072,12 +1066,8 @@ describe("tool exposure", () => {
             draft.blueprint = { loopID: loop.id, loopRole: "execution" }
           })
 
-          const executionAgents = {
-            developer: createBuiltinLegacySubagents(builtinCtx).developer,
-            "implementation-engineer": createBuiltinMaxSubagents(builtinCtx)["implementation-engineer"],
-            "refactoring-engineer": createBuiltinMaxSubagents(builtinCtx)["refactoring-engineer"],
-          }
-          for (const [name, agent] of Object.entries(executionAgents)) {
+          for (const name of ["developer", "implementation-engineer", "refactoring-engineer"]) {
+            const agent = await Agent.get(name)
             if (!agent) throw new Error(`missing ${name}`)
             const executionAvailability = await ToolResolver.availability({
               agent,
@@ -1118,7 +1108,7 @@ describe("tool exposure", () => {
             auditTaskID: "ctx_review",
           })
 
-          const reviewerAgent = createBuiltinMaxSubagents(builtinCtx)["security-reviewer"]
+          const reviewerAgent = await Agent.get("security-reviewer")
           if (!reviewerAgent) throw new Error("missing security-reviewer")
           availability = await ToolResolver.availability({
             agent: reviewerAgent,
@@ -1222,11 +1212,10 @@ describe("tool exposure", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
-          const agents = createBuiltinMaxSubagents(builtinCtx)
           const recursiveTools = ["task", "task_list", "task_output", "task_cancel", "dagwrite", "dagread", "dagpatch"]
 
           for (const name of ["supervisor", "lightloop-reviewer"]) {
-            const agent = agents[name]
+            const agent = await Agent.get(name)
             if (!agent) throw new Error(`missing ${name}`)
             const availability = await ToolResolver.availability({
               agent,
@@ -1243,7 +1232,7 @@ describe("tool exposure", () => {
             expect(task?.description).toContain("implementation-engineer")
           }
 
-          const ordinary = agents["implementation-engineer"]
+          const ordinary = await Agent.get("implementation-engineer")
           if (!ordinary) throw new Error("missing implementation-engineer")
           const availability = await ToolResolver.availability({
             agent: ordinary,

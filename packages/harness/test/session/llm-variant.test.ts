@@ -6,7 +6,36 @@ import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 import { SessionPluginHooks } from "../../src/session/plugin-hooks"
+import { AgentPromptContributions } from "../../src/agent/prompt-contributions"
 const runtime = await testRuntime()
+
+test("final model guidance follows permitted tools including deferred tools in the owning Runtime", async () => {
+  await using owner = await testRuntime({
+    register() {
+      AgentPromptContributions.register("fixture", [
+        { requiredTools: ["fixture_deferred"], render: () => "Use fixture_deferred to retain the result." },
+      ])
+    },
+  })
+  for (const [context, available, expected] of [
+    [owner, ["fixture_deferred"], true],
+    [owner, [], false],
+    [runtime, ["fixture_deferred"], false],
+  ] as const) {
+    await context.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const request = input()
+          request.availableToolIDs = [...available]
+          const prepared = await LLM.prepare(request)
+          expect(prepared.system.join("\n").includes("Use fixture_deferred")).toBe(expected)
+        },
+      })
+    })
+  }
+})
 
 function model(): Provider.Model {
   return {

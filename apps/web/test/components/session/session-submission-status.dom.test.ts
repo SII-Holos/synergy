@@ -51,7 +51,7 @@ beforeAll(async () => {
   ])
   await Bun.write(
     path.join(directory, "execution.ts"),
-    "export const useExecution=()=>({available:()=>false,round:()=>undefined,open:()=>{}})",
+    "export const useExecution=()=>({retain() {}, available:()=>false,round:()=>undefined,open:()=>{}})",
   )
   server = await createServer({
     configFile: false,

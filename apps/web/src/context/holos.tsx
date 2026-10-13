@@ -73,7 +73,7 @@ export const { use: useHolos, provider: HolosProvider } = createSimpleContext<Ho
         setError(null)
         await sdk.capabilities.load()
         if (disposed || version !== refreshVersion) return
-        if (!sdk.capabilities.has("connections")) {
+        if (!sdk.capabilities.has("holos")) {
           setState(DEFAULT_STATE)
           return
         }
@@ -120,7 +120,7 @@ export const { use: useHolos, provider: HolosProvider } = createSimpleContext<Ho
     }
 
     const unsub = sdk.event.listen((e) => {
-      if (!sdk.capabilities.has("connections")) return
+      if (!sdk.capabilities.has("holos")) return
       const eventType = e.details?.type
       if (!eventType || !HOLOS_EVENTS.has(eventType)) return
 

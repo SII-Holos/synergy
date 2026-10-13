@@ -337,10 +337,6 @@ export const LibraryConfig = z
   .object({
     memory: MemoryConfig.optional(),
     experience: ExperienceConfig.optional(),
-    autonomy: z
-      .boolean()
-      .optional()
-      .describe("Enable autonomous background routines like anima daily wake (default: true)"),
   })
   .strict()
   .optional()
@@ -361,8 +357,72 @@ declare module "@ericsanchezok/synergy-harness/config/schema" {
 }
 type ConfigShapeType = typeof ConfigShape
 
+const StoredCategories = z.record(z.string(), z.unknown()).superRefine((values, ctx) => {
+  for (const category of MEMORY_CATEGORIES) {
+    if (values[category] === undefined) continue
+    const parsed = CategoryRetrieveConfig.passthrough().safeParse(values[category])
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) ctx.addIssue({ ...issue, path: [category, ...issue.path] })
+    }
+  }
+})
+
+function knowledgeShape(mode: "stored" | "public") {
+  const object = <S extends z.ZodRawShape>(schema: z.ZodObject<S>) =>
+    mode === "stored" ? schema.passthrough() : schema.strip()
+  const categories =
+    mode === "stored"
+      ? StoredCategories
+      : z
+          .record(z.string(), z.unknown())
+          .transform((values) =>
+            Object.fromEntries(
+              MEMORY_CATEGORIES.map((key) => [key, CategoryRetrieveConfig.strip().parse(values[key] ?? {})]),
+            ),
+          )
+  return object(LibraryConfig.unwrap())
+    .extend({
+      memory: object(MemoryConfig)
+        .extend({
+          retrieval: object(MemoryConfig.shape.retrieval.unwrap())
+            .extend({ categories: categories.optional() })
+            .optional(),
+          dedup: object(MemoryConfig.shape.dedup.unwrap()).optional(),
+        })
+        .optional(),
+      experience: object(ExperienceConfig)
+        .extend({
+          retrieve: z.union([z.boolean(), object(PassiveRetrieval)]).optional(),
+          learning: object(Learning)
+            .extend({ rewardWeights: object(Learning.shape.rewardWeights.unwrap()).optional() })
+            .optional(),
+        })
+        .optional(),
+    })
+    .optional()
+}
+
+const StoredLibrary = knowledgeShape("stored")
+const PublicLibrary = knowledgeShape("public")
+const StoredEmbedding = EmbeddingConfig.unwrap()
+  .extend({ local: LocalEmbeddingConfig.passthrough().optional() })
+  .passthrough()
+  .optional()
+const PublicEmbedding = EmbeddingConfig.unwrap()
+  .extend({ local: LocalEmbeddingConfig.strip().optional() })
+  .strip()
+  .optional()
+const StoredRerank = RerankConfig.unwrap().passthrough().optional()
+const PublicRerank = RerankConfig.unwrap().strip().optional()
+
 const contribution: ConfigExtensions.Contribution = {
   shape: ConfigShape,
+  storedShape: { library: StoredLibrary, embedding: StoredEmbedding, rerank: StoredRerank },
+  project(raw) {
+    if (raw.library !== undefined) raw.library = PublicLibrary.parse(raw.library)
+    if (raw.embedding !== undefined) raw.embedding = PublicEmbedding.parse(raw.embedding)
+    if (raw.rerank !== undefined) raw.rerank = PublicRerank.parse(raw.rerank)
+  },
   normalize(raw) {
     const result = raw as ConfigValues
     if (result.library) {
@@ -376,7 +436,6 @@ const contribution: ConfigExtensions.Contribution = {
       if (result.library.experience === undefined) {
         result.library.experience = { encode: true, retrieve: true, learning: { ...LEARNING_DEFAULTS } }
       }
-      if (result.library.autonomy === undefined) result.library.autonomy = true
     }
   },
   redact(raw, helpers) {

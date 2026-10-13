@@ -86,6 +86,11 @@ test("lists more Workspace-backed parent sessions than storage admission capacit
 test("lists more Workspace-backed child sessions than storage admission capacity", async () => {
   await withRecords(async ({ seed, records }) => {
     expect(await Session.children(seed.id)).toHaveLength(records.length)
+  }, "child")
+}, 30_000)
+
+test("pages more Workspace-backed child sessions than storage admission capacity", async () => {
+  await withRecords(async ({ seed, records }) => {
     expect((await Session.childPage({ parentID: seed.id })).items).toHaveLength(records.length)
   }, "child")
 }, 30_000)

@@ -60,9 +60,13 @@ test("configuration upgrade preserves models, custom agents, comments and prompt
     MigrationRegistry.register("config", [upgrade])
     await upgrade.up(() => {})
     const text = await Bun.file(file).text()
-    const config = parseJsonc(text)
+    const permissionFile = path.join(Global.Path.config, "synergy.d", "80-permissions.jsonc")
+    const commandFile = path.join(Global.Path.config, "synergy.d", "70-commands.jsonc")
+    const permissionText = await Bun.file(permissionFile).text()
+    const commandText = await Bun.file(commandFile).text()
+    const config = { ...parseJsonc(text), ...parseJsonc(permissionText), ...parseJsonc(commandText) }
     expect(text).toContain("// keep this comment")
-    expect(text).toContain("/* keep rule comment */")
+    expect(permissionText).toContain("/* keep rule comment */")
     expect(config).toMatchObject({
       default_agent: "forge",
       agent: {
@@ -82,6 +86,8 @@ test("configuration upgrade preserves models, custom agents, comments and prompt
     )
     await upgrade.up(() => {})
     expect(await Bun.file(file).text()).toBe(text)
+    expect(await Bun.file(permissionFile).text()).toBe(permissionText)
+    expect(await Bun.file(commandFile).text()).toBe(commandText)
   })
 })
 
@@ -150,6 +156,35 @@ test("Session upgrade changes only executable identities, including queued input
     ).toEqual({ type: "text", text: "synergy-max" })
     await upgrade.up(() => {})
     expect(await Storage.read<Record<string, unknown>>([...root, "info"])).toMatchObject({ agentOverride: "forge" })
+  })
+})
+
+test("relocating configuration merges missing fields without losing either owner's comments", async () => {
+  await using fixture = await migrationFixture()
+  await fixture.run(async () => {
+    MigrationRegistry.register("config", [migration("config")])
+    const source = path.join(Global.Path.config, "synergy.d", "60-agents.jsonc")
+    const target = path.join(Global.Path.config, "synergy.d", "80-permissions.jsonc")
+    await Bun.write(
+      source,
+      `// source remains\n{"permission":{"task":{"synergy-max" /* migrated rule */: "deny","*":"allow"}},"retained":{"custom":true}}`,
+    )
+    await Bun.write(
+      target,
+      `// destination remains\n{"permission":{"task":{"*" /* explicit override */:"ask"},"bash":"deny"},"unknown":{"keep":true}}`,
+    )
+    await ConfigReferenceMigration.file(source)
+    const text = await Bun.file(target).text()
+    expect(text).toContain("// destination remains")
+    expect(text).toContain("/* explicit override */")
+    expect(text).toContain("/* migrated rule */")
+    expect(parseJsonc(text)).toEqual({
+      permission: { task: { "*": "ask", forge: "deny" }, bash: "deny" },
+      unknown: { keep: true },
+    })
+    expect(parseJsonc(await Bun.file(source).text())).toEqual({ retained: { custom: true } })
+    await ConfigReferenceMigration.file(source)
+    expect(await Bun.file(target).text()).toBe(text)
   })
 })
 

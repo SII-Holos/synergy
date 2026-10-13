@@ -6,6 +6,7 @@ import { SessionHistory } from "../history"
 import { SessionProgress } from "../progress"
 import { SessionInbox } from "../inbox"
 import { SessionWorkflowService } from "../workflow"
+import { SessionExecutionOwners } from "../execution-owners"
 import { Storage } from "../../storage/storage"
 import { RolloutLedger } from "./ledger"
 import { RolloutSchema } from "./schema"
@@ -142,7 +143,12 @@ export namespace RolloutLifecycle {
   }
 
   export async function cancel(sessionID: string, runID: string) {
-    const session = await Session.get(sessionID)
+    const stored = await Session.get(sessionID)
+    const root = await MessageV2.get({ sessionID, messageID: runID }).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    const session = SessionExecutionOwners.forRoot(stored, root?.info)
     const identity = owner(session)
     let run = await RolloutLedger.requestCancel(identity, runID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
@@ -224,7 +230,12 @@ export namespace RolloutLifecycle {
 
   export async function reconcile(sessionID: string, runID: string, outcome?: "failed" | "cancelled") {
     using lock = await Lock.write(`session-rollout:${sessionID}:${runID}`)
-    const session = await Session.get(sessionID)
+    const stored = await Session.get(sessionID)
+    const root = await MessageV2.get({ sessionID, messageID: runID }).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    const session = SessionExecutionOwners.forRoot(stored, root?.info)
     const identity = owner(session)
     const run = await RolloutLedger.getRun(identity, runID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined

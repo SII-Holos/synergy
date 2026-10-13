@@ -26,6 +26,83 @@ function countWriterTransactions(onWrite: () => void) {
     return transaction.call(this, body, options) as Promise<T>
   })
 }
+test("display validation detects a tool-only change and deletion without reading message bodies", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Display validation" })
+        const ids = [Identifier.ascending("message"), Identifier.ascending("message")]
+        for (const [index, id] of ids.entries())
+          await Session.updateMessage({
+            id,
+            sessionID: session.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test", modelID: "test" },
+            time: { created: index + 1 },
+          })
+        const part: MessageV2.ToolPart = {
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID: ids[0],
+          type: "tool",
+          callID: "call",
+          tool: "test",
+          state: {
+            status: "completed",
+            input: {},
+            output: "initial",
+            title: "test",
+            metadata: {},
+            time: { start: 1, end: 2 },
+          },
+        }
+        await Session.updatePart(part)
+        await Session.flushPartWrites(session.id)
+        const timeline = await SessionHistory.timelinePage({ sessionID: session.id })
+        const pages = await SessionHistory.partPages({ sessionID: session.id, messageIDs: ids })
+        const messages = timeline.items.map((message) => ({
+          messageID: message.info.id,
+          version: message.version,
+          generation: pages[message.info.id].generation,
+        }))
+        const initial = await SessionHistory.displayManifest({ sessionID: session.id, messages })
+        expect(initial.messages.map((message) => message.status)).toEqual(["unchanged", "unchanged"])
+        await Session.updatePart({
+          ...part,
+          state: {
+            ...part.state,
+            status: "completed",
+            input: {},
+            output: "changed",
+            title: "test",
+            metadata: {},
+            time: { start: 1, end: 3 },
+          },
+        })
+        await Session.flushPartWrites(session.id)
+        using query = spyOn(Storage, "query")
+        using read = spyOn(Storage, "read")
+        using readMany = spyOn(Storage, "readMany")
+        const next = await SessionHistory.displayManifest({ sessionID: session.id, messages })
+        expect(next.messages.map((message) => message.status)).toEqual(["changed", "unchanged"])
+        expect(JSON.stringify(next)).not.toContain("output")
+        expect(query.mock.calls.filter(([input]) => input.kind === "part")).toHaveLength(0)
+        expect(
+          [...read.mock.calls.map(([key]) => key), ...readMany.mock.calls.flatMap(([keys]) => keys)].filter((key) =>
+            key.includes("parts"),
+          ),
+        ).toHaveLength(0)
+        await Session.removeMessage({ sessionID: session.id, messageID: ids[1] })
+        expect((await SessionHistory.displayManifest({ sessionID: session.id, messages })).messages[1].status).toBe(
+          "deleted",
+        )
+        await Session.remove(session.id)
+      },
+    })
+  }))
 
 test("reasoning without readable text retains its evidence but has no display entrance", () => {
   for (const text of ["", " \n\t", "Readable reasoning"]) {

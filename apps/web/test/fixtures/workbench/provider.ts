@@ -130,6 +130,7 @@ if (import.meta.main) {
       domain: "providers",
       configDomainUpdateInput: {
         config: {
+          enabled_providers: ["fixture"],
           provider: {
             fixture: {
               name: "Workbench fixture",

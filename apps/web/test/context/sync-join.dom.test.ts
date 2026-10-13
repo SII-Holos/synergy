@@ -49,11 +49,12 @@ export const BrowserCatalogProvider = props => props.children
 export const useSessionDecision = () => ({ respondPermission() {} })
 export const useNavigateToSession = () => () => {}
 export const createSessionDataRuntime = () => ({})
+export const useGlobalSDK = () => ({ capabilities: { load: async () => {}, has: () => true, current: () => ({}) } })
 const state = createStore({
   status: "ready",
   path: { directory: "probe" },
   scopeID: "probe",
-  session: [], message: {}, messageWindow: {}, part: {}, partSummary: {}, partPage: {},
+  session: [], message: {}, messageVersion: {}, messageWindow: {}, part: {}, partSummary: {}, partPage: {},
   partVersion: {}, latestContextMessage: {}, session_diff: {}, inbox: {}, todo: {}, dag: {},
   workspaces: [],
 })
@@ -162,7 +163,7 @@ globalThis.syncJoinProbe = { api: () => api, dispose, callsMade, releaseAll, ins
           { find: /^@ericsanchezok\/synergy-ui\/context$/, replacement: stub },
           { find: /^@solidjs\/router$/, replacement: stub },
           {
-            find: /^@\/(?:context\/(?:sdk|local|file|execution|global-sync|session-data-view|session-decision)|components\/workspace\/browser\/browser-catalog|composables\/use-navigate-to-session)$/,
+            find: /^@\/(?:context\/(?:sdk|local|file|execution|global-sdk|global-sync|session-data-view|session-decision)|components\/workspace\/browser\/browser-catalog|composables\/use-navigate-to-session)$/,
             replacement: stub,
           },
           { find: "@", replacement: path.resolve(import.meta.dir, "../../src") },

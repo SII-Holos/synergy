@@ -271,7 +271,7 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
             <label class="flex flex-col gap-1 text-10-medium text-text-weak">
               {_({ id: "app.boss.spawn.roleLabel", message: "Worker role" })}
               <input
-                class="h-8 rounded-lg border border-border-base bg-surface-base px-2 text-12-regular text-text-strong outline-none focus:border-border-interactive-base"
+                class="h-8 rounded-lg border border-border-base bg-surface-base px-2 text-12-regular text-text-strong outline-none"
                 placeholder={_({ id: "app.boss.spawn.rolePlaceholder", message: "Worker role (e.g. code)" })}
                 value={spawnRole()}
                 onInput={(event) => setSpawnRole(event.currentTarget.value)}
@@ -280,7 +280,7 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
             <label class="flex flex-col gap-1 text-10-medium text-text-weak">
               {_({ id: "app.boss.spawn.agentLabel", message: "Agent" })}
               <input
-                class="h-8 rounded-lg border border-border-base bg-surface-base px-2 text-12-regular text-text-strong outline-none focus:border-border-interactive-base"
+                class="h-8 rounded-lg border border-border-base bg-surface-base px-2 text-12-regular text-text-strong outline-none"
                 placeholder={_({ id: "app.boss.spawn.agentPlaceholder", message: "Agent (e.g. atlas)" })}
                 value={spawnAgent()}
                 onInput={(event) => setSpawnAgent(event.currentTarget.value)}
@@ -441,7 +441,7 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
                 <Show when={assignOpen()}>
                   <div class="mt-2 grid gap-2 @md:grid-cols-[minmax(160px,0.7fr)_minmax(240px,1.5fr)_auto]">
                     <select
-                      class="h-8 rounded-lg border border-border-base bg-surface-base px-2 text-11-regular text-text-strong outline-none focus:border-border-interactive-base"
+                      class="h-8 rounded-lg border border-border-base bg-surface-base px-2 text-11-regular text-text-strong outline-none"
                       value={assignTarget() ?? ""}
                       onChange={(event) => setAssignTarget(event.currentTarget.value)}
                     >
@@ -457,7 +457,7 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
                       </For>
                     </select>
                     <textarea
-                      class="min-h-8 resize-none rounded-lg border border-border-base bg-surface-base px-2 py-1.5 text-11-regular text-text-strong outline-none placeholder:text-text-weaker focus:border-border-interactive-base"
+                      class="min-h-8 resize-none rounded-lg border border-border-base bg-surface-base px-2 py-1.5 text-11-regular text-text-strong outline-none placeholder:text-text-weaker"
                       placeholder={_({ id: "app.boss.assign.taskPlaceholder", message: "Task description…" })}
                       value={assignTaskText()}
                       onInput={(event) => setAssignTaskText(event.currentTarget.value)}

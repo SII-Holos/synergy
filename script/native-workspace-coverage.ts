@@ -38,6 +38,7 @@ export function nativeWorkspaceBatches(windows: boolean) {
         "test/session/tool-resolver-bash-profile.test.ts",
         "test/workspace-file",
         "test/file/watcher-events.test.ts",
+        "test/file/watcher-native-queue.test.ts",
       ]
   suites.push(
     "test/environment/executor.test.ts",

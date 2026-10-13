@@ -43,7 +43,7 @@ import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { createAutoScroll } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
 import { getSemanticIcon } from "./semantic-icon"
-import { isToolCardHidden } from "./tool-result-presentation"
+import { isToolCardHidden, toolFeatureAvailable } from "./tool-result-presentation"
 import { ToolResultBody } from "./tool-result-body"
 import { CompactionCard } from "./compaction-card"
 import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
@@ -1468,6 +1468,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
   const view = data.view
   const part = () => props.part as ToolPart
+  const available = () => toolFeatureAvailable(part(), data.hasFeature)
   if (isToolCardHidden(part()) && part().state.status !== "error") return null
 
   const permission = createMemo(() => {
@@ -1482,8 +1483,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const audit = createMemo(() => getApprovalAudit(approval()))
 
   return (
-    <div data-component="tool-part-wrapper" data-permission={!!permission()}>
-      <Show when={audit().icon}>
+    <div data-component="tool-part-wrapper" data-permission={available() && !!permission()}>
+      <Show when={available() && audit().icon}>
         <Tooltip
           placement="right"
           value={
@@ -1502,6 +1503,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       </Show>
       <div data-component="tool-card-area">
         <ToolResultBody
+          hasFeature={data.hasFeature}
           part={part()}
           serverUrl={data.serverUrl}
           sessionId={props.message.sessionID}

@@ -62,7 +62,8 @@ test("part repair preserves history, diffs, and compaction ownership", async () 
         session:{list:()=>ok({total:0,data:[]}),inbox:()=>ok([]),timelinePage:(_input, options)=>new Promise(resolve=>pages.push({resolve,signal:options.signal}))},
       }
     }
-    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true},prepareScopeState(){},connected:()=>false,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    const capabilitySnapshot = {}
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true,current:()=>capabilitySnapshot},prepareScopeState(){},connected:()=>false,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>ok({})},
     }})

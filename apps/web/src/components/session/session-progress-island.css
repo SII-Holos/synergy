@@ -30,11 +30,6 @@
   color: var(--text-base);
   background: var(--workbench-row-bg-hover);
 }
-.session-progress-island-header:focus-visible,
-.session-progress-island-tab:focus-visible {
-  outline: 2px solid var(--border-interactive-base);
-  outline-offset: 2px;
-}
 .session-progress-island-title {
   min-width: 0;
   overflow: hidden;
@@ -104,10 +99,6 @@
 .session-progress-island-close:hover {
   background: var(--workbench-row-bg-hover);
   color: var(--text-base);
-}
-.session-progress-island-close:focus-visible {
-  outline: 2px solid var(--border-interactive-base);
-  outline-offset: 2px;
 }
 .session-progress-island[data-expanded="true"] {
   z-index: 50;

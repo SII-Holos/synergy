@@ -1,0 +1,99 @@
+.pending-composer-queue {
+  position: relative;
+  margin: 0 12px -10px;
+  padding-bottom: 10px;
+  border: 1px solid var(--border-base);
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  background: var(--background-weak);
+  color: var(--text-base);
+}
+
+.pending-composer-list {
+  max-height: min(176px, 24dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.pending-composer-queue [data-slot="pending-timeline-item"] {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-weak-base);
+}
+
+.pending-composer-queue [data-slot="pending-timeline-item"]:last-child {
+  border-bottom: 0;
+}
+
+.pending-composer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 32px;
+}
+
+.pending-composer-status {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  color: var(--text-weak);
+}
+
+.pending-composer-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-base);
+  font-size: var(--type-ui-body-size);
+  line-height: var(--type-ui-body-line-height);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-composer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.pending-composer-actions [data-component="button"] {
+  height: 32px;
+  padding-inline: 8px;
+  color: var(--text-weak);
+}
+
+.pending-composer-actions [data-component="button"]:hover {
+  color: var(--text-base);
+}
+
+.pending-composer-feedback {
+  margin-top: 6px;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+[data-prompt-pending] {
+  display: flow-root;
+}
+
+.session-prompt-dock-content:has(.session-composer[data-expanded]) [data-prompt-pending] {
+  display: none;
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  .pending-composer-queue {
+    margin-inline: 8px;
+  }
+
+  .pending-composer-queue [data-slot="pending-timeline-item"] {
+    padding: 4px 8px;
+  }
+
+  .pending-composer-actions [data-component="button"] {
+    min-width: 44px;
+    height: 44px;
+  }
+}

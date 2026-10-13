@@ -33,11 +33,23 @@ export namespace SessionHistory {
   export const TimelinePage = SessionHistoryDisplay.TimelinePage
   export const PartPage = SessionHistoryDisplay.PartPage
   export const PartPages = SessionHistoryDisplay.PartPages
+  export const DisplayManifest = SessionHistoryDisplay.DisplayManifest
+  export const DisplayManifestInput = SessionHistoryDisplay.DisplayManifestInput
   export const PartContent = SessionHistoryDisplay.PartContent
   export const DisplayConflict = SessionHistoryDisplay.Conflict
   export const summarizePart = SessionHistoryDisplay.summarizePart
   export const summarizeMessage = SessionHistoryDisplay.summarizeMessage
   export const MessageDetails = SessionHistoryDisplay.MessageDetails
+
+  export async function refreshDisplayPart(scopeID: string, part: MessageV2.Part) {
+    await Storage.transaction(async () => {
+      const key = StoragePath.sessionDisplayPart(scopeID, part.sessionID, part.messageID, part.id)
+      const [display] = await Storage.readMany<Record<string, unknown>>([key])
+      if (!display) return
+      await SessionHistoryDisplay.partWritten(scopeID, part)
+      await Storage.write(key, { ...display, ...summarizePart(part) })
+    })
+  }
 
   export async function prepareDisplay(sessionID: string, progress?: (current: number, total: number) => void) {
     const session = await SessionManager.requireSession(sessionID)
@@ -139,6 +151,13 @@ export namespace SessionHistory {
     const session = await SessionManager.requireSession(input.sessionID)
     await requireDisplayMessage(session, input.messageID)
     return SessionHistoryDisplay.partPage(input, session.scope.id)
+  }
+  export async function displayManifest(input: Parameters<typeof SessionHistoryDisplay.displayManifest>[0]) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+    return Storage.snapshot(async () =>
+      SessionHistoryDisplay.displayManifest(input, session.scope.id, await displayVisibility(session)),
+    )
   }
   export async function partPages(input: { sessionID: string; messageIDs: string[]; limit?: number }) {
     const session = await SessionManager.requireSession(input.sessionID)
@@ -894,6 +913,7 @@ export namespace SessionHistory {
   }): Promise<MessagePage> {
     const session = await SessionManager.requireSession(input.sessionID)
     const scopeID = session.scope.id
+    await prepareSessionMigrations({ scopeID, sessionID: session.id })
     const [infos, events] = await Promise.all([readMessageInfo(input.sessionID), readEvents(input.sessionID)])
     const loadedParts = new Map<string, MessageV2.Part[]>()
     const loadParts = async (messageID: string) => {
@@ -1169,6 +1189,25 @@ export namespace SessionHistory {
 
   export function messageInfos(sessionID: string) {
     return readMessageInfo(sessionID)
+  }
+
+  export async function effectiveMessageInfos(session: Info) {
+    const [infos, events] = await Promise.all([
+      MessageV2.readInfoList({ scopeID: asScopeID(session.scope.id), sessionID: asSessionID(session.id) }),
+      readSessionEvents(session),
+    ])
+    const canonical = await deriveInfoSemantics(infos, async (messageID) => {
+      const parts: MessageV2.Part[] = []
+      for await (const record of Storage.records<MessageV2.Part>({
+        kind: "part",
+        scopeID: session.scope.id,
+        sessionID: session.id,
+        messageID,
+      }))
+        parts.push(upgradeAccessRecord(record.key, record.value))
+      return parts.sort((a, b) => a.id.localeCompare(b.id))
+    })
+    return applyEventsToInfo(canonical, events)
   }
 
   async function readMessageInfo(sessionID: string) {

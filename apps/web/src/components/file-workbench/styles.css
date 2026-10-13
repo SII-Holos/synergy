@@ -184,11 +184,6 @@
   font-size: 13px;
   transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
-.file-options-menu button:focus-visible,
-.file-options-menu a:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
-}
 .file-breadcrumb-separator {
   flex-shrink: 0;
 }
@@ -497,11 +492,6 @@
   color: var(--icon-weak);
 }
 
-.file-explorer-search:focus-within {
-  box-shadow: inset 0 -1px var(--border-focus);
-  color: var(--icon-base);
-}
-
 .file-explorer-search-input {
   min-width: 0;
   flex: 1;
@@ -543,11 +533,6 @@
   font-weight: 600;
 }
 
-.file-tree:focus-visible {
-  outline: 1px solid var(--border-focus);
-  outline-offset: -1px;
-}
-
 .file-tree-row,
 .file-tree-state {
   display: flex;
@@ -570,7 +555,7 @@
 }
 
 .file-tree-row--focused {
-  box-shadow: inset 0 0 0 1px var(--border-focus);
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 
 .file-tree-disclosure {
@@ -709,10 +694,6 @@
   color: var(--text-base);
   font: inherit;
   font-size: 12px;
-}
-.file-explorer-folder:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 
 .file-tree-new-tab {

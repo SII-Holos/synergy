@@ -6,6 +6,7 @@ import {
   settingsSectionGroupKey,
 } from "../../../src/components/settings/settings-section-copy"
 import { settingsGroupOrder } from "../../../src/components/settings/catalog"
+import { settingsSearchResults } from "../../../src/components/settings/settings-search"
 
 const builtin: SettingsSection = {
   id: "general",
@@ -27,6 +28,17 @@ const plugin: SettingsSection = {
 }
 
 describe("settings section localization", () => {
+  test("Anima-only controls are not searchable in a Library-only selection", () => {
+    const learning: SettingsSection = { id: "learning", label: "Learning", group: "Library" }
+    const translate = (descriptor: MessageDescriptor) => descriptor.message ?? descriptor.id!
+    const absent = localizeSettingsSection(learning, translate, () => false)
+    expect(settingsSearchResults([absent], "autonomy")).toEqual([])
+    expect(settingsSearchResults([absent], "Anima")).toEqual([])
+    expect(absent.rowLabels).not.toContain("Autonomous routines")
+    const enabled = localizeSettingsSection(learning, translate, (id) => id === "anima")
+    expect(settingsSearchResults([enabled], "Anima")).toHaveLength(1)
+    expect(enabled.rowLabels).toContain("Autonomous routines")
+  })
   test("resolves built-in metadata through the active Lingui catalog", () => {
     const i18n = setupI18n({ locale: "zh-CN" })
     i18n.loadAndActivate({

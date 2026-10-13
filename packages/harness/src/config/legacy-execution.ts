@@ -1,5 +1,11 @@
+import path from "node:path"
+import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
+import { mergeDeep } from "remeda"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { RuntimeContext } from "../lifecycle/context"
 import { Log } from "../util/log"
+import { ConfigDomain } from "./domain"
+import { ConfigReferenceMigration } from "./reference-migration"
 
 /** One-release input adapter. Persisted files are upgraded by the config migration. */
 export namespace LegacyExecutionConfig {
@@ -24,17 +30,75 @@ export namespace LegacyExecutionConfig {
   export function migrate(value: unknown): unknown {
     if (!object(value) || !object(value.experimental)) return value
     const result = structuredClone(value)
-    const legacy = value.experimental
+    const legacy = result.experimental as Record<string, unknown>
     for (const [old, [domain, key]] of Object.entries(fields)) {
-      if (!(old in legacy)) continue
+      if (!(old in legacy) || !ConfigDomain.domainForKey(domain)) continue
       const current = result[domain]
       if (current !== undefined && !object(current)) throw new Error(`Invalid ${domain} configuration`)
       result[domain] = { ...current, [key]: old === "mcp_timeout" ? legacy[old] : (current?.[key] ?? legacy[old]) }
+      delete legacy[old]
     }
-    const unknown = Object.keys(legacy).filter((key) => key !== "batch_tool" && !(key in fields))
-    if (unknown.length) throw new Error(`Unknown legacy execution settings: ${unknown.join(", ")}`)
-    delete result.experimental
+    delete legacy.batch_tool
+    if (!Object.keys(legacy).length) delete result.experimental
     return result
+  }
+  export function upgradeConfig(config: Record<string, unknown>) {
+    const migrated = migrate(config)
+    if (!object(migrated)) return
+    Object.assign(config, migrated)
+    if (!("experimental" in migrated)) delete config.experimental
+  }
+
+  async function read(filepath: string) {
+    const raw = await Bun.file(filepath)
+      .text()
+      .catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return undefined
+        throw error
+      })
+    if (raw === undefined || !raw.trim()) return undefined
+    const errors: ParseError[] = []
+    const config: unknown = parse(raw, errors, { allowTrailingComma: true })
+    if (errors.length || !object(config)) throw new Error("Invalid configuration migration input")
+    return { raw, config }
+  }
+
+  export async function file(filepath: string): Promise<boolean> {
+    const current = await read(filepath)
+    if (!current || !("experimental" in current.config)) return false
+    const migrated = migrate(current.config)
+    if (!object(migrated)) return false
+    const owner = ConfigDomain.domainForFile(filepath)
+    const domainFile = owner || path.basename(path.dirname(filepath)) === "synergy.d"
+    const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+    let text = current.raw
+    for (const key of new Set([...Object.keys(current.config), ...Object.keys(migrated)])) {
+      const value = migrated[key]
+      if (JSON.stringify(current.config[key]) === JSON.stringify(value)) continue
+      const targetOwner = ConfigDomain.domainForKey(key)
+      if (domainFile && targetOwner && targetOwner.id !== owner?.id) {
+        const target = path.join(path.dirname(filepath), targetOwner.filename)
+        const existing = await read(target)
+        const stored = existing?.config[key]
+        const merged =
+          object(stored) && object(value)
+            ? key === "mcpDefaults"
+              ? mergeDeep(stored, value)
+              : mergeDeep(value, stored)
+            : (stored ?? value)
+        const raw = existing?.raw ?? "{}"
+        const updated = applyEdits(raw, modify(raw, [key], merged, { formattingOptions }))
+        if (updated !== raw) await AtomicFile.writeFileAtomic(target, updated, { private: true, durable: true })
+        text = applyEdits(text, modify(text, [key], undefined, { formattingOptions }))
+      } else text = applyEdits(text, modify(text, [key], value, { formattingOptions }))
+    }
+    if (text === current.raw) return false
+    await AtomicFile.writeFileAtomic(filepath, text, { private: true, durable: true })
+    return true
+  }
+
+  export async function up(progress: (current: number, total: number) => void) {
+    await ConfigReferenceMigration.up(progress, { transform: file })
   }
   export function environment(env: NodeJS.ProcessEnv = RuntimeContext.current().host.env): Record<string, unknown> {
     const instanceState = runtimeState()

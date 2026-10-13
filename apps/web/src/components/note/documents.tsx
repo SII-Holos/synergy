@@ -1,4 +1,4 @@
-import { createRoot, onCleanup } from "solid-js"
+import { createEffect, createRoot, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
@@ -16,6 +16,10 @@ export const { use: useNoteDocuments, provider: NoteDocumentsProvider } = create
     const windowKey = sessionStorage.getItem("synergy.note.window") ?? generateUUID()
     sessionStorage.setItem("synergy.note.window", windowKey)
     const documents = new Map<string, { controller: NoteDocumentController; dispose: () => void; readers: number }>()
+    createEffect(() => {
+      const available = sdk.capabilities.has("note")
+      for (const { controller } of documents.values()) controller.setAvailable(available)
+    })
     const prune = (keep: string) => {
       for (const [key, value] of documents) {
         if (documents.size <= 32) return
@@ -105,6 +109,7 @@ export const { use: useNoteDocuments, provider: NoteDocumentsProvider } = create
               return result.data
             },
           })
+          controller.setAvailable(sdk.capabilities.has("note"))
           documents.set(key, { controller, dispose, readers: 0 })
           prune(key)
           return controller

@@ -15,7 +15,7 @@ import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
-async function fixture(body: (target: RenderArtifact.Target) => Promise<void>) {
+async function fixture(body: (target: RenderArtifact.Target) => Promise<void>, native = false) {
   await using tmp = await tmpdir({ git: true })
   await ScopeContext.provide({
     scope: await tmp.scope(),
@@ -49,7 +49,16 @@ async function fixture(body: (target: RenderArtifact.Target) => Promise<void>) {
         const partID = Identifier.ascending("part")
         const tool = await RenderTool.init()
         const result = await tool.execute(
-          { html: "<button>Explore</button>" },
+          tool.parameters.parse(
+            native
+              ? {
+                  ui: {
+                    state: { workers: 1 },
+                    nodes: [{ id: "workers", type: "slider", label: "Explore", state: "workers", min: 1, max: 8 }],
+                  },
+                }
+              : { html: "<button>Explore</button>" },
+          ),
           {
             sessionID: session.id,
             messageID,
@@ -152,6 +161,7 @@ test("full export and import retain immutable source identity and independently 
   runtime.run(() =>
     fixture(async (target) => {
       const original = await Render.read(target)
+      expect(original.source.ui?.state).toEqual({ workers: 1 })
       await Render.write(target, { revision: 0, mutationID: "export", content: { modelContent: { workers: 8 } } })
       const report = await SessionExport.generate({ sessionID: target.sessionID, mode: "full" })
       const imported = await SessionImport.fromReport(report)
@@ -171,5 +181,5 @@ test("full export and import retain immutable source identity and independently 
       } finally {
         await Session.remove(imported.rootSessionID)
       }
-    }),
+    }, true),
   ))

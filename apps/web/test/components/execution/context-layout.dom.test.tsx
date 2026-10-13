@@ -85,7 +85,7 @@ beforeAll(async () => {
     configFile: false,
     logLevel: "error",
     root: directory,
-    resolve: { alias: { "@/context/sdk": path.join(directory, "sdk.ts") } },
+    resolve: { alias: { "@/context/sdk": path.join(directory, "sdk.ts"), "@": path.resolve(source, "../..") } },
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
     build: {
       outDir: path.join(directory, "dist"),

@@ -8,15 +8,17 @@ import { makeResizeObserver } from "@solid-primitives/resize-observer"
  * goes stale after the shell swap, `--prompt-height` stays unset, and overlays
  * such as the scroll-to-bottom button fall back to an offset the dock covers.
  */
-export function createPromptDockHeight(onHeight: (height: number) => void) {
+export function createPromptDockHeight(onHeight: (height: number) => void, enabled: () => boolean = () => true) {
   const [dock, setDock] = createSignal<HTMLDivElement | undefined>()
   const { observe, unobserve } = makeResizeObserver(
     (entries) => {
+      if (!enabled()) return
       for (const entry of entries) onHeight(Math.ceil(entry.target.getBoundingClientRect().height))
     },
     { box: "border-box" },
   )
   createEffect(() => {
+    if (!enabled()) return
     const element = dock()
     if (!element) return
     observe(element)

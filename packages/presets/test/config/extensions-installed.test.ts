@@ -50,7 +50,7 @@ test("installed owner configuration validates an early schema reference and pres
         const file = ConfigDomain.filepath("general", root)
         await fs.mkdir(path.dirname(file), { recursive: true })
         await Bun.write(file, JSON.stringify({ username: "before", embedding: { apiKey: "preserved" } }))
-        assert.equal((await Config.domainGet("general", root)).embedding.apiKey, "preserved")
+        assert.equal((await Config.domainGet("general", root)).embedding, undefined)
         await Config.domainUpdate("general", { username: "after" }, { root, mode: "replace-domain" })
         assert.deepEqual(JSON.parse(await Bun.file(file).text()), { username: "after", embedding: { apiKey: "preserved" } })
       } finally {
@@ -87,7 +87,7 @@ test("installed owner configuration validates an early schema reference and pres
       assert.deepEqual(ConfigExtensions.references({
         external_agent: { researcher: { model: "target/model" } },
         quick_switcher: { models: [{ providerID: "target", modelID: "model" }] },
-        channel: { chat: { type: "feishu", accounts: { bot: { model: "target/model" } } } },
+        channel: { chat: { type: "feishu", accounts: { bot: { appId: "fixture", appSecret: "fixture", model: "target/model" } } } },
       }, "target").sort(), ["channel.chat.accounts.bot.model", "external_agent.researcher.model", "quick_switcher.models[0]"].sort())
       ConfigExtensions.register("invalid-core-owner", { shape: { model: z.boolean() } })
       assert.throws(() => early.shape, /already owned by the harness/)

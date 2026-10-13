@@ -820,7 +820,7 @@ export function Sidebar(props: SidebarProps) {
                 />
 
                 {/* Channel */}
-                <Show when={globalSDK.capabilities.has("connections")}>
+                <Show when={globalSDK.capabilities.has("channels")}>
                   <div class="sb-root-section">
                     <SidebarSectionButton
                       class="sb-projects-header"
@@ -1481,6 +1481,7 @@ function SidebarSessionRow(props: {
   const visual = createMemo(() =>
     resolveSessionVisualState({
       entry: props.entry,
+      hasFeature: sdk.capabilities.has,
       status: globalSync.sessionStatus[props.entry.id],
       waiting:
         (globalSync.permissions[props.entry.id]?.length ?? 0) > 0 ||
@@ -1563,11 +1564,14 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const [agentSwitcherOpen, setAgentSwitcherOpen] = createSignal(false)
   const [holosStatusOpen, setHolosStatusOpen] = createSignal(false)
 
-  const avatarSrc = () => holos.state.social.profile?.avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon)
+  const hasHolos = () => props.globalSDK.capabilities.has("holos")
+  const avatarSrc = () =>
+    (hasHolos() && holos.state.social.profile?.avatarUrl) || brandAssetPath(BRAND_ASSETS.synergy.productIcon)
   const activeAgentId = () => holos.state.identity.activeAccount?.agentId ?? holos.state.identity.agentId ?? undefined
   const activeAgentShortID = () => activeAgentId()?.slice(0, 8)
 
   const displayName = () => {
+    if (!hasHolos()) return "Synergy"
     if (!holos.loaded) return "HOLOS"
     const profileName = holos.state.social.profile?.name
     if (holos.state.identity.loggedIn && profileName) return profileName
@@ -1576,6 +1580,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   }
 
   const displayDescription = () => {
+    if (!hasHolos()) return _({ id: "brand.workbench.synergy", message: "Synergy workspace" })
     if (!holos.loaded) return _(sidebar.loadingIdentity)
     if (!holos.state.identity.loggedIn)
       return _({ id: "sidebar.account.signedOut", message: "Not signed in · local workspace" })
@@ -1632,7 +1637,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   }
 
   const holosMenuDisabled = () => {
-    if (!props.globalSDK.capabilities.has("connections") || !holos.loaded) return true
+    if (!props.globalSDK.capabilities.has("holos") || !holos.loaded) return true
     if (holos.state.connection.status === "connecting") return true
     return false
   }
@@ -1705,10 +1710,10 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
 
   return (
     <div class="sidebar-account-hub">
-      <Tooltip value={_(sidebar.agent)} placement="right" inactive={props.isExpanded}>
+      <Tooltip value={_(hasHolos() ? sidebar.agent : sidebar.settings)} placement="right" inactive={props.isExpanded}>
         <button
           type="button"
-          aria-label={_(sidebar.agentMenu)}
+          aria-label={_(hasHolos() ? sidebar.agentMenu : sidebar.settings)}
           classList={{
             "sidebar-account-trigger": true,
             "sidebar-account-trigger--expanded": menuOpen(),
@@ -1721,7 +1726,9 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
         >
           <span class="sidebar-account-avatarWrap" data-tone={connectionTone()}>
             <img src={avatarSrc()} alt="" class="sidebar-account-avatar" />
-            <span class="sidebar-account-avatarStatus" />
+            <Show when={hasHolos()}>
+              <span class="sidebar-account-avatarStatus" />
+            </Show>
           </span>
           <Show when={props.isExpanded}>
             <div class="sidebar-account-identity">
@@ -1736,27 +1743,28 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
       <Show when={menuOpen()}>
         <div class="sidebar-account-menu-backdrop" onClick={closeMenu} />
         <div id="sidebar-account-menu" class="sidebar-account-menu" role="menu">
-          <div class="sidebar-account-card">
-            <button
-              type="button"
-              class="sidebar-account-card-main"
-              onClick={toggleAccountCard}
-              aria-expanded={agentSwitcherOpen() || holosStatusOpen()}
-            >
-              <span class="sidebar-account-avatarWrap" data-tone={connectionTone()}>
-                <img src={avatarSrc()} alt="" class="sidebar-account-avatar" />
-                <span class="sidebar-account-avatarStatus" />
-              </span>
-              <span class="sidebar-account-card-copy">
-                <span class="sidebar-account-card-name">{displayName()}</span>
-                <span class="sidebar-account-card-description">{displayDescription()}</span>
-                <span class="sidebar-account-card-meta">{activeAgentShortID() ?? _(sidebar.noAgent)}</span>
-              </span>
-              <Icon name={agentSwitcherOpen() || holosStatusOpen() ? "chevron-up" : "chevron-down"} size="small" />
-            </button>
-          </div>
-
-          <Show when={agentSwitcherOpen()}>
+          <Show when={props.globalSDK.capabilities.has("holos")}>
+            <div class="sidebar-account-card">
+              <button
+                type="button"
+                class="sidebar-account-card-main"
+                onClick={toggleAccountCard}
+                aria-expanded={agentSwitcherOpen() || holosStatusOpen()}
+              >
+                <span class="sidebar-account-avatarWrap" data-tone={connectionTone()}>
+                  <img src={avatarSrc()} alt="" class="sidebar-account-avatar" />
+                  <span class="sidebar-account-avatarStatus" />
+                </span>
+                <span class="sidebar-account-card-copy">
+                  <span class="sidebar-account-card-name">{displayName()}</span>
+                  <span class="sidebar-account-card-description">{displayDescription()}</span>
+                  <span class="sidebar-account-card-meta">{activeAgentShortID() ?? _(sidebar.noAgent)}</span>
+                </span>
+                <Icon name={agentSwitcherOpen() || holosStatusOpen() ? "chevron-up" : "chevron-down"} size="small" />
+              </button>
+            </div>
+          </Show>
+          <Show when={props.globalSDK.capabilities.has("holos") && agentSwitcherOpen()}>
             <div class="sidebar-account-popover" role="menu">
               <For each={holos.state.identity.accounts}>
                 {(account) => (
@@ -1805,7 +1813,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                 type="button"
                 class="sidebar-account-menuItem sidebar-account-menuItem--add"
                 role="menuitem"
-                disabled={!props.globalSDK.capabilities.has("connections")}
+                disabled={!props.globalSDK.capabilities.has("holos")}
                 onClick={openImportExistingAgentDialog}
               >
                 <Icon name={getSemanticIcon("account.import")} size="small" />
@@ -1814,7 +1822,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
             </div>
           </Show>
 
-          <Show when={holosStatusOpen()}>
+          <Show when={props.globalSDK.capabilities.has("holos") && holosStatusOpen()}>
             <div class="sidebar-account-popover" role="menu">
               <div class="sidebar-account-section-label">{_(sidebar.holosConnection)}</div>
               <div class="sidebar-holos-status-panel">
@@ -1854,29 +1862,31 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
           </Show>
 
           <Show
-            when={holos.state.identity.loggedIn}
+            when={props.globalSDK.capabilities.has("holos") && holos.state.identity.loggedIn}
             fallback={
               <>
-                <button
-                  type="button"
-                  class="sidebar-account-menuItem"
-                  role="menuitem"
-                  disabled={holosMenuDisabled()}
-                  onClick={handleHolosClick}
-                >
-                  <Icon name={getSemanticIcon("account.create")} size="small" />
-                  <span>{_(sidebar.createAgent)}</span>
-                </button>
-                <button
-                  type="button"
-                  class="sidebar-account-menuItem"
-                  role="menuitem"
-                  disabled={!props.globalSDK.capabilities.has("connections")}
-                  onClick={openImportExistingAgentDialog}
-                >
-                  <Icon name={getSemanticIcon("account.import")} size="small" />
-                  <span>{_(sidebar.importAgent)}</span>
-                </button>
+                <Show when={props.globalSDK.capabilities.has("holos")}>
+                  <button
+                    type="button"
+                    class="sidebar-account-menuItem"
+                    role="menuitem"
+                    disabled={holosMenuDisabled()}
+                    onClick={handleHolosClick}
+                  >
+                    <Icon name={getSemanticIcon("account.create")} size="small" />
+                    <span>{_(sidebar.createAgent)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="sidebar-account-menuItem"
+                    role="menuitem"
+                    disabled={!props.globalSDK.capabilities.has("holos")}
+                    onClick={openImportExistingAgentDialog}
+                  >
+                    <Icon name={getSemanticIcon("account.import")} size="small" />
+                    <span>{_(sidebar.importAgent)}</span>
+                  </button>
+                </Show>
                 <button
                   type="button"
                   class="sidebar-account-menuItem"

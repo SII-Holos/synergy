@@ -2,6 +2,16 @@ import { describe, expect, test } from "bun:test"
 import { observeWatermark } from "../../src/context/sync-watermark"
 
 describe("observeWatermark", () => {
+  test("omitted ranges advance contiguously while real gaps and malformed cursors require recovery", () => {
+    const current = { epoch: "e1", seq: 5 }
+    expect(observeWatermark(current, { epoch: "e1", seq: 20, fromSeq: 6, toSeq: 20 }).next).toEqual({
+      epoch: "e1",
+      seq: 20,
+    })
+    expect(observeWatermark(current, { epoch: "e1", seq: 20, fromSeq: 7, toSeq: 20 }).gap).toBe(true)
+    expect(observeWatermark(current, { epoch: "e1", seq: 20, fromSeq: 6, toSeq: 19 }).gap).toBe(true)
+    expect(observeWatermark(current, { epoch: "e2", seq: 20, fromSeq: 6, toSeq: 20 }).epochChanged).toBe(true)
+  })
   test("seeds from the first state event", () => {
     const r = observeWatermark(undefined, { epoch: "e1", seq: 5 })
     expect(r.next).toEqual({ epoch: "e1", seq: 5 })
@@ -44,4 +54,10 @@ describe("observeWatermark", () => {
     expect(r.next).toBe(current)
     expect(r.replayFrom).toBe(current)
   })
+})
+
+test("an invalid first cursor cannot seed a watermark", () => {
+  const result = observeWatermark(undefined, { epoch: "epoch", seq: 4, fromSeq: 8, toSeq: 4 })
+  expect(result.next).toBeUndefined()
+  expect(result.gap).toBe(true)
 })

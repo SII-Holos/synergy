@@ -5,6 +5,7 @@ import net from "node:net"
 import path from "node:path"
 import { randomBytes } from "node:crypto"
 import { RELEASE_CATALOG } from "./release/shared/packages"
+import { assertBunVersion } from "./check-bun-version"
 
 const DEFAULT_SERVER_PORT = 4096
 const DEFAULT_APP_PORT = 3000
@@ -859,6 +860,10 @@ export async function runDevPlan(plan: DevPlan, options: PlanOptions = {}): Prom
     process.stderr.write(`${plan.message}\n\n${plan.help}`)
     return plan.exitCode
   }
+  await assertBunVersion(
+    options.repoRoot ?? defaultRepoRoot(),
+    options.bunPath ?? process.env.BUN_BIN ?? process.execPath,
+  )
   if (plan.mode === "prepare") {
     return runPrepare(options.repoRoot ?? defaultRepoRoot(), options.bunPath ?? process.env.BUN_BIN ?? process.execPath)
   }

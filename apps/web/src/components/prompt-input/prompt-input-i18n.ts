@@ -180,6 +180,10 @@ export const PI = {
   stopSession: { id: "prompt.stopSession", message: "Stop session" },
   sendMessage: { id: "prompt.sendMessage", message: "Send message" },
   controlFailed: { id: "prompt.control.failed", message: "Could not update execution" },
+  continueUnavailable: {
+    id: "prompt.control.continueUnavailable",
+    message: "This task cannot continue. Send a new message.",
+  },
   pauseControl: { id: "prompt.control.pause", message: "Pause" },
   continueControl: { id: "prompt.control.continue", message: "Continue" },
   sendAndContinue: { id: "prompt.control.sendAndContinue", message: "Send and continue" },

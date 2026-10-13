@@ -112,6 +112,10 @@ export namespace Session {
   export type Info = InfoType
   export type StatusInfo = StatusInfoType
 
+  export function publicInfo(info: Info): Info {
+    return Info.parse(structuredClone(info))
+  }
+
   export const EndpointScopeMismatchError = NamedError.create(
     "SessionEndpointScopeMismatchError",
     z.object({
@@ -224,7 +228,13 @@ export namespace Session {
       page.entries.sort((a, b) => b.updated - a.updated || b.id.localeCompare(a.id))
       nav.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id))
       await tx.write(["sessions_page_index", scopeID], page)
-      await tx.write(["session_nav_v2", scopeID], { version: 1, scopeID, updatedAt: Date.now(), entries: nav })
+      await tx.write(["session_nav_v2", scopeID], {
+        version: 1,
+        composition: SessionSchemaRegistry.projectionKey(),
+        scopeID,
+        updatedAt: Date.now(),
+        entries: nav,
+      })
       for (const [parentID, child] of children) {
         sortChildIndexEntries(child.entries)
         await tx.write(["session_child_index", scopeID, parentID], child)
@@ -518,7 +528,7 @@ export namespace Session {
   ) {
     const instanceState = runtimeState()
 
-    const info = await withRuntimeInfo(session)
+    const info = publicInfo(await withRuntimeInfo(session))
     const key = publishCompareKey(info)
     const now = Date.now()
     const prev = instanceState.lastPublish.get(session.id)
@@ -1614,7 +1624,10 @@ export namespace Session {
           SessionManager.forgetSession(id)
           SessionMessageCache.disable(id)
         })
-        await ScopeContext.provide({ scope, fn: () => Bus.publish(SessionEvent.Deleted, { info: session }) })
+        await ScopeContext.provide({
+          scope,
+          fn: () => Bus.publish(SessionEvent.Deleted, { info: publicInfo(session) }),
+        })
         removed.push(session)
       }
       await removeTree(sessionID)

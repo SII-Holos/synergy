@@ -131,12 +131,6 @@
   padding: 6px 8px;
   font: inherit;
 }
-.review-popover button:focus-visible,
-.review-popover input:focus-visible,
-.review-layout-trigger:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
-}
 .review-refs > span {
   color: var(--text-weak);
 }
@@ -150,15 +144,6 @@
   border-radius: 6px;
   padding: 6px 8px;
   font: inherit;
-}
-.review-panel input:focus-visible,
-.review-panel textarea:focus-visible,
-.review-navigation input:focus-visible,
-.review-send-preview:focus-visible,
-.review-panel button:focus-visible,
-.review-file-header button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 .review-progress,
 .review-banner {

@@ -4,13 +4,16 @@ import { Terminal } from "@/components/terminal"
 import { useTerminal } from "@/context/terminal"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { terminal as T } from "@/locales/messages"
+import { useViewActivity } from "@/context/view-residency"
 
 export function TerminalWorkbenchContent(props: WorkbenchPanelContentProps) {
   const terminal = useTerminal()
   const lingui = useLingui()
+  const active = useViewActivity()
   const pty = createMemo(() => terminal.all().find((item) => item.id === props.tab.resourceId))
 
   createEffect(() => {
+    if (!active()) return
     const id = props.tab.resourceId
     if (!id) return
     if (!pty()) return

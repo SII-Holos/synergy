@@ -7,11 +7,8 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { WorkflowSessionService } from "@ericsanchezok/synergy-workflows/session/workflow"
-import { BossService } from "@ericsanchezok/synergy-workflows/boss/boss"
-import {
-  BossProjectTool,
-  DEFAULT_PROJECT_BOSS_INSTRUCTIONS,
-} from "@ericsanchezok/synergy-workflows/boss/tools/boss-project"
+import { BossService } from "@ericsanchezok/synergy-boss/boss/boss"
+import { BossProjectTool, DEFAULT_PROJECT_BOSS_INSTRUCTIONS } from "@ericsanchezok/synergy-boss/boss/tools/boss-project"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 // Product domains register tool providers via the L4 manifest
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"

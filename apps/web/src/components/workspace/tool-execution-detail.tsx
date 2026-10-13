@@ -1,11 +1,29 @@
-import { createEffect, createMemo, createResource, createSignal, on, onCleanup, Show, Match, Switch } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useWorkbenchPanels } from "@/context/workbench"
+import { toolFeatureAvailable, toolRequiredFeatures } from "@ericsanchezok/synergy-ui/tool-result-presentation"
+import { useGlobalSDK } from "@/context/global-sdk"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  on,
+  onCleanup,
+  untrack,
+  Show,
+  Match,
+  Switch,
+} from "solid-js"
+import { useParams } from "@/context/session-route"
 import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
 import type { ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
-import { executionDetailSelection, executionDetailState } from "@/components/session/execution-detail-model"
+import {
+  executionDetailAvailable,
+  executionDetailSelection,
+  executionDetailState,
+} from "@/components/session/execution-detail-model"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { ToolResultBody } from "@ericsanchezok/synergy-ui/tool-result-body"
 import { AttachmentGallery } from "@ericsanchezok/synergy-ui/attachment-card"
@@ -23,6 +41,7 @@ import { ExecutionDetailLayout } from "./execution-detail-layout"
 import { ExecutionReport, ExecutionTrajectory, ExecutionOriginal } from "./execution-report"
 import { toolTaskOutput } from "./process-task-output"
 import { requestErrorMessage } from "@/utils/error"
+import { useViewActivity } from "@/context/view-residency"
 
 const statuses: Record<ToolPart["state"]["status"], MessageDescriptor> = {
   pending: { id: "session.execution.pending", message: "Pending" },
@@ -52,6 +71,9 @@ export function ExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProp
 }
 
 function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) {
+  const { capabilities } = useGlobalSDK()
+  const workbench = useWorkbenchPanels()
+  const active = useViewActivity()
   const sdk = useSDK()
   const params = useParams()
   const data = useSessionDataView()
@@ -76,29 +98,45 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
       : undefined
   })
   const [processRevision, setProcessRevision] = createSignal(0)
-  onCleanup(
-    sdk.event.on("session.tool.activity", (event) => {
-      const target = selected()
-      if (
-        target?.sessionID === event.properties.sessionID &&
-        target.messageID === event.properties.messageID &&
-        (target.callID ?? live()?.callID) === event.properties.callID
-      )
-        setProcessRevision(event.properties.revision)
-    }),
-  )
+  createEffect(() => {
+    if (
+      !active() ||
+      !capabilities.current() ||
+      !executionDetailAvailable(state(), capabilities.has) ||
+      (live() && !toolFeatureAvailable(live()!, capabilities.has))
+    )
+      return
+    onCleanup(
+      sdk.event.on("session.tool.activity", (event) => {
+        const target = selected()
+        if (
+          target?.sessionID === event.properties.sessionID &&
+          target.messageID === event.properties.messageID &&
+          (target.callID ?? live()?.callID) === event.properties.callID
+        )
+          setProcessRevision(event.properties.revision)
+      }),
+    )
+  })
   let output: HTMLElement | undefined
   let following = true
   let frame: number | undefined
   let controller: AbortController | undefined
   const request = createMemo(
     () => {
+      if (!active()) return undefined
       const target = selected()
       const current = state()
-      return target && current
+      const selection = capabilities.current()
+      return target &&
+        current &&
+        selection &&
+        executionDetailAvailable(current, capabilities.has) &&
+        (!live() || toolFeatureAvailable(live()!, capabilities.has))
         ? {
             ...current,
             ...target,
+            selection,
             revision: `${live()?.state.status}:${live()?.activityEvidence?.content?.id ?? ""}:${processRevision()}`,
           }
         : undefined
@@ -112,7 +150,8 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
         a?.messageID === b?.messageID &&
         a?.partID === b?.partID &&
         a?.callID === b?.callID &&
-        a?.revision === b?.revision,
+        a?.revision === b?.revision &&
+        a?.selection === b?.selection,
     },
   )
   const [snapshot, { refetch }] = createResource(request, async (target) => {
@@ -136,6 +175,7 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
       })
     if (
       current.signal.aborted ||
+      capabilities.current() !== target.selection ||
       !executionDetailState(target, owner()) ||
       selected()?.partID !== target.partID ||
       selected()?.messageID !== target.messageID ||
@@ -164,6 +204,7 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
     const next = snapshot.error ? previous : snapshot.latest
     return next &&
       target &&
+      next.target.selection === capabilities.current() &&
       executionDetailState(next.target, owner()) &&
       next.target.messageID === target.messageID &&
       next.target.partID === target.partID &&
@@ -173,6 +214,18 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
   })
   const captured = () => saved()?.result
   const part = () => captured()?.part ?? live()
+  const available = () =>
+    !!capabilities.current() &&
+    executionDetailAvailable(state(), capabilities.has) &&
+    (!part() || toolFeatureAvailable(part()!, capabilities.has))
+  createEffect(() => {
+    const current = part()
+    const selection = state()
+    if (!current || !selection) return
+    const requiredFeatures = toolRequiredFeatures(current)
+    if (JSON.stringify(selection.requiredFeatures) === JSON.stringify(requiredFeatures)) return
+    untrack(() => workbench.updateTab(props.tab.id, { state: { ...selection, requiredFeatures } }))
+  })
   const info = () => (part() ? getToolInfo(part()!.tool, part()!.state.input, part()!.state.metadata ?? {}) : undefined)
   const input = () => (part() ? JSON.stringify(part()!.state.input, null, 2) : "")
   const failure = () => {
@@ -254,6 +307,7 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
     }),
   )
   createEffect(() => {
+    if (!active()) return
     const current = part()
     const content = current?.state.status === "running" ? current.state.metadata?.output : captured()?.text
     void content
@@ -267,222 +321,225 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
   const blockIdentity = () =>
     `${sdk.url}:${sdk.scopeKey}:${part()?.sessionID}:${part()?.messageID}:${part()?.id}:${part()?.callID}`
   return (
-    <ExecutionDetailLayout
-      identity={selectionIdentity()}
-      id={props.tab.id}
-      kind="tool"
-      title={part()?.tool ?? _({ id: "session.execution.result", message: "Result" })}
-      icon={info()?.icon ?? "activity"}
-      brief={part()?.workBrief}
-      loading={snapshot.loading}
-      error={snapshot.error}
-      retry={refetch}
-      views={taskOutput()?.report.trajectory ? ["result", "process", "diagnostics"] : ["result", "diagnostics"]}
-      diagnosticsLabel={_({ id: "session.execution.diagnostics", message: "Parameters and diagnostics" })}
-      meta={
-        <>
-          <span data-slot="execution-status" data-state={status().state}>
-            {status().label}
-          </span>
-          <Show when={duration()}>{(label) => <span>{label()}</span>}</Show>
-          <Show when={taskStatus()}>
-            {(label) => (
-              <span>
-                {_({
-                  id: "session.execution.taskStatus",
-                  message: "Task status: {status}",
-                  values: { status: label() },
-                })}
-              </span>
-            )}
-          </Show>
-        </>
-      }
-      details={
-        <>
-          <Show when={part()?.activityEvidence?.directory}>
-            <p data-slot="execution-directory">{part()?.activityEvidence?.directory}</p>
-          </Show>
-          <Show when={typeof captured()?.process?.exitCode === "number"}>
-            <p>
-              {_({
-                id: "session.execution.exit",
-                message: "Exit code: {code}",
-                values: { code: captured()?.process?.exitCode },
-              })}
-            </p>
-          </Show>
-          <Show when={captured()?.process?.signal}>
-            {(signal) => (
+    <Show when={available()}>
+      <ExecutionDetailLayout
+        identity={selectionIdentity()}
+        id={props.tab.id}
+        kind="tool"
+        title={part()?.tool ?? _({ id: "session.execution.result", message: "Result" })}
+        icon={info()?.icon ?? "activity"}
+        brief={part()?.workBrief}
+        loading={snapshot.loading}
+        error={snapshot.error}
+        retry={refetch}
+        views={taskOutput()?.report.trajectory ? ["result", "process", "diagnostics"] : ["result", "diagnostics"]}
+        diagnosticsLabel={_({ id: "session.execution.diagnostics", message: "Parameters and diagnostics" })}
+        meta={
+          <>
+            <span data-slot="execution-status" data-state={status().state}>
+              {status().label}
+            </span>
+            <Show when={duration()}>{(label) => <span>{label()}</span>}</Show>
+            <Show when={taskStatus()}>
+              {(label) => (
+                <span>
+                  {_({
+                    id: "session.execution.taskStatus",
+                    message: "Task status: {status}",
+                    values: { status: label() },
+                  })}
+                </span>
+              )}
+            </Show>
+          </>
+        }
+        details={
+          <>
+            <Show when={part()?.activityEvidence?.directory}>
+              <p data-slot="execution-directory">{part()?.activityEvidence?.directory}</p>
+            </Show>
+            <Show when={typeof captured()?.process?.exitCode === "number"}>
               <p>
                 {_({
-                  id: "session.execution.signal",
-                  message: "Termination signal: {signal}",
-                  values: { signal: signal() },
+                  id: "session.execution.exit",
+                  message: "Exit code: {code}",
+                  values: { code: captured()?.process?.exitCode },
                 })}
               </p>
+            </Show>
+            <Show when={captured()?.process?.signal}>
+              {(signal) => (
+                <p>
+                  {_({
+                    id: "session.execution.signal",
+                    message: "Termination signal: {signal}",
+                    values: { signal: signal() },
+                  })}
+                </p>
+              )}
+            </Show>
+          </>
+        }
+        bodyRef={(element) => {
+          output = element
+        }}
+        onScroll={() => {
+          if (output) following = output.scrollHeight - output.scrollTop - output.clientHeight < 32
+        }}
+      >
+        {(view) => (
+          <Show
+            when={part()}
+            fallback={
+              <Show when={!snapshot.error}>
+                <p data-slot="execution-evidence-gap">
+                  {state()
+                    ? _({ id: "session.execution.loading", message: "Loading tool result…" })
+                    : _({ id: "session.execution.unavailable", message: "This tool result is no longer available." })}
+                </p>
+              </Show>
+            }
+          >
+            {(current) => (
+              <Switch>
+                <Match when={view() === "diagnostics"}>
+                  <ExecutionCodeBlock
+                    identity={blockIdentity()}
+                    slot="execution-input"
+                    language="json"
+                    label={_({ id: "session.execution.input", message: "Tool input" })}
+                    copyLabel={_({ id: "session.execution.copyInput", message: "Copy tool input" })}
+                    text={input()}
+                  />
+                  <Show when={failure()}>
+                    {(error) => (
+                      <ExecutionCodeBlock
+                        identity={blockIdentity()}
+                        slot="execution-error"
+                        label={_({ id: "session.execution.errorDetails", message: "Error details" })}
+                        copyLabel={_({ id: "session.execution.copyError", message: "Copy error details" })}
+                        text={error()}
+                      />
+                    )}
+                  </Show>
+                  <Show when={taskOutput()}>
+                    <ExecutionOriginal identity={blockIdentity()} text={rawOutput()} incomplete={incomplete()} />
+                  </Show>
+                </Match>
+                <Match when={view() === "process"}>
+                  <Show when={taskOutput()}>
+                    {(task) => (
+                      <>
+                        <ExecutionTrajectory identity={blockIdentity()} report={task().report} />
+                        <ExecutionOriginal identity={blockIdentity()} text={task().report.raw} />
+                      </>
+                    )}
+                  </Show>
+                </Match>
+                <Match when={view() === "result"}>
+                  <Show when={file()}>
+                    <div data-slot="execution-file-context">
+                      <span>{_({ id: "session.execution.captured", message: "Captured during this invocation" })}</span>
+                      <Show when={part()!.activityEvidence?.range}>
+                        {(range) => (
+                          <span>
+                            {_({
+                              id: "session.execution.lineRange",
+                              message: "Lines {start}–{end}",
+                              values: { start: range().startLine + 1, end: range().startLine + range().lineCount },
+                            })}
+                          </span>
+                        )}
+                      </Show>
+                      <Show when={part()!.activityEvidence?.ranges && !part()!.activityEvidence?.range}>
+                        <span>
+                          {current()
+                            .activityEvidence?.ranges?.map(
+                              (range) => `${range.startLine + 1}–${range.startLine + range.lineCount}`,
+                            )
+                            .join(" · ")}
+                        </span>
+                      </Show>
+                    </div>
+                  </Show>
+                  <Show
+                    when={
+                      captured()?.evidenceMissing &&
+                      (part()!.tool === "read" || part()!.tool === "view_file") &&
+                      part()!.state.status === "completed"
+                    }
+                  >
+                    <p data-slot="execution-evidence-gap">
+                      {_({
+                        id: "session.execution.evidenceMissing",
+                        message:
+                          "Captured file content is unavailable for this invocation. The recorded tool output is shown below.",
+                      })}
+                    </p>
+                  </Show>
+                  <Show when={captured()?.process?.status === "interrupted"}>
+                    <p data-slot="execution-command-context">
+                      {_({ id: "session.execution.interruptedOutput", message: "Output captured before interruption" })}
+                    </p>
+                  </Show>
+
+                  <Show
+                    when={taskOutput()}
+                    fallback={
+                      <Show
+                        when={richResult()}
+                        fallback={
+                          <>
+                            <ExecutionCodeBlock
+                              identity={blockIdentity()}
+                              slot="execution-output"
+                              label={
+                                current().activityEvidence?.kind === "command" || captured()?.process
+                                  ? _({ id: "session.execution.commandOutput", message: "Command output" })
+                                  : _({ id: "session.execution.toolOutput", message: "Tool output" })
+                              }
+                              copyLabel={_({ id: "session.execution.copyOutput", message: "Copy tool output" })}
+                              text={result().text}
+                              language={result().language}
+                              incomplete={incomplete()}
+                            />
+                            <AttachmentGallery files={attachments()} serverUrl={sdk.url} />
+                          </>
+                        }
+                      >
+                        <section data-slot="execution-rich-result">
+                          <ToolResultBody
+                            hasFeature={capabilities.has}
+                            part={current()}
+                            serverUrl={sdk.url}
+                            sessionId={current().sessionID}
+                            messageId={current().messageID}
+                            resultOnly
+                            defaultOpen
+                          />
+                        </section>
+                        <ExecutionOriginal
+                          identity={blockIdentity()}
+                          text={rawOutput()}
+                          incomplete={incomplete()}
+                          copyLabel={_({ id: "session.execution.copyOutput", message: "Copy tool output" })}
+                        />
+                      </Show>
+                    }
+                  >
+                    {(task) => (
+                      <>
+                        <ExecutionReport identity={blockIdentity()} report={task().report} />
+                        <AttachmentGallery files={attachments()} serverUrl={sdk.url} />
+                      </>
+                    )}
+                  </Show>
+                </Match>
+              </Switch>
             )}
           </Show>
-        </>
-      }
-      bodyRef={(element) => {
-        output = element
-      }}
-      onScroll={() => {
-        if (output) following = output.scrollHeight - output.scrollTop - output.clientHeight < 32
-      }}
-    >
-      {(view) => (
-        <Show
-          when={part()}
-          fallback={
-            <Show when={!snapshot.error}>
-              <p data-slot="execution-evidence-gap">
-                {state()
-                  ? _({ id: "session.execution.loading", message: "Loading tool result…" })
-                  : _({ id: "session.execution.unavailable", message: "This tool result is no longer available." })}
-              </p>
-            </Show>
-          }
-        >
-          {(current) => (
-            <Switch>
-              <Match when={view() === "diagnostics"}>
-                <ExecutionCodeBlock
-                  identity={blockIdentity()}
-                  slot="execution-input"
-                  language="json"
-                  label={_({ id: "session.execution.input", message: "Tool input" })}
-                  copyLabel={_({ id: "session.execution.copyInput", message: "Copy tool input" })}
-                  text={input()}
-                />
-                <Show when={failure()}>
-                  {(error) => (
-                    <ExecutionCodeBlock
-                      identity={blockIdentity()}
-                      slot="execution-error"
-                      label={_({ id: "session.execution.errorDetails", message: "Error details" })}
-                      copyLabel={_({ id: "session.execution.copyError", message: "Copy error details" })}
-                      text={error()}
-                    />
-                  )}
-                </Show>
-                <Show when={taskOutput()}>
-                  <ExecutionOriginal identity={blockIdentity()} text={rawOutput()} incomplete={incomplete()} />
-                </Show>
-              </Match>
-              <Match when={view() === "process"}>
-                <Show when={taskOutput()}>
-                  {(task) => (
-                    <>
-                      <ExecutionTrajectory identity={blockIdentity()} report={task().report} />
-                      <ExecutionOriginal identity={blockIdentity()} text={task().report.raw} />
-                    </>
-                  )}
-                </Show>
-              </Match>
-              <Match when={view() === "result"}>
-                <Show when={file()}>
-                  <div data-slot="execution-file-context">
-                    <span>{_({ id: "session.execution.captured", message: "Captured during this invocation" })}</span>
-                    <Show when={part()!.activityEvidence?.range}>
-                      {(range) => (
-                        <span>
-                          {_({
-                            id: "session.execution.lineRange",
-                            message: "Lines {start}–{end}",
-                            values: { start: range().startLine + 1, end: range().startLine + range().lineCount },
-                          })}
-                        </span>
-                      )}
-                    </Show>
-                    <Show when={part()!.activityEvidence?.ranges && !part()!.activityEvidence?.range}>
-                      <span>
-                        {current()
-                          .activityEvidence?.ranges?.map(
-                            (range) => `${range.startLine + 1}–${range.startLine + range.lineCount}`,
-                          )
-                          .join(" · ")}
-                      </span>
-                    </Show>
-                  </div>
-                </Show>
-                <Show
-                  when={
-                    captured()?.evidenceMissing &&
-                    (part()!.tool === "read" || part()!.tool === "view_file") &&
-                    part()!.state.status === "completed"
-                  }
-                >
-                  <p data-slot="execution-evidence-gap">
-                    {_({
-                      id: "session.execution.evidenceMissing",
-                      message:
-                        "Captured file content is unavailable for this invocation. The recorded tool output is shown below.",
-                    })}
-                  </p>
-                </Show>
-                <Show when={captured()?.process?.status === "interrupted"}>
-                  <p data-slot="execution-command-context">
-                    {_({ id: "session.execution.interruptedOutput", message: "Output captured before interruption" })}
-                  </p>
-                </Show>
-
-                <Show
-                  when={taskOutput()}
-                  fallback={
-                    <Show
-                      when={richResult()}
-                      fallback={
-                        <>
-                          <ExecutionCodeBlock
-                            identity={blockIdentity()}
-                            slot="execution-output"
-                            label={
-                              current().activityEvidence?.kind === "command" || captured()?.process
-                                ? _({ id: "session.execution.commandOutput", message: "Command output" })
-                                : _({ id: "session.execution.toolOutput", message: "Tool output" })
-                            }
-                            copyLabel={_({ id: "session.execution.copyOutput", message: "Copy tool output" })}
-                            text={result().text}
-                            language={result().language}
-                            incomplete={incomplete()}
-                          />
-                          <AttachmentGallery files={attachments()} serverUrl={sdk.url} />
-                        </>
-                      }
-                    >
-                      <section data-slot="execution-rich-result">
-                        <ToolResultBody
-                          part={current()}
-                          serverUrl={sdk.url}
-                          sessionId={current().sessionID}
-                          messageId={current().messageID}
-                          resultOnly
-                          defaultOpen
-                        />
-                      </section>
-                      <ExecutionOriginal
-                        identity={blockIdentity()}
-                        text={rawOutput()}
-                        incomplete={incomplete()}
-                        copyLabel={_({ id: "session.execution.copyOutput", message: "Copy tool output" })}
-                      />
-                    </Show>
-                  }
-                >
-                  {(task) => (
-                    <>
-                      <ExecutionReport identity={blockIdentity()} report={task().report} />
-                      <AttachmentGallery files={attachments()} serverUrl={sdk.url} />
-                    </>
-                  )}
-                </Show>
-              </Match>
-            </Switch>
-          )}
-        </Show>
-      )}
-    </ExecutionDetailLayout>
+        )}
+      </ExecutionDetailLayout>
+    </Show>
   )
 }

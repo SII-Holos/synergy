@@ -1,3 +1,4 @@
+import { SessionExecutionOwners } from "./execution-owners"
 import { SessionRecords } from "./records"
 import { ExecutionCapacity } from "./execution-capacity"
 import { WorkspaceAccess } from "../workspace/access"
@@ -322,7 +323,7 @@ export namespace SessionManager {
     const session = await getSession(sessionID)
     if (!session) return
     const { Session } = await import(".")
-    const properties = { info: await Session.withRuntimeInfo(session) }
+    const properties = { info: Session.publicInfo(await Session.withRuntimeInfo(session)) }
     try {
       await Bus.publish(SessionEvent.Updated, properties)
     } catch (error) {
@@ -741,14 +742,19 @@ export namespace SessionManager {
       if (isRunning(sessionID)) return
     }
     if (await SessionLifecycle.blocksDrive(session)) return
-    if (!options.force && !(await SessionInbox.hasRunnableItem(sessionID, { allowPassive: false }))) return
+    const runnable = await SessionInbox.hasRunnableItem(sessionID, { allowPassive: false })
+    if (!options.force && !runnable) return
     if (!session) return
+    if (options.force && !runnable) await SessionExecutionOwners.assertResume(session)
     await SessionExecutionSource.authorize({ sessionID, scopeID: session.scope.id, parentSessionID: session.parentID })
     const { SessionInvoke } = await import("./invoke")
     // A queued item behind an interrupted turn needs that turn settled before
     // the loop can consume it, but settlement must not latch a pause: this wake
     // exists precisely because there is more work to do.
-    if (!options.force) {
+    const queued = await SessionInbox.peekTask(sessionID)
+    const previousRoot = await SessionExecutionOwners.latestRoot(sessionID)
+    const independentAdmission = previousRoot && queued?.execution?.previousRootID === previousRoot.id
+    if (!options.force && !independentAdmission && (await SessionExecutionOwners.allowsResume(session))) {
       await SessionInvoke.settleInterruptedTurn(sessionID).catch((error) => {
         log.warn("session repair before wake failed", { sessionID, error })
       })

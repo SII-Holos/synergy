@@ -71,11 +71,6 @@
 .welcome-game-status:hover {
   color: var(--text-strong);
 }
-.welcome-game-status:focus-visible,
-.welcome-unavailable button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 3px;
-}
 .welcome-game-space {
   flex: 1;
   width: 100%;
@@ -97,7 +92,7 @@
 }
 .welcome-game:has(.welcome-game-canvas:focus-visible) .welcome-game-status {
   text-decoration: underline;
-  text-decoration-color: var(--border-focus);
+  text-decoration-color: currentColor;
   text-underline-offset: 5px;
 }
 .welcome-loading,

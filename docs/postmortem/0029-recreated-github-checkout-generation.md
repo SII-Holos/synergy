@@ -15,7 +15,7 @@ The provider compared the old and new physical identifiers to decide whether reb
 ## Guardrails added
 
 - [Recreation advances the binding](../decisions/implemented/bug-fix/2026-09-23-recreated-github-workspace-generations.md) regardless of identifier reuse.
-- [Native provider tests](../../packages/connections/test/channel/provider/github/workspace-ownership.test.ts) cover stable IDs, unchanged generations on refresh, generation changes on recreation, stale-reference refusal and separate Session ownership.
+- [Native provider tests](../../packages/channel-github/test/channel/provider/github/workspace-ownership.test.ts) cover stable IDs, unchanged generations on refresh, generation changes on recreation, stale-reference refusal and separate Session ownership.
 - [Channel development guidance](../../.synergy/skill/change-channel-runtime/SKILL.md) requires deterministic identifier-reuse coverage while retaining real Git operations.
 
 ## Lessons

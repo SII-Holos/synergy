@@ -1,4 +1,3 @@
-import { PrimaryAgentUpgrade } from "@ericsanchezok/synergy-harness/agent/primary-identity-upgrade"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -7,15 +6,23 @@ import { NoteDocument } from "./document"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import type { Migration } from "@ericsanchezok/synergy-harness/migration"
+import { migrateNoteHomeScope } from "./scope-migration"
+
+export { migrateNoteHomeScope } from "./scope-migration"
 
 const log = Log.create({ service: "note.migration" })
 
-const upgradePrimaryAgentRecord: NonNullable<Migration["upgradeRecord"]> = (key, value) => {
-  if (key[0] === "notes" && key.length === 3)
-    PrimaryAgentUpgrade.fields(value.blueprint, ["defaultAgent", "auditAgent"])
-}
-
 export const migrations: Migration[] = [
+  {
+    id: "20261012-note-home-scope",
+    description: "Move retained ordinary Note documents into the Home scope",
+    scope: "global",
+    execution: "startup",
+    async up(progress) {
+      await migrateNoteHomeScope("note")
+      progress(1, 1)
+    },
+  },
   {
     id: "20260617-note-drop-contentText",
     description: "Remove contentText from stored notes; rebuild indices with derived searchText",
@@ -44,6 +51,7 @@ export const migrations: Migration[] = [
           const notePath = StoragePath.note(s, noteID)
           try {
             const raw = await Storage.read<Record<string, unknown>>(notePath)
+            if (raw.kind !== undefined && raw.kind !== "note") continue
 
             // Derive content from contentText when content is empty
             if (raw.contentText && typeof raw.contentText === "string" && raw.contentText.trim()) {
@@ -105,6 +113,7 @@ export const migrations: Migration[] = [
           const notePath = StoragePath.note(s, noteID)
           try {
             const raw = await Storage.read<Record<string, unknown>>(notePath)
+            if (raw.kind !== undefined && raw.kind !== "note") continue
             if (!raw.kind) raw.kind = "note"
             await Storage.write(notePath, raw)
           } catch (err) {
@@ -138,57 +147,11 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260624-note-remove-blueprint-status",
-    description: "Remove deprecated blueprint status metadata from notes",
+    description: "Retain the historical Blueprint metadata migration receipt",
     domain: "note",
     dependsOn: ["20260623-note-rebuild-blueprint-meta"],
     async up(progress) {
-      const scopeIDs = await Storage.scan(["notes"])
-      let totalNotes = 0
-      for (const sid of scopeIDs) {
-        const s = Identifier.asScopeID(sid)
-        const ids = await Storage.scan(StoragePath.notesRoot(s))
-        totalNotes += ids.filter((id) => !id.startsWith("_")).length
-      }
-
-      let done = 0
-      let changed = 0
-      for (const sid of scopeIDs) {
-        const s = Identifier.asScopeID(sid)
-        const ids = await Storage.scan(StoragePath.notesRoot(s))
-        const noteIDs = ids.filter((id) => !id.startsWith("_"))
-        let rebuiltIndex = false
-
-        for (const noteID of noteIDs) {
-          const notePath = StoragePath.note(s, noteID)
-          try {
-            const raw = await Storage.read<Record<string, unknown>>(notePath)
-            const blueprint = raw.blueprint as Record<string, unknown> | undefined
-            if (blueprint && "status" in blueprint) {
-              delete blueprint.status
-              if (raw.kind === "blueprint") {
-                raw.blueprint = blueprint
-              } else {
-                delete raw.blueprint
-              }
-              await Storage.write(notePath, raw)
-              changed++
-              rebuiltIndex = true
-            }
-          } catch (err) {
-            log.warn("failed to remove note blueprint status", { scopeID: sid, noteID, error: String(err) })
-          }
-
-          done++
-          if (done % 10 === 0 || done === totalNotes) {
-            progress(done, totalNotes)
-          }
-        }
-
-        if (rebuiltIndex) {
-          await Storage.remove(StoragePath.note(s, "_index")).catch(() => {})
-        }
-      }
-      log.info("blueprint status removal complete", { totalNotes, changed, scopes: scopeIDs.length })
+      progress(1, 1)
     },
   },
   {
@@ -251,6 +214,7 @@ export const migrations: Migration[] = [
           const notePath = StoragePath.note(s, noteID)
           try {
             const raw = await Storage.read<Record<string, unknown>>(notePath)
+            if (raw.kind !== undefined && raw.kind !== "note") continue
             const before = NoteDocument.hash(raw.content)
             raw.content = NoteDocument.normalize(raw.content)
             const after = NoteDocument.hash(raw.content)
@@ -298,6 +262,7 @@ export const migrations: Migration[] = [
           const notePath = StoragePath.note(s, noteID)
           try {
             const raw = await Storage.read<Record<string, unknown>>(notePath)
+            if (raw.kind !== undefined && raw.kind !== "note") continue
             if (raw.archived === undefined) {
               raw.archived = false
               await Storage.write(notePath, raw)
@@ -316,23 +281,10 @@ export const migrations: Migration[] = [
   },
   {
     id: "20261002-note-primary-agent-identities",
-    description: "Upgrade primary identities in Blueprint note defaults",
+    description: "Retain the historical Blueprint identity migration receipt",
     scope: "global",
-    upgradeRecord: upgradePrimaryAgentRecord,
     async up(progress) {
-      const scopes = new Set<string>()
-      let done = 0
-      for await (const { key, value } of Storage.records<Record<string, unknown>>({ kind: "notes" })) {
-        const before = JSON.stringify(value)
-        upgradePrimaryAgentRecord(key, value)
-        if (before !== JSON.stringify(value)) {
-          await Storage.write(key, value)
-          scopes.add(key[1])
-        }
-        progress(++done, 0)
-      }
-      for (const scope of scopes) await Storage.remove(StoragePath.note(Identifier.asScopeID(scope), "_index"))
-      progress(done, done)
+      progress(1, 1)
     },
   },
 ]

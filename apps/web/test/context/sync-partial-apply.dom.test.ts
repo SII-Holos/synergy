@@ -68,7 +68,7 @@ const state = createStore({
   status: "ready",
   path: { directory: "probe" },
   scopeID: "probe",
-  session: [], message: {}, messageWindow: {}, part: {}, partSummary: {}, partPage: {},
+  session: [], message: {}, messageVersion: {}, messageWindow: {}, part: {}, partSummary: {}, partPage: {},
   partVersion: {}, latestContextMessage: {}, session_diff: {}, inbox: {}, todo: {}, dag: {},
   workspaces: [],
 })
@@ -296,7 +296,10 @@ globalThis.partialProbe = { api: () => api, dispose, callsMade, releaseAll, mark
         expect(h.snapshot().message.ses_1.map((message) => message.id)).toEqual(["m1", "m2"])
       } else if (history) {
         expect(h.callsMade().timeline, "the retained history window must not restart").toBe(1)
-        expect(h.requestedIDs()).toEqual([])
+        expect(
+          h.requestedIDs().filter((ids) => ids.includes("m2")),
+          "the history repair targets only the marked message",
+        ).toEqual([])
         expect(h.requestedRanges(), "the mounted consumer must join the single repair owner").toEqual([
           { sessionID: "ses_1", messageID: "m2", partID: "p2a", limit: 1, cursor: undefined, older: false },
         ])

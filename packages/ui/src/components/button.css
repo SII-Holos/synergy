@@ -83,7 +83,6 @@
     }
     &:focus-visible:not(:active) {
       background-color: var(--workbench-control-bg, var(--button-secondary-base));
-      box-shadow: var(--shadow-xs-border-focus);
     }
     &:focus-visible:active {
       box-shadow: none;
@@ -165,9 +164,4 @@
   &:focus {
     outline: none;
   }
-}
-
-[data-component="button"]:focus-visible {
-  outline: 2px solid var(--border-selected);
-  outline-offset: 2px;
 }

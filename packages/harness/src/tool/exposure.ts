@@ -89,6 +89,7 @@ export namespace ToolExposure {
   }
 
   export function registerGroups(owner: string, groups: GroupInfo[]) {
+    RuntimeContext.assertCompositionOpen("tool groups")
     for (const group of groups) {
       const existing = groupState().byID.get(group.id)
       if (existing) {

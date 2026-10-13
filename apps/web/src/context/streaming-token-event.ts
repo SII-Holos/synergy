@@ -24,7 +24,7 @@ export function streamingTokenReceipt(event: StreamingEvent): StreamingTokenRece
   if (event.type === "message.part.summary") {
     const { summary, content } = event.properties
     if (!isRecord(summary) || typeof summary.id !== "string" || !isRecord(content)) return
-    const delta = content.kind === "delta" ? content.delta : event.properties.delta
+    const delta = content.kind === "delta" || content.kind === "append" ? content.delta : event.properties.delta
     if (typeof delta !== "string") return
     return {
       part: {

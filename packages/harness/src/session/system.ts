@@ -46,10 +46,14 @@ export namespace SystemPrompt {
       `  Today's date: ${formatLocalDate(Date.now())}`,
     ]
 
-    const writeRoots = await Scope.Root.executionRoots(scope, workspace).catch((error) => {
+    const writeRoots = await Scope.Root.executionRoots(scope, workspace).catch(async (error) => {
       if (!WorkspaceCatalog.Unavailable.isInstance(error)) throw error
+      const [failedWorkspace] = await WorkspaceCatalog.readMany([error.data.workspaceID])
+      const failedPath = failedWorkspace?.scopeID === scope.id ? failedWorkspace.binding.path : undefined
+      const failedRole = error.data.workspaceID === workspace?.id ? "Selected Workspace" : "Shared writable Workspace"
       envLines.push(
-        "  Workspace files: unavailable. API-only work remains available; file operations require recovery.",
+        "  Workspace write-root validation: failed. API-only work remains available; operations requiring these roots remain blocked until recovery.",
+        `  ${failedRole}: ${error.data.workspaceID}${failedPath ? ` (path: ${failedPath})` : ""}. Reason: ${error.data.reason ? `${error.data.reason}: ` : ""}${error.data.message}`,
       )
       return []
     })

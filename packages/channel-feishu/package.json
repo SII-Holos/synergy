@@ -1,0 +1,84 @@
+{
+  "name": "@ericsanchezok/synergy-channel-feishu",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./channel/provider/feishu": "./src/channel/provider/feishu/index.ts",
+    "./channel/provider/feishu/api-context": "./src/channel/provider/feishu/api-context.ts",
+    "./channel/provider/feishu/debounce": "./src/channel/provider/feishu/debounce.ts",
+    "./channel/provider/feishu/dedup": "./src/channel/provider/feishu/dedup.ts",
+    "./channel/provider/feishu/feishu-types": "./src/channel/provider/feishu/feishu-types.ts",
+    "./channel/provider/feishu/markdown-image": "./src/channel/provider/feishu/markdown-image.ts",
+    "./channel/provider/feishu/message": "./src/channel/provider/feishu/message.ts",
+    "./channel/provider/feishu/outbound-media": "./src/channel/provider/feishu/outbound-media.ts",
+    "./channel/provider/feishu/question-card": "./src/channel/provider/feishu/question-card.ts",
+    "./channel/provider/feishu/response-card": "./src/channel/provider/feishu/response-card.ts",
+    "./channel/provider/feishu/send-card": "./src/channel/provider/feishu/send-card.ts",
+    "./channel/provider/feishu/sender": "./src/channel/provider/feishu/sender.ts",
+    "./channel/provider/feishu/streaming-card": "./src/channel/provider/feishu/streaming-card.ts",
+    "./channel/provider/feishu/streaming-state": "./src/channel/provider/feishu/streaming-state.ts",
+    "./channel/provider/feishu/svg-raster": "./src/channel/provider/feishu/svg-raster.ts",
+    "./channel/provider/feishu/svg-raster-runtime": "./src/channel/provider/feishu/svg-raster-runtime.ts",
+    "./channel/provider/feishu/svg-raster-worker": "./src/channel/provider/feishu/svg-raster-worker.ts",
+    "./channel/provider/feishu/thread-binding": "./src/channel/provider/feishu/thread-binding.ts",
+    "./cli/setup": "./src/cli/setup.ts",
+    "./component": "./src/component.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./http": "./src/http.ts",
+    "./script/svg-raster-runtime-assets": "./script/svg-raster-runtime-assets.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/channel-feishu",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "1.0.0-alpha.1",
+    "@ericsanchezok/synergy-channels": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "@larksuiteoapi/node-sdk": "1.71.1",
+    "@resvg/resvg-wasm": "2.6.2",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "channel-feishu",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "channelFeishu",
+    "requires": {
+      "channels": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-channels": "1.1.26"
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}

@@ -173,11 +173,6 @@
   color: var(--text-weak);
   font-size: 13px;
 }
-.gsm-close-btn:focus-visible,
-.gsm-item:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
-}
 @media (max-width: 600px) {
   .gsm-search-bar {
     padding: 16px;
@@ -201,10 +196,4 @@
   .gsm-spinner {
     animation: none;
   }
-}
-
-.gsm-close-btn:focus-visible,
-.gsm-item:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
 }

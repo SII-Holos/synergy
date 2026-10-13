@@ -185,6 +185,87 @@ describe("FileWatcherEvents native subscription policy", () => {
       expect(order).toContain("after-failure")
     }))
 
+  test("subscription timeouts retain the native slot and start the next timeout only on admission", async () => {
+    const enqueue = FileWatcherEvents.createSubscriptionQueue()
+    const native = Promise.withResolvers<{ unsubscribe(): Promise<void> }>()
+    const starts: string[] = []
+    const errors: unknown[] = []
+    let cleaned = 0
+    const first = enqueue(
+      () => {
+        starts.push("first")
+        return native.promise
+      },
+      (pending) => FileWatcherEvents.withSubscriptionTimeout(pending, 1, (error) => errors.push(error)),
+    )
+    const second = enqueue(
+      async () => {
+        starts.push("second")
+        return 2
+      },
+      (pending) => {
+        starts.push("second-timeout")
+        return pending
+      },
+    )
+    await expect(first).rejects.toThrow()
+    expect(starts).toEqual(["first"])
+    native.resolve({
+      unsubscribe: async () => {
+        cleaned++
+      },
+    })
+    expect(await second).toBe(2)
+    expect(starts).toEqual(["first", "second", "second-timeout"])
+    expect(cleaned).toBe(1)
+    expect(errors).toEqual([])
+    await expect(
+      enqueue(
+        async () => {
+          throw new Error("native rejection")
+        },
+        (pending) => pending,
+      ),
+    ).rejects.toThrow("native rejection")
+    expect(
+      await enqueue(
+        async () => 3,
+        (pending) => pending,
+      ),
+    ).toBe(3)
+  })
+
+  test("queued subscriptions observe a capacity trip before starting another native scan", () =>
+    runtime.run(async () => {
+      FileWatcherEvents.resetLinuxInotifyCapacity()
+      const enqueue = FileWatcherEvents.createSubscriptionQueue()
+      let scans = 0
+      const recoveries = Array.from({ length: 4 }, () =>
+        FileWatcherEvents.createSubscriptionRecovery({
+          connect: () =>
+            enqueue(
+              async () => {
+                if (FileWatcherEvents.isLinuxInotifyCapacityTripped())
+                  throw FileWatcherEvents.linuxInotifyCapacityError()
+                scans++
+                throw FileWatcherEvents.linuxInotifyCapacityError()
+              },
+              (pending) => pending,
+            ),
+          disconnect: async () => {},
+          shouldRetry: () => false,
+          onError: () => FileWatcherEvents.tripLinuxInotifyCapacity(),
+        }),
+      )
+      try {
+        await Promise.all(recoveries.map((recovery) => recovery.start()))
+        expect(scans).toBe(1)
+      } finally {
+        await Promise.all(recoveries.map((recovery) => recovery.dispose()))
+        FileWatcherEvents.resetLinuxInotifyCapacity()
+      }
+    }))
+
   test("classifies synthetic capacity errors by marker, independent of code or message", () =>
     runtime.run(() => {
       const synthetic = FileWatcherEvents.linuxInotifyCapacityError() as Error & { code?: string }
@@ -621,6 +702,134 @@ describe("FileWatcherEvents drain", () => {
 })
 
 describe("FileWatcherEvents subscription recovery", () => {
+  test("missing roots stop recovery but a missing child does not stop a live root", () =>
+    runtime.run(async () => {
+      await using directory = await tmpdir()
+      const root = path.join(directory.path, "root")
+      await fs.mkdir(root)
+      let attempts = 0
+      const recovery = FileWatcherEvents.createSubscriptionRecovery({
+        retryMs: 0,
+        connect: async () => {
+          attempts++
+          await fs.stat(path.join(root, "temporarily-missing-child"))
+          return {}
+        },
+        disconnect: async () => {},
+        onError: () => {},
+        shouldRetry: async () => !(await FileWatcherEvents.subscriptionRootGone(root)),
+      })
+      try {
+        await recovery.start()
+        await waitUntil(() => attempts > 1)
+        await fs.rm(root, { recursive: true })
+        await Bun.sleep(25)
+        const stopped = attempts
+        await Bun.sleep(25)
+        expect(attempts).toBe(stopped)
+        expect(await FileWatcherEvents.subscriptionRootGone(root)).toBe(true)
+        await Bun.write(root, "no longer a directory")
+        expect(await FileWatcherEvents.subscriptionRootGone(root)).toBe(true)
+        expect(await FileWatcherEvents.subscriptionRootGone(path.join(root, "child"))).toBe(true)
+        expect(await FileWatcherEvents.subscriptionRootGone(directory.path)).toBe(false)
+      } finally {
+        await recovery.dispose()
+      }
+    }))
+
+  test("subscription rejection is reported once and real late cleanup errors remain visible", async () => {
+    const errors: unknown[] = []
+    const failed = new Error("subscription failed")
+    await expect(
+      FileWatcherEvents.withSubscriptionTimeout(Promise.reject(failed), 10, (error) => errors.push(error)),
+    ).rejects.toBe(failed)
+    await Bun.sleep(0)
+    expect(errors).toEqual([])
+    const late = Promise.withResolvers<{ unsubscribe(): Promise<void> }>()
+    await expect(
+      FileWatcherEvents.withSubscriptionTimeout(late.promise, 1, (error) => errors.push(error)),
+    ).rejects.toThrow()
+    let cleaned = 0
+    const cleanup = new Error("late cleanup failed")
+    late.resolve({
+      async unsubscribe() {
+        cleaned++
+        throw cleanup
+      },
+    })
+    await waitUntil(() => cleaned === 1 && errors.length === 1)
+    expect(errors).toEqual([cleanup])
+  })
+
+  test("disposal drains a pending retry decision without reconnecting", () =>
+    runtime.run(async () => {
+      const decision = Promise.withResolvers<boolean>()
+      let deciding = false
+      let attempts = 0
+      const recovery = FileWatcherEvents.createSubscriptionRecovery({
+        retryMs: 0,
+        connect: async () => {
+          attempts++
+          return {}
+        },
+        disconnect: async () => {},
+        onError: () => {},
+        shouldRetry: () => {
+          deciding = true
+          return decision.promise
+        },
+      })
+      await recovery.start()
+      const failing = recovery.fail(new Error("transient"))
+      await waitUntil(() => deciding)
+      let disposed = false
+      const disposing = recovery.dispose().then(() => {
+        disposed = true
+      })
+      await Bun.sleep(5)
+      expect(disposed).toBe(false)
+      decision.resolve(true)
+      await Promise.all([failing, disposing])
+      await Bun.sleep(10)
+      expect(attempts).toBe(1)
+      expect(recovery.active()).toBe(false)
+    }))
+
+  test("waits for an asynchronous terminal decision before retrying or disposing", () =>
+    runtime.run(async () => {
+      const decision = Promise.withResolvers<boolean>()
+      let attempts = 0
+      let deciding = false
+      const recovery = FileWatcherEvents.createSubscriptionRecovery({
+        retryMs: 0,
+        connect: async () => {
+          attempts++
+          throw new Error("root unavailable")
+        },
+        disconnect: async () => {},
+        onError: () => {},
+        shouldRetry: () => {
+          deciding = true
+          return decision.promise
+        },
+      })
+      const starting = recovery.start()
+      try {
+        await waitUntil(() => deciding)
+        await Bun.sleep(20)
+        expect(attempts).toBe(1)
+        decision.resolve(false)
+        await starting
+        await Bun.sleep(20)
+        expect(attempts).toBe(1)
+        expect(recovery.active()).toBe(false)
+      } finally {
+        decision.resolve(false)
+        await recovery.dispose()
+        await starting
+      }
+    }))
+
   test("resynchronizes changes made in the reconnect gap before declaring recovery", () =>
     runtime.run(async () => {
       const pending = Promise.withResolvers<void>()

@@ -47,7 +47,12 @@ function SyncState(props: { catalog: BrowserCatalog; knownPageIds: ReadonlySet<s
       () =>
         [
           workbench.sessionKey(),
-          props.catalog.store.session.pages.map((page) => ({ id: page.id, title: page.title, url: page.url })),
+          props.catalog.store.session.pages.map((page) => ({
+            id: page.id,
+            title: page.title,
+            url: page.url,
+            openerId: page.openerId,
+          })),
           workbench.surface("side").hasOpening(),
         ] as const,
       ([sessionKey, pages, hasOpening]) => {

@@ -1,14 +1,14 @@
 import { describe, expect, setDefaultTimeout, spyOn, test } from "bun:test"
 import { Hono } from "hono"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
-import { LatticeStore } from "@ericsanchezok/synergy-workflows/lattice/store"
+import { LatticeStore } from "@ericsanchezok/synergy-lattice/lattice/store"
 // The Controller registers the reconcileDirect forwarder LatticeRunService
 // depends on; load it alongside the route under test.
-import "@ericsanchezok/synergy-workflows/lattice/controller"
-import { LatticeRunService } from "@ericsanchezok/synergy-workflows/lattice/run-service"
+import "@ericsanchezok/synergy-lattice/lattice/controller"
+import { LatticeRunService } from "@ericsanchezok/synergy-lattice/lattice/run-service"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { LatticeRoute } from "@ericsanchezok/synergy-workflows/lattice/routes/lattice"
+import { LatticeRoute } from "@ericsanchezok/synergy-lattice/lattice/routes/lattice"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"

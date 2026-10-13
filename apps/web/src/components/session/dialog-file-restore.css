@@ -40,10 +40,6 @@
   flex-shrink: 0;
   font-size: 12px;
 }
-.file-restore-file > button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
-}
 .file-restore-file > p {
   color: var(--text-weak);
   padding-block: 8px;
