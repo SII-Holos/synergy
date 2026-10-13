@@ -28,7 +28,11 @@ test("request enumeration publishes captured bytes before an in-flight journal e
   })
   const write = Bun.write
   const capture = spyOn(Bun, "write").mockImplementation(async (destination, data, options) => {
-    if (typeof destination === "string" && destination.startsWith(tmp.path) && destination.endsWith("/request.bin")) {
+    if (
+      typeof destination === "string" &&
+      destination.startsWith(tmp.path) &&
+      path.basename(destination) === "request.bin"
+    ) {
       capturing.resolve()
       await releaseCapture.promise
     }
