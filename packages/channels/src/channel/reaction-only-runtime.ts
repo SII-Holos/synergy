@@ -1,4 +1,7 @@
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
+import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
@@ -169,11 +172,26 @@ export async function executeReactionOnlyDelivery(input: {
   rootID: string
   terminalMessageID: string
   reaction: string
+  signal?: AbortSignal
   send: () => Promise<void>
 }): Promise<ReactionOnlyOutcome> {
   using _ = await Lock.write(`channel-reaction-only:${input.sessionID}:${input.rootID}`)
-  const messages = MessageV2.deriveSemantics(await Session.messages({ sessionID: input.sessionID }))
-  if (reactionOnlyRootResolved(messages, input.rootID)) return { status: "skipped" }
+  input.signal?.throwIfAborted()
+  const infos = await SessionHistory.turnInfos(input).catch((error) => {
+    if (error instanceof Storage.NotFoundError) return []
+    throw error
+  })
+  const terminal = infos.find((info) => info.id === input.terminalMessageID)
+  if (
+    !terminal ||
+    terminal.role !== "assistant" ||
+    terminal.error ||
+    !SessionProgress.isTerminalAssistant(terminal) ||
+    terminal.metadata?.channelOutboundSent ||
+    infos.some((info) => info.role === "assistant" && reactionOnlyResolved(info))
+  )
+    return { status: "skipped" }
+  input.signal?.throwIfAborted()
   try {
     await recordReactionOnlyMetadata({
       ...input,
@@ -184,6 +202,7 @@ export async function executeReactionOnlyDelivery(input: {
     return { status: "failed", error }
   }
   try {
+    input.signal?.throwIfAborted()
     await input.send()
   } catch (error) {
     if (

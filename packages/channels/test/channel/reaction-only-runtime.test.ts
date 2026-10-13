@@ -14,6 +14,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import type { Provider } from "../../src/channel/types"
 import { testRuntime } from "../support/runtime"
@@ -180,6 +181,78 @@ const replyMetadata = {
 }
 
 describe("Channel reaction-only terminal delivery", () => {
+  deliveryTest("disposing a bridge cancels a pending read before any external delivery", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const calls: Calls = { reactions: [], replies: [], pushes: [] }
+        const channelProvider = provider("feishu", calls)
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({
+            type: "feishu",
+            accountId: "acct_test",
+            chatId: "chat_test",
+          }),
+        })
+        const rootID = await channelRoot({ sessionID: session.id, inboundId: "inbound" })
+        const terminal = await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "SILENT" })
+        const entered = Promise.withResolvers<void>()
+        const release = Promise.withResolvers<void>()
+        const read = SessionHistory.turnMessages
+        using pending = spyOn(SessionHistory, "turnMessages").mockImplementation(async (input) => {
+          entered.resolve()
+          await release.promise
+          return read(input)
+        })
+        const dispose = ChannelOutbound.init({ getProvider: () => channelProvider })
+        const updating = Session.updateMessage({ ...terminal, metadata: replyMetadata })
+        try {
+          await entered.promise
+          dispose()
+        } finally {
+          release.resolve()
+          await updating
+          dispose()
+        }
+        expect(calls.reactions).toEqual([])
+        const restored = ChannelOutbound.init({ getProvider: () => channelProvider })
+        try {
+          await Session.updateMessage({ ...terminal, metadata: replyMetadata })
+          expect(calls.reactions).toHaveLength(1)
+        } finally {
+          restored()
+        }
+      },
+    })
+  })
+  deliveryTest("reaction admission and duplicate checks read no bodies", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const rootID = await channelRoot({ sessionID: session.id })
+        const terminal = await reactionOnlyRequest({ sessionID: session.id, rootID, reaction: "SILENT" })
+        await SessionHistory.prepareDisplay(session.id)
+        const calls: Calls = { reactions: [], replies: [], pushes: [] }
+        const input = {
+          sessionID: session.id,
+          rootID,
+          terminalMessageID: terminal.id,
+          reaction: "SILENT",
+          provider: provider("feishu", calls),
+          accountId: "test",
+          messageId: "inbound",
+        }
+        using parts = spyOn(MessageV2, "parts")
+        expect(await deliverReactionOnlyReaction(input)).toMatchObject({ status: "delivered" })
+        expect(await deliverReactionOnlyReaction(input)).toMatchObject({ status: "skipped" })
+        expect(parts).not.toHaveBeenCalled()
+        expect(calls.reactions).toHaveLength(1)
+      },
+    })
+  })
   deliveryTest("reacts to the inbound message and posts no reply, push, or card", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

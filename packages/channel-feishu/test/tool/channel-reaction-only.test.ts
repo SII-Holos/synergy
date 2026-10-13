@@ -122,6 +122,35 @@ describe("channel_reaction_only tool", () => {
     })
   })
 
+  runtimeTest("rechecks Boss ownership when executing a previously offered tool", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const sessionID = await feishuSession()
+        configureFeishu({ reactionOnlyReply: { enabled: true }, streaming: false })
+        const tool = await ChannelReactionOnlyTool.init()
+        await Session.update(sessionID, (draft) => {
+          draft.workflow = { kind: "boss", role: "boss" }
+        })
+        await expect(tool.execute({}, context(sessionID))).rejects.toThrow(/only available in Feishu/)
+      },
+    })
+  })
+
+  runtimeTest("rechecks account enablement when executing a previously offered tool", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const sessionID = await feishuSession()
+        const tool = await ChannelReactionOnlyTool.init()
+        configureFeishu({ enabled: false, reactionOnlyReply: { enabled: true }, streaming: false })
+        await expect(tool.execute({}, context(sessionID))).rejects.toThrow(/does not allow reaction-only/)
+      },
+    })
+  })
+
   runtimeTest("refuses when the account is absent from config", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

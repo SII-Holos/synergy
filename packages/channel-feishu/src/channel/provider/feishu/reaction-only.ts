@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import { ReactionDeliveryError } from "@ericsanchezok/synergy-channels/channel/types"
 
 /**
@@ -159,6 +159,13 @@ export function resolveFeishuStreaming(input: { account: unknown; channel: unkno
  * only correct on non-streaming accounts.
  */
 export function isFeishuReactionOnlyAvailable(input: { account: unknown; channel: unknown }): boolean {
+  if (
+    input.account &&
+    typeof input.account === "object" &&
+    "enabled" in input.account &&
+    input.account.enabled === false
+  )
+    return false
   if (!resolveFeishuReactionOnlyReply(input).enabled) return false
   return !resolveFeishuStreaming(input)
 }

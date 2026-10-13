@@ -2,11 +2,11 @@ import path from "path"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Session } from "@ericsanchezok/synergy-harness/session"
-import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import type { OutboundPart, Provider } from "./types"
-import { deliverReactionOnlyReaction, findReactionOnlyIntent, resolveReactionTarget } from "./reaction-only-runtime"
+import { planChannelDelivery } from "./delivery-plan"
 
 const log = Log.create({ service: "channel.outbound-parts" })
 
@@ -106,8 +106,9 @@ export async function markChannelTaskAttachmentsDelivered(input: {
   }
   try {
     using _ = await Lock.write(`channel-outbound-attachments:${input.sessionID}:${input.rootID}`)
-    const current = await MessageV2.get({ sessionID: input.sessionID, messageID: root.info.id }).catch(() => undefined)
-    const existing = current?.info.metadata?.[CHANNEL_OUTBOUND_ATTACHMENT_URLS]
+    const infos = await SessionHistory.turnInfos(input)
+    const current = infos.find((info) => info.id === root.info.id)
+    const existing = current?.metadata?.[CHANNEL_OUTBOUND_ATTACHMENT_URLS]
     const merged = Array.from(new Set([...(Array.isArray(existing) ? existing : []), ...input.urls]))
     await Session.mergeMessageMetadata({
       sessionID: input.sessionID,
@@ -132,130 +133,9 @@ export async function loadChannelTaskMessages(input: {
   rootID: string
   terminal: MessageV2.WithParts
 }): Promise<MessageV2.WithParts[]> {
-  const messages = await Session.messages({ sessionID: input.sessionID })
-  const hydrated = messages.map((message) => (message.info.id === input.terminal.info.id ? input.terminal : message))
-  const terminalIndex = hydrated.findIndex((message) => message.info.id === input.terminal.info.id)
-  const scoped = MessageV2.deriveSemantics(terminalIndex < 0 ? hydrated : hydrated.slice(0, terminalIndex + 1))
-  const suppressed = new Set<string>()
-  let segment: string[] = []
-  for (const message of scoped) {
-    if (message.info.role !== "assistant" || message.info.rootID !== input.rootID) continue
-    segment.push(message.info.id)
-    if (!SessionProgress.isTerminalAssistant(message.info)) continue
-    if (message.info.id !== input.terminal.info.id && findReactionOnlyIntent([message], input.rootID, message.info.id))
-      for (const id of segment) suppressed.add(id)
-    segment = []
-  }
-  return scoped.filter((message) => !suppressed.has(message.info.id))
-}
-
-export async function collectChannelTerminalMessages(sessionID: string): Promise<MessageV2.WithParts[]> {
-  return MessageV2.deriveSemantics(await Session.messages({ sessionID })).filter(
-    (message) => message.info.role === "assistant" && SessionProgress.isTerminalAssistant(message.info),
-  )
-}
-
-/**
- * Collect every terminal assistant message currently present in a session,
- * keyed by its root user message id. The foreground delivery path snapshots
- * this before invoking the inbox loop and again after: roots that gained a
- * terminal during the invoke were completed by this foreground turn (the loop
- * drains queued tasks too) and must each be delivered, not just the final
- * result. Otherwise a terminal completed mid-drain is skipped by the bridge
- * (foreground registered) yet never delivered by the foreground path.
- */
-export async function collectChannelTaskTerminals(sessionID: string): Promise<Map<string, MessageV2.WithParts>> {
-  const terminals = new Map<string, MessageV2.WithParts>()
-  for (const message of await collectChannelTerminalMessages(sessionID)) {
-    const assistant = message.info as MessageV2.Assistant
-    const rootID = assistant.rootID ?? assistant.parentID
-    if (rootID) terminals.set(rootID, message)
-  }
-  return terminals
-}
-
-/**
- * Deliver a terminal that the foreground invoke completed but did not return.
- * The inbox loop drains queued tasks and returns the LAST terminal; the root
- * that owns this foreground lane may have finished earlier (mid-drain). The
- * outbound bridge skipped it because the root is foreground-registered, so it
- * must be delivered here: text + attachments via the provider reply, recorded
- * as delivered on the root and marked sent on the terminal. Skips when the
- * terminal already existed before the invoke (delivered elsewhere) or is the
- * loop result (delivered by the normal foreground path).
- */
-export async function deliverForegroundTaskTerminal(input: {
-  provider: Provider
-  accountId: string
-  messageId: string
-  chatId?: string
-  chatType?: "dm" | "group"
-  scopeKey?: string
-  sessionID: string
-  currentRootID: string
-  excludeTerminalID?: string
-  terminal?: MessageV2.WithParts
-  terminalsBefore: ReadonlyMap<string, MessageV2.WithParts>
-}): Promise<boolean> {
-  const terminal = input.terminal ?? (await collectChannelTaskTerminals(input.sessionID)).get(input.currentRootID)
-  if (!terminal) return false
-  if (terminal.info.role !== "assistant" || (terminal.info.rootID ?? terminal.info.parentID) !== input.currentRootID)
-    return false
-  if (terminal.info.metadata?.channelOutboundSent === true) return false
-  if (terminal.info.id === input.excludeTerminalID) return false
-  if (input.terminalsBefore.get(input.currentRootID)?.info.id === terminal.info.id) return false
-
-  const messages = await loadChannelTaskMessages({
-    sessionID: input.sessionID,
-    rootID: input.currentRootID,
-    terminal,
-  })
-  const intent = findReactionOnlyIntent(messages, input.currentRootID, terminal.info.id)
-  if (intent) {
-    const messageId = resolveReactionTarget(messages, input.currentRootID, input.messageId)
-    if (!messageId) return false
-    await deliverReactionOnlyReaction({
-      provider: input.provider,
-      accountId: input.accountId,
-      messageId,
-      sessionID: input.sessionID,
-      rootID: input.currentRootID,
-      terminalMessageID: terminal.info.id,
-      reaction: intent.reaction,
-    })
-    return true
-  }
-  const { parts, urls } = await projectChannelTaskPartsWithUrls({
-    messages,
-    rootID: input.currentRootID,
-    terminalMessageID: terminal.info.id,
-    includeText: true,
-  })
-  if (parts.length === 0) return false
-  const conversation = input.provider.conversation
-  const replyMessage =
-    conversation?.replyMessage?.bind(conversation) ?? input.provider.replyMessage?.bind(input.provider)
-  if (!replyMessage) return false
-  await replyMessage({
-    accountId: input.accountId,
-    messageId: input.messageId,
-    chatId: input.chatId,
-    chatType: input.chatType,
-    scopeKey: input.scopeKey,
-    parts,
-  })
-  await markChannelTaskAttachmentsDelivered({
-    sessionID: input.sessionID,
-    rootID: input.currentRootID,
-    urls,
-    messages,
-  })
-  await Session.mergeMessageMetadata({
-    sessionID: input.sessionID,
-    messageID: terminal.info.id,
-    metadata: { channelOutboundSent: true },
-  }).catch((err) => log.warn("failed to mark foreground terminal as sent", { sessionID: input.sessionID, error: err }))
-  return true
+  const messages = await SessionHistory.turnMessages(input)
+  const [plan] = planChannelDelivery({ ...input, messages, terminalIDs: new Set([input.terminal.info.id]) })
+  return plan?.messages ?? []
 }
 
 export async function replyChannelTaskAttachments(input: {

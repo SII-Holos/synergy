@@ -4,11 +4,9 @@ import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Channel } from "../../src/channel/index"
 import { ChannelOutbound } from "../../src/channel/outbound"
 import { ResponseCardRuntime } from "../../src/channel/response-card"
-import {
-  collectChannelTaskTerminals,
-  deliverForegroundTaskTerminal,
-  replyChannelTaskAttachments,
-} from "../../src/channel/outbound-parts"
+import { replyChannelTaskAttachments } from "../../src/channel/outbound-parts"
+import { collectChannelTerminalInfos, loadChannelDeliveryPlans } from "../../src/channel/delivery-plan"
+import { executeChannelDeliveryPlan } from "../../src/channel/delivery"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import type { OutboundPart, Provider, ResponseCard } from "../../src/channel/types"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -97,10 +95,26 @@ async function completedAssistant(
   rootID?: string,
   withText = true,
 ) {
+  rootID ??= Identifier.ascending("message")
+  if (!(await MessageV2.get({ sessionID, messageID: rootID }).catch(() => undefined))) {
+    await Session.updateMessage({
+      id: rootID,
+      rootID,
+      isRoot: true,
+      sessionID,
+      role: "user",
+      origin: { type: "user" },
+      visible: true,
+      includeInContext: true,
+      agent: PrimaryAgentIdentity.names.general,
+      model: { providerID: "test-provider", modelID: "test-model" },
+      time: { created: Date.now() },
+    })
+  }
   const created = (await Session.updateMessage({
     id: Identifier.ascending("message"),
     role: "assistant",
-    parentID: Identifier.ascending("message"),
+    parentID: rootID,
     mode: PrimaryAgentIdentity.names.general,
     agent: PrimaryAgentIdentity.names.general,
     path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
@@ -936,7 +950,7 @@ test("delivers a foreground-completed terminal that the loop did not return", ()
         // Snapshot before the terminal exists, then complete the terminal:
         // the foreground invoke returned a different (later) terminal, so this
         // one must be delivered by the compensation path.
-        const terminalsBefore = await collectChannelTaskTerminals(session.id)
+        expect(await collectChannelTerminalInfos({ sessionID: session.id, rootID })).toEqual([])
         const terminal = await completedAssistant(
           session.id,
           "Compensated reply",
@@ -946,17 +960,15 @@ test("delivers a foreground-completed terminal that the loop did not return", ()
         )
 
         expect(
-          await deliverForegroundTaskTerminal({
+          await executeChannelDeliveryPlan({
             provider: provider("foreground-compensate", calls),
             accountId: "acct_test",
-            messageId: "msg_topic_root",
+            replyToMessageId: "msg_topic_root",
             chatId: "chat_test",
             sessionID: session.id,
-            currentRootID: rootID,
-            excludeTerminalID: "msg_other_terminal",
-            terminalsBefore,
+            plan: (await loadChannelDeliveryPlans({ sessionID: session.id, rootID }))[0],
           }),
-        ).toBe(true)
+        ).toMatchObject({ status: "delivered" })
 
         expect(calls.replies).toEqual(["msg_topic_root"])
         expect(calls.replyParts).toEqual([
@@ -1018,7 +1030,7 @@ test("foreground compensation reacts only to its inbound root when the drain ret
           mime: "image/png",
           filename: "preview.png",
         })
-        const terminalsBefore = await collectChannelTaskTerminals(session.id)
+        expect(await collectChannelTerminalInfos({ sessionID: session.id, rootID: foregroundRootID })).toEqual([])
         ChannelOutbound.beginForeground(session.id, foregroundRootID)
         let dispose: (() => void) | undefined
         try {
@@ -1052,22 +1064,25 @@ test("foreground compensation reacts only to its inbound root when the drain ret
             { channelPush: true, channelReply: true, channelReplyToMessageId: "msg_queued_topic" },
             queuedRootID,
           )
-          const terminalsAfter = await collectChannelTaskTerminals(session.id)
-          expect(terminalsAfter.get(foregroundRootID)?.info.id).toBe(foregroundTerminal.id)
-          expect(terminalsAfter.get(queuedRootID)?.info.id).toBe(queuedTerminal.id)
+          expect(
+            (await collectChannelTerminalInfos({ sessionID: session.id, rootID: foregroundRootID })).map(
+              (info) => info.id,
+            ),
+          ).toEqual([foregroundTerminal.id])
+          expect(
+            (await collectChannelTerminalInfos({ sessionID: session.id, rootID: queuedRootID })).map((info) => info.id),
+          ).toEqual([queuedTerminal.id])
 
           expect(
-            await deliverForegroundTaskTerminal({
+            await executeChannelDeliveryPlan({
               provider: channelProvider,
               accountId: "acct_test",
-              messageId: "msg_foreground_topic",
+              replyToMessageId: "msg_foreground_topic",
               chatId: "chat_test",
               sessionID: session.id,
-              currentRootID: foregroundRootID,
-              excludeTerminalID: queuedTerminal.id,
-              terminalsBefore,
+              plan: (await loadChannelDeliveryPlans({ sessionID: session.id, rootID: foregroundRootID }))[0],
             }),
-          ).toBe(true)
+          ).toMatchObject({ status: "delivered" })
 
           expect(calls.replies).toEqual([])
           expect(calls.replyParts).toEqual([])
@@ -1110,7 +1125,7 @@ test("foreground compensation reacts only to its inbound root when the drain ret
     })
   }))
 
-test("does not re-deliver a terminal already present before the invoke", () =>
+test("rechecks authoritative sent markers before executing a retained delivery plan", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -1137,32 +1152,23 @@ test("does not re-deliver a terminal already present before the invoke", () =>
         } as MessageV2.User)
         const terminal = await completedAssistant(session.id, "Already delivered", "stop", {}, rootID)
 
-        const terminalsBefore = await collectChannelTaskTerminals(session.id)
-        expect(
-          await deliverForegroundTaskTerminal({
-            provider: provider("foreground-compensate-skip", calls),
-            accountId: "acct_test",
-            messageId: "msg_topic_root",
-            sessionID: session.id,
-            currentRootID: rootID,
-            excludeTerminalID: "msg_other_terminal",
-            terminalsBefore,
-          }),
-        ).toBe(false)
-        expect(calls.replies).toEqual([])
-
-        // The excluded (loop result) terminal is never delivered either.
-        expect(
-          await deliverForegroundTaskTerminal({
-            provider: provider("foreground-compensate-skip", calls),
-            accountId: "acct_test",
-            messageId: "msg_topic_root",
-            sessionID: session.id,
-            currentRootID: rootID,
-            excludeTerminalID: terminal.id,
-            terminalsBefore: new Map(),
-          }),
-        ).toBe(false)
+        const [plan] = await loadChannelDeliveryPlans({ sessionID: session.id, rootID })
+        await Session.mergeMessageMetadata({
+          sessionID: session.id,
+          messageID: terminal.id,
+          metadata: { channelOutboundSent: true },
+        })
+        for (let attempt = 0; attempt < 2; attempt++) {
+          expect(
+            await executeChannelDeliveryPlan({
+              provider: provider("foreground-compensate-skip", calls),
+              accountId: "acct_test",
+              replyToMessageId: "msg_topic_root",
+              sessionID: session.id,
+              plan,
+            }),
+          ).toMatchObject({ status: "skipped" })
+        }
         expect(calls.replies).toEqual([])
       },
     })

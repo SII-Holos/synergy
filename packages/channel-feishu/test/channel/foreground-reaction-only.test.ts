@@ -7,6 +7,7 @@ import { ProviderSdkSource } from "@ericsanchezok/synergy-harness/provider/sdk-s
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -113,6 +114,7 @@ async function runScenario(
   const replies: Array<Parameters<NonNullable<Provider["replyMessage"]>>[0]> = []
   const pushes: Array<Parameters<NonNullable<Provider["pushMessage"]>>[0]> = []
   const reactions: Array<Parameters<NonNullable<Provider["addReaction"]>>[0]> = []
+  const activeReactions = new Map<string, string>()
   const appliedReactions: Array<Parameters<NonNullable<Provider["addReaction"]>>[0]> = []
   const cleanups: string[] = []
   const closes: Array<{ replyToMessageId?: string; finalText?: string; error?: boolean }> = []
@@ -305,6 +307,7 @@ async function runScenario(
           },
           async addReaction(input) {
             reactions.push(input)
+            activeReactions.set(`fixture_reaction_${reactions.length}`, input.emoji)
             if (input.emoji === "SILENT") {
               appliedReactions.push({ ...input })
               // The remote side effect happened; only its acknowledgement was
@@ -314,7 +317,9 @@ async function runScenario(
             }
             return { reactionId: `fixture_reaction_${reactions.length}` }
           },
-          async removeReaction() {},
+          async removeReaction(input) {
+            activeReactions.delete(input.reactionId)
+          },
           createStreamingSession(input) {
             if (cardFailure) {
               streamingCard = new FeishuStreamingCard({
@@ -373,25 +378,28 @@ async function runScenario(
         let steerMessageID: string | undefined
         let steerFailure: unknown
         let unsubscribeSteer: (() => void) | undefined
-        const realMessages = Session.messages
-        const history = spyOn(Session, "messages").mockImplementation(
-          Object.assign(
-            async (input: Parameters<typeof realMessages>[0]) => {
-              if (failHistoryRead && input.sessionID === sessionID) {
-                if (enumerationFails === "terminal-task" && successfulPostInvokeHistoryReads === 0) {
-                  const messages = await realMessages(input)
-                  successfulPostInvokeHistoryReads += 1
-                  return messages
-                }
-                failHistoryRead = false
-                historyFailures += 1
-                throw new Error("Post-invoke history read failed")
-              }
-              return realMessages(input)
-            },
-            { force: realMessages.force, schema: realMessages.schema },
-          ),
-        )
+        const realInfos = SessionHistory.turnInfos
+        const realTurnMessages = SessionHistory.turnMessages
+        const history = spyOn(SessionHistory, "turnInfos").mockImplementation(async (input) => {
+          if (failHistoryRead && input.sessionID === sessionID) {
+            if (enumerationFails === "terminal-task") {
+              successfulPostInvokeHistoryReads += 1
+            } else {
+              failHistoryRead = false
+              historyFailures += 1
+              throw new Error("Post-invoke history read failed")
+            }
+          }
+          return realInfos(input)
+        })
+        const bodies = spyOn(SessionHistory, "turnMessages").mockImplementation(async (input) => {
+          if (failHistoryRead && input.sessionID === sessionID && enumerationFails === "terminal-task") {
+            failHistoryRead = false
+            historyFailures += 1
+            throw new Error("Post-invoke turn body read failed")
+          }
+          return realTurnMessages(input)
+        })
         // Observe the public return without replacing lease admission, inbox
         // materialization, generation, tools, terminal settlement or drain.
         const invoke = spyOn(SessionInvoke, "invokeInboxWithLease").mockImplementation(async (input, lease) => {
@@ -619,6 +627,7 @@ async function runScenario(
             return
           }
           if (scenario === "reaction-steer-error") {
+            expect([...activeReactions.values()]).toEqual(["SILENT"])
             expect(steerFailure).toBeUndefined()
             expect(steerMessageID).toBeDefined()
             const steer = messages.find((message) => message.info.id === steerMessageID)!
@@ -901,6 +910,7 @@ async function runScenario(
             unsubscribeSteer?.()
             invoke.mockRestore()
             history.mockRestore()
+            bodies.mockRestore()
             try {
               await Channel.stopAll()
             } finally {

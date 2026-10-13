@@ -34,6 +34,17 @@ function providerWithAccount(config: Record<string, unknown>) {
 }
 
 describe("Feishu reaction-only config resolution", () => {
+  test("validates minimal, default and illegal account configuration", () => {
+    expect(accountConfig().reactionOnlyReply).toBeUndefined()
+    expect(accountConfig({ reactionOnlyReply: {} }).reactionOnlyReply?.enabled).toBe(false)
+    for (const reactionOnlyReply of [
+      { enabled: "true" },
+      { enabled: true, forceReaction: "unknown" },
+      { enabled: true, forceReaction: 42 },
+      { enabled: true, extra: true },
+    ])
+      expect(() => accountConfig({ reactionOnlyReply })).toThrow()
+  })
   test("is disabled when the account config omits it", () => {
     expect(resolveFeishuReactionOnlyReply({ account: accountConfig(), channel: {} })).toEqual({
       enabled: false,

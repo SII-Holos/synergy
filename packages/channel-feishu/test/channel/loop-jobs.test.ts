@@ -6,6 +6,11 @@ import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { testRuntime } from "../support/runtime"
+import { testRuntime as coreRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
+import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
+import { channels } from "@ericsanchezok/synergy-channels/component"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 
 const runtime = await testRuntime()
 
@@ -95,6 +100,25 @@ async function inScope(fn: (sessionID: string, rootID: string) => Promise<void>)
 }
 
 describe("channel_reaction_only_turn_close", () => {
+  test("an unselected Feishu component cannot acquire another Runtime's tools or jobs", async () => {
+    await using bare = await coreRuntime({
+      composition: RuntimeComponents.compose([localRuntime({ workers: false, environment: false }), channels()]),
+    })
+    for (const selected of [true, false, true]) {
+      await (selected ? runtime : bare).run(() =>
+        inScope(async (sessionID, rootID) => {
+          const assistant = await assistantMessage(sessionID, rootID)
+          assistant.finish = "tool-calls"
+          await reactionToolPart(sessionID, assistant.id)
+          const parts = await MessageV2.parts({ sessionID, messageID: assistant.id })
+          expect(ToolRegistry.toolProviderIDs().includes("channel-feishu")).toBe(selected)
+          expect(collected(context({ sessionID, rootID, assistant, parts }))).toEqual(
+            selected ? [{ type: JOB_TYPE }] : [],
+          )
+        }),
+      )
+    }
+  })
   test("closes the turn when the intent-bearing assistant is still non-terminal", () =>
     runtime.run(() =>
       inScope(async (sessionID, rootID) => {

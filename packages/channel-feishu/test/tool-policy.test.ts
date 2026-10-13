@@ -83,6 +83,12 @@ describe("channel_reaction_only availability gate", () => {
     expect(diagnostics.get("channel_reaction_only")).toMatchObject({ code: "tool_unavailable" })
   })
 
+  test("hides the tool after the account is disabled", async () => {
+    configureFeishu({ account: { enabled: false, reactionOnlyReply: { enabled: true }, streaming: false } })
+    const diagnostics = await reactionOnlyToolAvailability({ session: feishuSession() as never, agent: "synergy" })
+    expect(diagnostics.get("channel_reaction_only")).toMatchObject({ code: "tool_unavailable" })
+  })
+
   test("exposes the tool when enabled with streaming disabled", async () => {
     configureFeishu({ account: { reactionOnlyReply: { enabled: true, forceReaction: "SILENT" }, streaming: false } })
     const diagnostics = await reactionOnlyToolAvailability({ session: feishuSession() as never, agent: "synergy" })
