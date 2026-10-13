@@ -64,11 +64,12 @@ beforeAll(async () => {
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
     const i18n = setupI18n({locale:"en",messages:{en:messages}})
-    const store = createBrowserStore()
-    store.replacePages([{id:"page-one",profileId:"personal",status:"active",url:"about:blank",title:"Test",isLoading:false,lastActiveAt:null}])
-    store.setHostStatus("page-one", "ready")
-    store.setPresentation({kind:"native",protocolVersion:4,capabilities:{native:true},reason:"desktop-local"})
-    store._setSend(command => window.commands.push(command))
+    const browserCatalog = createBrowserStore()
+    const store = browserCatalog.forPage(() => "page-one", () => {})
+    browserCatalog.replacePages([{id:"page-one",profileId:"personal",status:"active",url:"about:blank",title:"Test",isLoading:false,lastActiveAt:null}])
+    browserCatalog.setHostStatus("page-one", "ready")
+    browserCatalog.setPresentation({kind:"native",protocolVersion:4,capabilities:{native:true},reason:"desktop-local"})
+    browserCatalog._setSend(command => { window.commands.push(command) })
     window.browserFixture = store
     window.pageStateReplies = []
     function App() {
@@ -149,6 +150,7 @@ type Fixture = Window & {
   browserFixture: {
     replacePages(pages: unknown[]): void
     setHostStatus(id: string, status: string): void
+    browserError(): { message: string } | null
     setBrowserError(error: unknown): void
     setAnnotationTarget(target: unknown): void
   }
@@ -493,21 +495,21 @@ test("shared Browser menu returns focus on Escape and native view resumes only a
   await page.getByText("Developer tools", { exact: true }).click()
   await page.getByRole("switch").waitFor()
   expect(await page.evaluate(() => (window as unknown as Fixture).attachments.at(-1)?.visible)).toBe(false)
-  await page.evaluate(() =>
-    (window as unknown as Fixture).browserFixture.setBrowserError({ severity: "error", message: "Test error" }),
-  )
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.browserFixture.setBrowserError({ severity: "error", message: "Test error" })
+    fixture.browserFixture.setAnnotationTarget({ displayX: 20, displayY: 20, pageX: 20, pageY: 20 })
+  })
   await page.getByRole("switch").press("Escape")
   await page.getByRole("switch").waitFor({ state: "hidden" })
   expect(await menu.evaluate((node) => document.activeElement === node)).toBe(true)
   expect(await page.evaluate(() => (window as unknown as Fixture).attachments.at(-1)?.visible)).toBe(false)
-  await page.evaluate(() => (window as unknown as Fixture).browserFixture.setBrowserError(null))
-  await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === true)
-  await page.evaluate(() =>
-    (window as unknown as Fixture).browserFixture.setAnnotationTarget({ displayX: 20, displayY: 20 }),
-  )
-  await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === false)
   await page.evaluate(() => (window as unknown as Fixture).browserFixture.setAnnotationTarget(null))
   await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === true)
+  expect(await page.evaluate(() => (window as unknown as Fixture).browserFixture.browserError()?.message)).toBe(
+    "Test error",
+  )
+  await page.evaluate(() => (window as unknown as Fixture).browserFixture.setBrowserError(null))
   expect(await page.evaluate(() => (window as unknown as Fixture).detachments.length)).toBe(0)
   expect(
     await page.evaluate(() => [...new Set((window as unknown as Fixture).attachments.map((x) => x.pageId))]),

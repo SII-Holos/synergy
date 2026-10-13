@@ -13036,6 +13036,7 @@ export type BrowserControlRequest = {
       }
     | {
         type: "setViewport"
+        mode?: "fit" | "fixed"
         width: number
         height: number
       }

@@ -53,6 +53,7 @@ interface Entry extends BrowserNativePageHandle {
   recovery: Promise<void> | null
   failed: boolean
   closing: boolean
+  attached: boolean
   recoveryBudget: number
   lastResumeRecoveryAt: number | null
   replacementListeners: Set<(view: WebContentsView, previous: WebContentsView) => void>
@@ -101,6 +102,7 @@ export class BrowserNativePagePool {
         recovery: null,
         failed: false,
         closing: false,
+        attached: false,
         recoveryBudget: MAX_RECOVERY_BUDGET,
         lastResumeRecoveryAt: null,
         replacementListeners: new Set<(view: WebContentsView, previous: WebContentsView) => void>(),
@@ -126,12 +128,32 @@ export class BrowserNativePagePool {
     const entry = this.find(ownerKey, pageId)
     if (!entry || entry.failed) throw restartingError(pageId, entry?.failed ? "failed" : "restarting")
     window.contentView.addChildView(entry.generation.view)
+    if (!entry.attached) {
+      entry.attached = true
+      this.updateNativeViewport(entry)
+    }
     return entry.generation.view
   }
 
   detach(window: BrowserWindow, ownerKey: string, pageId: string): void {
     const entry = this.find(ownerKey, pageId)
-    if (entry) window.contentView.removeChildView(entry.generation.view)
+    if (!entry || !entry.attached) return
+    window.contentView.removeChildView(entry.generation.view)
+    entry.attached = false
+    this.updateNativeViewport(entry)
+  }
+
+  private updateNativeViewport(entry: Entry): void {
+    const generation = entry.generation
+    const { width, height } = generation.view.getBounds()
+    void generation.control.setNativeViewport(entry.attached ? null : { width, height }).catch((error) => {
+      if (entry.closing || entry.generation !== generation) return
+      entry.input.emit({
+        type: "page.error",
+        pageId: entry.input.page.id,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    })
   }
 
   onGeneration(
@@ -206,15 +228,6 @@ export class BrowserNativePagePool {
     let control: BrowserWebContentsControl | undefined
     let cleanupEvents: (() => void) | undefined
     try {
-      await configureProfileProxy(contents.session, input.networkProxy)
-      if (!existingView) await contents.loadURL("about:blank")
-      diagnostics = new BrowserHostDiagnostics({
-        pageId: input.page.id,
-        contents,
-        downloadDir: input.downloadDir,
-        emitHostEvent: input.emit,
-      })
-      await diagnostics.start()
       let lastState = input.page
       const state = (): BrowserPage =>
         contents.isDestroyed()
@@ -226,20 +239,29 @@ export class BrowserNativePagePool {
               isLoading: contents.isLoading(),
               lastActiveAt: null,
             })
-      control = new BrowserWebContentsControl({
+      const createControl = () =>
+        new BrowserWebContentsControl({
+          pageId: input.page.id,
+          contents: () => contents,
+          diagnostics: () => diagnostics,
+          pageState: state,
+          initialNavigationURL: existingView ? restoreURL : undefined,
+          onWindowOpen: (details) => this.openPopup(input, details),
+          onNavigationBlocked: (url, reason) =>
+            input.emit({ type: "page.error", pageId: input.page.id, url, message: reason }),
+        })
+      if (existingView) control = createControl()
+      await configureProfileProxy(contents.session, input.networkProxy)
+      if (!existingView) await contents.loadURL("about:blank")
+      diagnostics = new BrowserHostDiagnostics({
         pageId: input.page.id,
-        contents: () => contents,
-        diagnostics: () => diagnostics,
-        pageState: state,
-        resize: (width, height) => {
-          const current = view.getBounds()
-          view.setBounds({ x: current.x, y: current.y, width, height })
-        },
-        onWindowOpen: (details) => this.openPopup(input, details),
-        onNavigationBlocked: (url, reason) =>
-          input.emit({ type: "page.error", pageId: input.page.id, url, message: reason }),
+        contents,
+        downloadDir: input.downloadDir,
+        emitHostEvent: input.emit,
       })
-      await control.execute({ type: "setViewport", width: bounds.width, height: bounds.height })
+      await diagnostics.start()
+      control ??= createControl()
+      await control.setNativeViewport({ width: bounds.width, height: bounds.height })
       const generation: Generation = {
         id,
         view,
@@ -519,6 +541,7 @@ export class BrowserNativePagePool {
           entry.generation = next
           entry.failed = false
           this.bindRecoveryEvents(entry, next)
+          if (entry.attached) this.updateNativeViewport(entry)
           for (const listener of entry.replacementListeners) listener(next.view, previous.view)
           // Closing the replaced generation is best-effort: a wedged old
           // renderer must not roll back a recovery that already succeeded, or

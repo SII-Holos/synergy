@@ -645,6 +645,7 @@ const BrowserCloseCommandSchema = z.object({ type: z.literal("close") }).strict(
 const BrowserViewportCommandSchema = z
   .object({
     type: z.literal("setViewport"),
+    mode: z.enum(["fit", "fixed"]).optional(),
     width: z.number().int().min(1).max(16_384),
     height: z.number().int().min(1).max(16_384),
   })

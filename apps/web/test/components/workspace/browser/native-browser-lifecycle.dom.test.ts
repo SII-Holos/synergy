@@ -38,8 +38,8 @@ test("a retained native surface hides for overlays and detaches while its sessio
     import {createSignal} from 'solid-js'
     import {active,setActive,setOverlay,calls} from './stub'
     const [menu,setMenu]=createSignal(false)
-    window.fixture={setActive,setOverlay,setMenu,calls}
-    const container=document.createElement('div');container.style.cssText='width:800px;height:600px';document.body.append(container)
+    const container=document.createElement('div');container.style.cssText='width:0;height:0';document.body.append(container)
+    window.fixture={setActive,setOverlay,setMenu,calls,setSize:shown=>container.style.cssText=shown?'width:800px;height:600px':'width:0;height:0'}
     render(()=><ViewActivityProvider active={active}><WorkbenchSurfaceOverlay.Provider value={menu}><NativeBrowserSurface container={()=>container} ownerKey="scope"/></WorkbenchSurfaceOverlay.Provider></ViewActivityProvider>,document.getElementById('root'))
   `,
   )
@@ -65,6 +65,9 @@ test("a retained native surface hides for overlays and detaches while its sessio
         { method, value },
       )
     const calls = () => page.evaluate(() => (window as unknown as { fixture: { calls: unknown[][] } }).fixture.calls)
+    await page.waitForFunction(() => Boolean((window as unknown as { fixture?: unknown }).fixture))
+    expect(await calls()).toEqual([])
+    await act("setSize", true)
     await page.waitForFunction(
       () => (window as unknown as { fixture: { calls: unknown[][] } }).fixture.calls.length > 0,
     )

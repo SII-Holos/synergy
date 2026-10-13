@@ -156,6 +156,8 @@ export const testOptions = {
     "test/components/settings/settings-resource.test.ts",
     "test/context/session-submission-view.test.ts",
     "test/components/workspace/browser/browser-import-target.test.ts",
+    "test/components/workspace/browser/browser-store.test.ts",
+    "test/components/workspace/browser/browser-ws-reconnect.test.ts",
     "test/components/execution/controls.render.test.ts",
     "test/components/execution/context-interaction.render.test.ts",
     "test/context/execution-context.test.ts",
