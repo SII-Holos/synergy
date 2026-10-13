@@ -19,8 +19,8 @@ Bugs belong here; rationale in `docs/decisions/`.
 - **Executive summary** — failure, cause, escaped safeguard, lesson.
 - **Summary** — failure details.
 - **Timeline** — observations and timing.
-- **Root cause** — the mechanism and missing safeguards.
-- **Guardrails added** — linked fixes: tests, doc updates, gate changes.
+- **Root cause** — mechanism and missing safeguards.
+- **Guardrails** — linked tests, documentation and gates.
 - **Lessons** — durable takeaways.
 
 ## Index
