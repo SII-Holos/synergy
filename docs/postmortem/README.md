@@ -19,8 +19,8 @@ Bugs belong here; rationale in `docs/decisions/`.
 - **Executive summary** — failure, cause, escaped safeguard, lesson.
 - **Summary** — failure details.
 - **Timeline** — observations and timing.
-- **Root cause** — the mechanism and missing safeguards.
-- **Guardrails added** — linked fixes: tests, doc updates, gate changes.
+- **Root cause** — mechanism and missing safeguards.
+- **Guardrails** — linked tests, documentation and gates.
 - **Lessons** — durable takeaways.
 
 ## Index
@@ -42,6 +42,7 @@ Bugs belong here; rationale in `docs/decisions/`.
 - [0065: Session navigation](0065-session-navigation-flashed-introduction.md)
 
 - [0064: History latency](0064-history-pages-scanned-authoritative-storage.md)
+- [0064: Attachment identity](0064-visual-card-attachment-identity.md)
 
 - [0063: Startup replay](0063-history-replay-blocked-startup.md)
 
