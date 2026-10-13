@@ -1,11 +1,14 @@
-import { Show, createSignal } from "solid-js"
+import { For, Show, createMemo, createSignal, onCleanup } from "solid-js"
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { AttachmentGallery } from "@ericsanchezok/synergy-ui/attachment-card"
+import { ResourceReferenceProvider } from "@ericsanchezok/synergy-ui/context/resource-open"
+import { extractPromptDraft } from "@/utils/prompt"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLocale } from "@/context/locale"
 import { requestErrorMessage } from "@/utils/error"
-import { pendingTimelineItemView } from "./conversation-pending"
+import { pendingMessageText, pendingTimelineItemView } from "./conversation-pending"
 import { S } from "./session-i18n"
 import "./pending-composer-queue.css"
 
@@ -13,32 +16,51 @@ export function PendingTimelineItem(props: {
   item: SessionInboxItem
   rollbackActive: boolean
   hasCanonicalRoot: boolean
+  serverUrl?: string
   onGuide?(item: SessionInboxItem): void | Promise<void>
   onRemove?(item: SessionInboxItem): void | Promise<void>
+  onEdit?(item: SessionInboxItem): void | Promise<void>
 }) {
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const [pending, setPending] = createSignal(false)
-  const [failure, setFailure] = createSignal<{ action: "guide" | "remove"; error: unknown }>()
+  const [failure, setFailure] = createSignal<{ action: "guide" | "remove" | "edit"; error: unknown }>()
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+  })
+  const attachments = createMemo(() => (props.item.message?.parts ?? []).filter((part) => part.type === "attachment"))
+  const references = createMemo(() => {
+    const draft = extractPromptDraft({ message: { metadata: props.item.message?.metadata }, parts: [] })
+    return [
+      ...draft.prompt.flatMap((part) => (part.type === "note" || part.type === "session" ? [part.title] : [])),
+      ...draft.context.items.map((item) => item.path),
+    ]
+  })
   const view = () =>
     pendingTimelineItemView(props.item.mode, props.rollbackActive, {
       hasCanonicalRoot: props.hasCanonicalRoot,
       status: props.item.status,
     })
-  const label = () => {
-    const part = props.item.message?.parts?.[0]
-    return part?.type === "text" ? part.text : (props.item.summary?.title ?? _(S.convPending))
-  }
-  const run = async (action: "guide" | "remove") => {
-    if (pending() || (action === "remove" ? !view().canWithdraw : !view().primaryAction)) return
+  const label = () =>
+    pendingMessageText(props.item) || props.item.summary?.preview || props.item.summary?.title || _(S.convPending)
+  const canEdit = () => view().canWithdraw && !!props.item.message && !!props.onEdit
+  const run = async (action: "guide" | "remove" | "edit") => {
+    if (
+      pending() ||
+      (action === "edit" ? !canEdit() : action === "remove" ? !view().canWithdraw : !view().primaryAction)
+    )
+      return
     setPending(true)
     setFailure(undefined)
     try {
-      await (action === "remove" ? props.onRemove?.(props.item) : props.onGuide?.(props.item))
+      if (action === "edit") await props.onEdit?.(props.item)
+      else if (action === "remove") await props.onRemove?.(props.item)
+      else await props.onGuide?.(props.item)
     } catch (error) {
-      setFailure({ action, error })
+      if (!disposed) setFailure({ action, error })
     } finally {
-      setPending(false)
+      if (!disposed) setPending(false)
     }
   }
   return (
@@ -80,18 +102,36 @@ export function PendingTimelineItem(props: {
               </Button>
             )}
           </Show>
-          <Show when={view().canWithdraw}>
+          <Show when={canEdit()}>
             <Button
               variant="ghost"
               disabled={pending()}
-              title={_(S.convRemovePendingTitle)}
-              onClick={() => void run("remove")}
+              aria-label={_(S.convEditPending)}
+              title={_(S.convEditPending)}
+              onClick={() => void run("edit")}
             >
-              {_(S.convWithdraw)}
+              {_(S.convEditPending)}
+            </Button>
+          </Show>
+          <Show when={view().canWithdraw}>
+            <Button variant="ghost" disabled={pending()} title={_(S.inboxDelete)} onClick={() => void run("remove")}>
+              {_(S.inboxDelete)}
             </Button>
           </Show>
         </div>
       </div>
+      <Show when={attachments().length}>
+        <ResourceReferenceProvider value={props.item.message?.referenceContext}>
+          <div class="pending-composer-attachments">
+            <AttachmentGallery files={attachments()} serverUrl={props.serverUrl ?? ""} layout="rows" compact="draft" />
+          </div>
+        </ResourceReferenceProvider>
+      </Show>
+      <Show when={references().length}>
+        <div class="pending-composer-references">
+          <For each={references()}>{(reference) => <span title={reference}>{reference}</span>}</For>
+        </div>
+      </Show>
       <Show when={pending()}>
         <div role="status" class="pending-composer-feedback">
           {_(S.inboxOperationPending)}
@@ -100,7 +140,20 @@ export function PendingTimelineItem(props: {
       <Show when={failure()}>
         {(failed) => (
           <div role="alert" class="flex flex-col gap-2 text-text-base">
-            <span>{_(failed().action === "remove" ? S.inboxRemoveFailed : S.inboxGuideFailed)}</span>
+            <span>
+              {_(
+                failed().action === "edit"
+                  ? S.convEditPendingFailed
+                  : failed().action === "remove"
+                    ? S.inboxRemoveFailed
+                    : S.inboxGuideFailed,
+              )}
+            </span>
+            <Show when={failed().action === "edit" && canEdit()}>
+              <Button variant="secondary" disabled={pending()} onClick={() => void run("edit")}>
+                {_(S.convEditPending)}
+              </Button>
+            </Show>
             <Show when={failed().action === "remove" && view().canWithdraw}>
               <div>
                 <Button variant="secondary" disabled={pending()} onClick={() => void run("remove")}>

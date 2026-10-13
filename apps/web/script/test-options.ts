@@ -8,6 +8,7 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
   "test/components/session/retained-session-views.dom.test.ts",
+  "test/components/session/project-directory-resource.dom.test.ts",
   "test/components/workspace/browser/native-browser-lifecycle.dom.test.ts",
   "test/context/workbench/updates.dom.test.ts",
   "test/context/workbench/residency-capabilities.dom.test.ts",
@@ -150,10 +151,13 @@ export const testOptions = {
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/components/session/project-directory-resource.test.ts",
     "test/components/note/blueprint-loops.test.ts",
     "test/components/settings/settings-resource.test.ts",
     "test/context/session-submission-view.test.ts",
     "test/components/workspace/browser/browser-import-target.test.ts",
+    "test/components/workspace/browser/browser-store.test.ts",
+    "test/components/workspace/browser/browser-ws-reconnect.test.ts",
     "test/components/execution/controls.render.test.ts",
     "test/components/execution/context-interaction.render.test.ts",
     "test/context/execution-context.test.ts",

@@ -13,6 +13,8 @@ Use the isolated provider and synthetic-data workflow in `develop-synergy` for t
 
 CI `package:check` builds its own package closure and runs on the separate contracts runner. Keep rebuilding gates apart from suites consuming workspace `dist`; isolated Homes do not isolate the checkout's compiled files.
 
+Electron fixtures that await renderer animations must keep their test WebContents unthrottled when another application can occlude the window. A visible native window can still have a hidden document with paused animation time. Diagnose that state before changing production animation behavior or extending a deadline.
+
 Keep validation for private source-only test packages in `typecheck`. Declare `build` only when the package emits the distribution consumed by preparation.
 
 ## Local Joint Acceptance

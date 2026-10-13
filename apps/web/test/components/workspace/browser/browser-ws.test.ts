@@ -91,6 +91,12 @@ describe("browserControlCommandFromMessage", () => {
       source: "user",
       url: "www.google.com",
     })
+    expect(browserControlCommandFromMessage({ type: "input.resize", mode: "fit", width: 800, height: 600 })).toEqual({
+      type: "setViewport",
+      mode: "fit",
+      width: 800,
+      height: 600,
+    })
     const fileChooser = browserControlCommandFromMessage({
       type: "filechooser.select",
       requestId: "chooser-1",

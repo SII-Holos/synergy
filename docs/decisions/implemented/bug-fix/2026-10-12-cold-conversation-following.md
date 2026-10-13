@@ -8,6 +8,8 @@ Resident Session views made warm navigation continuous, but the first body load 
 
 ## Decision
 
+[Retained conversation readiness](2026-10-13-retained-conversation-readiness.md) supersedes this record's visible-during-cold-settlement choice with transcript-only readiness admission. The separation of canonical positioning from following motion, owner cleanup and instantaneous distant corrections remains in force.
+
 Keep initial positioning and following animation admission separate. The mounted conversation reports hydration once its current row body leases settle, non-streaming Markdown is no longer pending, fonts are ready and mutations/resizes have left two animation frames for layout measurement. During this interval, canonical bottom corrections are instantaneous and target content remains visible and operable. The callback is tied to the mounted owner, observes only the current surface, and releases its observers on completion, inactivity or disposal. A replacement viewport resets animation eligibility. A retained hydrated viewport and later live growth preserve ordinary following motion.
 
 The shared Markdown renderer exposes its asynchronous pending state as a DOM attribute, without adding a visual loading barrier. This avoids coupling Session navigation to the parser implementation or fetching offscreen bodies.

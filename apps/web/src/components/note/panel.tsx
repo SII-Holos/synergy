@@ -715,6 +715,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   const [batchBusy, setBatchBusy] = createSignal(false)
   const [showArchived, setShowArchived] = createSignal(false)
   const [listOptionsOpen, setListOptionsOpen] = createSignal(false)
+  let host!: HTMLDivElement
 
   const currentScopeID = createMemo(() => {
     const dir = directory()
@@ -1160,16 +1161,17 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   }
 
   createEffect(() => {
-    if (!selecting()) return
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") cancelSelecting()
+    if (!active() || !selecting()) return
+    function onKey(event: KeyboardEvent) {
+      if (!active() || event.defaultPrevented || event.isComposing || !host.contains(document.activeElement)) return
+      if (event.key === "Escape") cancelSelecting()
     }
     window.addEventListener("keydown", onKey)
     onCleanup(() => window.removeEventListener("keydown", onKey))
   })
 
   return (
-    <div class="flex flex-col h-full bg-background-base relative">
+    <div ref={host} class="flex flex-col h-full bg-background-base relative">
       <style>{TIPTAP_STYLES}</style>
 
       <Show when={view() === "list"}>

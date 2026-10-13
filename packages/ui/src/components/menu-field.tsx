@@ -1,10 +1,11 @@
 import { useSettingRow } from "./setting-row-context"
 import { restorePopoverFocus } from "./popover"
 import { useOverlayLayer } from "../context/overlay-layer"
+import { useViewActivity } from "../context/view-activity"
 import { PortalStyleOwner } from "../context/ui-style"
 import { Popover } from "@kobalte/core/popover"
 import { Listbox, Item, ItemLabel, ItemIndicator } from "@kobalte/core/listbox"
-import { createSignal, Show, type JSX } from "solid-js"
+import { createEffect, createSignal, Show, type JSX } from "solid-js"
 import { Icon, type IconName } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import "./menu-field.css"
@@ -54,7 +55,11 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
   let surface: HTMLDivElement | undefined
   const row = useSettingRow()
   const parentLayer = useOverlayLayer()
+  const active = useViewActivity()
   const [open, setOpen] = createSignal(false)
+  createEffect(() => {
+    if (!active()) setOpen(false)
+  })
   const multiple = () => props.multiple === true
   const selected = () =>
     multiple() ? (props as MenuFieldMultipleProps<T>).value : [(props as MenuFieldSingleProps<T>).value]
@@ -82,7 +87,7 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
         ref={surface}
         onCloseAutoFocus={(event) => {
           event.preventDefault()
-          void restorePopoverFocus(trigger, surface)
+          if (active()) void restorePopoverFocus(trigger, surface)
         }}
         onEscapeKeyDown={(event) => event.stopPropagation()}
         class={`menu-field-surface ${props.surfaceClass ?? ""}`}
@@ -137,8 +142,8 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
 
   return (
     <Popover
-      open={open()}
-      onOpenChange={setOpen}
+      open={active() && open()}
+      onOpenChange={(value) => setOpen(active() && value)}
       placement={props.placement ?? "bottom-start"}
       gutter={6}
       overflowPadding={12}

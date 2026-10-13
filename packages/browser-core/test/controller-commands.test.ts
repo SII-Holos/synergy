@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { BrowserProtocolError, CdpPageController, withCdpCommandTimeout, type CdpTransport } from "../src"
+import {
+  BrowserProtocolError,
+  BrowserUserCommandSchema,
+  CdpPageController,
+  withCdpCommandTimeout,
+  type CdpTransport,
+} from "../src"
 
 type SendHandler = (params?: Record<string, unknown>) => unknown
 
@@ -95,6 +101,24 @@ describe("withCdpCommandTimeout", () => {
 })
 
 describe("CdpPageController navigation and lifecycle commands", () => {
+  test("fit restores the native viewport after fixed emulation without resetting unrelated emulation", async () => {
+    const transport = new FakeTransport()
+    const controller = controllerFor(transport)
+    await controller.execute({ type: "setViewport", width: 375, height: 667 })
+    expect(transport.calls.find((call) => call.method === "Emulation.setDeviceMetricsOverride")?.params).toMatchObject({
+      width: 375,
+      height: 667,
+    })
+    transport.calls.length = 0
+    await controller.execute(
+      BrowserUserCommandSchema.parse({ type: "setViewport", mode: "fit", width: 800, height: 600 }),
+    )
+    expect(transport.calls.filter((call) => call.method.startsWith("Emulation.")).map((call) => call.method)).toEqual([
+      "Emulation.clearDeviceMetricsOverride",
+    ])
+    await controller.dispose()
+  })
+
   test("reports navigation failures as structured protocol errors", async () => {
     const transport = new FakeTransport()
     transport.respond("Page.navigate", { errorText: "net::ERR_NAME_NOT_RESOLVED" })

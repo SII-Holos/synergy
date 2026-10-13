@@ -126,6 +126,38 @@ for (const exitCode of [0, 7]) {
   })
 }
 
+test("dev registers the owning launch entry without relabeling an attached backend", () => {
+  for (const [args, entry] of [
+    [["server"], "dev-server"],
+    [["web"], "dev-web"],
+    [["desktop"], "dev-desktop"],
+    [["desktop", "--managed"], "dev-desktop-managed"],
+    [["send", "hello"], "dev-send"],
+  ] as const) {
+    const plan = createDevPlan([...args], { repoRoot: root })
+    const owner = plan.processes.find(
+      (process) => process.label === "server" || process.label === "desktop" || process.label === "send",
+    )!
+    expect(owner.env?.SYNERGY_RUNTIME_ENTRY).toBe(entry)
+    for (const name of [
+      "SYNERGY_DAEMON",
+      "SYNERGY_DESKTOP_STARTUP_PROGRESS",
+      "SYNERGY_DESKTOP_PARENT_PID",
+      "SYNERGY_INSTALLATION_PIN",
+      "SYNERGY_INSTALLATION_ROOT",
+      "SYNERGY_LAUNCHER_COMMAND",
+    ]) {
+      expect(Object.hasOwn(owner.env!, name)).toBe(true)
+      expect(owner.env?.[name]).toBeUndefined()
+    }
+  }
+  for (const command of ["web", "desktop"]) {
+    const plan = createDevPlan([command, "--attach", "http://127.0.0.1:5123"], { repoRoot: root })
+    expect(plan.processes.some((process) => process.label === "server")).toBe(false)
+    expect(plan.processes.every((process) => process.env?.SYNERGY_RUNTIME_ENTRY === undefined)).toBe(true)
+  }
+})
+
 for (const args of [
   ["server"],
   ["app"],

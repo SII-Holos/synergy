@@ -1778,9 +1778,12 @@ export function SessionTurn(
                                     animate: following,
                                     content: true,
                                     appear: () => {
-                                      const item = current()
+                                      const display = current()
+                                      const item = isAssistantTimelineDisplayItem(display)
+                                        ? displayItemTimelineItem(display)
+                                        : undefined
                                       return (
-                                        item.kind === "part" && item.part.type === "text" && takeArrival(item.part.id)
+                                        item?.kind === "part" && item.part.type === "text" && takeArrival(item.part.id)
                                       )
                                     },
                                   })

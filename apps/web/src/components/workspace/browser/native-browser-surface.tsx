@@ -13,7 +13,6 @@ export function nativeBrowserViewVisible(input: {
   fileChooserOpen: boolean
   pageDialogOpen: boolean
   controlsOpen?: boolean
-  errorOpen?: boolean
   annotationOpen?: boolean
   workspaceMenuOpen?: boolean
 }) {
@@ -22,7 +21,6 @@ export function nativeBrowserViewVisible(input: {
     !input.fileChooserOpen &&
     !input.pageDialogOpen &&
     !input.controlsOpen &&
-    !input.errorOpen &&
     !input.annotationOpen &&
     !input.workspaceMenuOpen
   )
@@ -43,7 +41,10 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
   const platform = usePlatform()
   const workspaceMenuOpen = useContext(WorkbenchSurfaceOverlay)
   const [cover, setCover] = createSignal<{ pageId: string; url: string; dataUrl: string }>()
-  let presentation: ReturnType<typeof claimNativeView> | undefined
+  const [bounds, setBounds] = createSignal<ReturnType<typeof nativeBounds>>(null, {
+    equals: (left, right) =>
+      left?.x === right?.x && left?.y === right?.y && left?.width === right?.width && left?.height === right?.height,
+  })
   let disposed = false
 
   const bridge = () => {
@@ -59,35 +60,20 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
         fileChooserOpen: Boolean(browser.fileChooserRequest()),
         pageDialogOpen: Boolean(browser.dialogRequest()),
         controlsOpen: browser.controlsOpen() || browser.addressSuggestionsOpen(),
-        errorOpen: Boolean(browser.browserError()),
         annotationOpen: Boolean(browser.annotationTarget()),
         workspaceMenuOpen: workspaceMenuOpen(),
       }),
   )
 
   function syncBounds() {
-    const native = bridge()
-    const pageId = browser.pageId()
     const container = props.container()
-    if (!active() || !native || !pageId || !container) return
-    const bounds = nativeBounds(container.getBoundingClientRect())
-    if (!bounds) return
-    void presentation
-      ?.run(() =>
-        native.resizeView({
-          protocolVersion: BROWSER_PROTOCOL_VERSION,
-          ownerKey: props.ownerKey,
-          pageId,
-          bounds,
-        }),
-      )
-      .catch((error) => reportNativeError("resize", pageId, error))
+    setBounds(active() && container ? nativeBounds(container.getBoundingClientRect()) : null)
   }
 
   function reportNativeError(action: "attach" | "resize", pageId: string, error: unknown) {
     if (disposed || browser.pageId() !== pageId) return
     const normalized = normalizeBrowserError(error, `Native Browser ${action} failed`)
-    browser.setBrowserError({ severity: "error", message: normalized.message, code: normalized.code })
+    browser.setBrowserError({ pageId, severity: "error", message: normalized.message, code: normalized.code })
   }
 
   onMount(() => {
@@ -100,9 +86,7 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
         }
         case "native.loading": {
           browser.setPageLoading(event.pageId, true)
-          if (event.url) {
-            browser.setPageUrl(event.pageId, event.url)
-          }
+          if (event.url) browser.setPageUrl(event.pageId, event.url)
           break
         }
         case "native.loaded": {
@@ -121,49 +105,76 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
         }
         case "native.error": {
           browser.setPageLoading(event.pageId, false)
-          browser.setBrowserError({ severity: "error", message: event.message, code: String(event.code ?? "") })
+          browser.setBrowserError({
+            pageId: event.pageId,
+            severity: "error",
+            message: event.message,
+            code: String(event.code ?? ""),
+          })
           break
         }
       }
     })
-
     onCleanup(() => unsubscribeNative?.())
   })
+
   createEffect(() => {
-    if (!active()) return
     const container = props.container()
-    if (!container) return
+    syncBounds()
+    if (!active() || !container) return
     const observer = new ResizeObserver(syncBounds)
     observer.observe(container)
-    onCleanup(() => observer.disconnect())
+    window.addEventListener("resize", syncBounds)
+    window.addEventListener("scroll", syncBounds, true)
+    onCleanup(() => {
+      observer.disconnect()
+      window.removeEventListener("resize", syncBounds)
+      window.removeEventListener("scroll", syncBounds, true)
+    })
   })
 
   createEffect(() => {
     const native = bridge()
-    const page = browser.page()
-    const container = props.container()
-    if (!active() || !native || !page || !container) return
-    const bounds = nativeBounds(container.getBoundingClientRect())
-    if (!bounds) return
-    const shown = visible()
-    const lease = claimNativeView(native, JSON.stringify([props.ownerKey, page.id]))
-    presentation = lease
-    void lease
-      .run(() =>
-        native.attachView({
-          protocolVersion: BROWSER_PROTOCOL_VERSION,
-          ownerKey: props.ownerKey,
-          pageId: page.id,
-          bounds,
-          visible: shown,
-        }),
-      )
-      .catch((error) => reportNativeError("attach", page.id, error))
+    const pageId = browser.pageId()
+    if (!active() || !native || !pageId) return
+    const lease = claimNativeView(native, JSON.stringify([props.ownerKey, pageId]))
+    let attached = false
+    let shown = false
+    createEffect(() => {
+      const rect = bounds()
+      const nextShown = visible() && Boolean(rect)
+      if (!rect && !attached) return
+      if (!attached || shown !== nextShown) {
+        attached = true
+        shown = nextShown
+        void lease
+          .run(() =>
+            native.attachView({
+              protocolVersion: BROWSER_PROTOCOL_VERSION,
+              ownerKey: props.ownerKey,
+              pageId,
+              ...(rect ? { bounds: rect } : {}),
+              visible: nextShown,
+            }),
+          )
+          .catch((error) => reportNativeError("attach", pageId, error))
+      } else if (rect) {
+        void lease
+          .run(() =>
+            native.resizeView({
+              protocolVersion: BROWSER_PROTOCOL_VERSION,
+              ownerKey: props.ownerKey,
+              pageId,
+              bounds: rect,
+            }),
+          )
+          .catch((error) => reportNativeError("resize", pageId, error))
+      }
+    })
     onCleanup(() => {
-      if (presentation === lease) presentation = undefined
       void lease
         .release(() =>
-          native.detachView({ protocolVersion: BROWSER_PROTOCOL_VERSION, ownerKey: props.ownerKey, pageId: page.id }),
+          native.detachView({ protocolVersion: BROWSER_PROTOCOL_VERSION, ownerKey: props.ownerKey, pageId }),
         )
         .catch(() => undefined)
     })
@@ -172,9 +183,6 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
   createEffect(() => {
     browser.pageId()
     if (visible()) setCover(undefined)
-    browser.viewportWidth()
-    browser.viewportHeight()
-    syncBounds()
   })
 
   onCleanup(() => {

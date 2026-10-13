@@ -3,6 +3,8 @@ import type { JSX } from "solid-js"
 import { Show, batch, createSignal, onCleanup, useContext } from "solid-js"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { AP } from "@/app-i18n"
 import type { PluginConversationViewport } from "@ericsanchezok/synergy-plugin"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { SessionPromptDockAnchor } from "./workbench-chrome"
@@ -11,7 +13,6 @@ import { useViewActivity } from "@/context/view-residency"
 
 export function ConversationViewport(props: {
   ready?: boolean
-  animateAdmission?: boolean
   scrolledUp: boolean
   hasUnseenLatest?: boolean
   onScrolledUpChange: (value: boolean) => void
@@ -77,6 +78,12 @@ export function ConversationViewport(props: {
   })
   return (
     <div ref={setContainer} class="relative w-full h-full min-w-0">
+      <Show when={props.ready === false}>
+        <div class="absolute inset-0 flex flex-col items-center justify-center gap-3" role="status">
+          <Spinner class="size-10 text-text-weak" />
+          <span class="text-sm text-text-weak">{_(AP.sessionLoading)}</span>
+        </div>
+      </Show>
       <Show when={props.overlay}>{props.overlay}</Show>
       <Show when={props.hasUnseenLatest || (props.scrolledUp && hasContentBelow())}>
         <div
@@ -105,6 +112,8 @@ export function ConversationViewport(props: {
         data-conversation-viewport
         data-scroll-viewport="vertical"
         data-ready={props.ready !== false}
+        aria-hidden={props.ready === false ? true : undefined}
+        inert={props.ready === false}
         ref={(el) => {
           boundScrollEl = el
           setViewport(el)
@@ -121,7 +130,6 @@ export function ConversationViewport(props: {
         }}
         onClick={props.autoScroll.handleInteraction}
         class="relative min-w-0 w-full h-full overflow-y-auto [overflow-x:clip] no-scrollbar md:pt-[58px] md:[scroll-padding-top:58px]"
-        classList={{ "conversation-viewport-admission": props.animateAdmission !== false }}
       >
         <Show when={props.stickyHeader}>{props.stickyHeader}</Show>
         <div

@@ -115,7 +115,7 @@ beforeAll(async () => {
   )
   await Bun.write(
     path.join(directory, "transport.ts"),
-    `export const createBrowserWebSocket=store => {store._setSend(() => {});window.deliverPages=pages => store.replacePages(pages); return {}}`,
+    `export const createBrowserWebSocket=store => {store._setSend(() => {});window.deliverPages=pages => store.replacePages(pages); return {applySnapshot:snapshot => store.replacePages(snapshot.pages)}}`,
   )
   server = await createServer({
     configFile: false,

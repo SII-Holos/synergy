@@ -69,7 +69,7 @@ export async function runCli(options: CliOptions): Promise<void> {
         const run = () =>
           runCliImplementation({
             ...options,
-            runtimeFactory: (input) => options.runtimeFactory({ ...input, host }),
+            runtimeFactory: (input) => options.runtimeFactory({ ...input, host: input.host ?? host }),
           })
         const argv = options.argv ?? hideBin(process.argv)
         if (

@@ -11,6 +11,7 @@ type Harness = {
   send: () => void
   remount: () => void
   fastTool: () => void
+  newText: (id: string) => void
   setFollowing: (following: boolean) => void
 }
 let server: ReturnType<typeof Bun.serve>
@@ -204,6 +205,72 @@ test("new stream suffixes fade without changing preceding text or paragraph iden
     }),
   )
 })
+
+test("a projected live text Part fades once without moving or fading existing prose", async () => {
+  await move(2)
+  await settled()
+  const result = await page.evaluate(async () => {
+    const harness = (window as unknown as { __chronologyHarness: Harness }).__chronologyHarness
+    const original = document.querySelector<HTMLElement>('[data-slot="session-turn-timeline-item"][data-kind="text"]')!
+    const paragraph = original.querySelector("p")
+    const top = original.getBoundingClientRect().top
+    harness.newText("answer-live")
+    await new Promise(requestAnimationFrame)
+    const item = document.querySelector<HTMLElement>('[data-scroll-anchor$=":answer-live"]')!
+    const animation = item.getAnimations()[0]
+    animation?.pause()
+    if (animation) animation.currentTime = 90
+    const effect = animation?.effect as KeyframeEffect | undefined
+    const frame = {
+      opacity: Number(getComputedStyle(item).opacity),
+      duration: effect?.getTiming().duration,
+      keyframes: effect?.getKeyframes().map(({ opacity, height, transform }) => ({ opacity, height, transform })),
+      originalOpacity: getComputedStyle(original).opacity,
+      originalTop: original.getBoundingClientRect().top - top,
+      sameParagraph: original.querySelector("p") === paragraph,
+    }
+    animation?.finish()
+    await new Promise(requestAnimationFrame)
+    harness.remount()
+    await new Promise(requestAnimationFrame)
+    return { ...frame, replay: document.querySelector('[data-scroll-anchor$=":answer-live"]')!.getAnimations().length }
+  })
+  expect(result.opacity).toBeGreaterThan(0.65)
+  expect(result.opacity).toBeLessThan(1)
+  expect(result.duration).toBe(180)
+  expect(result.keyframes).toEqual([
+    { opacity: "0.65", height: undefined, transform: undefined },
+    { opacity: "1", height: undefined, transform: undefined },
+  ])
+  expect(result.originalOpacity).toBe("1")
+  expect(result.originalTop).toBe(0)
+  expect(result.sameParagraph).toBe(true)
+  expect(result.replay).toBe(0)
+})
+
+for (const mode of ["reading", "reduced-motion"] as const)
+  test(`a projected text receipt suppressed by ${mode} cannot replay after remount`, async () => {
+    await page.emulateMedia({ reducedMotion: mode === "reduced-motion" ? "reduce" : "no-preference" })
+    await move(2)
+    await settled()
+    const result = await page.evaluate(async (mode) => {
+      const harness = (window as unknown as { __chronologyHarness: Harness }).__chronologyHarness
+      harness.setFollowing(mode !== "reading")
+      harness.newText("answer-suppressed")
+      await new Promise(requestAnimationFrame)
+      return document.querySelector('[data-scroll-anchor$=":answer-suppressed"]')!.getAnimations().length
+    }, mode)
+    expect(result).toBe(0)
+    await page.emulateMedia({ reducedMotion: "no-preference" })
+    const replay = await page.evaluate(async () => {
+      const harness = (window as unknown as { __chronologyHarness: Harness }).__chronologyHarness
+      harness.setFollowing(true)
+      harness.remount()
+      await new Promise(requestAnimationFrame)
+      return document.querySelector('[data-scroll-anchor$=":answer-suppressed"]')!.getAnimations().length
+    })
+    expect(replay).toBe(0)
+  })
 
 test("a tool first received completed still enters while following", async () => {
   await move(3)

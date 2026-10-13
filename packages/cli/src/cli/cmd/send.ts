@@ -13,7 +13,7 @@ import { readPipedStdin } from "../stdin"
 import { Experiment } from "@ericsanchezok/synergy-harness/config/experiment"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { createLocalClient, type RuntimeClient } from "@ericsanchezok/synergy-local-runtime/client"
-import { openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
+import { createLocalHost, openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 import { createRemoteClient } from "../remote-client"
 import { findRecordingError } from "@ericsanchezok/synergy-harness/session/rollout/error"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -555,6 +555,7 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
       const { withScopeContext } = await import("@ericsanchezok/synergy-local-runtime/cli/scope")
       const { Command } = await import("@ericsanchezok/synergy-local-runtime/command/command")
       await using runtime = await runtimeFactory({
+        host: createLocalHost({ entry: "cli-send" }),
         mode: "oneshot",
         experiment,
         migrationOutput: "interactive",

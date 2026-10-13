@@ -10,6 +10,8 @@ Recreating session and resource presentations interrupts reading and editing. A 
 
 Retain six session presentations and eight resource panels with captured owners, activity lifetimes and LRU eviction. Domain state remains authoritative; residency holds presentation state, not another synchronization store. Cache panel modules separately from instances and require an explicit pause contract for third-party instances. Keep first-open loading local to unavailable content. This supersedes the outgoing DOM copy and preparation barrier in [Session navigation presentation](../bug-fix/2026-10-10-session-navigation-presentation.md), preserving its new-task identity and transcript isolation invariants.
 
+Activity is shared with UI primitives through `ViewActivityProvider`, including ancestor inactivity and provider disposal. Session decision portals mount only for their active owner while pending requests and drafts stay in the existing domains. Popovers, menu fields and dialogs close when their owner becomes inactive, reject background reopen attempts and do not restore focus into hidden views. Global file and Note shortcuts suspend with their owner and require local focus. The [frontend synchronization contract](../../../architecture/frontend-data-sync.md#retained-presentation-and-reconnect-validation) owns these interaction invariants.
+
 Negotiate `projection-v2` through capabilities. Runtime registers domain contributors on the Server-owned transport boundary. Leases govern detail computation and delivery. Omitted state events advance contiguous cursors; detail patches have independent revisions. Stream append identity/offsets avoid repeated whole-content hashing. Bounded transient HTTP checkpoints carry content exceeding the 64 KiB frame limit.
 
 Execution context deltas compare against the last published metadata, preserving that baseline when a dirty snapshot rebuilds. Live classification therefore survives rebuilds without resending unchanged contexts; ordinary updates inspect only changed nodes.
@@ -22,10 +24,12 @@ Validate message versions and Part page generations after replay, in batches of 
 
 **Hide the whole target until every body and measurement is ready.** This avoids intermediate geometry but interrupts warm navigation and couples readability to unrelated work. Local placeholders and retained anchors isolate that cost.
 
+**Rely on hidden/inert ancestors or disable residency.** Portals can mount outside those ancestors and document listeners still receive keyboard events. Destroying whole presentations loses the warm reading and editing state. Owner activity instead controls transient interaction while domain-owned drafts and pending requests survive.
+
 **Keep broadcasting full summaries and compress them.** Compression may reduce wire bytes while retaining serialization, decoding and reconciliation work. Subscription projection removes work that the current view does not consume.
 
 **Trust successful replay as body validation.** Unsequenced or non-replayed tool mutations can remain missing. Version/generation manifests verify loaded data independently of replay.
 
 ## Consequences
 
-Warm navigation can preserve DOM and reading state while inactive views release expensive leases. Transport work follows consumed changes; legacy connections keep a narrow compatibility path. Transient checkpoints add bounded Runtime memory, and subscription generations require precise cancellation and recovery fences. No persisted storage format changes. Behavioral browser, range recovery, append-work and lease tests guard these boundaries; device timing is recorded separately from deterministic CI work limits.
+Warm navigation can preserve DOM and reading state while inactive views release expensive leases. Transient overlays must be reopened explicitly after returning, while pending decision drafts and Note/file selections remain owned by their domains. Browser regressions exercise non-pointer inactivity, background requests, nested activity, focus return and hidden keyboard handling rather than relying on an outside click to dismiss escaped portals. Transport work follows consumed changes; legacy connections keep a narrow compatibility path. Transient checkpoints add bounded Runtime memory, and subscription generations require precise cancellation and recovery fences. No persisted storage format changes. Behavioral browser, range recovery, append-work and lease tests guard these boundaries; device timing is recorded separately from deterministic CI work limits.

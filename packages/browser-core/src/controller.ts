@@ -317,7 +317,8 @@ export class CdpPageController {
       case "close":
         return { type: "void" }
       case "setViewport":
-        await this.applyEmulation({ viewport: { width: command.width, height: command.height } })
+        if (command.mode === "fit") await this.options.transport.send("Emulation.clearDeviceMetricsOverride")
+        else await this.applyEmulation({ viewport: { width: command.width, height: command.height } })
         return { type: "page", page: await this.pageState() }
       case "dialog.respond":
         await this.options.transport.send("Page.handleJavaScriptDialog", {

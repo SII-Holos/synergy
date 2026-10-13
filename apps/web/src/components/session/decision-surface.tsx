@@ -23,6 +23,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useSessionDataView } from "@/context/session-data-view"
 import { useSessionDecision } from "@/context/session-decision"
+import { useViewActivity } from "@/context/view-residency"
 import { PermissionDock, permissionInfo } from "./permission-dock"
 import { QuestionPrompt } from "./question-prompt"
 import { RequestSubmissionNotice } from "./request-submission-notice"
@@ -277,8 +278,10 @@ export function SessionDecisionOutlet() {
 }
 
 export function SessionDecisionHost(props: ParentProps<{ sessionId?: string; onReturnFocus?(): boolean }>) {
+  const active = useViewActivity()
   let surface: HTMLDivElement | undefined
   const returnFocus = () => {
+    if (!active()) return
     if (props.onReturnFocus?.()) return
     const target = surface?.querySelector<HTMLElement>('[data-ui-part="session"]') ?? surface?.firstElementChild
     if (!(target instanceof HTMLElement) || !target.isConnected) return
@@ -297,29 +300,31 @@ export function SessionDecisionHost(props: ParentProps<{ sessionId?: string; onR
         <div ref={surface} class="contents" data-session-surface>
           {props.children}
         </div>
-        <UIStyleProvider reset>
-          <Portal mount={outlet()}>
-            <PortalStyleOwner>
-              <div
-                data-session-decision-host
-                style={
-                  outlet()
-                    ? undefined
-                    : {
-                        position: "fixed",
-                        bottom: "1rem",
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        width: "min(48rem, calc(100vw - 2rem))",
-                        "z-index": 1000,
-                      }
-                }
-              >
-                <SessionDecisionSurface sessionId={props.sessionId} />
-              </div>
-            </PortalStyleOwner>
-          </Portal>
-        </UIStyleProvider>
+        <Show when={active()}>
+          <UIStyleProvider reset>
+            <Portal mount={outlet()}>
+              <PortalStyleOwner>
+                <div
+                  data-session-decision-host
+                  style={
+                    outlet()
+                      ? undefined
+                      : {
+                          position: "fixed",
+                          bottom: "1rem",
+                          left: "50%",
+                          transform: "translateX(-50%)",
+                          width: "min(48rem, calc(100vw - 2rem))",
+                          "z-index": 1000,
+                        }
+                  }
+                >
+                  <SessionDecisionSurface sessionId={props.sessionId} />
+                </div>
+              </PortalStyleOwner>
+            </Portal>
+          </UIStyleProvider>
+        </Show>
       </DecisionOutletContext.Provider>
     </SessionSurfaceFocusProvider>
   )

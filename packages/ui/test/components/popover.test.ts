@@ -27,6 +27,11 @@ beforeAll(async () => {
     import { setupI18n } from "@lingui/core"
     import { I18nProvider } from "@lingui/solid"
     import { Popover } from ${JSON.stringify(`/@fs/${components}/popover.tsx`)}
+    import { ViewActivityProvider } from ${JSON.stringify(`/@fs/${components}/../context/view-activity.tsx`)}
+    const [active, setActive] = createSignal(true)
+    const [childActive, setChildActive] = createSignal(true)
+    window.setViewActive = setActive
+    window.setChildActive = setChildActive
     import { Tooltip } from ${JSON.stringify(`/@fs/${components}/tooltip.tsx`)}
     import { MenuField } from ${JSON.stringify(`/@fs/${components}/menu-field.tsx`)}
     import { SettingRow } from ${JSON.stringify(`/@fs/${components}/setting-row.tsx`)}
@@ -35,6 +40,7 @@ beforeAll(async () => {
     import { pluginComponents } from ${JSON.stringify(`/@fs/${components}/plugin-components.tsx`)}
     function Fixture() {
       const [open, setOpen] = createSignal(false)
+      window.openControlled = () => setOpen(true)
       const [count, setCount] = createSignal(0)
       let anchor: HTMLButtonElement | undefined
       const [anchorOpen, setAnchorOpen] = createSignal(false)
@@ -80,7 +86,7 @@ beforeAll(async () => {
       </>
     }
     const i18n = setupI18n({ locale: "en", messages: { en: {} } })
-    render(() => <I18nProvider i18n={i18n}><Fixture /></I18nProvider>, document.getElementById("root"))
+    render(() => <I18nProvider i18n={i18n}><ViewActivityProvider active={active}><ViewActivityProvider active={childActive}><div hidden={!active() || !childActive()} inert={!active() || !childActive()}><Fixture /></div></ViewActivityProvider></ViewActivityProvider><button>Other view</button></I18nProvider>, document.getElementById("root"))
   `,
   )
   server = await createServer({
@@ -118,6 +124,42 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await page?.close()
+})
+
+for (const trigger of ["Session actions", "Native actions", "Plugin actions"]) {
+  test(`retained ${trigger} closes on parent inactivity and does not reopen on activation`, async () => {
+    await page.getByRole("button", { name: trigger, exact: true }).last().click()
+    await page.locator('[data-component="popover-content"]').waitFor()
+    await page.evaluate(() => (window as unknown as { setViewActive(value: boolean): void }).setViewActive(false))
+    expect(await page.locator('[data-component="popover-content"]:visible').count()).toBe(0)
+    await page.getByRole("button", { name: "Other view", exact: true }).focus()
+    await page.evaluate(() => (window as unknown as { openControlled(): void }).openControlled())
+    expect(await page.locator('[data-component="popover-content"]:visible').count()).toBe(0)
+    await page.evaluate(() => (window as unknown as { setViewActive(value: boolean): void }).setViewActive(true))
+    expect(await page.locator('[data-component="popover-content"]:visible').count()).toBe(0)
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Other view")
+    await page.getByRole("button", { name: trigger, exact: true }).last().click()
+    await page.locator('[data-component="popover-content"]').waitFor()
+    await page.evaluate(() => (window as unknown as { setChildActive(value: boolean): void }).setChildActive(false))
+    expect(await page.locator('[data-component="popover-content"]:visible').count()).toBe(0)
+    expect(errors).toEqual([])
+  })
+}
+
+test("retained menu closes on inactivity without losing its selection or stealing focus", async () => {
+  const trigger = page.getByRole("button", { name: "Sources: Selected sources", exact: true })
+  await trigger.click()
+  await page.getByRole("option", { name: "Chinese source", exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as { setViewActive(value: boolean): void }).setViewActive(false))
+  expect(await page.getByRole("option", { name: "Chinese source", exact: true }).isVisible()).toBe(false)
+  await page.getByRole("button", { name: "Other view", exact: true }).focus()
+  await page.evaluate(() => (window as unknown as { setViewActive(value: boolean): void }).setViewActive(true))
+  expect(await page.getByRole("option", { name: "Chinese source", exact: true }).isVisible()).toBe(false)
+  expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("Other view")
+  expect(await page.locator("[data-selected-sources]").textContent()).toBe("en,zh")
+  await trigger.click()
+  await page.getByRole("option", { name: "Chinese source", exact: true }).waitFor()
+  expect(errors).toEqual([])
 })
 
 test("settings controls retain their names, descriptions and inline errors", async () => {

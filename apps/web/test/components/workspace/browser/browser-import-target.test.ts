@@ -87,7 +87,8 @@ function fixture() {
         epoch: "one",
       },
       transport: {
-        send() {},
+        send: async () => {},
+        applySnapshot() {},
         createNativeTicket: async () => "fixture-ticket",
         connect: async () => {},
         reconnect() {},
@@ -129,7 +130,6 @@ test("import retains its initiating tab, canonical owner and native bridge after
   const resolve = createBrowserImportTarget(value.input)
   value.input.tab.resourceId = "other"
   const target = await resolve(new AbortController().signal)
-  value.store.selectPage("other")
   value.setBridge(undefined)
   await target.action({ type: "importSources" })
   expect(value.native).toEqual([

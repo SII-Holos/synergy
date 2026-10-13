@@ -1,15 +1,19 @@
-import { describe, expect, mock, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { EventEmitter } from "node:events"
+import { electronAppEmitter, electronMockState, registerElectronMock } from "./electron-mock"
 
 const commands: unknown[] = []
+const nativeViewports: Array<{ width: number; height: number } | null> = []
 const views: MockWebContentsView[] = []
 const partitions: string[] = []
 let currentBounds = { x: 0, y: 0, width: 0, height: 0 }
-let resizePage: ((width: number, height: number) => void) | undefined
+let openPopup: ((details: Electron.HandlerDetails) => Electron.WindowOpenHandlerResponse) | undefined
 let failNewViews = false
 let nextControlError: Error | null = null
+let nextDiagnosticsError: Error | null = null
 let failDispose = false
 let viewCreationAttempts = 0
+let captureOperation: (() => Promise<void>) | undefined
 
 class MockDebugger extends EventEmitter {
   attached = false
@@ -120,15 +124,24 @@ class MockWebContentsView {
   }
 }
 
-const appEvents = new EventEmitter()
-mock.module("electron", () => ({
-  app: appEvents,
-  WebContentsView: MockWebContentsView,
-}))
+const appEvents = electronAppEmitter
+registerElectronMock()
+beforeEach(() => {
+  electronMockState.viewBuilder = (options) =>
+    new MockWebContentsView(options as Electron.WebContentsViewConstructorOptions)
+})
+afterEach(() => {
+  electronMockState.viewBuilder = null
+})
 
 mock.module("../src/browser-host-diagnostics.js", () => ({
   BrowserHostDiagnostics: class {
-    async start() {}
+    async start() {
+      if (!nextDiagnosticsError) return
+      const error = nextDiagnosticsError
+      nextDiagnosticsError = null
+      throw error
+    }
     async dispose() {
       if (failDispose) throw new Error("diagnostics dispose failed")
     }
@@ -137,8 +150,12 @@ mock.module("../src/browser-host-diagnostics.js", () => ({
 
 mock.module("../src/browser-webcontents-control.js", () => ({
   BrowserWebContentsControl: class {
-    constructor(options: { resize(width: number, height: number): void }) {
-      resizePage = options.resize
+    constructor(options: { onWindowOpen(details: Electron.HandlerDetails): Electron.WindowOpenHandlerResponse }) {
+      openPopup = options.onWindowOpen
+    }
+
+    async setNativeViewport(viewport: { width: number; height: number } | null) {
+      nativeViewports.push(viewport)
     }
 
     async execute(command: unknown) {
@@ -148,6 +165,7 @@ mock.module("../src/browser-webcontents-control.js", () => ({
         throw error
       }
       commands.push(command)
+      if ((command as { type: string }).type === "screenshot") await captureOperation?.()
       return { type: "void" }
     }
 
@@ -181,17 +199,127 @@ async function until(predicate: () => boolean, timeoutMs = 500): Promise<void> {
 }
 
 describe("Browser native page pool", () => {
-  test("sets a usable CSS viewport before the first navigation", async () => {
+  test("leases one hidden native attachment for concurrent captures without undoing a human selection", async () => {
+    const children = new Set<MockWebContentsView>()
+    const window = {
+      isDestroyed: () => false,
+      contentView: {
+        addChildView: (view: MockWebContentsView) => children.add(view),
+        removeChildView: (view: MockWebContentsView) => children.delete(view),
+      },
+    }
+    const pool = new BrowserNativePagePool({ captureWindow: () => window as never })
+    const initial = input("capture")
+    const page = await pool.create(initial)
+    const view = views.at(-1)!
+    const releases: Array<() => void> = []
+    captureOperation = () => new Promise<void>((resolve) => releases.push(resolve))
+    const first = page.execute({ type: "screenshot" })
+    const second = page.execute({ type: "screenshot" })
+    try {
+      await until(() => releases.length === 2)
+      expect(children.size).toBe(1)
+      expect(view.getVisible()).toBe(false)
+      releases[0]()
+      await first
+      expect(children.size).toBe(1)
+      pool.attach(window as never, initial.ownerKey, initial.page.id)
+      view.setVisible(true)
+      releases[1]()
+      await second
+      expect(children.has(view)).toBe(true)
+      expect(view.getVisible()).toBe(true)
+      const third = page.execute({ type: "screenshot" })
+      await until(() => releases.length === 3)
+      pool.detach(window as never, initial.ownerKey, initial.page.id)
+      expect(children.has(view)).toBe(true)
+      expect(view.getVisible()).toBe(false)
+      releases[2]()
+      await third
+      expect(children.size).toBe(0)
+    } finally {
+      for (const release of releases) release()
+      await Promise.allSettled([first, second])
+      captureOperation = undefined
+      await pool.destroy()
+    }
+  })
+
+  test("releases a failed background capture without retaining its view", async () => {
+    const children = new Set<MockWebContentsView>()
+    const window = {
+      isDestroyed: () => false,
+      contentView: {
+        addChildView: (view: MockWebContentsView) => children.add(view),
+        removeChildView: (view: MockWebContentsView) => children.delete(view),
+      },
+    }
+    const pool = new BrowserNativePagePool({ captureWindow: () => window as never })
+    const page = await pool.create(input("failed-capture"))
+    captureOperation = async () => {
+      expect(children.size).toBe(1)
+      throw new Error("Capture refused")
+    }
+    try {
+      await expect(page.execute({ type: "screenshot" })).rejects.toThrow("Capture refused")
+      expect(children.size).toBe(0)
+    } finally {
+      captureOperation = undefined
+      await pool.destroy()
+    }
+  })
+
+  test("hands a usable detached viewport to native presentation and retains the last size on detach", async () => {
     commands.length = 0
+    nativeViewports.length = 0
     const pool = new BrowserNativePagePool()
+    const initial = input("initial")
+    const children = new Set<MockWebContentsView>()
+    const window = {
+      contentView: {
+        addChildView: (view: MockWebContentsView) => children.add(view),
+        removeChildView: (view: MockWebContentsView) => children.delete(view),
+      },
+    }
+    await pool.create(initial)
 
-    await pool.create(input("initial"))
-
-    expect(commands.slice(0, 2)).toEqual([
-      { type: "setViewport", width: 1280, height: 720 },
-      { type: "navigate", url: "https://example.com", source: "user" },
-    ])
+    expect(currentBounds).toEqual({ x: 0, y: 0, width: 1280, height: 720 })
+    expect(nativeViewports).toEqual([{ width: 1280, height: 720 }])
+    expect(commands).toEqual([{ type: "navigate", url: "https://example.com", source: "user" }])
+    const view = pool.attach(window as never, initial.ownerKey, initial.page.id)
+    expect(nativeViewports.at(-1)).toBeNull()
+    view.setBounds({ x: 320, y: 50, width: 800, height: 600 })
+    pool.detach(window as never, initial.ownerKey, initial.page.id)
+    expect(nativeViewports.at(-1)).toEqual({ width: 800, height: 600 })
+    expect(children.size).toBe(0)
+    expect(currentBounds).toEqual({ x: 320, y: 50, width: 800, height: 600 })
     await pool.destroy()
+  })
+
+  test("cleans up a failed popup without closing or replacing its opener", async () => {
+    const events: Array<{ type: string; pageId: string; message?: string }> = []
+    const popups: BrowserNativePageHandle[] = []
+    const pool = new BrowserNativePagePool()
+    const parentInput = input("popup-failure", (event) => events.push(event))
+    const parent = await pool.create({ ...parentInput, onPopup: (_input, handle) => popups.push(handle) })
+    const parentView = views.at(-1)!
+    const response = openPopup!({ url: "https://signin.example/login" } as Electron.HandlerDetails)
+    expect(response.action).toBe("allow")
+    nextDiagnosticsError = new Error("fixture diagnostics failed")
+    const child = response.createWindow!({})
+    try {
+      await until(() => events.some((event) => event.message === "Popup could not open: fixture diagnostics failed"))
+      expect(child.isDestroyed()).toBe(true)
+      expect(popups).toEqual([])
+      expect(parentView.webContents.isDestroyed()).toBe(false)
+      expect(pool.find(parentInput.ownerKey, parentInput.page.id)).toBe(parent)
+      expect(parent.isAlive()).toBe(true)
+      await expect(parent.execute({ type: "reload" })).resolves.toEqual({ type: "void" })
+      expect(events.at(-1)?.pageId).toBe(parentInput.page.id)
+    } finally {
+      nextDiagnosticsError = null
+      await pool.destroy()
+    }
   })
 
   test("publishes background document-title changes without replacing the page", async () => {
@@ -205,17 +333,6 @@ describe("Browser native page pool", () => {
       type: "page.updated",
       page: { id: handle.state().id, title: "Background title" },
     })
-    await pool.destroy()
-  })
-
-  test("viewport changes preserve the attached native view position", async () => {
-    const pool = new BrowserNativePagePool()
-    await pool.create(input("resize"))
-
-    currentBounds = { x: 640, y: 96, width: 800, height: 600 }
-    resizePage?.(1024, 768)
-
-    expect(currentBounds).toEqual({ x: 640, y: 96, width: 1024, height: 768 })
     await pool.destroy()
   })
 

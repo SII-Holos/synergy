@@ -13,6 +13,7 @@ import { RuntimeAdvisory } from "../../src/session/runtime-context"
 import { ToolRegistry } from "../../src/tool/registry"
 import { Tool } from "../../src/tool/tool"
 import { testRuntime } from "../support/runtime"
+import { configureRuntimeEndpoint } from "../../src/util/runtime-endpoint"
 
 for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
   test(`${profile}: real loop preserves advisory authority, history order and latest memory`, async () => {
@@ -159,6 +160,7 @@ for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
       ScopeContext.provide({
         scope: Scope.home(),
         fn: async () => {
+          configureRuntimeEndpoint({ hostname: "127.0.0.1", port: 45173, generation: "fixture-listener" })
           const session = await Session.create({ workspace: null, title: "Fixture" })
           await SessionInvoke.invoke({
             sessionID: session.id,
@@ -171,11 +173,34 @@ for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
           expect(recallQueries).toEqual(["Use the tool once and finish.", "Use the tool once and finish."])
           expect(JSON.stringify(prompts[0])).toContain("ALPHA-419")
           expect(JSON.stringify(prompts[1])).toContain("BETA-827")
+          const serialized = prompts.map((prompt) => JSON.stringify(prompt))
+          for (const text of serialized) {
+            expect(text.match(/<synergy-runtime>/g)).toHaveLength(1)
+            expect(text).toContain("Backend URL: http://127.0.0.1:45173")
+            expect(text.indexOf("<synergy-runtime>")).toBeGreaterThan(text.indexOf("<attachment-presentation>"))
+            expect(text.indexOf("<synergy-runtime>")).toBeLessThan(
+              text.indexOf("ALPHA-419") === -1 ? text.indexOf("BETA-827") : text.indexOf("ALPHA-419"),
+            )
+          }
+          const systemPrefix = (prompt: (typeof prompts)[number]) =>
+            prompt.filter((message) => message.role === "system")
+          expect(systemPrefix(prompts[1]!)).toEqual(systemPrefix(prompts[0]!))
+          expect(JSON.stringify(systemPrefix(prompts[0]!))).not.toContain("<synergy-runtime>")
+          const runtimeMessage = prompts[0]!.find((message) => JSON.stringify(message).includes("<synergy-runtime>"))!
+          expect(runtimeMessage.role).toBe("user")
           const messages = await Session.messages({ sessionID: session.id })
           const events = messages.filter((m) => RuntimeAdvisory.read(m.info))
           expect(messages.filter((m) => m.info.role === "user" && m.info.isRoot)).toHaveLength(1)
           if (profile === "openai-codex") {
             expect(events).toHaveLength(2)
+            expect(
+              RuntimeAdvisory.read(events[0]!.info)!
+                .sources.slice(0, 3)
+                .map((source) => source.id),
+            ).toEqual(["tool-intent", "attachment-guidance", "synergy-runtime"])
+            expect(
+              RuntimeAdvisory.read(events[1]!.info)!.sources.some((source) => source.id === "synergy-runtime"),
+            ).toBe(false)
             const first = prompts[0]!
             expect(prompts[1]!.slice(0, first.length)).toEqual(first)
             for (const event of events) {

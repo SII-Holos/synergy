@@ -76908,6 +76908,10 @@
                     "type": "string",
                     "const": "setViewport"
                   },
+                  "mode": {
+                    "type": "string",
+                    "enum": ["fit", "fixed"]
+                  },
                   "width": {
                     "type": "integer",
                     "minimum": 1,
