@@ -50,6 +50,8 @@ Synergy assembles tools from built-ins, plugins, MCP servers, and turn-specific 
 
 Exposure is not permission. Tool taxonomy, effective arguments, Scope/workspace, protected paths, external effects, and active profile determine whether a call is allowed, denied, or can ask.
 
+The expandable-group directory retains every available tool name. MCP groups factor their shared tool-ID prefix out of the displayed names; the prefix and listed name reconstruct the unchanged full ID. Expansion loads the actual descriptions and parameter schemas. Names alone are not a parameter specification.
+
 Tools return ordered message parts with text output, structured metadata, and optional attachments. Product UI preserves their durable transcript order; in Balanced activity display, nano-model summaries guide internal semantic grouping while the original heterogeneous tool calls render as flat, independently expandable rows with their own family action and state. There is no visible topic parent, progress marker, step count, or connector, and this presentation never erases or rewrites the underlying tool calls.
 
 Current first-party families cover workspace read/write/search, shell and persistent processes, LSP and diagnostics, Web research, Browser interaction, attachments and media rendering, sessions and delegation, todo/DAG/workflow state, Agenda, Library, Notes, email, worktrees, and Synergy maintenance. Most large families are grouped or searchable rather than permanently occupying every model prompt.
@@ -72,7 +74,7 @@ Feishu/Lark Channel sessions use `interactive` mode. When the agent asks a quest
 
 ## Skills
 
-A Skill packages a workflow into `SKILL.md` with optional references, scripts, and assets. Synergy discovers native Synergy Skills and compatible Agent Skills, Claude, Codex, and OpenClaw directories, normalizes them into one catalog, and loads the body only when a user invokes the slash command or the model selects the `skill` tool.
+A Skill packages a workflow into `SKILL.md` with optional references, scripts, and assets. Synergy discovers native Synergy Skills and compatible Agent Skills, Claude, Codex, and OpenClaw directories, normalizes them into one catalog, and loads the body only when a user invokes the slash command or the model selects the `skill` tool. The model-facing directory lists each accessible name and its displayed description on one line; compact formatting does not remove entries or load their bodies.
 
 Skill metadata controls whether users see a slash command and whether the model can load the Skill. It does not grant tool authorization: `allowed-tools` is accepted as author metadata, while actual execution still follows the active agent, Scope, control profile, permission rules, and sandbox. References load on demand and must stay inside the Skill directory.
 

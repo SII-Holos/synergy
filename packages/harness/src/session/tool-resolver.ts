@@ -1443,8 +1443,18 @@ export namespace ToolResolver {
               ...item,
               description: [
                 item.description,
+                "MCP rows with a prefix use full tool ID = prefix + suffix. Expand the group to get tool schemas before calling; do not guess parameters.",
                 "Available groups:",
-                ...[...groups].map(([id, group]) => `${id} (${group.title}): ${group.tools.join(", ")}`),
+                ...[...groups].map(([id, group]) => {
+                  const heading = `${id} (${group.title})`
+                  const prefix = id.startsWith("mcp:") ? `mcp__${id.slice(4)}__` : undefined
+                  if (
+                    !prefix ||
+                    !group.tools.every((toolID) => toolID.startsWith(prefix) && toolID.length > prefix.length)
+                  )
+                    return `${heading}: ${group.tools.join(", ")}`
+                  return `${heading}: prefix=${prefix}; suffixes: ${group.tools.map((toolID) => toolID.slice(prefix.length)).join(", ")}`
+                }),
               ].join("\n"),
             },
       )

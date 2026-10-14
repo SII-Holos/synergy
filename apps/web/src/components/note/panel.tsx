@@ -77,6 +77,7 @@ import { useNoteDocuments } from "./documents"
 import { createBlueprintLoopsResource } from "./blueprint-loops"
 import { WorkspaceNavigator, type WorkspaceNavigatorController } from "../workspace/workspace-navigator"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import "./panel.css"
 
 type LoopStatus = BlueprintLoopInfo["status"]
@@ -1742,10 +1743,6 @@ function NoteEditor(props: {
     return assetHttpUrl(serverURL, res.data as { id?: string; url?: string } | undefined)
   }
 
-  function onTitleInput(e: InputEvent & { currentTarget: HTMLInputElement }) {
-    doc.edit("title", e.currentTarget.value)
-  }
-
   async function togglePin() {
     if (!(await flushSave())) return
     const current = baseNote()
@@ -2022,16 +2019,26 @@ function NoteEditor(props: {
             onOpenChange={setMoreOpen}
             placement="bottom-end"
             class="note-toolbar-popover"
+            contentProps={{ "aria-label": lingui._({ id: "note.document.more", message: "Note options" }) }}
             triggerAs={(triggerProps) => (
               <IconButton
                 {...triggerProps}
                 icon={getSemanticIcon("action.more")}
                 variant="ghost"
                 aria-label={lingui._({ id: "note.document.more", message: "Note options" })}
-                aria-haspopup="menu"
+                aria-haspopup="dialog"
               />
             )}
           >
+            <div class="note-toolbar-name">
+              <TextField
+                label={lingui._({ id: "note.document.title", message: "Note title" })}
+                value={title()}
+                placeholder={lingui._(N.untitled)}
+                onChange={(value) => doc.edit("title", value)}
+                disabled={!noteLoaded()}
+              />
+            </div>
             <div class="note-toolbar-menu" role="menu" onKeyDown={resourceMenuKeyDown}>
               <For
                 each={[
@@ -2232,17 +2239,6 @@ function NoteEditor(props: {
 
       <Show when={noteLoaded()}>
         <div class="flex min-h-0 flex-1 flex-col">
-          <div class="note-document-heading">
-            <input
-              type="text"
-              class="w-full border-none bg-transparent text-16-medium text-text-strong outline-none placeholder:text-text-weaker"
-              placeholder={lingui._({ id: N.untitled.id, message: N.untitled.message })}
-              aria-label={lingui._({ id: "note.document.title", message: "Note title" })}
-              value={title()}
-              onInput={onTitleInput}
-            />
-          </div>
-
           <div class="note-document-body">
             <DocumentEditorCore
               content={doc.content()}

@@ -12,12 +12,25 @@ const ctx = {
   role: () => undefined,
 }
 
+const nativeToolProcedure =
+  /\b(?:view_file|scan_files|revise_file|resolve_conflicts|save_file|session_send|session_control|todowrite|todoread|ast_grep|webfetch|yieldSeconds)\b|read\(filePath|strength:\s*["']|\bgh (?:repo clone|search)\b|\btool descriptions?\b|\bcurrent (?:tool )?catalog\b/i
+
 function action(agent: ReturnType<typeof createBuiltinMaxSubagents>[string], permission: string) {
   return PermissionNext.evaluate(permission, "*", agent.permission).action
 }
 
 describe("coding subagents", () => {
   const agents = runtime.run(() => createBuiltinMaxSubagents(ctx))
+
+  test("specialist prompts retain role and handoff without native tool procedures", () =>
+    runtime.run(() => {
+      for (const [name, agent] of Object.entries(agents)) {
+        expect(agent.prompt, name).toMatch(/# Identity\b/)
+        expect(agent.prompt, name).toMatch(/# Mission\b/)
+        expect(agent.prompt, name).toMatch(/# Report\b/)
+        expect(agent.prompt, name).not.toMatch(nativeToolProcedure)
+      }
+    }))
 
   test("does not expose workflow-designer", () =>
     runtime.run(() => {
@@ -160,6 +173,15 @@ describe("coding subagents", () => {
 
 describe("synergy subagents", () => {
   const agents = runtime.run(() => createBuiltinLegacySubagents(ctx))
+
+  test("classic prompts retain their responsibilities without native tool procedures", () =>
+    runtime.run(() => {
+      for (const [name, agent] of Object.entries(agents)) {
+        expect(agent.prompt, name).toMatch(/\bYou are\b/)
+        expect(agent.prompt, name).toMatch(/\b(?:report|output|response|answer|deliver)\b/i)
+        expect(agent.prompt, name).not.toMatch(nativeToolProcedure)
+      }
+    }))
 
   test("classic subagents retain discovery without granting absent Browser tools", () =>
     runtime.run(() => {

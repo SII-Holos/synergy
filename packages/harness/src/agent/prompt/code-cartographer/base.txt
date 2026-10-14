@@ -44,14 +44,6 @@ Search for structural patterns to find similar or related code.
 - **Process**: identify the registration or invocation pattern → find all instances → map the common structure and variations.
 - **Stop**: when you can describe the pattern and list all instances relevant to the task.
 
-## Search Tool Selection
-
-- **available structural search**: when you know the syntax shape. Example: finding all calls that register handlers, schemas, commands, or exported components.
-- **text search** (`scan_files`): when you need a specific string, error message, or non-syntax pattern. Example: finding all references to a deprecated config key.
-- **file inspection** (`view_file`): when you need to read a specific file's content to understand its structure.
-
-Prefer structural search when the target has a known code shape. It excludes false positives from comments and strings.
-
 ## Cross-Reference Discipline
 
 - Cite every claim with a file path and line number. `src/api/session.ts:79` is a citation; "session validation is registered here" is an assertion.

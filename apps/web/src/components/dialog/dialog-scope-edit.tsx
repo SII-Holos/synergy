@@ -13,6 +13,7 @@ import { useLingui } from "@lingui/solid"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import type { LocalScope } from "@/context/layout"
+import { getScopeLabel } from "@/utils/scope"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useProjectDirectoryPicker } from "./project-directory-picker"
 import { scopeUpdateErrorMessage, scopeUpdateRequest } from "./project-scope-edit-model"
@@ -54,6 +55,7 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
   const initialMain = () =>
     loadedFolders()?.folders.find((folder) => folder.workspaceID === loadedFolders()?.mainWorkspaceID)?.path ?? ""
   const basicsDirty = () => name() !== savedName()
+  const invalidName = () => basicsDirty() && !name().trim()
   const filesDirty = () => JSON.stringify(folders()) !== JSON.stringify(initialFolders()) || main() !== initialMain()
   const defaultsDirty = () => JSON.stringify(defaults()) !== JSON.stringify(loaded()?.defaults ?? {})
   const dirty = () => basicsDirty() || filesDirty() || defaultsDirty()
@@ -64,7 +66,7 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
   const canSave = () =>
     !pending() &&
     (dirty() || !!refreshError()) &&
-    !!name().trim() &&
+    !invalidName() &&
     !!loadedFolders() &&
     !!loaded() &&
     !!main() &&
@@ -247,7 +249,15 @@ export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void
     >
       <div class="project-form">
         <section class="project-settings-section">
-          <TextField label={_(copy.name)} value={name()} onChange={setName} disabled={!!pending()} />
+          <TextField
+            label={_(copy.name)}
+            value={name()}
+            placeholder={getScopeLabel(props.scope)}
+            onChange={setName}
+            disabled={!!pending()}
+            validationState={invalidName() ? "invalid" : "valid"}
+            error={invalidName() ? _(copy.namePlaceholder) : undefined}
+          />
           {feedback("name")}
         </section>
         <section class="project-settings-section">

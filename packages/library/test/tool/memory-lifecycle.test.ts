@@ -1,5 +1,5 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
-import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, spyOn, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { MemoryWriteTool, MemoryEditTool, MemorySearchTool, MemoryGetTool } from "../../src/tools/memory"
@@ -84,7 +84,10 @@ test(
               memoryContent: "Use seeded reproducible trials",
             })
             expect(LibraryDB.Memory.get(id)?.content).toContain("seeded")
-            expect((await edit.execute({ ...input, memoryId: "absent" }, ctx)).output).toContain("not found")
+            expect(JSON.parse((await edit.execute({ ...input, memoryId: "absent" }, ctx)).output)).toMatchObject({
+              status: "not_found",
+              memoryId: "absent",
+            })
             expect((await get.execute({ memoryIds: [id] }, ctx)).output).toContain("seeded")
             expect((await get.execute({ memoryIds: ["absent"] }, ctx)).metadata.count).toBe(0)
             expect((await search.execute({ query: "trials", limit: 5 }, ctx)).metadata.count).toBe(1)
@@ -117,6 +120,159 @@ test(
     }),
   30_000,
 )
+
+test("memory edits reject a stale revision after embedding and preserve the newer vector", () =>
+  runtime.run(async () => {
+    let entered = Promise.withResolvers<void>()
+    let release = Promise.withResolvers<void>()
+    let embeddingCalls = 0
+    using server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        const body = (await request.json()) as { input: string | string[] }
+        const background = JSON.stringify(body.input).includes("Background draft")
+        embeddingCalls++
+        if (background) {
+          entered.resolve()
+          await release.promise
+        }
+        return Response.json({
+          data: [{ index: 0, embedding: background ? [0, 1, 0, 0] : [1, 0, 0, 0] }],
+          model: "fixture-embedding",
+        })
+      },
+    })
+    await using tmp = await tmpdir({
+      config: { embedding: { apiKey: "fixture-key", baseURL: server.url.href, model: "fixture-embedding" } },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const input = {
+          memoryTitle: "Approval boundary",
+          memoryContent: "Ask before sending",
+          category: "relationship" as const,
+          recallMode: "always" as const,
+        }
+        LibraryDB.Memory.insert(
+          {
+            id: "protected",
+            title: input.memoryTitle,
+            content: input.memoryContent,
+            category: input.category,
+            recallMode: input.recallMode,
+          },
+          { id: "protected", vector: [0, 1, 0, 0], model: "fixture-embedding" },
+        )
+        LibraryDB.Memory.insert(
+          { id: "probe", title: "Probe", content: "Unrelated", category: "general", recallMode: "search_only" },
+          { id: "probe", vector: [0.8, 0.6, 0, 0], model: "fixture-embedding" },
+        )
+        const get = await MemoryGetTool.init()
+        const edit = await MemoryEditTool.init()
+        const initial = LibraryDB.Memory.get("protected")!
+        const retrieved = JSON.parse((await get.execute({ memoryIds: [initial.id] }, ctx)).output)
+        expect(retrieved[0].updatedAt).toBe(initial.updated_at)
+        const background = edit.execute(
+          { ...input, memoryId: initial.id, memoryContent: "Background draft", expectedUpdatedAt: initial.updated_at },
+          ctx,
+        )
+        try {
+          await entered.promise
+          const foreground = await edit.execute(
+            { ...input, memoryId: initial.id, memoryContent: "Require recipient, channel and message approval" },
+            ctx,
+          )
+          expect(JSON.parse(foreground.output).updatedAt).toBeGreaterThan(initial.updated_at)
+          release.resolve()
+          const conflict = await background
+          expect(conflict.metadata.action).toBe("conflict")
+          expect(JSON.parse(conflict.output)).toMatchObject({ status: "conflict", memoryId: initial.id })
+          expect(LibraryDB.Memory.get(initial.id)?.content).toBe("Require recipient, channel and message approval")
+          expect(LibraryDB.Memory.searchByVector([1, 0, 0, 0], 1)[0]?.id).toBe(initial.id)
+          const calls = embeddingCalls
+          const stale = await edit.execute(
+            { ...input, memoryId: initial.id, expectedUpdatedAt: initial.updated_at },
+            ctx,
+          )
+          expect(stale.metadata.action).toBe("conflict")
+          expect(embeddingCalls).toBe(calls)
+          const current = JSON.parse((await get.execute({ memoryIds: [initial.id] }, ctx)).output)[0]
+          const accepted = await edit.execute(
+            {
+              ...input,
+              memoryId: initial.id,
+              memoryContent: "Keep explicit recipient, channel and message approval",
+              expectedUpdatedAt: current.updatedAt,
+            },
+            ctx,
+          )
+          expect(JSON.parse(accepted.output).updatedAt).toBeGreaterThan(current.updatedAt)
+          expect(LibraryDB.Memory.get(initial.id)?.content).toBe(
+            "Keep explicit recipient, channel and message approval",
+          )
+          entered = Promise.withResolvers<void>()
+          release = Promise.withResolvers<void>()
+          const deleted = edit.execute(
+            {
+              ...input,
+              memoryId: initial.id,
+              memoryContent: "Background draft",
+              expectedUpdatedAt: JSON.parse(accepted.output).updatedAt,
+            },
+            ctx,
+          )
+          await entered.promise
+          LibraryDB.Memory.remove(initial.id)
+          release.resolve()
+          const missing = await deleted
+          expect(missing.metadata.action).toBe("not_found")
+          expect(JSON.parse(missing.output)).toMatchObject({ status: "not_found", memoryId: initial.id })
+          expect(LibraryDB.Memory.get(initial.id)).toBeNull()
+        } finally {
+          release.resolve()
+          await background
+        }
+      },
+    })
+  }))
+
+test("memory revisions advance within one millisecond and compare-and-set rejects the prior revision", () =>
+  runtime.run(() => {
+    const now = spyOn(Date, "now").mockReturnValue(1_800_000_000_000)
+    try {
+      const input = {
+        id: "revision",
+        title: "Rule",
+        content: "Original",
+        category: "self" as const,
+        recallMode: "always" as const,
+      }
+      const embedding = { id: input.id, vector: [1, 0, 0, 0], model: "fixture" }
+      const first = LibraryDB.Memory.insert(input, embedding)
+      const second = LibraryDB.Memory.update(
+        { ...input, content: "Updated", expectedUpdatedAt: first.updated_at },
+        embedding,
+      )!
+      expect(second.updated_at).toBe(first.updated_at + 1)
+      closeDB()
+      expect(LibraryDB.Memory.get(input.id)?.updated_at).toBe(second.updated_at)
+      const stale = LibraryDB.Memory.update(
+        { ...input, content: "Stale", expectedUpdatedAt: first.updated_at },
+        embedding,
+      )
+      expect(stale).toBeNull()
+      const third = LibraryDB.Memory.update(
+        { ...input, content: "Current", expectedUpdatedAt: second.updated_at },
+        embedding,
+      )!
+      expect(third.updated_at).toBe(second.updated_at + 1)
+      expect(LibraryDB.Memory.get(input.id)?.content).toBe("Current")
+    } finally {
+      now.mockRestore()
+    }
+  }))
 
 test("local embedding owner loads once, reports progress, retries the mirror and releases resources", () =>
   runtime.run(async () => {

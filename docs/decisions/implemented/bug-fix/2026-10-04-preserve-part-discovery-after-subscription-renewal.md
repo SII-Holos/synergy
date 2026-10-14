@@ -12,6 +12,8 @@ The Web subscription projection strips rejected bodies and retains obsolete unse
 
 The event queue coalesces discovery hints independently of current summaries so a delayed obsolete hint cannot remove a pending current update. Sequenced state summaries retain their normal authoritative processing. The discovery marker exists only inside the Web event pipeline; the server protocol, SDK schema and canonical message state stay unchanged. The current rules live in [Frontend data sync](../../../architecture/frontend-data-sync.md#demand-driven-resources-and-content).
 
+The projection stream reports rejected frames and cancelled reference reads to the subscription projection. Generation fencing applies to content acceptance without bypassing discovery. A discarded large reference contributes its summary without starting a new read; an in-flight reference cancelled by a changed owner preserves the same hint and cannot publish its late body. Failed reference recovery retains discovery after renewing the lease. The real WebSocket entry is covered alongside the subscription helper and GlobalSync reducer; the [transport regression postmortem](../../../postmortem/0074-projection-stream-lost-part-discovery.md) records the missed safeguard.
+
 ## Alternatives considered
 
 **Accept obsolete bodies or replace existing summaries.** This closes the missing-row symptom by weakening version protection and can overwrite a newer checkpoint or snapshot.

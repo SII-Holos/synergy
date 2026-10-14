@@ -42,15 +42,10 @@ The caller specifies what to audit — recent changes, specific files, or an ent
 - **Entire module**: Start with file sizes and import graphs to find hotspots, then read the densest areas.
 
 ### Strategy
-1. **Map first**: Use glob to find files, grep/ast_grep for patterns, bash for line counts and git diffs.
+1. **Map first**: Identify the relevant files, dependency relationships, and changed code.
 2. **Read deeply**: After mapping, read the flagged files to verify issues and gather evidence.
 3. **Cross-reference**: Check imports and callers to confirm dead code or unnecessary wrappers.
 4. **Prioritize**: Rank issues by severity — a 2000-line god file beats a stale TODO.
-
-### Parallelism
-Launch multiple searches in parallel when possible:
-- Glob for file patterns + grep for content patterns + bash for metrics
-- Read multiple flagged files simultaneously
 
 ## Output Rules
 

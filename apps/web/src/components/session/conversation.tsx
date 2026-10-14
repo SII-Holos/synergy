@@ -34,6 +34,7 @@ import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import type { UserMessage, AssistantMessage, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
 import { buildConversationTimelineSnapshot } from "./conversation-timeline"
+import { createConversationHydration } from "./conversation-hydration"
 import { ConversationViewport } from "./conversation-viewport"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
@@ -339,60 +340,30 @@ function SessionConversationView(input: SessionConversationProps) {
   const turnProjection = props.turnProjection
   const [scrollRef, setScrollRef] = createSignal<HTMLDivElement>()
   const [rowsReady, setRowsReady] = createSignal(!props.content)
-  let hydrated = false
   createEffect(() => {
-    if (hydrated || !active() || (input.initialScrollSettled && !input.initialScrollSettled())) return
+    if (!active() || (input.initialScrollSettled && !input.initialScrollSettled())) return
     if ((!settleHistory || !props.content) && !admitted()) {
       input.onAdmitted?.(props.sessionID)
       setAdmitted(true)
     }
-    if (!rowsReady() || executionPending() || execution.state?.loading) return
-    const viewport = scrollRef()
-    const surface = viewport?.querySelector<HTMLElement>("[data-conversation-motion]")
-    if (!surface) return
-    let current = true
-    let frame: number | undefined
-    const pending = () => surface.querySelector("[data-markdown-pending]") || document.fonts?.status === "loading"
-    const schedule = () => {
-      if (!current || frame !== undefined || pending()) return
-      frame = requestAnimationFrame(() => {
-        frame = requestAnimationFrame(() => {
-          frame = undefined
-          if (!current || pending()) return
-          hydrated = true
-          cleanup()
-          batch(() => {
-            if (!admitted()) {
-              input.onAdmitted?.(props.sessionID)
-              setAdmitted(true)
-            }
-            input.onHydrated?.(props.sessionID)
-          })
-        })
-      })
-    }
-    const mutations = new MutationObserver(schedule)
-    const resize = new ResizeObserver(schedule)
-    const cleanup = () => {
-      current = false
-      if (frame !== undefined) cancelAnimationFrame(frame)
-      mutations.disconnect()
-      resize.disconnect()
-      document.fonts?.removeEventListener("loadingdone", schedule)
-      document.fonts?.removeEventListener("loadingerror", schedule)
-    }
-    mutations.observe(surface, {
-      subtree: true,
-      childList: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ["data-markdown-pending"],
-    })
-    resize.observe(surface)
-    document.fonts?.addEventListener("loadingdone", schedule)
-    document.fonts?.addEventListener("loadingerror", schedule)
-    schedule()
-    onCleanup(cleanup)
+  })
+  createConversationHydration({
+    active,
+    ready: () =>
+      (!input.initialScrollSettled || input.initialScrollSettled()) &&
+      !sdk.content.pending(sdk.scopeKey, props.sessionID) &&
+      rowsReady() &&
+      !executionPending() &&
+      !execution.state?.loading,
+    surface: () => scrollRef()?.querySelector<HTMLElement>("[data-conversation-motion]") ?? undefined,
+    onHydrated: () =>
+      batch(() => {
+        if (!admitted()) {
+          input.onAdmitted?.(props.sessionID)
+          setAdmitted(true)
+        }
+        input.onHydrated?.(props.sessionID)
+      }),
   })
   // Rows below are keyed by the stable message id (see conversation-timeline):
   // message objects are replaced in place by window reload, reconnect replay,

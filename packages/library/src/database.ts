@@ -447,17 +447,16 @@ function ensureExperienceVecTable(dimensions: number) {
   refreshVecTableState(conn, instanceState.vecExperience, dimensions)
   if (instanceState.vecExperience.ready && instanceState.vecExperience.dimensions === dimensions) return
 
-  if (hasVecTable(conn, "vec_experience") && instanceState.vecExperience.dimensions !== dimensions) {
-    log.info("embedding dimensions changed, rebuilding vec_experience", {
-      old: instanceState.vecExperience.dimensions,
-      new: dimensions,
-    })
-    conn.exec("DROP TABLE IF EXISTS vec_experience")
-    instanceState.vecExperience.ready = false
-    instanceState.vecExperience.dimensions = undefined
-  }
-
   try {
+    if (hasVecTable(conn, "vec_experience") && instanceState.vecExperience.dimensions !== dimensions) {
+      log.info("embedding dimensions changed, rebuilding vec_experience", {
+        old: instanceState.vecExperience.dimensions,
+        new: dimensions,
+      })
+      conn.exec("DROP TABLE IF EXISTS vec_experience")
+      instanceState.vecExperience.ready = false
+      instanceState.vecExperience.dimensions = undefined
+    }
     conn.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS vec_experience USING vec0(
         experience_id TEXT PRIMARY KEY,
@@ -485,17 +484,16 @@ function ensureMemoryVecTable(dimensions: number) {
   refreshVecTableState(conn, instanceState.vecMemory, dimensions)
   if (instanceState.vecMemory.ready && instanceState.vecMemory.dimensions === dimensions) return
 
-  if (hasVecTable(conn, "vec_memory") && instanceState.vecMemory.dimensions !== dimensions) {
-    log.info("embedding dimensions changed, rebuilding vec_memory", {
-      old: instanceState.vecMemory.dimensions,
-      new: dimensions,
-    })
-    conn.exec("DROP TABLE IF EXISTS vec_memory")
-    instanceState.vecMemory.ready = false
-    instanceState.vecMemory.dimensions = undefined
-  }
-
   try {
+    if (hasVecTable(conn, "vec_memory") && instanceState.vecMemory.dimensions !== dimensions) {
+      log.info("embedding dimensions changed, rebuilding vec_memory", {
+        old: instanceState.vecMemory.dimensions,
+        new: dimensions,
+      })
+      conn.exec("DROP TABLE IF EXISTS vec_memory")
+      instanceState.vecMemory.ready = false
+      instanceState.vecMemory.dimensions = undefined
+    }
     conn.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS vec_memory USING vec0(
         memory_id TEXT PRIMARY KEY,
@@ -1642,18 +1640,35 @@ export namespace LibraryDB {
     }
 
     export function update(
-      input: { id: string; title: string; content: string; category: Category; recallMode: RecallMode },
+      input: {
+        id: string
+        title: string
+        content: string
+        category: Category
+        recallMode: RecallMode
+        expectedUpdatedAt?: number
+      },
       embedding: Embedding.Info,
     ): Row | null {
       const conn = open()
-      const now = Date.now()
-      const result = conn
+      const updated = conn
         .prepare(
-          `UPDATE memory SET title = ?1, content = ?2, category = ?3, recall_mode = ?4, embedding_model = ?5, updated_at = ?6
-         WHERE id = ?7`,
+          `UPDATE memory SET title = ?1, content = ?2, category = ?3, recall_mode = ?4, embedding_model = ?5,
+           updated_at = MAX(?6, updated_at + 1)
+           WHERE id = ?7 AND (?8 IS NULL OR updated_at = ?8)
+           RETURNING *`,
         )
-        .run(input.title, input.content, input.category, input.recallMode, embedding.model, now, input.id)
-      if (result.changes === 0) return null
+        .get(
+          input.title,
+          input.content,
+          input.category,
+          input.recallMode,
+          embedding.model,
+          Date.now(),
+          input.id,
+          input.expectedUpdatedAt ?? null,
+        ) as Row | null
+      if (!updated) return null
 
       ensureVecTables(embedding.vector.length)
       safeVecMemoryOp(() => {
@@ -1669,7 +1684,7 @@ export namespace LibraryDB {
         category: input.category,
         recallMode: input.recallMode,
       })
-      return conn.prepare("SELECT * FROM memory WHERE id = ?1").get(input.id) as Row
+      return updated
     }
 
     export function get(id: string): Row | null {

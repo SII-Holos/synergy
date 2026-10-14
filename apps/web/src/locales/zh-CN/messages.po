@@ -11647,6 +11647,10 @@ msgid "context.dashboard.items"
 msgstr "{count} 条"
 
 #. js-lingui-explicit-id
+msgid "context.dashboard.knownTokenCategories"
+msgstr "仅展示已知分类；灰色部分为未分类用量。"
+
+#. js-lingui-explicit-id
 msgid "context.dashboard.latest"
 msgstr "最近一次请求"
 

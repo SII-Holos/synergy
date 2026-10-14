@@ -1,4 +1,4 @@
-Set a one-time wake-up in THIS session. When the watch fires, you receive the prompt as a message and continue with full conversation history. The watch auto-completes after firing. Choose one wake-up condition.
+Set a one-time wake-up in THIS session. When the watch fires, you receive the prompt as a message and continue with full conversation history. The watch auto-completes after firing. Choose one wake-up condition. Delivery stays with the originating conversation; use a separate recurring schedule when work must run independently.
 
 **Wake on another session's turn**: pass `onSessionEnd: {sessionID, agent?, finish?}` to react when the watched session ends a turn, optionally filtered by agent or finish state. Example: `onSessionEnd: {sessionID:"ses_research", finish:"stop"}`.
 

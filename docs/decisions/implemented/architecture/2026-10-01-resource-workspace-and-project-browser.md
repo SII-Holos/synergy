@@ -18,6 +18,8 @@ Agent operations acquire the initiating Session’s Environment and Workspace bi
 
 Explicit Desktop opening restores the most recently viewed project page or creates a real blank page; metadata reads and layout restoration allocate none. Screenshot and download additions capture an existing Session or a new-task draft generation before asynchronous work, retain ordinary typing and reject a changed/reset destination without creating an empty Session.
 
+Notes render authored content without an additional large title input above the editor. Resource names remain independent metadata in the tab/list and editable through Note options; opening or reading a note never rewrites its title or body. A bounded, responsive reading column widens with the resource panel and increases body text to 18px on large panels. Container sizing uses the panel rather than the browser viewport so split and fullscreen layouts share the same retained editor. Duplicating a metadata heading wastes vertical space and truncates long names; stretching prose across the full display makes line tracking harder.
+
 ## Alternatives considered
 
 **Retain singleton Notes and component-owned draft state.** Rejected because tab replacement and Session changes destroy the view while queued saves, conflicts and editor history still belong to the original document.

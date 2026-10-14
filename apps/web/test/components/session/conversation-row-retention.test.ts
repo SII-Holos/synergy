@@ -197,9 +197,11 @@ beforeAll(async () => {
         let mountCount = 0
         ;(window as any).__sessionTurnMounts = () => mountCount
         const [executionAvailable, setExecutionAvailable] = createSignal(true)
+        const [checkpointPending, setCheckpointPending] = createSignal(false)
         const openedExecution: string[] = []
         Object.assign(window, {
           __setExecutionAvailable: setExecutionAvailable,
+          __checkpointPending: setCheckpointPending,
           __openedExecution: openedExecution,
         })
 
@@ -343,6 +345,7 @@ beforeAll(async () => {
         }
         export const useSDK = () => ({
           get url() { return server() }, get scopeKey() { return scope() }, get client() { return client() }, connected: () => true,
+          content: { pending: checkpointPending },
           event: {on: (type, listener) => {
             if (!listeners.has(type)) listeners.set(type, new Set())
             listeners.get(type).add(listener)
@@ -1596,4 +1599,78 @@ describe("conversation execution request owner", () => {
     expect(await row.getAttribute("data-mount")).toBe(mount)
     expect(pageErrors).toEqual([])
   })
+})
+
+test("warm return retains admission while renewed body and Markdown layout settle", async () => {
+  await page.goto(new URL("?admission", page.url()).href)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      __enableContent(): void
+      __layoutReady(value: boolean): void
+    }
+    window.__setTimeline([
+      { id: "first", sessionID: "ses_1", role: "user", text: "Accepted history", time: { created: 1 } },
+    ])
+    fixture.__enableContent()
+    fixture.__layoutReady(true)
+  })
+  const hydrated = () =>
+    page.evaluate(() => (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions().length)
+  await page.waitForFunction(
+    () => (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions().length === 1,
+  )
+  const viewport = await page.locator("[data-conversation-viewport]").elementHandle()
+  await page.evaluate(() => {
+    window.__viewActive(false)
+    ;(window as unknown as { __checkpointPending(value: boolean): void }).__checkpointPending(true)
+    ;(window as unknown as { __holdBodies(): void }).__holdBodies()
+    window.__setTimeline([
+      { id: "first", sessionID: "ses_1", role: "user", text: "Accepted history", time: { created: 1 } },
+      { id: "second", sessionID: "ses_1", role: "user", text: "Background progress", time: { created: 2 } },
+    ])
+    window.__viewActive(true)
+  })
+  await executionFrames()
+  expect(await hydrated()).toBe(1)
+  expect(await viewport!.evaluate((el) => el.isConnected && el.getAttribute("data-ready") === "true")).toBe(true)
+  await page.evaluate(() => {
+    const marker = document.createElement("div")
+    marker.dataset.markdownPending = ""
+    document.querySelector("[data-conversation-motion]")!.append(marker)
+    ;(window as unknown as { __settleBodies(): void }).__settleBodies()
+  })
+  await executionFrames()
+  expect(await hydrated()).toBe(1)
+  await page.evaluate(() => document.querySelector("[data-markdown-pending]")!.remove())
+  await executionFrames()
+  await executionFrames()
+  expect(await hydrated()).toBe(1)
+  await page.evaluate(() =>
+    (window as unknown as { __checkpointPending(value: boolean): void }).__checkpointPending(false),
+  )
+  await executionFrames()
+  await executionFrames()
+  expect(await hydrated()).toBe(2)
+  expect(await viewport!.evaluate((el) => el === document.querySelector("[data-conversation-viewport]"))).toBe(true)
+  await page.evaluate(() => {
+    window.__setTimeline([
+      { id: "first", sessionID: "ses_1", role: "user", text: "Accepted history", time: { created: 1 } },
+      { id: "second", sessionID: "ses_1", role: "user", text: "Live generation continues", time: { created: 2 } },
+    ])
+  })
+  await executionFrames()
+  expect(await hydrated()).toBe(2)
+  await page.evaluate(() => {
+    window.__viewActive(false)
+    window.__viewActive(true)
+    window.__viewActive(false)
+  })
+  await executionFrames()
+  expect(await hydrated()).toBe(2)
+  await page.evaluate(() => window.__viewActive(true))
+  await executionFrames()
+  await executionFrames()
+  expect(await hydrated()).toBe(3)
+  expect(pageErrors).toEqual([])
 })

@@ -30,14 +30,13 @@ describe("boss runtime context golden", () => {
   })
 
   test("configured identity replaces the persona; structure and separators are exact", () => {
-    const session = bossSession({ role: "boss" })
-    const context = buildRuntimeBossContext(session, {
+    const context = buildRuntimeBossContext({
       identityText: "IDENTITY_MARKER",
       instructions: "STANDING_INSTRUCTIONS",
     })
     expect(context).toBe(
       [
-        buildBossContext(session),
+        buildBossContext(),
         "",
         BOSS_DISCIPLINE_BLOCK,
         "",
@@ -50,11 +49,10 @@ describe("boss runtime context golden", () => {
   })
 
   test("blank identity falls back to the default persona; blank instructions omit the block", () => {
-    const session = bossSession({ role: "boss" })
-    const context = buildRuntimeBossContext(session, { identityText: "   " })
+    const context = buildRuntimeBossContext({ identityText: "   " })
     expect(context).toBe(
       [
-        buildBossContext(session),
+        buildBossContext(),
         "",
         BOSS_DISCIPLINE_BLOCK,
         "",
@@ -65,15 +63,14 @@ describe("boss runtime context golden", () => {
   })
 
   test("report style renders as a dedicated block between persona and instructions", () => {
-    const session = bossSession({ role: "boss" })
-    const context = buildRuntimeBossContext(session, {
+    const context = buildRuntimeBossContext({
       identityText: "IDENTITY_MARKER",
       reportStyle: "REPORT_STYLE_MARKER",
       instructions: "STANDING_INSTRUCTIONS",
     })
     expect(context).toBe(
       [
-        buildBossContext(session),
+        buildBossContext(),
         "",
         BOSS_DISCIPLINE_BLOCK,
         "",
@@ -88,18 +85,17 @@ describe("boss runtime context golden", () => {
   })
 
   test("absent report style omits the report-style block entirely", () => {
-    const session = bossSession({ role: "boss" })
-    const context = buildRuntimeBossContext(session, { identityText: "IDENTITY_MARKER" })
+    const context = buildRuntimeBossContext({ identityText: "IDENTITY_MARKER" })
     expect(context).not.toContain("<boss-report-style>")
   })
 
   test("boss context block is byte-exact", () => {
-    expect(buildBossContext(bossSession({ role: "boss" }))).toBe(
+    expect(buildBossContext()).toBe(
       [
         "<boss-context>",
         "You are the boss of a Boss Mode worker tree — the human's only interface to the tree.",
-        "You decide, delegate, monitor, and summarize. Use boss_spawn to create specialist workers, boss_assign to hand them tasks, boss_status to monitor the tree, and boss_cancel to stop work.",
-        "Answer simple requests directly when they do not need a worker; delegate substantive execution to specialist workers and summarize their boss_report reports for the human.",
+        "You decide, delegate, monitor, and summarize.",
+        "Answer simple requests directly when they do not need a worker; delegate substantive execution to specialist workers and summarize their verified reports for the human.",
         "When a worker reports, decide the next step from the report. When a decision belongs to the human, ask the human — do not guess on their behalf.",
         "</boss-context>",
       ].join("\n"),
@@ -119,10 +115,9 @@ describe("boss worker context golden", () => {
       [
         "<boss-worker-context>",
         "You are a research specialist worker in a Boss Mode worker tree rooted at session s_root.",
-        "Tasks are dispatched to you through your inbox. Complete each assigned task, then call boss_report with a summary and status.",
-        'Use status "completed" when done, "blocked" when you are stuck, and "needs_input" when you need a decision.',
+        "Complete each assigned task and formally report the outcome to your parent through boss_report. Distinguish completion, blockers, and decisions needing input.",
         "When child workers report to you, handle their reports or summarize them upward to your parent.",
-        "You do not contact the human directly — report to your parent with boss_report.",
+        "You do not contact the human directly.",
         "",
         "Standing instructions from your boss:",
         "INSTR_MARKER",

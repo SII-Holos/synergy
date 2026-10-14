@@ -74,6 +74,13 @@
 .note-toolbar-popover [data-slot="popover-body"] {
   padding: 6px;
 }
+.note-toolbar-name {
+  width: 260px;
+  max-width: calc(100vw - 48px);
+  padding: 8px 8px 12px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border-weaker-base);
+}
 .note-toolbar-menu button:hover {
   background: var(--surface-raised-base-hover);
 }
@@ -177,21 +184,11 @@
   border-radius: 4px;
   background: var(--surface-inset-base);
 }
-.note-document-heading,
 .note-document-tags {
   width: 100%;
-  max-width: 760px;
-  padding-inline: 28px;
+  max-width: calc(var(--note-reading-width) + 2 * var(--note-reading-gutter));
+  padding-inline: var(--note-reading-gutter);
   margin-inline: auto;
-}
-.note-document-heading {
-  flex-shrink: 0;
-  padding-top: 28px;
-}
-.note-document-heading input {
-  font-size: 24px;
-  line-height: 32px;
-  font-weight: 600;
 }
 .note-document-body {
   display: flex;
@@ -202,18 +199,34 @@
 .note-workspace-document .document-editor-core {
   background: transparent;
 }
+.note-workspace-document [data-slot="document-scroll"] {
+  padding: clamp(24px, 3cqi, 40px) var(--note-reading-gutter);
+}
 .note-workspace-document .tiptap {
-  max-width: 704px;
+  width: 100%;
+  max-width: var(--note-reading-width);
   margin-inline: auto;
+  font-size: clamp(16px, 1.7cqi, 18px);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
 }
 .note-workspace-document .tiptap p {
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: inherit;
+  line-height: inherit;
+}
+.note-workspace-document .tiptap :is(h1, h2, h3) {
+  line-height: 1.35;
+}
+.note-workspace-document .tiptap > :first-child {
+  margin-top: 0;
 }
 .note-document-tags {
   padding-block: 8px 16px;
 }
 .note-workspace-document {
+  container-type: inline-size;
+  --note-reading-width: 60rem;
+  --note-reading-gutter: clamp(16px, 4cqi, 48px);
   --document-editor-background: var(--background-base);
 }
 .note-navigation-search {

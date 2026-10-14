@@ -26,8 +26,8 @@ describe("Plan Blueprint prompt contract", () => {
   test("converges material route forks before finalizing a Blueprint", () => {
     expect(PLAN).toContain("materially different implementation routes")
     expect(PLAN).toContain("single clarification checkpoint")
-    expect(PLAN).toContain("one `question` call")
-    expect(PLAN).toContain("Do not call `question` again for that Blueprint")
+    expect(PLAN).toContain("ask them together at one clarification checkpoint")
+    expect(PLAN).toContain("Do not reopen it for that Blueprint")
     expect(PLAN).toContain("two competent executors")
     expect(PLAN).toContain("not decision-complete")
   })
@@ -53,7 +53,7 @@ describe("Plan Blueprint prompt contract", () => {
   })
 
   test("keeps the Blueprint quality bar that makes a plan detailed and professional", () => {
-    expect(PLAN).toContain("create or refine a high-quality Blueprint")
+    expect(PLAN).toContain("Create or refine a decision-complete design document stored as a Blueprint Note")
     expect(PLAN).toContain("A Blueprint is an executable delivery contract.")
     expect(PLAN).toContain("It must be decision-complete")
     expect(PLAN).toContain("a later execution session should not need to choose")

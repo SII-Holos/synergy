@@ -8,7 +8,7 @@ const Parameters = z.object({
     .string()
     .min(1)
     .max(200)
-    .describe("Local branch name containing the committed fix (e.g. synergy/fix/issue-123-slug)."),
+    .describe("Local branch name containing the committed fix (e.g. synergy/fix/123-slug)."),
   title: z.string().min(1).max(256).describe("Concise pull request title."),
   body: z.string().max(8000).describe("Pull request body: what was wrong, what changed, and the test results."),
 })
@@ -28,7 +28,7 @@ export const GithubDeliverFixTool = Tool.define(
   "github_deliver_fix",
   {
     description:
-      "Deliver a locally committed fix as a GitHub pull request. The current session supplies the repository thread; provide the local branch name, a concise title, and a body describing what was wrong, what changed, and the test results. The provider pushes the branch and opens (or reuses) the PR.",
+      "Deliver one focused local fix commit through the current session's GitHub repository thread. Use a local branch named synergy/fix/<issue-number>-<slug>; provide branch, a concise title, and body describing the root cause, changes, and test results. For a pull request thread, the provider first updates that PR's head branch. For an issue or an inaccessible PR head, it opens or reuses a new PR. The result contains the PR URL to report. Never push manually, change remotes, use the GitHub CLI, or force operations.",
     parameters: Parameters,
     async execute(params, ctx) {
       const provider = Channel.getProvider("github")

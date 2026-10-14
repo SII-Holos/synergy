@@ -41,7 +41,7 @@ export function registerBossDomain(): void {
 
       const persona = await resolveBossPersona()
       const parts = [
-        buildRuntimeBossContext(session, {
+        buildRuntimeBossContext({
           identityText: persona.identityText,
           reportStyle: persona.reportStyle,
           instructions: workflow.instructions,

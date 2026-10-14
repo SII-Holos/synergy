@@ -1,4 +1,4 @@
-import { createEffect, createResource, onCleanup } from "solid-js"
+import { createEffect, createMemo, createResource, onCleanup } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useMarked } from "../context/marked"
 import { useReferenceContext, useResourceOpen } from "../context/resource-open"
@@ -22,7 +22,7 @@ export function UserMarkdown(props: {
   let root!: HTMLDivElement
   let pending: AbortController | undefined
   onCleanup(() => pending?.abort())
-  const key = () => JSON.stringify([props.text, props.references ?? []])
+  const key = createMemo(() => JSON.stringify([props.text, props.references ?? []]))
   const [rendered] = createResource(key, async (current) => {
     pending?.abort()
     const controller = new AbortController()

@@ -6,3 +6,5 @@ Parameters:
 - completed: Optional summary of work that is already correct
 - remaining: Summary of missing or incorrect work, marking each item BLOCKING or NON-BLOCKING
 - instructions: Concrete next actions the execution agent can follow without further clarification
+
+A successful call records formal rejection and automatically returns the findings to the execution session. Do not send a separate rejection notification.

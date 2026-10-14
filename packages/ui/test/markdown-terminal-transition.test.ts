@@ -9,6 +9,19 @@ beforeAll(() => {
 })
 afterAll(() => dom.window.close())
 
+test("finishing a multi-block stream preserves unchanged paragraphs across block whitespace and heading enrichment", () => {
+  const container = document.createElement("div")
+  container.innerHTML = "<h3>Section</h3><p>Keep reading this paragraph.</p><p>More evidence.</p>"
+  const paragraph = container.children[1]
+  const controller = createMarkdownTerminalTransitionController()
+  const html =
+    '<h3 id="section">Section</h3>\n<p>Keep reading this paragraph.</p>\n<p>More evidence.</p>\n<p>New background result.</p>\n'
+  controller.apply({ container, hash: "complete", html })
+  expect(container.innerHTML).toBe(html)
+  expect(container.children[1]).toBe(paragraph)
+  expect(container.querySelector("h3")?.id).toBe("section")
+})
+
 test("finishing streamed prose keeps matching content mounted and fully readable", () => {
   const container = document.createElement("div")
   container.innerHTML = "<p>Read the project files.</p>"

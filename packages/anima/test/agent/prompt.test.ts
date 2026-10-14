@@ -35,14 +35,23 @@ const model: Provider.Model = {
 }
 
 for (const selected of [false, true]) {
-  for (const denied of [false, true]) {
+  for (const denied of selected ? [false, true, "read"] : [false, true]) {
     test(`anima prompt follows owner selection and actual tool permissions (${selected}, ${denied})`, async () => {
       await using runtime = await testRuntime({
         env: {
           SYNERGY_CONFIG_CONTENT: JSON.stringify({
             library: { experience: { retrieve: false, encode: false } },
             agent: selected
-              ? { anima: { permission: denied ? { "memory_*": "deny", "note_*": "deny", "agenda_*": "deny" } : {} } }
+              ? {
+                  anima: {
+                    permission:
+                      denied === "read"
+                        ? { memory_get: "deny" }
+                        : denied
+                          ? { "memory_*": "deny", "note_*": "deny", "agenda_*": "deny" }
+                          : {},
+                  },
+                }
               : {},
           }),
         },
@@ -102,7 +111,13 @@ for (const selected of [false, true]) {
             expect(prompt).not.toMatch(
               /Feishu|飞书|lark-cli|mcp__anysearch__search|community presence|community state/i,
             )
-            if (denied) {
+            if (denied === "read") {
+              expect(availableToolIDs).not.toContain("memory_get")
+              expect(availableToolIDs).toContain("memory_write")
+              expect(availableToolIDs).toContain("memory_edit")
+              expect(availableToolIDs).toContain("memory_search")
+              expect(prompt).not.toContain("Consolidate durable observations")
+            } else if (denied) {
               expect(availableToolIDs).not.toContain("memory_write")
               expect(availableToolIDs).not.toContain("agenda_schedule")
               expect(prompt).not.toMatch(
@@ -111,8 +126,12 @@ for (const selected of [false, true]) {
             } else {
               expect(availableToolIDs).toContain("memory_write")
               expect(availableToolIDs).toContain("agenda_schedule")
-              expect(prompt).toContain("memory_write")
-              expect(prompt).toContain("agenda_schedule")
+              expect(prompt).toContain("Consolidate durable observations")
+              expect(prompt).toContain("Preserve uniquely useful details")
+              expect(prompt).toContain("if preservation fails, leave the original intact")
+              expect(prompt).toContain("concurrent changes")
+              expect(prompt).toContain("Keep follow-up work proportionate")
+              expect(prompt).not.toMatch(/memory_(?:search|write|edit)|agenda_(?:schedule|watch)/)
               expect(prompt).toContain("Daily: YYYY-MM-DD")
             }
           },

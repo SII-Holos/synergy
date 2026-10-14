@@ -140,11 +140,13 @@ for (const selected of [false, true]) {
                 expect(action(reviewer, tool), `${name}:${tool}`).toBe(selected && !denied ? "allow" : "deny")
               const session = await Session.create({ title: "Reviewer evidence" })
               const result = await prepared(reviewer, session)
-              if (!selected || denied) expect(result.prompt).not.toMatch(/\bparse_code\b|\blook_at\b|\bscan_document\b/)
-              else {
-                expect(result.availableToolIDs).toContain("parse_code")
-                expect(result.prompt).toContain("Use parse_code")
+              expect(result.prompt).not.toMatch(/\bparse_code\b|\blook_at\b|\bscan_document\b/)
+              const registered = await ToolRegistry.ids()
+              for (const tool of ["parse_code", "look_at", "scan_document"]) {
+                expect(registered.includes(tool), `${name}:${tool}`).toBe(selected)
+                if (!selected || denied) expect(result.availableToolIDs).not.toContain(tool)
               }
+              expect(result.availableToolIDs.includes("parse_code")).toBe(selected && !denied)
             }
           },
         }),
@@ -225,9 +227,10 @@ for (const kind of ["blueprint", "light-loop"] as const) {
               const agent = await Agent.get(PrimaryAgentIdentity.names.general)
               const result = await prepared(agent, await Session.get(created.id))
               expect((await ToolRegistry.find(stop))?.description).not.toMatch(/Agenda|agenda_cancel/)
-              const instruction = `Before requesting ${kind === "blueprint" ? "BlueprintLoop" : "Light Loop"} review`
+              const instruction = `${kind === "blueprint" ? "BlueprintLoop" : "Light Loop"} review requires all active Agenda wakeups`
               expect(result.prompt.includes(instruction)).toBe(selected && !deniedTool)
               if (selected && !deniedTool) {
+                expect(result.prompt).toContain("Review is rejected while any wakeup remains")
                 expect(result.availableToolIDs).toContain(stop)
                 expect(result.availableToolIDs).toContain("agenda_cancel")
               }

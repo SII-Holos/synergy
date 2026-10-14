@@ -7,6 +7,15 @@ import { readConfig } from "./config-schema"
 import { SessionContextContributions } from "@ericsanchezok/synergy-harness/session/context-contributions"
 import { buildMemoryContext, buildAlwaysOnlyMemoryResult, RECALL_TIMEOUT_MS } from "./recall"
 
+function isMemoryMaintainer(input: SessionContextContributions.Input): boolean {
+  const identity = input.agentIdentity
+  return (
+    identity?.source === "builtin" &&
+    ((identity.owner === "anima" && identity.registrationKey === "anima") ||
+      (identity.owner === "library" && identity.registrationKey === "chronicler"))
+  )
+}
+
 export function registerLibrarySessionRecall() {
   ExperienceEncoder.register()
   SessionLibraryRecall.register({
@@ -33,16 +42,17 @@ export function registerLibrarySessionRecall() {
     },
     async contribute(input) {
       const { library } = await readConfig()
+      const maintenance = isMemoryMaintainer(input)
       if (!input.isTopSession) {
-        const result = buildAlwaysOnlyMemoryResult()
+        const result = buildAlwaysOnlyMemoryResult(maintenance)
         return result ? { context: result.context, injection: {} } : undefined
       }
-      return buildMemoryContext(input.sessionID, input.scopeID, input.messages, library, input.signal)
+      return buildMemoryContext(input.sessionID, input.scopeID, input.messages, library, input.signal, maintenance)
     },
-    async fallback() {
+    async fallback(input) {
       const { library } = await readConfig()
       if (library?.memory?.enabled === false) return undefined
-      return buildAlwaysOnlyMemoryResult()
+      return buildAlwaysOnlyMemoryResult(isMemoryMaintainer(input))
     },
     committed(sessionID, injection) {
       if (injection.experience) ExperienceRecall.commitRetrieval(sessionID)

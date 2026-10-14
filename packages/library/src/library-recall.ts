@@ -24,6 +24,7 @@ export namespace SessionLibraryRecall {
     title: string
     content: string
     category: MemoryCategory
+    updated_at?: number
   }
 
   export interface RetrievedMemory {

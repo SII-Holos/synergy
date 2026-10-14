@@ -2,6 +2,7 @@ import { RuntimeContext } from "../lifecycle/context"
 import type { MessageV2 } from "./message-v2"
 import { Log } from "../util/log"
 import type { RuntimeAdvisory } from "./runtime-context"
+import type { AgentPermissionContributions } from "../agent/permission-contributions"
 
 export namespace SessionContextContributions {
   export const DEFAULT_TIMEOUT_MS = 15_000
@@ -10,6 +11,7 @@ export namespace SessionContextContributions {
     scopeID: string
     messages: MessageV2.WithParts[]
     isTopSession: boolean
+    agentIdentity?: Readonly<AgentPermissionContributions.Identity>
     signal: AbortSignal
   }
   export interface Result {

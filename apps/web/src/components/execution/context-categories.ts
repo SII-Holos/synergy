@@ -122,6 +122,10 @@ export const D = {
   requestChange: { id: "context.dashboard.requestChange", message: "Change {tokens}" },
   requestInput: { id: "context.dashboard.requestInput", message: "Input {tokens}" },
   timing: { id: "context.dashboard.timing", message: "Timing breakdown" },
+  knownTokenCategories: {
+    id: "context.dashboard.knownTokenCategories",
+    message: "Known token categories only; gray shows unclassified usage.",
+  },
   timingBasis: { id: "context.dashboard.timingBasis", message: "Recorded durations · parallel work can overlap" },
   timingTotal: { id: "context.dashboard.timingTotal", message: "Recorded time" },
   modelWait: { id: "context.dashboard.modelWait", message: "First-token wait" },

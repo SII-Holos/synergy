@@ -10,6 +10,95 @@ import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime
 import { registerLibrary, disposeLibrary } from "../src/register"
 import { LibraryDB } from "../src/database"
 import { testRuntime } from "./support/runtime"
+import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { AgentPromptContributions } from "@ericsanchezok/synergy-harness/agent/prompt-contributions"
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
+import { ConfigSource } from "@ericsanchezok/synergy-harness/config/source"
+import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
+import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { LLM } from "@ericsanchezok/synergy-harness/test/support/internals"
+
+for (const selected of [false, true]) {
+  test(`Library memory semantics follow actual composition without tool tutorials (${selected})`, async () => {
+    await using runtime = await coreRuntime({
+      composition: {
+        register() {
+          if (selected) registerLibrary()
+          ConfigSource.register({
+            resolve: async () => ({
+              provider: { openai: { options: { apiKey: "fixture-key" } } },
+              agent: Object.fromEntries(
+                [PrimaryAgentIdentity.names.general, "developer", "scribe", "scholar"].map((name) => [
+                  name,
+                  { permission: { "memory_*": "allow" } },
+                ]),
+              ),
+            }),
+          })
+        },
+      },
+    })
+    await runtime.run(() =>
+      ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const model = await Provider.getModel("openai", "gpt-4o")
+          const ids = await ToolRegistry.ids()
+          expect(ids.includes("memory_write")).toBe(selected)
+          for (const name of [PrimaryAgentIdentity.names.general, "developer", "scribe", "scholar"]) {
+            const agent = await Agent.get(name)
+            const availableToolIDs = ids.filter(
+              (id) => PermissionNext.evaluate(id, "*", agent.permission).action !== "deny",
+            )
+            const prepared = await LLM.prepare({
+              agent,
+              model,
+              sessionID: "ses_memory_prompt",
+              tools: {},
+              availableToolIDs,
+              user: {
+                id: "msg_memory_prompt",
+                sessionID: "ses_memory_prompt",
+                role: "user",
+                time: { created: Date.now() },
+                agent: agent.name,
+                model: { providerID: model.providerID, modelID: model.id },
+              },
+              system: [],
+              messages: [],
+              abort: new AbortController().signal,
+            })
+            const prompt = prepared.system.join("\n")
+            const contributions = AgentPromptContributions.render(agent, new Set(availableToolIDs))
+            expect(contributions).toHaveLength(selected ? 1 : 0)
+            for (const contribution of contributions) expect(prompt).toContain(contribution)
+            expect(prompt).not.toMatch(/When to `memory_|Prefer `memory_edit`|Search before writing/)
+            if (selected) {
+              expect(prompt).toContain("Respect privacy and consent limits")
+              expect(prompt).toContain("require explicit approval")
+              expect(prompt).toContain("intended recipient, channel, and content")
+              expect(prompt).toContain("never claim a memory was saved without confirmation")
+              expect(AgentPromptContributions.render(agent, new Set())).toEqual([])
+            }
+          }
+          const chronicler = (await Agent.list()).find((agent) => agent.name === "chronicler")
+          expect(!!chronicler).toBe(selected)
+          if (chronicler) {
+            expect(chronicler.prompt).toContain("Ground behavioral self-knowledge in observed actions")
+            expect(chronicler.prompt).toContain("never store secrets")
+            expect(chronicler.prompt).toContain("Preserve uniquely useful details")
+            expect(chronicler.prompt).toContain("if preservation fails, leave the original intact")
+            expect(chronicler.prompt).toContain("concurrent changes")
+            expect(chronicler.prompt).toContain("Always finish with a brief text response")
+            expect(chronicler.prompt).not.toMatch(/memory_search|memory_edit|memory_write|`read`|`grep`|`glob`/)
+          }
+        },
+      }),
+    )
+  })
+}
 
 test("library composes independently without product registration or plugin delivery", async () => {
   await using runtime = await testRuntime()

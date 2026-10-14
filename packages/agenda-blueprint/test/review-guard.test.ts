@@ -12,6 +12,9 @@ import { BlueprintLoopStopTool } from "@ericsanchezok/synergy-blueprint/blueprin
 import { registerWorker } from "../src/worker"
 import { note } from "@ericsanchezok/synergy-note/component"
 import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint/loop-store"
+import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { AgentPromptContributions } from "@ericsanchezok/synergy-harness/agent/prompt-contributions"
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 
 for (const selected of [false, true]) {
   test(`Agenda review bridge selected=${selected} controls wakeup guidance and review`, async () => {
@@ -30,6 +33,11 @@ for (const selected of [false, true]) {
       ScopeContext.provide({
         scope: Scope.home(),
         fn: async () => {
+          const agent = await Agent.get(PrimaryAgentIdentity.names.general)
+          const guidance = AgentPromptContributions.render(agent, new Set(["blueprint_loop_stop", "agenda_cancel"]))
+          expect(guidance.join("\n").includes("all active Agenda wakeups")).toBe(selected)
+          expect(guidance.join("\n")).not.toMatch(/blueprint_loop_stop|agenda_cancel/)
+          expect(AgentPromptContributions.render(agent, new Set(["blueprint_loop_stop"]))).toEqual([])
           const session = await Session.create({})
           const loop = await BlueprintLoopStore.create({
             noteID: "note_blueprint",
@@ -55,7 +63,12 @@ for (const selected of [false, true]) {
             item,
           })
           expect(!!instruction).toBe(selected)
-          if (selected) expect(instruction!.text).toContain("blueprint_loop_stop")
+          if (selected) {
+            expect(instruction!.text).toContain("blueprint_loop_stop")
+            expect(instruction!.text).toContain(item.id)
+            expect(instruction!.text).toContain("complete Blueprint is finished and verified")
+            expect(instruction!.text).not.toMatch(/agenda_cancel\(|Call blueprint_loop_stop with/)
+          }
           await Session.update(session.id, (draft) => {
             draft.blueprint = { loopID: loop.id, loopRole: "execution" }
           })
