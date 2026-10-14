@@ -445,6 +445,14 @@ export const Server = z
     hostname: z.string().optional().describe("Hostname to listen on"),
     mdns: z.boolean().optional().describe("Enable mDNS service discovery"),
     cors: z.array(z.string()).optional().describe("Additional origins allowed for CORS and Browser viewer WebSockets"),
+    workspaceFileMaxBytes: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        "Maximum bytes for workspace file serve/preview downloads (default: 52428800 = 50 MiB, max: 536870912 = 512 MiB)",
+      ),
   })
   .strict()
   .meta({

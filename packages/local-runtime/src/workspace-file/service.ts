@@ -19,6 +19,7 @@ import { SensitivePathPolicy } from "@ericsanchezok/synergy-harness/enforcement/
 import os from "node:os"
 import { NativeFileEntry } from "../file/entry-core"
 import { NativeWorkspaceTree } from "../workspace/tree"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
 
 const DEFAULT_CHILDREN_LIMIT = 200
 const NODE_CONCURRENCY = 16
@@ -497,7 +498,15 @@ export namespace WorkspaceFileService {
     }
   }
   const PREVIEW_MAX_BYTES = 50 * 1024 * 1024
+  const SERVE_MAX_LIMIT = 512 * 1024 * 1024
   const PREVIEW_MIME_PDF = "application/pdf"
+
+  async function configuredMaxBytes(): Promise<number> {
+    const cfg = await Config.current().catch(() => null)
+    const value = cfg?.server?.workspaceFileMaxBytes
+    if (!Number.isSafeInteger(value) || !value || value < 1) return PREVIEW_MAX_BYTES
+    return Math.min(value, SERVE_MAX_LIMIT)
+  }
 
   export class UnsupportedPreviewError extends Error {
     constructor(message: string) {
@@ -521,12 +530,13 @@ export namespace WorkspaceFileService {
     if (!(path.extname(absolute).toLowerCase() === ".pdf" || mime === PREVIEW_MIME_PDF)) {
       throw new UnsupportedPreviewError(`Unsupported preview: only PDF files support content preview (${info.path})`)
     }
-    if (info.size > PREVIEW_MAX_BYTES) {
-      throw new TooLargeError(`File too large to preview (${info.size} bytes, limit ${PREVIEW_MAX_BYTES})`)
+    const limit = await configuredMaxBytes()
+    if (info.size > limit) {
+      throw new TooLargeError(`File too large to preview (${info.size} bytes, limit ${limit})`)
     }
     const opened = await WorkspaceFileStream.open({
       path: absolute,
-      limit: PREVIEW_MAX_BYTES,
+      limit,
       signal: input.signal,
       validate: assertRealpathInside,
     })
@@ -548,8 +558,8 @@ export namespace WorkspaceFileService {
     if (info.type !== "file") {
       throw new AccessDeniedError(`Access denied: path is not a file (${info.path})`)
     }
-    const limit = input.maximumBytes ?? PREVIEW_MAX_BYTES
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 512 * 1024 * 1024)
+    const limit = input.maximumBytes ?? (await configuredMaxBytes())
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > SERVE_MAX_LIMIT)
       throw new InvalidContentError("File stream limit must be between 1 byte and 512 MiB")
     if (info.size > limit) {
       throw new TooLargeError(`File too large to serve (${info.size} bytes, limit ${limit})`)
