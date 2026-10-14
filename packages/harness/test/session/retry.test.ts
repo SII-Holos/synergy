@@ -99,6 +99,18 @@ describe("session.retry.delay", () => {
 })
 
 describe("session.message-v2.fromError", () => {
+  test("plain server overloads retain retry admission through live and serialized errors", () => {
+    const source = new Error("Our servers are currently overloaded. Please try again later.")
+    for (const error of [source, AgentTurnProtocol.deserializeError(AgentTurnProtocol.serializeError(source))]) {
+      const result = MessageV2.fromError(error, { providerID: "test" })
+      expect(result).toMatchObject({ name: "APIError", data: { message: source.message, isRetryable: true } })
+      expect(SessionRetry.retryable(result)?.maxAttempts).toBe(SessionRetry.RETRY_MAX_ATTEMPTS)
+    }
+    expect(
+      SessionRetry.retryable({ name: "UnknownError", data: { message: `Error: ${source.message}` } }),
+    ).toBeDefined()
+  })
+
   test.each(["ETIMEOUT", "EHOSTUNREACH", "ESERVFAIL", "UND_ERR_SOCKET", "UND_ERR_BODY_TIMEOUT"])(
     "preserves retry classification for nested %s through the worker protocol",
     (code) => {

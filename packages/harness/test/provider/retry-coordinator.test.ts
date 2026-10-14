@@ -85,10 +85,12 @@ test("an older successful request cannot erase a newer failure", async () => {
   ;(await next).release()
 })
 
-test("a failed probe extends cooldown for every waiting call", async () => {
+test.each(["network", "overload"])("a failed %s probe extends cooldown for every waiting call", async (kind) => {
   const { coordinator, advance } = fixture()
+  const failure = () =>
+    kind === "overload" ? new Error("Our servers are currently overloaded. Please try again later.") : transient()
   const first = await coordinator.acquire("connection", signal())
-  first.failure(transient())
+  first.failure(failure())
   first.release()
   const probePromise = coordinator.acquire("connection", signal())
   await advance(1000)
@@ -98,7 +100,7 @@ test("a failed probe extends cooldown for every waiting call", async () => {
     started = true
     return lease
   })
-  probe.failure(transient())
+  probe.failure(failure())
   probe.release()
   await advance(1999)
   expect(started).toBe(false)
