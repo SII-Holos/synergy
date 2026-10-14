@@ -193,24 +193,135 @@ test("the background covers the pane, while the game has no pointer focus frame 
   expect(await page.locator(".welcome-stack").getAttribute("data-height")).toBe("1")
 })
 
-test("clicking outside pauses, idle autofocus does not, and a deliberate game action resumes", async () => {
+test("composer input and focus changes keep play running while Escape explicitly pauses", async () => {
   await open()
   const stage = page.locator(".welcome-stage")
+  const board = page.locator(".welcome-game-canvas")
   await page.getByRole("textbox").focus()
   expect(await stage.getAttribute("data-active")).toBe("")
   await page.getByRole("textbox").click()
-  expect(await stage.getAttribute("data-active")).toBeNull()
-  await page.locator(".welcome-game-canvas").click()
+  await page.getByRole("textbox").fill("Keep this draft")
+  await page.getByRole("textbox").dispatchEvent("compositionstart", { bubbles: true })
+  await page.getByRole("textbox").dispatchEvent("compositionend", { bubbles: true })
   expect(await stage.getAttribute("data-active")).toBe("")
+  const moving = await board.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+  await page.waitForFunction(
+    (snapshot) => document.querySelector<HTMLCanvasElement>(".welcome-game-canvas")?.toDataURL() !== snapshot,
+    moving,
+  )
+  await page.keyboard.press("Shift+Tab")
+  expect(await board.evaluate((el) => document.activeElement === el)).toBe(true)
+  expect(await page.locator(".welcome-stack").getAttribute("data-height")).toBe("0")
   await page.keyboard.press("Escape")
   expect(await stage.getAttribute("data-active")).toBeNull()
-  await page.getByRole("textbox").fill("Keep this draft")
-  await page.locator(".welcome-game-status").click()
-  expect(await page.locator(".welcome-game-canvas").evaluate((el) => document.activeElement === el)).toBe(true)
+  const paused = await board.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+  await page.getByRole("textbox").click()
+  await page.waitForTimeout(120)
+  expect(await board.evaluate((el) => (el as HTMLCanvasElement).toDataURL())).toBe(paused)
+  await board.focus()
+  expect(await stage.getAttribute("data-active")).toBeNull()
+  await board.press("Space")
   expect(await stage.getAttribute("data-active")).toBe("")
   expect(await page.getByRole("textbox").inputValue()).toBe("Keep this draft")
   await page.getByRole("button", { name: "Overlay", exact: true }).click()
   expect(await stage.getAttribute("data-active")).toBeNull()
+})
+
+test("keyboard focus marks the game status without tinting the entire playfield", async () => {
+  try {
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
+      await open("slingshot")
+      await page.getByRole("textbox").click()
+      await page.getByRole("textbox").fill("Typing before returning to the game")
+      await page.keyboard.press("Shift+Tab")
+      const canvas = page.locator(".welcome-game-canvas")
+      expect(await canvas.evaluate((el) => el.matches(":focus-visible"))).toBe(true)
+      expect(
+        await page.locator(".welcome-game-status").evaluate((el) => getComputedStyle(el).textDecorationLine),
+      ).toContain("underline")
+      expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe("none")
+      expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+      if (process.env.WELCOME_CAPTURE_DIR) {
+        await mkdir(process.env.WELCOME_CAPTURE_DIR, { recursive: true })
+        await page.locator(".session-workbench-pane").screenshot({
+          path: path.join(process.env.WELCOME_CAPTURE_DIR, `keyboard-focus-${colorScheme}.png`),
+        })
+      }
+      await canvas.click()
+      expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe("none")
+      await page.emulateMedia({ forcedColors: "active" })
+      await page.getByRole("textbox").focus()
+      await page.keyboard.press("Shift+Tab")
+      expect(await canvas.evaluate((el) => el.matches(":focus-visible"))).toBe(true)
+      expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe("none")
+      expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+      await page.emulateMedia({ forcedColors: "none" })
+    }
+  } finally {
+    await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference", forcedColors: "none" })
+  }
+})
+
+test("focus loss releases held controls while gravity and flight continue", async () => {
+  for (const scene of ["blocks", "flight"])
+    for (const destination of ["composer", "window"]) {
+      await open(scene)
+      const canvas = page.locator(".welcome-game-canvas")
+      const position = () =>
+        scene === "blocks"
+          ? page.locator(".welcome-blocks").getAttribute("data-column")
+          : canvas.getAttribute("aria-description")
+      await canvas.focus()
+      await page.keyboard.down("ArrowRight")
+      await page.waitForTimeout(50)
+      if (destination === "composer") await page.getByRole("textbox").focus()
+      else await page.evaluate(() => window.dispatchEvent(new Event("blur")))
+      const released = await position()
+      await page.waitForTimeout(230)
+      const settled = await position()
+      await page.keyboard.up("ArrowRight")
+      expect(settled).toBe(released)
+      expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBe("")
+      await page.getByRole("textbox").fill("Draft")
+      await page.getByRole("textbox").press("End")
+      await page.keyboard.type(" r ")
+      await page.keyboard.press("ArrowUp")
+      expect(await page.getByRole("textbox").inputValue()).toBe("Draft r ")
+      expect(await position()).toBe(released)
+      if (scene === "blocks") {
+        expect(await page.locator(".welcome-blocks").getAttribute("data-locked")).toBe("0")
+        await page.waitForFunction(
+          () => Number(document.querySelector(".welcome-blocks")?.getAttribute("data-row")) > 0,
+        )
+      } else {
+        const frame = await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
+        await page.waitForFunction(
+          (snapshot) => document.querySelector<HTMLCanvasElement>(".welcome-game-canvas")?.toDataURL() !== snapshot,
+          frame,
+        )
+      }
+    }
+})
+
+test("focus loss cancels captured slingshot pulls without firing or pausing", async () => {
+  for (const destination of ["composer", "window"]) {
+    await open("slingshot")
+    const canvas = page.locator(".welcome-game-canvas")
+    const box = (await canvas.boundingBox())!
+    const scale = Math.min(box.width / 720, box.height / 360)
+    const x = box.x + (box.width - 720 * scale) / 2 + 98 * scale
+    const y = box.y + box.height - 360 * scale + 224 * scale
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x - 45 * scale, y + 40 * scale)
+    if (destination === "composer") await page.getByRole("textbox").focus()
+    else await page.evaluate(() => window.dispatchEvent(new Event("blur")))
+    await page.mouse.up()
+    expect(await page.locator(".welcome-slingshot").getAttribute("data-phase")).toBe("aiming")
+    expect(await page.locator(".welcome-slingshot").getAttribute("data-shots")).toBe("3")
+    expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBe("")
+  }
 })
 
 test("slingshot aims before launch, cancels pulls, and completes a level with keyboard shots", async () => {
@@ -235,6 +346,8 @@ test("slingshot aims before launch, cancels pulls, and completes a level with ke
   for (let n = 0; n < 15; n++) await page.keyboard.press("ArrowLeft")
   for (let n = 0; n < 2; n++) await page.keyboard.press("ArrowUp")
   await page.keyboard.press("Space")
+  await page.getByRole("textbox").fill("Let the launched shot finish")
+  expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBe("")
   await page.waitForFunction(
     () => document.querySelector(".welcome-slingshot")?.getAttribute("data-phase") === "won",
     undefined,
@@ -242,6 +355,7 @@ test("slingshot aims before launch, cancels pulls, and completes a level with ke
   )
   await board.click()
   expect(await page.locator(".welcome-slingshot").getAttribute("data-level")).toBe("1")
+  expect(await page.getByRole("textbox").inputValue()).toBe("Let the launched shot finish")
   expect(errors).toEqual([])
 }, 20000)
 
@@ -540,7 +654,7 @@ test("ambient caching preserves cell coverage at real integer and fractional dev
   }
 }, 60000)
 
-test("ambient motion continues when outside clicks and keyboard focus pause play", async () => {
+test("outside clicks and keyboard focus leave both game and ambient motion running", async () => {
   await page.setViewportSize({ width: 960, height: 920 })
   await open("flight")
   const ambient = page.locator(".welcome-ambient")
@@ -551,18 +665,18 @@ test("ambient motion continues when outside clicks and keyboard focus pause play
   const title = (await page.getByRole("heading").boundingBox())!
   await page.mouse.click(title.x + title.width / 2, title.y + title.height / 2)
   await page.waitForTimeout(50)
-  expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBeNull()
+  expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBe("")
   const paused = await frame()
   await page.waitForTimeout(120)
   expect((await frame()) === paused).toBe(false)
   const board = page.locator(".welcome-game-canvas")
   await board.click()
   await page.keyboard.press("Tab")
-  expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBeNull()
+  expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBe("")
   expect(await ambient.getAttribute("data-moving")).toBe("")
 })
 
-test("game controls and composer states pause play independently of the ambient field", async () => {
+test("explicit pause and obscured games freeze independently of the ambient field", async () => {
   await page.setViewportSize({ width: 960, height: 920 })
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await open("flight")
@@ -590,14 +704,12 @@ test("game controls and composer states pause play independently of the ambient 
   await page.locator(".welcome-game-status").click()
   await page.keyboard.press("Escape")
   await remainsMoving()
-  await page.locator(".welcome-game-status").click()
   await page.getByRole("textbox").fill("Keep this draft")
   await remainsMoving()
   await page.locator(".welcome-game-status").click()
   await page.getByRole("button", { name: "Overlay", exact: true }).click()
   await remainsMoving()
   await page.getByRole("button", { name: "Overlay", exact: true }).click()
-  await page.locator(".welcome-game-status").click()
   await page.locator(".session-composer").evaluate((el) => el.setAttribute("data-expanded", ""))
   await remainsMoving()
   await page.locator(".session-composer").evaluate((el) => el.removeAttribute("data-expanded"))
@@ -708,7 +820,7 @@ test("settled tower floors remain opaque across their contact at normal and doub
   }
 })
 
-test("flight pickups show timed effects, freeze outside the game, and a loss restarts locally", async () => {
+test("flight pickups show timed effects, freeze on explicit pause, and a loss restarts locally", async () => {
   await page.setViewportSize({ width: 960, height: 920 })
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await open("flight&fixture=flight-power")
@@ -717,6 +829,7 @@ test("flight pickups show timed effects, freeze outside the game, and a loss res
   expect(await page.locator(".welcome-game-status").textContent()).toContain("Firepower")
   expect(await page.locator(".welcome-game-status").textContent()).toContain("Shield")
   expect(await page.getByRole("status").textContent()).toContain("One-hit protection")
+  await page.locator(".welcome-game-canvas").press("Escape")
   await page.getByRole("textbox").click()
   const canvas = page.locator(".welcome-game-canvas")
   const paused = await canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
@@ -730,7 +843,7 @@ test("flight pickups show timed effects, freeze outside the game, and a loss res
   expect(await page.getByRole("textbox").inputValue()).toBe("")
 })
 
-test("round endings keep moving, pause with the composer and allow immediate retry", async () => {
+test("round endings continue during composition, pause with Escape and allow immediate retry", async () => {
   await page.setViewportSize({ width: 960, height: 920 })
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await open("flight&fixture=flight-over")
@@ -740,7 +853,11 @@ test("round endings keep moving, pause with the composer and allow immediate ret
   const first = await frame()
   await page.waitForTimeout(100)
   expect(await frame()).not.toBe(first)
-  await page.getByRole("textbox").click()
+  await page.getByRole("textbox").fill("Let the ending finish")
+  const editing = await frame()
+  await page.waitForTimeout(100)
+  expect(await frame()).not.toBe(editing)
+  await canvas.press("Escape")
   const paused = await frame()
   await page.waitForTimeout(180)
   expect(await frame()).toBe(paused)
@@ -879,7 +996,7 @@ test("tower misses and exhausted slingshot rounds restart the same game without 
   expect(await page.locator(".welcome-slingshot").getAttribute("data-shots")).toBe("3")
   expect(await page.locator(".welcome-slingshot").getAttribute("data-level")).toBe("0")
   await page.getByRole("textbox").fill("继续编辑正文")
-  expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBeNull()
+  expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBe("")
 }, 20000)
 
 test("slingshot touch taps do not fire, pull cancellation preserves ammunition, and remount preserves flight", async () => {
@@ -942,7 +1059,11 @@ test("a second touch cannot replace or cancel the gesture already controlling a 
       if (scene === "blocks")
         expect(Number(await page.locator(".welcome-blocks").getAttribute("data-column"))).toBeGreaterThan(column)
       if (scene === "flight") expect(await canvas.getAttribute("aria-description")).not.toBe(position)
-      await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+      await touch.send("Input.dispatchTouchEvent", {
+        type: scene === "flight" ? "touchCancel" : "touchEnd",
+        touchPoints: [],
+      })
+      expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBe("")
       if (scene === "slingshot") expect(await page.locator(".welcome-slingshot").getAttribute("data-shots")).toBe("2")
       expect(errors).toEqual([])
     }

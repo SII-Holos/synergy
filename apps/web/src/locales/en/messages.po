@@ -26470,7 +26470,7 @@ msgstr "Click to continue"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.keyboardHelp"
-msgstr "Escape pauses. R restarts. Clicking outside pauses the game."
+msgstr "Escape pauses. R restarts. Play continues when you move focus away."
 
 #. js-lingui-explicit-id
 msgid "welcome.common.loading"

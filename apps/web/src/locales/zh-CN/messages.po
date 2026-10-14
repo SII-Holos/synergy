@@ -26470,7 +26470,7 @@ msgstr "点击继续"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.keyboardHelp"
-msgstr "Esc 暂停，R 重新开始。点击游戏外部会暂停。"
+msgstr "Esc 暂停，R 重新开始。移开焦点后游戏仍会继续。"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.loading"

@@ -90,6 +90,9 @@
   outline: none;
   border: 0;
 }
+.welcome-game-canvas:focus-visible {
+  background: transparent;
+}
 .welcome-game:has(.welcome-game-canvas:focus-visible) .welcome-game-status {
   text-decoration: underline;
   text-decoration-color: currentColor;
