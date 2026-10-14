@@ -203,7 +203,10 @@ export const BASE_STYLE = `
   button { cursor: pointer; }
   button:disabled { opacity: .55; cursor: default; }
   :focus { outline: none !important; }
-  :focus-visible:not(:where(input, textarea, [contenteditable], [role="textbox"])) { background-image: linear-gradient(var(--render-surface-focus), var(--render-surface-focus)); }
+  :where(button, a[href], area[href], summary, select, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="option"], [role="treeitem"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="gridcell"], [role="slider"], [role="spinbutton"], [role="separator"]):focus-visible:not(:where(input, textarea, [contenteditable], [role="textbox"])) {
+    background-image: linear-gradient(var(--render-surface-focus), var(--render-surface-focus));
+    @media (forced-colors: active) { background-color: Highlight; color: HighlightText; forced-color-adjust: none; }
+  }
   [hidden] { display: none !important; }
   [data-render-controls] { margin-top: 16px; padding: 12px 16px; border-top: 1px solid var(--render-border-weak-base); }
   [data-render-controls] fieldset { margin: 0 0 12px; padding: 0; border: 0; min-width: 0; }

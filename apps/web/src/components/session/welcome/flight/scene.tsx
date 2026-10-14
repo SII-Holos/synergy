@@ -69,14 +69,10 @@ export default function FlightScene(props: WelcomeSceneProps) {
   let pointer: number | undefined
   createEffect(() => props.memory.write(state()))
   createEffect(() => {
-    if (!props.active()) {
-      keys.clear()
-      cancelPointer()
-    }
+    if (!props.active()) releaseInput()
   })
   const reset = () => {
-    keys.clear()
-    cancelPointer()
+    releaseInput()
     canvas.transition()
     setState(createFlight(props.seed))
   }
@@ -292,10 +288,11 @@ export default function FlightScene(props: WelcomeSceneProps) {
     pointer = undefined
     if (canvas.element().hasPointerCapture(id)) canvas.element().releasePointerCapture(id)
   }
-  onCleanup(() => {
+  function releaseInput() {
     keys.clear()
     cancelPointer()
-  })
+  }
+  onCleanup(releaseInput)
   return (
     <div
       class="welcome-game welcome-flight"
@@ -315,6 +312,7 @@ export default function FlightScene(props: WelcomeSceneProps) {
         playing={state().phase === "playing"}
         onAction={start}
         onReset={reset}
+        onReleaseInput={releaseInput}
         help={i18n._({
           id: "welcome.flight.help",
           message:
@@ -349,7 +347,6 @@ export default function FlightScene(props: WelcomeSceneProps) {
             values: { x: Math.round(state().ship.x), y: Math.round(state().ship.y) },
           })}
           onKeyUp={(e) => keys.delete(e.key)}
-          onBlur={() => keys.clear()}
           onPointerMove={(e) => {
             if (pointer !== undefined && pointer !== e.pointerId) return
             if (props.active()) {
@@ -368,11 +365,7 @@ export default function FlightScene(props: WelcomeSceneProps) {
           }}
           onPointerUp={cancelPointer}
           onLostPointerCapture={cancelPointer}
-          onPointerCancel={(e) => {
-            if (pointer !== e.pointerId) return
-            cancelPointer()
-            props.pause()
-          }}
+          onPointerCancel={cancelPointer}
         />
       </GameSurface>
     </div>

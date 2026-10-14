@@ -191,6 +191,45 @@ test("one footer Save commits all edited sections only on confirmation", async (
   expect(await page.evaluate<number>("window.fixture.saved")).toBe(1)
 }, 20_000)
 
+test("project settings retain their surface when keyboard focus returns from the folder picker", async () => {
+  await open()
+  const surface = () =>
+    settings().evaluate((el) => ({
+      image: getComputedStyle(el).backgroundImage,
+      color: getComputedStyle(el).backgroundColor,
+    }))
+  const resting = await surface()
+  await settings().getByRole("button", { name: "Add folder", exact: true }).press("Enter")
+  await page.getByRole("dialog").last().getByRole("button", { name: "Cancel", exact: true }).click()
+  await page.locator(".directory-navigation").waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.textContent?.trim() === "Add folder")
+  await name().focus()
+  await page.keyboard.press("ArrowLeft")
+  await settings().focus()
+  expect(await settings().evaluate((el) => el.matches(":focus-visible"))).toBe(true)
+  expect(await surface()).toEqual(resting)
+})
+
+test("adding only a folder enables Save and commits the expanded selection", async () => {
+  await open()
+  await settings().getByRole("button", { name: "Add folder", exact: true }).click()
+  const picker = page.getByRole("dialog").last()
+  const extra = picker.getByRole("checkbox", { name: "Select folder: extra", exact: true })
+  await extra.press("Space")
+  await picker.getByRole("button", { name: "Use selected folders", exact: true }).click()
+  await page.locator(".directory-navigation").waitFor({ state: "hidden" })
+  expect(await settings().locator(".project-folder-row").count()).toBe(3)
+  expect(await save().isDisabled()).toBe(false)
+  await save().click()
+  await settings().getByRole("status").filter({ hasText: "Saved" }).waitFor()
+  expect(
+    await page.evaluate<Array<{ section: string; directories: string[] }>>(
+      "window.fixture.writes.map(item => ({section:item.section, directories:item.input.projectDirectoriesUpdate.directories}))",
+    ),
+  ).toEqual([{ section: "folders", directories: ["/projects/main", "/projects/shared", "/projects/extra"] }])
+  expect(await save().isDisabled()).toBe(true)
+})
+
 test("failed saves retain drafts and retry only the unsaved sections", async () => {
   await open()
   await name().fill("Keep this draft")

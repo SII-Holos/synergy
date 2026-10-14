@@ -461,12 +461,13 @@ for (const lock of ["rollback", "first-task"] as const) {
     const list = page.locator(".pending-composer-list")
     expect(await list.locator("button").count()).toBe(0)
     expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+    const resting = await list.evaluate((el) => getComputedStyle(el).background)
     await page.keyboard.press("Tab")
     expect(await list.evaluate((el) => el === document.activeElement)).toBe(true)
     expect(await list.getAttribute("role")).toBe("group")
     expect(await list.getAttribute("aria-label")).toBe("Inbox")
     expect(await list.evaluate((el) => el.matches(":focus-visible"))).toBe(true)
-    expect(await list.evaluate((el) => getComputedStyle(el).backgroundImage)).not.toBe("none")
+    expect(await list.evaluate((el) => getComputedStyle(el).background)).toBe(resting)
     await page.keyboard.press("End")
     await page.waitForFunction(() => {
       const el = document.querySelector(".pending-composer-list")!

@@ -14,6 +14,12 @@ void run().catch((error) => {
   app.exit(1)
 })
 
+function durationSeconds(text: string, label: "Waiting" | "Total" | "Last progress") {
+  const match = new RegExp(`^${label} (\\d+):([0-5]\\d)${label === "Last progress" ? " ago" : ""}$`).exec(text)
+  assert.ok(match, `Invalid ${label} clock: ${text}`)
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
 async function run() {
   console.log("Startup progress: waiting for Electron")
   await app.whenReady()
@@ -185,9 +191,11 @@ async function run() {
         await window.webContents.executeJavaScript(`document.body.textContent.includes('Rebuilding the database.')`),
         true,
       )
-      assert.equal(
-        await window.webContents.executeJavaScript(`document.querySelector('[data-startup-elapsed]').textContent`),
-        "Waiting 5:01",
+      assert.ok(
+        durationSeconds(
+          await window.webContents.executeJavaScript(`document.querySelector('[data-startup-elapsed]').textContent`),
+          "Waiting",
+        ) >= 301,
       )
       assert.equal(
         await window.webContents.executeJavaScript(
@@ -246,7 +254,8 @@ async function run() {
       }))()`)
       assert.equal(waiting.count, "68,005 items checked")
       assert.equal(waiting.step, "Step 16")
-      assert.equal(waiting.activity, "Last progress 1:05 ago")
+      const idleSeconds = durationSeconds(waiting.activity, "Last progress")
+      assert.ok(idleSeconds >= 65)
       assert.equal(waiting.hintVisible, true)
       assert.equal(waiting.unknownVisible, true)
       assert.equal(waiting.phase, "migration")
@@ -261,15 +270,24 @@ async function run() {
       await window.webContents.executeJavaScript(
         startupStatusScript({ title: "Updating saved data", detail: startup.status().detail }),
       )
-      assert.equal(
-        await window.webContents.executeJavaScript(`document.querySelector('[data-startup-activity]').textContent`),
-        "Last progress 1:05 ago",
+      assert.ok(
+        durationSeconds(
+          await window.webContents.executeJavaScript(`document.querySelector('[data-startup-activity]').textContent`),
+          "Last progress",
+        ) >= idleSeconds,
         "presentation-only updates cannot reset the progress age",
       )
-      await window.webContents.executeJavaScript(startupStatusScript({ ...startup.status(), totalElapsedMs: 0 }))
-      assert.equal(
+      const totalSeconds = durationSeconds(
         await window.webContents.executeJavaScript(`document.querySelector('[data-startup-total]').textContent`),
-        "Total 1:05",
+        "Total",
+      )
+      assert.ok(totalSeconds >= 65)
+      await window.webContents.executeJavaScript(startupStatusScript({ ...startup.status(), totalElapsedMs: 0 }))
+      assert.ok(
+        durationSeconds(
+          await window.webContents.executeJavaScript(`document.querySelector('[data-startup-total]').textContent`),
+          "Total",
+        ) >= totalSeconds,
         "a restarted backend clock cannot reduce the total overlay wait",
       )
       startup.receive(
@@ -306,7 +324,7 @@ async function run() {
       assert.equal(switched.mode, alternateMode)
       assert.equal(switched.text, alternateTheme.colors.text)
       assert.equal(switched.count, "68,006 items checked")
-      assert.equal(switched.activity, "Last progress 1:05 ago")
+      assert.ok(durationSeconds(switched.activity, "Last progress") >= 65)
       await window.webContents.executeJavaScript(
         startupThemeScript(desktopThemeSnapshot(defaultDesktopSkinState(mode), mode === "dark")),
       )

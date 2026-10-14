@@ -1,4 +1,4 @@
-import { createUniqueId, type JSX } from "solid-js"
+import { createUniqueId, onCleanup, onMount, type JSX } from "solid-js"
 import { useLocale } from "@/context/locale"
 import type { WelcomeSceneProps } from "./types"
 
@@ -10,11 +10,18 @@ export function GameSurface(props: {
   help: string
   onAction: () => void
   onReset: () => void
+  onReleaseInput?: () => void
   onKey: (event: KeyboardEvent) => void
   children: JSX.Element
 }) {
   const { i18n } = useLocale()
   const helpID = createUniqueId()
+  const releaseInput = () => props.onReleaseInput?.()
+  onMount(() => {
+    if (!props.onReleaseInput) return
+    window.addEventListener("blur", releaseInput)
+    onCleanup(() => window.removeEventListener("blur", releaseInput))
+  })
   return (
     <>
       <button
@@ -42,11 +49,12 @@ export function GameSurface(props: {
         {props.help}{" "}
         {i18n._({
           id: "welcome.common.keyboardHelp",
-          message: "Escape pauses. R restarts. Clicking outside pauses the game.",
+          message: "Escape pauses. R restarts. Play continues when you move focus away.",
         })}
       </span>
       <div
         class="welcome-game-space"
+        onFocusOut={releaseInput}
         onKeyDown={(event) => {
           if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return
           if (event.key === "Escape") {

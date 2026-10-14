@@ -147,12 +147,15 @@ export namespace ProjectDirectories {
       throw new Conflict({ message: "Project folders changed. Reload before saving." })
     const selection = await validate(parsed)
     const all = await WorkspaceCatalog.list(scopeID)
+    const currentIDs = new Set(current.folders.map((item) => item.workspaceID))
     const roots = [
       ...new Set([
-        ...current.folders.map((item) => item.path),
         ...selection.locations.map((item) => item.path),
         ...all
-          .filter((item) => item.type === "git_worktree")
+          .filter(
+            (item) =>
+              isActiveOnHost(item, selection.hostID) && (item.type === "git_worktree" || currentIDs.has(item.id)),
+          )
           .flatMap((item) => (item.binding.path ? [item.binding.path] : [])),
       ]),
     ]
@@ -175,6 +178,10 @@ export namespace ProjectDirectories {
       if (current.path !== location.path || current.physicalID !== location.physicalID)
         throw new Conflict({ message: "A selected folder changed. Choose it again before saving." })
     }
+  }
+
+  function isActiveOnHost(item: WorkspaceCatalog.Info, hostID: string) {
+    return item.lifecycle === "active" && item.binding.state === "bound" && item.binding.hostID === hostID
   }
 
   async function save(
@@ -205,6 +212,7 @@ export namespace ProjectDirectories {
     const all = await WorkspaceCatalog.list(scopeID)
     const selected = new Set(folders.map((item) => item.id))
     for (const item of all) {
+      if (!isActiveOnHost(item, selection.hostID)) continue
       const origin = typeof item.metadata.originalCheckout === "string" ? item.metadata.originalCheckout : undefined
       if (!selected.has(item.id) && !oldIDs.has(item.id) && !(item.type === "git_worktree" && origin)) continue
       const grants =

@@ -55,6 +55,19 @@ beforeAll(async () => {
         <div data-case="library" class="library-search-field"><input aria-label="Library search"/></div>
         <div data-case="choices"><Checkbox>Checkbox</Checkbox><Switch>Switch</Switch><RadioGroup options={["First","Second"]} defaultValue="First"/></div>
         <div data-case="menu"><MenuField ariaLabel="Options" value={choice()} onChange={setChoice} options={[{value:"one",label:"One"},{value:"two",label:"Two"}]}/></div>
+        <div data-case="surfaces">
+          <div role="dialog" tabIndex={-1} data-focus-surface>Dialog surface</div>
+          <div role="tabpanel" tabIndex={0} data-focus-surface>Workspace panel</div>
+          <div role="tree" tabIndex={0} data-focus-surface><div role="treeitem" tabIndex={0} data-focus-action>Tree item</div></div>
+          <div role="listbox" tabIndex={0} data-focus-surface><div role="option" tabIndex={0} data-focus-action>Option</div></div>
+          <div role="grid" tabIndex={0} data-focus-surface><div role="row"><div role="gridcell" tabIndex={0} data-focus-action>Cell</div></div></div>
+          <div tabIndex={0} data-focus-surface style="overflow:auto;height:40px"><div style="height:100px">Scrollable execution history</div></div>
+          <pre tabIndex={0} data-focus-surface>File preview</pre>
+          <canvas tabIndex={0} data-focus-surface aria-label="Canvas"/>
+          <div role="button" tabIndex={0} data-focus-action>Custom action</div>
+          <div role="tab" tabIndex={0} data-focus-action>Tab</div>
+          <div role="menuitem" tabIndex={0} data-focus-action>Menu item</div>
+        </div>
       </main>
     }
     render(()=><I18nProvider i18n={i18n}><App/></I18nProvider>,document.getElementById("root"))
@@ -142,6 +155,46 @@ for (const engine of [chromium]) {
   }, 30_000)
 
   for (const scheme of ["light", "dark"] as const) {
+    test(`${engine.name()} ${scheme}: structural focus preserves surfaces while actions retain their cue`, async () => {
+      const browser = await engine.launch({ headless: true })
+      browsers.push(browser)
+      const page = await browser.newPage({ colorScheme: scheme, reducedMotion: "reduce" })
+      await page.goto(fixture.url)
+      await page.locator("#start").waitFor()
+      await page.addStyleTag({
+        content: "*, *::before, *::after { transition: none !important; animation: none !important; }",
+      })
+      for (const forcedColors of ["none", "active"] as const) {
+        await page.emulateMedia({ forcedColors })
+        for (const surface of await page.locator("[data-focus-surface]").all()) {
+          await page.locator("#start").focus()
+          await page.keyboard.press("Tab")
+          const before = await appearance(page, "surfaces", true)
+          await surface.focus()
+          expect(await surface.evaluate((el) => el === document.activeElement && el.matches(":focus-visible"))).toBe(
+            true,
+          )
+          expect(await appearance(page, "surfaces", true)).toEqual(before)
+        }
+        for (const action of await page.locator("[data-focus-action]").all()) {
+          await page.locator("#start").focus()
+          const resting = await action.evaluate((el) => ({
+            image: getComputedStyle(el).backgroundImage,
+            color: getComputedStyle(el).backgroundColor,
+          }))
+          await action.focus()
+          expect(await action.evaluate((el) => el.matches(":focus-visible"))).toBe(true)
+          expect(
+            await action.evaluate((el) => ({
+              image: getComputedStyle(el).backgroundImage,
+              color: getComputedStyle(el).backgroundColor,
+            })),
+          ).not.toEqual(resting)
+        }
+      }
+      await page.close()
+    }, 30_000)
+
     test(`${engine.name()} ${scheme}: keyboard and pointer focus preserve control perimeters`, async () => {
       const browser = await engine.launch({ headless: true })
       browsers.push(browser)
