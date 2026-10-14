@@ -7,6 +7,9 @@ import { createBrowserFixture, type BrowserFixture } from "./browser-fixture"
 import type { VListHandle } from "virtua/solid"
 
 type Fixture = {
+  background(ended: boolean, delayed: boolean): void
+  contentStats(): Record<string, number>
+  select(id: string): void
   continuation(): void
   continuationReady(): void
   append(id: string, source?: "live" | "replay"): void

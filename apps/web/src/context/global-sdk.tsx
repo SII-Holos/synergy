@@ -37,7 +37,11 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     }>()
 
     const eventQueue = createEventQueue({
-      emit: (scopeID, payload) => emitter.emit(scopeID, payload as Event),
+      emit: (scopeID, payload) => {
+        emitter.emit(scopeID, payload as Event)
+        const event = payload as Event
+        if (event.type === "message.part.summary") contentSubscriptions.settle(scopeID, event.properties)
+      },
       isHidden: () => document.visibilityState === "hidden",
       batch,
       onDrain(count, duration, pending) {
@@ -51,23 +55,27 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     let ws: WebSocket | undefined
     let mode: "projection" | "projection-v2" = "projection"
     let interestsFrame: number | undefined
-    const contentSubscriptions = createContentSubscriptions(() => {
-      viewPatches?.prune()
-      partStreams?.prune()
-      if (interestsFrame !== undefined) return
-      interestsFrame = requestAnimationFrame(() => {
-        interestsFrame = undefined
-        if (ws?.readyState === WebSocket.OPEN)
-          ws.send(
-            JSON.stringify({
-              payload: {
-                type: mode === "projection-v2" ? "client.view.interests" : "client.content.interests",
-                properties: contentSubscriptions.current(),
-              },
-            }),
-          )
-      })
-    })
+    const [contentRevision, setContentRevision] = createSignal(0)
+    const contentSubscriptions = createContentSubscriptions(
+      () => {
+        viewPatches?.prune()
+        partStreams?.prune()
+        if (interestsFrame !== undefined) return
+        interestsFrame = requestAnimationFrame(() => {
+          interestsFrame = undefined
+          if (ws?.readyState === WebSocket.OPEN)
+            ws.send(
+              JSON.stringify({
+                payload: {
+                  type: mode === "projection-v2" ? "client.view.interests" : "client.content.interests",
+                  properties: contentSubscriptions.current(),
+                },
+              }),
+            )
+        })
+      },
+      () => setContentRevision((revision) => revision + 1),
+    )
     const viewPatches = createViewPatchStream({
       accepts: (scopeID, frame) =>
         contentSubscriptions.acceptsView(scopeID, frame.sessionID, frame.kind, frame.generation),
@@ -317,7 +325,13 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       connected,
       disconnectedAt,
       drafts,
-      content: contentSubscriptions,
+      content: {
+        ...contentSubscriptions,
+        pending(scopeID: string, sessionID: string) {
+          contentRevision()
+          return contentSubscriptions.pending(scopeID, sessionID)
+        },
+      },
       sessionPreparation,
       prepareScopeState(scopes: Parameters<typeof server.scopes.prepare>[0]) {
         server.scopes.prepare(scopes)

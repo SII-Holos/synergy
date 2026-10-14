@@ -214,6 +214,16 @@ test("the WebSocket entry preserves new Part discovery across inactive subscript
       h.reads[0].resolve(Response.json({ part: { ...part, id: heldSummary.id }, version: "complete" }))
       await new Promise((resolve) => setTimeout(resolve, 30))
       expect(h.events).toHaveLength(5)
+
+      const release = api.content.retain("scope", summary, true)
+      const renewed = api.content.current().parts[0].generation
+      expect(api.content.pending("scope", "session")).toBe(true)
+      socket.receive({ ...checkpoint, subscription: renewed })
+      expect(api.content.pending("scope", "session")).toBe(true)
+      await waitUntil(() => !api.content.pending("scope", "session"))
+      expect(h.events.at(-1)?.details.properties).toEqual({ ...checkpoint, subscription: renewed })
+      expect(h.reads).toHaveLength(1)
+      release()
     } finally {
       h.dispose()
     }

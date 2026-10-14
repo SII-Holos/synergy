@@ -26,7 +26,13 @@ import { createPartArrivalState } from "../../../src/context/part-arrival"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
+import { createConversationHydration } from "../../../src/components/session/conversation-hydration"
+import { RetainedSessionViews } from "../../../src/components/session/retained-session-views"
+import { useViewActivity } from "../../../src/context/view-residency"
 import { captureConversationReadingAnchor } from "../../../src/components/session/conversation-reading-anchor"
+
+const [selectedSession, selectSession] = createSignal("session")
+const resident = new URL(location.href).searchParams.has("resident")
 
 const root: UserMessage = {
   id: "root",
@@ -109,6 +115,7 @@ const [reading, setReading] = createSignal(false)
 const [connected, setConnected] = createSignal(true)
 const [mode, setMode] = createSignal<"balanced" | "full" | "minimal">("balanced")
 const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
+const [rowsReady, setRowsReady] = createSignal(false)
 const [scroll, setScroll] = createSignal<HTMLDivElement>()
 const [versions, setVersions] = createStore<Record<string, string>>({})
 const [historyMore, setHistoryMore] = createSignal(true)
@@ -150,7 +157,7 @@ if (scenario) {
     part("work", "command-0", "tool"),
   ])
   if (scenario === "pending-refresh") faults.set("progress", "pending")
-  else if (scenario !== "late-reconnect" && scenario !== "tool-follow")
+  else if (scenario !== "late-reconnect" && scenario !== "tool-follow" && scenario !== "background")
     faults.set(
       "progress",
       scenario === "mixed"
@@ -162,6 +169,17 @@ if (scenario) {
             : "conflict",
     )
   if (scenario === "mixed") faults.set("progress-2", "denied")
+}
+if (scenario === "background") {
+  setData("part", "root", [
+    part("root", "request", "text", "Describe the project"),
+    ...Array.from({ length: 28 }, (_, i) => part("root", `history-${i}`, "text", `Historical section ${i}`)),
+  ])
+  setData(
+    "part",
+    "more",
+    Array.from({ length: 12 }, (_, i) => part("more", `many-${i}`, "tool")),
+  )
 }
 if (scenario === "cold-process") {
   setData("part", "more", [
@@ -200,6 +218,7 @@ if (new URL(location.href).searchParams.has("initial-page")) {
   setPendingPage("root")
 }
 const canonicalParts =
+  scenario === "background" ||
   scenario === "late-reconnect" ||
   scenario === "pending-refresh" ||
   scenario === "cold-process" ||
@@ -387,6 +406,21 @@ const context: Partial<PluginConversationService> = {
 }
 let toolCaseSequence = 0
 window.__conversationProcess = {
+  background(ended, delayed) {
+    const message = { ...assistant("background", "stop"), time: { created: 4, completed: ended ? 10 : undefined } }
+    const body = part(
+      message.id,
+      "background-answer",
+      "text",
+      "Background answer.\n\n" + "More background content. ".repeat(60),
+    )
+    canonicalParts!.set(message.id, [body])
+    if (delayed) faults.set(body.id, "pending")
+    setData("part", message.id, [])
+    setData("message", "session", (messages) => [...messages, message])
+    if (ended) setStatus("completed")
+  },
+  contentStats: () => Object.fromEntries(reads),
   continuation() {
     continuationReady = Promise.withResolvers<void>()
     setData("part", "continuation", [])
@@ -660,6 +694,7 @@ window.__conversationProcess = {
     completions.get(id)?.(Response.json({ part: body, version: versions[id] ?? "v1" }))
     completions.delete(id)
   },
+  select: selectSession,
   contentReads: (id) => reads.get(id) ?? 0,
   contentAborts: (id) => aborts.get(id) ?? 0,
   contentReconnect() {
@@ -699,11 +734,16 @@ const resource = {
   open: async () => ({ status: "cancelled" as const }),
 }
 function Scroller(props: ParentProps) {
+  const active = useViewActivity()
   const [motionTarget, setMotionTarget] = createSignal<HTMLElement>()
+  const hydrated = createConversationHydration({ active, ready: rowsReady, surface: motionTarget, onHydrated() {} })
   const autoScroll = scrolling
     ? createAutoScroll({
+        enabled: active,
         working: context.isWorking!,
-        motionTarget: new URL(location.href).searchParams.has("motion") ? motionTarget : undefined,
+        motionTarget: new URL(location.href).searchParams.has("motion")
+          ? () => (!resident || hydrated() ? motionTarget() : undefined)
+          : undefined,
         captureReadingAnchor: ({ reading, target }) => {
           const element = scroll()
           if (!element || !reading) return
@@ -756,6 +796,25 @@ function Scroller(props: ParentProps) {
     </div>
   )
 }
+function Transcript() {
+  return (
+    <Scroller>
+      <Show when={mounted()}>
+        <VirtualConversationRows
+          onReady={setRowsReady}
+          layoutOwner={["http://localhost", "/project", "session"]}
+          takePartArrival={arrivalView.take}
+          liveRevision={arrivalView.revision}
+          context={context as PluginConversationService}
+          scrollRef={scroll()}
+          submissionFor={() => submission()}
+          executionFor={() => ({ rootID: "root", status: status(), startedAt: 1, stoppedAt: [] })}
+          connected={connected}
+        />
+      </Show>
+    </Scroller>
+  )
+}
 render(
   () => (
     <I18nProvider i18n={setupI18n({ locale: "en", messages: { en: {} } })}>
@@ -765,20 +824,30 @@ render(
             <MarkedProvider>
               <DiffComponentProvider component={() => null}>
                 <DataProvider data={data} runtime={runtime} directory="/project" serverUrl="http://localhost">
-                  <Scroller>
-                    <Show when={mounted()}>
-                      <VirtualConversationRows
-                        layoutOwner={["http://localhost", "/project", "session"]}
-                        takePartArrival={arrivalView.take}
-                        liveRevision={arrivalView.revision}
-                        context={context as PluginConversationService}
-                        scrollRef={scroll()}
-                        submissionFor={() => submission()}
-                        executionFor={() => ({ rootID: "root", status: status(), startedAt: 1, stoppedAt: [] })}
-                        connected={connected}
-                      />
-                    </Show>
-                  </Scroller>
+                  <Show when={resident} fallback={<Transcript />}>
+                    <nav>
+                      <button onClick={() => selectSession("peer")}>Session A</button>
+                      <button onClick={() => selectSession("session")}>Session B</button>
+                    </nav>
+                    <RetainedSessionViews
+                      owner={{
+                        server: "http://localhost",
+                        scopeID: "/project",
+                        sessionID: selectedSession(),
+                        generation: "one",
+                      }}
+                      render={(owner) =>
+                        owner.sessionID === "session" ? (
+                          <Transcript />
+                        ) : (
+                          <div>
+                            <p>Independent session A</p>
+                            <textarea aria-label="Session A draft" />
+                          </div>
+                        )
+                      }
+                    />
+                  </Show>
                 </DataProvider>
               </DiffComponentProvider>
             </MarkedProvider>

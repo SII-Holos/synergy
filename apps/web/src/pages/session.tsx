@@ -1409,6 +1409,9 @@ function SessionPageContent() {
   let historyScrollFrame: number | undefined
   const [initialScrollSettled, setInitialScrollSettled] = createSignal<string>()
   const [hydratedConversation, setHydratedConversation] = createSignal<string>()
+  createEffect(() => {
+    if (!active()) setHydratedConversation(undefined)
+  })
   const [presentedSession, setPresentedSession] = createSignal<string>()
   let scrollView: ReturnType<typeof layout.view> | undefined
   let scrollSession: string | undefined

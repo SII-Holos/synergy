@@ -37,8 +37,8 @@ type Detail = {
 type State = { generation: number; parts: Interest[]; active?: Active; details: Detail[] }
 const keyOf = (scopeID: string, messageID: string, partID: string) => `${scopeID}\0${messageID}\0${partID}`
 
-export function createContentSubscriptions(send: (state: State) => void) {
-  const interests = new Map<string, { interest: Interest; consumers: number }>()
+export function createContentSubscriptions(send: (state: State) => void, changed: () => void = () => {}) {
+  const interests = new Map<string, { interest: Interest; consumers: number; settled?: number }>()
   const versions = new Map<string, string>()
   const streams = new Map<string, { id: string; offset: number; revision: number }>()
   const details = new Map<string, { interest: Detail; consumers: number }>()
@@ -83,6 +83,7 @@ export function createContentSubscriptions(send: (state: State) => void) {
     })
     publication++
     send(current())
+    changed()
   }
   const renew = () => {
     versions.clear()
@@ -93,6 +94,25 @@ export function createContentSubscriptions(send: (state: State) => void) {
   }
   return {
     current,
+    pending(scopeID: string, sessionID: string) {
+      for (const { interest, settled } of interests.values())
+        if (interest.scopeID === scopeID && interest.sessionID === sessionID && settled !== interest.generation)
+          return true
+      return false
+    },
+    settle(scopeID: string, properties: { summary: SessionPartSummary; subscription?: number }) {
+      const entry = interests.get(keyOf(scopeID, properties.summary.messageID, properties.summary.id))
+      if (
+        !entry ||
+        hidden ||
+        properties.summary.sessionID !== entry.interest.sessionID ||
+        properties.subscription !== entry.interest.generation
+      )
+        return
+      if (entry.settled === entry.interest.generation) return
+      entry.settled = entry.interest.generation
+      changed()
+    },
     view(input: Omit<Detail, "generation">) {
       const key = JSON.stringify(input)
       let entry = details.get(key)

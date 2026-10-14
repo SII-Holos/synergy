@@ -1,6 +1,51 @@
 import { expect, test } from "bun:test"
 import { createContentSubscriptions, projectContentSummary } from "../../src/context/content-subscriptions"
 
+test("retained content waits for the current checkpoint to reach consumers without publishing another interest", () => {
+  const requests: unknown[] = []
+  const subscriptions = createContentSubscriptions((value) => requests.push(value))
+  const summary = {
+    sessionID: "session",
+    messageID: "message",
+    id: "part",
+    type: "text",
+    preview: "Cached",
+    content: { version: "v1", bytes: 6 },
+  }
+  const first = subscriptions.retain("scope", summary, true)
+  const prior = subscriptions.current().parts[0].generation
+  expect(subscriptions.pending("scope", "session")).toBe(true)
+  subscriptions.settle("scope", { summary, subscription: prior })
+  expect(subscriptions.pending("scope", "session")).toBe(false)
+  first()
+  const release = subscriptions.retain("scope", summary, true)
+  const generation = subscriptions.current().parts[0].generation
+  const checkpoint = {
+    summary,
+    subscription: generation,
+    content: {
+      kind: "checkpoint" as const,
+      part: { ...summary, type: "text" as const, text: "Cached plus background" },
+    },
+  }
+  expect(projectContentSummary(subscriptions, "scope", checkpoint)).toEqual(checkpoint)
+  expect(subscriptions.pending("scope", "session")).toBe(true)
+  subscriptions.settle("scope", { summary, subscription: prior })
+  subscriptions.settle("other", checkpoint)
+  subscriptions.settle("scope", { ...checkpoint, summary: { ...summary, sessionID: "other-session" } })
+  expect(subscriptions.pending("scope", "session")).toBe(true)
+  const count = requests.length
+  subscriptions.settle("scope", checkpoint)
+  expect(subscriptions.pending("scope", "session")).toBe(false)
+  expect(requests).toHaveLength(count)
+  subscriptions.reconnect()
+  expect(subscriptions.pending("scope", "session")).toBe(true)
+  subscriptions.settle("scope", checkpoint)
+  expect(subscriptions.pending("scope", "session")).toBe(true)
+  release()
+  expect(subscriptions.pending("scope", "session")).toBe(false)
+})
+
 test("append streams fence offsets, revisions and owners independently of canonical content hashes", () => {
   const subscriptions = createContentSubscriptions(() => {})
   const summary = {
