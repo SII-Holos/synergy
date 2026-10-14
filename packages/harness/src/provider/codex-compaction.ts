@@ -1,4 +1,5 @@
 import { RuntimeContext } from "../lifecycle/context"
+import { responsesError } from "./responses-error"
 /**
  * Codex Remote Compaction V2 (private protocol) helpers.
  *
@@ -292,20 +293,12 @@ export function parseRemoteCompactionEvents(events: unknown[]): {
   let usage: unknown
   const compactionItems: CodexResponseItem[] = []
   for (const raw of events) {
+    const failure = responsesError(raw)
+    if (failure) throw failure
     if (!raw || typeof raw !== "object") continue
     const event = raw as {
       type?: unknown
-      message?: unknown
-      response?: { error?: { message?: string }; usage?: unknown }
-    }
-    if (event.type === "error") {
-      const message = typeof event.message === "string" ? event.message : "Unknown Responses API error"
-      throw new Error(`Codex remote compaction v2 failed: ${message}`)
-    }
-    if (event.type === "response.failed") {
-      const error = event.response?.error
-      const message = typeof error?.message === "string" ? error.message : "Response failed"
-      throw new Error(`Codex remote compaction v2 failed: ${message}`)
+      response?: { usage?: unknown }
     }
     if (event.type === "response.output_item.done") {
       const item = (event as { item?: unknown }).item

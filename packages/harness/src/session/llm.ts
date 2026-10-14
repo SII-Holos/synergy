@@ -22,6 +22,7 @@ import { ProviderTransform } from "../provider/transform"
 import { PromptCachePolicy } from "../provider/prompt-cache-policy"
 import { ProviderSessionHeader } from "../provider/session-header"
 import { normalizeProviderError } from "../provider/retry"
+import { responsesErrorMiddleware } from "../provider/responses-error"
 import type { Agent } from "../agent/agent"
 import type { MessageV2 } from "./message-v2"
 import { ObservabilitySpans } from "../observability/spans"
@@ -570,6 +571,9 @@ export namespace LLM {
         model: wrapLanguageModel({
           model: language,
           middleware: [
+            ...(input.model.api.npm === "@ai-sdk/openai" && language.provider.endsWith(".responses")
+              ? [responsesErrorMiddleware()]
+              : []),
             {
               async wrapStream({ doStream }) {
                 try {

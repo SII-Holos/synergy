@@ -377,6 +377,32 @@ describe("AgentCall", () => {
 })
 
 describe("AgentCall recovery budget", () => {
+  test("subscription capacity failures share the caller's startup and body retry budget", () =>
+    runtime.run(async () => {
+      installAgent()
+      using delay = spyOn(SessionRetry, "delay").mockReturnValue(0)
+      const failure = new Error("Selected model is at capacity. Please try a different model.")
+      let attempts = 0
+      let disposed = 0
+      using stream = spyOn(AgentTurn, "stream").mockImplementation(async (input) => {
+        expect(input.retries).toBe(0)
+        if (++attempts === 1) throw failure
+        return {
+          fullStream: (async function* () {
+            yield { type: "text-delta" as const, id: "text", text: "partial" }
+            yield { type: "error" as const, error: failure }
+          })(),
+          usage: Promise.resolve(undefined),
+          async dispose() {
+            disposed++
+          },
+        }
+      })
+      await expect(call({ retries: 2 })).rejects.toBe(failure)
+      expect(attempts).toBe(3)
+      expect(disposed).toBe(2)
+    }))
+
   test("retries a failed stream with a fresh output buffer and no SDK budget", () =>
     runtime.run(async () => {
       installAgent()

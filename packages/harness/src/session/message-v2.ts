@@ -2227,6 +2227,7 @@ export namespace MessageV2 {
             // try to extract common error message fields
             const errMsg = body.message || body.error || body.error?.message
             if (errMsg && typeof errMsg === "string") {
+              if (errMsg === msg) return msg
               return `${msg}: ${errMsg}`
             }
           } catch {}
