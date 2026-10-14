@@ -4,12 +4,31 @@
   outline: none !important;
 }
 
-:focus-visible:not(:where(input, textarea, [contenteditable], [role="textbox"])) {
+:where(
+    button,
+    a[href],
+    area[href],
+    summary,
+    select,
+    [role="button"],
+    [role="link"],
+    [role="checkbox"],
+    [role="radio"],
+    [role="switch"],
+    [role="tab"],
+    [role="option"],
+    [role="treeitem"],
+    [role="menuitem"],
+    [role="menuitemcheckbox"],
+    [role="menuitemradio"],
+    [role="gridcell"],
+    [role="slider"],
+    [role="spinbutton"],
+    [role="separator"]
+  ):focus-visible:not(:where(input, textarea, [contenteditable], [role="textbox"])) {
   background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
-}
 
-@media (forced-colors: active) {
-  :focus-visible:not(:where(input, textarea, [contenteditable], [role="textbox"])) {
+  @media (forced-colors: active) {
     background-color: Highlight;
     color: HighlightText;
     forced-color-adjust: none;

@@ -252,10 +252,12 @@ test("keyboard focus marks the game status without tinting the entire playfield"
       expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe("none")
       await page.emulateMedia({ forcedColors: "active" })
       await page.getByRole("textbox").focus()
+      const resting = await canvas.evaluate((el) => getComputedStyle(el).backgroundColor)
+      expect(resting).toMatch(/^rgba\([^)]*, 0\)$/)
       await page.keyboard.press("Shift+Tab")
       expect(await canvas.evaluate((el) => el.matches(":focus-visible"))).toBe(true)
       expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe("none")
-      expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+      expect(await canvas.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(resting)
       await page.emulateMedia({ forcedColors: "none" })
     }
   } finally {
