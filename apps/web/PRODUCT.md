@@ -549,6 +549,8 @@ Keep the six most recent session views and eight resource panels resident, inclu
 
 Cold historical body hydration keeps the latest viewport pinned without a whole-transcript translation or fade. Ordinary following motion becomes available after the mounted body window and its Markdown layout settle. The cold visibility wait stays local to the transcript, leaves the Composer usable and does not rearm for later generation. Corrections spanning at least one viewport and distant Latest navigation land immediately at full opacity; they never dim the existing transcript.
 
+Retained process windows keep their rendered tool list and local reading position while the Session is hidden, including when Workspace changes the conversation width. Returning applies background growth and completed-process collection without replaying scroll or collapse animations. Explicitly expanded history remains expanded; foreground tools and user disclosures keep their ordinary motion after restoration settles.
+
 Automatic process collection preserves the visible answer while following. Removing preceding content and resizing the viewport may happen together; the transcript must not compensate the same movement twice or leave the viewport and rebound.
 
 While a tool generates its input, the activity header shows its waiting state. An empty body must not first reserve a line, collapse when fetched, and expand again when input arrives.

@@ -347,7 +347,7 @@ function SessionConversationView(input: SessionConversationProps) {
       setAdmitted(true)
     }
   })
-  createConversationHydration({
+  const hydrated = createConversationHydration({
     active,
     ready: () =>
       (!input.initialScrollSettled || input.initialScrollSettled()) &&
@@ -373,7 +373,11 @@ function SessionConversationView(input: SessionConversationProps) {
   // heap grew to the 4 GiB V8 limit after ~33h of a long session.
   const timelineSnapshot = createMemo(() => buildConversationTimelineSnapshot(props.timeline() ?? [], messageKey))
   return (
-    <ConversationMotionProvider takeArrival={takePartArrival} liveRevision={() => arrivalView()?.revision() ?? 0}>
+    <ConversationMotionProvider
+      takeArrival={takePartArrival}
+      liveRevision={() => arrivalView()?.revision() ?? 0}
+      ready={hydrated}
+    >
       <ConversationViewport
         ready={admitted()}
         scrolledUp={props.scrolledUp()}

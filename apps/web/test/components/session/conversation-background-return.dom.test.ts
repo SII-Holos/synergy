@@ -1,6 +1,116 @@
 import { expect, test } from "bun:test"
 import { page, url, frames, errors } from "../../support/conversation-process"
 
+for (const ended of [false, true])
+  for (const reading of [false, true]) {
+    test(`retained ${ended ? "completed" : "running"} tool windows keep their nodes and ${reading ? "reading anchor" : "latest position"} across background growth and width changes`, async () => {
+      await page.goto(`${url}?resident&scrolling&motion&content=background`)
+      await page.waitForSelector('[data-slot="process-virtualizer"] [data-slot="activity-step"]')
+      await page.evaluate(() => {
+        window.__conversationProcess.mode("full")
+        window.__conversationProcess.latest()
+      })
+      await frames()
+      await page.waitForFunction(() =>
+        [...document.querySelectorAll('[data-follow-motion], [data-slot="process-viewport-motion"]')].every(
+          (element) => element.getAnimations().length === 0,
+        ),
+      )
+      const result = await page.evaluate(
+        async ({ reading, ended }) => {
+          const fixture = window.__conversationProcess
+          const settle = async (count = 5) => {
+            for (let i = 0; i < count; i++)
+              await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+          }
+          const outer = document.querySelector<HTMLElement>("[data-scroller]")!
+          const viewport = outer
+            .querySelector('[data-slot="activity-step"][data-part-id^="many-"]')!
+            .closest<HTMLElement>('[data-component="process-viewport"]')!
+          const virtual = viewport.querySelector<HTMLElement>('[data-slot="process-virtualizer"]')!
+          if (reading) {
+            viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -200, bubbles: true }))
+            viewport.scrollTop = 80
+            viewport.dispatchEvent(new Event("scroll"))
+          }
+          await settle()
+          const bounds = viewport.getBoundingClientRect()
+          const tool = [...virtual.querySelectorAll<HTMLElement>('[data-slot="activity-step"]')].find((element) => {
+            const rect = element.getBoundingClientRect()
+            return rect.top >= bounds.top && rect.bottom <= bounds.bottom
+          })!
+          const offset = tool.getBoundingClientRect().top - bounds.top
+          const before = fixture.contentStats()
+          const hidden = []
+          const samples = []
+          for (const [index, width] of ["480px", "900px", "700px"].entries()) {
+            fixture.select("peer")
+            outer.style.width = width
+            await settle()
+            fixture.grow(16 + index * 4)
+            if (ended) fixture.terminal()
+            await settle()
+            hidden.push({ virtual: virtual.isConnected, tool: tool.isConnected, reads: fixture.contentStats() })
+            fixture.select("session")
+            for (let i = 0; i < 20; i++) {
+              await settle(1)
+              const motion = viewport.querySelector<HTMLElement>('[data-slot="process-viewport-motion"]')!
+              const transform = getComputedStyle(motion).transform
+              samples.push({
+                retained: virtual.isConnected && (!reading || tool.isConnected),
+                rows: virtual.querySelectorAll("[data-display-row]").length,
+                drift: reading ? tool.getBoundingClientRect().top - viewport.getBoundingClientRect().top - offset : 0,
+                gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+                offset: transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42,
+              })
+            }
+          }
+          return { before, hidden, samples, after: fixture.contentStats() }
+        },
+        { reading, ended },
+      )
+      expect(result.hidden.every((sample) => sample.virtual && (!reading || sample.tool))).toBe(true)
+      expect(result.hidden[0].tool).toBe(true)
+      expect(result.samples.every((sample) => sample.retained && sample.rows > 0)).toBe(true)
+      expect(Math.max(...result.samples.map((sample) => Math.abs(sample.offset)))).toBeLessThanOrEqual(1)
+      if (reading) expect(Math.max(...result.samples.map((sample) => Math.abs(sample.drift)))).toBeLessThanOrEqual(1)
+      else expect(Math.max(...result.samples.map((sample) => Math.abs(sample.gap)))).toBeLessThanOrEqual(2)
+      for (const [id, count] of Object.entries(result.before)) expect(result.after[id], id).toBe(count)
+      expect(result.hidden[0].reads).toEqual(result.before)
+      expect(errors).toEqual([])
+    }, 30000)
+  }
+
+test("background completion applies automatic process collection without replaying collapse on return", async () => {
+  await page.goto(`${url}?resident&scrolling&motion&content=background`)
+  await page.waitForSelector('[data-slot="process-virtualizer"] [data-slot="activity-step"]')
+  await frames()
+  const samples = await page.evaluate(async () => {
+    const fixture = window.__conversationProcess
+    const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+    fixture.latest()
+    for (let i = 0; i < 30; i++) await settle()
+    fixture.select("peer")
+    await settle()
+    fixture.terminal()
+    await settle()
+    fixture.select("session")
+    const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+    const samples = []
+    for (let i = 0; i < 30; i++) {
+      await settle()
+      samples.push({
+        changing: viewport.querySelectorAll("[data-motion-changing]").length,
+        gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+        visible: viewport.checkVisibility(),
+      })
+    }
+    return samples
+  })
+  expect(samples.every((sample) => sample.changing === 0 && sample.visible && Math.abs(sample.gap) <= 2)).toBe(true)
+  expect(errors).toEqual([])
+})
+
 for (const ended of [false, true]) {
   for (const delayed of [false, true]) {
     for (const reading of [false, true]) {

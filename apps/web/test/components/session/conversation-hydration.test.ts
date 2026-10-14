@@ -43,7 +43,14 @@ test("resumed hydration waits for current data and Markdown, releases once, and 
     owner.accept(true)
     await advance()
     expect(owner.hydrated()).toBe(false)
-    marker.remove()
+    await new Promise<void>((resolve) => {
+      const observer = new MutationObserver(() => {
+        observer.disconnect()
+        resolve()
+      })
+      observer.observe(surface, { childList: true })
+      marker.remove()
+    })
     await advance()
     expect(owner.hydrated()).toBe(true)
     expect(releases).toBe(1)
