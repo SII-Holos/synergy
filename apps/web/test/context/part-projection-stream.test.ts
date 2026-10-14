@@ -1,15 +1,18 @@
 import type { Part } from "@ericsanchezok/synergy-sdk"
 import { expect, test } from "bun:test"
 import { createPartProjectionStream } from "../../src/context/part-projection-stream"
+import type { ContentSummaryProperties } from "../../src/context/content-subscriptions"
 
 test("large checkpoints finish before following appends and stale owners cannot publish", async () => {
   let resolve!: (value: { part: Part; version: string }) => void
   let current = true
   const emitted: Array<{ content?: { kind: string } }> = []
+  const discarded: ContentSummaryProperties[] = []
   const stream = createPartProjectionStream({
     accepts: () => current,
     read: () => new Promise((done) => (resolve = done)),
     emit: (_, value) => emitted.push(value),
+    discard: (_, value) => discarded.push(value),
     recover() {
       throw new Error("unexpected recovery")
     },
@@ -45,11 +48,50 @@ test("large checkpoints finish before following appends and stale owners cannot 
   await Promise.resolve()
   current = false
   stream.prune()
+  expect(discarded).toEqual([{ ...properties, subscription: 2 }])
   resolve({
     part: { id: "part", messageID: "message", sessionID: "session", type: "text", text: "late" },
     version: "anchor",
   })
   await late
   expect(emitted).toHaveLength(2)
+  stream.dispose()
+  await stream.receive("scope", properties)
+  expect(discarded).toHaveLength(1)
+})
+
+test("failed first reference recovery retains discovery after renewing its lease", async () => {
+  let current = true
+  const discarded: ContentSummaryProperties[] = []
+  const stream = createPartProjectionStream({
+    accepts: () => current,
+    read: async () => {
+      throw new Error("checkpoint unavailable")
+    },
+    emit() {
+      throw new Error("failed body must not publish")
+    },
+    discard: (_, value) => {
+      expect(current).toBe(false)
+      discarded.push(value)
+    },
+    recover() {
+      current = false
+    },
+  })
+  const properties: ContentSummaryProperties = {
+    summary: {
+      id: "part",
+      messageID: "message",
+      sessionID: "session",
+      type: "text",
+      preview: "answer",
+      content: { version: "v1", bytes: 100000 },
+    },
+    subscription: 1,
+    content: { kind: "reference", checkpoint: "token" },
+  }
+  await stream.receive("scope", properties)
+  expect(discarded).toEqual([properties])
   stream.dispose()
 })

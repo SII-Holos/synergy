@@ -37,6 +37,8 @@ Verify experience states through the persisted reward status and generated DTO, 
 
 ## Preserve State and API Ownership
 
+For projected conversation streams, send regression frames through the real WebSocket handler as well as the reducer. Exercise a first Part arriving under an obsolete subscription after navigation, visibility renewal and reconnect, plus a large reference read cancelled during that transition. Verify discovery without accepting the obsolete body, unchanged current summaries, ordered sequenced events, no reads for discarded references and no publication after disposal. A helper-only test cannot detect an earlier transport branch bypassing recovery.
+
 A Part can produce several timeline presentations, such as a visual card and its promoted attachments. Visibility maps must distinguish those presentations while retaining identity across legitimate transitions such as reasoning promotion. Test the complete projection with both faces present, asserting that the card survives and final row keys stay unique; mounting the card alone cannot establish conversation acceptance.
 
 Ordinary uploaded attachments leave model preparation policy to the server. Do not manufacture an explicit summary or exclusion policy from MIME type: that can suppress text and document extraction. Verify the actual composer payload through preparation and a provider request, including a random identifier present only inside the uploaded bytes; upload success and a file card alone do not prove delivery.

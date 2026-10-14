@@ -131,6 +131,10 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         }
       },
       recover: (scopeID, properties) => contentSubscriptions.renewPart(scopeID, properties),
+      discard: (scopeID, incoming) => {
+        const properties = projectContentSummary(contentSubscriptions, scopeID, incoming)
+        if (properties) eventQueue.push(scopeID, { type: "message.part.summary", properties })
+      },
     })
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
     let reconnectDelay = 1000
