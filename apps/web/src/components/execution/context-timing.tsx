@@ -51,7 +51,22 @@ export function ContextTiming(props: { summary: ExecutionSummary }) {
           total={total()}
           label={_(D.timingTotal)}
           value={total() ? executionDuration(total(), false) : "—"}
-          caption={_(D.timingTotal)}
+          caption={_(E.time)}
+          fitValue={{
+            accessible: total() ? executionDuration(total(), false) : "—",
+            alternatives:
+              total() >= 3_600_000
+                ? [
+                    new Intl.NumberFormat(i18n().locale, {
+                      style: "unit",
+                      unit: "hour",
+                      unitDisplay: "narrow",
+                      notation: "compact",
+                      maximumFractionDigits: 1,
+                    }).format(total() / 3_600_000),
+                  ]
+                : [],
+          }}
           highlight={highlight()}
           onHighlight={setHighlight}
         />

@@ -40,6 +40,7 @@ const playwrightIsolated = [
   "test/components/workspace/builtin-workbench-panels.test.ts",
   "test/components/workspace/workspace-output-effects.test.ts",
   "test/components/note/documents.test.ts",
+  "test/components/note/reading.dom.test.ts",
 
   "test/components/workspace/execution-detail.dom.test.ts",
   "test/components/workspace/browser/browser-draft.test.ts",

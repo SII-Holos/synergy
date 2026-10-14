@@ -11647,6 +11647,10 @@ msgid "context.dashboard.items"
 msgstr "{count} items"
 
 #. js-lingui-explicit-id
+msgid "context.dashboard.knownTokenCategories"
+msgstr "Known token categories only; gray shows unclassified usage."
+
+#. js-lingui-explicit-id
 msgid "context.dashboard.latest"
 msgstr "Latest recorded request"
 

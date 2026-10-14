@@ -11647,6 +11647,10 @@ msgid "context.dashboard.items"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "context.dashboard.knownTokenCategories"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "context.dashboard.latest"
 msgstr ""
 

@@ -27,6 +27,8 @@ For message resources, use the canonical `ResourceReference` parser and one asyn
 
 For browser-local document readers, validate actual streamed decompression in a disposable Worker before invoking a format adapter. Exclude external relationships before DOM rendering, sanitize generated content and use an opaque preview frame with a restrictive CSP. Distinguish file failures without throwing into the app shell, preserve original downloads, and reject late results even when transports ignore cancellation. Use independently lazy format entries and self-built multi-page fixtures to verify fidelity and limits; see [Office attachment reading](../../../../docs/decisions/implemented/feature/2026-10-01-office-attachment-reading.md).
 
+For Note reading changes, exercise documents both with and without authored headings, long code and tables, and wide, split and narrow panels. Keep metadata renaming available without inserting or deleting authored content; verify editor identity, undo, selection and reading position through name updates and presentation changes.
+
 ## Verify File Review and Restoration
 
 Use live browser locator actions when selecting lines after a virtualized layout change. A locator evaluation can retain a node that the viewer removes before activation; a synthetic click on that detached node does not exercise user input. Query and measure the current connected row within one browser task when asserting geometry; a separately resolved element handle can report zero bounds after replacement. Wait only for a rendered row, then assert the original position tolerance without waiting for the expected coordinate. Cover rapid layout changes, both diff sides and Shift ranges with native pointer and keyboard actions under browser CPU throttling.

@@ -612,6 +612,7 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
       <div class="relative h-full overflow-hidden">
         <div
           ref={editorRef}
+          data-slot="document-scroll"
           class="h-full overflow-y-auto px-7 py-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           onClick={handleEditorAreaClick}
         />
