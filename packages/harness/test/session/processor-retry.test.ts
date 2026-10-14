@@ -10,6 +10,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { createUserMessage } from "../../src/session/input"
 import { AgentTurn } from "../../src/session/agent-turn"
+import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionProcessor } from "../../src/session/processor"
 import { SessionRetry } from "../../src/session/retry"
@@ -58,6 +59,7 @@ const testUsage = { inputTokens: 1, outputTokens: 0, totalTokens: 1 }
 async function run(
   mode:
     | "stream"
+    | "overloaded"
     | "dispatch"
     | "exhausted"
     | "reused"
@@ -109,7 +111,12 @@ async function run(
       let disposed = 0
       let preview: string | undefined
       let previewEffects = 0
-      spyOn(SessionRetry, "delay").mockReturnValue(0)
+      const delays: number[] = []
+      const retryDelay = SessionRetry.delay
+      spyOn(SessionRetry, "delay").mockImplementation((attempt, error) => {
+        delays.push(retryDelay(attempt, error, () => 1))
+        return 0
+      })
       if (mode === "cancel")
         spyOn(SessionRetry, "sleep").mockImplementation(async () => {
           abort.abort()
@@ -181,6 +188,7 @@ async function run(
               }
               const failed =
                 ((mode === "stream" || mode === "reused" || mode === "cancel") && attempt === 1) ||
+                (mode === "overloaded" && attempt <= 3) ||
                 mode === "exhausted" ||
                 mode === "tls"
               yield { type: "text-start" as const, id: "text" }
@@ -209,9 +217,15 @@ async function run(
                 yield {
                   type: "error" as const,
                   error:
-                    mode === "tls"
-                      ? new Error("unknown certificate verification error")
-                      : Object.assign(new TypeError("getaddrinfo ETIMEOUT example.invalid"), { code: "ETIMEOUT" }),
+                    mode === "overloaded"
+                      ? AgentTurnProtocol.deserializeError(
+                          AgentTurnProtocol.serializeError(
+                            new Error("Our servers are currently overloaded. Please try again later."),
+                          ),
+                        )
+                      : mode === "tls"
+                        ? new Error("unknown certificate verification error")
+                        : Object.assign(new TypeError("getaddrinfo ETIMEOUT example.invalid"), { code: "ETIMEOUT" }),
                 }
               }
             })(),
@@ -268,6 +282,7 @@ async function run(
         recordedCalls,
         artifacts,
         calls,
+        delays,
         effects,
         disposed,
         preview,
@@ -311,6 +326,23 @@ test(
     expect(result.calls).toBe(1)
     expect(result.effects).toBe(1)
     expect(result.message.info).toMatchObject({ finish: "error" })
+  }),
+)
+
+test(
+  "plain server overloads cross the worker boundary and recover with exponential backoff",
+  runtime.bind(async () => {
+    const result = await run("overloaded")
+    expect(result.calls).toBe(4)
+    expect(result.delays).toEqual([2000, 4000, 8000])
+    expect(result.effects).toBe(1)
+    expect(result.disposed).toBe(4)
+    expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
+      "valid answer",
+    ])
+    expect(result.recordedCalls.map((call) => call.status)).toEqual(["failed", "failed", "failed", "completed"])
+    if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")
+    expect(result.message.info.error).toBeUndefined()
   }),
 )
 

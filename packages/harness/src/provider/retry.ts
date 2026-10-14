@@ -68,6 +68,12 @@ export function providerRetryable(error: unknown): boolean | undefined {
   }
   if (codes.some((code) => TRANSIENT_CODES.has(code))) return true
   if (entries.some((entry) => typeof entry?.message === "string" && /\bno_kv_space\b/i.test(entry.message))) return true
+  if (
+    [message, source?.responseBody, ...entries.map((entry) => entry?.message)].some(
+      (value) => typeof value === "string" && /\bour servers are currently overloaded\b/i.test(value),
+    )
+  )
+    return true
   if (network?.kind === "transient" || network?.kind === "indeterminate") return true
   return typeof source?.isRetryable === "boolean" ? source.isRetryable : undefined
 }

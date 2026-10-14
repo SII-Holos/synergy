@@ -254,6 +254,64 @@ test(
 )
 
 test(
+  "plain server overload messages enter the shared provider retry path",
+  runtime.bind(() => {
+    const message = "Our servers are currently overloaded. Please try again later."
+    for (const error of [
+      message,
+      `Error: ${message}`,
+      new Error(message),
+      { error: { message } },
+      new Error(JSON.stringify({ error: { message } })),
+      Object.assign(new Error("Request failed"), { responseBody: message }),
+      Object.assign(new Error("Request failed"), { responseBody: JSON.stringify({ error: { message } }) }),
+      new APICallError({ message, url: "https://provider.invalid", requestBodyValues: {}, isRetryable: false }),
+    ]) {
+      expect(providerRetryable(error)).toBe(true)
+      expect(normalizeProviderError(error)).toMatchObject({ isRetryable: true })
+    }
+    expect(providerRetryable(new Error(message.toUpperCase()))).toBe(true)
+    expect(providerRetryable(new Error("Please try again later."))).toBeUndefined()
+    expect(providerRetryable(new Error("The local queue is overloaded."))).toBeUndefined()
+  }),
+)
+
+test(
+  "server overload wording cannot override terminal evidence",
+  runtime.bind(() => {
+    const message = "Our servers are currently overloaded. Please try again later."
+    for (const error of [
+      ...[400, 401, 403, 404].map((statusCode) => Object.assign(new Error(message), { statusCode })),
+      Object.assign(new Error(message), { code: "invalid_api_key" }),
+      Object.assign(new Error(message), {
+        statusCode: 429,
+        responseBody: JSON.stringify({ error: { code: "insufficient_quota" } }),
+      }),
+      new DOMException(message, "AbortError"),
+      new Error(message, { cause: Object.assign(new Error("expired"), { code: "CERT_HAS_EXPIRED" }) }),
+      new RolloutRecordingError({ message }),
+      new RetryError({ message, reason: "maxRetriesExceeded", errors: [new Error(message)] }),
+    ]) {
+      expect(providerRetryable(error)).toBe(false)
+    }
+  }),
+)
+
+test(
+  "the real SDK retries a plain server overload within the caller's retry budget",
+  runtime.bind(async () => {
+    let calls = 0
+    const events = await run(async () => {
+      if (++calls === 1) throw new Error("Our servers are currently overloaded. Please try again later.")
+      return success()
+    }, 1)
+    expect(calls).toBe(2)
+    expect(events.some((event) => event.type === "text-delta" && event.text === "recovered")).toBe(true)
+  }),
+  10000,
+)
+
+test(
   "a TTFB watchdog abort stays retryable after signal composition",
   runtime.bind(async () => {
     const session = new AbortController()
