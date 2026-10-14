@@ -56,7 +56,7 @@ Completion is a review request, not a claim. Calling `loop_stop` launches a visi
 - approval clears the Light Loop workflow and reports the verdict
 - rejection records the review attempt, clears the pending stop request, and delivers actionable remaining work so the loop continues
 
-Light Loop does not require an authored Blueprint or a multi-step Pathway. Use it for one task whose scope is already sufficiently clear. When Light Loop is armed, the composer shows its workflow chip. After the first message commits the workflow, a task control also appears beside Submit. Click that control to inspect the task; it is editable while the session is idle and read-only while the session is running, completion review is pending, or the workflow has exited elsewhere. Hold it for two seconds to stop active work, cancel completion review, and exit Light Loop safely.
+Light Loop does not require an authored Blueprint or a multi-step Pathway. Use it for one task whose scope is already sufficiently clear. Light Loop and BlueprintLoop share a labeled status entry above the composer editor, including in narrow panes. It shows binding, execution, independent review, pause, requested changes and the authoritative result. Opening it exposes the task, review reason or failure, the Blueprint and the recorded review session. Instructions are editable only while the Light Loop is stopped outside pending review. The ordinary message control pauses or continues work; its existing hold gesture ends the loop. A terminal result remains inspectable without occupying the workflow slot. While a terminal read is pending, the entry retains its space and does not claim approval.
 
 ## Lattice and the Pathway
 

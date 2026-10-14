@@ -54,6 +54,8 @@ let abandonBarrier: Promise<void> | undefined
 const installedFeatures = ["blueprint", "lattice", "light-loop", "boss", "note", "workbench"]
 const [selection, setSelection] = createSignal<{ features: string[] } | undefined>({ features: installedFeatures })
 const [sessionBinding, setSessionBinding] = createSignal<{ loopID: string; source?: "user" | "lattice" | "plugin" }>()
+const [sessionWorkflow, setSessionWorkflow] =
+  createSignal<import("@ericsanchezok/synergy-sdk/client").Session["workflow"]>()
 const loopGetCalls: string[] = []
 const loopGetSignals: AbortSignal[] = []
 let loopReply: Promise<unknown> | undefined
@@ -163,6 +165,7 @@ mock.module("../../../src/context/sync", () => ({
       get: () => ({
         id: "ses_prompt",
         blueprint: sessionBinding(),
+        workflow: sessionWorkflow(),
         controlProfile: undefined,
         scope: { id: "scope_fixture" },
       }),
@@ -310,14 +313,15 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
 type Harness = { root: HTMLDivElement; dispose: () => void }
 
 function Toolbar() {
-  return createPromptInputController({
+  const controller = createPromptInputController({
     get readOnly() {
       return transitionError()
     },
     get sessionTransitionError() {
       return transitionError()
     },
-  }).input.render("toolbar")
+  })
+  return [controller.input.render("context"), controller.input.render("toolbar")]
 }
 
 function mount(): Harness {
@@ -356,6 +360,7 @@ afterEach(() => {
   draftResets = 0
   toastTitles.length = 0
   setSessionBinding(undefined)
+  setSessionWorkflow(undefined)
   setSelection({ features: installedFeatures })
   loopGetCalls.length = 0
   loopGetSignals.length = 0
@@ -607,6 +612,54 @@ describe("single composer control", () => {
       const control = primaryControl(PI.sendMessage.message)
       expect(control).toBeDefined()
       expect(control!.disabled).toBe(true)
+    } finally {
+      harness.dispose()
+    }
+  })
+})
+
+describe("Loop status entry", () => {
+  test("bound Blueprint title stays visible before execution", async () => {
+    setSessionBinding({ loopID: "loop-visible", source: "user" })
+    loopReply = Promise.resolve({
+      id: "loop-visible",
+      source: "user",
+      sessionID: "ses_prompt",
+      scopeID: "scope_fixture",
+      title: "Verify the deliverable",
+      noteID: "note",
+      status: "armed",
+      time: { created: 1, updated: 1 },
+    })
+    const harness = mount()
+    try {
+      await settle()
+      expect(harness.root.textContent).toContain("BlueprintLoop")
+      expect(harness.root.textContent).toContain("Verify the deliverable")
+      expect(harness.root.textContent).toContain("Bound")
+    } finally {
+      harness.dispose()
+    }
+  })
+  test.each([
+    [
+      {
+        stopRequest: { summary: "ready", requestedAt: 1, requesterSessionID: "ses_prompt", requesterMessageID: "msg" },
+      },
+      "In review",
+    ],
+    [{ review: { attempts: 1, lastReason: "Missing cancellation coverage" } }, "Changes requested"],
+    [{ status: "failed", terminalError: "Reviewer failed to launch" }, "Failed"],
+  ] as const)("Light Loop exposes the authoritative stage %j", async (patch, label) => {
+    setSessionWorkflow({ kind: "lightloop", instructions: "Verify edge cases", ...patch })
+    setStatusType("busy")
+    const harness = mount()
+    try {
+      await settle()
+      const entry = harness.root.querySelector('[data-component="loop-status-entry"]')
+      expect(entry?.textContent).toContain("Light Loop")
+      expect(entry?.textContent).toContain(label)
+      expect(entry?.querySelector("button")?.disabled).toBe(false)
     } finally {
       harness.dispose()
     }

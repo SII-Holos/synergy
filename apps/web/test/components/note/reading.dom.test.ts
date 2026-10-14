@@ -40,7 +40,10 @@ beforeAll(async () => {
     export const useLocale=()=>{const {i18n}=useLingui();return {i18n:i18n(),fmt:{relative:()=>"Today",dateTime:()=>"Today"}}}
     export const tab={id:"reading-tab",panelId:"notes",resourceId:"reading",source:"home",title:note.title,state:{kind:note.kind}}
     export const useWorkbenchPanels=()=>({sessionKey:()=>"session",surface:()=>({tabs:()=>[tab]}),updateTab:(id,patch)=>tabs.push(patch),beforeClose:()=>()=>{}})
-    window.fixture={writes,tabs,note:()=>note,emit,listenerCount:()=>listeners.size}
+    window.fixture={writes,tabs,note:()=>note,emit,listenerCount:()=>listeners.size,setLoop(status){
+      const loop={id:"loop",noteID:note.id,sessionID:"execution",scopeID:"home",source:"user",title:note.title,auditAgent:"supervisor",status,time:{created:1,updated:Date.now()}}
+      listeners.forEach(fn=>fn({name:"home",details:{type:"blueprint_loop.updated",properties:{loop}}}))
+    }}
   `,
   )
   await Bun.write(
@@ -198,5 +201,28 @@ test("the reading column expands in a large panel and retains the editor across 
   expect(await page.locator(".tiptap").textContent()).toContain(" retained draft")
   await page.keyboard.press("ControlOrMeta+z")
   expect(await page.locator(".tiptap").textContent()).not.toContain(" retained draft")
+  expect(errors).toEqual([])
+})
+
+test("Blueprint notes retain the reviewed result and session link after the active run ends", async () => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  await open()
+  const editor = await page.locator(".tiptap").elementHandle()
+  for (const [status, label] of [
+    ["running", "Running"],
+    ["auditing", "In review"],
+    ["failed", "Failed"],
+    ["cancelled", "Cancelled"],
+    ["completed", "Review passed"],
+  ]) {
+    await page.evaluate(
+      (status) => (window as unknown as { fixture: { setLoop(status: string): void } }).fixture.setLoop(status),
+      status,
+    )
+    await page.locator(".note-blueprint-state").filter({ hasText: label }).waitFor()
+    expect(await page.locator(".note-blueprint-session-link").isVisible()).toBe(true)
+    expect(await page.locator(".tiptap").evaluate((node, old) => node === old, editor)).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  }
   expect(errors).toEqual([])
 })

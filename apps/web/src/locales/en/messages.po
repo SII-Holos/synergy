@@ -14403,6 +14403,94 @@ msgstr "Editor view"
 msgid "prompt.loopReady"
 msgstr "Loop ready"
 
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.auditing"
+msgstr "In review"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.bound"
+msgstr "Bound"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.completed"
+msgstr "Review passed"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.controls"
+msgstr "Use the message control to pause or continue. Hold it to end the loop."
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.details"
+msgstr "Loop status"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.edit"
+msgstr "Edit task"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.iterationExhausted"
+msgstr "Review limit reached"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.openNote"
+msgstr "Open Blueprint"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.paused"
+msgstr "Paused"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.pending"
+msgstr "Send a task to start"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reason"
+msgstr "Review or failure details"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.remove"
+msgstr "Unbind"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.resolving"
+msgstr "Checking result"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.result"
+msgstr "Result"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reviewer"
+msgstr "Open review session"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.rework"
+msgstr "Changes requested"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.timedOut"
+msgstr "Time limit reached"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.unavailable"
+msgstr "Status unavailable"
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or

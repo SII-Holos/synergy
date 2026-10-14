@@ -14403,6 +14403,94 @@ msgstr "编辑视图"
 msgid "prompt.loopReady"
 msgstr "循环已就绪"
 
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.auditing"
+msgstr "审核中"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.bound"
+msgstr "已绑定"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.completed"
+msgstr "审核通过"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.controls"
+msgstr "通过消息控制按钮暂停或继续；长按该按钮可结束 Loop。"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.details"
+msgstr "Loop 状态"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.edit"
+msgstr "编辑任务"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.iterationExhausted"
+msgstr "审核次数已用尽"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.openNote"
+msgstr "打开蓝图"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.pending"
+msgstr "发送任务后开始"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reason"
+msgstr "审核或失败详情"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.remove"
+msgstr "解除绑定"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.resolving"
+msgstr "正在确认结果"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.result"
+msgstr "结果"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reviewer"
+msgstr "打开审核会话"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.rework"
+msgstr "返工中"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.timedOut"
+msgstr "已超时"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.unavailable"
+msgstr "状态暂不可用"
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
