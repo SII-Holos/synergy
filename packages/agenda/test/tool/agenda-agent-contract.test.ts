@@ -7,6 +7,10 @@ import { AgendaScheduleTool } from "@ericsanchezok/synergy-agenda/agenda/tools/a
 import { AgendaUpdateTool } from "@ericsanchezok/synergy-agenda/agenda/tools/agenda-update"
 import { AgendaListTool } from "@ericsanchezok/synergy-agenda/agenda/tools/agenda-list"
 import { AgendaCancelTool } from "@ericsanchezok/synergy-agenda/agenda/tools/agenda-cancel"
+import { AgendaWatchTool } from "@ericsanchezok/synergy-agenda/agenda/tools/agenda-watch"
+import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { AgentPromptContributions } from "@ericsanchezok/synergy-harness/agent/prompt-contributions"
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { testRuntime } from "../support/runtime"
 
 const runtime = await testRuntime()
@@ -18,6 +22,13 @@ test("agenda agent fields remain consistent through create update list and cance
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
+        const agent = await Agent.get(PrimaryAgentIdentity.names.general)
+        expect(AgentPromptContributions.render(agent, new Set(["agenda_schedule", "agenda_watch"]))).toEqual([])
+        const schedule = await AgendaScheduleTool.init()
+        expect(schedule.description).toContain("automatic delivery returns results to the originating conversation")
+        expect(schedule.description).toContain("the user requests another destination")
+        const watch = await AgendaWatchTool.init()
+        expect(watch.description).toContain("Delivery stays with the originating conversation")
         const session = await Session.create({})
         const ctx = {
           sessionID: session.id,

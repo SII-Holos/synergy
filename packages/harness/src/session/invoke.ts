@@ -21,6 +21,7 @@ import { Log } from "../util/log"
 import { Session } from "."
 import { SessionEvent } from "./event"
 import { Agent } from "../agent/agent"
+import { AgentPermissionContributions } from "../agent/permission-contributions"
 import { Provider } from "../provider/provider"
 import { SessionCompaction } from "./compaction"
 import { Token } from "../util/token"
@@ -428,8 +429,16 @@ export namespace SessionInvoke {
     messages: MessageV2.WithParts[],
     isTopSession: boolean,
     signal: AbortSignal,
+    agent: Agent.Info,
   ): Promise<SessionContextContributions.Collected | undefined> {
-    const input = { sessionID, scopeID, messages, isTopSession, signal }
+    const input = {
+      sessionID,
+      scopeID,
+      messages,
+      isTopSession,
+      signal,
+      agentIdentity: AgentPermissionContributions.identity(agent),
+    }
     if (firstModelPreparation) evictRecallCache(sessionID)
     const [root, model] = await Promise.all([
       firstModelPreparation ? SessionContextContributions.collect(input, "root") : getCachedResult(sessionID),
@@ -1028,6 +1037,7 @@ export namespace SessionInvoke {
                     sessionMessages.filter((message) => !RuntimeAdvisory.read(message.info)),
                     isTopSession,
                     lease.signal,
+                    agent,
                   ),
                 ]).catch(async (error) => {
                   await completeAssistantWithError({ sessionID, processor, model, error, abort })

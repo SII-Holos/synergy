@@ -6,7 +6,7 @@ export function registerBridge() {
     {
       requiredTools: ["blueprint_loop_stop", "agenda_cancel"],
       render: () =>
-        "Before requesting BlueprintLoop review with blueprint_loop_stop, cancel every active Agenda item that can still wake this session using agenda_cancel. The review request is rejected while any such item remains.",
+        "BlueprintLoop review requires all active Agenda wakeups for this execution session to be cancelled. Review is rejected while any wakeup remains.",
     },
   ])
   setBlueprintAgendaAssertClear(AgendaSessionWakeup.assertClear)
@@ -27,9 +27,7 @@ export function registerBridge() {
             "This Agenda watch owns the wake-up cadence while it remains active, so ordinary BlueprintLoop continuation is paused.",
             "",
             "If the Blueprint is incomplete, continue the required work and keep or adjust monitoring only when another wake-up is needed.",
-            "If the complete Blueprint is finished and verified:",
-            "1. Cancel every remaining Agenda watch listed below.",
-            "2. Call blueprint_loop_stop with the completion summary and concrete evidence.",
+            "Once the complete Blueprint is finished and verified, cancel the remaining wakeups and formally request audit through blueprint_loop_stop.",
             "Do not request audit while an Agenda watch still holds continuation.",
             "",
             ...cleanup,

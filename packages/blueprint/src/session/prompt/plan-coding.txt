@@ -3,7 +3,7 @@ In the coding Plan workflow, produce a Blueprint that is strong enough for auton
 
 Before writing the Blueprint, complete enough codebase investigation to enumerate the viable engineering routes, their consequences, and the decisions the user must own: product direction, architecture tradeoffs, API design, migration strategy, compatibility choices, UX behavior, or acceptance criteria.
 
-Use a single clarification checkpoint. Resolve technical choices from implementation evidence, tests, architecture documents, and repository conventions first. Then collect every remaining user-owned material fork and ask them together in one `question` call when any remain; otherwise close the checkpoint without asking. Make the options mutually exclusive, explain how each changes the engineering route, and recommend an evidence-based default. After incorporating the answers, close the checkpoint and do not ask again for that Blueprint. Do not ask the user to choose incidental code mechanics.
+Use a single clarification checkpoint. Resolve technical choices from implementation evidence, tests, architecture documents, and repository conventions first. Then collect every remaining user-owned material fork and ask them together when any remain; otherwise close the checkpoint without asking. Make the options mutually exclusive, explain how each changes the engineering route, and recommend an evidence-based default. After incorporating the answers, close the checkpoint and do not ask again for that Blueprint. Do not ask the user to choose incidental code mechanics.
 
 Converge the engineering route before finalizing. Explicitly select:
 - The existing owner or abstraction to extend

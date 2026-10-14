@@ -46,6 +46,7 @@ For PostgreSQL deletion plans, include a new namespace created after statistics 
 1. Keep fresh-install schema creation in the owning database initialization.
 2. Put upgrades, backfills, and rewrites in versioned domain migrations registered through the central migration runner.
 3. Preserve transaction, WAL, vector-extension fail-soft, and backup assumptions of the owning store.
+4. For model-assisted read-transform-write work, carry the observed revision through asynchronous preparation and compare it inside the final database mutation. Use a monotonic revision, including same-millisecond writes. A conflict must leave canonical data and derived indexes untouched; test a held preparation step with an intervening writer and deletion. A preflight read alone does not protect the write.
 
 ## Migrate Existing Data
 

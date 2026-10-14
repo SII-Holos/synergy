@@ -66,11 +66,13 @@ Channel-origin Agenda items preserve endpoint context so ordinary results can re
 
 Failures are retained in run history and increment the consecutive-error count. After five consecutive failures, the next activation auto-pauses the item instead of continuing an unattended failure loop. A successful run resets the streak.
 
+Historical Home-origin items remain executable when their saved Scope predates the nullable-local shape. Agenda upgrades that origin before creating the execution Session, including an overdue timer recovered after restart. The upgrade preserves the instruction, schedule, control profile, explicit Workspace reference and existing run history; it does not reset failure counts or reactivate paused items.
+
 ## Built-in Autonomous Maintenance
 
 On first startup, Agenda creates the home-scoped `anima-daily` item. It runs the hidden `anima` agent at 03:00 in `Asia/Shanghai` using a fresh ephemeral session, suppresses delivery, and does not wake another session. The agent can reflect on recent work and maintain knowledge or Agenda state through the tools available to its non-interactive profile.
 
-`library.autonomy` controls these background routines and defaults on. When it is off, the seed is created paused and active Anima items are paused. Explicitly turning autonomy on at runtime reactivates paused Anima items; an ordinary startup with autonomy already on does not override a user's manual pause. Anima is a host-owned routine, not a primary agent exposed in the session selector.
+`anima.enabled` controls these background routines and defaults on. When it is off, the seed is created paused and active Anima items are paused. Explicitly turning autonomy on at runtime reactivates paused Anima items; an ordinary startup with autonomy already on does not override a user's manual pause. Anima is a host-owned routine, not a primary agent exposed in the session selector.
 
 ## Product Surfaces
 

@@ -5,7 +5,7 @@ Triggers:
 - `{type:"every", interval:"30m"}` — recurring at a fixed interval
 - `{type:"session", sessionID:"ses_xxx", event:"turn.end"}` — fires once when the target session ends a turn. Optional filters: `agent`, `finish`. Set `once:false` to keep firing on every matching turn.
 
-By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery.
+By default, automatic delivery returns results to the originating conversation and wakes this session (wake=true). Keep that delivery unless the user requests another destination or the origin cannot receive results. Set silent=true to suppress delivery.
 Set controlProfile to "full_access", "autonomous", or "guarded" when the scheduled session needs an explicit permission profile.
 
 **If you need adaptive timing** — shorter checks when things look uncertain, longer intervals when stable — use recursive `agenda_watch` instead. `agenda_schedule` is for rigid, predictable schedules only.

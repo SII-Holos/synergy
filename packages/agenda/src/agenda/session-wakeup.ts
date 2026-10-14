@@ -93,8 +93,8 @@ export namespace AgendaSessionWakeup {
     if (!wakeups.hasActiveAgenda) return ["No remaining Agenda watch holds continuation for this session."]
 
     const lines = ["Remaining Agenda watches holding continuation for this session:"]
-    lines.push(...wakeups.items.map((item) => `- \`${item.itemID}\`: agenda_cancel(id="${item.itemID}")`))
-    if (wakeups.hasMore) lines.push("- Additional Agenda watches exist. Use agenda_list to inspect and cancel them.")
+    lines.push(...wakeups.items.map((item) => `- Agenda item: \`${item.itemID}\``))
+    if (wakeups.hasMore) lines.push("- Additional Agenda watches exist beyond this list.")
     return lines
   }
 }

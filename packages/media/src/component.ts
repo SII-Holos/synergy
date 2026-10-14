@@ -1,5 +1,4 @@
 import { registerAgentPermissions } from "./agent-permissions"
-import { registerMediaPrompts } from "./agent-prompts"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
 import { registerMediaTools } from "./register-tools"
@@ -18,7 +17,6 @@ export function media(): RuntimeComponent {
     adapters: { http: new URL("./http.ts", import.meta.url) },
     register() {
       registerAgentPermissions()
-      registerMediaPrompts()
       registerConfig()
       registerMediaTools()
       registerDocumentExtraction()

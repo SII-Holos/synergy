@@ -25,8 +25,7 @@ export function holos(): RuntimeComponent {
       AgentPromptContributions.register("holos", [
         {
           requiredTools: ["session_read"],
-          render: () =>
-            "Use session_read with a contact target to read a Holos contact conversation. A Holos identity’s remote profile is authoritative; do not create a local profile document.",
+          render: () => "A Holos identity’s remote profile is authoritative; do not create a local profile document.",
         },
       ])
       registerConfig()

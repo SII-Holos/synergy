@@ -111,7 +111,30 @@ const editParams = z.object({
     "Memory category: user, self, relationship, interaction, workflow, coding, writing, asset, insight, knowledge, personal, or general",
   ),
   recallMode: recallModeSchema.describe("Memory recall mode: always, contextual, or search_only"),
+  expectedUpdatedAt: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe(
+      "The numeric updatedAt returned by memory_get. Reject the edit if that revision changed; re-read on conflict.",
+    ),
 })
+
+function editConflict(memoryId: string, expectedUpdatedAt: number, actualUpdatedAt: number) {
+  return {
+    title: "memory_edit",
+    output: JSON.stringify({
+      status: "conflict",
+      memoryId,
+      expectedUpdatedAt,
+      actualUpdatedAt,
+      message:
+        "Memory changed since it was read. Use memory_get, reconsider the edit, and retry with the current updatedAt.",
+    }),
+    metadata: { id: memoryId, action: "conflict", expectedUpdatedAt, actualUpdatedAt },
+  }
+}
 
 export const MemoryEditTool = Tool.define(
   "memory_edit",
@@ -123,10 +146,16 @@ export const MemoryEditTool = Tool.define(
       if (!existing) {
         return {
           title: "memory_edit",
-          output: `Memory not found: ${params.memoryId}`,
-          metadata: {} as Record<string, any>,
+          output: JSON.stringify({
+            status: "not_found",
+            memoryId: params.memoryId,
+            message: "Memory no longer exists.",
+          }),
+          metadata: { id: params.memoryId, action: "not_found" },
         }
       }
+      if (params.expectedUpdatedAt !== undefined && params.expectedUpdatedAt !== existing.updated_at)
+        return editConflict(params.memoryId, params.expectedUpdatedAt, existing.updated_at)
 
       const embeddingText = `${params.memoryTitle}\n${params.memoryContent}`
       let embedding: Embedding.Info
@@ -147,14 +176,22 @@ export const MemoryEditTool = Tool.define(
           content: params.memoryContent,
           category: params.category,
           recallMode: params.recallMode,
+          expectedUpdatedAt: params.expectedUpdatedAt,
         },
         embedding,
       )
       if (!updated) {
+        const current = LibraryDB.Memory.get(params.memoryId)
+        if (current && params.expectedUpdatedAt !== undefined)
+          return editConflict(params.memoryId, params.expectedUpdatedAt, current.updated_at)
         return {
           title: "memory_edit",
-          output: `Failed to update memory: ${params.memoryId}`,
-          metadata: {} as Record<string, any>,
+          output: JSON.stringify({
+            status: "not_found",
+            memoryId: params.memoryId,
+            message: "Memory no longer exists.",
+          }),
+          metadata: { id: params.memoryId, action: "not_found" },
         }
       }
 
@@ -167,6 +204,7 @@ export const MemoryEditTool = Tool.define(
             memoryContent: params.memoryContent,
             category: params.category,
             recallMode: params.recallMode,
+            updatedAt: updated.updated_at,
           },
           null,
           2,
@@ -281,6 +319,7 @@ export const MemoryGetTool = Tool.define(
             category: r.category,
             recallMode: r.recall_mode,
             createdAt: formatLocalDateTime(r.created_at),
+            updatedAt: r.updated_at,
           })),
           null,
           2,

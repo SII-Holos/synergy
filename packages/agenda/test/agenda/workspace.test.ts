@@ -3,8 +3,15 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { AgendaStore } from "../../src/agenda/store"
 import { AgendaReactor } from "../../src/agenda/reactor"
+import { Agenda } from "../../src/agenda"
+import { AgendaClock } from "../../src/agenda/clock"
+import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
+import { testRuntime as harnessRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
+import { agenda } from "../../src/component"
 import { testRuntime } from "../support/runtime"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -20,6 +27,128 @@ import { fn } from "@ericsanchezok/synergy-harness/util/fn"
 import { AgendaDedup } from "../../src/agenda/dedup"
 
 const invokeSchema = SessionInvoke.invoke.schema
+
+for (const restart of [false, true]) {
+  test(`historical Home cron creates a Session through ${restart ? "overdue startup recovery" : "normal timer execution"}`, async () => {
+    await using home = await runtimeHome()
+    const open = () =>
+      harnessRuntime({
+        home: home.host.home,
+        composition: {
+          register() {
+            registerLocalRuntime()
+            agenda().register()
+          },
+        },
+      })
+    const key = ["agenda", "items", "home", "historical-home-cron"]
+    const legacyScope = { type: "home", id: "home", directory: home.host.home, worktree: home.host.home }
+    const initial = await open()
+    const seed = {
+      id: "historical-home-cron",
+      title: "Historical nightly wake",
+      prompt: "Preserve the configured task",
+      status: "active",
+      global: true,
+      autoDone: false,
+      createdBy: "user",
+      triggers: [{ type: "cron", expr: "0 3 * * *", tz: "Asia/Shanghai" }],
+      origin: { scope: legacyScope, workspaceID: null },
+      sessionMode: "ephemeral",
+      silent: true,
+      wake: false,
+      controlProfile: "autonomous",
+      state: { consecutiveErrors: 2, runCount: 21, nextRunAt: Date.now() - 60_000 },
+      time: { created: 1, updated: 2 },
+      future: "retained",
+    }
+    await initial.run(async () => {
+      await Storage.write(key, seed)
+      await Storage.write(StoragePath.metaMigrationLogDomain("agenda"), { "20261012-agenda-home-scope": 1 })
+    })
+    if (restart) await initial.close()
+    const runtime = restart ? await open() : initial
+    try {
+      await runtime.run(async () => {
+        const boundary = Promise.withResolvers<Session.Info>()
+        using _invoke = spyOn(SessionInvoke, "invoke").mockImplementation(
+          fn(invokeSchema, async (input) => {
+            boundary.resolve(await Session.get(input.sessionID))
+            return {
+              info: MessageV2.User.parse({
+                id: "fixture-result",
+                sessionID: input.sessionID,
+                role: "user",
+                agent: "fixture",
+                model: { providerID: "fixture", modelID: "fixture" },
+                time: { created: Date.now() },
+              }),
+              parts: [],
+            }
+          }),
+        )
+        await ScopeContext.provide({
+          scope: Scope.home(),
+          workspace: null,
+          async fn() {
+            const invalid = { ...(await Session.create()), scope: legacyScope } as unknown as Session.Info
+            expect(() => Session.publicInfo(invalid)).toThrow()
+            try {
+              let result: { sessionID: string | undefined; nextRunAt: number | undefined } | undefined
+              if (restart) {
+                await Agenda.start()
+              } else {
+                AgendaClock.start(
+                  async (signal, scopeID) => {
+                    result = await AgendaReactor.execute(signal, scopeID)
+                    AgendaClock.rearm(scopeID, signal.source, result.nextRunAt)
+                  },
+                  [await AgendaStore.get("home", seed.id)],
+                )
+                AgendaClock.rearm("home", seed.id, Date.now() + 10)
+              }
+              const session = await Promise.race([
+                boundary.promise,
+                Bun.sleep(3000).then(() => {
+                  throw new Error("Historical Home cron did not reach the model boundary")
+                }),
+              ])
+              expect(session.scope).toEqual(Scope.home())
+              expect(session.workspaceID).toBeNull()
+              expect(await Session.resolveSessionControlProfile(session.id)).toBe("autonomous")
+              const deadline = Date.now() + 3000
+              let current = await AgendaStore.get("home", seed.id)
+              while (current.state.runCount === seed.state.runCount && Date.now() < deadline) {
+                await Bun.sleep(10)
+                current = await AgendaStore.get("home", seed.id)
+              }
+              expect(current.state).toMatchObject({
+                runCount: 22,
+                consecutiveErrors: 0,
+                lastRunStatus: "ok",
+                lastRunSessionID: session.id,
+              })
+              expect(current.state.nextRunAt).toBeGreaterThan(Date.now())
+              expect(current.origin.scope).toEqual(Scope.home())
+              expect(current.origin.workspaceID).toBeNull()
+              expect((await Storage.read<typeof seed>(key)).future).toBe("retained")
+              expect((await AgendaStore.listRuns("home", seed.id))[0]).toMatchObject({
+                status: "ok",
+                sessionID: session.id,
+              })
+              if (!restart) expect(result?.sessionID).toBe(session.id)
+              expect(AgendaClock.active()).toBe(1)
+            } finally {
+              Agenda.stop()
+            }
+          },
+        })
+      })
+    } finally {
+      await runtime.close()
+    }
+  }, 15000)
+}
 
 test("a persistent Agenda Session keeps its own later Workspace selection", async () => {
   await using runtime = await testRuntime()

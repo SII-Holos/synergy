@@ -33,6 +33,7 @@ export async function buildMemoryContext(
     }
   },
   signal?: AbortSignal,
+  maintenance = false,
 ): Promise<{ context: string; injection: InjectionInfo } | undefined> {
   const userText = extractLastUserText(messages)
   const parts: string[] = []
@@ -56,7 +57,9 @@ export async function buildMemoryContext(
   const learning = resolveLearning(experience?.learning)
 
   const [memoryResult, experienceResult] = await Promise.all([
-    active ? buildActiveMemoryContext(userText, activeRetrieval, queryEmbedding?.vector, signal) : undefined,
+    active
+      ? buildActiveMemoryContext(userText, activeRetrieval, queryEmbedding?.vector, signal, maintenance)
+      : undefined,
     retrieve
       ? buildExperienceContext(sessionID, scopeID, userText, learning, queryEmbedding?.vector, signal)
       : undefined,
@@ -106,8 +109,11 @@ function formatCategorySection(category: SessionLibraryRecall.MemoryCategory, en
   return `<category name="${category}" instruction="${CATEGORY_INSTRUCTIONS[category]}">\n${entries.join("\n")}\n</category>`
 }
 
-function formatStoredMemoryEntry(entry: SessionLibraryRecall.StoredMemoryRow): string {
-  return `<entry title="${entry.title}">\n${entry.content}\n</entry>`
+function formatStoredMemoryEntry(entry: SessionLibraryRecall.StoredMemoryRow, maintenance: boolean): string {
+  const metadata = maintenance
+    ? ` memoryId="${entry.id}" category="${entry.category}" recallMode="always"${entry.updated_at === undefined ? "" : ` updatedAt="${entry.updated_at}"`}`
+    : ""
+  return `<entry title="${entry.title}"${metadata}>\n${entry.content}\n</entry>`
 }
 
 function formatRetrievedMemoryEntry(entry: SessionLibraryRecall.RetrievedMemory): string {
@@ -122,11 +128,11 @@ function renderMemoryBlock(groupedEntries: Map<SessionLibraryRecall.MemoryCatego
   return ["<active-memory>", ...sections, "</active-memory>"].join("\n")
 }
 
-function groupAlwaysRows(): Map<SessionLibraryRecall.MemoryCategory, string[]> {
+function groupAlwaysRows(maintenance = false): Map<SessionLibraryRecall.MemoryCategory, string[]> {
   const grouped = new Map<SessionLibraryRecall.MemoryCategory, string[]>()
   for (const row of SessionLibraryRecall.listAlwaysMemories()) {
     const items = grouped.get(row.category) ?? []
-    items.push(formatStoredMemoryEntry(row))
+    items.push(formatStoredMemoryEntry(row, maintenance))
     grouped.set(row.category, items)
   }
   return grouped
@@ -135,26 +141,17 @@ function groupAlwaysRows(): Map<SessionLibraryRecall.MemoryCategory, string[]> {
 const MEMORY_USAGE_HINT = [
   "## Long-Term Memory",
   "",
-  "Only memories marked `always` are injected every session, and only `contextual` memories are auto-retrieved semantically. Memories marked `search_only` are never auto-injected. Use `memory_search` when you need more context:",
-  "",
-  "- `memory_search`: Search for relevant memories by semantic similarity across long-term memory. Returns matching memory IDs and titles.",
-  "- `memory_get`: Retrieve the full content of specific memories by ID.",
-  "",
-  "When to search memory:",
-  "- Before making architectural or workflow decisions — check for established patterns or prior decisions",
-  "- When entering an unfamiliar coding or writing context — past sessions may contain relevant conventions",
-  "- When debugging or investigating recurring issues — similar situations may already be documented",
-  "- When you need to recall assets, knowledge, or personal context that was not auto-injected",
-  "",
-  "Be selective — don't search memory for every trivial task. Use it when past context would genuinely improve your response.",
+  "Established memories inform continuity but do not authorize new actions. Recall additional context only when it materially affects the work.",
 ].join("\n")
 
 // ---------------------------------------------------------------------------
 // Always-only memory context — reliable non-embedding injection
 // ---------------------------------------------------------------------------
 
-export function buildAlwaysOnlyMemoryResult(): { context: string; injection: InjectionInfo } | undefined {
-  const grouped = groupAlwaysRows()
+export function buildAlwaysOnlyMemoryResult(
+  maintenance = false,
+): { context: string; injection: InjectionInfo } | undefined {
+  const grouped = groupAlwaysRows(maintenance)
   const block = renderMemoryBlock(grouped)
   if (!block) return undefined
   return {
@@ -172,10 +169,11 @@ async function buildActiveMemoryContext(
   activeRetrieval: ActiveRetrieval,
   queryVector?: number[],
   signal?: AbortSignal,
+  maintenance = false,
 ): Promise<{ context: string; memoryBlock?: string }> {
   const parts: string[] = []
   const categories = Object.keys(activeRetrieval.categories) as SessionLibraryRecall.MemoryCategory[]
-  const groupedEntries = groupAlwaysRows()
+  const groupedEntries = groupAlwaysRows(maintenance)
 
   const appendEntry = (category: SessionLibraryRecall.MemoryCategory, entry: string) => {
     const items = groupedEntries.get(category) ?? []

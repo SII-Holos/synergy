@@ -10,6 +10,9 @@ import { AgendaSessionWakeup } from "@ericsanchezok/synergy-agenda/agenda/sessio
 import { lightLoop } from "@ericsanchezok/synergy-light-loop/component"
 import { LoopStopTool } from "@ericsanchezok/synergy-light-loop/light-loop/tools/loop-stop"
 import { registerWorker } from "../src/worker"
+import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { AgentPromptContributions } from "@ericsanchezok/synergy-harness/agent/prompt-contributions"
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 
 for (const selected of [false, true]) {
   test(`Agenda review bridge selected=${selected} controls wakeup guidance and review`, async () => {
@@ -27,6 +30,11 @@ for (const selected of [false, true]) {
       ScopeContext.provide({
         scope: Scope.home(),
         fn: async () => {
+          const agent = await Agent.get(PrimaryAgentIdentity.names.general)
+          const guidance = AgentPromptContributions.render(agent, new Set(["loop_stop", "agenda_cancel"]))
+          expect(guidance.join("\n").includes("all active Agenda wakeups")).toBe(selected)
+          expect(guidance.join("\n")).not.toMatch(/loop_stop|agenda_cancel/)
+          expect(AgentPromptContributions.render(agent, new Set(["loop_stop"]))).toEqual([])
           const session = await Session.create({})
           await Session.update(session.id, (draft) => {
             draft.workflow = { kind: "lightloop", instructions: "Complete the work" }
@@ -46,7 +54,12 @@ for (const selected of [false, true]) {
             item,
           })
           expect(!!instruction).toBe(selected)
-          if (selected) expect(instruction!.text).toContain("loop_stop")
+          if (selected) {
+            expect(instruction!.text).toContain("loop_stop")
+            expect(instruction!.text).toContain(item.id)
+            expect(instruction!.text).toContain("complete task is finished and verified")
+            expect(instruction!.text).not.toMatch(/agenda_cancel\(|Call loop_stop with/)
+          }
           const tool = await LoopStopTool.init()
           const context = {
             sessionID: session.id,

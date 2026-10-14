@@ -36,14 +36,9 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
             "Skills provide specialized knowledge and step-by-step guidance.",
             "Use this when a task matches an available skill's description.",
             "<available_skills>",
-            ...accessible.flatMap((entry) => [
-              "  <skill>",
-              `    <name>${entry.name}</name>`,
-              `    <description>${truncateSkillDescription(entry.description)}</description>`,
-              "  </skill>",
-            ]),
+            ...accessible.map((entry) => `${entry.name}: ${truncateSkillDescription(entry.description)}`),
             "</available_skills>",
-          ].join(" ")
+          ].join("\n")
   } catch {
     description =
       "Load a skill to get detailed instructions for a specific task. Skills catalog unavailable due to loading error."

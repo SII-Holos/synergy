@@ -166,6 +166,8 @@ Top-level sessions build memory and experience context in parallel from the curr
 - experiences are retrieved within the current Scope.
 - child sessions receive lightweight always-only memory context.
 
+Contribution input includes the resolved Agent's trusted registration identity. Library uses the built-in owner and registration key to annotate Anima and Chronicler's existing always entries with maintenance IDs and update revisions, including fallback context. Configured agents with matching display names do not receive these annotations. Ordinary memory rendering and the advisory source position remain unchanged. See [Memory](../product/knowledge.md#memory) for curation and conditional-edit semantics.
+
 Recall has a bounded timeout and a loop-level cache. Each task root collects context at its first model preparation, even when a pre-model job has already compacted the history. The context remains available to root and child sessions across steps and compaction boundaries; a newly materialized Inbox root replaces the previous task's cached context. The root message records which memory or experience context was injected so the durable task can be inspected later.
 
 ## Tool Resolution and Execution

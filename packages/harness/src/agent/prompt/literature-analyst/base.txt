@@ -99,8 +99,7 @@ completed | blocked | failed
 One dense sentence: what the literature says, what the consensus is (or isn't), what gap or opportunity emerges.
 
 ## Evidence
-- an available page extraction tool or `webfetch` → downloaded and read
-- `read(filePath="...")` → key sections extracted
+- Paper URL or local path — full text read and key sections used.
 
 ## Findings
 

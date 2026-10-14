@@ -135,6 +135,7 @@ for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
         SessionContextContributions.register("fixture-memory", {
           refresh: "model",
           async contribute(input) {
+            expect(input.agentIdentity).toMatchObject({ registrationKey: "fixture", source: "config" })
             const lastUser = input.messages.findLast((message) => message.info.role === "user")
             recallQueries.push(lastUser ? MessageV2.extractText(lastUser.parts) : "")
             return { context: fact, injection: { fixture: "complete" } }

@@ -6,7 +6,7 @@ export function registerBridge() {
     {
       requiredTools: ["loop_stop", "agenda_cancel"],
       render: () =>
-        "Before requesting Light Loop review with loop_stop, cancel every active Agenda item that can still wake this session using agenda_cancel. The review request is rejected while any such item remains.",
+        "Light Loop review requires all active Agenda wakeups for this execution session to be cancelled. Review is rejected while any wakeup remains.",
     },
   ])
   setLightLoopAgendaAssertClear(AgendaSessionWakeup.assertClear)
@@ -24,9 +24,7 @@ export function registerBridge() {
           "This Agenda watch owns the wake-up cadence while it remains active, so ordinary Light Loop continuation is paused.",
           "",
           "If the task is incomplete, continue the required work and keep or adjust monitoring only when another wake-up is needed.",
-          "If the complete task is finished and verified:",
-          "1. Cancel every remaining Agenda watch listed below.",
-          "2. Call loop_stop with the completion summary and concrete evidence.",
+          "Once the complete task is finished and verified, cancel the remaining wakeups and formally request review through loop_stop.",
           "Do not request review while an Agenda watch still holds continuation.",
           "",
           ...cleanup,

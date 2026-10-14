@@ -72,7 +72,7 @@ export namespace Chronicler {
         parts: [
           {
             type: "text",
-            text: `<conversation>\n${conversationText}\n</conversation>\n\nReview the conversation above and persist any durable knowledge worth preserving to long-term memory. Search existing memories first to avoid duplicates.`,
+            text: `<conversation>\n${conversationText}\n</conversation>\n\nReview the conversation for durable additions, corrections and superseded memories. Search existing memories first. Update the applicable rule rather than appending a conversation recap. Preserve uniquely useful details separately when needed; leave memory unchanged when there is no meaningful update.`,
           },
         ],
       })

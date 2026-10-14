@@ -72,8 +72,8 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `look_at` | `code.analyze` | Analyze image files (screenshots, diagrams, charts, UI mockups, photos) with a separate vision model when the active model cannot accept image input directly. Accepts up to 5 images per call — all ima |
 | `loop_stop` | `orchestration.task` | Request a completion review for the active Light Loop. Use this when you believe the task is fully complete and verified. Parameters: - summary: Concise summary of what was completed (required) - comp |
 | `lsp` | `code.analyze` | Interact with Language Server Protocol (LSP) servers to get code intelligence features. Supported operations: - goToDefinition: Find where a symbol is defined - findReferences: Find all references to  |
-| `memory_edit` | `knowledge.memory` | Edit an existing memory by ID. Replaces the title, content, `category`, `recallMode`, and re-generates the embedding. Use this when `memory_write` reports similar existing memories, when a stored memo |
-| `memory_get` | `search.memory` | Retrieve the full content of one or more memories by their IDs. Returns the title, content, and timestamp for each memory. Use this after `memory_search` to read the full details of relevant memories. |
+| `memory_edit` | `knowledge.memory` | Edit an existing memory by ID. Replaces the title, content, `category`, `recallMode`, and re-generates the embedding. Returns the new numeric `updatedAt` on success. Read with `memory_get` and pass it |
+| `memory_get` | `search.memory` | Retrieve the full content of one or more memories by their IDs. Returns the title, content, category, recall mode, creation time and numeric `updatedAt` for each memory. Pass `updatedAt` as `expectedU |
 | `memory_search` | `search.memory` | Search stored memories by semantic similarity. Returns the top-k most relevant memory IDs, titles, categories, recall modes, and timestamps. Use this before writing new memories, when you need to insp |
 | `memory_write` | `knowledge.memory` | Persist a piece of knowledge as long-term memory. Provide a concise title, content, `category`, and `recallMode`. `category` answers **what kind of memory this is**: - `user` — Stable facts about the  |
 | `note_archive` | `knowledge.note` | Archive notes by ID. Archived notes are hidden from the active list but preserved on disk. Use this when you need to clean up notes from a completed sprint, task, or session. Archiving is safe and rev |
@@ -262,7 +262,7 @@ Executes a bash command in a persistent shell session. All commands run in ${dir
 
 Kind: `orchestration.task`
 
-Use this when the BlueprintLoop review confirms every required outcome is fully and correctly delivered. Parameters: - sessionID: The execution session ID provided in your launch context - summary: Concise approved completion verdict
+Use this when the BlueprintLoop review confirms every required outcome is fully and correctly delivered. Parameters: - sessionID: The execution session ID provided in your launch context - summary: Concise approved completion verdict citing the required outcomes and supporting evidence A successful call records formal approval. User-owned loops automatically notify and wake the execution session; Lattice consumes the completed loop directly. Do not send a separate completion notification.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -273,7 +273,7 @@ Use this when the BlueprintLoop review confirms every required outcome is fully 
 
 Kind: `orchestration.task`
 
-Use this when the BlueprintLoop review finds missing, incorrect, or unverified required work. Parameters: - sessionID: The execution session ID provided in your launch context - reason: Clear explanation of why the Blueprint outcome is not complete - completed: Optional summary of work that is already correct - remaining: Missing or incorrect work, marking each item BLOCKING or NON-BLOCKING - instructions: Concrete next actions the execution agent can follow without further clarification
+Use this when the BlueprintLoop review finds missing, incorrect, or unverified required work. Parameters: - sessionID: The execution session ID provided in your launch context - reason: Clear explanation of why the Blueprint outcome is not complete - completed: Optional summary of work that is already correct - remaining: Missing or incorrect work, marking each item BLOCKING or NON-BLOCKING - instructions: Concrete next actions the execution agent can follow without further clarification A successful call records formal rejection and automatically returns the findings to the execution session. Do not send a separate rejection notification.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -828,7 +828,7 @@ Submit exactly one semantic action for the current parent Lattice state. Valid s
 
 Kind: `orchestration.task`
 
-Use this when the LightLoop review audit confirms the task is fully and correctly delivered. Parameters: - sessionID: The execution session ID provided in your launch context - summary: Concise approved completion verdict
+Use this when the LightLoop review audit confirms the task is fully and correctly delivered. Parameters: - sessionID: The execution session ID provided in your launch context - summary: Concise approved completion verdict citing the checked requirements, supporting evidence, and any non-blocking limitations A successful call records formal approval and automatically notifies the execution session. Do not send a separate completion notification.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -839,7 +839,7 @@ Use this when the LightLoop review audit confirms the task is fully and correctl
 
 Kind: `orchestration.task`
 
-Use this when the LightLoop audit finds missing or incorrect work. Parameters: - sessionID: The execution session ID provided in your launch context - reason: Clear explanation of why the task is not complete - completed: Optional summary of work that is already correct - remaining: Summary of missing or incorrect work, marking each item BLOCKING or NON-BLOCKING - instructions: Concrete next actions the execution agent can follow without further clarification
+Use this when the LightLoop audit finds missing or incorrect work. Parameters: - sessionID: The execution session ID provided in your launch context - reason: Clear explanation of why the task is not complete - completed: Optional summary of work that is already correct - remaining: Summary of missing or incorrect work, marking each item BLOCKING or NON-BLOCKING - instructions: Concrete next actions the execution agent can follow without further clarification A successful call records formal rejection and automatically returns the findings to the execution session. Do not send a separate rejection notification.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -891,54 +891,26 @@ Interact with Language Server Protocol (LSP) servers to get code intelligence fe
 
 Kind: `knowledge.memory`
 
-Edit an existing memory by ID. Replaces the title, content, `category`, `recallMode`, and re-generates the embedding. Use this when `memory_write` reports similar existing memories, when a stored memory has become stale, or when a memory was classified with the wrong `category` or `recallMode`. Prefer editing over creating when the memory is durable and high-priority — especially for `user`, `self`, `relationship`, and `interaction` memories, or anything using `always` recall. You may also change both classification fields, for example moving a broad old preference into `interaction`, `coding`, `writing`, `workflow`, or `personal`, and adjusting recall from `always` to `contextual` or `search_only` when appropriate.
+Edit an existing memory by ID. Replaces the title, content, `category`, `recallMode`, and re-generates the embedding. Returns the new numeric `updatedAt` on success. Read with `memory_get` and pass its `updatedAt` as `expectedUpdatedAt` to prevent overwriting a newer revision. A `conflict` leaves the memory unchanged: re-read and reconsider before retrying. A removed memory returns `not_found`. Use this when `memory_write` reports similar existing memories, when a stored memory has become stale, or when a memory was classified with the wrong `category` or `recallMode`. Prefer editing over creating when the memory is durable and high-priority — especially for `user`, `self`, `relationship`, and `interaction` memories, or anything using `always` recall. You may also change both classification fields, for example moving a broad old preference into `interaction`, `coding`, `writing`, `workflow`, or `personal`, and adjusting recall from `always` to `contextual` or `search_only` when appropriate.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `id` | params.memoryId | yes |  |
-| `title` | params.memoryTitle | yes |  |
-| `content` | params.memoryContent | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `memoryId` | params.memoryId | yes |  |
-| `memoryTitle` | params.memoryTitle | yes |  |
-| `memoryContent` | params.memoryContent | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
-| `metadata` | - | yes |  |
-| `id` | params.memoryId | yes |  |
-| `title` | params.memoryTitle | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
+| `memoryId` | string | yes | The memory ID to edit |
+| `memoryTitle` | string | yes | New title (10 words max) |
+| `memoryContent` | string | yes | New content to replace the existing memory |
+| `category` | categorySchema.describe | yes |  |
+| `recallMode` | recallModeSchema.describe | yes | Memory recall mode: always, contextual, or search_only |
+| `expectedUpdatedAt` | number |  | The numeric updatedAt returned by memory_get. Reject the edit if that revision changed; re-read on conflict. |
 
 ## memory_get
 
 Kind: `search.memory`
 
-Retrieve the full content of one or more memories by their IDs. Returns the title, content, and timestamp for each memory. Use this after `memory_search` to read the full details of relevant memories.
+Retrieve the full content of one or more memories by their IDs. Returns the title, content, category, recall mode, creation time and numeric `updatedAt` for each memory. Pass `updatedAt` as `expectedUpdatedAt` to `memory_edit` when revising a read entry. Use this after `memory_search` to read the full details of relevant memories.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `memoryId` | r.id | yes |  |
-| `memoryTitle` | r.title | yes |  |
-| `memoryContent` | r.content | yes |  |
-| `category` | r.category | yes |  |
-| `recallMode` | r.recall_mode | yes |  |
-| `createdAt` | formatLocalDateTime | yes |  |
-| `metadata` | - | yes |  |
+| `memoryIds` | array | yes | List of memory IDs to retrieve |
 
 ## memory_search
 
@@ -948,48 +920,23 @@ Search stored memories by semantic similarity. Returns the top-k most relevant m
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `query` | params.query | yes |  |
-| `topK` | params.limit | yes |  |
-| `categories` | params.categories | yes |  |
-| `recallModes` | params.recallModes | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `memoryId` | r.id | yes |  |
-| `memoryTitle` | r.title | yes |  |
-| `category` | r.category | yes |  |
-| `recallMode` | r.recallMode | yes |  |
-| `similarity` | r.similarity | yes |  |
-| `createdAt` | formatLocalDateTime | yes |  |
-| `metadata` | - | yes |  |
+| `query` | string | yes | Search query |
+| `limit` | number |  | Maximum memories to return, from 1 to 100; defaults to 5 |
+| `categories` | array |  | Optional category filters |
+| `recallModes` | array |  | Optional recall mode filters |
 
 ## memory_write
 
 Kind: `knowledge.memory`
 
-Persist a piece of knowledge as long-term memory. Provide a concise title, content, `category`, and `recallMode`. `category` answers **what kind of memory this is**: - `user` — Stable facts about the user - `self` — Agent self-knowledge - `relationship` — Durable collaboration norms and trust boundaries - `interaction` — Naming, tone, language, and interaction style - `workflow` — General working preferences that apply across domains - `coding` — Coding-specific preferences and conventions - `writing` — Writing and documentation preferences - `asset` — Shared resources, accounts, websites, or services - `insight` — Transferable user reasoning patterns across domains - `knowledge` — Technical facts, conventions, and lessons learned - `personal` — Low-priority personal trivia and lifestyle preferences - `general` — Anything valuable that does not fit above `recallMode` answers **how this memory should be used later**: - `always` — Inject every session; reserve for durable identity and interaction rules - `contextual` — Auto-retrieve only when semantically relevant - `search_only` — Never auto-inject; only surface via explicit `memory_search` Guidelines: - Use `interaction` + `always` for naming, tone, language, or other conversation-wide style rules - Use `coding` or `writing` with `contextual` for domain-specific preferences - Use `personal` with `search_only` for lifestyle details like food, hobbies, or casual likes - Be highly selective with `always`; these should stay few and consolidated - Prefer `memory_edit` over `memory_write` when a similar durable memory already exists - When in doubt, choose a narrower category and a less aggressive recall mode If similar memories already exist, the tool may return them instead of writing and suggest `memory_edit` to update an existing memory rather than creating a duplicate.
+Persist a piece of knowledge as long-term memory. Provide a concise title, content, `category`, and `recallMode`. `category` answers **what kind of memory this is**: - `user` — Stable facts about the user - `self` — Agent self-knowledge - `relationship` — Durable collaboration norms and trust boundaries - `interaction` — Naming, tone, language, and interaction style - `workflow` — General working preferences that apply across domains - `coding` — Coding-specific preferences and conventions - `writing` — Writing and documentation preferences - `asset` — Shared resources, accounts, websites, or services - `insight` — Transferable user reasoning patterns across domains - `knowledge` — Technical facts, conventions, and lessons learned - `personal` — Low-priority personal trivia and lifestyle preferences - `general` — Anything valuable that does not fit above `recallMode` answers **how this memory should be used later**: - `always` — Inject every session; reserve for durable identity, interaction, consent, authorization, privacy, and representation rules - `contextual` — Auto-retrieve only when semantically relevant - `search_only` — Never auto-inject; only surface via explicit `memory_search` Guidelines: - Use `interaction` + `always` for naming, tone, language, or other conversation-wide style rules - Use `coding` or `writing` with `contextual` for domain-specific preferences - Use `personal` with `search_only` for lifestyle details like food, hobbies, or casual likes - Be highly selective with `always`; these should stay few and consolidated - Prefer `memory_edit` over `memory_write` when a similar durable memory already exists - When in doubt, choose a narrower category and a less aggressive recall mode; do not demote clear session-wide identity, language, or trust rules merely to reduce context If similar memories already exist, the tool may return them instead of writing and suggest `memory_edit` to update an existing memory rather than creating a duplicate.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | params.memoryTitle | yes |  |
-| `content` | params.memoryContent | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `memoryId` | id | yes |  |
-| `memoryTitle` | params.memoryTitle | yes |  |
-| `memoryContent` | params.memoryContent | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
-| `metadata` | - | yes |  |
+| `memoryTitle` | string | yes | A concise title summarizing the memory (10 words max) |
+| `memoryContent` | string | yes | The memory content to persist |
+| `category` | categorySchema.describe | yes |  |
+| `recallMode` | recallModeSchema.describe | yes | Memory recall mode: always, contextual, or search_only |
 
 ## note_archive
 
@@ -1069,21 +1016,12 @@ Edit or transform existing images with a text prompt and save the result to outp
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `method` | - | yes |  |
-| `headers` | - | yes |  |
-| `Accept` | - | yes |  |
-| `body` | JSON.stringify | yes |  |
-| `images` | inputImages.map | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `background` | params.background | yes |  |
-| `model` | OPENAI_IMAGE_MODEL | yes |  |
-| `quality` | params.quality | yes |  |
-| `size` | params.size | yes |  |
-| `operation` | - | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `inputImages` | inputImages.map | yes |  |
-| `requested` | - | yes |  |
-| `display` | openAIImageEditDisplay | yes |  |
+| `prompt` | string | yes | Image edit prompt, 1–12000 characters. Sent as-is. |
+| `input_paths` | array | yes | Required source image paths, 1–5 PNG/JPEG/WebP files. Relative paths resolve under the current workspace. |
+| `output_path` | string | yes | Required PNG output path. Relative paths resolve under the current workspace; absolute paths are used as provided. |
+| `size` | openAIImageSizeParameter | yes |  |
+| `quality` | openAIImageQualityParameter | yes |  |
+| `background` | openAIImageBackgroundParameter | yes |  |
 
 ## openai_image_gen
 
@@ -1093,19 +1031,11 @@ Generate a new image from a text prompt and save it to output_path. Use it when 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `method` | - | yes |  |
-| `headers` | - | yes |  |
-| `Accept` | - | yes |  |
-| `body` | JSON.stringify | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `background` | params.background | yes |  |
-| `model` | OPENAI_IMAGE_MODEL | yes |  |
-| `quality` | params.quality | yes |  |
-| `size` | params.size | yes |  |
-| `operation` | - | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `requested` | - | yes |  |
-| `display` | openAIImageGenDisplay | yes |  |
+| `prompt` | string | yes | Image generation prompt, 1–12000 characters. Sent as-is. |
+| `output_path` | string | yes | Required PNG output path. Relative paths resolve under the current workspace; absolute paths are used as provided. |
+| `size` | openAIImageSizeParameter | yes |  |
+| `quality` | openAIImageQualityParameter | yes |  |
+| `background` | openAIImageBackgroundParameter | yes |  |
 
 ## parse_code
 

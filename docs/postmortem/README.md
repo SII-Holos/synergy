@@ -2,15 +2,15 @@
 
 ## Criteria
 
-- **Subtle** — needs investigation.
-- **Systemic** — safeguards missed it.
-- **Costly to rediscover**.
+- **Subtle** — investigation required.
+- **Systemic** — missed safeguards.
+- **Costly** to rediscover.
 
 Otherwise, test.
 
 ## Placement
 
-Bugs belong here; rationale in `docs/decisions/`.
+Rationale: `docs/decisions/`.
 
 ## Format
 
@@ -24,6 +24,8 @@ Bugs belong here; rationale in `docs/decisions/`.
 - **Lessons** — durable takeaways.
 
 ## Index
+
+- [0074: Agenda Home origin](0074-agenda-home-origin-blocked-session-creation.md)
 
 - [0072: Native watcher concurrency](0072-native-watcher-exception-concurrency.md)
 

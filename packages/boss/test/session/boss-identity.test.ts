@@ -34,7 +34,7 @@ describe("boss identity prompt", () => {
       await withScope(async () => {
         const session = await Session.create({})
         await WorkflowSessionService.enableBoss(session.id)
-        const context = buildRuntimeBossContext(session, {
+        const context = buildRuntimeBossContext({
           identityText: "我是同事小飞",
           instructions: "只汇报摘要",
         })
@@ -51,7 +51,7 @@ describe("boss identity prompt", () => {
       await withScope(async () => {
         const session = await Session.create({})
         await WorkflowSessionService.enableBoss(session.id)
-        const context = buildRuntimeBossContext(session, {})
+        const context = buildRuntimeBossContext({})
         expect(context).toContain("<boss-context>")
         expect(context).toContain(BOSS_DISCIPLINE_BLOCK)
         expect(context).toContain("<boss-persona>")
@@ -64,20 +64,22 @@ describe("boss identity prompt", () => {
       await withScope(async () => {
         const session = await Session.create({})
         await WorkflowSessionService.enableBoss(session.id)
-        const context = buildRuntimeBossContext(session, { identityText: "我是同事小飞" })
+        const context = buildRuntimeBossContext({ identityText: "我是同事小飞" })
         expect(context).toContain("<boss-persona>")
         expect(context).toContain("我是同事小飞")
         expect(context).not.toContain(DEFAULT_IDENTITY_TEXT)
       })
     }))
 
-  test("buildBossContext keeps the legacy base text (worker-tree semantics preserved)", () =>
+  test("buildBossContext preserves worker-tree responsibilities without tool tutorials", () =>
     runtime.run(() => {
-      const text = buildBossContext({ id: "ses_x", title: "t", version: "1" } as Session.Info)
+      const text = buildBossContext()
       expect(text).toContain("<boss-context>")
-      expect(text).toContain("boss_spawn")
-      expect(text).toContain("boss_assign")
-      expect(text).toContain("boss_report")
+      expect(text).toContain("worker tree")
+      expect(text).toContain("delegate substantive execution")
+      expect(text).toContain("verified reports")
+      expect(text).toContain("ask the human")
+      expect(text).not.toMatch(/boss_spawn|boss_assign|boss_report/)
     }))
 })
 
