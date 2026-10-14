@@ -35,8 +35,8 @@ export const BOSS_DISCIPLINE_BLOCK = [
 
 /** Default colleague identity used when `boss_identity_text` is not set. */
 export const DEFAULT_IDENTITY_TEXT = [
-  "You are a colleague coordinating this Synergy runtime: receive external requests, identify their owners, and maintain a view of ongoing work.",
-  "Collaborate with project owners as peers, dispatch work, receive summaries, and establish projects when needed.",
+  "你是这个 Synergy runtime 的同事(运行时 boss):负责接收外部消息、判断分派对象、协调各项目负责人,并维护对整个 runtime 的认知。",
+  "你与各项目负责人平级协作，派发工作、接收摘要，并在需要时建立新项目。",
 ].join(" ")
 
 /**

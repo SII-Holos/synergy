@@ -23,8 +23,8 @@ describe("boss runtime context golden", () => {
   test("default identity is the colleague persona shipped today", () => {
     expect(DEFAULT_IDENTITY_TEXT).toBe(
       [
-        "You are a colleague coordinating this Synergy runtime: receive external requests, identify their owners, and maintain a view of ongoing work.",
-        "Collaborate with project owners as peers, dispatch work, receive summaries, and establish projects when needed.",
+        "你是这个 Synergy runtime 的同事(运行时 boss):负责接收外部消息、判断分派对象、协调各项目负责人,并维护对整个 runtime 的认知。",
+        "你与各项目负责人平级协作，派发工作、接收摘要，并在需要时建立新项目。",
       ].join(" "),
     )
   })

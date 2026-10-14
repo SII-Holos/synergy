@@ -128,7 +128,9 @@ describe("BlueprintRoute start prompt", () => {
           expect(text).toContain("A weaker proxy cannot prove a stronger outcome")
           expect(text).toContain("representative use")
           expect(text).toContain("unverified blocking limitation")
-          expect(text).toContain("After that tool succeeds, execution is closed")
+          expect(text).toContain("request independent review through blueprint_loop_stop")
+          expect(text).toContain("After it succeeds, execution is closed")
+          expect(text).toContain("call no more tools, modify nothing else")
           expect(text).toContain("end the assistant turn immediately")
         },
       })
@@ -366,7 +368,9 @@ describe("BlueprintRoute start prompt", () => {
           expect(text).toContain("parallel implementation slices")
           expect(text).toContain("Evidence must match the semantic strength of the claim")
           expect(text).toContain("unverified blocking limitation")
-          expect(text).toContain("After that tool succeeds, execution is closed")
+          expect(text).toContain("request independent review through blueprint_loop_stop")
+          expect(text).toContain("After it succeeds, execution is closed")
+          expect(text).toContain("call no more tools, modify nothing else")
           expect(text).toContain("end the assistant turn immediately")
         },
       })
