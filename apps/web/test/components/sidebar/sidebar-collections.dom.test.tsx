@@ -22,13 +22,19 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".sidebar-collections-fixture-"))
   await Bun.write(
     path.join(directory, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(directory, "state.tsx"),
     `
     import { createSignal } from "solid-js"
+    import { createCommandRegistry } from ${JSON.stringify(`/@fs/${source}/context/command-registry.ts`)}
     const query = new URLSearchParams(location.search)
+    const commands = createCommandRegistry()
+    const [creating, setCreating] = createSignal(false)
+    export { creating }
+    export const createProject = () => setCreating(true)
+    commands.register(() => [{ id: "project.create", title: "New project", onSelect: createProject }])
     const [width, resize] = createSignal(Number(query.get("width") || 300))
     const [opened, setOpened] = createSignal(true)
     const [unread, setUnread] = createSignal(1)
@@ -72,13 +78,18 @@ beforeAll(async () => {
     export const useProductUpdate = () => ({notice:()=>({visible:false})})
     export const usePlatform = () => ({platform:"web"})
     export const useTheme = () => ({mode:()=>query.get("mode")||"dark"})
-    export const useDialog = () => ({show:()=>{}})
-    export const useCommand = () => ({ trigger() {} })
+    export const useDialog = () => ({show:()=>{},close:()=>{}})
+    export const useCommand = () => commands
+    export const useSDK = () => ({scopeID:"home"})
+    export const useSync = () => ({data:{path:{}}})
+    export const usePrompt = () => ({})
+    export const useServer = () => ({url:"fixture"})
     export const useConfirm = () => async()=>false
     export const useHolosAgentActions = () => ({})
     export const useProjectDirectoryPicker = () => ({pickProjectDirectories:async()=>undefined})
     export const useExtensionOutlet = () => {}
     export const DialogScopeEdit = () => null
+    export const DialogCreateProject = () => null
     export const SettingsDialog = () => null
     export const SlotOutlet = () => null
     export const Tooltip = props => props.children
@@ -92,6 +103,8 @@ beforeAll(async () => {
     import {setupI18n} from "@lingui/core"
     import {I18nProvider} from "@lingui/solid"
     import {Sidebar} from ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar.tsx`)}
+    import {ProjectTaskButton} from ${JSON.stringify(`/@fs/${source}/components/session/project-task-button.tsx`)}
+    import {creating,createProject} from "./state"
     import {Router,Route} from "@solidjs/router"
     import {messages as en} from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     import {messages as zh} from ${JSON.stringify(`/@fs/${source}/locales/zh-CN/messages.po`)}
@@ -100,7 +113,8 @@ beforeAll(async () => {
     import ${JSON.stringify(`/@fs/${source}/components/app-shell/mobile-drawer.css`)}
     const locale=new URLSearchParams(location.search).get("locale")||"zh-CN"
     const i18n=setupI18n({locale,messages:{en,"zh-CN":zh}})
-    render(()=> <I18nProvider i18n={i18n}><Router><Route path="*all" component={()=> <div style="height:100vh"><Sidebar onSearchOpen={()=>{}}/></div>}/></Router></I18nProvider>,document.getElementById("root"))
+    const selector = new URLSearchParams(location.search).get("selector")
+    render(()=> <I18nProvider i18n={i18n}><Router><Route path="*all" component={()=> <div style="height:100vh"><Sidebar onSearchOpen={()=>{}} onCreateProject={createProject}/>{selector&&<ProjectTaskButton label="No project" disabled={selector==="disabled"} uploading={selector==="uploading"}/>} {creating()&&<div role="dialog" aria-label="New project">Project creation</div>}</div>}/></Router></I18nProvider>,document.getElementById("root"))
   `,
   )
   // Keep the real registry and built-in ordering without loading page implementations.
@@ -118,10 +132,15 @@ beforeAll(async () => {
     "@/context/holos",
     "@/context/platform",
     "@/context/command",
+    "@/context/sdk",
+    "@/context/sync",
+    "@/context/prompt",
+    "@/context/server",
     "@/context/product-update",
     "@/components/holos/agent-actions",
     "@/components/dialog/project-directory-picker",
     "@/components/dialog/dialog-scope-edit",
+    "../dialog/dialog-create-project",
     "@/components/dialog/confirm-dialog",
     "@/components/settings",
     "@/plugin/slot-outlet",
@@ -445,11 +464,31 @@ test("five vertical categories retain independent disclosure state and unique he
   expect(errors).toEqual([])
 })
 
+test("sidebar project creation stays available independently of the task project selector", async () => {
+  for (const selector of ["disabled", "uploading", "enabled"]) {
+    await open("?locale=en&selector=" + selector + "&mode=" + (selector === "enabled" ? "light" : "dark"))
+    const toggle = page.getByRole("button", { name: "Projects", exact: true })
+    if (selector === "enabled") await toggle.press("Enter")
+    const expanded = await toggle.getAttribute("aria-expanded")
+    const add = page.getByRole("button", { name: "Add project", exact: true })
+    if (selector === "disabled") await add.click()
+    else {
+      await add.focus()
+      expect(await add.evaluate((element) => document.activeElement === element)).toBe(true)
+      await add.press(selector === "uploading" ? "Enter" : "Space")
+    }
+    expect(await page.getByRole("dialog", { name: "New project", exact: true }).isVisible()).toBe(true)
+    expect(await toggle.getAttribute("aria-expanded")).toBe(expanded)
+    expect(errors).toEqual([])
+  }
+})
+
 test("a core composition retains local navigation without optional channel surfaces", async () => {
   await open("?core=1")
   for (const label of ["最近", "首页", "后台", "项目"])
     expect(await page.getByRole("button", { name: label, exact: true }).isVisible()).toBe(true)
   expect(await page.getByRole("button", { name: "频道", exact: true }).count()).toBe(0)
+  expect(await page.locator(".sb-projects-header-plus").count()).toBe(0)
   expect(await page.locator(".sb-global-btn").allTextContents()).toEqual(["插件"])
   await page.getByRole("button", { name: "首页", exact: true }).press("Enter")
   await page.getByText("Home session", { exact: true }).waitFor({ state: "visible" })

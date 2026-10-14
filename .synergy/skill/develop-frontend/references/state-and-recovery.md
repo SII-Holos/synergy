@@ -35,6 +35,8 @@ Verify experience states through the persisted reward status and generated DTO, 
 
 ## Preserve State and API Ownership
 
+Bind global navigation actions to their shell owner instead of a task-owned command override. Test the rendered action beside the real task control and command registry with disabled and uploading states, retaining task-specific draft transfer in the Composer. See [sidebar project creation ownership](../../../../docs/decisions/implemented/bug-fix/2026-10-14-sidebar-project-creation-ownership.md).
+
 A Part can produce several timeline presentations, such as a visual card and its promoted attachments. Visibility maps must distinguish those presentations while retaining identity across legitimate transitions such as reasoning promotion. Test the complete projection with both faces present, asserting that the card survives and final row keys stay unique; mounting the card alone cannot establish conversation acceptance.
 
 Ordinary uploaded attachments leave model preparation policy to the server. Do not manufacture an explicit summary or exclusion policy from MIME type: that can suppress text and document extraction. Verify the actual composer payload through preparation and a provider request, including a random identifier present only inside the uploaded bytes; upload success and a file card alone do not prove delivery.
