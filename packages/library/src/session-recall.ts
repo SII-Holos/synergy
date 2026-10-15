@@ -45,14 +45,20 @@ export function registerLibrarySessionRecall() {
       const maintenance = isMemoryMaintainer(input)
       if (!input.isTopSession) {
         const result = buildAlwaysOnlyMemoryResult(maintenance)
-        return result ? { context: result.context, injection: {} } : undefined
+        return result ? { ...result, injection: {} } : undefined
       }
       return buildMemoryContext(input.sessionID, input.scopeID, input.messages, library, input.signal, maintenance)
     },
     async fallback(input) {
       const { library } = await readConfig()
       if (library?.memory?.enabled === false) return undefined
-      return buildAlwaysOnlyMemoryResult(isMemoryMaintainer(input))
+      const result = buildAlwaysOnlyMemoryResult(isMemoryMaintainer(input))
+      if (result?.knowledge && input.isTopSession)
+        result.knowledge.unavailable = [
+          "contextual",
+          ...(library?.experience?.retrieve !== false ? ["experience"] : []),
+        ]
+      return result
     },
     committed(sessionID, injection) {
       if (injection.experience) ExperienceRecall.commitRetrieval(sessionID)

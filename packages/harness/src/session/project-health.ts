@@ -5,7 +5,7 @@ export namespace SessionProjectHealth {
     observeGitHealth(cwd?: string): Observation
     invalidateGitHealth(cwd?: string): void
   }
-  export type Observation = { state: "present"; text: string } | { state: "cleared" | "unavailable" }
+  export type Observation = { state: "present"; text: string } | { state: "cleared" | "unavailable" | "pending" }
 
   const runtimeState = RuntimeContext.state(() => ({
     provider: undefined as Provider | undefined,

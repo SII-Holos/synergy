@@ -658,11 +658,11 @@ describe("GitHealth.injectCached()", () => {
     try {
       await gitInit(repo.path)
       await gitEmptyCommit(repo.path)
-      expect(GitHealth.observeCached(repo.path)).toEqual({ state: "unavailable" })
+      expect(GitHealth.observeCached(repo.path)).toEqual({ state: "pending" })
       await GitHealth.refresh(repo.path)
       expect(GitHealth.observeCached(repo.path)).toEqual({ state: "cleared" })
       GitHealth.invalidate(repo.path)
-      expect(GitHealth.observeCached(repo.path)).toEqual({ state: "unavailable" })
+      expect(GitHealth.observeCached(repo.path)).toEqual({ state: "pending" })
       await GitHealth.refresh(repo.path)
     } finally {
       repo.cleanup()

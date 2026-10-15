@@ -10,6 +10,7 @@ import { SessionContextContributions } from "../../src/session/context-contribut
 import { SessionInvoke } from "../../src/session/invoke"
 import { MessageV2 } from "../../src/session/message-v2"
 import { RuntimeAdvisory } from "../../src/session/runtime-context"
+import { SessionCortexRuntime } from "../../src/session/cortex-runtime"
 import { ToolRegistry } from "../../src/tool/registry"
 import { Tool } from "../../src/tool/tool"
 import { testRuntime } from "../support/runtime"
@@ -21,6 +22,8 @@ for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
     let calls = 0
     let executed = 0
     let fact = "The complete current fact is ALPHA-419."
+    const permanent = "The permanent complete reference is FIXED-205."
+    let progress = 0
     const recallQueries: string[] = []
     const model: LanguageModelV2 = {
       specificationVersion: "v2",
@@ -32,29 +35,28 @@ for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
       },
       async doStream(input) {
         prompts.push(structuredClone(input.prompt))
-        const chunks: LanguageModelV2StreamPart[] =
-          calls++ === 0
-            ? [
-                ...[1, 2, 3, 4].map(
-                  (index): LanguageModelV2StreamPart => ({
-                    type: "tool-call",
-                    toolCallId: `step-${index}`,
-                    toolName: "fixture_step",
-                    input: "{}",
-                  }),
-                ),
-                {
-                  type: "finish",
-                  finishReason: "tool-calls",
-                  usage: { inputTokens: 40, outputTokens: 5, totalTokens: 45 },
-                },
-              ]
-            : [
-                { type: "text-start", id: "reply" },
-                { type: "text-delta", id: "reply", delta: "Completed." },
-                { type: "text-end", id: "reply" },
-                { type: "finish", finishReason: "stop", usage: { inputTokens: 60, outputTokens: 5, totalTokens: 65 } },
-              ]
+        const chunks: LanguageModelV2StreamPart[] = [0, 4].includes(calls++)
+          ? [
+              ...[1, 2, 3, 4].map(
+                (index): LanguageModelV2StreamPart => ({
+                  type: "tool-call",
+                  toolCallId: `step-${index}`,
+                  toolName: "fixture_step",
+                  input: "{}",
+                }),
+              ),
+              {
+                type: "finish",
+                finishReason: "tool-calls",
+                usage: { inputTokens: 40, outputTokens: 5, totalTokens: 45 },
+              },
+            ]
+          : [
+              { type: "text-start", id: "reply" },
+              { type: "text-delta", id: "reply", delta: "Completed." },
+              { type: "text-end", id: "reply" },
+              { type: "finish", finishReason: "stop", usage: { inputTokens: 60, outputTokens: 5, totalTokens: 65 } },
+            ]
         return { stream: simulateReadableStream({ chunks, initialDelayInMs: null, chunkDelayInMs: null }) }
       },
     }
@@ -138,8 +140,48 @@ for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
             expect(input.agentIdentity).toMatchObject({ registrationKey: "fixture", source: "config" })
             const lastUser = input.messages.findLast((message) => message.info.role === "user")
             recallQueries.push(lastUser ? MessageV2.extractText(lastUser.parts) : "")
-            return { context: fact, injection: { fixture: "complete" } }
+            return {
+              context: [permanent, fact].join("\n"),
+              injection: { fixture: "complete" },
+              knowledge: {
+                guidance: "Apply the selected references.",
+                entries: [
+                  { id: "fixed", text: permanent, selection: "always" },
+                  { id: "fact", text: fact, selection: "contextual" },
+                ],
+              },
+            }
           },
+        })
+        SessionCortexRuntime.register({
+          async delegatedTask() {
+            return undefined
+          },
+          async runningTaskRows() {
+            return [
+              {
+                id: "task_fixture",
+                agent: "worker",
+                description: "Independent work",
+                startedAt: Date.now() - ++progress * 20_000,
+                health: progress % 2 ? "active" : "tool-running",
+                lastTool: progress % 2 ? "read" : "grep",
+                lastToolStatus: "running",
+              },
+            ]
+          },
+          async activeTaskRows() {
+            return []
+          },
+          async reconcileParentNotifications() {},
+          async cancelAllForParent() {},
+          pluginTaskSnapshot() {
+            return undefined
+          },
+          taskInfo() {
+            return undefined
+          },
+          async waitForTask() {},
         })
         const tool = Tool.define(
           "fixture_step",
@@ -204,6 +246,12 @@ for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
             ).toBe(false)
             const first = prompts[0]!
             expect(prompts[1]!.slice(0, first.length)).toEqual(first)
+            expect(JSON.stringify(prompts[1]).split(permanent)).toHaveLength(2)
+            expect(
+              events
+                .flatMap((event) => RuntimeAdvisory.read(event.info)!.sources)
+                .filter((source) => source.id === "cortex:task_fixture"),
+            ).toHaveLength(1)
             for (const event of events) {
               const position = messages.indexOf(event)
               expect(messages[position + 1]!.info.role).toBe("assistant")
@@ -231,6 +279,25 @@ for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
               parts: [{ type: "text", text: "Continue after switching back." }],
             })
             expect(JSON.stringify(prompts[3])).toContain("DELTA-951")
+            await SessionInvoke.invoke({
+              sessionID: session.id,
+              agent: "fixture",
+              model: { providerID: "fixture", modelID: "fixture" },
+              parts: [{ type: "text", text: "Continue with the same references and use the tool." }],
+            })
+            expect(prompts).toHaveLength(6)
+            expect(prompts[5]!.slice(0, prompts[4]!.length)).toEqual(prompts[4])
+            expect(JSON.stringify(prompts[5]).split(permanent)).toHaveLength(2)
+            const retained = (await Session.messages({ sessionID: session.id })).flatMap(
+              (message) => RuntimeAdvisory.read(message.info)?.sources ?? [],
+            )
+            expect(retained.filter((source) => source.id === "cortex:task_fixture")).toHaveLength(1)
+            expect(retained.filter((source) => source.id === "time")).toHaveLength(2)
+            expect(
+              retained
+                .filter((source) => source.id === "time")
+                .every((source) => source.kind === "event" && source.state === "present"),
+            ).toBe(true)
           } else {
             expect(events).toHaveLength(0)
             expect(JSON.stringify(prompts[1])).not.toContain("ALPHA-419")

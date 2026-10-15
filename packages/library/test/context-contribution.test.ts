@@ -173,6 +173,16 @@ test("context contribution combines filtered semantic memory with attributed exp
       expect(result?.injection.memory).toContain('similarity="0.950"')
       expect(result?.injection.memory).toContain("Seed every trial")
       expect(result?.context).not.toContain("Discard")
+      expect(result?.knowledge?.entries.map((entry) => entry.id)).toEqual([
+        "memory:always",
+        "memory:strong",
+        "experience:scope-research:positive",
+        "experience:scope-research:neutral",
+      ])
+      expect(result?.knowledge?.entries.map((entry) => entry.text).join("\n")).not.toMatch(/similarity=|sim=|q=/)
+      expect(result?.knowledge?.entries.find((entry) => entry.id.endsWith(":positive"))?.annotation).toBe(
+        "Successful result",
+      )
       expect(result?.injection.experience).toContain('<experience sim="0.900" q="0.800">')
       expect(result?.injection.experience).toContain("<script>seed(7)</script>")
       expect(result?.injection.experience).toContain("<evaluation>Successful result</evaluation>")
@@ -213,6 +223,9 @@ test("failed semantic retrieval retains always-memory context and cancellation s
       expect(experienceCalls).toBe(0)
       expect(result?.injection.memory).toContain("Preserve observations")
       expect(result?.injection.experience).toBeUndefined()
+      expect(result?.knowledge?.unavailable).toEqual(["contextual", "experience"])
+      const experienceOnly = await buildMemoryContext("session", "scope", messages, { memory: { enabled: false } })
+      expect(experienceOnly?.knowledge?.unavailable).toEqual(["experience"])
       await expect(
         buildMemoryContext("session", "scope", messages, undefined, AbortSignal.abort(new Error("research cancelled"))),
       ).rejects.toThrow("research cancelled")

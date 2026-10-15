@@ -179,6 +179,16 @@ export namespace ContextUsage {
         category === "toolDefinitions" ? input.provenance.categories[category] : history.categories[category]
       return contributions
         .filter((entry) => entry.path)
+        .flatMap((entry) =>
+          entry.segments?.length
+            ? entry.segments.map((segment) => ({
+                ...entry,
+                text: entry.text.slice(segment.start, segment.end),
+                source: segment.source,
+                range: { start: segment.start, end: segment.end },
+              }))
+            : [entry],
+        )
         .map((entry) =>
           ContextSourceSchema.parse({
             category,

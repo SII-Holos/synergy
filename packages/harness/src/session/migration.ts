@@ -1,4 +1,5 @@
 import { migrateContextUsage, upgradeContextUsageRecord } from "./context-usage-migration"
+import { migrateRuntimeContext, upgradeRuntimeContextRecord } from "./runtime-context-migration"
 import { RolloutExecutionMigration } from "./rollout/execution-migration"
 import { migrateReferenceContexts, upgradeReferenceContext } from "./reference-context"
 import { migrateAttachmentPurposes, upgradeAttachmentPresentation } from "./attachment-migration"
@@ -1536,6 +1537,19 @@ async function migrateAttachmentDisplay(
 }
 
 export const migrations: Migration[] = [
+  {
+    id: "20261015-runtime-context-semantics",
+    scope: "session",
+    execution: "record",
+    description: "Preserve advisory snapshots while introducing knowledge and event observations",
+    upgradeRecord: upgradeRuntimeContextRecord,
+    upSession: migrateRuntimeContext,
+    async up(progress) {
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID))
+          await migrateRuntimeContext({ scopeID, sessionID }, progress)
+    },
+  },
   {
     id: "20261011-session-retire-loop-guard-notices",
     execution: "session",

@@ -205,7 +205,7 @@ The closed top-level origin set is:
 
 Second-level meaning belongs in `origin.detail`, not in new top-level origin strings. Unknown legacy values decode to `system`.
 
-`origin.detail: "runtime-context"` identifies durable advisory observations. They have `isRoot: false`, `visible: false`, `includeInContext: true`, a canonical task `rootID`, and versioned `metadata.runtimeContext` with source identities, permission role, scope, states and revisions. Their text parts use system origin while model projection preserves the user permission role. The [LLM loop](llm-loop.md) owns collection, admission and observation order.
+`origin.detail: "runtime-context"` identifies durable advisory observations. They have `isRoot: false`, `visible: false`, `includeInContext: true`, a canonical task `rootID`, and versioned `metadata.runtimeContext` with source identities, permission role, scope, states and revisions. Format v2 adds state/knowledge/event kinds and verified source-block ranges for deduplication and context attribution. The session-owned migration upgrades v1 metadata without rewriting message text; legacy sources remain state sources. Their text parts use system origin while model projection preserves the user permission role. The [LLM loop](llm-loop.md) owns collection, admission and observation order.
 
 Non-root origins that receive dedicated frontend chips are Cortex, Agenda, Blueprint, Channel, Agent, and Plugin. Rendering remains governed by `visible` plus the registered special renderers.
 
