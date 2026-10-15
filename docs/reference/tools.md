@@ -1016,7 +1016,7 @@ Generate a new image from a text prompt and save it to output_path. Use it when 
 
 Kind: `code.analyze`
 
-Search code with AST-aware patterns and return matching line ranges. Use complete, parseable syntax for the chosen language, such as function $NAME($$$) { $$$ }. Paths select roots, globs narrow files, context adds surrounding lines, and limit/skip page through matches. Syntax errors include recovery guidance; no matches may require broader paths or a literal file_search query. {{evidence}} Use {{reader}} for additional context. Only displayed source lines count as observations; truncated output does not establish a complete read.
+Search code with AST-aware patterns and return matching line ranges. Use complete, parseable syntax for the chosen language, such as function $NAME($$$) { $$$ }. Paths select roots, globs narrow files, context adds surrounding lines, and limit/skip page through matches. Syntax errors include recovery guidance; no matches may require broader paths or a literal file_search query. The active file interface determines the read evidence. Only displayed source lines count as observations; truncated output does not establish a complete read.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |

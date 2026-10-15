@@ -291,3 +291,24 @@ test("missing and closed pages are never implicitly reopened", () =>
     ).rejects.toMatchObject({ code: "browser_page_missing" })
     expect(session.pages).toEqual([])
   }))
+
+for (const agentSessionID of [undefined, "agent"]) {
+  test(`resuming a missing page rejects before host work or activity (${agentSessionID ?? "human"})`, () =>
+    runtime.run(async () => {
+      let calls = 0
+      const { session } = await setup(async () => {
+        calls++
+        return { type: "void" }
+      })
+      await expect(
+        BrowserCommandService.execute(owner, {
+          pageId: "missing-page",
+          commandId: "missing-resume",
+          agentSessionID,
+          command: { type: "resume" },
+        }),
+      ).rejects.toMatchObject({ code: "browser_page_missing", pageId: "missing-page", retryable: false })
+      expect(calls).toBe(0)
+      expect(BrowserControl.sessionState(session).agentActivities).toEqual([])
+    }))
+}

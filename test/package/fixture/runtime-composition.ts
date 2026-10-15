@@ -305,6 +305,7 @@ try {
           assert.equal(page.id, "page-installed")
           assert.equal(page.title, "Installed Browser")
           assert.ok(page.profileId)
+          assert.equal(page.createdBySessionID, undefined)
           assert.equal(browser.getPage(page.id), undefined)
           assert.equal(BrowserRuntime.resourceStats().ownerCount, 1)
           assert.equal(BrowserRuntime.resourceStats().processCount, 0)
@@ -314,7 +315,7 @@ try {
             "sessions-v5",
             digest,
           ])
-          assert.equal(stored.version, 5)
+          assert.equal(stored.version, 6)
           assert.deepEqual(stored.pages, browser.pages)
           assert.equal((await BrowserMigration.run(owner)).changed, false)
         }

@@ -790,7 +790,7 @@ export namespace ToolResolver {
     const smartAllowEligible = SmartAllow.isEligible(decision.action, envelope.capabilities)
 
     // User/session rules: check persistent user rules (from "Always allow"
-    // button) and ephemeral session rules. File rules retain ordered precedence. Allow only
+    // button) and ephemeral session rules. Saved denials retain precedence. Allow only
     // bypasses soft asks; non-bypassable asks must still reach the user.
     if (decision.action === "ask" || decision.action === "deny") {
       const patterns = isFilePermission(toolName)

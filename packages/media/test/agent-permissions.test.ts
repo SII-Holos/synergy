@@ -80,34 +80,40 @@ for (const selected of [false, true]) {
   }
 }
 
-test("media grants preserve the builtin role and respect explicit denials", async () => {
-  await using runtime = await testRuntime({
-    register() {
-      registerAgentPermissions()
-      ConfigSource.register({
-        resolve: async () => ({
-          agent: {
-            [PrimaryAgentIdentity.names.coding]: { name: "renamed", permission: { scan_document: "deny" } },
-          },
-        }),
-      })
-    },
-  })
-  await runtime.run(() =>
-    ScopeContext.provide({
-      scope: Scope.home(),
-      fn: async () => {
-        const coding = await Agent.get(PrimaryAgentIdentity.names.coding)
-        expect(coding.name).toBe("renamed")
-        expect(PermissionNext.evaluate("scan_document", "*", coding.permission).action).toBe("deny")
-        const agents = await Agent.list()
-        const reader = agents.find(
-          (agent) => agent.mode === "subagent" && agent.permission.some((rule) => rule.permission === "scan_document"),
-        )!
-        expect(reader).toBeDefined()
-        expect(PermissionNext.evaluate("scan_document", "*", reader.permission).action).toBe("allow")
-        expect(PermissionNext.evaluate("look_at", "*", reader.permission).action).toBe("allow")
+test.each(["replace", "hashline", "patch"] as const)(
+  "media grants preserve builtin roles and denials with %s files",
+  async (fileToolGroup) => {
+    await using runtime = await testRuntime({
+      register() {
+        registerAgentPermissions()
+        ConfigSource.register({
+          resolve: async () => ({
+            fileToolGroup,
+            agent: {
+              [PrimaryAgentIdentity.names.coding]: { name: "renamed", permission: { scan_document: "deny" } },
+              "fixture-builder": { permission: { scan_document: "deny" } },
+            },
+          }),
+        })
       },
-    }),
-  )
-})
+    })
+    await runtime.run(() =>
+      ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const coding = await Agent.get(PrimaryAgentIdentity.names.coding)
+          expect(coding.name).toBe("renamed")
+          expect(PermissionNext.evaluate("scan_document", "*", coding.permission).action).toBe("deny")
+          for (const name of ["implementation-engineer", "property-test-engineer", "documentation-engineer"]) {
+            const reader = await Agent.get(name)
+            expect(reader.mode).toBe("subagent")
+            expect(PermissionNext.evaluate("scan_document", "*", reader.permission).action).toBe("allow")
+            expect(PermissionNext.evaluate("look_at", "*", reader.permission).action).toBe("allow")
+          }
+          const denied = await Agent.get("fixture-builder")
+          expect(PermissionNext.evaluate("scan_document", "*", denied.permission).action).toBe("deny")
+        },
+      }),
+    )
+  },
+)

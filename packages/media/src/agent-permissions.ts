@@ -12,7 +12,8 @@ const contribution: AgentPermissionContributions.Phases = {
     if (identity.owner !== "harness") return []
     return PermissionNext.fromConfig({
       ...(agent.mode === "subagent" ? { look_at: "allow" } : {}),
-      ...(identity.primaryRole === "coding" || identity.subagentProfile?.startsWith("anchored")
+      ...(identity.primaryRole === "coding" ||
+      ["codeWrite", "testWrite", "docsWrite"].includes(identity.subagentProfile ?? "")
         ? { scan_document: "allow" }
         : {}),
     })

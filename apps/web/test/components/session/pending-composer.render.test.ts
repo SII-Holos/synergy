@@ -88,7 +88,9 @@ test("the live queue follows Inbox identity, mode actions, delivery and session 
   setItems([{ ...item, mode: "steer" }])
   expect(button()).toBe(original)
   expect(document.activeElement).toBe(original)
-  expect(original.textContent).toBe("Queue")
+  expect(original.getAttribute("aria-label")).toBe("Queue")
+  expect(original.textContent).toBe("")
+  expect(original.querySelector("svg")).not.toBeNull()
   original.click()
   expect(guideCalls).toBe(1)
   expect(original.disabled).toBe(true)
@@ -115,7 +117,7 @@ test("the live queue follows Inbox identity, mode actions, delivery and session 
   expect(root.querySelectorAll("button").length).toBe(0)
   setRollback(false)
   Array.from(root.querySelectorAll<HTMLButtonElement>("button"))
-    .find((element) => element.textContent === "Delete")!
+    .find((element) => element.getAttribute("aria-label") === "Delete")!
     .click()
   expect(root.querySelector("section")).toBeNull()
   setItems([item])
@@ -173,7 +175,7 @@ test("queued messages expose editing and deletion with complete authored text an
   const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>("button"))
   const edit = buttons.find((button) => button.getAttribute("aria-label") === "Edit message")
   expect(edit).toBeDefined()
-  expect(buttons.some((button) => button.textContent === "Delete")).toBe(true)
+  expect(buttons.some((button) => button.getAttribute("aria-label") === "Delete")).toBe(true)
   expect(root.textContent).not.toContain("Withdraw")
   edit!.click()
   await Promise.resolve()
@@ -272,7 +274,7 @@ test("withdrawal recovery respects rollback and first-task locks", async () => {
       button.textContent?.includes("Retry"),
     )
   Array.from(root.querySelectorAll<HTMLButtonElement>("button"))
-    .find((button) => button.textContent === "Delete")!
+    .find((button) => button.getAttribute("aria-label") === "Delete")!
     .click()
   await Promise.resolve()
   await Promise.resolve()

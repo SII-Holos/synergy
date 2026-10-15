@@ -100,12 +100,13 @@ export const ParseCodeTool = Tool.define(
       skip: z.number().int().min(0).optional().describe("Matches to skip for pagination"),
     })
     return {
-      description: DESCRIPTION.replaceAll("{{reader}}", reader).replaceAll(
-        "{{evidence}}",
-        anchored
+      description:
+        DESCRIPTION +
+        "\n\n" +
+        (anchored
           ? "Matched files include current Hashline tags and displayed-line evidence."
-          : "Results contain ordinary line ranges; read the file before editing.",
-      ),
+          : "Results contain ordinary line ranges; read the file before editing.") +
+        ` Use ${reader} for additional context.`,
       parameters,
       async execute(params: z.infer<typeof parameters>, ctx) {
         if (!params.pattern) throw new Error("pattern is required")

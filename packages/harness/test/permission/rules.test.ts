@@ -94,6 +94,37 @@ describe("PermissionRules.evaluate", () => {
       expect(r.action).toBe("ask")
     }))
 
+  for (const [semantic, ids] of Object.entries({
+    read: ["read", "view_file", "scan_files", "file_search", "parse_code"],
+    edit: ["edit", "write", "revise_file", "save_file", "resolve_conflicts", "apply_patch"],
+  })) {
+    test(`saved ${semantic} denials survive later concrete or session grants`, () =>
+      runtime.run(() => {
+        for (const id of ids) {
+          const denied: PermissionRules.Rule = {
+            permission: semantic,
+            pattern: "private/*",
+            action: "deny",
+            scope: "user",
+          }
+          const granted: PermissionRules.Rule = { permission: id, pattern: "*", action: "allow", scope: "session" }
+          expect(PermissionRules.evaluate(id, "private/key", [denied], [granted])).toEqual({
+            action: "deny",
+            rule: denied,
+          })
+          expect(PermissionRules.evaluate(id, "src/main.ts", [denied], [granted]).action).toBe("allow")
+          expect(
+            PermissionRules.evaluate(
+              id,
+              "private/key",
+              [{ ...denied, permission: id }],
+              [{ ...granted, permission: semantic }],
+            ).action,
+          ).toBe("deny")
+        }
+      }))
+  }
+
   test("wildcard permission matches any tool", () =>
     runtime.run(() => {
       const wildcard: PermissionRules.Rule[] = [{ permission: "*", pattern: "*", action: "allow", scope: "user" }]

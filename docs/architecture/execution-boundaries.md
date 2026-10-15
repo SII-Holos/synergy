@@ -143,7 +143,7 @@ An authorization decision combines several sources without treating them as inte
 - preauthorized session actions cover narrowly declared workflow operations
 - SmartAllow can remove eligible false-positive asks or soft denials
 
-Explicit denials and hard boundaries are not bypassed by preauthorization. Saved non-file rules retain deny precedence. File permissions match both the semantic `read`/`edit` key and the concrete tool ID in existing layer order; the last matching rule wins for each actual path. Search results authorize their file paths before exposing content or read evidence. A synthetic wildcard must not override a later exact-path allow. Mandatory external access confirmation and profile boundaries still apply.
+Explicit denials and hard boundaries are not bypassed by preauthorization. Saved user/session rules retain deny precedence for every tool, including files. Agent/config permissions match both the semantic `read`/`edit` key and the concrete tool ID in existing layer order; the last matching configuration rule wins for each actual path. A saved denial cannot be overridden by a later saved allow. Search results authorize their file paths before exposing content or read evidence. A synthetic wildcard must not override a later exact-path allow. Mandatory external access confirmation and profile boundaries still apply.
 
 A multi-target permission request evaluates every target before creating a pending approval. Any denied target rejects the complete request without emitting an approval event, regardless of target order or mandatory-confirmation metadata. Otherwise, targets requiring confirmation share one pending request; its cancellation and reply apply to the complete target list.
 

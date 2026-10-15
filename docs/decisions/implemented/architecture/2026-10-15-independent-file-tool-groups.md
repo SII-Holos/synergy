@@ -8,7 +8,7 @@ File syntax was coupled to built-in Agent permission lists. Changing roles chang
 
 ## Decision
 
-The Scope's ordinary configuration resolves one closed `fileToolGroup`, with `patch` as the universal fallback. Tool membership narrows the common catalog before initialization; permissions and component availability narrow it further. Readers and writers share semantic read/edit permission lookup while retaining concrete identities and ordered user-rule precedence. Agent, model and Session settings do not select the interface.
+The Scope's ordinary configuration resolves one closed `fileToolGroup`, with `patch` as the universal fallback. Tool membership narrows the common catalog before initialization; permissions and component availability narrow it further. Readers and writers share semantic read/edit permission lookup while retaining concrete identities and ordered Agent/config precedence. Saved user/session denials retain deny precedence, including when a later concrete tool grant matches. Agent, model and Session settings do not select the interface. Optional media grants use stable role profiles independent of file syntax, preserving document access for code, test and documentation writers and honoring explicit user denials.
 
 Native patch execution uses a pure grammar shared with the Policy worker and conditional selected-view writers. Full preflight precedes sequential commits. Coherent fingerprints allow dormant object tokens to refresh across unrelated revisions without accepting changed targets. Every committed or unresolved stage survives partial failure and cancellation in result metadata and rollout evidence. Public precise search uses existing selected-view engines; deprecated search wrappers remain importable but unregistered.
 
@@ -31,3 +31,5 @@ File-change result views reuse the Review diff renderer for edit, revise_file an
 ## Consequences
 
 The default intentionally changes prior interfaces. Permission-only configurations must select the group explicitly; no migration guesses intent or removes denies. Ordinary patch read evidence protects freshness but does not claim Hashline's displayed-line guarantee. Sequential patches can leave committed files and created parents after failure. Recovery requires inspecting those effects and reconciling existing operation identities. This decision makes no comparative model-performance claim.
+
+Native controlled-model tests select a complete reader/writer pair from the advertised catalog. They verify actual file bytes, worktree restoration, compaction and usage receipts without overriding the product default to retain an obsolete test interface.

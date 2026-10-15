@@ -1,5 +1,10 @@
-import { expect, test } from "bun:test"
+import { beforeEach, expect, test } from "bun:test"
 import { page, url, frames, errors } from "../../support/conversation-process"
+
+beforeEach(async () => {
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 })
+})
 
 for (const ended of [false, true])
   for (const reading of [false, true]) {
@@ -130,6 +135,15 @@ for (const ended of [false, true]) {
             el.scrollTop = 100
             el.dispatchEvent(new Event("scroll"))
           })
+          await page.waitForFunction(() => {
+            if (document.querySelector("[data-markdown-pending]")) return false
+            const rows = [...document.querySelectorAll<HTMLElement>("[data-scroller] [data-display-row]")]
+              .filter((el) => !el.closest('[data-component="process-window"]'))
+              .map((el) => el.getBoundingClientRect())
+              .filter((rect) => rect.height > 0)
+              .sort((a, b) => a.top - b.top)
+            return rows.every((rect, i) => i === 0 || rect.top >= rows[i - 1].bottom - 1)
+          })
           await frames()
         }
         const result = await page.evaluate(
@@ -178,7 +192,7 @@ for (const ended of [false, true]) {
         expect(result.hiddenReads).toEqual(result.readsBefore)
         for (const [id, count] of Object.entries(result.readsBefore)) expect(result.readsAfter[id], id).toBe(count)
         expect(result.hiddenAnchor).toBe(true)
-        expect(result.samples.every((s) => s.retained && s.visible)).toBe(true)
+        expect(result.samples.filter((sample) => !sample.retained || !sample.visible)).toEqual([])
         expect(Math.max(...result.samples.map((s) => Math.abs(s.offset)))).toBeLessThanOrEqual(1)
         if (reading) expect(Math.max(...result.samples.map((s) => Math.abs(s.drift)))).toBeLessThanOrEqual(1)
         else {

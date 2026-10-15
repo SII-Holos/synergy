@@ -49,3 +49,5 @@ File-interface selection belongs solely to resolved Scope configuration. Grant s
 ## Handoff
 
 Report the agent class, visibility/delegation boundary, permission profile, model role, prompt location, tests run, and any deliberate catalog exclusions.
+
+When consolidating built-in permission profiles, audit every optional domain contribution by stable registration identity. Verify media and code-evidence grants for renamed primary agents and writer/reviewer roles across each configured file interface; explicit user denials must still win.

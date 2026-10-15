@@ -197,8 +197,10 @@ test("terminal process collection preserves the visible answer while following i
     )
     window.__conversationProcess.latest()
   })
+  await frames()
   await page.waitForFunction(
     () =>
+      !document.querySelector("[data-markdown-pending]") &&
       !document.querySelector("[data-motion-resizing]") &&
       !document.querySelector("[data-follow-motion]")!.getAnimations().length,
   )

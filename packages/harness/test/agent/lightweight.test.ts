@@ -15,7 +15,7 @@ function evalPerm(agent: Agent.Info | undefined, permission: string): Permission
   return PermissionNext.evaluate(permission, "*", agent.permission).action
 }
 
-test("lightweight primary keeps the classic execution surface with file_search as the only search tool", () =>
+test("lightweight primary keeps semantic file permissions with file_search as the only search tool", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
@@ -27,17 +27,18 @@ test("lightweight primary keeps the classic execution surface with file_search a
         expect(evalPerm(flash, "read")).toBe("allow")
         expect(evalPerm(flash, "edit")).toBe("ask")
         expect(evalPerm(flash, "todowrite")).toBe("deny")
-        expect(evalPerm(flash, "view_file")).toBe("deny")
+        expect(evalPerm(flash, "view_file")).toBe("allow")
+        expect(evalPerm(flash, "scan_files")).toBe("allow")
+        for (const id of ["write", "revise_file", "save_file", "resolve_conflicts", "apply_patch"])
+          expect(evalPerm(flash, id)).toBe("ask")
         expect(evalPerm(flash, "task")).toBe("allow")
         expect(evalPerm(flash, "dagwrite")).toBe("allow")
         expect(flash!.permission.filter((rule) => /^(memory_|ast_grep$)/.test(rule.permission))).toEqual([])
-        for (const id of ["memory_write", "memory_edit", "ast_grep"])
+        for (const id of ["memory_write", "memory_edit", "ast_grep", "glob", "grep"])
           expect(await ToolRegistry.find(id)).toBeUndefined()
         expect(evalPerm(flash, "question")).toBe("allow")
         expect(evalPerm(flash, "expand_tools")).toBe("allow")
         expect(evalPerm(flash, "file_search")).not.toBe("deny")
-        expect(evalPerm(flash, "glob")).toBe("deny")
-        expect(evalPerm(flash, "grep")).toBe("deny")
       },
     })
   }))
