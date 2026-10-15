@@ -41,5 +41,18 @@ test("omitted, malformed and synthetic multi-file diffs never invent code or lin
     const preview = toolPatchPreview(input, "a.ts, b.ts")
     expect(preview.metadata).toBeUndefined()
     expect(preview.rows).toEqual([])
+    expect(preview.plain).toBe(input)
+    expect(preview.changes).toBeUndefined()
   }
+})
+
+test("legacy patch fragments remain readable within the plain-text budget", () => {
+  expect(toolPatchPreview("+historic", "file.ts")).toMatchObject({ plain: "+historic", truncated: false })
+  const large = toolPatchPreview("+😀".repeat(10000) + "\n".repeat(1000), "file.ts")
+  expect(large.plain).toBeTruthy()
+  expect(new TextEncoder().encode(large.plain).length).toBeLessThanOrEqual(TOOL_PREVIEW_BYTES)
+  expect(large.plain?.endsWith("\ud83d")).toBe(false)
+  expect(large.truncated).toBe(true)
+  expect(large.rows).toEqual([])
+  expect(large.changes).toBeUndefined()
 })

@@ -62,7 +62,20 @@ export function ToolPatchPreview(props: {
     <Show
       when={preview().rows.length}
       fallback={
-        <div data-slot="tool-patch-empty">{_({ id: "ui.diff.noPreview", message: "No text preview available." })}</div>
+        <Show
+          when={preview().plain}
+          fallback={
+            <div data-slot="tool-patch-empty">
+              {_({ id: "ui.diff.noPreview", message: "No text preview available." })}
+            </div>
+          }
+        >
+          {(text) => (
+            <pre data-slot="tool-patch-raw">
+              <code>{text()}</code>
+            </pre>
+          )}
+        </Show>
       }
     >
       <div data-slot="tool-patch-code">

@@ -285,36 +285,43 @@ for (const stage of ["metadata", "activity-mask", "result-mask"] as const)
     })
   }, 30_000)
 
-test("a later exact saved file allow still reaches mandatory external approval", async () => {
-  await using runtime = await testRuntime({
-    env: { SYNERGY_CONFIG_CONTENT: JSON.stringify({ provider: { openai: { options: { apiKey: "fixture-key" } } } }) },
-  })
-  await runtime.run(async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const target = path.join(runtime.host.home, "external-patch.txt")
-        await PermissionRules.addUserRule({ permission: "edit", pattern: "*", action: "deny" })
-        await PermissionRules.addUserRule({ permission: "apply_patch", pattern: target, action: "allow" })
-        await using prepared = await prepare(PermissionNext.fromConfig({ "*": "allow" }))
-        const requests: PermissionNext.Request[] = []
-        const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, async (event) => {
-          requests.push(event.properties)
-          await PermissionNext.reply({ requestID: event.properties.id, reply: "once" })
-        })
-        try {
-          expect(
-            await prepared.execute("apply_patch", {
-              patch: `*** Begin Patch\n*** Add File: ${target}\n+approved\n*** End Patch`,
-            }),
-          ).toMatchObject({ metadata: { outcome: "applied" } })
-          expect(requests.some((request) => request.permission === "external_directory")).toBe(true)
-          expect(await Bun.file(target).text()).toBe("approved\n")
-        } finally {
-          unsubscribe()
-        }
-      },
+for (const action of ["deny", "ask"] as const)
+  test(`a later exact file allow preserves saved ${action} and mandatory external approval`, async () => {
+    await using runtime = await testRuntime({
+      env: { SYNERGY_CONFIG_CONTENT: JSON.stringify({ provider: { openai: { options: { apiKey: "fixture-key" } } } }) },
     })
-  })
-}, 30_000)
+    await runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const target = path.join(runtime.host.home, "external-patch.txt")
+          await PermissionRules.addUserRule({ permission: "edit", pattern: "*", action })
+          await PermissionRules.addUserRule({ permission: "apply_patch", pattern: target, action: "allow" })
+          await using prepared = await prepare(PermissionNext.fromConfig({ "*": "allow" }))
+          const requests: PermissionNext.Request[] = []
+          const unsubscribe = Bus.subscribe(PermissionNext.Event.Asked, async (event) => {
+            requests.push(event.properties)
+            await PermissionNext.reply({ requestID: event.properties.id, reply: "once" })
+          })
+          try {
+            const execute = () =>
+              prepared.execute("apply_patch", {
+                patch: `*** Begin Patch\n*** Add File: ${target}\n+approved\n*** End Patch`,
+              })
+            if (action === "deny") {
+              await expect(execute()).rejects.toBeInstanceOf(EnforcementError.PolicyDenied)
+              expect(requests).toHaveLength(0)
+              expect(await Bun.file(target).exists()).toBe(false)
+              return
+            }
+            expect(await execute()).toMatchObject({ metadata: { outcome: "applied" } })
+            expect(requests.some((request) => request.permission === "external_directory")).toBe(true)
+            expect(await Bun.file(target).text()).toBe("approved\n")
+          } finally {
+            unsubscribe()
+          }
+        },
+      })
+    })
+  }, 30_000)

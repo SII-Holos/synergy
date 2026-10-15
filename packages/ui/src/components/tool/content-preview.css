@@ -77,6 +77,17 @@
     line-height: 24px;
   }
 
+  [data-slot="tool-patch-raw"] {
+    margin: 0;
+    padding: 8px 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-small);
+    line-height: 24px;
+    color: var(--text-base);
+  }
+
   [data-slot="tool-patch-line"] {
     display: grid;
     grid-template-columns: 4ch 2ch minmax(0, 1fr);

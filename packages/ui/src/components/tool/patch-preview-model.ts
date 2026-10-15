@@ -5,7 +5,10 @@ import { previewToolContent, TOOL_PREVIEW_LINES } from "./content-preview-model"
 export function toolPatchPreview(patch: string, path?: string) {
   const parsed = highlightInputAllowed(patch) ? parseRenderablePatch(patch) : undefined
   const rows: Array<{ kind: "context" | "add" | "delete"; number: number; text: string; gap: boolean }> = []
-  if (!parsed) return { rows, truncated: !!patch && !highlightInputAllowed(patch) }
+  if (!parsed) {
+    const preview = previewToolContent(patch)
+    return { rows, plain: preview.text, truncated: preview.truncated }
+  }
   for (const hunk of parsed.hunks) {
     const firstRow = rows.length
     for (const block of hunk.hunkContent) {
@@ -30,6 +33,7 @@ export function toolPatchPreview(patch: string, path?: string) {
   }
   const bounded = previewToolContent(rows.map((row) => row.text).join("\n"))
   return {
+    plain: undefined,
     metadata: bounded.truncated ? undefined : { ...parsed, name: path || parsed.name },
     rows: bounded.truncated ? bounded.text.split("\n").map((text, index) => ({ ...rows[index], text })) : rows,
     changes: {
