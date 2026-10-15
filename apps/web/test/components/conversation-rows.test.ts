@@ -83,6 +83,32 @@ test("hidden media summaries leave no virtual row before a resumed result", () =
   }
 })
 
+test("hidden context messages never reserve rows or read body summaries", () => {
+  const hidden = {
+    ...root,
+    id: "context",
+    isRoot: false,
+    visible: false,
+    origin: { type: "system", detail: "runtime-context" },
+  } as Message
+  for (const page of [undefined, { hasMore: true }, { hasMore: false }]) {
+    const reads: string[] = []
+    const input = {
+      timeline: [root],
+      summaries: (id: string) => {
+        reads.push(id)
+        return id === hidden.id ? [{ ...parts[0], id: "context-text", messageID: id, type: "text" }] : []
+      },
+      page: (id: string) => (id === hidden.id ? page : { hasMore: false }),
+      process: () => ({ open: true, working: true }),
+    }
+    const before = buildConversationRows({ ...input, messagesFor: () => [reply] })
+    const after = buildConversationRows({ ...input, previous: before, messagesFor: () => [hidden, reply] })
+    expect(after.map((row) => row.key)).toEqual(before.map((row) => row.key))
+    expect(reads).not.toContain(hidden.id)
+  }
+})
+
 test("user groups preserve their boundaries and keys through canonical message aliases", () => {
   const canonical = { ...root, id: "accepted-root" }
   const content = ["attachment", "text", "text"].map(

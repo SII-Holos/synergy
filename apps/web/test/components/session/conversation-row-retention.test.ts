@@ -363,6 +363,7 @@ beforeAll(async () => {
         }
         export const useGlobalSync = () => ({partArrival, peekScopeState: () => [{messageWindow: {[session()]: {}}}], reconnectVersion: recovery, ready: true, scopeRecoveryPending: () => false})
         export const SessionSubmissionStatus = () => null
+        export const createOptimisticSubmissionActivity = () => () => undefined
         const transitions = createSessionTransitionState()
         export const useSessionTransition = () => transitions
         export const submissionForRoot = (_, rootID) => {

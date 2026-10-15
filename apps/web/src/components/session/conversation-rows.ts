@@ -110,7 +110,12 @@ export function buildConversationRows(input: {
     const messages =
       root.role === "assistant"
         ? [root]
-        : [root, ...input.messagesFor(root).filter((message) => message.id !== root.id)]
+        : [
+            root,
+            ...input
+              .messagesFor(root)
+              .filter((message) => message.id !== root.id && (message.role !== "user" || message.visible !== false)),
+          ]
     const processState = root.role === "user" ? input.process?.(root) : undefined
     const lastAssistant = messages.findLast((message) => message.role === "assistant")
     const isCompaction = (message: Message) =>

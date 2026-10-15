@@ -20,7 +20,11 @@ import {
 } from "../../../src/components/prompt-input/submission-parts"
 import { ConversationViewport } from "../../../src/components/session/conversation-viewport"
 import { VirtualConversationRows } from "../../../src/components/session/virtual-conversation-rows"
-import { SessionSubmissionStatus, submissionForRoot } from "../../../src/components/session/session-submission-status"
+import {
+  createOptimisticSubmissionActivity,
+  SessionSubmissionStatus,
+  submissionForRoot,
+} from "../../../src/components/session/session-submission-status"
 import {
   createNewSessionTransitionProgress,
   createSessionTransitionHandoffErrorProgress,
@@ -32,7 +36,8 @@ export function SubmissionFixture(props: { locale(): void }) {
   const state = createSessionTransitionState()
   const lease = state.prepareDraft("draft")
   const [route, setRoute] = createSignal(false)
-  const entry = () => state.get(route() ? "session" : "draft")
+  const existing = new URL(location.href).searchParams.has("existing")
+  const entry = () => (existing ? undefined : state.get(route() ? "session" : "draft"))
   const [status, setStatus] = createSignal<SessionStatus>({ type: "idle" })
   const [scroll, setScroll] = createSignal<HTMLDivElement>()
   const [data, setData] = createStore<Data>({ session: [], message: {}, part: {}, session_diff: {} })
@@ -65,6 +70,10 @@ export function SubmissionFixture(props: { locale(): void }) {
   }).map((part) => ({ ...part, sessionID: "session", messageID: "message" })) as Part[]
   lease.submit({ text: prompt[0].content, messageID: message.id, prompt, message, parts })
   lease.progress(createNewSessionWorkspaceProgress({ selection: { mode: "create" }, stage: "workspace" }))
+  if (existing) {
+    setData("message", "session", [message])
+    setData("part", message.id, parts)
+  }
   const projection = createMemo(() => buildSessionTurnProjection(view.messagesFor("session")))
   const [pageReady, setPageReady] = createSignal(true)
   let contentLoads = 0
@@ -111,6 +120,13 @@ export function SubmissionFixture(props: { locale(): void }) {
     },
   }
   const owner = ["server", "scope", "session"]
+  const [executionSettled, setExecutionSettled] = createSignal(false)
+  const optimistic = createOptimisticSubmissionActivity({
+    message: () => view.messagesFor("session").at(-1),
+    messageKey: (id) => state.messageIdentity.key(owner, id),
+    status,
+    settled: executionSettled,
+  })
   state.messageArrival.add(owner, message.id)
   let retries = 0
   const fixture = {
@@ -158,6 +174,10 @@ export function SubmissionFixture(props: { locale(): void }) {
         setStatus({ type: "busy", activity: { phase: "waiting_model", rootID: id, startedAt: 1 } })
         state.clear("session")
       }),
+    paused: () => setStatus({ type: "paused", reason: "workflow", since: 1 }),
+    settle: () => setExecutionSettled(true),
+    remove: () => setData("message", "session", []),
+    replace: () => setData("message", "session", [{ ...message, id: "other", rootID: "other", metadata: {} }]),
     lateReceipt: () =>
       state.set("session", createNewSessionTransitionProgress(), undefined, {
         messageID: "message",
@@ -211,7 +231,7 @@ export function SubmissionFixture(props: { locale(): void }) {
                     scrollRef={scroll()}
                     messageKey={(id) => state.messageIdentity.key(owner, id)}
                     takeUserArrival={(id) => state.messageArrival.take(owner, id)}
-                    submissionFor={(id) => submissionForRoot(entry(), id, status())}
+                    submissionFor={(id) => submissionForRoot(entry(), id, status(), optimistic())}
                   />
                   <Show when={entry()}>{(value) => <SessionSubmissionStatus entry={value()} hideLoading />}</Show>
                 </ConversationViewport>
