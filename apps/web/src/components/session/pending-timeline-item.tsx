@@ -2,6 +2,7 @@ import { For, Show, createMemo, createSignal, onCleanup } from "solid-js"
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { AttachmentGallery } from "@ericsanchezok/synergy-ui/attachment-card"
 import { ResourceReferenceProvider } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { extractPromptDraft } from "@/utils/prompt"
@@ -92,31 +93,41 @@ export function PendingTimelineItem(props: {
         <div class="pending-composer-actions">
           <Show when={view().primaryAction}>
             {(action) => (
-              <Button
-                variant="ghost"
-                disabled={pending()}
-                title={action() === "queue" ? _(S.convMoveToQueueTitle) : _(S.convGuideRunTitle)}
-                onClick={() => void run("guide")}
-              >
-                {action() === "queue" ? _(S.convQueue) : _(S.convGuide)}
-              </Button>
+              <Tooltip value={action() === "queue" ? _(S.convMoveToQueueTitle) : _(S.convGuideRunTitle)}>
+                <Button
+                  variant="ghost"
+                  disabled={pending()}
+                  aria-label={action() === "queue" ? _(S.convQueue) : _(S.convGuide)}
+                  onClick={() => void run("guide")}
+                >
+                  <Icon name={getSemanticIcon(action() === "queue" ? "inbox.task" : "inbox.steer")} size="small" />
+                </Button>
+              </Tooltip>
             )}
           </Show>
           <Show when={canEdit()}>
-            <Button
-              variant="ghost"
-              disabled={pending()}
-              aria-label={_(S.convEditPending)}
-              title={_(S.convEditPending)}
-              onClick={() => void run("edit")}
-            >
-              {_(S.convEditPending)}
-            </Button>
+            <Tooltip value={_(S.convEditPending)}>
+              <Button
+                variant="ghost"
+                disabled={pending()}
+                aria-label={_(S.convEditPending)}
+                onClick={() => void run("edit")}
+              >
+                <Icon name={getSemanticIcon("action.edit")} size="small" />
+              </Button>
+            </Tooltip>
           </Show>
           <Show when={view().canWithdraw}>
-            <Button variant="ghost" disabled={pending()} title={_(S.inboxDelete)} onClick={() => void run("remove")}>
-              {_(S.inboxDelete)}
-            </Button>
+            <Tooltip value={_(S.inboxDelete)}>
+              <Button
+                variant="ghost"
+                disabled={pending()}
+                aria-label={_(S.inboxDelete)}
+                onClick={() => void run("remove")}
+              >
+                <Icon name={getSemanticIcon("action.remove")} size="small" />
+              </Button>
+            </Tooltip>
           </Show>
         </div>
       </div>

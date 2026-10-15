@@ -3,6 +3,7 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { NoteStore } from "@ericsanchezok/synergy-note"
@@ -215,9 +216,17 @@ When the Blueprint is complete and verified, request independent review through 
       status: "running",
       userPrompt: normalized ?? null,
     })
-    void deliverFirstPrompt(before.sessionID, before, normalized).catch((err) => {
+    void deliverFirstPrompt(before.sessionID, before, normalized).catch(async (err) => {
+      // Delivery awaits the executing turn; a user interruption is not a failed start.
+      if (
+        (err instanceof Error && err.name === "AbortError") ||
+        (MessageV2.SessionTerminalError.isInstance(err) && err.data.errorName === MessageV2.AbortedError.name)
+      ) {
+        const paused = await SessionLifecycle.snapshot(before.sessionID)
+        if (paused?.reason === "aborted" || paused?.reason === "interrupted") return
+      }
       log.error("failed to deliver BlueprintLoop start prompt", { loopID, error: err })
-      BlueprintLoopStore.updateStatus(scopeID, loopID, {
+      await BlueprintLoopStore.updateStatus(scopeID, loopID, {
         status: "failed",
         error: err?.message ?? String(err),
       }).catch(() => undefined)

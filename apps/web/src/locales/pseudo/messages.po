@@ -14412,15 +14412,15 @@ msgid "prompt.loopStatus.bound"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "prompt.loopStatus.cancelled"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.completed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "prompt.loopStatus.controls"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -14433,6 +14433,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failure"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -14453,10 +14457,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.reason"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "prompt.loopStatus.remove"
 msgstr ""
 
 #. js-lingui-explicit-id

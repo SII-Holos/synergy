@@ -14245,7 +14245,7 @@ msgstr "更改将从模型的下一步执行开始生效。"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.inactive"
-msgstr "Light Loop 已不再处于活动状态。关闭此对话框以继续。"
+msgstr "本次 Light Loop 已结束。"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14259,7 +14259,7 @@ msgstr "任务描述"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.reviewPending"
-msgstr "完成情况审核待处理。请先停止或完成审核，再更改任务。"
+msgstr "审核中，目标只读。"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14287,7 +14287,7 @@ msgstr "Light Loop 任务"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.working"
-msgstr "会话正在运行。请先停止会话或等待其空闲，再更改任务。"
+msgstr "暂停后可编辑目标。"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14412,6 +14412,10 @@ msgid "prompt.loopStatus.bound"
 msgstr "已绑定"
 
 #. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancel"
+msgstr "取消本次循环"
+
+#. js-lingui-explicit-id
 msgid "prompt.loopStatus.cancelled"
 msgstr "已取消"
 
@@ -14420,24 +14424,24 @@ msgid "prompt.loopStatus.completed"
 msgstr "审核通过"
 
 #. js-lingui-explicit-id
-msgid "prompt.loopStatus.controls"
-msgstr "通过消息控制按钮暂停或继续；长按该按钮可结束 Loop。"
-
-#. js-lingui-explicit-id
 msgid "prompt.loopStatus.details"
-msgstr "Loop 状态"
+msgstr "详情"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.edit"
-msgstr "编辑任务"
+msgstr "编辑目标"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.failed"
 msgstr "失败"
 
 #. js-lingui-explicit-id
+msgid "prompt.loopStatus.failure"
+msgstr "失败原因"
+
+#. js-lingui-explicit-id
 msgid "prompt.loopStatus.iterationExhausted"
-msgstr "审核次数已用尽"
+msgstr "审核达上限"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.openNote"
@@ -14453,11 +14457,7 @@ msgstr "发送任务后开始"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.reason"
-msgstr "审核或失败详情"
-
-#. js-lingui-explicit-id
-msgid "prompt.loopStatus.remove"
-msgstr "解除绑定"
+msgstr "审核意见"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.resolving"

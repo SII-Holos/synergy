@@ -20,7 +20,7 @@ export function PendingComposerQueue(props: {
     <Show when={props.identity} keyed>
       {(_identity) => (
         <Show when={props.items.length}>
-          <section class="pending-composer-queue" aria-label={i18n._(S.inboxTitle)}>
+          <section class="pending-composer-layer pending-composer-queue" aria-label={i18n._(S.inboxTitle)}>
             <div class="pending-composer-list" tabindex="0" role="group" aria-label={i18n._(S.inboxTitle)}>
               <For each={props.items.map((item) => item.id)}>
                 {(id) => (

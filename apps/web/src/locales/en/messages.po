@@ -14245,7 +14245,7 @@ msgstr "Changes apply from the next model step."
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.inactive"
-msgstr "Light Loop is no longer active. Close this dialog to continue."
+msgstr "This Light Loop has ended."
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14259,7 +14259,7 @@ msgstr "Task description"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.reviewPending"
-msgstr "Completion review is pending. Stop or finish the review before changing the task."
+msgstr "The goal is read-only during review."
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14287,7 +14287,7 @@ msgstr "Light Loop task"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.working"
-msgstr "The session is running. Stop it or wait until it is idle before changing the task."
+msgstr "Pause to edit the goal."
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14412,6 +14412,10 @@ msgid "prompt.loopStatus.bound"
 msgstr "Bound"
 
 #. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancel"
+msgstr "Cancel loop"
+
+#. js-lingui-explicit-id
 msgid "prompt.loopStatus.cancelled"
 msgstr "Cancelled"
 
@@ -14420,20 +14424,20 @@ msgid "prompt.loopStatus.completed"
 msgstr "Review passed"
 
 #. js-lingui-explicit-id
-msgid "prompt.loopStatus.controls"
-msgstr "Use the message control to pause or continue. Hold it to end the loop."
-
-#. js-lingui-explicit-id
 msgid "prompt.loopStatus.details"
-msgstr "Loop status"
+msgstr "Loop details"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.edit"
-msgstr "Edit task"
+msgstr "Edit goal"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.failed"
 msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failure"
+msgstr "Failure reason"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.iterationExhausted"
@@ -14453,11 +14457,7 @@ msgstr "Send a task to start"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.reason"
-msgstr "Review or failure details"
-
-#. js-lingui-explicit-id
-msgid "prompt.loopStatus.remove"
-msgstr "Unbind"
+msgstr "Review feedback"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.resolving"

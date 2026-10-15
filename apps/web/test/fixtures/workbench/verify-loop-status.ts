@@ -228,10 +228,14 @@ page.on("websocket", (socket) =>
     socketBytes += typeof event.payload === "string" ? Buffer.byteLength(event.payload) : event.payload.length
   }),
 )
-page.on("pageerror", (e) => console.log(JSON.stringify({ pageerror: e.message })))
+const pageErrors: string[] = []
+page.on("pageerror", (e) => pageErrors.push(e.message))
 async function capture(label: string) {
   await page.waitForTimeout(650)
   await page.getByText(/正在加载对话|Loading conversation/).waitFor({ state: "hidden", timeout: 45000 })
+  const state = page.locator('[data-component="loop-status-entry"] [role="status"]')
+  if (await state.count())
+    assert.ok(await state.evaluate((node) => node.scrollWidth <= node.clientWidth), "Loop status stays readable")
   const session = current
     ? (await client.session.get({ scopeID: "home", sessionID: current.id }, options)).data
     : undefined
@@ -271,7 +275,9 @@ try {
     | "lightloop"
     | "blueprint"
   )[]) {
-    for (const outcome of ["approve", "failed", "cancelled"] as const) {
+    for (const outcome of (["approve", "failed", "cancelled", "cancel-review"] as const).filter(
+      (outcome) => !process.env.LOOP_OUTCOME || outcome === process.env.LOOP_OUTCOME,
+    )) {
       const session = (
         await client.session.create(
           {
@@ -375,10 +381,49 @@ try {
         assert.equal(statusReads.length, before, "Warm return must reuse Loop state without status requests")
         assert.equal(bodyReads.length, beforeBodies, "Warm return must not reload unchanged message bodies")
       }
+      if (outcome === "approve") {
+        for (const text of ["检查队列图标操作", "保留消息附件与草稿"])
+          assert.equal(
+            (
+              await client.session.input(
+                { sessionID: session.id, scopeID: "home", parts: [{ type: "text", text }] },
+                options,
+              )
+            ).data.status,
+            "queued",
+          )
+        const queue = page.locator(".pending-composer-queue")
+        await queue.locator("[data-slot=pending-timeline-item]").nth(1).waitFor()
+        assert.equal(await page.locator(".prompt-input-shell [data-component=loop-status-entry]").count(), 0)
+        await capture(kind + "-queue-stack")
+        await page.setViewportSize({ width: 375, height: 900 })
+        await capture(kind + "-queue-stack-narrow")
+        await page.emulateMedia({ colorScheme: "dark" })
+        await capture(kind + "-queue-stack-dark")
+        await page.emulateMedia({ colorScheme: "light" })
+        await page.setViewportSize({ width: 1440, height: 1000 })
+        await queue
+          .getByRole("button", { name: /^引导$|^Guide$/ })
+          .first()
+          .click()
+        await queue.locator('[data-mode="steer"]').waitFor()
+        await queue
+          .getByRole("button", { name: /^编辑消息$|^Edit message$/ })
+          .last()
+          .click()
+        const editor = page.getByRole("textbox", { name: /发送消息|Send message/ })
+        await wait(async () => (await editor.innerText()).includes("保留消息附件与草稿"), "queue edit restores draft")
+        await capture(kind + "-queue-edited")
+        await editor.fill("")
+        await queue.getByRole("button", { name: /^删除$|^Delete$/ }).click()
+        await queue.waitFor({ state: "detached" })
+        assert.ok(await page.locator("[data-component=loop-status-entry]").isVisible())
+      }
       if (outcome === "cancelled") {
-        if (kind === "lightloop")
-          await client.workflow.session.cancelLightloop({ id: session.id, scopeID: "home" }, options)
-        else await client.blueprint.loop.cancel({ id: loopID!, scopeID: "home" }, options)
+        await page
+          .locator("[data-component=loop-status-entry]")
+          .getByRole("button", { name: /取消本次循环|Cancel loop/ })
+          .click()
         gates.get("execute")?.abort()
         await page.locator("[data-component=loop-status-entry][data-stage=cancelled]").waitFor({ timeout: 60000 })
         await capture(kind + "-cancelled")
@@ -388,6 +433,25 @@ try {
       gates.get("execute")?.abort()
       await page.locator("[data-component=loop-status-entry][data-stage=paused]").waitFor()
       await capture(kind + "-" + outcome + "-03-paused")
+      if (kind === "lightloop" && outcome === "approve") {
+        await page
+          .locator("[data-component=loop-status-entry]")
+          .getByRole("button", { name: /编辑目标|Edit goal/ })
+          .click()
+        await page.getByRole("dialog").getByRole("textbox").fill("检查队列及循环状态，补齐取消和失败场景。")
+        await capture("lightloop-edit-goal")
+        await page
+          .getByRole("dialog")
+          .getByRole("button", { name: /保存任务|Save task/ })
+          .click()
+        await page.getByRole("dialog").waitFor({ state: "hidden" })
+        assert.equal(
+          (await client.session.get({ sessionID: session.id, scopeID: "home" }, options)).data.workflow?.kind,
+          "lightloop",
+        )
+        const updated = (await client.session.get({ sessionID: session.id, scopeID: "home" }, options)).data.workflow
+        assert.ok(updated?.kind === "lightloop" && updated.instructions.includes("队列"))
+      }
       void client.session
         .continue({ sessionID: session.id, scopeID: "home" }, options)
         .catch((error) => console.log(JSON.stringify({ continueError: String(error) })))
@@ -404,7 +468,7 @@ try {
       if (outcome === "failed") {
         await page.locator("[data-component=loop-status-entry][data-stage=failed]").waitFor({ timeout: 120000 })
         await capture(kind + "-failed")
-        await page.locator("[data-component=loop-status-entry] button").click()
+        await page.locator("[data-component=loop-status-entry] [data-action=loop-details]").click()
         await capture(kind + "-failed-details")
         await page.keyboard.press("Escape")
         await page.reload()
@@ -414,6 +478,22 @@ try {
       }
       await wait(() => gates.has("review"), "review stream")
       await capture(kind + "-05-auditing")
+      if (outcome === "cancel-review") {
+        const children = (await client.session.children({ sessionID: session.id, scopeID: "home" }, options)).data.items
+        assert.ok(children.some((child) => child.cortex?.status === "running"))
+        await page
+          .locator("[data-component=loop-status-entry]")
+          .getByRole("button", { name: /取消本次循环|Cancel loop/ })
+          .click()
+        gates.get("review")?.abort()
+        await page.locator("[data-component=loop-status-entry][data-stage=cancelled]").waitFor({ timeout: 60000 })
+        for (const child of children) {
+          const stopped = (await client.session.get({ sessionID: child.id, scopeID: "home" }, options)).data
+          assert.ok(!["queued", "running"].includes(stopped.cortex?.status ?? ""))
+        }
+        await capture(kind + "-cancel-review")
+        continue
+      }
       await openDetails(kind + "-06-task-details")
       current.reviewAnswered = true
       current.stopped = false
@@ -426,7 +506,7 @@ try {
       await wait(() => gates.has("execute"), "rework stream")
       await page.locator("[data-component=loop-status-entry][data-stage=rework]").waitFor({ timeout: 60000 })
       await capture(kind + "-rework")
-      await page.locator("[data-component=loop-status-entry] button").click()
+      await page.locator("[data-component=loop-status-entry] [data-action=loop-details]").click()
       await capture(kind + "-rework-details")
       await page.keyboard.press("Escape")
       assert.notEqual(
@@ -475,8 +555,10 @@ try {
       await capture(kind + "-reload-completed")
       await openDetails(kind + "-08-completed-details")
       if (kind === "blueprint") {
-        await page.locator("[data-component=loop-status-entry] button").click()
-        await page.getByRole("button", { name: /^打开蓝图$|^Open Blueprint$/ }).click()
+        await page
+          .locator("[data-component=loop-status-entry]")
+          .getByRole("button", { name: /^打开蓝图$|^Open Blueprint$/ })
+          .click()
         await page
           .locator(".note-blueprint-state")
           .filter({ hasText: /审核通过|Review passed/ })
@@ -488,6 +570,7 @@ try {
       }
     }
   }
+  assert.deepEqual(pageErrors, [])
 } finally {
   for (const id of owned) {
     const children =

@@ -1,4 +1,4 @@
-.pending-composer-queue {
+.pending-composer-layer {
   position: relative;
   margin: 0 12px -10px;
   padding-bottom: 10px;
@@ -7,6 +7,24 @@
   border-radius: 20px 20px 0 0;
   background: var(--surface-raised-base);
   color: var(--text-base);
+}
+
+.pending-composer-queue + [data-component="loop-status-entry"] {
+  border-radius: 0;
+}
+
+.pending-composer-loop {
+  padding: 8px 12px;
+}
+
+.pending-composer-loop [role="status"] {
+  flex: 0 0 auto;
+  max-width: 36%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-weak);
+  font-size: var(--type-ui-body-size);
 }
 
 .pending-composer-list {
@@ -59,6 +77,7 @@
 }
 
 .pending-composer-actions [data-component="button"] {
+  width: 32px;
   height: 32px;
   padding-inline: 8px;
   color: var(--text-weak);
@@ -109,21 +128,21 @@
 }
 
 @media (max-width: 767px), (pointer: coarse) {
-  .pending-composer-queue {
+  .pending-composer-layer {
     margin-inline: 8px;
   }
 
-  .pending-composer-queue [data-slot="pending-timeline-item"] {
+  .pending-composer-queue [data-slot="pending-timeline-item"],
+  .pending-composer-loop {
     padding: 4px 8px;
   }
 
   .pending-composer-row {
-    flex-wrap: wrap;
     gap: 4px 8px;
   }
 
   .pending-composer-label {
-    min-width: 96px;
+    min-width: 0;
   }
 
   .pending-composer-actions {
@@ -131,6 +150,7 @@
   }
 
   .pending-composer-actions [data-component="button"] {
+    width: 44px;
     min-width: 44px;
     height: 44px;
   }

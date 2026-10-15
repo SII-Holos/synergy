@@ -549,43 +549,53 @@ export function createPromptInputController(props: PromptInputProps) {
       status: status(),
     }),
   )
+  const openLoopNote = () => {
+    const value = loopDisplay()
+    if (value?.noteID)
+      void workbench.openPanel("notes", {
+        reuseExisting: true,
+        init: { resourceId: value.noteID, source: sdk.scopeKey, title: value.title },
+      })
+  }
+  const [loopAction, setLoopAction] = createSignal<{ owner: string }>()
+  const cancelDisplayedLoop = async () => {
+    const owner = sessionKey(),
+      value = loopDisplay()
+    if (!value || value.terminal || loopAction()?.owner === owner) return
+    const action = { owner },
+      sessionID = params.id,
+      scopeID = sessionScopeID(),
+      slot = availableLocalLoop()
+    setLoopAction(action)
+    try {
+      if (value.kind === "lightloop" && activeWorkflow()?.kind === "lightloop" && sessionID)
+        await sdk.client.workflow.session.cancelLightloop({ id: sessionID, scopeID }, { throwOnError: true })
+      else if (value.kind === "blueprint") {
+        if (boundLoopID() && (!slot || (slot.type === "loop" && slot.loopID === boundLoopID())))
+          await abandonSession(sessionID)
+        else if (slot?.type === "loop")
+          await sdk.client.blueprint.loop.cancel({ id: slot.loopID, scopeID }, { throwOnError: true })
+      }
+      if (sessionKey() !== owner) return
+      if (localArmedLoop() === slot) setLocalArmedLoop(null)
+      if (value.kind === "lightloop" && value.pending) setPendingLightLoop(false)
+    } catch (error) {
+      if (sessionKey() === owner) reportControlError(error)
+    } finally {
+      if (loopAction() === action) setLoopAction(undefined)
+    }
+  }
   const openLoopStatus = () => {
     const owner = sessionKey()
     workflowDialog.show(() => (
       <LoopStatusDialog
         value={() => (sessionKey() === owner ? loopDisplay() : undefined)}
-        onEdit={
-          !working() && !lightLoopReviewPending()
-            ? () => {
-                if (sessionKey() === owner) openLightLoopDialog()
-              }
-            : undefined
-        }
         onReviewer={() => {
           const reviewer = loopDisplay()?.reviewerSessionID
           if (sessionKey() === owner && reviewer) {
             workflowDialog.close()
             navigate(`/${params.dir}/session/${reviewer}`)
           }
-        }}
-        onRetry={() => {
-          if (sessionKey() === owner) loopStatus.retry()
-        }}
-        onNote={() => {
-          const noteID = loopDisplay()?.noteID
-          if (sessionKey() === owner && noteID) {
-            void workbench.openPanel("notes", {
-              reuseExisting: true,
-              init: { resourceId: noteID, source: sdk.scopeKey, title: loopDisplay()?.title },
-            })
-            workflowDialog.close()
-          }
-        }}
-        onRemove={() => {
-          if (sessionKey() !== owner) return
-          if (availableLocalLoop()) void cancelArmedLoop()
-          else setPendingLightLoop(false)
-          workflowDialog.close()
         }}
       />
     ))
@@ -1046,27 +1056,31 @@ export function createPromptInputController(props: PromptInputProps) {
     void setBoss(state.action === "enable")
   }
 
-  const updateLightLoopInstructions = async (instructions: string) => {
-    if (!capabilities.has("light-loop")) return
-    const sessionID = params.id
-    if (!sessionID) throw new Error(i18n._(PI.lightLoopSessionUnavailable))
-    await sdk.client.workflow.session.updateLightloop({
-      id: sessionID,
-      lightloopUpdateInput: { instructions },
-    })
-  }
-
   const openLightLoopDialog = () => {
     if (!capabilities.has("light-loop")) return
-    const workflow = activeWorkflow()
-    if (!params.id || workflow?.kind !== "lightloop") return
+    const workflow = activeWorkflow(),
+      owner = sessionKey(),
+      sessionID = params.id,
+      scopeID = sessionScopeID()
+    if (!sessionID || workflow?.kind !== "lightloop") return
+    const active = () => sessionKey() === owner && capabilities.has("light-loop") && backendLightLoopActive()
     workflowDialog.show(() => (
       <EditLightLoopDialog
         instructions={workflow.instructions}
-        active={backendLightLoopActive}
+        active={active}
         working={working}
         reviewPending={lightLoopReviewPending}
-        onSave={updateLightLoopInstructions}
+        onSave={async (instructions) => {
+          if (!active()) throw new Error(i18n._(PI.lightLoopSessionUnavailable))
+          await sdk.client.workflow.session.updateLightloop(
+            {
+              id: sessionID,
+              scopeID,
+              lightloopUpdateInput: { instructions },
+            },
+            { throwOnError: true },
+          )
+        }}
       />
     ))
   }
@@ -2235,7 +2249,6 @@ export function createPromptInputController(props: PromptInputProps) {
     ),
     context: () => (
       <>
-        <Show when={loopDisplay()}>{(value) => <LoopStatusEntry value={value()} onOpen={openLoopStatus} />}</Show>
         <Show when={store.dragging}>
           <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
             <div class="flex flex-col items-center gap-2 text-text-weak">
@@ -2738,6 +2751,21 @@ export function createPromptInputController(props: PromptInputProps) {
   onCleanup(
     bindComposerPresentation(composerInput, {
       state: presentation,
+      status: () => (
+        <Show when={loopDisplay()}>
+          {(value) => (
+            <LoopStatusEntry
+              value={value()}
+              pending={loopAction()?.owner === sessionKey()}
+              onOpen={openLoopStatus}
+              onEdit={openLightLoopDialog}
+              onNote={openLoopNote}
+              onRemove={() => void cancelDisplayedLoop()}
+              onRetry={loopStatus.retry}
+            />
+          )}
+        </Show>
+      ),
       hasAttachments: () => hasAttachments() || attachmentsUploading(),
       preview() {
         let offset = 0

@@ -8,9 +8,11 @@ A bound Blueprint could enable submission without displaying its title or execut
 
 ## Decision
 
-The composer presents Light Loop and BlueprintLoop through one labeled entry above the editor. Its node and geometry survive stage changes, including a pending terminal lookup. The detail dialog exposes task text, review reasons, failures and related resources. Existing pause, continue and abandonment controls retain their meanings. Terminal display is independent of active workflow occupancy.
+The composer presents Light Loop and BlueprintLoop through one compact row at the bottom of its pending-message stack, outside the editor. Queue and loop rows share surface geometry and labeled icon actions. Its node and geometry survive stage changes, including a pending terminal lookup. The goal editor and cancellation are direct actions; review reasons, failures and related review sessions stay behind an information action. Existing pause and continue controls retain their meanings. Cancellation stops the current loop and review; a failed request retains the goal. Async edits and actions remain scoped to their captured owner. Terminal display is independent of active workflow occupancy.
 
 Active Session metadata and existing Blueprint events supply live state. Known loop identities and loaded message metadata permit targeted canonical snapshot reads; clearing a workflow, ending an assistant turn or completing a reviewer task cannot establish approval. The client retains a bounded metadata cache, fences asynchronous results by owner and generation, and lets newer Blueprint events supersede older reads. It does not poll or load message bodies for status presentation.
+
+Blueprint first-prompt delivery awaits execution. An abort while the Session pause latch is present belongs to the explicit pause/abandon operation, so the start callback cannot independently mark it failed. Real delivery failures, including transport aborts without a user interruption, still record failure. Cancellation tests exercise the real Session abort path and storage to protect that ordering.
 
 ## Alternatives considered
 
