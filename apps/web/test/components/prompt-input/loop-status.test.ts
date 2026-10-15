@@ -23,6 +23,39 @@ const stopRequest = {
 }
 
 describe("Loop presentation follows independent review", () => {
+  test("Light Loop keeps its goal as the label instead of execution or review summaries", () => {
+    const instructions = "Repair missing final replies after background generation and preserve the history anchor"
+    const reviewing = light({ instructions, stopRequest, review: { attempts: 1, lastReason: "Needs more tests" } })
+    expect(resolveLoopDisplay({ workflow: reviewing, status: { type: "busy" } })).toMatchObject({
+      title: instructions,
+      detail: stopRequest.summary,
+      reason: "Needs more tests",
+    })
+    const revised = instructions + " across reconnects"
+    expect(resolveLoopDisplay({ workflow: light({ instructions: revised }), status: paused })?.title).toBe(revised)
+    expect(
+      resolveLoopDisplay({
+        lightTerminal: { instructions: revised, status: "completed", createdAt: 3 },
+        status: { type: "idle" },
+      })?.title,
+    ).toBe(revised)
+  })
+  test("Blueprint keeps the associated note title through binding, review and completion", () => {
+    const note = { id: "note", title: "Message flow: history loading and session switching" }
+    expect(
+      resolveLoopDisplay({
+        localBlueprint: { type: "pending", noteID: note.id, title: note.title, runMode: "current" },
+        status: { type: "idle" },
+      }),
+    ).toMatchObject({ title: note.title, noteID: note.id })
+    for (const status of ["running", "auditing", "completed"] as const)
+      expect(
+        resolveLoopDisplay({
+          blueprint: { ...loop, noteID: note.id, title: note.title, status, stopRequest, summary: "Review passed" },
+          status: { type: "idle" },
+        }),
+      ).toMatchObject({ title: note.title, noteID: note.id })
+  })
   test("loaded metadata identifies a result and its reviewer without reading text", () => {
     const messages = [
       { id: "old", metadata: { source: "blueprint_loop_start", loopID: "old-loop" } },

@@ -18,10 +18,14 @@ type Gate = {
   abort(): void
   append(text: string): void
 }
+const lightGoal = "修复后台会话结束后最终回复缺失，保留历史阅读位置，并验证切换会话不重复拉取正文。"
+const revisedLightGoal = "修复后台会话结束后最终回复缺失，并补齐断线重连、审核拒绝和取消任务的回归测试。"
+const blueprintTitle = "消息流稳定性：历史加载、后台生成与会话切换"
 let current:
   | {
       kind: "lightloop" | "blueprint"
       id: string
+      title: string
       stopped: boolean
       approved: boolean
       reviewAnswered: boolean
@@ -239,6 +243,17 @@ async function capture(label: string) {
   const session = current
     ? (await client.session.get({ scopeID: "home", sessionID: current.id }, options)).data
     : undefined
+  if (current) {
+    const label = page.locator('[data-component="loop-status-entry"] .pending-composer-label')
+    assert.equal(await label.textContent(), current.title, "The row identifies the Loop goal or Blueprint note")
+    assert.equal(await label.getAttribute("title"), current.title, "The complete label remains available on hover")
+    assert.equal(await label.evaluate((node) => getComputedStyle(node).textOverflow), "ellipsis")
+    if (page.viewportSize()!.width <= 375)
+      assert.ok(
+        await label.evaluate((node) => node.scrollWidth > node.clientWidth),
+        "Long labels truncate in narrow panes",
+      )
+  }
   const snapshot = await page.evaluate(() => ({
     buttons: [...document.querySelectorAll("button")]
       .filter((b) => b.checkVisibility())
@@ -291,6 +306,7 @@ try {
       current = {
         kind,
         id: session.id,
+        title: kind === "lightloop" ? lightGoal : blueprintTitle,
         stopped: false,
         approved: false,
         reviewAnswered: false,
@@ -305,7 +321,7 @@ try {
           {
             id: session.id,
             scopeID: "home",
-            workflowSetInput: { kind: "lightloop", instructions: "检查界面状态展示，完成后申请独立审核。" },
+            workflowSetInput: { kind: "lightloop", instructions: lightGoal },
           },
           options,
         )
@@ -328,7 +344,7 @@ try {
               scopeID: "home",
               noteCreateInput: {
                 kind: "blueprint",
-                title: "蓝图状态展示验收",
+                title: blueprintTitle,
                 content: {
                   type: "doc",
                   content: [
@@ -438,7 +454,7 @@ try {
           .locator("[data-component=loop-status-entry]")
           .getByRole("button", { name: /编辑目标|Edit goal/ })
           .click()
-        await page.getByRole("dialog").getByRole("textbox").fill("检查队列及循环状态，补齐取消和失败场景。")
+        await page.getByRole("dialog").getByRole("textbox").fill(revisedLightGoal)
         await capture("lightloop-edit-goal")
         await page
           .getByRole("dialog")
@@ -450,7 +466,8 @@ try {
           "lightloop",
         )
         const updated = (await client.session.get({ sessionID: session.id, scopeID: "home" }, options)).data.workflow
-        assert.ok(updated?.kind === "lightloop" && updated.instructions.includes("队列"))
+        assert.ok(updated?.kind === "lightloop" && updated.instructions === revisedLightGoal)
+        current.title = revisedLightGoal
       }
       void client.session
         .continue({ sessionID: session.id, scopeID: "home" }, options)

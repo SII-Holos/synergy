@@ -58,6 +58,8 @@ Completion is a review request, not a claim. Calling `loop_stop` launches a visi
 
 Light Loop does not require an authored Blueprint or a multi-step Pathway. Use it for one task whose scope is already sufficiently clear. Light Loop and BlueprintLoop share a compact row at the bottom of the pending-message stack above the editor. A workflow icon, short stage and goal identify binding, execution, review, pause, rework and the authoritative result. Direct icon buttons open the Light Loop goal editor or Blueprint, and cancel the current loop. Editing is available while stopped outside review; running and reviewing goals remain readable. The ordinary message control still pauses or continues work. Review feedback and failures are available through the information icon. A terminal result remains inspectable without occupying the workflow slot; pending reads keep the row and never claim approval.
 
+The row label is the saved Light Loop goal or the associated Blueprint note title. Keep it verbatim, truncate long labels to one line with an ellipsis, and expose the complete text on hover. Execution summaries and review feedback must not replace that identity.
+
 ## Lattice and the Pathway
 
 Lattice coordinates a larger goal as an ordered Pathway. Every step has an objective, acceptance criteria, assumptions, status, and an associated Blueprint. Each Blueprint is executed and independently audited through BlueprintLoop before the Pathway advances.

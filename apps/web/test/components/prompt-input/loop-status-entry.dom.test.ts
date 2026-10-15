@@ -68,6 +68,16 @@ for (const width of [320, 375, 720])
     await page.goto(server.url)
     const entry = page.locator('[data-component="loop-status-entry"]')
     await entry.waitFor()
+    const label = entry.locator(".pending-composer-label")
+    expect(await label.textContent()).toBe("A long task title ".repeat(30))
+    expect(await label.getAttribute("title")).toBe("A long task title ".repeat(30))
+    expect(
+      await label.evaluate((node) => ({
+        truncated: node.scrollWidth > node.clientWidth,
+        overflow: getComputedStyle(node).textOverflow,
+        wrap: getComputedStyle(node).whiteSpace,
+      })),
+    ).toEqual({ truncated: true, overflow: "ellipsis", wrap: "nowrap" })
     const button = await entry.locator("button").elementHandle()
     const heights: number[] = []
     for (const kind of ["blueprint", "lightloop"])
@@ -95,6 +105,7 @@ for (const width of [320, 375, 720])
         expect(bounds!.x).toBeGreaterThanOrEqual(0)
         expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
         expect(await entry.getByRole("status").isVisible()).toBe(true)
+        expect(await label.textContent()).toBe("A long task title ".repeat(30))
         expect(await entry.locator("button").evaluate((node, old) => node === old, button)).toBe(true)
         heights.push(bounds!.height)
       }
