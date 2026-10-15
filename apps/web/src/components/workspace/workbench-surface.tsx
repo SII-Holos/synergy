@@ -205,6 +205,7 @@ function WorkbenchSortableTab(props: {
     ),
   )
   const currentIndex = () => props.tabs.findIndex((tab) => tab.id === props.tab.id)
+  const description = () => props.entry?.tabDescription?.(props.tab)
   return (
     <div
       use:sortable
@@ -231,7 +232,8 @@ function WorkbenchSortableTab(props: {
         class="workbench-surface-tab-main"
         aria-selected={props.active}
         aria-label={props.title}
-        title={props.title}
+        aria-description={description()}
+        title={[props.title, description()].filter(Boolean).join(" — ")}
         tabIndex={props.active ? 0 : -1}
         onClick={props.onActivate}
         onKeyDown={(event) => {

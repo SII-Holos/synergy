@@ -37,6 +37,14 @@ When a tool prepares an interactive Channel artifact or another provider-owned m
 5. Route an accepted callback into a fresh user task through the normal session, tool, and permission pipeline; never invoke a model, command, or tool directly from the callback handler.
 6. Test card-only delivery, foreground/background races, provider callback namespace compatibility, identity and expiry rejection, event deduplication, and failure after an external side effect becomes unknowable.
 
+## File interfaces
+
+Declare first-party `fileToolGroups` only for the closed file-interface members in [Workspace and files](../../../docs/architecture/workspace-and-files.md#file-tool-interfaces). Propagate declarations through lazy tools; keep optional/shared tools outside this selector. Test catalog, discovery, companions, stale expansion and the final prepared schema, including configuration reload while a deferred definition is pinned. Interface choice never grants authority.
+
+Authorize file search observations against the actual selected file paths before returning content or recording read evidence. Search expressions and synthetic wildcard patterns are not resource paths. Exercise path-specific decisions through the production resolver and policy worker, including saved decisions after broader semantic rules.
+
+For patch-like multi-file writes, use one pure grammar for policy and execution and the selected-view mutation owners. Preflight before effects, then revalidate identities and perform conditional sequential writes. Test content/mode and parent replacement, unrelated object revisions, update-then-move failure and cancellation through rollout capture. Keep the full stage ledger even when display text is bounded; a post-publication error is not proof of no effect. Never retry with a new operation identity to obtain a cleaner result.
+
 ## Register the Web Presentation
 
 Complete all five first-party registrations:
@@ -45,7 +53,7 @@ Complete all five first-party registrations:
 2. `packages/ui/src/components/message-part.tsx` — title, subtitle, arguments, and tool-card metadata
 3. `packages/ui/src/components/tool-renders.tsx` — renderer group registration
 4. `packages/harness/src/tool/taxonomy.ts` — runtime semantic classification
-5. `packages/ui/src/components/tool/classifier.ts` — fallback semantic category
+5. `packages/ui/src/components/tool/classifier.ts` — fallback semantic category, via the canonical `packages/util/src/activity.ts` mapping
 
 A renderer may either be registered by the render-group loop or self-register with `ToolRegistry.register()` and be imported for its side effect from the render-group entry point. In both cases, keep the registration reachable from the standard tool-render bundle and cover it with a render test.
 

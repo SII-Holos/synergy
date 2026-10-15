@@ -83,7 +83,7 @@ describe("Patch namespace", () => {
     test("should throw error for invalid patch format", () => {
       const invalidPatch = `This is not a valid patch`
 
-      expect(() => Patch.parsePatch(invalidPatch)).toThrow("Invalid patch format")
+      expect(() => Patch.parsePatch(invalidPatch)).toThrow("*** Begin Patch")
     })
   })
 
@@ -295,6 +295,7 @@ PATCH`
 *** Update File: ${emptyFile}
 @@
 +First line
+*** End of File
 *** End Patch`
 
       const result = await Patch.applyPatch(patchText)

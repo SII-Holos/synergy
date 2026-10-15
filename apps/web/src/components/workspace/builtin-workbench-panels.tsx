@@ -17,6 +17,7 @@ import { workspaceFilePath } from "@/context/file/workspace"
 import { useFile, useProjectFiles } from "@/context/file"
 import { useNoteDocuments } from "@/components/note/documents"
 import { useBrowserCatalog } from "./browser/browser-catalog"
+import { BrowserTabIcon, browserTabActivity, browserTabDescription } from "./browser/browser-tab"
 import { browserPageTab } from "./browser/browser-workbench-model"
 import { type WorkbenchPanelEntry, type WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { shortestUniqueFileTitle } from "@/components/file-workbench/model"
@@ -298,6 +299,27 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         order: 20,
         loader: async () => ({ default: (await import("./tool-browser")).BrowserWorkbenchContent }),
         openingComponent: (props) => <BrowserPreparingPanel tab={props.tab} />,
+        tabIcon(tab) {
+          return (
+            <BrowserTabIcon
+              activity={browserTabActivity(
+                catalog.peek(browserWorkbenchRoute(tab.state) ?? browserRoute()),
+                tab.resourceId,
+                params.id,
+              )}
+            />
+          )
+        },
+        tabDescription(tab) {
+          return browserTabDescription(
+            i18n,
+            browserTabActivity(
+              catalog.peek(browserWorkbenchRoute(tab.state) ?? browserRoute()),
+              tab.resourceId,
+              params.id,
+            ),
+          )
+        },
         createTab: (_init, context) => openNativePage(false, undefined, context),
         restoreTab: (context) => openNativePage(true, undefined, context),
         async resolveTab(init, context) {

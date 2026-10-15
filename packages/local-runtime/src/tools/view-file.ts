@@ -177,5 +177,5 @@ export const ViewFileTool = Tool.define(
       }
     },
   },
-  { requiresWorkspace: true },
+  { requiresWorkspace: true, fileToolGroups: ["hashline"] },
 )

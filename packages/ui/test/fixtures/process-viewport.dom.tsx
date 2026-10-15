@@ -10,6 +10,8 @@ import {
 } from "../../src/components/process-viewport"
 import { setupI18n } from "../../src/testing/i18n"
 import { createDisclosureMotion } from "../../src/utils/disclosure-motion"
+import { ViewActivityProvider } from "../../src/context/view-activity"
+import { ConversationMotionProvider } from "../../src/components/conversation-motion"
 
 export type Capture = { target: string | null; height: number; restores: number; anchor?: ProcessReadingAnchor }
 export type FixtureHarness = {
@@ -29,6 +31,9 @@ export type FixtureHarness = {
   appendTool(): void
   parentFollowing(value: boolean): void
   active(value: boolean): void
+  visible(value: boolean): void
+  ready(value: boolean): void
+  widths: number[]
 }
 
 const parameters = new URLSearchParams(location.search)
@@ -44,6 +49,9 @@ let pause!: (anchor?: ProcessReadingAnchor) => void
 const rows = Array.from({ length: 28 }, (_, index) => index)
 const [parentFollowing, setParentFollowing] = createSignal(true)
 const [active, setActive] = createSignal(true)
+const [visible, setVisible] = createSignal(true)
+const [ready, setReady] = createSignal(true)
+const widths: number[] = []
 const body = (position: "above" | "below") => document.querySelector(`[data-body="${position}"]`)!
 const targetID = (target?: Element) => target?.id || null
 const frames = async (count = 6) => {
@@ -80,6 +88,9 @@ const harness: FixtureHarness = {
   pause: (anchor) => pause(anchor),
   parentFollowing: setParentFollowing,
   active: setActive,
+  visible: setVisible,
+  ready: setReady,
+  widths,
   appendTool() {
     const added = document.createElement("div")
     added.style.height = "32px"
@@ -129,62 +140,73 @@ function Disclosure() {
 render(
   () => (
     <I18nProvider i18n={setupI18n()}>
-      <ProcessViewport
-        identity="process-viewport-fixture"
-        active={active()}
-        parentFollowing={parentFollowing()}
-        ref={(element) => (viewport = element)}
-        onReading={(value) => notifications.push(value)}
-        onInteraction={() => harness.interactions++}
-        isLayoutMutation={
-          consumerClassification ? (record) => record.type !== "childList" || record.target !== virtualRoot : undefined
-        }
-        controls={(controls) => (pause = controls.pause)}
-        anchor={
-          instrumented
-            ? (target) => {
-                const anchor = captureProcessReadingAnchor(viewport, target)
-                captures.push({
-                  target: targetID(target),
+      <ViewActivityProvider active={visible}>
+        <ConversationMotionProvider ready={ready}>
+          <div style={{ display: visible() ? undefined : "none" }}>
+            <ProcessViewport
+              identity="process-viewport-fixture"
+              active={active()}
+              onWidthChange={(width) => widths.push(width)}
+              parentFollowing={parentFollowing()}
+              ref={(element) => (viewport = element)}
+              onReading={(value) => notifications.push(value)}
+              onInteraction={() => harness.interactions++}
+              isLayoutMutation={
+                consumerClassification
+                  ? (record) => record.type !== "childList" || record.target !== virtualRoot
+                  : undefined
+              }
+              controls={(controls) => (pause = controls.pause)}
+              anchor={
+                instrumented
+                  ? (target) => {
+                      const anchor = captureProcessReadingAnchor(viewport, target)
+                      captures.push({
+                        target: targetID(target),
+                        height: viewport.scrollHeight,
+                        restores: restores.length,
+                        anchor: anchor && { ...anchor },
+                      })
+                      return anchor
+                    }
+                  : undefined
+              }
+              restoreAnchor={
+                instrumented
+                  ? (anchor) => {
+                      restores.push({ ...anchor })
+                      return restoreProcessReadingAnchor(viewport, anchor)
+                    }
+                  : undefined
+              }
+              onBeforeLayoutChange={(event) =>
+                beforeLayouts.push({
+                  target: targetID(event.target instanceof Element ? event.target : undefined),
                   height: viewport.scrollHeight,
-                  restores: restores.length,
-                  anchor: anchor && { ...anchor },
                 })
-                return anchor
               }
-            : undefined
-        }
-        restoreAnchor={
-          instrumented
-            ? (anchor) => {
-                restores.push({ ...anchor })
-                return restoreProcessReadingAnchor(viewport, anchor)
-              }
-            : undefined
-        }
-        onBeforeLayoutChange={(event) =>
-          beforeLayouts.push({
-            target: targetID(event.target instanceof Element ? event.target : undefined),
-            height: viewport.scrollHeight,
-          })
-        }
-      >
-        <div ref={(element) => (virtualRoot = element)} data-slot="process-virtualizer">
-          <For each={rows}>
-            {(index) => (
-              <div data-display-row={`row-${index}`}>
-                <section data-slot="activity-step" data-part-id={`part-${index}`}>
-                  <p data-body={index === 2 ? "above" : index === 24 ? "below" : undefined}>
-                    Earlier output for activity {index}.
-                  </p>
-                  <p id={index === 12 ? "reading-paragraph" : undefined}>Reading activity {index} remains in place.</p>
-                  {index === 12 ? <Disclosure /> : <button type="button">Inspect activity {index}</button>}
-                </section>
+            >
+              <div ref={(element) => (virtualRoot = element)} data-slot="process-virtualizer">
+                <For each={rows}>
+                  {(index) => (
+                    <div data-display-row={`row-${index}`}>
+                      <section data-slot="activity-step" data-part-id={`part-${index}`}>
+                        <p data-body={index === 2 ? "above" : index === 24 ? "below" : undefined}>
+                          Earlier output for activity {index}.
+                        </p>
+                        <p id={index === 12 ? "reading-paragraph" : undefined}>
+                          Reading activity {index} remains in place.
+                        </p>
+                        {index === 12 ? <Disclosure /> : <button type="button">Inspect activity {index}</button>}
+                      </section>
+                    </div>
+                  )}
+                </For>
               </div>
-            )}
-          </For>
-        </div>
-      </ProcessViewport>
+            </ProcessViewport>
+          </div>
+        </ConversationMotionProvider>
+      </ViewActivityProvider>
     </I18nProvider>
   ),
   document.getElementById("root")!,

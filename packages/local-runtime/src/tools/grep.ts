@@ -10,6 +10,7 @@ import { ProcessOutput } from "@ericsanchezok/synergy-harness/process/output"
 const MAX_LINE_LENGTH = 2000
 const LIMIT = 100
 
+/** @deprecated Public compatibility wrapper; not registered by first-party composition. */
 export const GrepTool = Tool.define(
   "grep",
   {

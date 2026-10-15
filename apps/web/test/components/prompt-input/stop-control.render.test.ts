@@ -36,6 +36,7 @@ mock.module("@lingui/solid", () => ({ useLingui: () => ({ _: translate }) }))
 
 type TestStatusType = "idle" | "busy" | "pause" | "paused"
 const [statusType, setStatusType] = createSignal<TestStatusType>("idle")
+const [sessionID, setSessionID] = createSignal("ses_prompt")
 const statusForType = () =>
   statusType() === "pause"
     ? { type: "busy" as const }
@@ -54,8 +55,15 @@ let abandonBarrier: Promise<void> | undefined
 const installedFeatures = ["blueprint", "lattice", "light-loop", "boss", "note", "workbench"]
 const [selection, setSelection] = createSignal<{ features: string[] } | undefined>({ features: installedFeatures })
 const [sessionBinding, setSessionBinding] = createSignal<{ loopID: string; source?: "user" | "lattice" | "plugin" }>()
+const [sessionWorkflow, setSessionWorkflow] =
+  createSignal<import("@ericsanchezok/synergy-sdk/client").Session["workflow"]>()
 const loopGetCalls: string[] = []
 const loopGetSignals: AbortSignal[] = []
+const lightCancelCalls: string[] = []
+const lightUpdateCalls: Array<{ id: string; lightloopUpdateInput: { instructions: string } }> = []
+let lightUpdateBarrier: Promise<void> | undefined
+let loopCancelFails = false
+let loopCancelBarrier: Promise<void> | undefined
 let loopReply: Promise<unknown> | undefined
 
 const message = (content: string): Prompt => [{ type: "text", content, start: 0, end: content.length }]
@@ -73,6 +81,25 @@ mock.module("../../../src/context/global-sync", () => ({
 }))
 
 const sdkClient = () => ({
+  workflow: {
+    session: {
+      cancelLightloop: async ({ id }: { id: string }) => {
+        lightCancelCalls.push(id)
+        await loopCancelBarrier
+        if (loopCancelFails) throw new Error("Cancellation unavailable")
+        setSessionWorkflow(undefined)
+        return { data: {} }
+      },
+      updateLightloop: async (input: { id: string; lightloopUpdateInput: { instructions: string } }) => {
+        lightUpdateCalls.push(input)
+        await lightUpdateBarrier
+        return { data: {} }
+      },
+      getLightloopTerminal: async () => ({
+        data: { status: "cancelled", instructions: "Verify edge cases", createdAt: 1 },
+      }),
+    },
+  },
   session: {
     abort: async (input: { sessionID?: string }) => {
       abortCalls.push(input)
@@ -128,7 +155,12 @@ mock.module("../../../src/context/locale", () => ({
 }))
 
 mock.module("@solidjs/router", () => ({
-  useParams: () => ({ dir: "home", id: "ses_prompt" }),
+  useParams: () => ({
+    dir: "home",
+    get id() {
+      return sessionID()
+    },
+  }),
   useNavigate: () => () => {},
 }))
 
@@ -163,6 +195,7 @@ mock.module("../../../src/context/sync", () => ({
       get: () => ({
         id: "ses_prompt",
         blueprint: sessionBinding(),
+        workflow: sessionWorkflow(),
         controlProfile: undefined,
         scope: { id: "scope_fixture" },
       }),
@@ -304,20 +337,26 @@ mock.module("@ericsanchezok/synergy-ui/toast", () => ({
 const { createPromptInputController } = await import("../../../src/components/prompt-input/prompt-controller")
 const { DialogProvider } = await import("@ericsanchezok/synergy-ui/context/dialog")
 const { PI } = await import("../../../src/components/prompt-input/prompt-input-i18n")
+const { composerPresentation } = await import("../../../src/components/prompt-input/composer-presentation")
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
 
 type Harness = { root: HTMLDivElement; dispose: () => void }
 
 function Toolbar() {
-  return createPromptInputController({
+  const controller = createPromptInputController({
     get readOnly() {
       return transitionError()
     },
     get sessionTransitionError() {
       return transitionError()
     },
-  }).input.render("toolbar")
+  })
+  return [
+    composerPresentation(controller.input)?.status?.(),
+    controller.input.render("context"),
+    controller.input.render("toolbar"),
+  ]
 }
 
 function mount(): Harness {
@@ -356,10 +395,17 @@ afterEach(() => {
   draftResets = 0
   toastTitles.length = 0
   setSessionBinding(undefined)
+  setSessionWorkflow(undefined)
   setSelection({ features: installedFeatures })
   loopGetCalls.length = 0
   loopGetSignals.length = 0
   loopReply = undefined
+  setSessionID("ses_prompt")
+  lightCancelCalls.length = 0
+  lightUpdateCalls.length = 0
+  lightUpdateBarrier = undefined
+  loopCancelFails = false
+  loopCancelBarrier = undefined
   document.body.innerHTML = ""
 })
 
@@ -607,6 +653,187 @@ describe("single composer control", () => {
       const control = primaryControl(PI.sendMessage.message)
       expect(control).toBeDefined()
       expect(control!.disabled).toBe(true)
+    } finally {
+      harness.dispose()
+    }
+  })
+})
+
+describe("Loop status entry", () => {
+  test("the edit icon opens the goal directly and saves only to its captured owner", async () => {
+    setSessionWorkflow({ kind: "lightloop", instructions: "Verify edge cases" })
+    setStatusType("paused")
+    const harness = mount()
+    try {
+      harness.root.querySelector<HTMLButtonElement>('[aria-label="Edit goal"]')!.click()
+      await settle()
+      const textarea = document.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')!
+      textarea.value = "Include cancellation"
+      textarea.dispatchEvent(new Event("input", { bubbles: true }))
+      const save = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
+        (button) => button.textContent === PI.lightLoopTaskSave.message,
+      )!
+      expect(save.disabled).toBe(false)
+      save.click()
+      await settle()
+      expect(lightUpdateCalls).toEqual([
+        expect.objectContaining({ id: "ses_prompt", lightloopUpdateInput: { instructions: "Include cancellation" } }),
+      ])
+      harness.root.querySelector<HTMLButtonElement>('[aria-label="Edit goal"]')!.click()
+      await settle()
+      setSessionID("ses_other")
+      await settle()
+      expect(document.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')?.readOnly).toBe(true)
+      expect(
+        [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].some(
+          (button) => button.textContent === PI.lightLoopTaskSave.message,
+        ),
+      ).toBe(false)
+      expect(lightUpdateCalls).toHaveLength(1)
+    } finally {
+      harness.dispose()
+    }
+  })
+  test("a late goal save cannot close a reopened editor or erase its new draft", async () => {
+    setSessionWorkflow({ kind: "lightloop", instructions: "Verify edge cases" })
+    setStatusType("paused")
+    const pending = Promise.withResolvers<void>()
+    lightUpdateBarrier = pending.promise
+    const harness = mount()
+    const button = (label: string) =>
+      [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
+        (node) => node.textContent === label,
+      )!
+    try {
+      harness.root.querySelector<HTMLButtonElement>('[aria-label="Edit goal"]')!.click()
+      await settle()
+      const original = document.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')!
+      original.value = "First revision"
+      original.dispatchEvent(new Event("input", { bubbles: true }))
+      button(PI.lightLoopTaskSave.message).click()
+      button(PI.lightLoopTaskCancel.message).click()
+      harness.root.querySelector<HTMLButtonElement>('[aria-label="Edit goal"]')!.click()
+      await settle()
+      const current = document.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')!
+      current.value = "Keep this new draft"
+      current.dispatchEvent(new Event("input", { bubbles: true }))
+      pending.resolve()
+      await settle()
+      expect(document.querySelector('[role="dialog"] textarea')).toBe(current)
+      expect(current.value).toBe("Keep this new draft")
+      expect(toastTitles).toEqual([])
+    } finally {
+      pending.resolve()
+      harness.dispose()
+    }
+  })
+  test("Blueprint cancellation uses the existing whole-loop exit and never clears a failed request", async () => {
+    setSessionBinding({ loopID: "loop-cancel", source: "user" })
+    loopReply = Promise.resolve({
+      id: "loop-cancel",
+      source: "user",
+      sessionID: "ses_prompt",
+      scopeID: "scope_fixture",
+      title: "Check the result",
+      noteID: "note",
+      status: "auditing",
+      time: { created: 1, updated: 1 },
+    })
+    const harness = mount()
+    try {
+      await settle()
+      const cancel = harness.root.querySelector<HTMLButtonElement>('[aria-label="Cancel loop"]')!
+      abandonFails = true
+      cancel.click()
+      await settle()
+      expect(abandonCalls).toEqual([{ sessionID: "ses_prompt" }])
+      expect(harness.root.textContent).toContain("In review")
+      expect(cancel.disabled).toBe(false)
+      expect(toastTitles.length).toBeGreaterThan(0)
+    } finally {
+      harness.dispose()
+    }
+  })
+  test("Light Loop has direct edit and cancel actions; failed cancellation retains the goal", async () => {
+    setSessionWorkflow({ kind: "lightloop", instructions: "Verify edge cases" })
+    setStatusType("paused")
+    const harness = mount()
+    try {
+      await settle()
+      const entry = harness.root.querySelector('[data-component="loop-status-entry"]')
+      expect(entry).not.toBeNull()
+      const edit = entry!.querySelector<HTMLButtonElement>('[aria-label="Edit goal"]')
+      expect(edit).not.toBeNull()
+      edit!.click()
+      await settle()
+      expect(document.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')?.value).toBe("Verify edge cases")
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+      await settle()
+      const cancel = entry!.querySelector<HTMLButtonElement>('[aria-label="Cancel loop"]')!
+      loopCancelFails = true
+      cancel.click()
+      await settle()
+      expect(lightCancelCalls).toEqual(["ses_prompt"])
+      expect(entry!.textContent).toContain("Verify edge cases")
+      expect(toastTitles.length).toBeGreaterThan(0)
+      loopCancelFails = false
+      const pending = Promise.withResolvers<void>()
+      loopCancelBarrier = pending.promise
+      cancel.click()
+      cancel.click()
+      await settle()
+      expect(lightCancelCalls).toHaveLength(2)
+      expect(cancel.disabled).toBe(true)
+      pending.resolve()
+      await settle()
+      expect(harness.root.textContent).toContain("Cancelled")
+    } finally {
+      harness.dispose()
+    }
+  })
+  test("bound Blueprint title stays visible before execution", async () => {
+    setSessionBinding({ loopID: "loop-visible", source: "user" })
+    loopReply = Promise.resolve({
+      id: "loop-visible",
+      source: "user",
+      sessionID: "ses_prompt",
+      scopeID: "scope_fixture",
+      title: "Verify the deliverable",
+      noteID: "note",
+      status: "armed",
+      time: { created: 1, updated: 1 },
+    })
+    const harness = mount()
+    try {
+      await settle()
+      expect(harness.root.querySelector('[data-component="loop-status-entry"]')?.getAttribute("aria-label")).toBe(
+        "BlueprintLoop",
+      )
+      expect(harness.root.textContent).toContain("Verify the deliverable")
+      expect(harness.root.textContent).toContain("Bound")
+    } finally {
+      harness.dispose()
+    }
+  })
+  test.each([
+    [
+      {
+        stopRequest: { summary: "ready", requestedAt: 1, requesterSessionID: "ses_prompt", requesterMessageID: "msg" },
+      },
+      "In review",
+    ],
+    [{ review: { attempts: 1, lastReason: "Missing cancellation coverage" } }, "Changes requested"],
+    [{ status: "failed", terminalError: "Reviewer failed to launch" }, "Failed"],
+  ] as const)("Light Loop exposes the authoritative stage %j", async (patch, label) => {
+    setSessionWorkflow({ kind: "lightloop", instructions: "Verify edge cases", ...patch })
+    setStatusType("busy")
+    const harness = mount()
+    try {
+      await settle()
+      const entry = harness.root.querySelector('[data-component="loop-status-entry"]')
+      expect(entry?.getAttribute("aria-label")).toBe("Light Loop")
+      expect(entry?.textContent).toContain(label)
+      expect(entry?.querySelector("button")?.disabled).toBe(false)
     } finally {
       harness.dispose()
     }

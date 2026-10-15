@@ -9,7 +9,8 @@ import { BrowserStorage } from "../src/storage"
 import { BrowserToolHelper } from "../src/tools/browser-shared"
 import { testRuntime } from "./support/runtime"
 import { BrowserEvent } from "../src/event"
-import type { BrowserPageBackend } from "../src/page"
+import { BrowserCommandService } from "../src/command-service"
+import { BrowserSessionImpl } from "../src/session"
 
 const runtime = await testRuntime(registerLocalRuntime)
 afterAll(() => runtime.close())
@@ -104,20 +105,6 @@ test("cancelling a task preserves its original failure and clears only its own a
       fn: async () => {
         const task = await Session.create({}),
           owner = BrowserOwner.shared()
-        await BrowserStorage.save(owner, {
-          timestamp: 1,
-          pages: [
-            {
-              id: "activity-page",
-              url: "https://example.com",
-              title: "Shared",
-              profileId: "personal",
-              status: "suspended",
-              isLoading: false,
-              lastActiveAt: 1,
-            },
-          ],
-        })
         const controller = new AbortController()
         const ctx = {
           sessionID: task.id,
@@ -129,32 +116,37 @@ test("cancelling a task preserves its original failure and clears only its own a
           metadata() {},
           async ask() {},
         }
-        const page: BrowserPageBackend = {
-          id: "activity-page",
-          url: "https://example.com",
+        const failure = new Error("Original task failure")
+        const browser = new BrowserSessionImpl(owner, async ({ id, url }) => ({
+          id,
+          url: url ?? "about:blank",
           title: "Shared",
           backend: "host",
           loading: false,
           lastActiveAt: 1,
           isAlive: () => true,
           close: async () => {},
-          execute: async () => ({ type: "void" }),
-        }
+          execute: async () => {
+            controller.abort()
+            throw failure
+          },
+        }))
+        const page = await browser.openPage({})
+        const restore = BrowserCommandService.useRuntimeForTest({ getOrCreateSession: async () => browser })
         const events: string[] = []
         const unsubscribe = BrowserEvent.subscribe(owner, (event) => {
           if (event.type === "agent.activity") events.push(event.kind)
         })
-        const failure = new Error("Original task failure")
         try {
           await expect(
-            BrowserToolHelper.withActivity(ctx, page, "acting", "browser_action", "Acting", async () => {
-              controller.abort()
-              throw failure
-            }),
-          ).rejects.toBe(failure)
+            BrowserToolHelper.execute(ctx, page.id, { type: "clipboard", action: "write", text: "test" }),
+          ).rejects.toThrow(failure.message)
           expect(events).toEqual(["acting", "idle"])
         } finally {
           unsubscribe()
+          restore()
+          BrowserCommandService.clear()
+          await browser.dispose()
         }
       },
     })

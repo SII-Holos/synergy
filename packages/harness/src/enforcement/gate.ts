@@ -445,6 +445,14 @@ export namespace EnforcementGate {
       }
 
       // File write operations
+      if (toolName === "apply_patch") {
+        for (const target of FilePatch.paths(args.patch)) {
+          classifyProtectedPathCapability(caps, target, "write", { activeWorkspace, originalCheckout, synergyRoot })
+          classifyPathCapability(caps, target, { ...pathOptions, write: true })
+        }
+        return { capabilities: caps }
+      }
+
       if (
         toolName === "write" ||
         toolName === "edit" ||
@@ -1149,3 +1157,4 @@ export namespace EnforcementGate {
     }
   }
 }
+import { FilePatch } from "@ericsanchezok/synergy-util/file-patch"

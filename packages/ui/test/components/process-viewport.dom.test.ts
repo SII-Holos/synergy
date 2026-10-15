@@ -118,6 +118,69 @@ afterAll(async () => {
   if (failures.length) throw new AggregateError(failures, "ProcessViewport fixture cleanup failed")
 })
 
+test("a hidden process suspends measurements and preserves its reading anchor on return", async () => {
+  const result = await page.evaluate(async () => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    const viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+    const paragraph = document.getElementById("reading-paragraph")!
+    viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -20, bubbles: true }))
+    await harness.frames()
+    const offset = paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top
+    const widths = [...harness.widths]
+    harness.clear()
+    harness.visible(false)
+    harness.growCharacterData("above")
+    await harness.frames(10)
+    const hidden = { widths: [...harness.widths], captures: harness.captures.length, restores: harness.restores.length }
+    harness.visible(true)
+    await harness.frames(10)
+    return {
+      widths,
+      hidden,
+      drift: paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top - offset,
+    }
+  })
+  expect(result.hidden).toEqual({ widths: result.widths, captures: 0, restores: 0 })
+  expect(Math.abs(result.drift)).toBeLessThan(1)
+})
+
+for (const ended of [false, true]) {
+  test(`returning to a ${ended ? "completed" : "running"} process settles background growth without replaying follow motion`, async () => {
+    const result = await page.evaluate(async (ended) => {
+      const harness = (window as unknown as FixtureWindow).processViewportFixture
+      const viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+      const motion = viewport.querySelector<HTMLElement>('[data-slot="process-viewport-motion"]')!
+      const grow = () => {
+        const row = document.createElement("div")
+        row.style.height = "48px"
+        row.textContent = "Background tool result"
+        viewport.querySelector('[data-slot="process-virtualizer"]')!.append(row)
+      }
+      viewport.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }))
+      await harness.frames(20)
+      harness.visible(false)
+      harness.ready(false)
+      harness.active(!ended)
+      grow()
+      await harness.frames()
+      harness.visible(true)
+      const frames = []
+      for (let i = 0; i < 12; i++) {
+        if (i === 3) grow()
+        await harness.frames(1)
+        frames.push({
+          animations: motion.getAnimations().length,
+          gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+        })
+      }
+      harness.ready(true)
+      await harness.frames()
+      return frames
+    }, ended)
+    expect(result.every((frame) => frame.animations === 0 && Math.abs(frame.gap) <= 2)).toBe(true)
+  })
+}
+
 test("an explicit location owns its reading anchor before native scroll delivery and body hydration", async () => {
   const result = await page.evaluate(async () => {
     const harness = (window as unknown as FixtureWindow).processViewportFixture

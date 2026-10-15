@@ -18,11 +18,29 @@ import {
   SettingsPathRow,
   SettingsSection,
 } from "../components/SettingsPrimitives"
-import type { RuntimeStore } from "../types"
+import type { AgentsStore, RuntimeStore } from "../types"
 import type { DesktopShellEnvironmentDiagnostics } from "@/context/platform"
 import { concurrencyPressureState } from "./runtime-concurrency-model"
 import { agentWorkerCapacityDisplay } from "./runtime-agent-workers-model"
 import { translateDescriptor } from "@/locales/translate"
+
+const fileToolGroups = [
+  {
+    value: "replace",
+    label: { id: "settings.runtime.fileToolGroup.replace", message: "Text replacement" },
+    members: "read, edit, write",
+  },
+  {
+    value: "hashline",
+    label: { id: "settings.runtime.fileToolGroup.hashline", message: "Line-anchored editing" },
+    members: "view_file, scan_files, revise_file, save_file, resolve_conflicts",
+  },
+  {
+    value: "patch",
+    label: { id: "settings.runtime.fileToolGroup.patch", message: "Patch editing" },
+    members: "read, apply_patch",
+  },
+] as const
 
 const managedByEnvLabel = { id: "settings.runtime.managedByEnv", message: "Managed by environment" }
 
@@ -293,6 +311,8 @@ export function TimeoutsPanel(props: {
   runtime: RuntimeStore
   onRuntimeChange: (key: keyof RuntimeStore, value: string) => void
   availableAgents: Agent[]
+  fileToolGroup: AgentsStore["fileToolGroup"]
+  onFileToolGroupChange: (group: AgentsStore["fileToolGroup"]) => void
   defaultAgent: string
   onDefaultAgentChange: (agent: string) => void
   concurrencyStatus?: CortexConcurrencyStatus
@@ -368,6 +388,30 @@ export function TimeoutsPanel(props: {
                 label: translateDescriptor(getAgentVisual(agent).label, i18n()),
               }))}
               onChange={(value) => props.onDefaultAgentChange(value)}
+            />
+          }
+        />
+        <SettingRow
+          title={_(settingsFieldCopy.fileToolGroup)}
+          description={_({
+            id: "settings.runtime.fileToolGroup.description",
+            message:
+              "One file interface for local agents, independent of agent and model. Permissions still apply. Project configuration overrides this global setting. Tools: {members}",
+            values: { members: fileToolGroups.find((group) => group.value === props.fileToolGroup)?.members ?? "" },
+          })}
+          trailing={
+            <MenuField
+              value={props.fileToolGroup}
+              ariaLabel={_(settingsFieldCopy.fileToolGroup)}
+              popoverLayer={props.popoverLayer}
+              options={fileToolGroups.map((group) => ({
+                value: group.value,
+                label: translateDescriptor(group.label, i18n()),
+              }))}
+              onChange={(value) => {
+                const group = fileToolGroups.find((group) => group.value === value)
+                if (group) props.onFileToolGroupChange(group.value)
+              }}
             />
           }
         />

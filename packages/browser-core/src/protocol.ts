@@ -2,7 +2,7 @@ import z from "zod"
 
 import { BrowserProfileIdSchema } from "./profile.js"
 
-export const BROWSER_PROTOCOL_VERSION = 5 as const
+export const BROWSER_PROTOCOL_VERSION = 6 as const
 export const BROWSER_HOST_INSTALL_TIMEOUT_MS = 120_000
 export const BROWSER_HOST_START_TIMEOUT_MS = 30_000
 export const BROWSER_HOST_WAIT_TIMEOUT_MS = 5_000
@@ -961,10 +961,11 @@ export const BrowserSnapshotElementSchema = z
 export type BrowserSnapshotElement = z.infer<typeof BrowserSnapshotElementSchema>
 
 export const BrowserBackendResultSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("void") }).strict(),
-  z.object({ type: z.literal("page"), page: BrowserPageSchema }).strict(),
+  z.object({ userChanges: browserMessage.optional(), type: z.literal("void") }).strict(),
+  z.object({ userChanges: browserMessage.optional(), type: z.literal("page"), page: BrowserPageSchema }).strict(),
   z
     .object({
+      userChanges: browserMessage.optional(),
       type: z.literal("navigation"),
       page: BrowserPageSchema,
       snapshot: z.unknown().optional(),
@@ -973,6 +974,7 @@ export const BrowserBackendResultSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      userChanges: browserMessage.optional(),
       type: z.literal("snapshot"),
       pageId,
       snapshotId: nonEmpty,
@@ -982,6 +984,7 @@ export const BrowserBackendResultSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      userChanges: browserMessage.optional(),
       type: z.literal("action"),
       pageId,
       action: nonEmpty,
@@ -992,6 +995,7 @@ export const BrowserBackendResultSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      userChanges: browserMessage.optional(),
       type: z.literal("wait"),
       pageId,
       matched: z.boolean(),
@@ -999,9 +1003,12 @@ export const BrowserBackendResultSchema = z.discriminatedUnion("type", [
       page: BrowserPageSchema.optional(),
     })
     .strict(),
-  z.object({ type: z.literal("evaluation"), pageId, value: z.unknown() }).strict(),
+  z
+    .object({ userChanges: browserMessage.optional(), type: z.literal("evaluation"), pageId, value: z.unknown() })
+    .strict(),
   z
     .object({
+      userChanges: browserMessage.optional(),
       type: z.literal("screenshot"),
       pageId,
       dataUrl: z
@@ -1012,7 +1019,7 @@ export const BrowserBackendResultSchema = z.discriminatedUnion("type", [
       height: z.number().int().nonnegative(),
     })
     .strict(),
-  z.object({ type: z.literal("data"), pageId, data: z.unknown() }).strict(),
+  z.object({ userChanges: browserMessage.optional(), type: z.literal("data"), pageId, data: z.unknown() }).strict(),
 ])
 export type BrowserBackendResult = z.infer<typeof BrowserBackendResultSchema>
 
@@ -1183,6 +1190,7 @@ export type BrowserProtocolErrorData = z.infer<typeof BrowserProtocolErrorSchema
 export const BrowserSessionPageSchema = BrowserPageSchema.extend({
   profileId: BrowserProfileIdSchema,
   openerId: BrowserPageIdSchema.optional(),
+  createdBySessionID: nonEmpty.optional(),
   status: z.enum(["active", "suspended", "failed"]),
   error: BrowserProtocolErrorSchema.optional(),
 })
@@ -1199,6 +1207,21 @@ export const BrowserOpenPageSchema = z
   .strict()
   .meta({ ref: "BrowserOpenPage" })
 
+export const BrowserAgentActivitySchema = z
+  .object({
+    sessionID: nonEmpty,
+    operationID: nonEmpty,
+    pageId,
+    url: browserURL,
+    title: browserTitle.optional(),
+    kind: z.enum(["reading", "acting", "idle"]),
+    tool: z.string().max(1_000),
+    label: browserMessage,
+    completed: z.boolean().optional(),
+  })
+  .strict()
+export type BrowserAgentActivity = z.infer<typeof BrowserAgentActivitySchema>
+
 export const BrowserSessionStateSchema = z
   .object({
     type: z.literal("session.state"),
@@ -1206,6 +1229,7 @@ export const BrowserSessionStateSchema = z
     ownerKey: nonEmpty,
     status: BrowserSessionStatusSchema,
     pages: z.array(BrowserSessionPageSchema).max(64),
+    agentActivities: z.array(BrowserAgentActivitySchema).max(256).optional(),
     presentation: BrowserPresentationSchema.nullable(),
     hostStatus: BrowserHostStatusSchema,
     seq: z.number().int().nonnegative(),
@@ -1336,17 +1360,10 @@ export const BrowserEventSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("agent.activity"),
-      sessionID: nonEmpty,
-      operationID: nonEmpty,
+      ...BrowserAgentActivitySchema.shape,
       protocolVersion,
       seq: z.number().int().nonnegative(),
       epoch: nonEmpty,
-      pageId,
-      url: browserURL,
-      title: browserTitle.optional(),
-      kind: z.enum(["reading", "acting", "idle"]),
-      tool: z.string().max(1_000),
-      label: browserMessage,
     })
     .strict(),
   z
@@ -1432,6 +1449,7 @@ export const BrowserHostMessageSchema = z
         ownerKey: nonEmpty,
         pageId,
         command: BrowserBackendCommandSchema,
+        agentSessionID: nonEmpty.optional(),
       })
       .strict(),
     z

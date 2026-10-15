@@ -86,7 +86,10 @@ def assert_native_control(records, *, tool_turns, bun_jit, observations, task_ho
                 for output in evidence
             ), f"Native {phase} {kind} JIT setting differs"
     if observations:
-        assert {"bash", "view_file", "revise_file"} <= {part["tool"] for part in completed.values()}
+        tools = {part["tool"] for part in completed.values()}
+        assert any({"bash", *pair} <= tools for pair in [("view_file", "revise_file"), ("read", "apply_patch")]), (
+            "Missing native file read/edit tool pair"
+        )
         verified = {
             int(turn)
             for output in outputs
@@ -181,15 +184,28 @@ async def fixture_provider(
             observation_file = observation_directory + "/observation.txt"
             phase = observation_turn % 4
             if phase in (1, 2):
-                name = "view_file" if phase == 1 else "revise_file"
+                names = {tool["name"].split("__")[-1] for tool in functions}
+                anchored = {"view_file", "revise_file"} <= names
+                assert anchored or {"read", "apply_patch"} <= names, "Missing native file read/edit tool pair"
+                name = (
+                    ("view_file" if anchored else "read")
+                    if phase == 1
+                    else ("revise_file" if anchored else "apply_patch")
+                )
                 selected = next(tool for tool in functions if tool["name"].split("__")[-1] == name)
                 namespace = selected.get("namespace")
                 if phase == 1:
                     args = {"filePath": observation_file, "limit": 32}
-                else:
+                elif anchored:
                     headers = re.findall(r"\[[^\]\n]*observation\.txt#([A-Za-z0-9]+)\]", json.dumps(messages))
                     assert headers, "Native view_file did not return an anchored snapshot"
                     args = {"input": f"[{observation_file}#{headers[-1]}]\nSWAP 1..1:\n+changed {observation_turn}"}
+                else:
+                    args = {
+                        "patch": f"*** Begin Patch\n*** Update File: {observation_file}\n@@\n-row 0 "
+                        + "中😀" * 128
+                        + f"\n+changed {observation_turn}\n*** End Patch"
+                    }
             else:
                 script = (
                     "from pathlib import Path; "

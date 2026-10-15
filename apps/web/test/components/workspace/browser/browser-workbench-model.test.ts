@@ -1,4 +1,33 @@
 import { expect, test } from "bun:test"
+
+test("metadata updates preserve an empty selection for a silently added page", () => {
+  const tab = browserPageTab(page("one"), shared)
+  const next = reconcileBrowserTabs({
+    tabs: [tab],
+    active: undefined,
+    pages: [page("one", "Navigated")],
+    route: shared,
+  })
+  expect(next.active).toBeUndefined()
+  expect(next.tabs[0]?.title).toBe("Navigated")
+})
+
+test("Agent pages join only their creating Session, including blank pages and recovered catalogs", () => {
+  const pages = [
+    { ...page("one"), url: "about:blank", createdBySessionID: "one" },
+    { ...page("two"), createdBySessionID: "two" },
+    page("unattributed"),
+    { ...page("popup"), openerId: "one" },
+  ]
+  const tabs = [{ id: "file", panelId: "file" }]
+  const one = reconcileBrowserTabs({ tabs, active: "file", pages, route: shared, sessionID: "one" })
+  expect(one.tabs.map((tab) => tab.resourceId)).toEqual([undefined, "one", "popup"])
+  expect(one.active).toBe("file")
+  const two = reconcileBrowserTabs({ tabs: [], active: undefined, pages, route: shared, sessionID: "two" })
+  expect(two.tabs.map((tab) => tab.resourceId)).toEqual(["two"])
+  expect(two.active).toBeUndefined()
+  expect(reconcileBrowserTabs({ ...one, pages, route: shared, sessionID: "one" }).tabs).toBe(one.tabs)
+})
 import {
   browserPageTab,
   reconcileBrowserTabs,

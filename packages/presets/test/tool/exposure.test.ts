@@ -844,8 +844,10 @@ describe("tool exposure", () => {
 
           const ids = await definitionIDs(await Session.get(session.id))
           expect(ids.has("bash")).toBe(true)
-          expect(ids.has("edit")).toBe(true)
-          expect(ids.has("write")).toBe(true)
+          expect(ids.has("read")).toBe(true)
+          expect(ids.has("apply_patch")).toBe(true)
+          expect(ids.has("edit")).toBe(false)
+          expect(ids.has("write")).toBe(false)
           expect(ids.has("process")).toBe(true)
           expect(ids.has("attach")).toBe(false)
           expect(ids.has("render")).toBe(true)
@@ -1314,8 +1316,10 @@ describe("tool exposure", () => {
           })
 
           expect(resolved.activeToolIDs).toContain("bash")
-          expect(resolved.activeToolIDs).toContain("edit")
-          expect(resolved.executionTools.edit).toBeDefined()
+          expect(resolved.activeToolIDs).toContain("apply_patch")
+          expect(resolved.executionTools.apply_patch).toBeDefined()
+          expect(resolved.activeToolIDs).not.toContain("edit")
+          expect(resolved.executionTools.edit).toBeUndefined()
         },
       })
     }))

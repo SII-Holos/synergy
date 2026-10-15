@@ -120,7 +120,7 @@ async function run() {
     window.webContents.setZoomFactor(1.25)
     const firstManager = new BrowserNativeViewManager(window, pool, () => {})
     const firstRequest = {
-      protocolVersion: 5 as const,
+      protocolVersion: 6 as const,
       ownerKey: input.ownerKey,
       pageId: input.page.id,
       bounds: { x: 256, y: 40, width: 640, height: 480 },
@@ -311,7 +311,7 @@ async function run() {
     }
     const manager = new BrowserNativeViewManager(window, pool, () => {})
     const request = {
-      protocolVersion: 5 as const,
+      protocolVersion: 6 as const,
       ownerKey: secondInput.ownerKey,
       pageId: secondInput.page.id,
       bounds: { x: 0, y: 0, width: 600, height: 400 },
@@ -337,6 +337,65 @@ async function run() {
       second.state().id !== secondInput.page.id
     )
       throw new Error("Native overlay changed the page or its input state.")
+
+    await second.execute({
+      type: "evaluate",
+      mode: "trusted",
+      expression: `
+        document.body.innerHTML = '<button id="count">Increment</button><output id="counted">0</output><input aria-label="Draft">';
+        document.querySelector('#count').addEventListener('click', () => {
+          document.querySelector('#counted').textContent = String(Number(document.querySelector('#counted').textContent) + 1);
+        });
+      `,
+    })
+    await second.execute({ type: "snapshot" }, "background-agent")
+    const windowFocused = window.isFocused()
+    let clicks = 0
+    for (const presentation of ["visible", "covered", "detached"] as const) {
+      if (presentation === "covered") await manager.attach({ ...request, visible: false })
+      if (presentation === "detached") manager.detach(secondInput.ownerKey, secondInput.page.id)
+      await second.execute(
+        { type: "action", action: { type: "click", target: { kind: "css", value: "#count" } } },
+        "background-agent",
+      )
+      const result = await secondView.webContents.executeJavaScript(
+        "Number(document.querySelector('#counted').textContent)",
+      )
+      assert.equal(result, ++clicks, `${presentation} Agent click takes effect`)
+      const observed = await second.execute({ type: "snapshot" }, "background-agent")
+      assert.equal(observed.userChanges, undefined, "Agent input is not reported as human input")
+      assert.equal(window.isFocused(), windowFocused, "Agent commands do not activate the window")
+    }
+    await manager.attach(request)
+    const clickPoint = await secondView.webContents.executeJavaScript(`(() => {
+      const rect = document.querySelector('#count').getBoundingClientRect();
+      return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) };
+    })()`)
+    secondView.webContents.sendInputEvent({ type: "mouseDown", ...clickPoint, button: "left", clickCount: 1 })
+    secondView.webContents.sendInputEvent({ type: "mouseUp", ...clickPoint, button: "left", clickCount: 1 })
+    await waitFor(
+      async () =>
+        Number(await secondView.webContents.executeJavaScript("document.querySelector('#counted').textContent")) ===
+        clicks + 1,
+      2_000,
+      "native user click",
+    )
+    await assert.rejects(
+      second.execute(
+        { type: "action", action: { type: "click", target: { kind: "css", value: "#count" } } },
+        "background-agent",
+      ),
+      /Read the page again before acting/,
+    )
+    const changed = await second.execute({ type: "snapshot" }, "background-agent")
+    assert.match(changed.userChanges ?? "", /pointer: 1/)
+    const peerChanged = await second.execute({ type: "snapshot" }, "peer-agent")
+    assert.match(peerChanged.userChanges ?? "", /pointer: 1/)
+    await second.execute(
+      { type: "action", action: { type: "click", target: { kind: "css", value: "#count" } } },
+      "background-agent",
+    )
+    assert.equal((await second.execute({ type: "snapshot" }, "background-agent")).userChanges, undefined)
     manager.destroy()
     await second.destroy()
     window.destroy()

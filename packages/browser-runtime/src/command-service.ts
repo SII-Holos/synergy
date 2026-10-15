@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import {
   BrowserBackendCommandSchema,
   BrowserProtocolError,
+  isSafeBrowserObservation,
   normalizeBrowserURL,
   type BrowserBackendCommand,
   type BrowserBackendResult,
@@ -15,6 +16,7 @@ import { ObservabilityBrowserTelemetry } from "@ericsanchezok/synergy-harness/ob
 import { BrowserProfiles } from "./profiles.js"
 
 interface ExecuteRequest {
+  agentSessionID?: string
   pageId: string
   authorize?: (input: { profileId: string; url: string; command: BrowserBackendCommand }) => Promise<void>
   commandId: string
@@ -85,7 +87,7 @@ export namespace BrowserCommandService {
     const descriptor = session.pages.find((page) => page.id === request.pageId)
     const profile =
       descriptor && command.type !== "close" ? await BrowserProfiles.requireEnabled(descriptor.profileId) : undefined
-    const fingerprint = JSON.stringify({ command, revision: profile?.revision })
+    const fingerprint = JSON.stringify({ command, revision: profile?.revision, agentSessionID: request.agentSessionID })
     const key = queueKey(owner, request.pageId)
     const queue = instanceState.queues.get(key) ?? createQueue()
     instanceState.queues.set(key, queue)
@@ -319,29 +321,63 @@ async function executeOnce(
       pageId: request.pageId,
     })
   throwIfAborted(request.signal, request.commandId)
-  if (command.type === "resume") {
-    const page = await session.resumePage(request.pageId)
-    return { type: "page", page: pageState(page) }
-  }
   const page = session.getPage(request.pageId)
-  if (!page)
+  if (!page && command.type !== "resume")
     throw new BrowserProtocolError({
       code: "browser_page_suspended",
       message: "Resume this page before using it.",
       retryable: true,
       pageId: request.pageId,
     })
-  if (command.type !== "navigate" && page.url !== descriptor.url)
+  if (page && command.type !== "navigate" && page.url !== descriptor.url)
     throw new BrowserProtocolError({
       code: "browser_page_changed",
       message: "The page changed while awaiting permission. Inspect it before continuing.",
       retryable: true,
       pageId: page.id,
     })
-  const result = await executePage(page, command.type === "navigate" ? { ...command, url } : command, request)
-  await session.save()
-  await session.notifyPageNavigated(page)
-  return result
+  const activity = request.agentSessionID
+    ? {
+        sessionID: request.agentSessionID,
+        operationID: request.commandId,
+        pageId: request.pageId,
+        url: descriptor.url,
+        title: descriptor.title,
+        kind:
+          command.type !== "stop" && (isSafeBrowserObservation(command) || command.type === "wait")
+            ? ("reading" as const)
+            : ("acting" as const),
+        tool: ["navigate", "history", "reload", "stop", "resume"].includes(command.type)
+          ? "browser_navigation"
+          : `browser_${command.type === "evaluate" ? "eval" : command.type.split(".")[0]}`,
+        label: command.type,
+      }
+    : undefined
+  if (activity) await session.notifyAgentActivity(activity)
+  let completed = false
+  try {
+    if (command.type === "resume") {
+      const resumed = await session.resumePage(request.pageId)
+      completed = true
+      return { type: "page", page: pageState(resumed) }
+    }
+    const result = await executePage(page!, command.type === "navigate" ? { ...command, url } : command, request)
+    await session.save()
+    await session.notifyPageNavigated(page!)
+    completed = true
+    return result
+  } finally {
+    if (activity) {
+      const latest = session.pages.find((page) => page.id === request.pageId)
+      await session.notifyAgentActivity({
+        ...activity,
+        url: latest?.url ?? activity.url,
+        title: latest?.title ?? activity.title,
+        kind: "idle",
+        completed,
+      })
+    }
+  }
 }
 
 async function executePage(
@@ -364,7 +400,7 @@ async function executePage(
   }
   request.signal?.addEventListener("abort", onAbort, { once: true })
   try {
-    const result = await page.execute(command)
+    const result = await page.execute(command, request.agentSessionID)
     if (aborted || request.signal?.aborted) throwIfAborted(request.signal, request.commandId)
     return result
   } finally {

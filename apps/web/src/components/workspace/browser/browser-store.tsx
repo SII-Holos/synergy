@@ -1,3 +1,4 @@
+import { updateBrowserActivities, type BrowserAgentActivity } from "@ericsanchezok/synergy-browser-core"
 import { createContext, createMemo, createSignal, useContext, type Accessor, type ParentProps } from "solid-js"
 import type {
   BrowserDownloadEntry,
@@ -39,16 +40,7 @@ export interface AccessibilityElement {
 
 export type DownloadEntry = BrowserDownloadEntry & { pageId?: string }
 
-export interface AgentActivity {
-  sessionID?: string
-  operationID?: string
-  pageId: string | null
-  url: string | null
-  title?: string
-  kind: "reading" | "acting" | "idle"
-  tool?: string
-  label: string | null
-}
+const emptyActivity = { pageId: null, url: null, kind: "idle" as const, label: null }
 
 export type FileChooserRequest = Pick<
   Extract<BrowserProtocolEvent, { type: "filechooser.request" }>,
@@ -101,16 +93,10 @@ export function createBrowserStore() {
   const [pageAssets, setPageAssets] = createStore<Record<string, AssetEntry[]>>({})
   const [downloads, setDownloads] = createStore<Record<string, DownloadEntry[]>>({})
   const [hostStatuses, setHostStatuses] = createStore<Record<string, BrowserHostStatus>>({})
-  const [agentActivity, setAgentActivity] = createSignal<AgentActivity>({
-    pageId: null,
-    url: null,
-    kind: "idle",
-    label: null,
-  })
+  const [activityState, setActivityState] = createStore({ items: [] as BrowserAgentActivity[] })
   const [fileChoosers, setFileChoosers] = createStore<Record<string, FileChooserRequest | undefined>>({})
   const [dialogs, setDialogs] = createStore<Record<string, DialogRequest | undefined>>({})
   const [pageErrors, setPageErrors] = createStore<Record<string, BrowserErrorState | undefined>>({})
-  const [activities, setActivities] = createStore<Record<string, AgentActivity | undefined>>({})
   const [presentation, setPresentation] = createSignal<BrowserPresentationSelection | null>(null)
   const browserTraceId = `browser_${generateUUID()}`
   let sender: BrowserSender | undefined
@@ -155,23 +141,23 @@ export function createBrowserStore() {
     setDialogs(id, undefined)
     setFileChoosers(id, undefined)
     setPageErrors(id, undefined)
-    setActivities(id, undefined)
+    replaceAgentActivities(activityState.items.filter((item) => item.pageId !== id))
     setHostStatuses(id, undefined!)
     setConsoleEntries(id, undefined!)
     setNetworkRequests(id, undefined!)
     setElements(id, undefined!)
     setPageAssets(id, undefined!)
   }
-  function applyAgentActivity(activity: AgentActivity) {
-    if (
-      activity.kind === "idle" &&
-      activity.pageId &&
-      activity.operationID &&
-      activities[activity.pageId]?.operationID !== activity.operationID
+  function replaceAgentActivities(activities: BrowserAgentActivity[]) {
+    setActivityState("items", reconcile(activities, { key: null }))
+  }
+  function applyAgentActivity(activity: BrowserAgentActivity) {
+    replaceAgentActivities(updateBrowserActivities(activityState.items, activity))
+  }
+  function agentActivitiesFor(sessionID: string | undefined) {
+    return activityState.items.filter(
+      (item) => item.sessionID === sessionID && session.pages.some((page) => page.id === item.pageId),
     )
-      return
-    setAgentActivity(activity)
-    if (activity.pageId) setActivities(activity.pageId, activity)
   }
   function addDownload(nextPageId: string, entry: DownloadEntry) {
     entry = { ...entry, pageId: nextPageId }
@@ -225,9 +211,8 @@ export function createBrowserStore() {
     downloads,
     setDownloads,
     addDownload,
-    agentActivity,
-    activities,
-    setAgentActivity,
+    agentActivitiesFor,
+    replaceAgentActivities,
     applyAgentActivity,
     dialogs,
     fileChoosers,
@@ -244,7 +229,20 @@ export function createBrowserStore() {
     browserTraceId: () => browserTraceId,
   }
 
-  function forPage(target: Accessor<string | undefined>, selectPage: (id: string) => void) {
+  function forPage(
+    target: Accessor<string | undefined>,
+    selectPage: (id: string) => void,
+    sessionID: Accessor<string | undefined> = () => undefined,
+  ) {
+    const recentAgentActivity = createMemo(() =>
+      agentActivitiesFor(sessionID())
+        .filter((item) => item.kind === "idle")
+        .at(-1),
+    )
+    const activeAgentActivities = createMemo(() =>
+      agentActivitiesFor(sessionID()).filter((item) => item.kind !== "idle"),
+    )
+    const agentActivity = createMemo(() => activeAgentActivities().at(-1) ?? recentAgentActivity() ?? emptyActivity)
     const page = createMemo(() => session.pages.find((page) => page.id === target()) ?? null)
     const pageId = createMemo(() => page()?.id ?? null)
     const [devPanel, setDevPanel] = createSignal<DevPanel>("closed")
@@ -268,6 +266,9 @@ export function createBrowserStore() {
     }
     return {
       ...shared,
+      agentActivity,
+      recentAgentActivity,
+      activeAgentActivities,
       page,
       pageId,
       selectPage,

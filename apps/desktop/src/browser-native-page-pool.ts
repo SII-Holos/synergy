@@ -25,7 +25,7 @@ export interface BrowserNativePageInput {
 
 export interface BrowserNativePageHandle {
   state(): BrowserPage
-  execute(command: BrowserBackendCommand): Promise<BrowserBackendResult>
+  execute(command: BrowserBackendCommand, agentSessionID?: string): Promise<BrowserBackendResult>
   destroy(): Promise<void>
   isAlive(): boolean
 }
@@ -109,7 +109,8 @@ export class BrowserNativePagePool {
         lastResumeRecoveryAt: null,
         replacementListeners: new Set<(view: WebContentsView, previous: WebContentsView) => void>(),
         state: () => entry.generation.state(),
-        execute: (command: BrowserBackendCommand) => this.execute(entry, command),
+        execute: (command: BrowserBackendCommand, agentSessionID?: string) =>
+          this.execute(entry, command, agentSessionID),
         destroy: () => this.destroyEntry(key),
         isAlive: () => !entry.closing,
       } satisfies Partial<Entry>)
@@ -183,7 +184,11 @@ export class BrowserNativePagePool {
     if (failures.length) throw new AggregateError(failures, "One or more native Browser pages could not be closed.")
   }
 
-  private async execute(entry: Entry, command: BrowserBackendCommand): Promise<BrowserBackendResult> {
+  private async execute(
+    entry: Entry,
+    command: BrowserBackendCommand,
+    agentSessionID?: string,
+  ): Promise<BrowserBackendResult> {
     if (command.type === "resume") {
       if (entry.recovery) await entry.recovery
       else if (entry.failed) await this.beginRecovery(entry, "resume-retry")
@@ -196,7 +201,7 @@ export class BrowserNativePagePool {
     }
     const releaseCapture = command.type === "screenshot" ? this.retainCapture(entry) : undefined
     try {
-      return await entry.generation.control.execute(command)
+      return await entry.generation.control.execute(command, agentSessionID)
     } catch (error) {
       if (isRecoverableWebContentsError(error, entry.generation.view.webContents)) {
         void this.recover(entry, isCdpTimeout(error) ? "cdp-timeout" : "command-failure").catch(() => undefined)
@@ -316,7 +321,7 @@ export class BrowserNativePagePool {
       cleanupEvents = this.bindPageEvents(input, generation)
       generation.cleanupEvents = cleanupEvents
       if (!existingView && restoreURL && restoreURL !== "about:blank") {
-        await control.execute({ type: "navigate", url: restoreURL, source: "user" })
+        await control.execute({ type: "navigate", url: restoreURL, source: "user" }, undefined, false)
       }
       return generation
     } catch (error) {

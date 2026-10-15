@@ -29,7 +29,7 @@ test("v4 owners become separate legacy identities with exact partitions; reruns 
     await BrowserMigration.runAll()
     const first = (await BrowserStorage.load(owner("one")))!,
       second = (await BrowserStorage.load(owner("two")))!
-    expect(first.version).toBe(5)
+    expect(first.version).toBe(6)
     expect(first.pages[0]?.status).toBe("suspended")
     expect(first.pages[0]?.profileId).not.toBe(second.pages[0]?.profileId)
     expect((await BrowserProfiles.get(first.pages[0]!.profileId)).partition).toBe(
@@ -64,4 +64,32 @@ test("legacy annotations migrate while execution checkpoints stay retired", () =
 test("unsafe legacy identifiers are rejected before storage access", () =>
   runtime.run(async () => {
     await expect(BrowserMigration.run({ ...owner("unsafe"), scopeID: "../../outside" })).rejects.toThrow("unsafe")
+  }))
+
+test("released page records upgrade without claiming a Session or losing their identity", () =>
+  runtime.run(async () => {
+    const target = owner("unattributed")
+    const page = {
+      id: "historical",
+      profileId: "personal",
+      url: "https://example.com/",
+      title: "Saved",
+      status: "suspended" as const,
+      isLoading: false,
+      lastActiveAt: 12,
+    }
+    await Storage.write(BrowserStorage.keyForOwner(target), {
+      version: 5,
+      pages: [page],
+      timestamp: 10,
+      annotations: [],
+      downloads: [],
+    })
+    await BrowserMigration.upgradePageAttributions()
+    const state = (await BrowserStorage.load(target))!
+    expect(state.version).toBe(6)
+    expect(state.pages).toEqual([page])
+    await BrowserStorage.save(target, { ...state, pages: [{ ...state.pages[0]!, createdBySessionID: "new-session" }] })
+    await BrowserMigration.upgradePageAttributions()
+    expect((await BrowserStorage.load(target))?.pages[0]?.createdBySessionID).toBe("new-session")
   }))

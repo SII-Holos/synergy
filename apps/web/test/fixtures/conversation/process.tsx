@@ -29,6 +29,7 @@ import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 import { createConversationHydration } from "../../../src/components/session/conversation-hydration"
 import { RetainedSessionViews } from "../../../src/components/session/retained-session-views"
 import { useViewActivity } from "../../../src/context/view-residency"
+import { ConversationMotionProvider } from "@ericsanchezok/synergy-ui/conversation-motion"
 import { captureConversationReadingAnchor } from "../../../src/components/session/conversation-reading-anchor"
 
 const [selectedSession, selectSession] = createSignal("session")
@@ -540,11 +541,9 @@ window.__conversationProcess = {
         previous: data.part.more.some((part) => part.id === id),
       })
     }
-    setData(
-      "part",
-      "more",
-      Array.from({ length: count }, (_, i) => part("more", "many-" + i, "tool")),
-    )
+    const parts = Array.from({ length: count }, (_, i) => part("more", "many-" + i, "tool"))
+    canonicalParts?.set("more", parts)
+    setData("part", "more", parts)
   },
   restoreProcess(count: number) {
     setData(
@@ -787,7 +786,7 @@ function Scroller(props: ParentProps) {
               Load earlier messages
             </button>
           </Show>
-          {props.children}
+          <ConversationMotionProvider ready={hydrated}>{props.children}</ConversationMotionProvider>
         </div>
       </div>
       <button type="button" data-outside-control>

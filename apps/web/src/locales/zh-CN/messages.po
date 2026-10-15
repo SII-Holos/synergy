@@ -1579,11 +1579,7 @@ msgstr "最近打开"
 
 #. ── Agent ──
 msgid "app.browser.agent.activity"
-msgstr "智能体 {kind} {host}"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.agent.follow"
-msgstr "跟随"
+msgstr "{kind, select, acting {Agent 正在操作} reading {Agent 正在查看} other {Agent 最近查看}}"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.annotation.color"
@@ -14245,7 +14241,7 @@ msgstr "更改将从模型的下一步执行开始生效。"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.inactive"
-msgstr "Light Loop 已不再处于活动状态。关闭此对话框以继续。"
+msgstr "本次 Light Loop 已结束。"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14259,7 +14255,7 @@ msgstr "任务描述"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.reviewPending"
-msgstr "完成情况审核待处理。请先停止或完成审核，再更改任务。"
+msgstr "审核中，目标只读。"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14287,7 +14283,7 @@ msgstr "Light Loop 任务"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.working"
-msgstr "会话正在运行。请先停止会话或等待其空闲，再更改任务。"
+msgstr "暂停后可编辑目标。"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14402,6 +14398,94 @@ msgstr "编辑视图"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.loopReady"
 msgstr "循环已就绪"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.auditing"
+msgstr "审核中"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.bound"
+msgstr "已绑定"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancel"
+msgstr "取消本次循环"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.completed"
+msgstr "审核通过"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.details"
+msgstr "详情"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.edit"
+msgstr "编辑目标"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failure"
+msgstr "失败原因"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.iterationExhausted"
+msgstr "审核达上限"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.openNote"
+msgstr "打开蓝图"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.pending"
+msgstr "发送任务后开始"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reason"
+msgstr "审核意见"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.resolving"
+msgstr "正在确认结果"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.result"
+msgstr "结果"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reviewer"
+msgstr "打开审核会话"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.rework"
+msgstr "返工中"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.timedOut"
+msgstr "已超时"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.unavailable"
+msgstr "状态暂不可用"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -17234,6 +17318,10 @@ msgid "session.execution.copyLoaded"
 msgstr "复制已加载输出"
 
 #. js-lingui-explicit-id
+msgid "session.execution.copyMetadata"
+msgstr "复制执行记录"
+
+#. js-lingui-explicit-id
 msgid "session.execution.copyOutput"
 msgstr "复制工具输出"
 
@@ -17308,6 +17396,10 @@ msgstr "无法加载执行详情。"
 #. js-lingui-explicit-id
 msgid "session.execution.loading"
 msgstr "正在加载工具结果…"
+
+#. js-lingui-explicit-id
+msgid "session.execution.metadata"
+msgstr "执行记录"
 
 #. js-lingui-explicit-id
 msgid "session.execution.noDiagnostics"
@@ -23329,6 +23421,26 @@ msgid "settings.runtime.compaction.prune.title"
 msgstr "剪除工具输出"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.description"
+msgstr "为本地智能体统一选择文件接口，独立于智能体和模型，仍受原有权限约束。项目配置会覆盖此全局设置。工具：{members}"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.hashline"
+msgstr "行锚编辑"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.patch"
+msgstr "补丁编辑"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.replace"
+msgstr "文本替换"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.title"
+msgstr "文件读写工具组"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.managedByEnv"
 msgstr "由环境管理"
 
@@ -25141,6 +25253,58 @@ msgid "tool.misc.warnings"
 msgstr "警告"
 
 #. js-lingui-explicit-id
+msgid "tool.patch.applied"
+msgstr "已应用"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.committed"
+msgstr "已生效"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.delete"
+msgstr "删除"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.move"
+msgstr "移动"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.noChange"
+msgstr "无变更"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.notStarted"
+msgstr "未执行"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.partial"
+msgstr "部分已应用"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.rejected"
+msgstr "已拒绝"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unknown"
+msgstr "执行结果未知"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unresolved"
+msgstr "执行结果未确认"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unsaved"
+msgstr "持久化未确认"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.write"
+msgstr "写入"
+
+#. js-lingui-explicit-id
 msgid "tool.render.busy"
 msgstr "请等待当前可视化操作完成。"
 
@@ -25335,6 +25499,10 @@ msgstr "分析超时"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.answer-question"
 msgstr "回答问题"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.apply-patch"
+msgstr "应用补丁"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.approve-blueprint-loop"

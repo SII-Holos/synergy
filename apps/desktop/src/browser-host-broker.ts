@@ -228,7 +228,7 @@ export class BrowserHostBrokerClient {
       return
     }
     try {
-      this.result(message.requestId, await entry.page.execute(message.command))
+      this.result(message.requestId, await entry.page.execute(message.command, message.agentSessionID))
     } catch (error) {
       this.failure(message.requestId, error)
     }

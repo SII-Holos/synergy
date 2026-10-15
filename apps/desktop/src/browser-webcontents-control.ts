@@ -1,6 +1,8 @@
 import { clipboard } from "electron"
 import {
   BrowserBackendCommandSchema,
+  BrowserHumanChanges,
+  isSafeBrowserObservation,
   BrowserNavigationPolicy,
   BrowserProtocolError,
   CdpPageController,
@@ -42,7 +44,10 @@ class ElectronCdpTransport implements CdpTransport {
     for (const listener of this.listeners.get(method) ?? []) listener(params)
   }
 
-  constructor(private contents: () => Electron.WebContents | undefined) {}
+  constructor(
+    private contents: () => Electron.WebContents | undefined,
+    private injectedInput: (method: string, params?: Record<string, unknown>) => () => void,
+  ) {}
 
   setNativeViewport(viewport: { width: number; height: number } | null): Promise<void> {
     this.nativeViewport = viewport
@@ -80,6 +85,15 @@ class ElectronCdpTransport implements CdpTransport {
   }
 
   private async sendCommand<T>(method: string, params?: Record<string, unknown>): Promise<T> {
+    const release = this.injectedInput(method, params)
+    try {
+      return await this.dispatchCommand<T>(method, params)
+    } finally {
+      release()
+    }
+  }
+
+  private async dispatchCommand<T>(method: string, params?: Record<string, unknown>): Promise<T> {
     const contents = this.requireContents()
     if (method === "Input.dispatchMouseEvent" && params?.type === "mouseMoved") {
       contents.sendInputEvent({
@@ -172,9 +186,27 @@ export class BrowserWebContentsControl {
   private keyListener: (_event: Electron.Event, input: Electron.Input) => void
   private commandInFlight = false
   private navigationBlocked: { url: string; reason: string } | null = null
+  private humanChanges: BrowserHumanChanges
+  private humanNavigationUntil = 0
+  private injectedInputs = new Set<{ type: string; key?: unknown; x?: unknown; y?: unknown }>()
 
   constructor(private target: BrowserWebContentsControlTarget) {
-    this.transport = new ElectronCdpTransport(target.contents)
+    this.humanChanges = new BrowserHumanChanges(target.pageId)
+    this.transport = new ElectronCdpTransport(target.contents, (method, params) => {
+      if (method !== "Input.dispatchMouseEvent" && method !== "Input.dispatchKeyEvent") return () => {}
+      const types: Record<string, string> = {
+        mousePressed: "mouseDown",
+        mouseReleased: "mouseUp",
+        rawKeyDown: "keyDown",
+        char: "char",
+      }
+      const type = String(params?.type ?? "")
+      const input = { type: types[type] ?? type, key: params?.key, x: params?.x, y: params?.y }
+      this.injectedInputs.add(input)
+      return () => {
+        this.injectedInputs.delete(input)
+      }
+    })
     const navigationOptions = {
       allowUserNavigation: (url: string) => {
         try {
@@ -213,17 +245,30 @@ export class BrowserWebContentsControl {
     this.committedListener = (_event, url) => {
       this.initialNavigation = null
       this.navigation.noteCommitted(url)
+      if (Date.now() < this.humanNavigationUntil) this.humanChanges.record("navigation")
+      this.humanNavigationUntil = 0
     }
     this.mouseListener = (_event, input) => {
       if (input.type === "mouseDown") this.navigation.noteUserGesture()
+      if (this.consumeInjectedInput(input)) return
+      if (input.type === "mouseDown" || input.type === "mouseWheel") {
+        this.humanChanges.record(input.type === "mouseWheel" ? "scroll" : "pointer")
+        this.humanNavigationUntil = Date.now() + 2_000
+      }
     }
     this.keyListener = (_event, input) => {
       if (input.type === "keyDown") this.navigation.noteUserGesture()
+      if (this.consumeInjectedInput(input)) return
+      if (input.type === "keyDown") {
+        this.humanChanges.record("keyboard")
+        this.humanNavigationUntil = Date.now() + 2_000
+      }
     }
     const contents = target.contents()
     contents?.on("will-navigate", this.navigationListener)
     contents?.on("will-redirect", this.redirectListener)
     contents?.on("did-navigate", this.committedListener)
+    contents?.on("did-navigate-in-page", this.committedListener)
     contents?.on("did-stop-loading", this.stoppedListener)
     contents?.on("before-mouse-event", this.mouseListener)
     contents?.on("before-input-event", this.keyListener)
@@ -254,6 +299,21 @@ export class BrowserWebContentsControl {
     return this.transport.setNativeViewport(viewport)
   }
 
+  noteHumanPageChange() {
+    this.humanChanges.record("page")
+  }
+
+  private consumeInjectedInput(input: { type: string; key?: string; x?: number; y?: number }) {
+    for (const expected of this.injectedInputs) {
+      if (expected.type !== input.type || (expected.key !== undefined && expected.key !== input.key)) continue
+      if (expected.x !== undefined && input.x !== undefined && expected.x !== input.x) continue
+      if (expected.y !== undefined && input.y !== undefined && expected.y !== input.y) continue
+      this.injectedInputs.delete(expected)
+      return true
+    }
+    return false
+  }
+
   dispatchInput(payload: Record<string, unknown>): void {
     if (payload.type === "input.resize") return
 
@@ -262,7 +322,10 @@ export class BrowserWebContentsControl {
 
     if (payload.type === "input.text") {
       const text = typeof payload.text === "string" ? payload.text : ""
-      if (text) void contents.insertText(text)
+      if (text) {
+        this.humanChanges.record("keyboard")
+        void contents.insertText(text)
+      }
       return
     }
 
@@ -278,11 +341,32 @@ export class BrowserWebContentsControl {
     }
   }
 
-  async execute(input: BrowserBackendCommand): Promise<BrowserBackendResult> {
+  async execute(
+    input: BrowserBackendCommand,
+    agentSessionID?: string,
+    userCommand = true,
+  ): Promise<BrowserBackendResult> {
+    const observation = agentSessionID ? this.humanChanges.begin(agentSessionID, input) : undefined
+    if (!agentSessionID && userCommand && ["navigate", "history", "reload"].includes(input.type))
+      this.humanChanges.record("navigation")
+    else if (
+      !agentSessionID &&
+      userCommand &&
+      !isSafeBrowserObservation(input) &&
+      !["wait", "resume", "close"].includes(input.type)
+    )
+      this.noteHumanPageChange()
+    const result = await this.executeCommand(input)
+    const userChanges = observation ? this.humanChanges.finish(observation) : undefined
+    return userChanges ? { ...result, userChanges } : result
+  }
+
+  private async executeCommand(input: BrowserBackendCommand): Promise<BrowserBackendResult> {
     const command = BrowserBackendCommandSchema.parse(input)
     const diagnostics = this.target.diagnostics?.()
 
     if (command.type === "navigate") {
+      this.humanNavigationUntil = 0
       this.initialNavigation = null
       this.navigation.begin(command.url, command.source)
     }
@@ -350,6 +434,7 @@ export class BrowserWebContentsControl {
       contents.off("will-navigate", this.navigationListener)
       contents.off("will-redirect", this.redirectListener)
       contents.off("did-navigate", this.committedListener)
+      contents.off("did-navigate-in-page", this.committedListener)
       contents.off("did-stop-loading", this.stoppedListener)
       contents.off("before-mouse-event", this.mouseListener)
       contents.off("before-input-event", this.keyListener)

@@ -1,0 +1,24 @@
+.browser-tab-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.browser-tab-icon[data-browser-agent-kind] {
+  color: var(--text-strong);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .browser-tab-icon[data-browser-agent-kind]:not([data-browser-agent-kind="idle"]) {
+    animation: browser-agent-attention 1.8s ease-in-out infinite;
+  }
+}
+
+@keyframes browser-agent-attention {
+  50% {
+    opacity: 0.55;
+  }
+}

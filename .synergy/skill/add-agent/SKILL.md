@@ -27,6 +27,8 @@ description: Add or change a built-in Synergy primary agent, subagent, host-sele
 7. Update generated agent-table behavior or tests if the new agent changes routing-visible metadata. Do not maintain a second hand-written agent list in prompts or docs.
 8. Keep agent registration separate from invocation. A hidden model-only agent does not by itself justify a new local `LLM.stream()` wrapper or a manually created child session.
 
+File-interface selection belongs solely to resolved Scope configuration. Grant semantic `read`/`edit` authority and preserve role restrictions; do not select syntax through Agent-specific tool denies or anchored permission profiles. Exercise each file group for writer, reader and no-file roles. Optional owners may contribute their existing capability grants; installing an owner does not select a file group. See [file tool interfaces](../../../docs/architecture/workspace-and-files.md#file-tool-interfaces).
+
 ## Prompt Quality
 
 1. Give the agent a role that is a real-world professional identity plus a concrete domain (for example, "a social-content growth strategist focused on short-video platforms"). Reject product, brand, or codename as the role, reject pipeline-step labels ("verb + agent"), and reject generic wrappers such as "smart assistant".
@@ -47,3 +49,5 @@ description: Add or change a built-in Synergy primary agent, subagent, host-sele
 ## Handoff
 
 Report the agent class, visibility/delegation boundary, permission profile, model role, prompt location, tests run, and any deliberate catalog exclusions.
+
+When consolidating built-in permission profiles, audit every optional domain contribution by stable registration identity. Verify media and code-evidence grants for renamed primary agents and writer/reviewer roles across each configured file interface; explicit user denials must still win.

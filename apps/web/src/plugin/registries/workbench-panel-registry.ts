@@ -75,6 +75,7 @@ export interface WorkbenchPanelEntry extends SurfaceEntry {
     tab: WorkbenchPanelTab,
   ) => Array<{ id: string; label: string; disabled?: boolean; run(): void | Promise<void> }>
   tabIcon?: (tab: WorkbenchPanelTab) => JSX.Element
+  tabDescription?: (tab: WorkbenchPanelTab) => string | undefined
 }
 
 /** Internal slot-backed entry: workbench panels live in one slot. */

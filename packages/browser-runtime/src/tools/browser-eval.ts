@@ -22,28 +22,20 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
     .strict(),
   async execute({ pageId, ...params }, ctx) {
     const page = await BrowserToolHelper.resolvePage(ctx, pageId)
-    return BrowserToolHelper.withActivity(
-      ctx,
-      page,
-      params.mode === "trusted" ? "acting" : "reading",
-      "browser_eval",
-      `Evaluating ${params.mode} script`,
-      async () => {
-        const result = await BrowserToolHelper.execute(ctx, pageId, {
-          type: "evaluate",
-          mode: params.mode,
-          expression: params.expression,
-          ...(params.timeoutSeconds !== undefined ? { timeoutMs: params.timeoutSeconds * 1_000 } : {}),
-        })
-        if (result.type !== "evaluation") throw new Error("Browser eval returned an unexpected result.")
-        const raw = JSON.stringify(result.value, null, 2) ?? String(result.value)
-        const output = raw.length > params.maxChars ? `${raw.slice(0, params.maxChars)}\n…(truncated)` : raw
-        return {
-          title: `Browser eval (${params.mode})`,
-          output,
-          metadata: { pageId: page.id, mode: params.mode, truncated: raw.length > params.maxChars },
-        }
-      },
-    )
+
+    const result = await BrowserToolHelper.execute(ctx, pageId, {
+      type: "evaluate",
+      mode: params.mode,
+      expression: params.expression,
+      ...(params.timeoutSeconds !== undefined ? { timeoutMs: params.timeoutSeconds * 1_000 } : {}),
+    })
+    if (result.type !== "evaluation") throw new Error("Browser eval returned an unexpected result.")
+    const raw = JSON.stringify(result.value, null, 2) ?? String(result.value)
+    const output = raw.length > params.maxChars ? `${raw.slice(0, params.maxChars)}\n…(truncated)` : raw
+    return {
+      title: `Browser eval (${params.mode})`,
+      output,
+      metadata: { pageId: page.id, mode: params.mode, truncated: raw.length > params.maxChars },
+    }
   },
 })

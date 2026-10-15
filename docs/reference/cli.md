@@ -148,7 +148,7 @@ create a new agent
 | `--path` (string) | directory path to generate the agent file |
 | `--description` (string) | what the agent should do |
 | `--mode` (string) | agent mode |
-| `--tools` (string) |  |
+| `--tools` (string) | comma-separated tool permission allowlist (default: all); fileToolGroup in scoped configuration selects the file interface |
 | `--model` (string) | model to use in the format of provider/model |
 
 ## create <name>

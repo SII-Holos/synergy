@@ -94,6 +94,7 @@ export function formatComposerSelection(text: string, range: TextRange, format: 
 
 type ComposerPresentationBinding = {
   state: ComposerPresentation
+  status?(): import("solid-js").JSX.Element
   hasAttachments?(): boolean
   preview(): {
     text: string

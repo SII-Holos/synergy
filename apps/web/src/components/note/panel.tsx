@@ -1,3 +1,4 @@
+import { loopCopy } from "../prompt-input/loop-status-copy"
 import { useViewActivity } from "@/context/view-residency"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
@@ -98,12 +99,7 @@ function isBlueprintNote(note: { kind?: string; blueprint?: unknown }) {
 }
 
 function getLoopLabel(lingui: ReturnType<typeof useLingui>, status: LoopStatus) {
-  if (status === "armed") return lingui._({ id: N.runQueued.id, message: N.runQueued.message })
-  if (status === "running") return lingui._({ id: N.running.id, message: N.running.message })
-  if (status === "auditing") return lingui._({ id: N.reviewing.id, message: N.reviewing.message })
-  if (status === "completed") return lingui._({ id: N.completed.id, message: N.completed.message })
-  if (status === "failed") return lingui._({ id: N.failed.id, message: N.failed.message })
-  return lingui._({ id: N.cancelled.id, message: N.cancelled.message })
+  return lingui._(loopCopy[status === "armed" ? "bound" : status])
 }
 
 function getLoopTone(status: LoopStatus): BlueprintVisualState["tone"] {
@@ -138,12 +134,12 @@ function getBlueprintVisualState(
     }
   }
   const latest = loops[0]
-  if (latest?.status === "failed") {
+  if (latest && ["completed", "failed", "cancelled"].includes(latest.status)) {
     return {
-      label: lingui._({ id: N.runFailed.id, message: N.runFailed.message }),
-      detail: lingui._({ id: N.lastRunFailed.id, message: N.lastRunFailed.message }),
-      tone: "failed",
-      icon: getSemanticIcon("state.error"),
+      label: getLoopLabel(lingui, latest.status),
+      detail: getRunModeLabel(lingui, latest.runMode),
+      tone: getLoopTone(latest.status),
+      icon: getSemanticIcon(latest.status === "failed" ? "state.error" : "blueprint.main"),
     }
   }
   return {
@@ -2147,7 +2143,7 @@ function NoteEditor(props: {
         </Show>
 
         <Show when={sdk.capabilities.has("blueprint") && isBlueprint()}>
-          <div class="flex items-center gap-2 border-t border-border-weaker-base/40 px-4 py-1.5">
+          <div class="flex flex-wrap items-center gap-2 border-t border-border-weaker-base/40 px-4 py-1.5">
             <Show when={blueprintState()}>
               <span class={`note-blueprint-state note-blueprint-state--${blueprintState()!.tone}`}>
                 <Icon name={blueprintState()!.icon} size="small" class="size-3" />
@@ -2172,7 +2168,7 @@ function NoteEditor(props: {
                 <span class="h-3 w-px bg-border-weaker-base" />
                 <span class="text-11-regular text-text-weak">{baseNote()!.blueprint!.defaultAgent}</span>
               </Show>
-              <Show when={activeBlueprintRun()?.sessionID} keyed>
+              <Show when={activeBlueprintRun()?.sessionID ?? noteLoops()[0]?.sessionID} keyed>
                 {(sessionID) => (
                   <>
                     <span class="h-3 w-px bg-border-weaker-base" />

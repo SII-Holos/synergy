@@ -451,6 +451,7 @@ const BUILTIN_SETTINGS_COPY = {
       settingsFieldCopy.agentConcurrency,
       settingsFieldCopy.coauthor,
       settingsFieldCopy.defaultAgent,
+      settingsFieldCopy.fileToolGroup,
       settingsFieldCopy.invokeTimeout,
       settingsFieldCopy.providerTtfb,
       settingsFieldCopy.providerIdle,

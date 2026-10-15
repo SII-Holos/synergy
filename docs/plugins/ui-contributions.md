@@ -47,6 +47,8 @@ Import `Button`, `Input`, `Select`, `Tabs`, `Menu`, `Dialog`, `Popover`, `Toolti
 
 Use `execution.elapsed`, `execution.tokens` and `execution.cost` for task metrics; `inbox.task`, `inbox.steer` and `inbox.context` distinguish queued input, steering and context updates. Use semantic tokens for their declared meaning. For example, `state.cancelled` denotes a cancelled task, while `action.close` denotes dismissing a control.
 
+Content editing uses `action.edit` (`pencil-line`); naming uses `action.rename` (`pencil`). Destructive removal or cancellation uses `action.remove` (`trash-2`) with an accessible label describing the operation.
+
 Surface expansion and contraction use `action.expand` (`maximize-2`, two diagonal outward arrows) and `action.collapse` (`minimize-2`, two diagonal inward arrows). Editors, panels and fullscreen content views share this pair. The stable `composer.expand` and `composer.collapse` tokens retain the same sizing meanings; `window.restore` shares the contraction glyph. These are the only same-meaning glyph aliases. New sizing controls reuse the generic action tokens; disclosure controls retain their navigation semantics.
 
 `FormField` supplies the control's ID, description and error relationships to its child function. `Popover.trigger` is a button component receiving trigger attributes, for example `trigger={props => <Button {...props}>Options</Button>}`. This preserves one accessible button and keyboard/focus behavior. Public dialogs, nested menus and popovers inherit the owning plugin's style and overlay layers; authors do not query host dialog DOM or select a global portal target.

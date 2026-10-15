@@ -155,6 +155,7 @@ export namespace WorkspaceContent {
       path: string
       data: Uint8Array
       expectedVersion: string | null
+      expectedEntryVersion?: string | null
       mode?: number
       protectSensitive?: boolean
     },
@@ -166,6 +167,11 @@ export namespace WorkspaceContent {
     change = { ...change, path: WorkspaceTree.Path.parse(resolved.path) }
     if (change.protectSensitive) protectedPath(change.path)
     const previous = resolved.entry
+    if (
+      change.expectedEntryVersion !== undefined &&
+      change.expectedEntryVersion !== (previous ? WorkspaceTree.entryVersion(previous, info.content?.revision) : null)
+    )
+      throw new WorkspaceErrors.ConflictError()
     if (previous && !(previous.mode & 0o222)) throw new WorkspaceErrors.AccessDeniedError("Workspace file is read-only")
     if (
       (previous && previous.kind !== "file") ||

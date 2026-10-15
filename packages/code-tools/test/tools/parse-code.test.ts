@@ -21,6 +21,29 @@ const ctx = {
 }
 
 describe("tool.parse_code", () => {
+  for (const fileToolGroup of ["replace", "patch"] as const)
+    test(`ordinary ${fileToolGroup} output does not grant anchored or full-read evidence`, () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          init: async (dir) => {
+            await Bun.write(path.join(dir, "plain.ts"), "const value = 1\n")
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const tool = await ParseCodeTool.init({ fileToolGroup })
+            const result = await tool.execute(
+              { pattern: "const $X = $Y", lang: "typescript" },
+              { ...ctx, sessionID: `plain-${fileToolGroup}` },
+            )
+            expect(result.output).toContain("plain.ts")
+            expect(result.output).not.toMatch(/#[0-9A-F]{4}/)
+            expect(result.metadata.tags).toEqual({})
+            expect(FileTime.get(`plain-${fileToolGroup}`, path.join(tmp.path, "plain.ts"))).toBeUndefined()
+          },
+        })
+      }))
   describe("AST search with hashline output", () => {
     test("groups AST search results by file with hashline headers", () =>
       runtime.run(async () => {
@@ -45,7 +68,7 @@ describe("tool.parse_code", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const tool = await ParseCodeTool.init()
+            const tool = await ParseCodeTool.init({ fileToolGroup: "hashline" })
             const result = await tool.execute(
               { pattern: "export function $NAME($$$): string { $$$ }", lang: "typescript" },
               ctx,
@@ -75,7 +98,7 @@ describe("tool.parse_code", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const tool = await ParseCodeTool.init()
+            const tool = await ParseCodeTool.init({ fileToolGroup: "hashline" })
             const result = await tool.execute({ pattern: "console.log($MSG)", lang: "typescript" }, ctx)
 
             const fileContent = "const x = console.log('hello')\nconst y = console.log('world')\n"
@@ -99,7 +122,7 @@ describe("tool.parse_code", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const tool = await ParseCodeTool.init()
+            const tool = await ParseCodeTool.init({ fileToolGroup: "hashline" })
             const result = await tool.execute({ pattern: "const $X = $Y", lang: "typescript" }, ctx)
 
             // Tag should be derived from the file content
@@ -122,12 +145,12 @@ describe("tool.parse_code", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const tool = await ParseCodeTool.init()
+            const tool = await ParseCodeTool.init({ fileToolGroup: "hashline" })
             const result = await tool.execute({ pattern: "someNonexistentPattern($$$)", lang: "typescript" }, ctx)
 
             expect(result.metadata.matches).toBe(0)
             expect(result.output).toContain("No structural matches found")
-            expect(result.output).toContain("If you are searching for a literal or partial fragment, use scan_files")
+            expect(result.output).toContain("If you are searching for a literal or partial fragment, use file_search")
           },
         })
       }))
@@ -143,13 +166,13 @@ describe("tool.parse_code", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const tool = await ParseCodeTool.init()
+            const tool = await ParseCodeTool.init({ fileToolGroup: "hashline" })
             const result = await tool.execute({ pattern: "export namespace Dag {", lang: "typescript" }, ctx)
 
             expect(result.metadata.matches).toBe(0)
             expect(result.output).toContain("The AST pattern is not parseable")
             expect(result.output).toContain("export namespace $NAME { $$$ }")
-            expect(result.output).toContain("scan_files")
+            expect(result.output).toContain("file_search")
           },
         })
       }))
@@ -168,7 +191,7 @@ describe("tool.parse_code", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const tool = await ParseCodeTool.init()
+            const tool = await ParseCodeTool.init({ fileToolGroup: "hashline" })
             const result = await tool.execute(
               { pattern: "export function $NAME($$$) { $$$ }", lang: "typescript" },
               ctx,
@@ -197,12 +220,12 @@ describe("tool.parse_code", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const tool = await ParseCodeTool.init()
+            const tool = await ParseCodeTool.init({ fileToolGroup: "hashline" })
             const result = await tool.execute({ pattern: "const $NAME = $VALUE", lang: "typescript" }, ctx)
             expect(result.metadata.oversizedFiles).toEqual(["large.ts"])
             expect(result.metadata.matchLines["large.ts"]).toEqual([1])
             expect(result.metadata.truncated).toBe(true)
-            expect(result.output).toContain("file too large for anchored tag")
+            expect(result.output).toContain("file exceeds the source preview limit")
             expect(result.output).not.toContain("[large.ts#")
           },
         })
@@ -218,7 +241,7 @@ describe("tool.parse_code", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const tool = await ParseCodeTool.init()
+            const tool = await ParseCodeTool.init({ fileToolGroup: "hashline" })
             const first = await tool.execute(
               { pattern: "const $NAME = $VALUE", lang: "typescript", limit: 2, paths: ["page.ts"], globs: ["*.ts"] },
               ctx,
@@ -251,7 +274,7 @@ describe("tool.parse_code", () => {
           scope: await tmp.scope(),
           fn: async () => {
             const result = await (
-              await ParseCodeTool.init()
+              await ParseCodeTool.init({ fileToolGroup: "hashline" })
             ).execute({ pattern: "console.log($MSG)", lang: "typescript" }, ctx)
             expect(result.metadata.matches).toBe(2)
             expect(result.metadata.matchRanges["code.ts"]).toHaveLength(2)
@@ -275,7 +298,7 @@ describe("tool.parse_code", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const tool = await ParseCodeTool.init()
+            const tool = await ParseCodeTool.init({ fileToolGroup: "hashline" })
             const result = await tool.execute({ pattern: "export const $NAME = $VALUE", lang: "typescript" }, ctx)
 
             expect(result.metadata.matches).toBe(2)
@@ -302,7 +325,7 @@ test("AST matches include their complete multiline region and bounded surroundin
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const tool = await ParseCodeTool.init()
+        const tool = await ParseCodeTool.init({ fileToolGroup: "hashline" })
         const result = await tool.execute({ pattern: "function target() { $$$ }", lang: "typescript", context: 1 }, ctx)
         expect(result.output).toContain("1:// before")
         expect(result.output).toContain("3:  return 42")

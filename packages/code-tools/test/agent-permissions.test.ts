@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { ConfigSource } from "@ericsanchezok/synergy-harness/config/source"
@@ -35,9 +36,11 @@ for (const selected of [false, true]) {
           })
         },
       })
+      await using directory = await tmpdir()
+      const scope = await runtime.run(() => directory.scope())
       await runtime.run(() =>
         ScopeContext.provide({
-          scope: Scope.home(),
+          scope,
           async fn() {
             const agent = await Agent.get(PrimaryAgentIdentity.names.coding)
             const available = new Set(

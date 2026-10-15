@@ -129,14 +129,9 @@ for (const selected of [false, true]) {
           async fn() {
             for (const name of ["supervisor", "lightloop-reviewer"]) {
               const reviewer = await Agent.get(name)
-              for (const tool of [
-                "parse_code",
-                "look_at",
-                "scan_document",
-                "browser_navigation",
-                "browser_action",
-                "browser_upload",
-              ])
+              expect(action(reviewer, "parse_code"), `${name}:semantic read`).toBe(denied ? "deny" : "allow")
+              if (!selected) expect(reviewer.permission.some((rule) => rule.permission === "parse_code")).toBe(denied)
+              for (const tool of ["look_at", "scan_document", "browser_navigation", "browser_action", "browser_upload"])
                 expect(action(reviewer, tool), `${name}:${tool}`).toBe(selected && !denied ? "allow" : "deny")
               const session = await Session.create({ title: "Reviewer evidence" })
               const result = await prepared(reviewer, session)
@@ -303,7 +298,7 @@ test("selected owners preserve the complete subagent permission profiles", async
             "skill",
             "webfetch",
             "look_at",
-            "glob",
+            "file_search",
             "list",
             "search_tools",
             "expand_tools",
@@ -330,12 +325,11 @@ test("selected owners preserve the complete subagent permission profiles", async
           "type-test-engineer",
         ]) {
           const agent = await Agent.get(name)
-          for (const permission of ["view_file", "scan_files", "parse_code"])
+          for (const permission of ["read", "view_file", "scan_files", "file_search", "parse_code"])
             expect(action(agent, permission)).toBe("allow")
-          for (const permission of ["revise_file", "resolve_conflicts", "save_file"])
+          for (const permission of ["edit", "write", "apply_patch", "revise_file", "resolve_conflicts", "save_file"])
             expect(action(agent, permission)).toBe("ask")
-          for (const permission of ["read", "grep", "ast_grep", "edit", "write"])
-            expect(action(agent, permission)).toBe("deny")
+          for (const permission of ["grep", "glob", "ast_grep"]) expect(action(agent, permission)).toBe("deny")
         }
         for (const name of [
           "requirements-engineer",
@@ -358,11 +352,13 @@ test("selected owners preserve the complete subagent permission profiles", async
           "research-methodologist",
         ]) {
           const agent = await Agent.get(name)
-          for (const permission of ["read", "grep", "ast_grep"]) expect(action(agent, permission)).toBe("allow")
+          for (const permission of ["read", "view_file", "scan_files", "file_search", "parse_code"])
+            expect(action(agent, permission)).toBe("allow")
           for (const permission of [
-            "view_file",
-            "scan_files",
-            "parse_code",
+            "grep",
+            "glob",
+            "ast_grep",
+            "apply_patch",
             "revise_file",
             "resolve_conflicts",
             "save_file",
@@ -374,7 +370,8 @@ test("selected owners preserve the complete subagent permission profiles", async
         const lightweight = await Agent.get(PrimaryAgentIdentity.names.lightweight)
         expect(action(lightweight, "memory_write")).toBe("allow")
         expect(action(lightweight, "memory_edit")).toBe("allow")
-        expect(action(lightweight, "ast_grep")).toBe("deny")
+        expect(lightweight.permission.some((rule) => rule.permission === "ast_grep")).toBe(false)
+        expect(await ToolRegistry.ids()).not.toContain("ast_grep")
         expect(action(lightweight, "parse_code")).toBe("deny")
       },
     }),

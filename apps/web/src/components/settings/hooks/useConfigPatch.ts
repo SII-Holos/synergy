@@ -157,6 +157,8 @@ function buildModelPatch(cfg: Config, state: SettingsState, patch: Record<string
 }
 
 function buildAgentPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
+  if (state.agents.fileToolGroup !== (cfg.fileToolGroup ?? UI_DEFAULTS.fileToolGroup))
+    patch.fileToolGroup = state.agents.fileToolGroup
   const defaultAgent = state.agents.defaultAgent.trim()
   if (!defaultAgent) return
   const resolved = cfg.default_agent ?? UI_DEFAULTS.defaultAgent

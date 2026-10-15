@@ -1579,11 +1579,7 @@ msgstr "Recently opened"
 
 #. ── Agent ──
 msgid "app.browser.agent.activity"
-msgstr "Agent {kind} {host}"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.agent.follow"
-msgstr "Follow"
+msgstr "{kind, select, acting {Agent operating} reading {Agent viewing} other {Agent last viewed}}"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.annotation.color"
@@ -14245,7 +14241,7 @@ msgstr "Changes apply from the next model step."
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.inactive"
-msgstr "Light Loop is no longer active. Close this dialog to continue."
+msgstr "This Light Loop has ended."
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14259,7 +14255,7 @@ msgstr "Task description"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.reviewPending"
-msgstr "Completion review is pending. Stop or finish the review before changing the task."
+msgstr "The goal is read-only during review."
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14287,7 +14283,7 @@ msgstr "Light Loop task"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.working"
-msgstr "The session is running. Stop it or wait until it is idle before changing the task."
+msgstr "Pause to edit the goal."
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14402,6 +14398,94 @@ msgstr "Editor view"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.loopReady"
 msgstr "Loop ready"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.auditing"
+msgstr "In review"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.bound"
+msgstr "Bound"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancel"
+msgstr "Cancel loop"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.completed"
+msgstr "Review passed"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.details"
+msgstr "Loop details"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.edit"
+msgstr "Edit goal"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failure"
+msgstr "Failure reason"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.iterationExhausted"
+msgstr "Review limit reached"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.openNote"
+msgstr "Open Blueprint"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.paused"
+msgstr "Paused"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.pending"
+msgstr "Send a task to start"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reason"
+msgstr "Review feedback"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.resolving"
+msgstr "Checking result"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.result"
+msgstr "Result"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reviewer"
+msgstr "Open review session"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.rework"
+msgstr "Changes requested"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.timedOut"
+msgstr "Time limit reached"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.unavailable"
+msgstr "Status unavailable"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -17234,6 +17318,10 @@ msgid "session.execution.copyLoaded"
 msgstr "Copy loaded output"
 
 #. js-lingui-explicit-id
+msgid "session.execution.copyMetadata"
+msgstr "Copy execution details"
+
+#. js-lingui-explicit-id
 msgid "session.execution.copyOutput"
 msgstr "Copy tool output"
 
@@ -17308,6 +17396,10 @@ msgstr "Unable to load execution details."
 #. js-lingui-explicit-id
 msgid "session.execution.loading"
 msgstr "Loading tool result…"
+
+#. js-lingui-explicit-id
+msgid "session.execution.metadata"
+msgstr "Execution details"
 
 #. js-lingui-explicit-id
 msgid "session.execution.noDiagnostics"
@@ -23329,6 +23421,26 @@ msgid "settings.runtime.compaction.prune.title"
 msgstr "Prune Tool Output"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.description"
+msgstr "One file interface for local agents, independent of agent and model. Permissions still apply. Project configuration overrides this global setting. Tools: {members}"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.hashline"
+msgstr "Line-anchored editing"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.patch"
+msgstr "Patch editing"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.replace"
+msgstr "Text replacement"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.title"
+msgstr "File read/write tool group"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.managedByEnv"
 msgstr "Managed by environment"
 
@@ -25141,6 +25253,58 @@ msgid "tool.misc.warnings"
 msgstr "Warnings"
 
 #. js-lingui-explicit-id
+msgid "tool.patch.applied"
+msgstr "Applied"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.committed"
+msgstr "Applied"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.delete"
+msgstr "Delete"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.move"
+msgstr "Move"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.noChange"
+msgstr "No changes"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.notStarted"
+msgstr "Not attempted"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.partial"
+msgstr "Partially applied"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.rejected"
+msgstr "Rejected"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unknown"
+msgstr "Unknown effect"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unresolved"
+msgstr "Outcome unconfirmed"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unsaved"
+msgstr "Durability unconfirmed"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.write"
+msgstr "Write"
+
+#. js-lingui-explicit-id
 msgid "tool.render.busy"
 msgstr "Wait for the current visual action to finish."
 
@@ -25335,6 +25499,10 @@ msgstr "Analysis timed out"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.answer-question"
 msgstr "Answer Question"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.apply-patch"
+msgstr "Apply patch"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.approve-blueprint-loop"

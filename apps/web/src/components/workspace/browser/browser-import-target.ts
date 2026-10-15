@@ -20,7 +20,7 @@ export function createBrowserImportTarget(input: {
   client: ReturnType<typeof useSDK>["client"]
   serverUrl: string
   bridge(): BrowserNativeViewBridge | undefined
-  catalog: ReturnType<typeof useBrowserCatalog>
+  catalog: Pick<ReturnType<typeof useBrowserCatalog>, "get" | "refresh">
   current(): boolean
   resolveTab?: () => Promise<WorkbenchPanelTab>
   unavailable: string

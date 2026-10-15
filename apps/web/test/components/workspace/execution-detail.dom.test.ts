@@ -27,9 +27,11 @@ type Fixture = {
       path?: string
       tool?: string
       truncated?: boolean
+      metadata?: Record<string, unknown>
     },
   ): void
   fail(index: number, error: string): void
+  patch(index: number): void
   resolveCommand(
     index: number,
     process: { status: "running" | "completed" | "interrupted" | "failed"; exitCode?: number | null; signal?: string },
@@ -86,9 +88,10 @@ beforeAll(async () => {
       switchOwner(server,scope,sessionID="session"){batch(()=>{setOwner({server,scope,sessionID});setState({...owner,messageID:"message",partID:"part-a",callID:"call-part-a"})})},
       select(partID){setState({...state(),partID,callID:"call-"+partID})},
       activity(revision,messageID="message"){activityListener?.({properties:{sessionID:owner.sessionID,messageID,callID:state().callID,revision}})},
-      resolve(index,output,activity){const request=requests[index];request.resolve({data:{evidenceMissing:!activity,truncated:activity?.truncated,text:activity?.text,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:activity?.tool??"read",activityEvidence:activity?{kind:activity.kind,mediaType:activity.mediaType??"application/json",resource:{path:activity.path},range:activity.kind==="file-read"?{startLine:0,lineCount:activity.text.split("\\n").length}:undefined}:undefined,state:{status:"completed",input:{filePath:"/fixture.txt"},output,time:{start:1,end:2}}}}})},
+      resolve(index,output,activity){const request=requests[index];request.resolve({data:{evidenceMissing:!activity,truncated:activity?.truncated,text:activity?.text,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:activity?.tool??"read",activityEvidence:activity?{kind:activity.kind,mediaType:activity.mediaType??"application/json",resource:{path:activity.path},range:activity.kind==="file-read"?{startLine:0,lineCount:activity.text.split("\\n").length}:undefined}:undefined,state:{status:"completed",input:{filePath:"/fixture.txt"},metadata:activity?.metadata,output,time:{start:1,end:2}}}}})},
       taskOutput(index,output,mode="full",taskID="ctx_original"){const request=requests[index];request.resolve({data:{evidenceMissing:false,text:"Task receipt",part:{id:request.partID,callID:request.callID,messageID:request.messageID,sessionID:request.sessionID,type:"tool",tool:"task_output",state:{status:"completed",input:{taskId:"ctx_original",mode},metadata:{found:true,taskId:taskID,status:"error",mode,output},output:"Task receipt",time:{start:1,end:2}}}}})},
       fail(index,error){const request=requests[index];request.resolve({data:{evidenceMissing:true,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:"read",state:{status:"error",input:{filePath:"/fixture.txt"},error,time:{start:1,end:2}}}}})},
+      patch(index){const request=requests[index];request.resolve({data:{evidenceMissing:true,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:"apply_patch",state:{status:"error",input:{patch:"retained patch"},metadata:{outcome:"unresolved",sections:[{source:"source.ts",state:"unknown",operations:[{phase:"write",state:"unknown"}]}]},error:"Patch outcome unconfirmed",time:{start:1,end:2}}}}})},
       resolveCommand(index,process,text,toolError){const request=requests[index];request.resolve({data:{evidenceMissing:false,text,process,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:"bash",workBrief:"Check the foreground wait command.",activityEvidence:{kind:"command"},state:{status:toolError?"error":"completed",input:{command:'printf waiting && sleep 90'},error:toolError,output:toolError?undefined:text,time:{start:1,end:33401}}}}})},
       close(){setOpen(false)},facts(){return {requests:requests.length,aborted:requests.map(request=>request.signal.aborted),resultUnmounts,copied}}
     }
@@ -821,11 +824,30 @@ test("truncated evidence clearly limits expansion and copy to the loaded portion
   expect(await page.locator('[data-slot="execution-output"] pre').textContent()).toBe(text)
 }, 30000)
 
-test("Diff and plugin viewers precede collapsed raw output using the shared shell", async () => {
-  for (const activity of [
-    { kind: "file-change", text: "Diff receipt" },
-    { kind: "object", tool: "fixture.plugin", text: "Plugin receipt" },
-  ] as const) {
+test("file changes show one result and keep their tool receipt in diagnostics", async () => {
+  for (const tool of ["edit", "revise_file", "apply_patch"]) {
+    await page.goto(base)
+    await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
+    await page.evaluate(
+      (tool) =>
+        (window as unknown as { fixture: Fixture }).fixture.resolve(0, "Dedicated viewer", {
+          kind: "file-change",
+          text: "Diff receipt",
+          tool,
+        }),
+      tool,
+    )
+    await page.getByText("Dedicated viewer", { exact: true }).waitFor()
+    expect(await page.locator('[data-slot="execution-raw-output"]').count()).toBe(0)
+    await page.getByRole("tab", { name: "Parameters and diagnostics", exact: true }).click()
+    await page.getByRole("button", { name: "Copy tool output", exact: true }).click()
+    expect((await inspect()).copied).toBe("Diff receipt")
+    expect(await page.locator('[data-slot="execution-rich-result"]').count()).toBe(0)
+  }
+}, 30000)
+
+test("plugin viewers precede collapsed raw output using the shared shell", async () => {
+  for (const activity of [{ kind: "object", tool: "fixture.plugin", text: "Plugin receipt" }] as const) {
     await page.goto(base)
     await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
     await page.evaluate(
@@ -842,6 +864,19 @@ test("Diff and plugin viewers precede collapsed raw output using the shared shel
     expect((await inspect()).copied).toBe(activity.text)
   }
 }, 30000)
+
+test("failed patch invocations open their structured ledger without activity evidence", async () => {
+  await page.goto(base)
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.patch(0))
+  await page.locator('[data-slot="execution-rich-result"]').waitFor()
+  expect(await page.locator('[data-slot="execution-status"]').textContent()).toBe("Outcome unconfirmed")
+  expect(await page.locator('[data-slot="execution-rich-result"]').textContent()).toContain("Patch outcome unconfirmed")
+  expect(await page.locator('[data-slot="execution-raw-output"]').count()).toBe(0)
+  expect(await page.getByText("Patch outcome unconfirmed", { exact: true }).count()).toBe(1)
+  await page.getByRole("tab", { name: "Parameters and diagnostics", exact: true }).click()
+  expect(await page.locator('[data-slot="execution-error"]').textContent()).toContain("Patch outcome unconfirmed")
+})
 
 test("mechanical compaction retains a readable summary and puts its limitation in diagnostics", async () => {
   await page.goto(base)
@@ -909,4 +944,31 @@ test("old execution replies cannot restore details across a same-URL feature epo
     f.features([])
   })
   expect((await inspect()).requests).toBe(1)
+})
+
+test("partial revisions keep their status and copyable metadata after result summaries are removed", async () => {
+  await page.goto(base)
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
+  await page.evaluate(() =>
+    (window as unknown as { fixture: Fixture }).fixture.resolve(0, "Diff viewer", {
+      kind: "file-change",
+      tool: "revise_file",
+      text: "Recorded receipt",
+      metadata: {
+        partialFailure: "File changed on disk",
+        files: [{ file: "a.ts", preview: "raw patch must not repeat" }],
+        diagnostics: { "a.ts": [{ message: "type error" }] },
+        sections: [{ path: "a.ts", applied: true, filediff: { preview: "raw patch must not repeat" } }],
+      },
+    }),
+  )
+  await page.getByText("Partially applied", { exact: true }).waitFor({ timeout: 2000 })
+  expect(await page.getByText("type error", { exact: true }).count()).toBe(0)
+  await page.getByRole("tab", { name: "Parameters and diagnostics", exact: true }).click()
+  await page.getByRole("button", { name: "Copy execution details", exact: true }).click()
+  const copied = JSON.parse((await inspect()).copied)
+  expect(copied.partialFailure).toBe("File changed on disk")
+  expect(copied.diagnostics["a.ts"][0].message).toBe("type error")
+  expect(copied.sections).toEqual([{ path: "a.ts", applied: true }])
+  expect((await inspect()).copied).not.toContain("raw patch must not repeat")
 })

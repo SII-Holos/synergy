@@ -78,6 +78,7 @@ export namespace ConfigDomain {
       label: "Agents",
       ownedKeys: [
         "default_agent",
+        "fileToolGroup",
         "agent",
         "instructions",
         "project_doc_fallback_filenames",

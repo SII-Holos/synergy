@@ -17,6 +17,28 @@ const { EnforcementGate } = await import("../../src/enforcement/gate")
 // 1. Path classification through the gate — worktree boundary
 // ------------------------------------------------------------------
 describe("EnforcementGate path classification", () => {
+  test("patch grammar classifies every source and move destination in the isolated policy worker", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/fixture/work",
+        workspaceType: "worktree",
+        profileId: "guarded",
+      })
+      const args = {
+        patch:
+          "*** Begin Patch\n*** Add File: safe.txt\n+x\n*** Update File: src/source.txt\n*** Move to: /Users/test/.ssh/id_rsa\n*** End Patch",
+      }
+      const classified = gate.classify("apply_patch", args)
+      expect(classified.capabilities.some((capability) => capability.class === "file_write")).toBe(true)
+      expect(
+        classified.capabilities.some(
+          (capability) => capability.class === "protected_op" || capability.class === "secrets",
+        ),
+      ).toBe(true)
+      const isolated = await gate.evaluateIsolated("apply_patch", args, new AbortController().signal)
+      expect(isolated.decision).not.toBe("allow")
+      expect(() => gate.classify("apply_patch", { patch: args.patch + "\ntrailing" })).toThrow()
+    }))
   test("read within active worktree is classified as file_read (inside)", () =>
     runtime.run(async () => {
       const gate = await EnforcementGate.create({

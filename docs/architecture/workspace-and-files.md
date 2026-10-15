@@ -239,22 +239,41 @@ Logical Workspace services use catalog identity and binding generation without p
 
 Failed incremental watcher batches require the same full resync as queue overflow. Idle waiters receive the failure; the drain retries reconciliation after at least one second without requiring a new native event. Repeated failures retain pending reconciliation, events received during a resync remain queued, and disposal cancels retries.
 
-## Classic and Anchored Coding Tools
+## File tool interfaces
 
-Synergy supports ordinary file tools and an anchored coding harness. The anchored family uses:
+The current Scope's resolved `fileToolGroup` selects one model-facing file interface. Global and project values use normal configuration precedence; absence resolves to `patch` for every local Agent. Agent identity, model, workflow and Session do not select or override the group.
 
-- `view_file` for an exact file/range view
-- `scan_files` for bounded text matches
-- `parse_code` for AST-aware matches
-- `revise_file` for surgical changes
-- `resolve_conflicts` for atomic, tag-checked merge-conflict resolution
-- `save_file` for new files or intentional full-file replacement
+| Value      | Interface             | Members                                                                    |
+| ---------- | --------------------- | -------------------------------------------------------------------------- |
+| `replace`  | Text replacement      | `read`, `edit`, `write`                                                    |
+| `hashline` | Line-anchored editing | `view_file`, `scan_files`, `revise_file`, `save_file`, `resolve_conflicts` |
+| `patch`    | Patch editing         | `read`, `apply_patch`                                                      |
+
+Tool owners declare membership. The shared catalog filters before initialization and pins the group in its init context. Discovery, deferred expansion and final model schemas consume that catalog. Old expansion records, explicit tool permissions and full access cannot add a different interface. An in-flight batch retains its selection; configuration reload affects the next preparation.
+
+Permissions govern authority independently. File readers match `read` plus their concrete ID; writers match `edit` plus their concrete ID, in the existing ordered Agent/config precedence. Saved user/session denials retain their separate deny precedence. Reader roles stay unable to invoke writers, and no-file roles stay no-file. Existing explicit user rules are preserved. The selected writer can be unavailable if its reader companion is denied.
+
+`bash`, `process` and public `file_search` remain shared capabilities when installed and permitted. Image observation uses the same model/vision-owner eligibility in discovery and execution. Optional `parse_code` retains its syntax engine, with ordinary ranges for replace/patch and tags plus displayed-line evidence only for hashline. The product no longer registers `grep`, `glob` or `ast_grep`; published compatibility wrappers and historical presentation remain, without execution aliases.
+
+`file_search` defaults to its existing hybrid ranking. Precise `paths` uses an exact glob; precise `content` accepts literal text or regex. They share selected-view search, comma-separated include/exclude filters and deterministic ordering, and return the first unreturned `nextOffset` with distinct count/byte omission diagnostics. Invalid regex fails even on empty roots. Dormant searches allocate no compute. Only displayed results become evidence; plain search does not mint file-read or Hashline credentials.
+
+### Native patch editing
+
+`apply_patch` accepts an object containing one complete `patch` string. The dependency-light Util grammar is also the Policy worker's path extractor. Add, Update, Delete and Update with Move are planned against the selected file view; the legacy raw-filesystem patch APIs are never its backend. Exact, unambiguous original spans preserve untouched line endings, BOM and terminal-newline state. Context-free insertions require an explicit EOF marker.
+
+Full grammar, aliases, file types, coherent bytes, current Session read evidence, parents and combined authorization are checked before the first target effect. Existing sources must be regular UTF-8 text files; Add and Move destinations must be absent. Final symlinks, binary content, duplicate targets, inter-section dependencies and ambiguous/overlapping hunks fail. Add may create parents; Move requires an existing destination parent.
+
+After authorization the entire plan is revalidated, then sections commit conditionally in order through existing mutation owners. Native/live identities stay strict. Dormant destructive tokens are refreshed only after comparing canonical targets, entry content/mode/chunks and parent resolution in one current manifest; publication CAS still rejects later changes. Unrelated object revisions do not invalidate an unchanged target. Writes carry both content and observed entry preconditions when supplied.
+
+This is sequential execution, not a multi-file transaction. Update+Move can stop after writing the original source. No automatic rollback or whole-patch replay occurs. Incremental result metadata retains every section and stage, operation IDs and committed/failed/not-started/unknown/unsaved states. Errors retain raw rollout evidence and show committed or unresolved paths. Cancellation waits for this ledger to settle. Known effects emit Workspace-qualified events; final formatter bytes provide diffs/read evidence, and committed configuration paths reload once per batch. Attempted Add parent directories can remain after failure.
+
+### Line-anchored editing
 
 Anchored reads return a `[path#TAG]` representing a session-local snapshot of that file. Displayed lines are recorded separately. `revise_file` accepts only a real current tag and operations on lines that the agent actually saw; fabricated, stale, truncated, or unseen anchors are rejected. `resolve_conflicts` also requires the current tag and exactly one explicit resolution for every conflict block in the file.
 
 Read and search output uses a shared 50 KiB UTF-8 code/text budget across ranges and files. Explicit read limits are honored; the default window remains 2,000 lines. Search context can feed an edit directly when the required region is fully visible and its tag remains current. Anchored edit results return compact final-file previews, while complete diffs remain in UI metadata. Known unchanged rows and submitted content that survives formatting remain known across versions; omitted observations do not grant new line evidence. See [bounded coding observations](../decisions/implemented/architecture/2026-09-21-bounded-coding-tool-observations.md).
 
-Every successful edit mints a new tag and makes older tags stale. The patch language applies all ranges to the original snapshot, resolves block operations with syntax-aware parsing, rejects overlapping/duplicate file sections, detects no-op loops, and refuses surgical edits across unresolved merge-conflict markers. A conflicted file must be resolved atomically with `resolve_conflicts`, or intentionally replaced in full with `save_file`. This turns freshness and observed context into enforced preconditions rather than prompt-only advice.
+Every successful anchored edit mints a new tag and makes older tags stale. The patch language applies all ranges to the original snapshot, resolves block operations with syntax-aware parsing, rejects overlapping/duplicate file sections, detects no-op loops, and refuses surgical edits across unresolved merge-conflict markers. A conflicted file must be resolved atomically with `resolve_conflicts`, or intentionally replaced in full with `save_file`. This turns freshness and observed context into enforced preconditions rather than prompt-only advice.
 
 `save_file` bypasses line-level anchoring because it owns the complete replacement. It still crosses normal permission, conflict, formatting, diagnostic, snapshot, and event boundaries.
 

@@ -23,7 +23,19 @@ function record(value: unknown): Record<string, unknown> {
 
 export function toolReviewDiffs(part: ToolPart, path?: string): FileDiff[] {
   const metadata = record(part.state.metadata)
-  const values = Array.isArray(metadata.results) ? metadata.results : [metadata]
+  const sections =
+    Array.isArray(metadata.sections) && (part.tool === "apply_patch" || part.tool === "revise_file")
+      ? metadata.sections.filter((value) => {
+          const section = record(value)
+          return typeof section.observedPath === "string" || typeof record(section.filediff).file === "string"
+        })
+      : undefined
+  const values =
+    sections?.length || (part.tool === "apply_patch" && sections)
+      ? sections!
+      : Array.isArray(metadata.results)
+        ? metadata.results
+        : [metadata]
   const diffs = values.flatMap((value): FileDiff[] => {
     const item = record(value)
     const diff = record(item.filediff)
@@ -33,7 +45,12 @@ export function toolReviewDiffs(part: ToolPart, path?: string): FileDiff[] {
     if (!patch) return []
     return [
       {
-        file: typeof diff.file === "string" ? diff.file : path || "file",
+        file:
+          typeof item.observedPath === "string"
+            ? item.observedPath
+            : typeof diff.file === "string"
+              ? diff.file
+              : path || "file",
         additions: typeof diff.additions === "number" ? diff.additions : 0,
         deletions: typeof diff.deletions === "number" ? diff.deletions : 0,
         patch,

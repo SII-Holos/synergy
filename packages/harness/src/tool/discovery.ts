@@ -7,6 +7,7 @@ import type { ToolDiagnostic } from "./diagnostic"
 import { ToolExposure } from "./exposure"
 import { ToolMcpSource } from "./mcp-source"
 import { ToolPolicySource } from "./policy-source"
+import { imageToolEligibility } from "./modality"
 
 export namespace ToolDiscovery {
   export interface Entry {
@@ -39,8 +40,10 @@ export namespace ToolDiscovery {
     const { ToolRegistry } = await import("./registry")
     const groupByID = new Map(ToolExposure.groups().map((group) => [group.id, { ...group, tools: [...group.tools] }]))
     const tools: Entry[] = []
+    const imageTools = await imageToolEligibility(input.model)
 
     for (const item of await ToolRegistry.catalog(input.providerID, input.agent, input.session?.workspaceID)) {
+      if ((item.id === "view_image" || item.id === "look_at") && !imageTools.has(item.id)) continue
       const exposure = ToolExposure.normalize(item.id, item.exposure)
       const group = ToolExposure.groupInfoFromExposure(item.id, exposure)
       if (group) mergeGroup(groupByID, group)
@@ -155,8 +158,9 @@ export namespace ToolDiscovery {
   }
 
   export function availableGroups(catalog: Catalog): ToolExposure.GroupInfo[] {
+    const available = new Set(catalog.tools.filter((tool) => !catalog.disabled.has(tool.id)).map((tool) => tool.id))
     return catalog.groups
-      .map((group) => ({ ...group, tools: group.tools.filter((toolID) => !catalog.disabled.has(toolID)) }))
+      .map((group) => ({ ...group, tools: group.tools.filter((toolID) => available.has(toolID)) }))
       .filter((group) => group.tools.length > 0)
   }
 

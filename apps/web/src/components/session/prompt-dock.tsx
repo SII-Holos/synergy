@@ -4,6 +4,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { DefaultComposer } from "@/plugin/default-composer"
+import { composerPresentation } from "@/components/prompt-input/composer-presentation"
 import type { PluginComponentProps, PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
 import { SessionPromptDockAnchor } from "./workbench-chrome"
 
@@ -80,7 +81,13 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
                 )}
               </For>
               <div class="relative">
-                <div data-prompt-pending>{props.pending}</div>
+                <div data-prompt-pending>
+                  {props.pending}
+                  {(() => {
+                    const input = layout.input()
+                    return input && composerPresentation(input)?.status?.()
+                  })()}
+                </div>
                 <Show when={layout.input()} keyed>
                   {(input) => <DefaultComposer context={{ input }} />}
                 </Show>

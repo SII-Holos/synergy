@@ -27,6 +27,7 @@ mock.module("../../../src/components/tool-output-text", () => ({
     return null
   },
 }))
+mock.module("@pierre/diffs/worker/worker.js?worker&url", () => ({ default: "about:blank" }))
 
 const { getToolInfo, ToolRegistry } = await import("../../../src/components/message-part")
 await import("../../../src/components/tool-renders")

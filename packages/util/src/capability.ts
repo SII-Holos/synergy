@@ -377,6 +377,7 @@ export const SYNERGY_PERMISSION_CAPABILITY: Record<string, string> = {
   edit: "file_write",
   write: "file_write",
   revise_file: "file_write",
+  apply_patch: "file_write",
   resolve_conflicts: "file_write",
   save_file: "file_write",
   bash: "shell",

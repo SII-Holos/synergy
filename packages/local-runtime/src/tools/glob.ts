@@ -5,6 +5,7 @@ import { Ripgrep } from "../file/ripgrep"
 import { FileView } from "../file/view"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
 
+/** @deprecated Public compatibility wrapper; not registered by first-party composition. */
 export const GlobTool = Tool.define(
   "glob",
   {

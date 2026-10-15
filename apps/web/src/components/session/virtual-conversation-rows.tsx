@@ -45,7 +45,7 @@ import {
   processReadingAnchorNode,
   type ProcessReadingAnchor,
 } from "@ericsanchezok/synergy-ui/process-viewport"
-import { ConversationMotionProvider } from "@ericsanchezok/synergy-ui/conversation-motion"
+import { ConversationMotionProvider, useConversationMotionReady } from "@ericsanchezok/synergy-ui/conversation-motion"
 import { CompactionCard } from "@ericsanchezok/synergy-ui/compaction-card"
 import { useData } from "@ericsanchezok/synergy-ui/context/data"
 import { requestErrorMessage } from "../../utils/error"
@@ -612,13 +612,14 @@ function ConversationDisplayRow(
   const content = props.content!
   const row = input.row
   const [activityMounted, setActivityMounted] = createSignal(!!row().activity?.open)
+  const motionReady = useConversationMotionReady()
   let manualDisclosure = false
   createEffect(() => {
     if (row().activity?.open) setActivityMounted(true)
   })
   const batchMotion = createDisclosureMotionRef({
     visible: () => !!row().activity?.open,
-    animate: () => true,
+    animate: () => manualDisclosure || motionReady(),
     appear: () => manualDisclosure,
     resize: true,
     onHidden: () => setActivityMounted(false),
@@ -632,7 +633,7 @@ function ConversationDisplayRow(
   onCleanup(() => input.onMotionReleased?.(row().motion))
   const exitMotion = createDisclosureMotionRef({
     visible: () => !row().exiting,
-    animate: () => !!row().motion || !props.scrolledUp(),
+    animate: () => !!row().motion || (motionReady() && !props.scrolledUp()),
     appear: () => !!entrance && row().motion === entrance,
     resize: () => !!row().motion || row().kind !== "activity",
     onHidden: () => input.onExit(row().key),

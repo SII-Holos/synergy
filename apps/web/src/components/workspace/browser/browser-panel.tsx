@@ -15,7 +15,6 @@ import { BrowserStoreProvider } from "./browser-store"
 import { useBrowserCatalog, type BrowserCatalog } from "./browser-catalog"
 import { AddressBar } from "./address-bar"
 import { BrowserSurface } from "./browser-surface"
-import { AgentAssistant } from "./agent-assistant"
 import { AnnotationInput } from "./annotation-input"
 import { browserDebug } from "./browser-debug"
 import { useSDK } from "@/context/sdk"
@@ -92,6 +91,7 @@ function BrowserPanelInner(props: {
     workbench = useWorkbenchPanels(),
     sdk = useSDK(),
     platform = usePlatform()
+  const params = useParams()
   const boundSession = workbench.sessionKey()
   const browser = props.catalog.store.forPage(
     () => props.tab.resourceId,
@@ -104,8 +104,8 @@ function BrowserPanelInner(props: {
         canCommit: () => workbench.isCurrent(boundSession),
       })
     },
+    () => params.id,
   )
-  const params = useParams()
   const { _ } = useLingui()
   const route = props.catalog.route
   const draft = useBrowserDraft(() => params.id)
@@ -420,7 +420,6 @@ function BrowserPanelInner(props: {
               </div>
             </div>
           </Show>
-          <AgentAssistant />
           <Show when={showAnnotation()}>
             {(() => {
               const target = browser.annotationTarget()!

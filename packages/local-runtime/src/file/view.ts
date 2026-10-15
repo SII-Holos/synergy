@@ -106,6 +106,83 @@ export namespace FileView {
     return { workspaceID: info.id, scopeID: info.scopeID, generation: info.binding.generation }
   }
 
+  export interface Observation {
+    canonical: string
+    fingerprint: string
+    parents: Record<string, string>
+    entry?: WorkspaceProtocol.Item
+    bytes?: Uint8Array
+    version: string | null
+  }
+
+  export async function observe(filename: string, signal?: AbortSignal): Promise<Observation> {
+    signal?.throwIfAborted()
+    const target = await canonical(filename, false)
+    const info = native() ? undefined : await selected()
+    if (info && !info.activeMount) {
+      const { store } = await WorkspaceContent.resolve(selection(info))
+      const tree = await WorkspaceContent.manifest(info, store)
+      const resolved = WorkspaceTree.resolve(tree, relative(filename), false)
+      const parents = relative(filename)
+        .split("/")
+        .slice(0, -1)
+        .map((_, index, parts) => WorkspaceTree.resolve(tree, parts.slice(0, index + 1).join("/")))
+      const entry = resolved.entry
+      const bytes =
+        entry?.kind === "file"
+          ? await WorkspaceContent.read(selection(info), relative(filename), 64 * 1024 * 1024)
+          : undefined
+      if (bytes && entry?.kind === "file" && WorkspaceTree.hash(bytes) !== entry.hash)
+        throw new NativeFileMutation.ConflictError()
+      signal?.throwIfAborted()
+      return {
+        canonical: resolve(resolved.path),
+        fingerprint: JSON.stringify(resolved),
+        parents: Object.fromEntries(
+          parents.filter((parent) => parent.entry).map((parent) => [parent.path, JSON.stringify(parent)]),
+        ),
+        entry: entry ? item(info, entry, relative(filename)) : undefined,
+        bytes,
+        version: entry?.kind === "file" ? `sha256:${entry.hash}` : null,
+      }
+    }
+    const parents: Record<string, string> = {}
+    let ancestor = dirname(filename)
+    for (;;) {
+      const entry = await stat(ancestor, true)
+      if (entry) parents[ancestor] = JSON.stringify([await canonical(ancestor), entry.identity ?? entry.entryVersion])
+      if (!native() && ancestor === directory()) break
+      const next = dirname(ancestor)
+      if (next === ancestor) break
+      ancestor = next
+    }
+    const before = await stat(filename)
+    const data = before?.kind === "file" ? await bytes(filename) : undefined
+    const after = await stat(filename)
+    if (before?.entryVersion !== after?.entryVersion || target !== (await canonical(filename, false)))
+      throw new NativeFileMutation.ConflictError()
+    signal?.throwIfAborted()
+    return {
+      canonical: target,
+      fingerprint: JSON.stringify([target, before?.entryVersion]),
+      parents,
+      entry: before,
+      bytes: data,
+      version: data ? `sha256:${WorkspaceTree.hash(data)}` : null,
+    }
+  }
+
+  export async function revalidate(filename: string, observed: Observation, signal?: AbortSignal) {
+    const current = await observe(filename, signal)
+    if (
+      current.canonical !== observed.canonical ||
+      current.fingerprint !== observed.fingerprint ||
+      Object.entries(observed.parents).some(([key, value]) => current.parents[key] !== value)
+    )
+      throw new NativeFileMutation.ConflictError()
+    return current
+  }
+
   export async function stat(filename: string, follow = false): Promise<WorkspaceProtocol.Item | undefined> {
     if (native()) {
       const entry = await NativeFileEntry.inspect(
@@ -115,6 +192,7 @@ export namespace FileView {
       return {
         path: relative(filename),
         entryVersion: entry.version,
+        identity: NativeFileEntry.identity(entry),
         kind: entry.type,
         size: Number(entry.stat.size),
         mode: Number(entry.stat.mode & 0o777n),
@@ -240,16 +318,19 @@ export namespace FileView {
     expectedVersion: string | null,
     signal?: AbortSignal,
     protectSensitive?: boolean,
+    operationID?: string,
+    expectedEntryVersion?: string | null,
   ) {
     signal?.throwIfAborted()
     const info = await selected()
     const name = relative(filename)
-    await WorkspaceOperations.write({
+    const operation = await WorkspaceOperations.write({
       ...selection(info),
-      id: EnvironmentResources.nextOperationID(),
+      id: operationID ?? EnvironmentResources.nextOperationID(),
       path: name,
       data,
       expectedVersion,
+      expectedEntryVersion,
       signal,
       protectSensitive,
     })
@@ -258,6 +339,7 @@ export namespace FileView {
       size: data.byteLength,
       existed: expectedVersion !== null,
       contentVersion: `sha256:${WorkspaceTree.hash(data)}`,
+      operation,
     }
   }
 
@@ -286,7 +368,7 @@ export namespace FileView {
     operationID?: string,
   ) {
     const info = await selected()
-    await WorkspaceOperations.mutate({
+    return WorkspaceOperations.mutate({
       ...selection(info),
       id: operationID ?? EnvironmentResources.nextOperationID(),
       change,

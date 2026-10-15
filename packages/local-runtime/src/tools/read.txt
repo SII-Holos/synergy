@@ -1,8 +1,7 @@
-Reads text and document content from the local filesystem. You can access any text or supported document file directly by using this tool.
-Assume this tool is able to read files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+Reads text and supported document content through the selected Workspace, subject to its availability and file permissions. Missing or inaccessible files return an error.
 
 Usage:
-- The filePath parameter must be an absolute path, not a relative path
+- Relative filePath values resolve within the selected Workspace. Absolute paths remain subject to the selected view and permissions; do not invent local machine paths for remote Workspace files.
 - By default, it reads up to 2000 lines starting from the beginning of the file
 - Use offset/limit for a known target. Read enough surrounding code to understand dependencies; omit them when an overview or the whole small file is needed.
 - Explicit limits are honored; there is no minimum reading window. Output shares a 50 KiB UTF-8 budget.

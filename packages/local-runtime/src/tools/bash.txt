@@ -2,7 +2,7 @@ Executes a bash command in a persistent shell session. All commands run in ${dir
 
 Use the `workdir` parameter to run in a different directory. AVOID `cd <directory> && <command>` patterns — use `workdir` instead.
 
-IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) — use the specialized tools for this instead.
+Use this for terminal operations such as git, npm and docker. Command-line discovery and reads, including rg, rg --files and find, are allowed. Use the selected specialized file interface for normal editing.
 
 Before executing the command:
 - If the command will create new directories or files, first use `ls` to verify the parent directory exists and is the correct location (e.g. check `foo` exists before `mkdir foo/bar`).
