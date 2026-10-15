@@ -333,6 +333,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     return {
       path: relative,
       entryVersion: entry.version,
+      identity: NativeFileEntry.identity(entry),
       kind: entry.type,
       size: Number(entry.stat.size),
       mode: Number(entry.stat.mode & 0o777n),
@@ -374,6 +375,11 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
               await this.required(input.mount)
               if ((await this.target(mount, input.path)) !== target) throw new Error("Workspace path changed")
               if (input.protectSensitive) this.protectedTarget(mount, target)
+              if (
+                input.expectedEntryVersion !== undefined &&
+                ((await NativeFileEntry.inspect(target))?.version ?? null) !== input.expectedEntryVersion
+              )
+                throw new NativeFileMutation.ConflictError()
             },
           },
           target,

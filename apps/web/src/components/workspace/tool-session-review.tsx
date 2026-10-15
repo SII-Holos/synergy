@@ -77,7 +77,7 @@ function ToolReviewContent(props: WorkbenchPanelContentProps) {
           view={view}
           diffStyle={layout.review.diffStyle()}
           onDiffStyleChange={layout.review.setDiffStyle}
-          selectedFile={() => rows()[0]?.file}
+          selectedFile={() => props.tab.resourceId || rows()[0]?.file}
           onViewFile={(path) => void file.openWorkspaceFile(path)}
         />
       )}

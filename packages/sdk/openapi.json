@@ -29018,7 +29018,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 5,
+              "default": 6,
               "type": "number"
             }
           },
@@ -29158,7 +29158,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 5,
+              "default": 6,
               "type": "number"
             }
           },
@@ -29277,7 +29277,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 5,
+              "default": 6,
               "type": "number"
             }
           },
@@ -29407,7 +29407,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 5,
+              "default": 6,
               "type": "number"
             }
           },
@@ -29555,7 +29555,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 5,
+              "default": 6,
               "type": "number"
             }
           },
@@ -29706,7 +29706,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 5,
+              "default": 6,
               "type": "number"
             }
           },
@@ -29857,7 +29857,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 5,
+              "default": 6,
               "type": "number"
             }
           },
@@ -30024,7 +30024,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 5,
+              "default": 6,
               "type": "number"
             }
           },
@@ -30156,7 +30156,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 5,
+              "default": 6,
               "type": "number"
             }
           },
@@ -57661,6 +57661,11 @@
               ]
             }
           },
+          "fileToolGroup": {
+            "description": "File read/write interface for all local Agents in this Scope: replace (text replacement), hashline (line-anchored editing), or patch (patch editing, default). Does not change permissions.",
+            "type": "string",
+            "enum": ["replace", "hashline", "patch"]
+          },
           "default_agent": {
             "description": "Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.",
             "type": "string"
@@ -75844,6 +75849,11 @@
             "maxLength": 200,
             "pattern": "^[a-zA-Z0-9._-]+$"
           },
+          "createdBySessionID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
           "status": {
             "type": "string",
             "enum": ["active", "suspended", "failed"]
@@ -76088,7 +76098,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 5
+            "const": 6
           },
           "annotation": {
             "type": "object",
@@ -76148,7 +76158,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 5
+            "const": 6
           },
           "pageId": {
             "type": "string",
@@ -76187,7 +76197,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 5
+            "const": 6
           },
           "pageId": {
             "type": "string",
@@ -76209,7 +76219,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 5
+            "const": 6
           },
           "pageId": {
             "type": "string",
@@ -76245,7 +76255,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 5
+            "const": 6
           },
           "ownerKey": {
             "type": "string",
@@ -76256,6 +76266,56 @@
             "type": "string",
             "enum": ["empty", "suspended", "active", "failed"]
           },
+          "agentActivities": {
+            "maxItems": 256,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sessionID": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 20000
+                },
+                "operationID": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 20000
+                },
+                "pageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "pattern": "^[a-zA-Z0-9._-]+$"
+                },
+                "url": {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": ["reading", "acting", "idle"]
+                },
+                "tool": {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                "label": {
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "completed": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["sessionID", "operationID", "pageId", "url", "kind", "tool", "label"],
+              "additionalProperties": false
+            }
+          },
           "presentation": {
             "anyOf": [
               {
@@ -76263,7 +76323,7 @@
                 "properties": {
                   "protocolVersion": {
                     "type": "number",
-                    "const": 5
+                    "const": 6
                   },
                   "kind": {
                     "type": "string",
@@ -76349,13 +76409,17 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 5
+            "const": 6
           },
           "result": {
             "anyOf": [
               {
                 "type": "object",
                 "properties": {
+                  "userChanges": {
+                    "type": "string",
+                    "maxLength": 100000
+                  },
                   "type": {
                     "type": "string",
                     "const": "void"
@@ -76367,6 +76431,10 @@
               {
                 "type": "object",
                 "properties": {
+                  "userChanges": {
+                    "type": "string",
+                    "maxLength": 100000
+                  },
                   "type": {
                     "type": "string",
                     "const": "page"
@@ -76414,6 +76482,10 @@
               {
                 "type": "object",
                 "properties": {
+                  "userChanges": {
+                    "type": "string",
+                    "maxLength": 100000
+                  },
                   "type": {
                     "type": "string",
                     "const": "navigation"
@@ -76479,6 +76551,10 @@
               {
                 "type": "object",
                 "properties": {
+                  "userChanges": {
+                    "type": "string",
+                    "maxLength": 100000
+                  },
                   "type": {
                     "type": "string",
                     "const": "snapshot"
@@ -76540,6 +76616,10 @@
               {
                 "type": "object",
                 "properties": {
+                  "userChanges": {
+                    "type": "string",
+                    "maxLength": 100000
+                  },
                   "type": {
                     "type": "string",
                     "const": "action"
@@ -76616,6 +76696,10 @@
               {
                 "type": "object",
                 "properties": {
+                  "userChanges": {
+                    "type": "string",
+                    "maxLength": 100000
+                  },
                   "type": {
                     "type": "string",
                     "const": "wait"
@@ -76677,6 +76761,10 @@
               {
                 "type": "object",
                 "properties": {
+                  "userChanges": {
+                    "type": "string",
+                    "maxLength": 100000
+                  },
                   "type": {
                     "type": "string",
                     "const": "evaluation"
@@ -76695,6 +76783,10 @@
               {
                 "type": "object",
                 "properties": {
+                  "userChanges": {
+                    "type": "string",
+                    "maxLength": 100000
+                  },
                   "type": {
                     "type": "string",
                     "const": "screenshot"
@@ -76727,6 +76819,10 @@
               {
                 "type": "object",
                 "properties": {
+                  "userChanges": {
+                    "type": "string",
+                    "maxLength": 100000
+                  },
                   "type": {
                     "type": "string",
                     "const": "data"
@@ -76759,7 +76855,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 5
+            "const": 6
           },
           "command": {
             "anyOf": [

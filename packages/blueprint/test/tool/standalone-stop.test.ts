@@ -1,3 +1,4 @@
+import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { expect, test } from "bun:test"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -22,6 +23,10 @@ test("Blueprint requests review without Agenda installed", async () => {
           draft.blueprint = { loopID: loop.id, loopRole: "execution" }
         })
         const reviewer = await Agent.get("supervisor")
+        for (const reader of ["read", "view_file", "scan_files", "file_search"])
+          expect(PermissionNext.evaluate(reader, "source.ts", reviewer.permission).action).toBe("allow")
+        for (const writer of ["edit", "write", "apply_patch", "revise_file", "save_file", "resolve_conflicts"])
+          expect(PermissionNext.evaluate(writer, "source.ts", reviewer.permission).action).toBe("deny")
         expect(reviewer.prompt).toContain("Formally submit the verdict")
         expect(reviewer.prompt).toContain("execution session ID from your launch context")
         expect(reviewer.prompt).toContain("Cannot verify is blocking")

@@ -93,12 +93,55 @@ test("an omitted preview row cannot authorize an edit and full diff remains avai
         expect(result.metadata.outputPath).toBeString()
         expect(result.output).not.toContain(omitted)
         expect(result.metadata.diff).toContain(omitted)
+        expect(result.metadata.sections[0].diff).toContain(omitted)
         expect(SessionHashlineStore.get(ctx.sessionID).byHash(filePath, result.metadata.tag)?.seenLines?.has(3)).toBe(
           false,
         )
         await expect(
           tool.execute({ input: `[a.txt#${result.metadata.tag}]\nSWAP 3..3:\n+wrong` }, ctx),
         ).rejects.toThrow()
+      },
+    })
+  }))
+
+test("multi-file revisions retain separate diffs of the observed formatter output", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "a.txt"), "old a\n")
+        await Bun.write(path.join(dir, "b.txt"), "old b\n")
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const view = await ViewFileTool.init()
+        const a = await view.execute({ filePath: path.join(tmp.path, "a.txt") }, ctx)
+        const b = await view.execute({ filePath: path.join(tmp.path, "b.txt") }, ctx)
+        const unsubscribe = Bus.subscribe(File.Event.Edited, async (event) => {
+          if (event.properties.file.endsWith("a.txt")) await Bun.write(event.properties.file, "formatted a\n")
+        })
+        try {
+          const result = await (
+            await ReviseFileTool.init()
+          ).execute(
+            {
+              input: `[a.txt#${a.metadata.tag}]\nSWAP 1..1:\n+authored a\n[b.txt#${b.metadata.tag}]\nSWAP 1..1:\n+new b`,
+            },
+            ctx,
+          )
+          expect(result.metadata.sections).toHaveLength(2)
+          expect(result.metadata.sections[0].filediff).toMatchObject({ file: "a.txt", additions: 1, deletions: 1 })
+          expect(result.metadata.sections[0].filediff?.preview).toContain("+formatted a")
+          expect(result.metadata.sections[0].diff).toContain("--- a.txt")
+          expect(result.metadata.sections[0].filediff?.preview).not.toContain("authored a")
+          expect(result.metadata.sections[1].filediff).toMatchObject({ file: "b.txt", additions: 1, deletions: 1 })
+          expect(result.metadata.sections[1].filediff?.preview).toContain("+new b")
+          expect(result.metadata.sections[1].filediff?.preview).not.toContain("formatted a")
+        } finally {
+          unsubscribe()
+        }
       },
     })
   }))

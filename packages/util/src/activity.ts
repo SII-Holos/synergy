@@ -129,6 +129,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   view_image: "analyze",
   scan_document: "analyze",
   edit: "file-write",
+  apply_patch: "file-write",
   revise_file: "file-write",
   resolve_conflicts: "file-write",
   write: "file-write",

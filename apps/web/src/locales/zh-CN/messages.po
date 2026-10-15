@@ -1579,11 +1579,7 @@ msgstr "最近打开"
 
 #. ── Agent ──
 msgid "app.browser.agent.activity"
-msgstr "智能体 {kind} {host}"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.agent.follow"
-msgstr "跟随"
+msgstr "{kind, select, acting {Agent 正在操作} reading {Agent 正在查看} other {Agent 最近查看}}"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.annotation.color"
@@ -17322,6 +17318,10 @@ msgid "session.execution.copyLoaded"
 msgstr "复制已加载输出"
 
 #. js-lingui-explicit-id
+msgid "session.execution.copyMetadata"
+msgstr "复制执行记录"
+
+#. js-lingui-explicit-id
 msgid "session.execution.copyOutput"
 msgstr "复制工具输出"
 
@@ -17396,6 +17396,10 @@ msgstr "无法加载执行详情。"
 #. js-lingui-explicit-id
 msgid "session.execution.loading"
 msgstr "正在加载工具结果…"
+
+#. js-lingui-explicit-id
+msgid "session.execution.metadata"
+msgstr "执行记录"
 
 #. js-lingui-explicit-id
 msgid "session.execution.noDiagnostics"
@@ -23417,6 +23421,26 @@ msgid "settings.runtime.compaction.prune.title"
 msgstr "剪除工具输出"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.description"
+msgstr "为本地智能体统一选择文件接口，独立于智能体和模型，仍受原有权限约束。项目配置会覆盖此全局设置。工具：{members}"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.hashline"
+msgstr "行锚编辑"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.patch"
+msgstr "补丁编辑"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.replace"
+msgstr "文本替换"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.title"
+msgstr "文件读写工具组"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.managedByEnv"
 msgstr "由环境管理"
 
@@ -25229,6 +25253,58 @@ msgid "tool.misc.warnings"
 msgstr "警告"
 
 #. js-lingui-explicit-id
+msgid "tool.patch.applied"
+msgstr "已应用"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.committed"
+msgstr "已生效"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.delete"
+msgstr "删除"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.move"
+msgstr "移动"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.noChange"
+msgstr "无变更"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.notStarted"
+msgstr "未执行"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.partial"
+msgstr "部分已应用"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.rejected"
+msgstr "已拒绝"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unknown"
+msgstr "执行结果未知"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unresolved"
+msgstr "执行结果未确认"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unsaved"
+msgstr "持久化未确认"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.write"
+msgstr "写入"
+
+#. js-lingui-explicit-id
 msgid "tool.render.busy"
 msgstr "请等待当前可视化操作完成。"
 
@@ -25423,6 +25499,10 @@ msgstr "分析超时"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.answer-question"
 msgstr "回答问题"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.apply-patch"
+msgstr "应用补丁"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.approve-blueprint-loop"

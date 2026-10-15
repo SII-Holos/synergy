@@ -1450,6 +1450,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
         fieldError={(key) => serverFieldError("timeouts", key)}
         onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
         availableAgents={(agents() ?? []).filter((a) => a.mode === "primary" && !a.hidden)}
+        fileToolGroup={settings.agents.fileToolGroup}
+        onFileToolGroupChange={(group) => setSettings("agents", "fileToolGroup", group)}
         defaultAgent={settings.agents.defaultAgent}
         onDefaultAgentChange={(agent) => setSettings("agents", "defaultAgent", agent)}
         concurrencyStatus={cortexConcurrencyStatus()}

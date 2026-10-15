@@ -206,8 +206,10 @@ export const browser = {
   presetTablet: { id: "app.browser.viewport.preset.tablet", message: "Tablet" },
   presetMobile: { id: "app.browser.viewport.preset.mobile", message: "Mobile" },
   // ── Agent ──
-  agentActivity: { id: "app.browser.agent.activity", message: "Agent {kind} {host}" },
-  follow: { id: "app.browser.agent.follow", message: "Follow" },
+  agentActivity: {
+    id: "app.browser.agent.activity",
+    message: "{kind, select, acting {Agent operating} reading {Agent viewing} other {Agent last viewed}}",
+  },
   // ── Annotation ──
   annotationPlaceholder: { id: "app.browser.annotation.placeholder", message: "Add a comment about this element..." },
   styleFeedback: { id: "app.browser.annotation.styleFeedback", message: "Style feedback" },

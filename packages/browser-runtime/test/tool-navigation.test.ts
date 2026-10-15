@@ -2,6 +2,7 @@ import { afterAll, afterEach, expect, test } from "bun:test"
 import { BrowserCommandService } from "../src/command-service"
 import { BrowserSessionImpl } from "../src/session"
 import { BrowserProfiles } from "../src/profiles"
+import { BrowserControl } from "../src/control"
 import type { BrowserBackendCommand, BrowserBackendResult } from "@ericsanchezok/synergy-browser-core"
 import { testRuntime } from "./support/runtime"
 const runtime = await testRuntime()
@@ -15,7 +16,11 @@ afterEach(() =>
 )
 const owner = { mode: "scope" as const, scopeID: "command-pages", directory: null }
 async function setup(
-  execute: (id: string, command: BrowserBackendCommand) => Promise<BrowserBackendResult> = async () => ({
+  execute: (
+    id: string,
+    command: BrowserBackendCommand,
+    agentSessionID?: string,
+  ) => Promise<BrowserBackendResult> = async () => ({
     type: "void",
   }),
 ) {
@@ -28,12 +33,44 @@ async function setup(
     lastActiveAt: null,
     isAlive: () => true,
     close: async () => {},
-    execute: (command) => execute(id, command),
+    execute: (command, agentSessionID) => execute(id, command, agentSessionID),
   }))
   const page = await session.openPage({})
   restore = BrowserCommandService.useRuntimeForTest({ getOrCreateSession: async () => session })
   return { session, pageId: page.id }
 }
+test("session identity reaches the Host and activity snapshots survive independent task completion", () =>
+  runtime.run(async () => {
+    const actors: Array<string | undefined> = []
+    const { session, pageId } = await setup(async (_id, _command, actor) => {
+      actors.push(actor)
+      return { type: "void" }
+    })
+    await BrowserCommandService.execute(owner, {
+      pageId,
+      commandId: "agent",
+      agentSessionID: "one",
+      command: { type: "stop" },
+    })
+    await BrowserCommandService.execute(owner, { pageId, commandId: "human", command: { type: "stop" } })
+    expect(actors).toEqual(["one", undefined])
+    const one = {
+      sessionID: "one",
+      operationID: "one",
+      pageId,
+      url: "about:blank",
+      kind: "reading" as const,
+      tool: "browser_read",
+      label: "Reading",
+    }
+    const two = { ...one, sessionID: "two", operationID: "two" }
+    await session.notifyAgentActivity(one)
+    await session.notifyAgentActivity(two)
+    await session.notifyAgentActivity({ ...one, kind: "idle" })
+    expect(BrowserControl.sessionState(session).agentActivities).toEqual([two, { ...one, kind: "idle" }])
+    await session.closePage(pageId)
+    expect(BrowserControl.sessionState(session).agentActivities).toEqual([])
+  }))
 test("commands deduplicate successes and failures without repeating effects", () =>
   runtime.run(async () => {
     let calls = 0
@@ -58,6 +95,68 @@ test("commands deduplicate successes and failures without repeating effects", ()
     await expect(BrowserCommandService.execute(owner, failure)).rejects.toThrow("unknown outcome")
     await expect(BrowserCommandService.execute(owner, failure)).rejects.toThrow("unknown outcome")
     expect(failures).toBe(1)
+  }))
+test("activity follows dispatch, excludes queued and denied work, and retains successful viewing", () =>
+  runtime.run(async () => {
+    let release!: () => void
+    let entered!: () => void
+    const started = new Promise<void>((resolve) => (entered = resolve))
+    const blocked = new Promise<void>((resolve) => (release = resolve))
+    const { session, pageId } = await setup(async (_id, command) => {
+      if (command.type === "reload") {
+        entered()
+        await blocked
+      }
+      if (command.type === "snapshot") throw new Error("read failed")
+      return { type: "void" }
+    })
+    const first = BrowserCommandService.execute(owner, {
+      pageId,
+      agentSessionID: "one",
+      commandId: "reload",
+      command: { type: "reload" },
+    })
+    await started
+    const second = BrowserCommandService.execute(owner, {
+      pageId,
+      agentSessionID: "two",
+      commandId: "clipboard",
+      command: { type: "clipboard", action: "write", text: "test" },
+    })
+    try {
+      expect(
+        session.agentActivities.map(({ sessionID, kind, operationID }) => ({ sessionID, kind, operationID })),
+      ).toEqual([{ sessionID: "one", kind: "acting", operationID: "reload" }])
+    } finally {
+      release()
+      await Promise.all([first, second])
+    }
+    expect(session.agentActivities.map(({ sessionID, kind }) => ({ sessionID, kind }))).toEqual([
+      { sessionID: "one", kind: "idle" },
+      { sessionID: "two", kind: "idle" },
+    ])
+    const recent = [...session.agentActivities]
+    await expect(
+      BrowserCommandService.execute(owner, {
+        pageId,
+        agentSessionID: "one",
+        commandId: "failed",
+        command: { type: "snapshot" },
+      }),
+    ).rejects.toThrow("read failed")
+    await expect(
+      BrowserCommandService.execute(owner, {
+        pageId,
+        agentSessionID: "one",
+        commandId: "denied",
+        command: { type: "reload" },
+        authorize: async () => {
+          throw new Error("denied")
+        },
+      }),
+    ).rejects.toThrow("denied")
+    await first
+    expect(session.agentActivities).toEqual(recent)
   }))
 test("one page serializes commands while other pages make progress", () =>
   runtime.run(async () => {

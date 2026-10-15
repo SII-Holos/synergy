@@ -40,6 +40,7 @@ const parameters = z.object({
   context: z.number().optional().describe("Number of context lines around each match"),
 })
 
+/** @deprecated Public compatibility wrapper; not registered by first-party composition. */
 export const AstGrepTool = Tool.define("ast_grep", {
   description: DESCRIPTION,
   parameters,

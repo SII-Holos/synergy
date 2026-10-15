@@ -407,6 +407,7 @@ export namespace BrowserBroker {
     owner: BrowserOwner.Info,
     pageId: string,
     command: BrowserBackendCommand,
+    agentSessionID?: string,
   ): Promise<BrowserBackendResult> {
     return request({
       type: "page.command",
@@ -415,6 +416,7 @@ export namespace BrowserBroker {
       ownerKey: BrowserOwner.key(owner),
       pageId,
       command: BrowserBackendCommandSchema.parse(command),
+      agentSessionID,
     })
   }
 

@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import { OutputBudget } from "./anchored-file"
 import { FileView } from "../file/view"
 import DESCRIPTION from "./file-search.txt"
@@ -6,12 +6,36 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { WorkspaceFileSearch } from "../workspace-file/search"
 import { WorkspaceFileIndexer } from "../workspace-file/indexer"
 import type { WorkspaceFile } from "../workspace-file/types"
+import { preciseFileSearch } from "./precise-file-search"
+
+type SearchMetadata = Omit<
+  Awaited<ReturnType<typeof preciseFileSearch>>["metadata"],
+  "mode" | "syntax" | "total" | "resultLimited" | "byteLimited"
+> & {
+  mode: "hybrid" | "paths" | "content"
+  syntax?: "literal" | "regex"
+  total?: number
+  resultLimited?: boolean
+  byteLimited?: boolean
+}
 
 export const FileSearchTool = Tool.define(
   "file_search",
   {
     description: DESCRIPTION,
     parameters: z.object({
+      mode: z
+        .enum(["hybrid", "paths", "content"])
+        .optional()
+        .describe("Search mode; defaults to hybrid. paths uses an exact glob, content uses literal text or regex."),
+      syntax: z.enum(["literal", "regex"]).optional().describe("Content mode only; defaults to literal."),
+      path: z.string().optional().describe("Precise modes only: root in the selected file view; defaults to its root."),
+      offset: z
+        .number()
+        .int()
+        .nonnegative()
+        .optional()
+        .describe("Precise modes only: continuation offset, defaults to zero."),
       query: z
         .string()
         .describe(
@@ -33,14 +57,22 @@ export const FileSearchTool = Tool.define(
         .optional()
         .describe("Optional comma-separated glob patterns to exclude from path and content search"),
     }),
-    async execute(params, ctx) {
-      await ctx.ask({
-        permission: "file_search",
-        patterns: [params.query || "*"],
-        metadata: {
-          query: params.query,
-        },
-      })
+    async execute(params, ctx): Promise<Tool.ExecutionResult<SearchMetadata>> {
+      const mode = params.mode ?? "hybrid"
+      if (
+        mode === "hybrid" &&
+        (params.syntax !== undefined || params.path !== undefined || params.offset !== undefined)
+      )
+        throw new Error("syntax, path and offset require a precise content or paths mode.")
+      if (mode !== "content" && params.syntax !== undefined)
+        throw new Error("syntax is only supported in content mode.")
+      const authorize = (paths: string[]) =>
+        ctx.ask({
+          permission: "file_search",
+          patterns: [...new Set(paths.length ? paths.map((file) => FileView.resolve(file)) : [FileView.resolve(".")])],
+          metadata: { query: params.query },
+        })
+      if (mode !== "hybrid") return preciseFileSearch({ ...params, mode }, ctx)
 
       const limit = params.limit ?? 50
       const query = params.query
@@ -65,6 +97,7 @@ export const FileSearchTool = Tool.define(
         const listing = items.length
           ? items.map((item) => `${item.type === "directory" ? "dir " : "file"} ${item.path}`).join("\n")
           : "No matching files found."
+        await authorize(items.map((item) => item.path))
 
         return {
           title: params.query || "Files",
@@ -80,6 +113,8 @@ export const FileSearchTool = Tool.define(
               ? `${listing}\nResults limited; narrow the include filter to inspect remaining paths.`
               : listing,
           metadata: {
+            mode,
+            nextOffset: undefined as number | undefined,
             query: params.query,
             contentError: undefined as string | undefined,
             pathCount: items.length,
@@ -202,6 +237,8 @@ Tips:
         .filter(Boolean)
         .join("\n")
 
+      await authorize(hits.map((hit) => hit.path))
+
       return {
         title: params.query || "Search",
         activityEvidence: await ctx.recordActivity?.({
@@ -213,6 +250,8 @@ Tips:
         }),
         output: guidance ? `${output}\n${guidance}` : output,
         metadata: {
+          mode,
+          nextOffset: undefined as number | undefined,
           query: params.query,
           pathCount: pathItems.length,
           contentError,

@@ -16,6 +16,7 @@ export namespace BrowserControl {
   export interface SessionState {
     status: BrowserSession["status"]
     pages: BrowserSessionPage[]
+    agentActivities?: BrowserSession["agentActivities"]
   }
 
   export function parseCommand(input: unknown): Command {
@@ -37,6 +38,6 @@ export namespace BrowserControl {
   }
 
   export function sessionState(session: BrowserSession): SessionState {
-    return { status: session.status, pages: session.pages }
+    return { status: session.status, pages: session.pages, agentActivities: session.agentActivities }
   }
 }

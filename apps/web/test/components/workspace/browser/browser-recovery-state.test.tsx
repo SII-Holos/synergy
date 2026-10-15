@@ -73,7 +73,7 @@ beforeAll(async () => {
         browserCatalog.replacePages([{ ...pageState, profileId: "personal", status: "active" }])
         store.setSession("connectionStatus", "connected")
         const nativePresentation = {
-          protocolVersion: 5,
+          protocolVersion: 6,
           kind: "native",
           capabilities: { native: true },
           reason: "desktop-local",

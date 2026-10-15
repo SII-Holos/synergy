@@ -6907,6 +6907,10 @@ export type Config = {
     [key: string]: string | null
   }
   /**
+   * File read/write interface for all local Agents in this Scope: replace (text replacement), hashline (line-anchored editing), or patch (patch editing, default). Does not change permissions.
+   */
+  fileToolGroup?: "replace" | "hashline" | "patch"
+  /**
    * Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.
    */
   default_agent?: string
@@ -12739,6 +12743,7 @@ export type BrowserApiSessionPage = {
   lastActiveAt: number | null
   profileId: string
   openerId?: string
+  createdBySessionID?: string
   status: "active" | "suspended" | "failed"
   error?: BrowserApiError
 }
@@ -12805,7 +12810,7 @@ export type BrowserManageProfile =
     }
 
 export type BrowserAnnotationResponse = {
-  protocolVersion: 5
+  protocolVersion: 6
   annotation: {
     id: string
     pageURL: string
@@ -12821,7 +12826,7 @@ export type BrowserAnnotationResponse = {
 }
 
 export type BrowserAnnotationRequest = {
-  protocolVersion: 5
+  protocolVersion: 6
   pageId: string
   x: number
   y: number
@@ -12832,14 +12837,14 @@ export type BrowserAnnotationRequest = {
 }
 
 export type BrowserDiagnosticsResponse = {
-  protocolVersion: 5
+  protocolVersion: 6
   pageId: string
   action: string
   data: unknown
 }
 
 export type BrowserDiagnosticsRequest = {
-  protocolVersion: 5
+  protocolVersion: 6
   pageId: string
   commandId: string
   action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
@@ -12848,11 +12853,22 @@ export type BrowserDiagnosticsRequest = {
 
 export type BrowserApiSessionState = {
   type: "session.state"
-  protocolVersion: 5
+  protocolVersion: 6
   ownerKey: string
   status: "empty" | "suspended" | "active" | "failed"
+  agentActivities?: Array<{
+    sessionID: string
+    operationID: string
+    pageId: string
+    url: string
+    title?: string
+    kind: "reading" | "acting" | "idle"
+    tool: string
+    label: string
+    completed?: boolean
+  }>
   presentation: {
-    protocolVersion: 5
+    protocolVersion: 6
     kind: "native"
     capabilities: {
       native: boolean
@@ -12877,12 +12893,14 @@ export type BrowserApiSessionState = {
 
 export type BrowserControlResponse = {
   type: "control.result"
-  protocolVersion: 5
+  protocolVersion: 6
   result:
     | {
+        userChanges?: string
         type: "void"
       }
     | {
+        userChanges?: string
         type: "page"
         page: {
           id: string
@@ -12893,6 +12911,7 @@ export type BrowserControlResponse = {
         }
       }
     | {
+        userChanges?: string
         type: "navigation"
         page: {
           id: string
@@ -12908,6 +12927,7 @@ export type BrowserControlResponse = {
         inflightRequests?: number
       }
     | {
+        userChanges?: string
         type: "snapshot"
         pageId: string
         snapshotId: string
@@ -12922,6 +12942,7 @@ export type BrowserControlResponse = {
         truncated: boolean
       }
     | {
+        userChanges?: string
         type: "action"
         pageId: string
         action: string
@@ -12939,6 +12960,7 @@ export type BrowserControlResponse = {
         inflightRequests?: number
       }
     | {
+        userChanges?: string
         type: "wait"
         pageId: string
         matched: boolean
@@ -12952,11 +12974,13 @@ export type BrowserControlResponse = {
         }
       }
     | {
+        userChanges?: string
         type: "evaluation"
         pageId: string
         value: unknown
       }
     | {
+        userChanges?: string
         type: "screenshot"
         pageId: string
         dataUrl: string
@@ -12964,6 +12988,7 @@ export type BrowserControlResponse = {
         height: number
       }
     | {
+        userChanges?: string
         type: "data"
         pageId: string
         data: unknown
@@ -12972,7 +12997,7 @@ export type BrowserControlResponse = {
 
 export type BrowserControlRequest = {
   pageId: string
-  protocolVersion: 5
+  protocolVersion: 6
   command:
     | {
         type: "navigate"

@@ -169,12 +169,12 @@ async function run() {
   await first.executeJavaScript(
     'document.body.insertAdjacentHTML("beforeend",`<form><input autocomplete="username" value="fixture"><input type="password" value="fixture-pass"></form>`)',
   )
-  await data.execute({ protocolVersion: 5, ownerKey: base.ownerKey, pageId: "page-0", action: { type: "saveLogin" } })
+  await data.execute({ protocolVersion: 6, ownerKey: base.ownerKey, pageId: "page-0", action: { type: "saveLogin" } })
   const state = await store.list(base.profile.partition)
   assert.equal(state.passwords.length, 1)
   await first.executeJavaScript('document.querySelector("input[type=password]").value=""')
   await data.execute({
-    protocolVersion: 5,
+    protocolVersion: 6,
     ownerKey: base.ownerKey,
     pageId: "page-0",
     action: { type: "fillLogin", id: state.passwords[0]!.id },

@@ -240,12 +240,36 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
       return { state: "interrupted", label: _({ id: "session.execution.interrupted", message: "Interrupted" }) }
     if (process?.status === "failed") return { state: "error", label: translateDescriptor(statuses.error, i18n()) }
     const current = part()
+    const outcome = current?.tool === "apply_patch" ? current.state.metadata?.outcome : undefined
+    if (outcome === "partial" || (current?.tool === "revise_file" && current.state.metadata?.partialFailure))
+      return { state: "error", label: _({ id: "tool.patch.partial", message: "Partially applied" }) }
+    if (outcome === "unresolved")
+      return { state: "error", label: _({ id: "tool.patch.unresolved", message: "Outcome unconfirmed" }) }
+    if (outcome === "no-change")
+      return { state: current?.state.status, label: _({ id: "tool.patch.noChange", message: "No changes" }) }
+    if (outcome === "rejected") return { state: "error", label: _({ id: "tool.patch.rejected", message: "Rejected" }) }
     return {
       state: current?.state.status,
       label: current ? translateDescriptor(statuses[current.state.status], i18n()) : "",
     }
   })
   const file = () => part()?.activityEvidence?.kind === "file-read"
+  const fileChange = () => part()?.tool === "apply_patch" || part()?.activityEvidence?.kind === "file-change"
+  const fileDiagnostics = createMemo(() => {
+    if (!fileChange()) return undefined
+    const metadata = part()?.state.metadata
+    if (!metadata) return undefined
+    const omitPreviews = (value: Record<string, unknown>) =>
+      Object.fromEntries(
+        Object.entries(value).filter(([key]) => !["diff", "filediff", "files", "output"].includes(key)),
+      )
+    const details = omitPreviews(metadata)
+    if (Array.isArray(details.sections))
+      details.sections = details.sections.map((section: unknown) =>
+        section && typeof section === "object" ? omitPreviews(section as Record<string, unknown>) : section,
+      )
+    return Object.keys(details).length ? JSON.stringify(details, null, 2) : undefined
+  })
   const rawOutput = () => {
     const current = part()?.state
     if (current?.status === "running" && typeof current.metadata?.output === "string") return current.metadata.output
@@ -281,7 +305,10 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
     part() ? resolveExternalToolRenderer(part()!.tool, { externalLookup, externalLoadNotify }) : undefined,
   )
   const richResult = () =>
-    part()?.activityEvidence?.kind === "file-change" || part()?.activityEvidence?.kind === "media" || !!customResult()
+    part()?.tool === "apply_patch" ||
+    part()?.activityEvidence?.kind === "file-change" ||
+    part()?.activityEvidence?.kind === "media" ||
+    !!customResult()
   const attachments = () => {
     const current = part()?.state
     return current?.status === "completed" ? (current.attachments ?? []) : []
@@ -425,6 +452,28 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
                   <Show when={taskOutput()}>
                     <ExecutionOriginal identity={blockIdentity()} text={rawOutput()} incomplete={incomplete()} />
                   </Show>
+                  <Show when={fileChange() && !failure()}>
+                    <ExecutionCodeBlock
+                      identity={blockIdentity()}
+                      slot="execution-output"
+                      label={_({ id: "session.execution.toolOutput", message: "Tool output" })}
+                      copyLabel={_({ id: "session.execution.copyOutput", message: "Copy tool output" })}
+                      text={rawOutput()}
+                      incomplete={incomplete()}
+                    />
+                  </Show>
+                  <Show when={fileDiagnostics()}>
+                    {(details) => (
+                      <ExecutionCodeBlock
+                        identity={blockIdentity()}
+                        slot="execution-metadata"
+                        language="json"
+                        label={_({ id: "session.execution.metadata", message: "Execution details" })}
+                        copyLabel={_({ id: "session.execution.copyMetadata", message: "Copy execution details" })}
+                        text={details()}
+                      />
+                    )}
+                  </Show>
                 </Match>
                 <Match when={view() === "process"}>
                   <Show when={taskOutput()}>
@@ -518,12 +567,14 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
                             defaultOpen
                           />
                         </section>
-                        <ExecutionOriginal
-                          identity={blockIdentity()}
-                          text={rawOutput()}
-                          incomplete={incomplete()}
-                          copyLabel={_({ id: "session.execution.copyOutput", message: "Copy tool output" })}
-                        />
+                        <Show when={!fileChange()}>
+                          <ExecutionOriginal
+                            identity={blockIdentity()}
+                            text={rawOutput()}
+                            incomplete={incomplete()}
+                            copyLabel={_({ id: "session.execution.copyOutput", message: "Copy tool output" })}
+                          />
+                        </Show>
                       </Show>
                     }
                   >

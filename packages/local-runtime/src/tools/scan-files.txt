@@ -1,6 +1,6 @@
 Search file contents and return anchored file blocks.
 
-Use this instead of `grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and only the matching `LINE:TEXT` rows by default, so results stay small. Use `view_file` with targeted ranges when you need surrounding context before editing. Set `outputMode: "files"` only for small, known result sets where full file blocks are truly needed.
+Use this when search results will supply line evidence for anchored editing. Matched files are returned with real `[path#TAG]` headers and only the matching `LINE:TEXT` rows by default, so results stay small. Use `view_file` with targeted ranges when you need surrounding context before editing. Set `outputMode: "files"` only for small, known result sets where full file blocks are truly needed.
 
 Parameters:
 - `pattern` is a regular expression.

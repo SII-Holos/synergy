@@ -36,6 +36,49 @@ async function rendered(selector: string) {
 }
 const reducedMotion = { current: false }
 
+test("partial patches show only observed diffs and keep operation details out of the result", async () => {
+  for (const outcome of ["partial", "unresolved"]) {
+    await rendered(`#patch-${outcome} [data-component="tool-patch-preview"]`)
+    const host = document.getElementById(`patch-${outcome}`)!
+    expect(host.textContent).toContain("source.ts")
+    expect(host.textContent).not.toContain("destination.ts")
+    expect(host.textContent).not.toContain("move failed")
+    expect(host.textContent).not.toContain("move unconfirmed")
+    expect(host.querySelector("[data-phase]")).toBeNull()
+    expect(host.textContent).not.toContain("later.ts")
+    expect(host.textContent).not.toContain("Not created")
+    expect(host.textContent).not.toContain("@@")
+    expect(host.textContent).not.toContain("Stopped after a committed write")
+    expect(host.querySelector('[data-component="tool-output-text"]')).toBeNull()
+    expect(host.textContent).not.toContain("Raw patch ledger")
+    expect(host.textContent).not.toContain("Committed")
+  }
+})
+
+test("successful patches present one result without repeating the model output", async () => {
+  await rendered('#patch-applied [data-component="tool-patch-preview"]')
+  const host = document.getElementById("patch-applied")!
+  expect(host.textContent).toContain("added.ts")
+  expect(host.textContent).not.toContain("Created")
+  expect(host.textContent).not.toContain("@@")
+  expect(host.querySelector('[data-component="diff-patch"]')).not.toBeNull()
+  expect(host.querySelector('[data-component="tool-output-text"]')).toBeNull()
+  expect(host.textContent).not.toContain("Patch applied.")
+})
+
+test("edit and multi-file revise results share file diff cards without operation summaries", async () => {
+  for (const tool of ["edit", "revise_file"]) {
+    await rendered(`#result-${tool} [data-component="tool-patch-preview"]`)
+    const host = document.getElementById(`result-${tool}`)!
+    expect(host.querySelectorAll('[data-component="tool-patch-preview"]').length).toBe(tool === "edit" ? 1 : 2)
+    expect(host.textContent).toContain("example.ts")
+    expect(host.textContent).not.toContain("@@")
+    expect(host.textContent).not.toContain("SWAP")
+    expect(host.textContent).not.toContain("private diagnostic")
+    expect(host.querySelector('[data-component="diff-patch"]')).not.toBeNull()
+  }
+})
+
 function countRoot(): HTMLElement {
   return document.querySelector('#count-host [data-component="animated-activity-count"]') as HTMLElement
 }
@@ -384,7 +427,7 @@ describe("ActivityTrace DOM behavior", () => {
     await wait(0)
 
     const fileStep = document.querySelector('[role="dialog"]')
-    expect(fileStep?.querySelector('[data-component="diff-preview"], [data-component="diff-patch"]')).not.toBeNull()
+    expect(fileStep?.querySelector('[data-component="tool-patch-preview"]')).not.toBeNull()
 
     closeResult()
     await wait(0)

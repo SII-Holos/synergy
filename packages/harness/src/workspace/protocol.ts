@@ -68,6 +68,7 @@ export namespace WorkspaceProtocol {
     path: WorkspaceTree.Path,
     data: z.string().max(writeBytes * 1.34),
     expectedVersion: z.string().nullable(),
+    expectedEntryVersion: z.string().nullable().optional(),
     protectSensitive: z.boolean().optional(),
   })
   export type WriteInput = z.infer<typeof WriteInput>
@@ -117,6 +118,7 @@ export namespace WorkspaceProtocol {
   export const Item = z.object({
     path: z.union([WorkspaceTree.Path, z.literal("")]),
     entryVersion: z.string(),
+    identity: z.string().optional(),
     ctime: z.number(),
     kind: z.enum(["file", "directory", "symlink", "unknown"]),
     size: z.number().nonnegative(),

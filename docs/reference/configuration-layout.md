@@ -766,3 +766,9 @@ Domain files are the durable configuration contract. Environment variables are p
 | `SYNERGY_DISABLE_LSP_REAP=1`      | Disable idle-age reaping; native write contention still retires idle LSP clients                                                                         |
 
 Experimental and diagnostic variables are not persisted preferences. Use them to isolate behavior, then fix or configure the owning subsystem instead of relying on them as permanent compatibility layers. Performance-specific environment variables are listed in [Performance Observability](../operations/performance-observability.md); Desktop build/release variables are listed in [Desktop Release](../operations/desktop-release.md).
+
+## File read/write tool group
+
+Set `fileToolGroup` in the existing `60-agents.jsonc` domain. The values are `replace` (Text replacement / 文本替换), `hashline` (Line-anchored editing / 行锚编辑), and `patch` (Patch editing / 补丁编辑). The universal fallback is `patch`. The existing Agent runtime Settings page stages this global preference through Save/Discard; project domain files and configuration import use the normal project override layer. Removing an override reveals the lower layer, or `patch` when absent everywhere.
+
+This setting changes the local file interface independently of Agent and model selection. It does not grant permission, install an optional component, or configure external agents' own tools. Existing permission-only interface switching must be replaced by an explicit group setting. Existing `read`/`edit` and concrete-tool restrictions remain authoritative; a conflicting `edit: deny` can leave the selected interface read-only. No migration deletes these restrictions or falls back to another group. See [file tool interfaces](../architecture/workspace-and-files.md#file-tool-interfaces) for the member table, search modes and patch failure guarantees.

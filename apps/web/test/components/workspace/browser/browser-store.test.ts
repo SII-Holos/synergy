@@ -12,6 +12,38 @@ const page = (id: string): BrowserPage => ({
   lastActiveAt: null,
 })
 
+test("activity is session scoped and late completion cannot hide another running operation", () =>
+  createRoot((dispose) => {
+    const catalog = createBrowserStore()
+    catalog.replacePages([page("one"), page("two")])
+    const view = catalog.forPage(
+      () => "one",
+      () => {},
+      () => "current",
+    )
+    const activity = {
+      sessionID: "current",
+      operationID: "first",
+      pageId: "one",
+      url: page("one").url,
+      kind: "reading" as const,
+      tool: "browser_read",
+      label: "Reading",
+    }
+    catalog.applyAgentActivity(activity)
+    catalog.applyAgentActivity({ ...activity, operationID: "second", pageId: "two" })
+    catalog.applyAgentActivity({ ...activity, sessionID: "other", operationID: "other", kind: "acting" })
+    expect(view.agentActivity().pageId).toBe("two")
+    catalog.applyAgentActivity({ ...activity, operationID: "second", pageId: "two", kind: "idle" })
+    expect(view.agentActivity().pageId).toBe("one")
+    expect(view.recentAgentActivity()?.pageId).toBe("two")
+    catalog.applyAgentActivity({ ...activity, kind: "idle" })
+    expect(view.agentActivity().kind).toBe("idle")
+    catalog.removePage("one")
+    expect(view.agentActivity().pageId).toBeNull()
+    dispose()
+  }))
+
 test("page projections share live catalog updates without sharing selection", () =>
   createRoot((dispose) => {
     const catalog = createBrowserStore()
@@ -19,16 +51,28 @@ test("page projections share live catalog updates without sharing selection", ()
     const [secondId, setSecondId] = createSignal("agent")
     const firstSelections: string[] = []
     const secondSelections: string[] = []
-    const first = catalog.forPage(firstId, (id) => {
-      firstSelections.push(id)
-      setFirstId(id)
-    })
+    const first = catalog.forPage(
+      firstId,
+      (id) => {
+        firstSelections.push(id)
+        setFirstId(id)
+      },
+      () => "current",
+    )
     const second = catalog.forPage(secondId, (id) => {
       secondSelections.push(id)
       setSecondId(id)
     })
     catalog.replacePages([page("human"), page("agent")])
-    catalog.applyAgentActivity({ pageId: "agent", url: "https://agent.example.com", kind: "acting", label: "Clicking" })
+    catalog.applyAgentActivity({
+      sessionID: "current",
+      operationID: "operation",
+      tool: "browser_action",
+      pageId: "agent",
+      url: "https://agent.example.com",
+      kind: "acting",
+      label: "Clicking",
+    })
     catalog.upsertPage({ ...page("agent"), title: "Updated" })
     catalog.upsertPage(page("popup"))
     catalog.setPageUrl("human", "https://human.example.com/next")
@@ -200,25 +244,49 @@ test("page activity and host recovery cannot clear another page's state", () =>
     )
     catalog.replacePages([page("one"), page("two")])
     for (const id of ["one", "two"]) {
-      catalog.applyAgentActivity({ pageId: id, operationID: id, url: page(id).url, kind: "acting", label: id })
+      catalog.applyAgentActivity({
+        sessionID: "current",
+        tool: "browser_action",
+        pageId: id,
+        operationID: id,
+        url: page(id).url,
+        kind: "acting",
+        label: id,
+      })
       catalog.setHostStatus(id, "restarting")
       catalog.setBrowserError({ pageId: id, severity: "error", code: "browser_host_disconnected", message: id })
     }
-    catalog.applyAgentActivity({ pageId: "one", operationID: "stale", url: null, kind: "idle", label: null })
-    expect(catalog.activities.one?.kind).toBe("acting")
-    expect(catalog.activities.two?.kind).toBe("acting")
-    catalog.applyAgentActivity({ pageId: "one", operationID: "one", url: null, kind: "idle", label: null })
-    expect(catalog.activities.one?.kind).toBe("idle")
-    expect(catalog.activities.two?.kind).toBe("acting")
+    catalog.applyAgentActivity({
+      sessionID: "current",
+      tool: "browser_action",
+      pageId: "one",
+      operationID: "stale",
+      url: "about:blank",
+      kind: "idle",
+      label: "Idle",
+    })
+    expect(catalog.agentActivitiesFor("current").find((item) => item.pageId === "one")?.kind).toBe("acting")
+    expect(catalog.agentActivitiesFor("current").find((item) => item.pageId === "two")?.kind).toBe("acting")
+    catalog.applyAgentActivity({
+      sessionID: "current",
+      tool: "browser_action",
+      pageId: "one",
+      operationID: "one",
+      url: "about:blank",
+      kind: "idle",
+      label: "Idle",
+    })
+    expect(catalog.agentActivitiesFor("current").find((item) => item.pageId === "one")?.kind).toBe("idle")
+    expect(catalog.agentActivitiesFor("current").find((item) => item.pageId === "two")?.kind).toBe("acting")
     catalog.setHostStatus("one", "ready")
     expect(first.browserError()).toBeNull()
     expect(first.hostStatus()).toBe("ready")
     expect(second.browserError()?.message).toBe("two")
     expect(second.hostStatus()).toBe("restarting")
     catalog.removePage("one")
-    expect(catalog.activities.one).toBeUndefined()
+    expect(catalog.agentActivitiesFor("current").find((item) => item.pageId === "one")).toBeUndefined()
     expect(catalog.hostStatuses.one).toBeUndefined()
-    expect(catalog.activities.two?.kind).toBe("acting")
+    expect(catalog.agentActivitiesFor("current").find((item) => item.pageId === "two")?.kind).toBe("acting")
     expect(second.hostStatus()).toBe("restarting")
     dispose()
   }))

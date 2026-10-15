@@ -1579,11 +1579,7 @@ msgstr "Recently opened"
 
 #. ── Agent ──
 msgid "app.browser.agent.activity"
-msgstr "Agent {kind} {host}"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.agent.follow"
-msgstr "Follow"
+msgstr "{kind, select, acting {Agent operating} reading {Agent viewing} other {Agent last viewed}}"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.annotation.color"
@@ -17322,6 +17318,10 @@ msgid "session.execution.copyLoaded"
 msgstr "Copy loaded output"
 
 #. js-lingui-explicit-id
+msgid "session.execution.copyMetadata"
+msgstr "Copy execution details"
+
+#. js-lingui-explicit-id
 msgid "session.execution.copyOutput"
 msgstr "Copy tool output"
 
@@ -17396,6 +17396,10 @@ msgstr "Unable to load execution details."
 #. js-lingui-explicit-id
 msgid "session.execution.loading"
 msgstr "Loading tool result…"
+
+#. js-lingui-explicit-id
+msgid "session.execution.metadata"
+msgstr "Execution details"
 
 #. js-lingui-explicit-id
 msgid "session.execution.noDiagnostics"
@@ -23417,6 +23421,26 @@ msgid "settings.runtime.compaction.prune.title"
 msgstr "Prune Tool Output"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.description"
+msgstr "One file interface for local agents, independent of agent and model. Permissions still apply. Project configuration overrides this global setting. Tools: {members}"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.hashline"
+msgstr "Line-anchored editing"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.patch"
+msgstr "Patch editing"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.replace"
+msgstr "Text replacement"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.title"
+msgstr "File read/write tool group"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.managedByEnv"
 msgstr "Managed by environment"
 
@@ -25229,6 +25253,58 @@ msgid "tool.misc.warnings"
 msgstr "Warnings"
 
 #. js-lingui-explicit-id
+msgid "tool.patch.applied"
+msgstr "Applied"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.committed"
+msgstr "Applied"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.delete"
+msgstr "Delete"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.move"
+msgstr "Move"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.noChange"
+msgstr "No changes"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.notStarted"
+msgstr "Not attempted"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.partial"
+msgstr "Partially applied"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.rejected"
+msgstr "Rejected"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unknown"
+msgstr "Unknown effect"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unresolved"
+msgstr "Outcome unconfirmed"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unsaved"
+msgstr "Durability unconfirmed"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.write"
+msgstr "Write"
+
+#. js-lingui-explicit-id
 msgid "tool.render.busy"
 msgstr "Wait for the current visual action to finish."
 
@@ -25423,6 +25499,10 @@ msgstr "Analysis timed out"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.answer-question"
 msgstr "Answer Question"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.apply-patch"
+msgstr "Apply patch"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.approve-blueprint-loop"

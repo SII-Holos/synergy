@@ -3,10 +3,10 @@ import { ANCHORED_CHIP_DESC } from "./tool-title-descriptors"
 import { createMemo, For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
-import { BasicTool } from "./basic-tool"
+import { BasicTool, useToolResultPresentation } from "./basic-tool"
 import { ToolTextOutput } from "./tool-output-text"
 import { DiagnosticsDisplay, getDiagnostics, getDirectory, type ToolProps } from "./message-part"
-import { ToolDiffPreview, type ToolDiffPreviewFileDiff } from "./tool/diff-preview"
+import { type ToolDiffPreviewFileDiff } from "./tool/diff-preview"
 import { hasSaveFileContentInput, saveFilePreviewDiff } from "./tool/save-file-preview"
 import { ToolFilePreview, ToolPatchPreview } from "./tool/content-preview"
 
@@ -355,8 +355,29 @@ export function AnchoredParseCodeTool(props: ToolProps) {
 
 export function AnchoredReviseTool(props: ToolProps) {
   const { _ } = useLingui()
+  const resultOnly = useToolResultPresentation()
   const filePath = () => pathFromProps(props)
   const filediff = () => props.metadata?.filediff as FileDiff | undefined
+  const sections = createMemo(() => {
+    const value: unknown = props.metadata?.sections
+    if (!Array.isArray(value)) return []
+    return value.flatMap((section: unknown) => {
+      if (!section || typeof section !== "object" || !("filediff" in section)) return []
+      const diff = section.filediff
+      if (
+        !diff ||
+        typeof diff !== "object" ||
+        !("file" in diff) ||
+        typeof diff.file !== "string" ||
+        !("preview" in diff) ||
+        typeof diff.preview !== "string"
+      )
+        return []
+      return [
+        { path: diff.file, patch: "diff" in section && typeof section.diff === "string" ? section.diff : diff.preview },
+      ]
+    })
+  })
   const operations = () => (props.metadata?.operationSummary ?? []) as string[]
   const diagnostics = () => diagnosticCount(props.metadata)
   const chips = () => [
@@ -377,28 +398,34 @@ export function AnchoredReviseTool(props: ToolProps) {
         changes: changeSummary(props),
       }}
     >
-      <WarningPanel metadata={props.metadata} />
-      <SummaryGrid
-        rows={[
-          { label: _(summaryLabelOperationsDescriptor), value: operations().join(" · ") },
-          props.metadata?.recovered
-            ? { label: _(summaryLabelRecoveryDescriptor), value: _(recoverySafelyMappedDescriptor) }
-            : undefined,
-        ]}
-      />
-      <DiagnosticsPanel diagnostics={props.metadata?.diagnostics} path={props.metadata?.filepath || filePath()} />
-      <Show when={filediff()} fallback={<RawOutput output={props.output} />}>
-        {(diff) => {
-          const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
-          return (
-            <ToolPatchPreview
-              tool={props}
-              path={filePath()}
-              patch={patch()}
-              fallback={<ToolDiffPreview diff={diff()} />}
-            />
-          )
-        }}
+      <Show when={!resultOnly}>
+        <WarningPanel metadata={props.metadata} />
+        <SummaryGrid
+          rows={[
+            { label: _(summaryLabelOperationsDescriptor), value: operations().join(" · ") },
+            props.metadata?.recovered
+              ? { label: _(summaryLabelRecoveryDescriptor), value: _(recoverySafelyMappedDescriptor) }
+              : undefined,
+          ]}
+        />
+        <DiagnosticsPanel diagnostics={props.metadata?.diagnostics} path={props.metadata?.filepath || filePath()} />
+      </Show>
+      <Show
+        when={sections().length}
+        fallback={
+          <Show when={filediff()} fallback={<RawOutput output={props.output} />}>
+            {(diff) => {
+              const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
+              return <ToolPatchPreview tool={props} path={filePath()} patch={patch()} />
+            }}
+          </Show>
+        }
+      >
+        <div class="flex flex-col gap-4">
+          <For each={sections()}>
+            {(section) => <ToolPatchPreview tool={props} path={section.path} patch={section.patch} />}
+          </For>
+        </div>
       </Show>
     </BasicTool>
   )
@@ -443,14 +470,7 @@ export function AnchoredResolveConflictsTool(props: ToolProps) {
       <Show when={filediff()} fallback={<RawOutput output={props.output} />}>
         {(diff) => {
           const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
-          return (
-            <ToolPatchPreview
-              tool={props}
-              path={filePath()}
-              patch={patch()}
-              fallback={<ToolDiffPreview diff={diff()} />}
-            />
-          )
+          return <ToolPatchPreview tool={props} path={filePath()} patch={patch()} />
         }}
       </Show>
     </BasicTool>
@@ -505,14 +525,7 @@ export function AnchoredSaveTool(props: ToolProps) {
       >
         {(diff) => {
           const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
-          return (
-            <ToolPatchPreview
-              tool={props}
-              path={filePath()}
-              patch={patch()}
-              fallback={<ToolDiffPreview diff={diff()} />}
-            />
-          )
+          return <ToolPatchPreview tool={props} path={filePath()} patch={patch()} />
         }}
       </Show>
     </BasicTool>

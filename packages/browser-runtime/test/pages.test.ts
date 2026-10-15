@@ -8,8 +8,9 @@ const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const owner = { mode: "scope" as const, scopeID: "pages-contract", directory: null }
 
-function session() {
+function session(beforeCreate?: () => Promise<void>) {
   return new BrowserSessionImpl(owner, async ({ id, url }) => {
+    await beforeCreate?.()
     let alive = true
     const page: BrowserPageBackend = {
       id,
@@ -27,6 +28,34 @@ function session() {
     return page
   })
 }
+
+test("Agent creation tracks pending work and retains its destination only after success", () =>
+  runtime.run(async () => {
+    let entered!: () => void
+    let release!: () => void
+    const started = new Promise<void>((resolve) => (entered = resolve))
+    const blocked = new Promise<void>((resolve) => (release = resolve))
+    const browser = session(async () => {
+      entered()
+      await blocked
+    })
+    const opening = browser.openPage({ url: "https://example.com/created", createdBySessionID: "creator" })
+    await started
+    expect(browser.agentActivities).toMatchObject([{ sessionID: "creator", kind: "acting" }])
+    release()
+    const page = await opening
+    expect(browser.agentActivities).toMatchObject([
+      { sessionID: "creator", pageId: page.id, url: "https://example.com/created", kind: "idle", completed: true },
+    ])
+    await browser.dispose()
+    const failed = session(async () => {
+      throw new Error("creation failed")
+    })
+    await expect(failed.openPage({ createdBySessionID: "creator" })).rejects.toThrow("creation failed")
+    expect(failed.agentActivities).toEqual([])
+    expect(failed.pages).toEqual([])
+    await failed.dispose()
+  }))
 
 test("eight real independent pages retain immutable profiles and page-scoped closure", () =>
   runtime.run(async () => {
@@ -52,12 +81,13 @@ test("eight real independent pages retain immutable profiles and page-scoped clo
 test("restore reads descriptors without creating pages and resume preserves identity", () =>
   runtime.run(async () => {
     const first = session()
-    const page = await first.openPage({ url: "https://example.com/restore" })
+    const page = await first.openPage({ url: "https://example.com/restore", createdBySessionID: "creator" })
     const profileId = first.pages[0]!.profileId
     await first.dispose()
     const next = session()
     expect(await next.restore()).toBe(true)
     expect(next.pages[0]?.status).toBe("suspended")
+    expect(next.pages[0]?.createdBySessionID).toBe("creator")
     expect(next.getPage(page.id)).toBeUndefined()
     expect((await next.resumePage(page.id)).id).toBe(page.id)
     expect(next.pages[0]?.profileId).toBe(profileId)

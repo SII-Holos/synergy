@@ -25,6 +25,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   create_file: d("tool.title.create-file", "Create File"),
   multiedit: d("tool.title.multi-edit", "Edit file in multiple places"),
   patch: d("tool.title.patch", "Apply patch"),
+  apply_patch: d("tool.title.apply-patch", "Apply patch"),
   look_at: d("tool.title.look-at", "Analyze file"),
   scan_document: d("tool.title.read-document", "Read Document"),
 

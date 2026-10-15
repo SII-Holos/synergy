@@ -90,6 +90,7 @@ export namespace BrowserToolHelper {
       const owner = await resolveOwner(ctx, pageId)
       const taskContext = AsyncLocalStorage.snapshot()
       return BrowserCommandService.execute(owner, {
+        agentSessionID: ctx.sessionID,
         command,
         pageId,
         authorize: ({ profileId, url, command }) =>
@@ -150,62 +151,6 @@ export namespace BrowserToolHelper {
 
   export async function resolvePage(ctx: Tool.Context, pageId: string): Promise<BrowserPageBackend> {
     return getPage(await resolveOwner(ctx, pageId), pageId)
-  }
-
-  export async function markActivity(
-    ctx: Tool.Context,
-    page: BrowserPageBackend,
-    kind: "reading" | "acting",
-    tool: string,
-    label: string,
-  ): Promise<BrowserSession> {
-    const session = await BrowserCommandService.session(await resolveOwner(ctx, page.id))
-    await session.notifyAgentActivity({
-      sessionID: ctx.sessionID,
-      operationID: operationID(ctx, tool),
-      pageId: page.id,
-      url: page.url,
-      title: page.title,
-      kind,
-      tool,
-      label,
-    })
-    return session
-  }
-
-  export async function markIdle(
-    ctx: Tool.Context,
-    page: BrowserPageBackend,
-    tool: string,
-    activeSession?: BrowserSession,
-  ): Promise<void> {
-    const session = activeSession ?? (await BrowserCommandService.session(await resolveOwner(ctx, page.id)))
-    await session.notifyAgentActivity({
-      sessionID: ctx.sessionID,
-      operationID: operationID(ctx, tool),
-      pageId: page.id,
-      url: page.url,
-      title: page.title,
-      kind: "idle",
-      tool,
-      label: "Idle",
-    })
-  }
-
-  export async function withActivity<T>(
-    ctx: Tool.Context,
-    page: BrowserPageBackend,
-    kind: "reading" | "acting",
-    tool: string,
-    label: string,
-    fn: () => Promise<T>,
-  ): Promise<T> {
-    const session = await markActivity(ctx, page, kind, tool, label)
-    try {
-      return await fn()
-    } finally {
-      await markIdle(ctx, page, tool, session)
-    }
   }
 }
 

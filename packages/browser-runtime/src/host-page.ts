@@ -76,12 +76,12 @@ export class BrowserHostPage implements BrowserPageBackend {
     return page
   }
 
-  async execute(command: BrowserBackendCommand): Promise<BrowserBackendResult> {
+  async execute(command: BrowserBackendCommand, agentSessionID?: string): Promise<BrowserBackendResult> {
     if (command.type !== "resume" && command.type !== "close" && !isSafeBrowserObservation(command)) {
       if (this._hostStatus === "restarting") throw hostStatusError(this.id, "restarting")
       if (this._hostStatus === "failed") throw hostStatusError(this.id, "failed")
     }
-    const result = await BrowserBroker.command(this.owner, this.id, command)
+    const result = await BrowserBroker.command(this.owner, this.id, command, agentSessionID)
     this.sync(result)
     return result
   }

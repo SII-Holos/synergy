@@ -1,3 +1,4 @@
+import { filePermissionNames, isFilePermission } from "./file-permission"
 import { Lock } from "../util/lock"
 import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
@@ -76,11 +77,18 @@ export namespace PermissionRules {
   ): { action: Action; rule?: Rule } {
     const merged = merge(...rulesets)
     const denyMatch = merged.findLast(
-      (r) => Wildcard.match(permission, r.permission) && Wildcard.match(pattern, r.pattern) && r.action === "deny",
+      (r) =>
+        filePermissionNames(permission).some((name) => Wildcard.match(name, r.permission)) &&
+        Wildcard.match(pattern, r.pattern) &&
+        r.action === "deny",
     )
-    if (denyMatch) return { action: "deny", rule: denyMatch }
+    if (denyMatch && !isFilePermission(permission)) return { action: "deny", rule: denyMatch }
 
-    const match = merged.findLast((r) => Wildcard.match(permission, r.permission) && Wildcard.match(pattern, r.pattern))
+    const match = merged.findLast(
+      (r) =>
+        filePermissionNames(permission).some((name) => Wildcard.match(name, r.permission)) &&
+        Wildcard.match(pattern, r.pattern),
+    )
     if (match) return { action: match.action, rule: match }
     return { action: "ask" }
   }

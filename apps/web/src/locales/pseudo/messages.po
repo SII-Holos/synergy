@@ -1579,11 +1579,7 @@ msgstr ""
 
 #. ── Agent ──
 msgid "app.browser.agent.activity"
-msgstr "⟦Agent {kind} {host}⟧"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.agent.follow"
-msgstr "⟦Follow⟧"
+msgstr "{kind, select, acting {⟦Agent operating⟧} reading {⟦Agent viewing⟧} other {⟦Agent last viewed⟧}}"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.annotation.color"
@@ -17322,6 +17318,10 @@ msgid "session.execution.copyLoaded"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.execution.copyMetadata"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.execution.copyOutput"
 msgstr ""
 
@@ -17395,6 +17395,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.execution.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.execution.metadata"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -23417,6 +23421,26 @@ msgid "settings.runtime.compaction.prune.title"
 msgstr "⟦Prune Tool Output⟧"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.hashline"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.patch"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.replace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.managedByEnv"
 msgstr "⟦Managed by environment⟧"
 
@@ -25229,6 +25253,58 @@ msgid "tool.misc.warnings"
 msgstr "⟦Warnings⟧"
 
 #. js-lingui-explicit-id
+msgid "tool.patch.applied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.committed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.delete"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.move"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.noChange"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.notStarted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.partial"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.rejected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unresolved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unsaved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.write"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "tool.render.busy"
 msgstr ""
 
@@ -25423,6 +25499,10 @@ msgstr "⟦Analysis timed out⟧"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.answer-question"
 msgstr "⟦Answer Question⟧"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.apply-patch"
+msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.approve-blueprint-loop"

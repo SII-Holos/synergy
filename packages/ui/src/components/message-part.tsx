@@ -477,10 +477,11 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: TOOL_TITLE_DESC["multiedit"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
+    case "apply_patch":
     case "patch":
       return {
         icon: "diff",
-        title: TOOL_TITLE_DESC["patch"],
+        title: TOOL_TITLE_DESC[tool],
       }
     case "write":
       return {

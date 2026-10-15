@@ -8,14 +8,12 @@ const contribution: AgentPermissionContributions.Phases = {
       ((identity.owner === "blueprint" && identity.registrationKey === "supervisor") ||
         (identity.owner === "light-loop" && identity.registrationKey === "lightloop-reviewer"))
     )
-      return PermissionNext.fromConfig({ parse_code: "allow", ast_grep: "deny" })
+      return PermissionNext.fromConfig({ parse_code: "allow" })
     if (identity.owner !== "harness") return []
-    if (identity.primaryRole === "coding" || identity.subagentProfile?.startsWith("anchored"))
-      return PermissionNext.fromConfig({ parse_code: "allow", ast_grep: "deny" })
-    if (identity.primaryRole === "lightweight")
-      return PermissionNext.fromConfig({ parse_code: "deny", ast_grep: "deny" })
+    if (identity.primaryRole === "coding" || identity.subagentProfile)
+      return PermissionNext.fromConfig({ parse_code: "allow" })
+    if (identity.primaryRole === "lightweight") return PermissionNext.fromConfig({ parse_code: "deny" })
     if (identity.primaryRole === "general") return PermissionNext.fromConfig({ parse_code: "deny" })
-    if (identity.subagentProfile) return PermissionNext.fromConfig({ parse_code: "deny", ast_grep: "allow" })
     return []
   },
 }

@@ -19,7 +19,7 @@ export namespace WorkspaceOperations {
   const ObjectChange = WorkspaceProtocol.ChangeInput.omit({ mount: true }).extend({ kind: z.literal("objects-change") })
   type Selection = { id: string; scopeID: string; workspaceID: string; generation?: number; signal?: AbortSignal }
   type Change = (
-    | { path: string; data: string; expectedVersion: string | null }
+    | { path: string; data: string; expectedVersion: string | null; expectedEntryVersion?: string | null }
     | { change: WorkspaceProtocol.Change }
   ) & { protectSensitive?: boolean }
 
@@ -104,6 +104,7 @@ export namespace WorkspaceOperations {
     path: string
     data: Uint8Array
     expectedVersion: string | null
+    expectedEntryVersion?: string | null
     protectSensitive?: boolean
     signal?: AbortSignal
   }) {
@@ -111,6 +112,7 @@ export namespace WorkspaceOperations {
       path: input.path,
       data: Buffer.from(input.data).toString("base64"),
       expectedVersion: input.expectedVersion,
+      expectedEntryVersion: input.expectedEntryVersion,
       protectSensitive: input.protectSensitive,
     })
   }

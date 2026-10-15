@@ -36,7 +36,7 @@ const StoredDownloadSchema = z
 
 const StoredSessionSchema = z
   .object({
-    version: z.literal(5),
+    version: z.literal(6),
     pages: z.array(BrowserSessionPageSchema).max(64),
     timestamp: z.number().int().nonnegative(),
     annotations: z.array(StoredAnnotationSchema).max(10_000).optional(),
@@ -45,7 +45,7 @@ const StoredSessionSchema = z
   .strict()
 
 export namespace BrowserStorage {
-  export const CURRENT_VERSION = 5
+  export const CURRENT_VERSION = 6
 
   export type StoredAnnotation = z.infer<typeof StoredAnnotationSchema>
   export type SessionState = Omit<z.infer<typeof StoredSessionSchema>, "version"> & { version?: number }

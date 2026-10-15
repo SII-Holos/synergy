@@ -763,6 +763,7 @@ function registerIpcHandlers() {
         throw new Error("Page changed during capture. Retry the screenshot.")
       return { ...capture, type: "capture", url, title, capturedAt: Date.now() }
     }
+    if (["zoom", "find", "stopFind"].includes(request.action.type)) page.generation.control.noteHumanPageChange()
     return runBrowserPageAction(page.generation.contents, request.action, async (data) => {
       const selected = await dialog.showSaveDialog(mainWindow!, {
         defaultPath: path.join(app.getPath("downloads"), "page.pdf"),

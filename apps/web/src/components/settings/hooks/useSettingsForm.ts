@@ -66,9 +66,11 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   })
 
   params.setSettings("agents", {
-    defaultAgent: params.availableAgents
-      ? (defaultPrimaryAgent(cfg.default_agent, params.availableAgents) ?? "")
-      : (cfg.default_agent ?? UI_DEFAULTS.defaultAgent),
+    fileToolGroup: cfg.fileToolGroup ?? UI_DEFAULTS.fileToolGroup,
+    defaultAgent:
+      cfg.default_agent && params.availableAgents
+        ? (defaultPrimaryAgent(cfg.default_agent, params.availableAgents) ?? "")
+        : (cfg.default_agent ?? UI_DEFAULTS.defaultAgent),
   })
   const roleVariantDraft: Record<string, string> = {}
   for (const [role, variant] of Object.entries(cfg.role_variant ?? {})) {

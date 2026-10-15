@@ -15,6 +15,7 @@ import { SmartTool, ToolResultPresentationProvider } from "./basic-tool"
 import { ErrorCard } from "./error-card"
 import { toolFeatureAvailable, toolHistoricalText } from "./tool-result-presentation"
 import { ToolObjectResult } from "./tool-object-result"
+import { patchOutcome } from "./tool/patch-result"
 import {
   externalFallbackLookup,
   externalLoadNotify,
@@ -112,7 +113,8 @@ export function ToolResultBody(props: {
   const completed = () => (state().status === "completed" ? (state() as ToolStateCompleted) : undefined)
   const error = () => (state().status === "error" ? (state() as ToolStateError) : undefined)
   const generating = () => (state().status === "generating" ? (state() as ToolStateGenerating) : undefined)
-  const output = () => completed()?.output
+  const patchResult = () => props.part.tool === "apply_patch" && !!patchOutcome(metadata().outcome)
+  const output = () => completed()?.output ?? (patchResult() ? error()?.error : undefined)
   const structured = createMemo(() => {
     if (!props.resultOnly || render() || !output()) return undefined
     try {
@@ -138,7 +140,7 @@ export function ToolResultBody(props: {
       fallback={<Show when={historicalText()}>{(text) => <ToolObjectResult value={text()} />}</Show>}
     >
       <Show
-        when={error()?.error}
+        when={!patchResult() && error()?.error}
         fallback={
           <Show
             when={structured() !== undefined}

@@ -8,6 +8,8 @@ import { Agent } from "../agent/agent"
 import { Identifier } from "../id/id"
 import { ToolMcpSource } from "../tool/mcp-source"
 import { PermissionNext } from "../permission/next"
+import { isFilePermission } from "../permission/file-permission"
+import { imageToolEligibility } from "../tool/modality"
 import { PermissionRules } from "../permission/rules"
 import { SmartAllow } from "../permission/smart-allow"
 import { ProviderTransform } from "../provider/transform"
@@ -788,13 +790,15 @@ export namespace ToolResolver {
     const smartAllowEligible = SmartAllow.isEligible(decision.action, envelope.capabilities)
 
     // User/session rules: check persistent user rules (from "Always allow"
-    // button) and ephemeral session rules. Deny always wins. Allow only
+    // button) and ephemeral session rules. File rules retain ordered precedence. Allow only
     // bypasses soft asks; non-bypassable asks must still reach the user.
     if (decision.action === "ask" || decision.action === "deny") {
-      const patterns = [
-        PermissionRules.extractPattern(toolName, args),
-        ...envelope.capabilities.flatMap((cap) => patternsForGateCapability(toolName, cap, args)),
-      ]
+      const patterns = isFilePermission(toolName)
+        ? envelope.capabilities.flatMap((cap) => cap.paths ?? [])
+        : [
+            PermissionRules.extractPattern(toolName, args),
+            ...envelope.capabilities.flatMap((cap) => patternsForGateCapability(toolName, cap, args)),
+          ]
       const userRules = await PermissionRules.userRuleset()
       const sessionRules = PermissionRules.sessionRuleset(session?.id)
       const ruleDecisions = [...new Set(patterns)].map((pattern) =>
@@ -1025,7 +1029,7 @@ export namespace ToolResolver {
       return [
         `Path "${error.path}" is outside the workspace boundary.`,
         `The current permission profile restricts access to workspace paths only.`,
-        `Use a workspace-relative path or the dedicated file tools (view_file, scan_files, etc.).`,
+        `Use a workspace-relative path with a file tool available in the current catalog.`,
         `Do not retry with this path.`,
       ].join("\n")
     }
@@ -1135,7 +1139,10 @@ export namespace ToolResolver {
         async recordActivity(evidence) {
           const { RolloutArtifact } = await import("./rollout/artifact")
           const { text, ...facts } = evidence
-          const masked = await SecretMask.transformResult({ output: text }, sessionAbort)
+          const masked = await SecretMask.transformResult(
+            { output: text },
+            toolID === "apply_patch" ? undefined : sessionAbort,
+          )
           return {
             ...facts,
             content: await RolloutArtifact.writeText(
@@ -1166,7 +1173,11 @@ export namespace ToolResolver {
             metadata: approval ? { ...val.metadata, approval } : val.metadata,
           })
         },
-        async ask(req) {
+        async ask(request) {
+          const req =
+            isFilePermission(request.permission) && isFilePermission(toolID)
+              ? { ...request, permission: toolID }
+              : request
           if (
             await ToolPolicySource.requestPermission({
               toolID,
@@ -1200,6 +1211,19 @@ export namespace ToolResolver {
             )
             rememberShellApproval(ctx, req.permission, requestMetadata)
             return
+          }
+
+          if (isFilePermission(req.permission)) {
+            const rules = PermissionNext.merge(
+              input.agent.permission,
+              PermissionNext.sessionRuleset(input.session),
+              await PermissionRules.userRuleset(),
+              PermissionRules.sessionRuleset(ctx.sessionID),
+            )
+            if (
+              req.patterns.some((pattern) => PermissionNext.evaluate(req.permission, pattern, rules).action === "deny")
+            )
+              throw new PermissionNext.DeniedError(rules)
           }
 
           if (profile.summary?.profileId === "autonomous" && decision.action === "ask") {
@@ -1269,15 +1293,6 @@ export namespace ToolResolver {
       .map(([id]) => id)
   }
 
-  async function hasAvailableVisionModel(): Promise<boolean> {
-    const agent = await Agent.get("multimodal-looker")
-    if (!agent) return false
-    const modelRef = await Agent.getAvailableModel(agent)
-    if (!modelRef) return false
-    const model = await Provider.getModel(modelRef.providerID, modelRef.modelID).catch(() => undefined)
-    return model?.capabilities.input.image === true
-  }
-
   async function applyAvailability(
     defs: DefinitionCandidate[],
     input: Omit<Input, "processor">,
@@ -1300,9 +1315,7 @@ export namespace ToolResolver {
     const ephemeralToolIds = new Set(input.ephemeralTools?.map((item) => item.id) ?? [])
     const domainAvailability = await SessionModePolicy.availability({ session: input.session, agent: input.agent.name })
 
-    const supportsImageInput = input.model.capabilities.input.image
-    const hasImageFormatRestrictions = !!input.model.capabilities.input.supportedImageMediaTypes?.length
-    const lookAtAvailable = (!supportsImageInput || hasImageFormatRestrictions) && (await hasAvailableVisionModel())
+    const imageTools = await imageToolEligibility(input.model)
 
     for (const def of defs) {
       if (def.diagnostic) {
@@ -1311,8 +1324,7 @@ export namespace ToolResolver {
       }
 
       const isEphemeral = ephemeralToolIds.has(def.id)
-      if (!isEphemeral && def.id === "look_at" && !lookAtAvailable) continue
-      if (!isEphemeral && def.id === "view_image" && !supportsImageInput) continue
+      if (!isEphemeral && (def.id === "look_at" || def.id === "view_image") && !imageTools.has(def.id)) continue
 
       const modeDiagnostic = isEphemeral
         ? undefined
@@ -1849,8 +1861,17 @@ export namespace ToolResolver {
                 tool: item.id,
               })
               if (secrets.secretEnv) (toolCtx.extra ??= {}).secretEnv = secrets.secretEnv
-              const executed = await settleExecutionOnAbort(() => item.execute(secrets.args, toolCtx), combinedAbort)
-              const result = (await SecretMask.transformResult(executed, combinedAbort)) as typeof executed
+              // Patch cancellation settles its effect ledger before the ToolPart becomes terminal.
+              const executed =
+                item.id === "apply_patch"
+                  ? await item.execute(secrets.args, toolCtx)
+                  : await settleExecutionOnAbort(() => item.execute(secrets.args, toolCtx), combinedAbort)
+              const result = (await SecretMask.transformResult(
+                executed,
+                item.id === "apply_patch" ? undefined : combinedAbort,
+              )) as typeof executed
+              if (item.id === "apply_patch" && combinedAbort.aborted)
+                throw new DOMException(result.output, "AbortError")
               Tool.validateAttachmentResult(item.id, result)
               await RolloutTool.capture(result)
               await toolTrace.phase("tool.execute.end", "tool execute end", {
