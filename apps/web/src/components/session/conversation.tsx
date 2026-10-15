@@ -6,7 +6,7 @@ import { isSessionSubmissionContentReady } from "./session-transition-handoff"
 import { useSync } from "@/context/sync"
 import { useGlobalSync } from "@/context/global-sync"
 import { ConversationMotionProvider } from "@ericsanchezok/synergy-ui/conversation-motion"
-import { submissionForRoot } from "./session-submission-status"
+import { createOptimisticSubmissionActivity, submissionForRoot } from "./session-submission-status"
 import { useFileRestore } from "./file-restore-dialog-loader"
 import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
@@ -104,11 +104,27 @@ function SessionConversationView(input: SessionConversationProps) {
   const restoreFiles = useFileRestore(() => props.sessionID)
   const data = useSessionDataView()
   const sync = useSync()
+  const [executionStates, setExecutionStates] = createStore<Record<string, TurnExecutionState | undefined>>({})
+  const optimisticSubmission = createOptimisticSubmissionActivity({
+    message: props.lastUserMessage,
+    messageKey,
+    status: () => data().statusFor(props.sessionID),
+    settled: (rootID) =>
+      !!executionStates[rootID] ||
+      props
+        .turnProjection()
+        .turnMessagesFor(props.lastUserMessage())
+        .some(
+          (message) =>
+            message.role === "assistant" && message.rootID === rootID && message.time.completed !== undefined,
+        ),
+  })
   const submissionFor = (rootID: string) =>
     submissionForRoot(
       transitions.get(props.sessionID) ?? transitions.get(draftTransitionKey(sdk.url, sdk.scopeKey)),
       rootID,
       data().statusFor(props.sessionID),
+      optimisticSubmission(),
     )
   let stateRequest: AbortController | undefined
   const executionRequest = createMemo(
@@ -148,7 +164,6 @@ function SessionConversationView(input: SessionConversationProps) {
           a.rootIDs.every((rootID, index) => rootID === b.rootIDs[index])),
     },
   )
-  const [executionStates, setExecutionStates] = createStore<Record<string, TurnExecutionState | undefined>>({})
   let baseline: ReturnType<typeof executionRequest>
   let identityEpoch = 0
   let rootVersion = 0

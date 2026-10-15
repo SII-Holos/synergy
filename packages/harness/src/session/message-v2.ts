@@ -9,6 +9,7 @@ import { markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-as
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { ToolIntent } from "./tool-intent"
+import { RuntimeContextMetadata } from "./runtime-context-schema"
 import { ToolActivityEvidence } from "./activity-evidence"
 import { RuntimeContext } from "../lifecycle/context"
 import { ModelSelection } from "./model-selection-schema"
@@ -1255,6 +1256,7 @@ export namespace MessageV2 {
     selector?: string[]
     range?: { start: number; end: number }
     precision?: "source" | "role"
+    segments?: Array<{ source: string; start: number; end: number }>
   }
 
   export interface ModelMessageProvenance {
@@ -1484,7 +1486,31 @@ export namespace MessageV2 {
               isSystemPart(part) ? "injectedContext" : "userMessages",
               part.text,
               part,
+              msg.info.origin?.type === "system" && msg.info.origin.detail === "runtime-context"
+                ? "runtime-context"
+                : undefined,
             )
+            if (
+              msg.info.origin?.type === "system" &&
+              msg.info.origin.detail === "runtime-context" &&
+              isSystemPart(part)
+            ) {
+              const metadata = RuntimeContextMetadata.parse(msg.info.metadata?.runtimeContext)
+              const segments: NonNullable<ModelMessageContribution["segments"]> = []
+              let cursor = 0
+              for (const source of metadata.sources) {
+                if (!RuntimeContextMetadata.verified(source, part.text) || !source.range || source.range.start < cursor)
+                  continue
+                if (source.range.start > cursor)
+                  segments.push({ source: "runtime-context", start: cursor, end: source.range.start })
+                segments.push({ source: source.id, ...source.range })
+                cursor = source.range.end
+              }
+              if (cursor < part.text.length)
+                segments.push({ source: "runtime-context", start: cursor, end: part.text.length })
+              const contribution = provenance.categories.injectedContext.at(-1)
+              if (contribution) contribution.segments = segments
+            }
           }
           if (part.type === "attachment") {
             appendAttachmentModelParts(userMessage.parts, part, provenance, { keptHashes, includeLocalPath: true })

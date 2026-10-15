@@ -8,7 +8,7 @@ import type {
   SessionActivity,
 } from "@ericsanchezok/synergy-sdk"
 import type { Data } from "@ericsanchezok/synergy-ui/context/data"
-import { createEffect, createMemo, createSignal, on, Show, type ParentProps } from "solid-js"
+import { batch, createEffect, createMemo, createSignal, on, Show, type ParentProps } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { setupI18n } from "@lingui/core"
@@ -31,6 +31,7 @@ import { RetainedSessionViews } from "../../../src/components/session/retained-s
 import { useViewActivity } from "../../../src/context/view-residency"
 import { ConversationMotionProvider } from "@ericsanchezok/synergy-ui/conversation-motion"
 import { captureConversationReadingAnchor } from "../../../src/components/session/conversation-reading-anchor"
+import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
 
 const [selectedSession, selectSession] = createSignal("session")
 const resident = new URL(location.href).searchParams.has("resident")
@@ -124,6 +125,11 @@ const historyControls = new URL(location.href).searchParams.has("history-control
 const [hasPage, setHasPage] = createSignal(true)
 const [pendingPage, setPendingPage] = createSignal<string>()
 let continuationReady = Promise.withResolvers<void>()
+const [contextPageReady, setContextPageReady] = createSignal(true)
+let contextPage = Promise.withResolvers<void>()
+const [backlogPages, setBacklogPages] = createStore<Record<string, boolean>>({})
+const backlogReads = new Map<string, ReturnType<typeof Promise.withResolvers<void>>>()
+const [executionOverride, setExecutionOverride] = createSignal<"running" | "completed">()
 const [pageStale, setPageStale] = createSignal(false)
 const [mounted, setMounted] = createSignal(true)
 const arrivals = createPartArrivalState()
@@ -249,6 +255,7 @@ let finishPage: (() => void) | undefined
 let pageRefresh: Promise<void> | undefined
 let finishPageRefresh: (() => void) | undefined
 let pageLoads = 0
+const messagePageLoads = new Map<string, number>()
 const pageReady =
   scenario === "late-reconnect"
     ? new Promise<void>((resolve) => {
@@ -340,18 +347,12 @@ const materializer = createPartMaterializer({
 })
 let retained = 0
 let locate: ((messageID: string, behavior?: ScrollBehavior, partID?: string) => Promise<boolean>) | undefined
+const turnProjection = createMemo(() => buildSessionTurnProjection(data.message.session))
 const context: Partial<PluginConversationService> = {
   sessionID: "session",
   timeline: () => data.message.session.filter((message) => message.role === "user" && message.isRoot) as UserMessage[],
   lastUserMessage: () => root,
-  turnProjection: () => ({
-    roots: [],
-    byRoot: new Map(),
-    memberIndex: new Map(),
-    turnMessagesFor: (turn = root) =>
-      data.message.session.filter((message) => message.rootID === turn.id && message.id !== turn.id),
-    compactionParentIDs: new Set<string>(),
-  }),
+  turnProjection,
   activityDisplay: mode,
   activityView: { getExpanded: (key) => expanded[key], setExpanded: (key, value) => setExpanded(key, value) },
   isWorking: () => status() === "running",
@@ -378,9 +379,18 @@ const context: Partial<PluginConversationService> = {
         content: { version: versions[p.id] ?? "v1", bytes: 64 },
       }))
     },
-    page: (id) => (hasPage() && pendingPage() !== id ? { hasMore: false, stale: pageStale() } : undefined),
+    page: (id) =>
+      hasPage() &&
+      pendingPage() !== id &&
+      backlogPages[id] !== false &&
+      (id !== "runtime-context" || contextPageReady())
+        ? { hasMore: false, stale: pageStale() }
+        : undefined,
     load: async (id) => {
       pageLoads++
+      messagePageLoads.set(id, (messagePageLoads.get(id) ?? 0) + 1)
+      if (backlogPages[id] === false) await backlogReads.get(id)!.promise
+      if (id === "runtime-context" && !contextPageReady()) await contextPage.promise
       if (pendingPage() === id) {
         await continuationReady.promise
         setPendingPage(undefined)
@@ -407,6 +417,29 @@ const context: Partial<PluginConversationService> = {
 }
 let toolCaseSequence = 0
 window.__conversationProcess = {
+  execution: setExecutionOverride,
+  backlog(count, ended, delayed = false) {
+    batch(() => {
+      const messages = Array.from({ length: count }, (_, index) => {
+        const id = `backlog-${index}`
+        const message = { ...assistant(id), time: { created: 4 + index * 2, completed: 5 + index * 2 } }
+        const bodies = Array.from({ length: 4 }, (_, item) => part(id, `${id}-tool-${item}`, "tool"))
+        if (delayed) for (const body of bodies) faults.set(body.id, "pending")
+        canonicalParts!.set(id, bodies)
+        setBacklogPages(id, false)
+        backlogReads.set(id, Promise.withResolvers<void>())
+        setData("part", id, [])
+        return message
+      })
+      setData("message", "session", (current) => [...current, ...messages])
+      if (ended) window.__conversationProcess.background(true, false)
+    })
+  },
+  backlogPage(index) {
+    const id = `backlog-${index}`
+    setBacklogPages(id, true)
+    backlogReads.get(id)?.resolve()
+  },
   background(ended, delayed) {
     const message = { ...assistant("background", "stop"), time: { created: 4, completed: ended ? 10 : undefined } }
     const body = part(
@@ -422,6 +455,26 @@ window.__conversationProcess = {
     if (ended) setStatus("completed")
   },
   contentStats: () => Object.fromEntries(reads),
+  runtimeContext() {
+    contextPage = Promise.withResolvers<void>()
+    setContextPageReady(false)
+    setData("part", "runtime-context", [])
+    setData("message", "session", (messages) => [
+      ...messages,
+      {
+        ...root,
+        id: "runtime-context",
+        isRoot: false,
+        visible: false,
+        origin: { type: "system", detail: "runtime-context" },
+        time: { created: 4 },
+      } satisfies UserMessage,
+    ])
+  },
+  runtimeContextReady() {
+    setContextPageReady(true)
+    contextPage.resolve()
+  },
   continuation() {
     continuationReady = Promise.withResolvers<void>()
     setData("part", "continuation", [])
@@ -712,7 +765,12 @@ window.__conversationProcess = {
     })
     setPageStale(true)
   },
-  contentPageLoads: () => pageLoads,
+  contentPageLoads: (id) => (id ? (messagePageLoads.get(id) ?? 0) : pageLoads),
+}
+if (new URL(location.href).searchParams.has("first-response")) {
+  window.__conversationProcess.prepare()
+  window.__conversationProcess.phase({ phase: "preparing_files", startedAt: 1, rootID: "root" })
+  window.__conversationProcess.prependTurns(12)
 }
 const runtime = {
   statusFor: (): SessionStatus =>
@@ -807,7 +865,12 @@ function Transcript() {
           context={context as PluginConversationService}
           scrollRef={scroll()}
           submissionFor={() => submission()}
-          executionFor={() => ({ rootID: "root", status: status(), startedAt: 1, stoppedAt: [] })}
+          executionFor={() => ({
+            rootID: "root",
+            status: executionOverride() ?? status(),
+            startedAt: 1,
+            stoppedAt: [],
+          })}
           connected={connected}
         />
       </Show>

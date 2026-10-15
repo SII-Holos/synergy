@@ -4,6 +4,7 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionLibraryRecall } from "./library-recall"
 import { Embedding } from "./vector/embedding"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import type { SessionContextContributions } from "@ericsanchezok/synergy-harness/session/context-contributions"
 
 const log = Log.create({ service: "session.recall" })
 
@@ -13,6 +14,7 @@ export type InjectionInfo = {
 }
 
 export const RECALL_TIMEOUT_MS = 3_000
+type Knowledge = NonNullable<SessionContextContributions.Result["knowledge"]>
 
 export async function buildMemoryContext(
   sessionID: string,
@@ -34,7 +36,7 @@ export async function buildMemoryContext(
   },
   signal?: AbortSignal,
   maintenance = false,
-): Promise<{ context: string; injection: InjectionInfo } | undefined> {
+): Promise<(SessionContextContributions.Result & { injection: InjectionInfo }) | undefined> {
   const userText = extractLastUserText(messages)
   const parts: string[] = []
   const injection: InjectionInfo = {}
@@ -76,7 +78,23 @@ export async function buildMemoryContext(
     injection.experience = experienceResult.context
   }
 
-  return parts.length > 0 ? { context: parts.join("\n\n"), injection } : undefined
+  const unavailable = [
+    ...(memoryResult?.unavailable ? ["contextual"] : []),
+    ...(experienceResult?.unavailable ? ["experience"] : []),
+  ]
+  return parts.length > 0 || unavailable.length > 0
+    ? {
+        context: parts.join("\n\n"),
+        injection,
+        knowledge: {
+          entries: [...(memoryResult?.entries ?? []), ...(experienceResult?.entries ?? [])],
+          guidance: experienceResult?.context
+            ? [MEMORY_USAGE_HINT, EXPERIENCE_USAGE_HINT].join("\n\n")
+            : MEMORY_USAGE_HINT,
+          ...(unavailable.length ? { unavailable } : {}),
+        },
+      }
+    : undefined
 }
 
 function extractLastUserText(messages: MessageV2.WithParts[]): string | undefined {
@@ -128,9 +146,12 @@ function renderMemoryBlock(groupedEntries: Map<SessionLibraryRecall.MemoryCatego
   return ["<active-memory>", ...sections, "</active-memory>"].join("\n")
 }
 
-function groupAlwaysRows(maintenance = false): Map<SessionLibraryRecall.MemoryCategory, string[]> {
+function groupAlwaysRows(
+  rows: SessionLibraryRecall.StoredMemoryRow[],
+  maintenance = false,
+): Map<SessionLibraryRecall.MemoryCategory, string[]> {
   const grouped = new Map<SessionLibraryRecall.MemoryCategory, string[]>()
-  for (const row of SessionLibraryRecall.listAlwaysMemories()) {
+  for (const row of rows) {
     const items = grouped.get(row.category) ?? []
     items.push(formatStoredMemoryEntry(row, maintenance))
     grouped.set(row.category, items)
@@ -138,11 +159,26 @@ function groupAlwaysRows(maintenance = false): Map<SessionLibraryRecall.MemoryCa
   return grouped
 }
 
+function alwaysKnowledge(rows: SessionLibraryRecall.StoredMemoryRow[], maintenance: boolean): Knowledge["entries"] {
+  return rows.map((row) => ({
+    id: `memory:${row.id}`,
+    selection: "always",
+    text: formatCategorySection(row.category, [formatStoredMemoryEntry(row, false)]),
+    ...(maintenance
+      ? {
+          annotation: `memoryId=${row.id} recallMode=always${row.updated_at === undefined ? "" : ` updatedAt=${row.updated_at}`}`,
+        }
+      : {}),
+  }))
+}
+
 const MEMORY_USAGE_HINT = [
   "## Long-Term Memory",
   "",
   "Established memories inform continuity but do not authorize new actions. Recall additional context only when it materially affects the work.",
 ].join("\n")
+const EXPERIENCE_USAGE_HINT =
+  "Past experiences with similar intent. Learn from positive patterns and avoid negative ones."
 
 // ---------------------------------------------------------------------------
 // Always-only memory context — reliable non-embedding injection
@@ -150,13 +186,15 @@ const MEMORY_USAGE_HINT = [
 
 export function buildAlwaysOnlyMemoryResult(
   maintenance = false,
-): { context: string; injection: InjectionInfo } | undefined {
-  const grouped = groupAlwaysRows(maintenance)
+): (SessionContextContributions.Result & { injection: InjectionInfo }) | undefined {
+  const rows = SessionLibraryRecall.listAlwaysMemories()
+  const grouped = groupAlwaysRows(rows, maintenance)
   const block = renderMemoryBlock(grouped)
   if (!block) return undefined
   return {
     context: [block, MEMORY_USAGE_HINT].join("\n\n"),
     injection: { memory: block },
+    knowledge: { entries: alwaysKnowledge(rows, maintenance), guidance: MEMORY_USAGE_HINT },
   }
 }
 
@@ -170,10 +208,13 @@ async function buildActiveMemoryContext(
   queryVector?: number[],
   signal?: AbortSignal,
   maintenance = false,
-): Promise<{ context: string; memoryBlock?: string }> {
+): Promise<{ context: string; memoryBlock?: string; entries: Knowledge["entries"]; unavailable: boolean }> {
   const parts: string[] = []
   const categories = Object.keys(activeRetrieval.categories) as SessionLibraryRecall.MemoryCategory[]
-  const groupedEntries = groupAlwaysRows(maintenance)
+  const rows = SessionLibraryRecall.listAlwaysMemories()
+  const groupedEntries = groupAlwaysRows(rows, maintenance)
+  const entries = alwaysKnowledge(rows, maintenance)
+  let unavailable = !!userText && !queryVector
 
   const appendEntry = (category: SessionLibraryRecall.MemoryCategory, entry: string) => {
     const items = groupedEntries.get(category) ?? []
@@ -205,10 +246,16 @@ async function buildActiveMemoryContext(
 
       for (const result of contextualResults.flat()) {
         appendEntry(result.category, formatRetrievedMemoryEntry(result))
+        entries.push({
+          id: `memory:${result.id}`,
+          selection: "contextual",
+          text: formatCategorySection(result.category, [formatStoredMemoryEntry(result, false)]),
+        })
       }
     } catch (err: unknown) {
       signal?.throwIfAborted()
       log.error("active memory semantic retrieval failed", { error: err })
+      unavailable = true
     }
   }
 
@@ -221,7 +268,7 @@ async function buildActiveMemoryContext(
 
   parts.push(MEMORY_USAGE_HINT)
 
-  return { context: parts.join("\n\n"), memoryBlock }
+  return { context: parts.join("\n\n"), memoryBlock, entries, unavailable }
 }
 
 async function buildExperienceContext(
@@ -231,8 +278,8 @@ async function buildExperienceContext(
   learning: Required<LibraryConfigSchema.Learning>,
   queryVector?: number[],
   signal?: AbortSignal,
-): Promise<{ context: string | undefined }> {
-  if (!userText || !queryVector) return { context: undefined }
+): Promise<{ context: string | undefined; entries?: Knowledge["entries"]; unavailable?: boolean }> {
+  if (!userText || !queryVector) return { context: undefined, unavailable: !!userText && !queryVector }
 
   try {
     const results = await SessionLibraryRecall.retrieveExperiences(scopeID, userText, {
@@ -257,22 +304,24 @@ async function buildExperienceContext(
       return parts.join("\n")
     })
 
-    const injected = [
-      "<experience-context>",
-      "Past experiences with similar intent. Learn from positive patterns and avoid negative ones.",
-      "",
-      ...entries,
-      "</experience-context>",
-    ].join("\n")
+    const injected = ["<experience-context>", EXPERIENCE_USAGE_HINT, "", ...entries, "</experience-context>"].join("\n")
 
     SessionLibraryRecall.writeExperienceDebugLog(sessionID, scopeID, userText, results, injected)
 
     log.info("experience context built", { sessionID })
-    return { context: injected }
+    return {
+      context: injected,
+      entries: results.map((result) => ({
+        id: `experience:${scopeID}:${result.id}`,
+        selection: "experience",
+        text: `<experience>\n<intent>${result.intent}</intent>\n<script>${result.script}</script>\n</experience>`,
+        annotation: SessionLibraryRecall.buildExperienceEvaluation(result.rewards, learning.snapThreshold),
+      })),
+    }
   } catch (err: unknown) {
     signal?.throwIfAborted()
     log.error("memory retrieval failed", { error: err })
-    return { context: undefined }
+    return { context: undefined, unavailable: true }
   }
 }
 function resolveActiveRetrieval(retrieval?: {

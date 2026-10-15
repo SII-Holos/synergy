@@ -1189,15 +1189,20 @@ export namespace SessionInvoke {
                 }
 
                 // Layer 6: Dynamic advisory context — cortex reminders and time context
-                if (cortexReminder) appendAdvisory("cortex", cortexReminder)
+                if (cortexReminder) {
+                  lateSystemParts.push(cortexReminder.text)
+                  advisorySources.push(...cortexReminder.sources)
+                }
 
-                if (step === 1 && lastFinished?.time.completed) {
+                if (
+                  lastFinished?.time.completed &&
+                  (advisoryHistory ? !R.metadata?.runtimeContextTimeRecorded : firstModelPreparation)
+                ) {
                   const elapsed = R.time.created - lastFinished.time.completed
                   if (elapsed > 0) {
-                    appendAdvisory(
-                      "time",
-                      `<time-context>\nTime since your last response: ${formatElapsed(elapsed)}\n</time-context>`,
-                    )
+                    const text = `<time-context>\nThis input arrived at ${new Date(R.time.created).toISOString()}, ${formatElapsed(elapsed)} after the previous completed response. This describes the input arrival, not the current time.\n</time-context>`
+                    lateSystemParts.push(text)
+                    advisorySources.push({ id: "time", kind: "event", state: "present", text })
                   }
                 }
                 const observation = advisoryHistory
@@ -1385,7 +1390,7 @@ export namespace SessionInvoke {
                     ...envParts.map((text) => ({ text, source: "environment" })),
                     ...advisoryParts.map(({ text, id }) => ({ text, source: id })),
                     ...(cortexExecutionContext ? [{ text: cortexExecutionContext, source: "task" }] : []),
-                    ...(cortexReminder ? [{ text: cortexReminder, source: "task" }] : []),
+                    ...(cortexReminder ? [{ text: cortexReminder.text, source: "task" }] : []),
                     ...(gitHealthBlock ? [{ text: gitHealthBlock, source: "workspace" }] : []),
                   ],
                 })
@@ -1539,10 +1544,22 @@ export namespace SessionInvoke {
                 }
                 try {
                   if (contextMessage) {
+                    const contextRoot = R
+                    const recordsTime = observation?.metadata.sources.some(
+                      (source) => source.id === "time" && source.kind === "event",
+                    )
                     await Storage.transaction(async () => {
                       await Session.updateMessage(contextMessage.info)
                       for (const part of contextMessage.parts) await Session.updatePart(part)
+                      if (recordsTime)
+                        await Session.mergeMessageMetadata({
+                          sessionID,
+                          messageID: contextRoot.id,
+                          metadata: { runtimeContextTimeRecorded: true },
+                        })
                     })
+                    if (recordsTime)
+                      R = { ...contextRoot, metadata: { ...contextRoot.metadata, runtimeContextTimeRecorded: true } }
                   }
                   const currentStreamInput = streamInput
                   const process = () => Promise.race([processor.process(currentStreamInput), deadlinePromise])
@@ -2253,19 +2270,25 @@ export namespace SessionInvoke {
     return parts.join("\n")
   }
 
-  async function buildCortexReminder(sessionID: string): Promise<string | undefined> {
+  async function buildCortexReminder(
+    sessionID: string,
+  ): Promise<{ text: string; sources: RuntimeAdvisory.Source[] } | undefined> {
     const running = await SessionCortexRuntime.runningTaskRows(sessionID)
     if (running.length === 0) return undefined
 
-    const taskList = running
-      .map((t) => {
-        const elapsed = Math.floor((Date.now() - t.startedAt) / 1000)
-        const lastTool = t.lastTool ? ` | last: ${t.lastTool}${t.lastToolStatus ? ` (${t.lastToolStatus})` : ""}` : ""
-        return `- \`${t.id}\` [${elapsed}s] — @${t.agent} — ${t.description} — ${t.health}${lastTool}`
-      })
-      .join("\n")
-
-    return `<cortex-reminder>\n${CORTEX_REMINDER.replace("{{count}}", String(running.length)).replace("{{task_list}}", taskList)}\n</cortex-reminder>`
+    const sources = running
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((task) =>
+        RuntimeAdvisory.present(
+          `cortex:${task.id}`,
+          `<cortex-reminder>\nTask ${task.id} — @${task.agent} — ${task.description}\n${task.health === "stale" ? "No recent progress has been observed. Inspect progress if needed; this does not establish failure." : "Running. Continue independent work without duplicating this task; completion is delivered separately."}\n</cortex-reminder>`,
+        ),
+      )
+    const taskList = sources.map((source) => (source.state === "present" ? source.text : "")).join("\n")
+    return {
+      sources,
+      text: CORTEX_REMINDER.replace("{{count}}", String(running.length)).replace("{{task_list}}", taskList),
+    }
   }
 
   interface ExternalModelInfo {
