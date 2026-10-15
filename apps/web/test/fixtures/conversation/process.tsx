@@ -8,7 +8,7 @@ import type {
   SessionActivity,
 } from "@ericsanchezok/synergy-sdk"
 import type { Data } from "@ericsanchezok/synergy-ui/context/data"
-import { createEffect, createMemo, createSignal, on, Show, type ParentProps } from "solid-js"
+import { batch, createEffect, createMemo, createSignal, on, Show, type ParentProps } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { setupI18n } from "@lingui/core"
@@ -127,6 +127,9 @@ const [pendingPage, setPendingPage] = createSignal<string>()
 let continuationReady = Promise.withResolvers<void>()
 const [contextPageReady, setContextPageReady] = createSignal(true)
 let contextPage = Promise.withResolvers<void>()
+const [backlogPages, setBacklogPages] = createStore<Record<string, boolean>>({})
+const backlogReads = new Map<string, ReturnType<typeof Promise.withResolvers<void>>>()
+const [executionOverride, setExecutionOverride] = createSignal<"running" | "completed">()
 const [pageStale, setPageStale] = createSignal(false)
 const [mounted, setMounted] = createSignal(true)
 const arrivals = createPartArrivalState()
@@ -377,12 +380,16 @@ const context: Partial<PluginConversationService> = {
       }))
     },
     page: (id) =>
-      hasPage() && pendingPage() !== id && (id !== "runtime-context" || contextPageReady())
+      hasPage() &&
+      pendingPage() !== id &&
+      backlogPages[id] !== false &&
+      (id !== "runtime-context" || contextPageReady())
         ? { hasMore: false, stale: pageStale() }
         : undefined,
     load: async (id) => {
       pageLoads++
       messagePageLoads.set(id, (messagePageLoads.get(id) ?? 0) + 1)
+      if (backlogPages[id] === false) await backlogReads.get(id)!.promise
       if (id === "runtime-context" && !contextPageReady()) await contextPage.promise
       if (pendingPage() === id) {
         await continuationReady.promise
@@ -410,6 +417,29 @@ const context: Partial<PluginConversationService> = {
 }
 let toolCaseSequence = 0
 window.__conversationProcess = {
+  execution: setExecutionOverride,
+  backlog(count, ended, delayed = false) {
+    batch(() => {
+      const messages = Array.from({ length: count }, (_, index) => {
+        const id = `backlog-${index}`
+        const message = { ...assistant(id), time: { created: 4 + index * 2, completed: 5 + index * 2 } }
+        const bodies = Array.from({ length: 4 }, (_, item) => part(id, `${id}-tool-${item}`, "tool"))
+        if (delayed) for (const body of bodies) faults.set(body.id, "pending")
+        canonicalParts!.set(id, bodies)
+        setBacklogPages(id, false)
+        backlogReads.set(id, Promise.withResolvers<void>())
+        setData("part", id, [])
+        return message
+      })
+      setData("message", "session", (current) => [...current, ...messages])
+      if (ended) window.__conversationProcess.background(true, false)
+    })
+  },
+  backlogPage(index) {
+    const id = `backlog-${index}`
+    setBacklogPages(id, true)
+    backlogReads.get(id)?.resolve()
+  },
   background(ended, delayed) {
     const message = { ...assistant("background", "stop"), time: { created: 4, completed: ended ? 10 : undefined } }
     const body = part(
@@ -835,7 +865,12 @@ function Transcript() {
           context={context as PluginConversationService}
           scrollRef={scroll()}
           submissionFor={() => submission()}
-          executionFor={() => ({ rootID: "root", status: status(), startedAt: 1, stoppedAt: [] })}
+          executionFor={() => ({
+            rootID: "root",
+            status: executionOverride() ?? status(),
+            startedAt: 1,
+            stoppedAt: [],
+          })}
           connected={connected}
         />
       </Show>

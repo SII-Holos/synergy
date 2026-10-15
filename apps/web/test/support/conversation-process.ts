@@ -7,7 +7,10 @@ import { createBrowserFixture, type BrowserFixture } from "./browser-fixture"
 import type { VListHandle } from "virtua/solid"
 
 type Fixture = {
+  execution(value?: "running" | "completed"): void
   background(ended: boolean, delayed: boolean): void
+  backlog(count: number, ended: boolean, delayed?: boolean): void
+  backlogPage(index: number): void
   contentStats(): Record<string, number>
   select(id: string): void
   continuation(): void

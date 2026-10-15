@@ -21,6 +21,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { ActivityBatchLabel, ActivityBatchStatus } from "@ericsanchezok/synergy-ui/activity-batch"
 import {
+  hasTurnTerminalReply,
   processIsWorking,
   sessionActivityAnimating,
   sessionActivityLabel,
@@ -160,16 +161,19 @@ export function VirtualConversationRows(
       if (root.role !== "user") continue
       const state = input.executionFor?.(root.id)
       const last = previous?.get(root.id)
-      const final = props
-        .turnProjection()
-        .turnMessagesFor(root)
-        .findLast((message) => message.role === "assistant")
+      const messages = props.turnProjection().turnMessagesFor(root)
+      const final = messages.findLast((message) => message.role === "assistant")
       const submission = input.submissionFor?.(root.id)
       const working = processIsWorking({
         current: root.id === props.lastUserMessage()?.id,
         sessionStatus: view.statusFor(props.sessionID),
         submission,
-        projected: state?.status === "completed" && last?.working && final?.time.completed == null ? true : undefined,
+        projected:
+          final?.time.completed != null && hasTurnTerminalReply(messages)
+            ? false
+            : state?.status === "completed" && last?.working && final?.time.completed == null
+              ? true
+              : undefined,
         executionStatus: state?.status,
         fallback: root.id === props.lastUserMessage()?.id && props.isWorking(),
       })
@@ -859,6 +863,7 @@ function ConversationDisplayRow(
     const current = row()
     return (
       current.kind === "load" &&
+      !current.validation &&
       !current.continuation &&
       !content.summaries(current.message.id).some((part) => part.content.version.startsWith("optimistic:"))
     )
