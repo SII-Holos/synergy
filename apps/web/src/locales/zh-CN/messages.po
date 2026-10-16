@@ -18079,6 +18079,10 @@ msgid "session.progress.needsAttentionBlocked"
 msgstr "需要处理 · {count, plural, one {# 个任务受阻} other {# 个任务受阻}}"
 
 #. js-lingui-explicit-id
+msgid "session.progress.needsAttentionMixed"
+msgstr "需要处理 · {failed} 个失败，{blocked} 个受阻"
+
+#. js-lingui-explicit-id
 msgid "session.progress.noActivePlan"
 msgstr "无活动计划"
 

@@ -18079,6 +18079,10 @@ msgid "session.progress.needsAttentionBlocked"
 msgstr "Needs attention · {count, plural, one {# blocked} other {# blocked}}"
 
 #. js-lingui-explicit-id
+msgid "session.progress.needsAttentionMixed"
+msgstr "Needs attention · {failed} failed, {blocked} blocked"
+
+#. js-lingui-explicit-id
 msgid "session.progress.noActivePlan"
 msgstr "No active plan"
 

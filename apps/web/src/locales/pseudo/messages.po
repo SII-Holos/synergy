@@ -18079,6 +18079,10 @@ msgid "session.progress.needsAttentionBlocked"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.progress.needsAttentionMixed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.progress.noActivePlan"
 msgstr ""
 
