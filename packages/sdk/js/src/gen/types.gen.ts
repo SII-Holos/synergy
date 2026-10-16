@@ -4084,7 +4084,7 @@ export type ScopeUiPreferences = {
    */
   model?: string | null
   /**
-   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.
+   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable.
    */
   default_agent?: string
   /**
@@ -6881,7 +6881,7 @@ export type Config = {
    */
   fileToolGroup?: "replace" | "hashline" | "patch"
   /**
-   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.
+   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable.
    */
   default_agent?: string
   /**

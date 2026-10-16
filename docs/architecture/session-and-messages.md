@@ -133,6 +133,8 @@ Execution ownership is distinct from retained Session metadata. Resume and queue
 
 Admission resolves an independent task's implicit Agent against the current registry and retains a usable inherited choice. If that inherited Agent is absent, the task records the current default Agent before acknowledgement. An explicit unavailable Agent still fails validation. Stored Session overrides and earlier roots retain their original choices.
 
+The default Agent is a selectable `default_agent` from resolved Scope configuration, otherwise the lightweight primary (Pico), otherwise another visible primary. The Agent catalog puts that selectable default first so a fresh Web composer agrees with implicit backend execution. Explicit composer choices and existing Session history retain priority; changing the fallback does not rewrite saved selections.
+
 An independent root uses an in-memory base Session view without old workflow or component extensions for configuration, instructions, tools and continuation. Canonical Session fields, earlier rollout evidence and unavailable queued work remain stored. Reinstall does not reattach the old operation to that root. Owner-authored steer and context messages cannot enter it; separate owner tasks remain queued for their normal lifecycle after the independent task finishes. Its model projection removes system-authored parts from earlier non-root owner control messages while retaining human and Channel text and attachments. Stored history and its public presentation remain unchanged. Continue resumes the same independent root after interruption or restart.
 
 - `R.isRoot = true`
