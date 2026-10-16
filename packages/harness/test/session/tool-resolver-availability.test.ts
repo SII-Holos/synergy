@@ -236,7 +236,7 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
         expect(availability.visible.map((definition) => definition.id)).toEqual(residentIDs)
         const mcpGroups = servers.filter((server) => server.name !== "catalog-resident")
         const groupRows = [
-          "catalog-native (Native): catalog_zeta, catalog_alpha",
+          "catalog-native (Native): catalog_alpha, catalog_zeta",
           "catalog-synthetic (catalog-synthetic): mcp__synthetic__first, mcp__synthetic__second",
           ...mcpGroups.map((server) => {
             const ids = mcpEntries
@@ -244,6 +244,7 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
                 (entry) => entry.serverName === server.name && entry.id !== deniedID && entry.id !== userDisabledID,
               )
               .map((entry) => entry.id)
+              .sort()
             const groupID = ToolExposure.mcpGroupID(server.name)
             const heading = `${groupID} (MCP: ${server.name})`
             if (server.name === "catalog-mismatch") return `${heading}: ${ids.join(", ")}`
@@ -252,26 +253,31 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
           }),
         ]
         const description = availability.visible.find((definition) => definition.id === "expand_tools")!.description
-        const emittedRows = description.split("Available groups:\n")[1]!.split("\n")
-        expect(emittedRows).toEqual(groupRows)
+        const emittedRows = description
+          .split("Available groups:\n")[1]!
+          .split("\n")
+          .map((row) => row.split(" — ")[0]!)
+        expect(emittedRows).toEqual(groupRows.toSorted((left, right) => left.localeCompare(right)))
         const emittedIDs = emittedRows.flatMap((row) => {
           const names = row.slice(row.indexOf("): ") + 3)
           if (!names.startsWith("prefix=")) return names.split(", ")
           const [prefix, suffixes] = names.slice("prefix=".length).split("; suffixes: ")
           return suffixes!.split(", ").map((suffix) => `${prefix}${suffix}`)
         })
-        expect(emittedIDs).toEqual([
-          "catalog_zeta",
-          "catalog_alpha",
-          "mcp__synthetic__first",
-          "mcp__synthetic__second",
-          ...mcpEntries
-            .filter(
-              (entry) =>
-                entry.serverName !== "catalog-resident" && entry.id !== deniedID && entry.id !== userDisabledID,
-            )
-            .map((entry) => entry.id),
-        ])
+        expect(emittedIDs.toSorted()).toEqual(
+          [
+            "catalog_zeta",
+            "catalog_alpha",
+            "mcp__synthetic__first",
+            "mcp__synthetic__second",
+            ...mcpEntries
+              .filter(
+                (entry) =>
+                  entry.serverName !== "catalog-resident" && entry.id !== deniedID && entry.id !== userDisabledID,
+              )
+              .map((entry) => entry.id),
+          ].sort(),
+        )
         expect(description).toContain("full tool ID = prefix + suffix")
         expect(description).toContain("Expand the group to get tool schemas before calling; do not guess parameters.")
         expect(description).not.toContain(deniedID)

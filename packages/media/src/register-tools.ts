@@ -1,6 +1,7 @@
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import { ToolExposure } from "@ericsanchezok/synergy-harness/tool/exposure"
 import { SpeakTool } from "./tools/speak"
 import { OpenAIImageGenTool } from "./tools/openai-image-gen"
 import { OpenAIImageEditTool } from "./tools/openai-image-edit"
@@ -12,6 +13,15 @@ import { voiceCapabilityEnabled } from "./config-schema"
 
 export function registerMediaTools() {
   Tool.registerInputHistory("media", { render: { title: "artifactTitle" } })
+  ToolExposure.registerGroups("media", [
+    {
+      id: "visuals",
+      title: "Visuals",
+      description: "Interactive visual results built from HTML, SVG, JavaScript or the native component catalog.",
+      whenToExpand: "Expand when a task needs a rendered diagram, chart, interactive explanation, form or comparison.",
+      tools: ["render"],
+    },
+  ])
   ToolRegistry.registerToolProvider("media", async () => {
     const config = await Config.current()
     const tools: Tool.Info[] = [LookAtTool, ScanDocumentTool, RenderTool]

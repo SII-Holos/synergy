@@ -10,6 +10,7 @@ export namespace ToolExposure {
         title?: string
         description?: string
         whenToExpand?: string
+        summary?: string
       }
     | {
         mode: "search"
@@ -20,6 +21,7 @@ export namespace ToolExposure {
         mode: "internal"
       }
   ) & {
+    keywords?: string[]
     /** Required tools co-exposed transitively; unavailable companions suppress the dependent tool. */
     companions?: readonly string[]
   }
@@ -30,6 +32,7 @@ export namespace ToolExposure {
     description: string
     whenToExpand: string
     tools: string[]
+    keywords?: string[]
   }
 
   export interface ToolState {
@@ -141,9 +144,8 @@ export namespace ToolExposure {
   /**
    * Resolve whether an MCP server's tools stay resident (always visible) by
    * default. Per-server `expandByDefault` wins; `mcpDefaults` supplies the
-   * next fallback; `builtinDefault` covers servers staged from the builtin
-   * catalog so the shipped search servers stay resident like the first-party
-   * tools they replaced; the ultimate default is folded (false).
+   * next fallback; `builtinDefault` allows an owning capability to supply a
+   * default. The ultimate default is folded (false).
    */
   export function mcpExpandByDefault(server: unknown, defaults?: unknown, builtinDefault?: boolean): boolean {
     const resolvedServer = (server ?? {}) as { expandByDefault?: boolean }
@@ -349,6 +351,28 @@ export namespace ToolExposure {
         "Expand when search_tools returns this group or when the task clearly depends on this group of tools.",
       tools: [toolID],
     }
+  }
+
+  export function availableGroups(entries: ReadonlyArray<{ id: string; exposure?: Info }>): GroupInfo[] {
+    const groups = new Map<string, GroupInfo & { summaries: string[]; keywords: string[] }>()
+    for (const entry of entries) {
+      const exposure = normalize(entry.id, entry.exposure)
+      const info = groupInfoFromExposure(entry.id, exposure)
+      if (!info || exposure.mode !== "group") continue
+      const group = groups.get(info.id) ?? { ...info, tools: [], summaries: [], keywords: [] }
+      group.tools.push(entry.id)
+      if (exposure.summary) group.summaries.push(exposure.summary)
+      group.keywords.push(...(info.keywords ?? []), ...(exposure.keywords ?? []))
+      groups.set(info.id, group)
+    }
+    return [...groups.values()]
+      .map(({ summaries, ...group }) => ({
+        ...group,
+        tools: unique(group.tools),
+        keywords: unique(group.keywords ?? []),
+        description: summaries.length ? unique(summaries).join("; ") + "." : group.description,
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id))
   }
 
   export function searchText(entry: Pick<SearchEntry, "id" | "title" | "description" | "group" | "keywords">): string {

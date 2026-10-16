@@ -343,6 +343,20 @@ Feishu/Lark account configuration may pair an explicit `model` with `variant`. T
 
 A Feishu/Lark account may also set `projectDir` to bind the account's sessions to a project Scope. Resolution rules and error behavior are documented in the [Channels reference](../product/connections.md).
 
+## MCP Tool Exposure
+
+MCP tools are deferred unless a per-server `expandByDefault` or the `mcpDefaults.expandByDefault` setting explicitly makes them resident. Per-server settings override the global default. Built-in Anysearch and Scholight tools share the `online` capability group; full typed user entries with those names remain user-owned servers. API-key-only stubs retain built-in ownership and the default deferred presentation. See [tool catalog and exposure](../product/agents-and-tools.md#tool-catalog-and-exposure).
+
+```jsonc
+{
+  "mcp": {
+    "anysearch": { "expandByDefault": true },
+  },
+}
+```
+
+This makes the built-in Anysearch tools resident without taking ownership of the server configuration. A global `mcpDefaults.expandByDefault: true` applies to every server unless that server explicitly sets `false`. Exposure never bypasses tool permissions, disabled servers, or connection availability.
+
 ## MCP Server Authentication
 
 Remote MCP servers (`type: "remote"` in `40-mcp.jsonc`) use OAuth 2.0 authorization-code flows with PKCE and dynamic client registration by default. Credentials (tokens, registered client info, and in-flight PKCE state) live in the auth store, never in `40-mcp.jsonc`; the `oauth` object in the server config only carries a pre-registered `clientId`/`clientSecret`/`scope` when a server does not support dynamic registration.

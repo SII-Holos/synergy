@@ -1437,19 +1437,13 @@ export namespace ToolResolver {
       )
         autoExpandable.add(item.id)
     }
-    const groups = new Map<string, { title: string; tools: string[] }>()
-    for (const item of eligible) {
-      if (!visibility.available.has(item.id) || failed.has(item.id)) continue
-      const exposure = ToolExposure.normalize(item.id, item.exposure)
-      if (exposure.mode !== "group") continue
-      const group = groups.get(exposure.group) ?? { title: exposure.title ?? exposure.group, tools: [] }
-      group.tools.push(item.id)
-      groups.set(exposure.group, group)
-    }
+    const groups = ToolExposure.availableGroups(
+      eligible.filter((item) => visibility.available.has(item.id) && !failed.has(item.id)),
+    )
     const visible = loaded
       .filter((item) => visibility.visible.has(item.id))
       .map((item) =>
-        item.id !== "expand_tools" || !groups.size
+        item.id !== "expand_tools" || !groups.length
           ? item
           : {
               ...item,
@@ -1457,15 +1451,17 @@ export namespace ToolResolver {
                 item.description,
                 "MCP rows with a prefix use full tool ID = prefix + suffix. Expand the group to get tool schemas before calling; do not guess parameters.",
                 "Available groups:",
-                ...[...groups].map(([id, group]) => {
+                ...groups.map((group) => {
+                  const id = group.id
                   const heading = `${id} (${group.title})`
+                  const summary = ` — ${group.description}`
                   const prefix = id.startsWith("mcp:") ? `mcp__${id.slice(4)}__` : undefined
                   if (
                     !prefix ||
                     !group.tools.every((toolID) => toolID.startsWith(prefix) && toolID.length > prefix.length)
                   )
-                    return `${heading}: ${group.tools.join(", ")}`
-                  return `${heading}: prefix=${prefix}; suffixes: ${group.tools.map((toolID) => toolID.slice(prefix.length)).join(", ")}`
+                    return `${heading}: ${group.tools.join(", ")}${summary}`
+                  return `${heading}: prefix=${prefix}; suffixes: ${group.tools.map((toolID) => toolID.slice(prefix.length)).join(", ")}${summary}`
                 }),
               ].join("\n"),
             },
@@ -2085,15 +2081,14 @@ export namespace ToolResolver {
       for (const entry of mcpEntries) {
         const key = entry.id
         const item = entry.tool
-        const exposure = ToolExposure.mcpExposure(
-          entry.serverName,
-          mcpExposure?.expandByDefault(entry.serverName) ?? false,
-        )
+        const exposure =
+          entry.presentation?.exposure ??
+          ToolExposure.mcpExposure(entry.serverName, mcpExposure?.expandByDefault(entry.serverName) ?? false)
         const schema = entry.inputSchema
         result.push({
           id: key,
           exposure,
-          description: item.description ?? "",
+          description: entry.presentation?.description ?? item.description ?? "",
           inputSchema: schema,
           executor: "mcp",
           createRuntimeTool(runtimeInput) {

@@ -3,7 +3,7 @@ import { ToolExposure } from "@ericsanchezok/synergy-harness/tool/exposure"
 import { ToolMcpSource } from "@ericsanchezok/synergy-harness/tool/mcp-source"
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js"
 import { MCP } from "."
-import { builtinServerStaged } from "./builtin-catalog"
+import { presentMcpEntry } from "./online-presentation"
 
 /**
  * P9 source inversion: the L1 tool domain reads MCP tool entries, call
@@ -16,12 +16,7 @@ export function registerMcpToolSource() {
     async exposureConfiguration() {
       const config = await Config.current()
       return {
-        expandByDefault: (serverName) =>
-          ToolExposure.mcpExpandByDefault(
-            config.mcp?.[serverName],
-            config.mcpDefaults,
-            builtinServerStaged(serverName, config.mcp),
-          ),
+        expandByDefault: (serverName) => ToolExposure.mcpExpandByDefault(config.mcp?.[serverName], config.mcpDefaults),
       }
     },
     normalizeResult(value) {
@@ -39,7 +34,12 @@ export function registerMcpToolSource() {
             : {},
       }
     },
-    toolEntries: () => MCP.toolEntries(),
+    async toolEntries() {
+      const config = await Config.current()
+      return (await MCP.toolEntries()).map((entry) =>
+        presentMcpEntry(entry, ToolExposure.mcpExpandByDefault(config.mcp?.[entry.serverName], config.mcpDefaults)),
+      )
+    },
     toolCallTimeout: (toolName) => MCP.toolCallTimeout(toolName),
     deferredGroupCatalog: () => MCP.deferredGroupCatalog(),
   })

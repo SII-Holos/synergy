@@ -18,7 +18,7 @@ import { McpOAuthCallback } from "./oauth-callback"
 import { McpAuth } from "./auth"
 import open from "open"
 import { McpSupervisor, mapStatus } from "./supervisor"
-import type { PromptCache, ResourceCache } from "./supervisor"
+import type { McpServerSource, PromptCache, ResourceCache } from "./supervisor"
 import { ToolExposure } from "@ericsanchezok/synergy-harness/tool/exposure"
 import { builtinApiKeyHint, builtinApiKeyOf, builtinMcpServerInfos } from "./builtin-catalog"
 import { PendingOAuth } from "./pending-oauth"
@@ -79,6 +79,7 @@ export namespace MCP {
     id: string
     serverName: string
     toolName: string
+    source?: McpServerSource
     requiresWorkspace?: boolean
     tool: Tool
     inputSchema: JSONSchema7
@@ -388,6 +389,7 @@ export namespace MCP {
           id: toolName,
           serverName: handle.name,
           toolName: mcpTool.name,
+          source: handle.source,
           requiresWorkspace: handle.config.requiresWorkspace ?? true,
           ...converted,
         })

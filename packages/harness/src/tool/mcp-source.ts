@@ -1,5 +1,6 @@
 import { RuntimeContext } from "../lifecycle/context"
 import type { Tool, JSONSchema7 } from "ai"
+import type { ToolExposure } from "./exposure"
 
 /**
  * P9 tool execution context (MCP half): the L1 tool domain reads MCP tool
@@ -15,6 +16,11 @@ export namespace ToolMcpSource {
     requiresWorkspace?: boolean
     tool: Tool
     inputSchema: JSONSchema7
+    presentation?: {
+      title?: string
+      description?: string
+      exposure: ToolExposure.Info
+    }
   }
 
   export interface DeferredGroupCatalog {
