@@ -177,7 +177,15 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
     controlProfile: "full_access",
   })
   const definitions = [
-    { id: "catalog_zeta", exposure: { mode: "group", group: "catalog-native", title: "Native" } },
+    {
+      id: "catalog_zeta",
+      exposure: {
+        mode: "group",
+        group: "catalog-native",
+        title: "Native",
+        description: "Inspect saved snapshots before restoring files.",
+      },
+    },
     { id: "catalog_alpha", exposure: { mode: "group", group: "catalog-native", title: "Native" } },
     { id: "catalog_denied", exposure: { mode: "group", group: "catalog-native", title: "Native" } },
     { id: "mcp__synthetic__first", exposure: { mode: "group", group: "catalog-synthetic" } },
@@ -275,6 +283,9 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
         expect(description).not.toContain(deniedID)
         expect(description).not.toContain(userDisabledID)
         expect(description).not.toContain("catalog_denied")
+        expect(description).toContain(
+          "catalog-native (Native): catalog_alpha, catalog_zeta — Inspect saved snapshots before restoring files.",
+        )
         const catalog = await ToolDiscovery.collect({ ...input, providerID: model.providerID })
         const groups = ToolDiscovery.availableGroups(catalog)
         const groupIDs = groups.map((group) => group.id)
@@ -305,6 +316,12 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
           },
         }
         const search = await SearchToolsTool.init({ agent })
+        const selected = await search.execute({ query: "restoring files", limit: 1 }, context)
+        expect(selected.metadata.results[0]).toMatchObject({
+          id: "catalog-native",
+          description: "Inspect saved snapshots before restoring files.",
+        })
+        expect(selected.output).toContain("Inspect saved snapshots before restoring files.")
         const searchResult = await search.execute({ query: mcpEntries[0]!.id, limit: 8 }, context)
         expect(searchResult.metadata.results).toEqual(
           expect.arrayContaining([
