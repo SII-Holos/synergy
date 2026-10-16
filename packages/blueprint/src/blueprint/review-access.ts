@@ -34,16 +34,10 @@ export namespace BlueprintLoopReviewAccess {
     if (!loop || loop.status !== "auditing") return undefined
     if (loop.sessionID !== executionSession.id) return undefined
     if (loop.auditSessionID !== reviewSession.id) return undefined
+    if (loop.auditTaskID !== reviewSession.cortex.taskID) return undefined
+    if (loop.stopRequest?.requesterMessageID !== reviewSession.cortex.parentMessageID) return undefined
     if ((loop.auditAgent || "supervisor") !== input.agent) return undefined
 
     return { loop, executionSession, reviewSession }
-  }
-
-  export async function assertForTarget(input: Input & { targetSessionID: string; action: "approve" | "reject" }) {
-    const context = await resolve(input)
-    if (!context || context.executionSession.id !== input.targetSessionID) {
-      throw new Error(`Only the recorded reviewer session may ${input.action} this BlueprintLoop review`)
-    }
-    return context
   }
 }

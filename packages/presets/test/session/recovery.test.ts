@@ -186,6 +186,7 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
             runMode: "current",
           })
           await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+          await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "auditing" })
           await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "completed" })
           await Session.update(session.id, (draft) => {
             draft.blueprint = { loopID: loop.id, loopRole: "execution" }
@@ -240,99 +241,6 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
 })
 
 describe("a durable stop intent survives restart without being driven", () => {
-  test("preserves an unbound Light Loop stop intent without resuming it", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const scopeID = ScopeContext.current.scope.id
-          const session = await Session.create({})
-          await Session.update(session.id, (draft) => {
-            draft.workflow = {
-              kind: "lightloop",
-              instructions: "Finish the task",
-              stopRequest: {
-                summary: "Task complete",
-                requestedAt: Date.now(),
-                requesterSessionID: session.id,
-                requesterMessageID: Identifier.ascending("message"),
-              },
-            }
-          })
-
-          await SessionRecovery.reconcileRuntimeState({ scopeID, apply: true })
-          await SessionInvoke.reconcilePausedSessions(scopeID)
-
-          // The stop intent is meant to be consumed by the continuation kernel
-          // when the turn next runs, so reconciliation must leave it in place.
-          const recovered = await Session.get(session.id)
-          expect(recovered.workflow?.kind).toBe("lightloop")
-          if (recovered.workflow?.kind !== "lightloop") throw new Error("Light Loop workflow missing")
-          expect(recovered.workflow.stopRequest?.summary).toBe("Task complete")
-
-          // Startup no longer resumes anything: the request is recorded, not acted
-          // on, and the session is neither driven nor paused for it.
-          expect(SessionManager.isRunning(session.id)).toBe(false)
-          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-        },
-      })
-    }))
-
-  test("preserves a completed Light Loop review whose terminal review tool did not settle", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const scopeID = ScopeContext.current.scope.id
-          const execution = await Session.create({})
-          const reviewer = await Session.create({
-            parentID: execution.id,
-            cortex: {
-              taskID: "ctx_completed_light_loop_review",
-              parentSessionID: execution.id,
-              parentMessageID: Identifier.ascending("message"),
-              description: "Review Light Loop",
-              agent: "lightloop-reviewer",
-              startedAt: Date.now(),
-              completedAt: Date.now(),
-              status: "completed",
-            },
-          })
-          await Session.update(execution.id, (draft) => {
-            draft.workflow = {
-              kind: "lightloop",
-              instructions: "Finish the task",
-              stopRequest: {
-                summary: "Task complete",
-                requestedAt: Date.now(),
-                requesterSessionID: execution.id,
-                requesterMessageID: Identifier.ascending("message"),
-                reviewSessionID: reviewer.id,
-                reviewTaskID: reviewer.cortex?.taskID,
-              },
-            }
-          })
-
-          await SessionRecovery.reconcileRuntimeState({ scopeID, apply: true })
-          await SessionInvoke.reconcilePausedSessions(scopeID)
-
-          // A completed review is durable evidence that a verdict is still owed,
-          // so the binding to the reviewer must survive: it is what lets the
-          // continuation kernel finish the review instead of restarting it.
-          const recovered = await Session.get(execution.id)
-          expect(recovered.workflow?.kind).toBe("lightloop")
-          if (recovered.workflow?.kind !== "lightloop") throw new Error("Light Loop workflow missing")
-          expect(recovered.workflow.stopRequest?.reviewSessionID).toBe(reviewer.id)
-          expect(recovered.workflow.stopRequest?.reviewTaskID).toBe(reviewer.cortex?.taskID)
-
-          expect(SessionManager.isRunning(execution.id)).toBe(false)
-          expect(await SessionLifecycle.snapshot(execution.id)).toBeUndefined()
-        },
-      })
-    }))
-
   test("preserves an interrupted Blueprint audit without losing its stop intent", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

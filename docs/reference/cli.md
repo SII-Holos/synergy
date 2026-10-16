@@ -822,7 +822,7 @@ send a message to synergy
 | `--attach` (string) | attach to a running synergy server (start one with: synergy start) |
 | `--port` (number) | accepted for compatibility; local execution does not open an HTTP listener |
 | `--variant` (string) | model variant (provider-specific reasoning effort, e.g., high, max, minimal) |
-| `--workflow` (string) | run the message as a Light Loop workflow task: the session enables loop_stop and a reviewer loop, and send exits when the workflow reaches a terminal state |
+| `--workflow` (string) | run the message as a Light Loop workflow task: the executor verifies the full goal and completes it with loop_stop, and send exits when the workflow reaches a terminal state |
 
 ## session
 

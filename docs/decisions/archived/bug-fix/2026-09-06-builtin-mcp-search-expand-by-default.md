@@ -1,6 +1,7 @@
 # Decision Record: Expand builtin MCP search servers by default
 
 Status: implemented
+Archived: 2026-10-15
 
 ## Problem
 

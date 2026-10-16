@@ -183,7 +183,7 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
           type: "string",
           choices: ["lightloop"],
           describe:
-            "run the message as a Light Loop workflow task: the session enables loop_stop and a reviewer loop, and send exits when the workflow reaches a terminal state",
+            "run the message as a Light Loop workflow task: the executor verifies the full goal and completes it with loop_stop, and send exits when the workflow reaches a terminal state",
         })
     },
     handler: async (args) => {

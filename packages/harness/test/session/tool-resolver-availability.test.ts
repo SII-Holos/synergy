@@ -177,7 +177,15 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
     controlProfile: "full_access",
   })
   const definitions = [
-    { id: "catalog_zeta", exposure: { mode: "group", group: "catalog-native", title: "Native" } },
+    {
+      id: "catalog_zeta",
+      exposure: {
+        mode: "group",
+        group: "catalog-native",
+        title: "Native",
+        description: "Inspect saved snapshots before restoring files.",
+      },
+    },
     { id: "catalog_alpha", exposure: { mode: "group", group: "catalog-native", title: "Native" } },
     { id: "catalog_denied", exposure: { mode: "group", group: "catalog-native", title: "Native" } },
     { id: "mcp__synthetic__first", exposure: { mode: "group", group: "catalog-synthetic" } },
@@ -209,14 +217,6 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
         },
         toolEntries: async () => mcpEntries,
         toolCallTimeout: () => undefined,
-        async deferredGroupCatalog() {
-          return {
-            totalTools: mcpEntries.length - 1,
-            servers: servers
-              .filter((server) => server.name !== "catalog-resident")
-              .map((server) => ({ serverName: server.name, toolNames: server.tools })),
-          }
-        },
         normalizeResult() {
           throw new Error("Catalog must not normalize tool results")
         },
@@ -232,11 +232,11 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
         const userTools = { [userDisabledID]: false }
         const input = { agent, model, session, sessionID: session.id, userTools }
         const availability = await ToolResolver.availability(input)
-        const residentIDs = ["search_tools", "expand_tools", "catalog_resident", mcpEntries.at(-1)!.id]
+        const residentIDs = ["search_tools", "expand_tools", "catalog_resident", mcpEntries.at(-1)!.id].sort()
         expect(availability.visible.map((definition) => definition.id)).toEqual(residentIDs)
         const mcpGroups = servers.filter((server) => server.name !== "catalog-resident")
         const groupRows = [
-          "catalog-native (Native): catalog_zeta, catalog_alpha",
+          "catalog-native (Native): catalog_alpha, catalog_zeta",
           "catalog-synthetic (catalog-synthetic): mcp__synthetic__first, mcp__synthetic__second",
           ...mcpGroups.map((server) => {
             const ids = mcpEntries
@@ -244,39 +244,64 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
                 (entry) => entry.serverName === server.name && entry.id !== deniedID && entry.id !== userDisabledID,
               )
               .map((entry) => entry.id)
+              .sort()
             const groupID = ToolExposure.mcpGroupID(server.name)
             const heading = `${groupID} (MCP: ${server.name})`
             if (server.name === "catalog-mismatch") return `${heading}: ${ids.join(", ")}`
             const prefix = `mcp__${ToolExposure.sanitizeID(server.name)}__`
             return `${heading}: prefix=${prefix}; suffixes: ${ids.map((id) => id.slice(prefix.length)).join(", ")}`
           }),
-        ]
+        ].sort()
         const description = availability.visible.find((definition) => definition.id === "expand_tools")!.description
-        const emittedRows = description.split("Available groups:\n")[1]!.split("\n")
-        expect(emittedRows).toEqual(groupRows)
+        const emittedRows = description
+          .split("Available groups:\n")[1]!
+          .split("\n")
+          .map((row) => row.split(" — ")[0]!)
+        expect(emittedRows).toEqual(groupRows.toSorted((left, right) => left.localeCompare(right)))
         const emittedIDs = emittedRows.flatMap((row) => {
           const names = row.slice(row.indexOf("): ") + 3)
           if (!names.startsWith("prefix=")) return names.split(", ")
           const [prefix, suffixes] = names.slice("prefix=".length).split("; suffixes: ")
           return suffixes!.split(", ").map((suffix) => `${prefix}${suffix}`)
         })
-        expect(emittedIDs).toEqual([
-          "catalog_zeta",
-          "catalog_alpha",
-          "mcp__synthetic__first",
-          "mcp__synthetic__second",
-          ...mcpEntries
-            .filter(
-              (entry) =>
-                entry.serverName !== "catalog-resident" && entry.id !== deniedID && entry.id !== userDisabledID,
-            )
-            .map((entry) => entry.id),
-        ])
+        expect(emittedIDs.toSorted()).toEqual(
+          [
+            "catalog_zeta",
+            "catalog_alpha",
+            "mcp__synthetic__first",
+            "mcp__synthetic__second",
+            ...mcpEntries
+              .filter(
+                (entry) =>
+                  entry.serverName !== "catalog-resident" && entry.id !== deniedID && entry.id !== userDisabledID,
+              )
+              .map((entry) => entry.id),
+          ].sort(),
+        )
+        definitions.reverse()
+        mcpEntries.reverse()
+        const reordered = await ToolResolver.availability(input)
+        expect(reordered.visible.map(({ id, description, inputSchema }) => ({ id, description, inputSchema }))).toEqual(
+          availability.visible.map(({ id, description, inputSchema }) => ({ id, description, inputSchema })),
+        )
+        definitions.reverse()
+        mcpEntries.reverse()
         expect(description).toContain("full tool ID = prefix + suffix")
+        const changedAccess = await ToolResolver.availability({
+          ...input,
+          userTools: { ...userTools, catalog_resident: false },
+        })
+        expect(changedAccess.visible.map((entry) => entry.id)).not.toContain("catalog_resident")
+        expect(changedAccess.visible.map((entry) => entry.id)).toEqual(
+          residentIDs.filter((id) => id !== "catalog_resident"),
+        )
         expect(description).toContain("Expand the group to get tool schemas before calling; do not guess parameters.")
         expect(description).not.toContain(deniedID)
         expect(description).not.toContain(userDisabledID)
         expect(description).not.toContain("catalog_denied")
+        expect(description).toContain(
+          "catalog-native (Native): catalog_alpha, catalog_zeta — Inspect saved snapshots before restoring files.",
+        )
         const catalog = await ToolDiscovery.collect({ ...input, providerID: model.providerID })
         const groups = ToolDiscovery.availableGroups(catalog)
         const groupIDs = groups.map((group) => group.id)
@@ -307,6 +332,12 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
           },
         }
         const search = await SearchToolsTool.init({ agent })
+        const selected = await search.execute({ query: "restoring files", limit: 1 }, context)
+        expect(selected.metadata.results[0]).toMatchObject({
+          id: "catalog-native",
+          description: "Inspect saved snapshots before restoring files.",
+        })
+        expect(selected.output).toContain("Inspect saved snapshots before restoring files.")
         const searchResult = await search.execute({ query: mcpEntries[0]!.id, limit: 8 }, context)
         expect(searchResult.metadata.results).toEqual(
           expect.arrayContaining([

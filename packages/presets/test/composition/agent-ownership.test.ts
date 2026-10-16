@@ -73,7 +73,6 @@ async function open(
               ? {
                   agent: {
                     supervisor: { name: "Renamed Blueprint reviewer" },
-                    "lightloop-reviewer": { name: "Renamed Light Loop reviewer" },
                   },
                 }
               : {}),
@@ -127,7 +126,7 @@ for (const selected of [false, true]) {
         ScopeContext.provide({
           scope: Scope.home(),
           async fn() {
-            for (const name of ["supervisor", "lightloop-reviewer"]) {
+            for (const name of ["supervisor"]) {
               const reviewer = await Agent.get(name)
               expect(action(reviewer, "parse_code"), `${name}:semantic read`).toBe(denied ? "deny" : "allow")
               if (!selected) expect(reviewer.permission.some((rule) => rule.permission === "parse_code")).toBe(denied)
@@ -163,7 +162,7 @@ for (const selected of [false, true]) {
         ScopeContext.provide({
           scope: Scope.home(),
           async fn() {
-            for (const name of selected ? ["supervisor", "lightloop-reviewer"] : ["lightloop-reviewer"]) {
+            for (const name of selected ? ["supervisor"] : []) {
               const reviewer = await Agent.get(name)
               for (const id of tools) {
                 expect(action(reviewer, id), `${name}:${id}`).toBe(selected && !denied ? "allow" : "deny")
@@ -222,10 +221,12 @@ for (const kind of ["blueprint", "light-loop"] as const) {
               const agent = await Agent.get(PrimaryAgentIdentity.names.general)
               const result = await prepared(agent, await Session.get(created.id))
               expect((await ToolRegistry.find(stop))?.description).not.toMatch(/Agenda|agenda_cancel/)
-              const instruction = `${kind === "blueprint" ? "BlueprintLoop" : "Light Loop"} review requires all active Agenda wakeups`
+              const instruction = `${kind === "blueprint" ? "BlueprintLoop review" : "Light Loop completion"} requires all active Agenda wakeups`
               expect(result.prompt.includes(instruction)).toBe(selected && !deniedTool)
               if (selected && !deniedTool) {
-                expect(result.prompt).toContain("Review is rejected while any wakeup remains")
+                expect(result.prompt).toContain(
+                  `${kind === "blueprint" ? "Review" : "Completion"} is rejected while any wakeup remains`,
+                )
                 expect(result.availableToolIDs).toContain(stop)
                 expect(result.availableToolIDs).toContain("agenda_cancel")
               }
@@ -245,8 +246,8 @@ test("selected hidden reviewers retain recursive delegation while primary catalo
       async fn() {
         const agents = await Agent.list()
         const supervisor = await Agent.get("supervisor")
-        const reviewer = await Agent.get("lightloop-reviewer")
-        for (const agent of [supervisor, reviewer]) {
+        expect(await Agent.get("lightloop-reviewer")).toBeUndefined()
+        for (const agent of [supervisor]) {
           expect(agent.hidden).toBe(true)
           expect(agent.visibleTo).toEqual([agent.name])
           for (const permission of [
@@ -260,7 +261,6 @@ test("selected hidden reviewers retain recursive delegation while primary catalo
           ])
             expect(action(agent, permission), `${agent.name}:${permission}`).toBe("allow")
         }
-        expect(reviewer.delegationGroups).toEqual(["supervisor"])
         const info = agents.map((agent) => ({ ...agent, description: agent.description ?? "" }))
         for (const primary of [PrimaryAgentIdentity.names.coding, PrimaryAgentIdentity.names.general]) {
           const names = getDelegatableAgents(info, primary).map((agent) => agent.name)
@@ -268,7 +268,7 @@ test("selected hidden reviewers retain recursive delegation while primary catalo
           expect(names).not.toContain("lightloop-reviewer")
           expect(names.length).toBeGreaterThan(0)
         }
-        const names = getDelegatableAgents(info, reviewer).map((agent) => agent.name)
+        const names = getDelegatableAgents(info, supervisor).map((agent) => agent.name)
         expect(names).toContain("implementation-engineer")
         expect(names).toContain("quality-gatekeeper")
         expect(names).not.toContain("supervisor")

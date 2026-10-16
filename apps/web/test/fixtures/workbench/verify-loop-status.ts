@@ -19,7 +19,7 @@ type Gate = {
   append(text: string): void
 }
 const lightGoal = "修复后台会话结束后最终回复缺失，保留历史阅读位置，并验证切换会话不重复拉取正文。"
-const revisedLightGoal = "修复后台会话结束后最终回复缺失，并补齐断线重连、审核拒绝和取消任务的回归测试。"
+const revisedLightGoal = "修复后台会话结束后最终回复缺失，并补齐断线重连、失败和取消任务的回归测试。"
 const blueprintTitle = "消息流稳定性：历史加载、后台生成与会话切换"
 let current:
   | {
@@ -61,7 +61,7 @@ const inference = Bun.serve({
         usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
       })
     const names = input.tools?.map((t) => t.function.name) ?? []
-    const review = names.includes("light_loop_approve") || names.includes("blueprint_loop_approve")
+    const review = names.includes("blueprint_loop_approve")
     if (review && current.failReview)
       return Response.json(
         {
@@ -137,15 +137,19 @@ const inference = Bun.serve({
           }
           send({ role: "assistant" })
           if (
-            !names.some((name) =>
-              ["loop_stop", "blueprint_loop_stop", "light_loop_approve", "blueprint_loop_approve"].includes(name),
-            ) ||
+            !names.some((name) => ["loop_stop", "blueprint_loop_stop", "blueprint_loop_approve"].includes(name)) ||
             afterTool ||
             current?.approved ||
             (review && current?.reviewAnswered) ||
             (!review && current?.stopped)
           ) {
-            gate.finish(current?.approved ? "独立审核已经通过，状态验收完成。" : "执行阶段已结束，等待独立审核。")
+            gate.finish(
+              current?.kind === "lightloop"
+                ? "任务验收完成。"
+                : current?.approved
+                  ? "独立审核已经通过，状态验收完成。"
+                  : "执行阶段已结束，等待独立审核。",
+            )
             return
           }
           send({ content: review ? "正在独立审核本次验收结果。" : "正在执行本次界面状态验收任务。" })
@@ -209,7 +213,6 @@ await client.config.domain.update(
         agent: {
           pico: { model: "loop-ui/main" },
           supervisor: { model: "loop-ui/main" },
-          "lightloop-reviewer": { model: "loop-ui/main" },
         },
       },
     },
@@ -221,6 +224,14 @@ const bodyReads: string[] = [],
 let socketBytes = 0
 const browser = await chromium.launch({ headless: true }),
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: "light", locale: "zh-CN" })
+await page.addInitScript(() => {
+  const tracked = window as typeof window & { loopStages: string[] }
+  tracked.loopStages = []
+  new MutationObserver(() => {
+    for (const row of document.querySelectorAll("[data-component=loop-status-entry]"))
+      tracked.loopStages.push(row.getAttribute("data-stage") ?? "unknown")
+  }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-stage"] })
+})
 page.on("request", (r) => {
   const path = new URL(r.url()).pathname
   if (/\/(?:display|message)\//.test(path)) bodyReads.push(path)
@@ -234,16 +245,17 @@ page.on("websocket", (socket) =>
 )
 const pageErrors: string[] = []
 page.on("pageerror", (e) => pageErrors.push(e.message))
-async function capture(label: string) {
+async function capture(label: string, completed = false) {
   await page.waitForTimeout(650)
   await page.getByText(/正在加载对话|Loading conversation/).waitFor({ state: "hidden", timeout: 45000 })
   const state = page.locator('[data-component="loop-status-entry"] [role="status"]')
   if (await state.count())
     assert.ok(await state.evaluate((node) => node.scrollWidth <= node.clientWidth), "Loop status stays readable")
+  if (completed) assert.equal(await page.locator("[data-component=loop-status-entry]").count(), 0)
   const session = current
     ? (await client.session.get({ scopeID: "home", sessionID: current.id }, options)).data
     : undefined
-  if (current) {
+  if (current && !completed) {
     const label = page.locator('[data-component="loop-status-entry"] .pending-composer-label')
     assert.equal(await label.textContent(), current.title, "The row identifies the Loop goal or Blueprint note")
     assert.equal(await label.getAttribute("title"), current.title, "The complete label remains available on hover")
@@ -267,6 +279,7 @@ async function capture(label: string) {
     label,
     workflow: session?.workflow,
     blueprint: session?.blueprint,
+    loopVisible: (await state.count()) > 0,
     bodyReads: bodyReads.length,
     statusReads: statusReads.length,
     socketBytes,
@@ -275,13 +288,56 @@ async function capture(label: string) {
     JSON.stringify({ captured: label, workflow: session?.workflow?.kind, blueprint: session?.blueprint?.phase }),
   )
 }
-async function openDetails(label: string) {
+async function openDetails(label: string, completed = false) {
   const candidates = page.getByRole("button", { name: /^任务详情$|^Task details$/ })
   if (await candidates.count()) {
     await candidates.first().click()
-    await capture(label)
+    await capture(label, completed)
     await candidates.first().click()
   } else console.log(JSON.stringify({ detailsButtons: await page.getByRole("button").allTextContents() }))
+}
+async function verifyCompletedNavigation(session: { id: string; title: string }, peer: { id: string; title: string }) {
+  const kind = current!.kind
+  const finalText = kind === "lightloop" ? "任务验收完成。" : "独立审核已经通过，状态验收完成。"
+  await page.getByText(finalText, { exact: true }).first().waitFor({ timeout: 60000 })
+  await page.locator("[data-component=loop-status-entry]").waitFor({ state: "detached" })
+  await capture(kind + "-completed", true)
+  await page.evaluate(() => ((window as typeof window & { loopStages: string[] }).loopStages = []))
+  const before = statusReads.length
+  await page.getByText(peer.title, { exact: true }).first().click()
+  await page.waitForURL(origin + "/aG9tZQ/session/" + peer.id)
+  await page.getByText(session.title, { exact: true }).first().click()
+  await page.waitForURL(origin + "/aG9tZQ/session/" + session.id)
+  await page.getByText(finalText, { exact: true }).first().waitFor()
+  await capture(kind + "-completed-return", true)
+  assert.equal(statusReads.length, before, "Returning to a completed Loop reuses its retained status")
+  assert.deepEqual(
+    await page.evaluate(() => (window as typeof window & { loopStages: string[] }).loopStages),
+    [],
+    "Completed status never flashes back when switching sessions",
+  )
+  const terminalRead = page.waitForResponse(
+    (response) =>
+      response.ok() &&
+      (kind === "lightloop"
+        ? new URL(response.url()).pathname.endsWith("/lightloop/terminal")
+        : /\/blueprint\/loop\/[^/]+$/.test(new URL(response.url()).pathname)),
+  )
+  await page.reload()
+  await terminalRead
+  await page.getByText(finalText, { exact: true }).first().waitFor({ timeout: 60000 })
+  await capture(kind + "-completed-reload", true)
+  assert.deepEqual(
+    await page.evaluate(() => (window as typeof window & { loopStages: string[] }).loopStages),
+    [],
+    "Completed status never flashes back during cold history restoration",
+  )
+  await page.setViewportSize({ width: 375, height: 900 })
+  await capture(kind + "-completed-narrow", true)
+  await page.emulateMedia({ colorScheme: "dark" })
+  await capture(kind + "-completed-narrow-dark", true)
+  await page.emulateMedia({ colorScheme: "light" })
+  await page.setViewportSize({ width: 1440, height: 1000 })
 }
 try {
   const peer = (await client.session.create({ scopeID: "home", title: "Loop status peer " + Date.now() }, options)).data
@@ -291,7 +347,9 @@ try {
     | "blueprint"
   )[]) {
     for (const outcome of (["approve", "failed", "cancelled", "cancel-review"] as const).filter(
-      (outcome) => !process.env.LOOP_OUTCOME || outcome === process.env.LOOP_OUTCOME,
+      (outcome) =>
+        (kind === "blueprint" || outcome === "approve" || outcome === "cancelled") &&
+        (!process.env.LOOP_OUTCOME || outcome === process.env.LOOP_OUTCOME),
     )) {
       const session = (
         await client.session.create(
@@ -477,11 +535,17 @@ try {
       await capture(kind + "-" + outcome + "-04-resumed")
       current.stopped = true
       gates.get("execute")!.tool(kind === "lightloop" ? "loop_stop" : "blueprint_loop_stop", {
-        summary: "本轮界面状态验收完成，申请独立审核。",
-        completed: ["绑定及运行状态已检查"],
-        evidence: ["隔离实例截图"],
-        remaining: [],
+        summary: "本轮界面状态验收与截图已完成。",
       })
+      if (kind === "lightloop") {
+        await verifyCompletedNavigation(session, peer)
+        const terminal = (
+          await client.workflow.session.getLightloopTerminal({ id: session.id, scopeID: "home" }, options)
+        ).data
+        assert.equal(terminal.status, "completed")
+        assert.equal(terminal.instructions, revisedLightGoal)
+        continue
+      }
       if (outcome === "failed") {
         await page.locator("[data-component=loop-status-entry][data-stage=failed]").waitFor({ timeout: 120000 })
         await capture(kind + "-failed")
@@ -497,7 +561,12 @@ try {
       await capture(kind + "-05-auditing")
       if (outcome === "cancel-review") {
         const children = (await client.session.children({ sessionID: session.id, scopeID: "home" }, options)).data.items
-        assert.ok(children.some((child) => child.cortex?.status === "running"))
+        const childSessions = await Promise.all(
+          children.map(
+            async (child) => (await client.session.get({ sessionID: child.id, scopeID: "home" }, options)).data,
+          ),
+        )
+        assert.ok(childSessions.some((child) => child.cortex?.status === "running"))
         await page
           .locator("[data-component=loop-status-entry]")
           .getByRole("button", { name: /取消本次循环|Cancel loop/ })
@@ -514,11 +583,8 @@ try {
       await openDetails(kind + "-06-task-details")
       current.reviewAnswered = true
       current.stopped = false
-      gates.get("review")!.tool(kind === "lightloop" ? "light_loop_reject" : "blueprint_loop_reject", {
-        sessionID: session.id,
-        reason: "缺少取消和失败路径的回归证据。",
-        remaining: "补齐失败与取消场景。",
-        instructions: "完成回归后重新申请审核。",
+      gates.get("review")!.tool("blueprint_loop_reject", {
+        reason: "缺少取消和失败路径的回归证据；补齐失败与取消场景，完成回归后重新申请审核。",
       })
       await wait(() => gates.has("execute"), "rework stream")
       await page.locator("[data-component=loop-status-entry][data-stage=rework]").waitFor({ timeout: 60000 })
@@ -532,59 +598,58 @@ try {
       )
       current.stopped = true
       current.reviewAnswered = false
-      gates.get("execute")!.tool(kind === "lightloop" ? "loop_stop" : "blueprint_loop_stop", {
-        summary: "失败与取消回归已补齐，重新申请审核。",
-        completed: ["回归已通过"],
-        evidence: ["验收截图"],
-        remaining: [],
+      gates.get("execute")!.tool("blueprint_loop_stop", {
+        summary: "失败与取消回归已补齐，验收截图已保存，重新申请审核。",
       })
       await wait(() => gates.has("review"), "second review stream")
       await capture(kind + "-review-after-rework")
+      await page
+        .locator("[data-component=loop-status-entry]")
+        .getByRole("button", { name: /^打开蓝图$|^Open Blueprint$/ })
+        .click()
+      await page
+        .locator(".note-blueprint-state")
+        .filter({ hasText: /审核中|Reviewing/ })
+        .waitFor()
       const beforeApproval = statusReads.length
       current.approved = true
       current.reviewAnswered = true
-      gates.get("review")!.tool(kind === "lightloop" ? "light_loop_approve" : "blueprint_loop_approve", {
-        sessionID: session.id,
+      gates.get("review")!.tool("blueprint_loop_approve", {
         summary: "受控验收任务已完成。",
       })
       await wait(async () => {
         const s = (await client.session.get({ sessionID: session.id, scopeID: "home" }, options)).data
-        return kind === "lightloop" ? !s.workflow : !s.blueprint?.loopID
+        return !s.blueprint?.loopID
       }, "approval transition")
       await wait(async () => {
         const s = (await client.session.statuses(options)).data[session.id]
         return !s || (s.type !== "busy" && s.type !== "retry")
       }, "completion settled")
       await page.waitForTimeout(1200)
-      await page.locator("[data-component=loop-status-entry][data-stage=completed]").waitFor({ timeout: 60000 })
-      await capture(kind + "-07-completed")
-      assert.equal(
-        statusReads.length - beforeApproval,
-        kind === "lightloop" ? 1 : 0,
-        "Approval must not repeat status reads",
-      )
-      await page.setViewportSize({ width: 375, height: 900 })
-      await capture(kind + "-narrow-completed")
-      assert.ok(await page.locator("[data-component=loop-status-entry] [role=status]").isVisible())
-      await page.setViewportSize({ width: 1440, height: 1000 })
-      await page.reload()
-      await page.locator("[data-component=loop-status-entry][data-stage=completed]").waitFor({ timeout: 60000 })
-      await capture(kind + "-reload-completed")
-      await openDetails(kind + "-08-completed-details")
-      if (kind === "blueprint") {
-        await page
-          .locator("[data-component=loop-status-entry]")
-          .getByRole("button", { name: /^打开蓝图$|^Open Blueprint$/ })
-          .click()
-        await page
-          .locator(".note-blueprint-state")
-          .filter({ hasText: /审核通过|Review passed/ })
-          .waitFor({ timeout: 60000 })
-        await capture("blueprint-note-completed")
-        await page.emulateMedia({ colorScheme: "dark" })
-        await capture("blueprint-note-completed-dark")
-        await page.emulateMedia({ colorScheme: "light" })
-      }
+      await page
+        .locator(".note-blueprint-state")
+        .filter({ hasText: /审核通过|Review passed/ })
+        .waitFor({ timeout: 60000 })
+      await capture("blueprint-note-completed", true)
+      assert.equal(statusReads.length - beforeApproval, 0, "Approval must not repeat status reads")
+      await page.emulateMedia({ colorScheme: "dark" })
+      await capture("blueprint-note-completed-dark", true)
+      await page.emulateMedia({ colorScheme: "light" })
+      await verifyCompletedNavigation(session, peer)
+      await page
+        .locator(".note-blueprint-state")
+        .filter({ hasText: /审核通过|Review passed/ })
+        .waitFor()
+      const completedLoop = (await client.blueprint.loop.get({ id: loopID!, scopeID: "home" }, options)).data
+      assert.equal(completedLoop.status, "completed")
+      assert.equal(completedLoop.summary, "受控验收任务已完成。")
+      await page
+        .locator(".workbench-surface-tab")
+        .filter({ hasText: blueprintTitle })
+        .locator(".workbench-surface-tab-close")
+        .click()
+      await capture("blueprint-completed-conversation", true)
+      await openDetails(kind + "-completed-details", true)
     }
   }
   assert.deepEqual(pageErrors, [])

@@ -35,9 +35,7 @@ export const AgentConfigToolGroup: ToolExposure.GroupInfo = {
   id: "agent-config",
   title: "Agent configuration",
   description:
-    "Create, update, disable, delete, inspect, and set the default agent through validated agent_config writes (markdown agent files or 60-agents.jsonc entries).",
-  whenToExpand:
-    'Expand with expand_tools({ groups: ["agent-config"] }) when the user wants to create or customize an agent, change an agent\'s model/prompt/permissions/visibility, disable or remove an agent, or change the default agent.',
+    "Create or customize agent models, prompts, permissions and visibility; inspect, disable or remove agents and choose the default through validated configuration writes.",
   tools: ["agent_config"],
 }
 

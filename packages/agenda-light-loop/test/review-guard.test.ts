@@ -76,7 +76,7 @@ for (const selected of [false, true]) {
             await AgendaStore.update(session.scope.id, item.id, { status: "cancelled" })
           }
           const result = await tool.execute({ summary: "Verified" }, context)
-          expect(result.metadata.loopStopRequested).toBe(true)
+          expect(result.metadata.loopCompleted).toBe(true)
           expect(
             await AgendaSessionWakeup.loopInstruction({ session: await Session.get(session.id), item }),
           ).toBeUndefined()

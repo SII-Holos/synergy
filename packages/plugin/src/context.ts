@@ -197,11 +197,17 @@ export type LightLoopStartInput = {
   instructions: string
   correlationId: string
   executionAgent: string
-  reviewAgent: string
+  /** @deprecated Accepted and ignored; Light Loop completes through executor self-check. */
+  reviewAgent?: string
   model?: { providerID: string; modelID: string }
   executionTools?: Record<string, boolean>
+  /** @deprecated Accepted and ignored. */
   reviewTools?: Record<string, boolean>
-  budget: { maxRuntimeMs: number; maxIterations: number }
+  budget: {
+    maxRuntimeMs: number
+    /** @deprecated Accepted and ignored. */
+    maxIterations?: number
+  }
   parent?: PluginTaskParent
 }
 

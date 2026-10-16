@@ -1,52 +1,15 @@
-Manage background bash processes: list, poll, log, write, send-keys, kill, clear, remove.
+Manage background Bash processes in the current Session Environment using the returned processId.
 
-## Actions
+- list: running and recently finished processes.
+- poll: status and recent output; nonblocking by default. block: true waits for exit or timeoutSeconds (seconds, default 30). This is a wait window, not an execution deadline.
+- log: available full output, with offset/limit pagination; returns immediately.
+- write: raw stdin data. send-keys: key sequences.
+- kill: terminate. clear: remove a finished process. remove: kill if running, then remove.
 
-- **list**: List all running and recently finished background processes
-- **poll**: Check status and recent output. Non-blocking by default. `block: true` waits until exit or the wait window ends (`timeoutSeconds` in seconds, default 30s); an earlier exit returns sooner.
-- **log**: Get full output from a process (supports offset/limit for pagination). Non-blocking — returns immediately with whatever output has been produced so far.
-- **write**: Write raw data to a process's stdin
-- **send-keys**: Send key sequences to a process (e.g., ["C-c"] for Ctrl+C, ["Enter"])
-- **kill**: Terminate a running process
-- **clear**: Remove a finished process from the list.
-- **remove**: Remove a process (kills if running, then removes).
+Continue independent work while a process runs. Check only when the result can change a decision. If completion gates progress and no independent work remains, use a suitable blocking poll (for example timeoutSeconds: 300). For persistent services, check readiness instead of waiting for exit.
 
-## Notes
+Running means alive, not progressing. If input is requested or a wait gives no progress evidence and interaction/stalled dependencies are plausible, inspect relevant output or process state once; redirected output may be in a log file. Confirmed quiet work can keep waiting. Supply input only when known and authorized; otherwise surface the missing decision. Do not kill/rerun because a wait ends, guess confirmations, or replace repeated polls with shell status loops.
 
-Choose according to the next useful action:
+Ending a turn does not schedule a later check; use delayed follow-up only if the runtime provides it. Subagent completion already sends an automatic notification.
 
-- Continue independent work while the process runs. Check status or logs when the result can change a decision, not merely to refresh progress.
-- If completion gates the next action and no independent work remains, use a blocking poll with a window appropriate to the expected work. A long local operation can use `block: true, timeoutSeconds: 300`; this is a wait window, not an execution deadline.
-- `running` means the process is alive, not that it is making progress. If output requests input, or an initial wait provides no progress evidence and interaction or a stalled dependency is plausible, inspect the relevant output or process state once before deciding what to do. Redirected output may require reading the command's log file. Confirmed quiet work can continue waiting; silence alone does not prove a stall.
-- Supply input only when its value is known and authorized; do not guess confirmations. If a required decision is unavailable, surface the blocker instead of waiting for nonexistent input. Do not kill or rerun a command merely because a wait ends, and do not replace repeated polls with shell status loops.
-
-For a persistent service, check readiness rather than waiting for exit. Ending the current turn does not itself arrange a later check of external work. Use a delayed follow-up capability only when the current runtime explicitly provides one. Visible running subagents already notify you on completion; rely on their automatic notification.
-
-## Usage
-
-Manage a process in the current Session Environment using the processId returned by Bash.
-
-Examples (use the processId returned by Bash):
-
-```
-// One status check when it can change a decision:
-process(action: "poll", processId: "proc_xxx")
-// Completion gates progress and no independent work remains:
-process(action: "poll", processId: "proc_xxx", block: true, timeoutSeconds: 300)
-// Diagnose output; offset/limit can select the relevant part:
-process(action: "log", processId: "proc_xxx")
-// Supply known, authorized task input:
-process(action: "write", processId: "proc_xxx", data: "<known input>\n")
-// Interrupt or terminate when appropriate:
-process(action: "send-keys", processId: "proc_xxx", keys: ["C-c"])
-process(action: "kill", processId: "proc_xxx")
-```
-
-## Key Tokens for send-keys
-
-- Single characters: `"a"`, `"1"`, `"/"`
-- Special keys: `"Enter"`, `"Tab"`, `"Escape"`, `"Space"`, `"Backspace"`
-- Arrow keys: `"Up"`, `"Down"`, `"Left"`, `"Right"`
-- Ctrl combinations: `"C-c"` (Ctrl+C), `"C-d"` (Ctrl+D), `"C-z"` (Ctrl+Z)
-- Alt combinations: `"M-x"` (Alt+X)
-- Function keys: `"F1"` through `"F12"`
+send-keys tokens: literal characters; Enter, Tab, Escape, Space, Backspace; Up, Down, Left, Right; Ctrl as C-c/C-d/C-z; Alt as M-x; F1–F12.

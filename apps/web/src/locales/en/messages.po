@@ -14264,13 +14264,6 @@ msgstr "Task description"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.lightLoop.taskDialog.reviewPending"
-msgstr "The goal is read-only during review."
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.save"
 msgstr "Save task"
 
@@ -14448,6 +14441,10 @@ msgstr "Failure reason"
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.iterationExhausted"
 msgstr "Review limit reached"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.lightCompleted"
+msgstr "Completed"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.openNote"
@@ -25607,6 +25604,10 @@ msgid "tool.title.compact-session"
 msgstr "Compact Session"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.complete-light-loop"
+msgstr "Complete Light Loop"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.control-session"
 msgstr "Manage session"
 
@@ -25965,10 +25966,6 @@ msgstr "Render content"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.request-blueprint-review"
 msgstr "Request Blueprint Review"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.request-review"
-msgstr "Request Review"
 
 #. Research
 msgid "tool.title.research-init"

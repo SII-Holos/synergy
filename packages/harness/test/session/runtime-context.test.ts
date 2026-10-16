@@ -3,11 +3,34 @@ import { RuntimeAdvisory } from "../../src/session/runtime-context"
 import { MessageV2 } from "../../src/session/message-v2"
 import { ContextUsage } from "../../src/session/context-usage"
 import { upgradeRuntimeContextRecord } from "../../src/session/runtime-context-migration"
+import { RuntimeContextMetadata } from "../../src/session/runtime-context-schema"
 
 const memory = { id: "memory", state: "present" as const, text: "Remember the complete reference: ALPHA-419." }
 const warning = { id: "git-health", state: "present" as const, text: "There are uncommitted changes." }
 
 describe("durable advisory observations", () => {
+  test("concise observations keep complete Unicode knowledge and verifiable source ranges", () => {
+    const knowledge = {
+      id: 'entry<&"',
+      kind: "knowledge" as const,
+      state: "present" as const,
+      text: "完整正文 🧪\n\nLine two.\n",
+    }
+    const first = RuntimeAdvisory.prepare({
+      scope: "a",
+      sources: [knowledge, { id: "empty", state: "present", text: "" }],
+      previous: [],
+    })!
+    expect(first.text.startsWith("<runtime-context>\n<context-source")).toBe(true)
+    expect(first.text).toContain(knowledge.text)
+    expect(first.text).toContain('id="entry&lt;&amp;&quot;"')
+    expect(first.metadata.sources[0]!.revision).toBe(RuntimeAdvisory.knowledgeRevision(knowledge.text))
+    expect(RuntimeContextMetadata.hash(first.text)).toBe(first.metadata.contentHash)
+    for (const source of first.metadata.sources) expect(RuntimeContextMetadata.verified(source, first.text)).toBe(true)
+    const cleared = RuntimeAdvisory.prepare({ scope: "a", sources: [knowledge], previous: [first.metadata] })!
+    expect(cleared.metadata.sources).toMatchObject([{ id: "empty", state: "cleared" }])
+  })
+
   test("retains complete information once and appends only changed sources", () => {
     const first = RuntimeAdvisory.prepare({ scope: "workspace-a", sources: [memory, warning], previous: [] })!
     expect(first.text).toContain(memory.text)
@@ -30,14 +53,14 @@ describe("durable advisory observations", () => {
       previous: [first.metadata],
     })!
     expect(unavailable.metadata.sources[0].state).toBe("unavailable")
-    expect(unavailable.text).toContain("not a confirmed current status")
+    expect(unavailable.text).toContain("Current report unavailable.")
     const clear = RuntimeAdvisory.prepare({
       scope: "workspace-a",
       sources: [{ id: "git-health", state: "cleared" }],
       previous: [first.metadata, unavailable.metadata],
     })!
     expect(clear.metadata.sources[0].state).toBe("cleared")
-    expect(clear.text).toContain("no longer active")
+    expect(clear.text).toContain("Source no longer active.")
   })
 
   test("clears a removed source and restores all observations after a context boundary", () => {

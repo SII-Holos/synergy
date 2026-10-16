@@ -43,7 +43,7 @@ export namespace AgendaSessionWakeup {
   export async function assertClear(input: {
     sessionID: string
     scopeID: string
-    operation: "Light Loop review" | "BlueprintLoop audit"
+    operation: "Light Loop completion" | "BlueprintLoop audit"
   }): Promise<void> {
     const wakeups = await list(input.sessionID, input.scopeID)
     if (!wakeups.hasActiveAgenda) return

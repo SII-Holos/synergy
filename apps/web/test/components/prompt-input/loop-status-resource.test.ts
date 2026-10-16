@@ -217,7 +217,7 @@ test("a failed cold result read stays visible and retries only on request", asyn
     f.setLoopID(undefined)
     f.setHistory({ light: "terminal-notice" })
     await tick()
-    expect(f.awaitingTerminal()).toBeDefined()
+    expect(f.awaitingTerminal()).toBeUndefined()
     f.terminals[0].reply.reject(new Error("offline"))
     await tick()
     expect(f.awaitingTerminal()?.error).toBe(true)

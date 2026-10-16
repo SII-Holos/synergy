@@ -11,7 +11,6 @@ import "../session-schema"
 export { WorkflowConflictError }
 const workflowLock = CoreWorkflow.lock
 const assertNoActiveBlueprintLoop = SessionExecutionContributions.assertWorkflowAllowed
-type BlueprintLoopSource = "user" | "lattice" | "plugin"
 export namespace WorkflowSessionService {
   export const lock = CoreWorkflow.lock
   export const setNone = CoreWorkflow.setNone
@@ -48,9 +47,6 @@ export namespace WorkflowSessionService {
     return Session.update(sessionID, (draft) => {
       if (draft.workflow?.kind !== "lightloop") {
         throw new Error("Session does not have an active Light Loop workflow.")
-      }
-      if (draft.workflow.stopRequest) {
-        throw new Error("Cannot update the Light Loop task while completion review is pending.")
       }
       draft.workflow.instructions = trimmed
     })

@@ -14264,13 +14264,6 @@ msgstr "任务描述"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.lightLoop.taskDialog.reviewPending"
-msgstr "审核中，目标只读。"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.save"
 msgstr "保存任务"
 
@@ -14448,6 +14441,10 @@ msgstr "失败原因"
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.iterationExhausted"
 msgstr "审核达上限"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.lightCompleted"
+msgstr "已完成"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.openNote"
@@ -25607,6 +25604,10 @@ msgid "tool.title.compact-session"
 msgstr "整理会话上下文"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.complete-light-loop"
+msgstr "完成轻循环"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.control-session"
 msgstr "管理会话"
 
@@ -25965,10 +25966,6 @@ msgstr "渲染内容"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.request-blueprint-review"
 msgstr "请求 Blueprint 审查"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.request-review"
-msgstr "请求审查"
 
 #. Research
 msgid "tool.title.research-init"

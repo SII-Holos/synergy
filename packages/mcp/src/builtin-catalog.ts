@@ -123,9 +123,7 @@ export function builtinApiKeyHint(entry: unknown): string | undefined {
 /**
  * True when the named server is staged from the builtin catalog right now:
  * the catalog ships it, the disable switch is off, and no user entry owns
- * the name. Exposure decisions use this as the expand-by-default fallback
- * so the shipped search servers stay resident like the first-party tools
- * they replaced.
+ * the name. Actual tool presentation uses the connected handle's source.
  */
 export function builtinServerStaged(name: string, userMcp: Record<string, unknown> | undefined): boolean {
   if (builtinMcpDisabled()) return false

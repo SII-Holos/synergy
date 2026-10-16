@@ -4,9 +4,7 @@ export function registerAgentContributions() {
   AgentPermissionContributions.register("agenda", {
     base: (agent, identity) =>
       (identity.owner === "harness" && agent.mode === "subagent") ||
-      (identity.source === "builtin" &&
-        ((identity.owner === "blueprint" && identity.registrationKey === "supervisor") ||
-          (identity.owner === "light-loop" && identity.registrationKey === "lightloop-reviewer")))
+      (identity.source === "builtin" && identity.owner === "blueprint" && identity.registrationKey === "supervisor")
         ? PermissionNext.fromConfig({ agenda_list: "allow", agenda_logs: "allow" })
         : [],
   })

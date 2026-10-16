@@ -109,6 +109,7 @@ export type ToolExposure =
       group: string
       title?: string
       description?: string
+      /** @deprecated Put selection guidance in description; retained for Plugin API4 source compatibility. */
       whenToExpand?: string
     }
   | {

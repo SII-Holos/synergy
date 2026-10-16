@@ -378,6 +378,8 @@ export namespace WorkflowRecovery {
               loopRole: "audit",
               source: loop.source ?? "user",
             })
+          } else if (loop.auditSessionID) {
+            await clearSessionLoopBinding({ ...input, sessionID: loop.auditSessionID, loopID: loop.id })
           }
         } else if (isTerminalLoop(loop)) {
           await clearNoteActiveLoop({ ...input, loop })
@@ -393,7 +395,7 @@ export namespace WorkflowRecovery {
       }
       const execution = sessionsByID.get(loop.sessionID)
       if (execution) sessionCandidates.set(execution.id, execution)
-      if (loop.auditSessionID) {
+      if (loop.status === "auditing" && loop.auditSessionID) {
         const audit = sessionsByID.get(loop.auditSessionID)
         if (audit) sessionCandidates.set(audit.id, audit)
       }
@@ -432,7 +434,7 @@ export namespace WorkflowRecovery {
         candidates.set(execution.id, execution)
         activeLoopBySessionID.set(execution.id, loop)
       }
-      if (loop.auditSessionID) {
+      if (loop.status === "auditing" && loop.auditSessionID) {
         const audit = sessionsByID.get(loop.auditSessionID)
         if (audit) {
           candidates.set(audit.id, audit)

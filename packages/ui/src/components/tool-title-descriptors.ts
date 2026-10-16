@@ -51,7 +51,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   question: d("tool.title.questions", "Ask questions"),
   question_timed_out: d("tool.title.question-timed-out", "Question Timed Out"),
   question_no_response: d("tool.title.question-no-response", "No response received"),
-  loop_stop: d("tool.title.request-review", "Request Review"),
+  loop_stop: d("tool.title.complete-light-loop", "Complete Light Loop"),
   light_loop_approve: d("tool.title.approve-light-loop", "Approve Light Loop"),
   light_loop_reject: d("tool.title.reject-light-loop", "Reject Light Loop"),
   blueprint_loop_stop: d("tool.title.request-blueprint-review", "Request Blueprint Review"),

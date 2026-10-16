@@ -199,7 +199,7 @@ export function createLoopStatusResource(input: {
       const value = snapshot()
       return input.hasFeature("light-loop") &&
         !input.lightActive() &&
-        (value?.hadLight || input.history().light) &&
+        (value?.hadLight || value?.lightError !== undefined) &&
         !value?.light
         ? { instructions: value?.lightInstructions ?? "", error: value?.lightError }
         : undefined

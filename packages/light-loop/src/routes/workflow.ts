@@ -56,7 +56,7 @@ export const LightLoopRoute = () =>
       "/session/:id/lightloop/cancel",
       describeRoute({
         summary: "Cancel Light Loop",
-        description: "Stop active session work and completion review, then clear the Light Loop workflow.",
+        description: "Stop active session work, then clear the Light Loop workflow.",
         operationId: "workflow.session.cancelLightloop",
         responses: {
           200: {
@@ -83,7 +83,7 @@ export const LightLoopRoute = () =>
       describeRoute({
         summary: "Get Light Loop terminal status",
         description:
-          "Read the authoritative terminal status of the most recent Light Loop on a session. Terminal Light Loops clear the interactive workflow, so the durable terminal record is the only way to distinguish approval, exhaustion, timeout, cancellation, and failure.",
+          "Read the authoritative terminal status of the most recent Light Loop on a session. Terminal Light Loops clear the interactive workflow, so the durable terminal record is the only way to distinguish completion, timeout, cancellation, and failure.",
         operationId: "workflow.session.getLightloopTerminal",
         responses: {
           200: {

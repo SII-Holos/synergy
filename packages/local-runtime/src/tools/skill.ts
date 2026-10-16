@@ -3,15 +3,6 @@ import { InstructionRegistry } from "@ericsanchezok/synergy-harness/instruction/
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 
-export function truncateSkillDescription(raw: string): string {
-  if (!raw) return ""
-  const collapsed = raw.split("\n")[0].replace(/\s+/g, " ").trim()
-  if (collapsed.length <= 100) return collapsed
-  const boundary = collapsed.lastIndexOf(" ", 100)
-  const cut = boundary === -1 ? 100 : boundary
-  return `${collapsed.slice(0, cut)}…`
-}
-
 const parameters = z.object({
   name: z.string().describe("The skill identifier from available_skills (e.g., 'code-review' or 'category/helper')"),
   reference: z
@@ -32,11 +23,11 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
       accessible.length === 0
         ? "Load a skill to get detailed instructions for a specific task. No skills are currently available."
         : [
-            "Load a skill to get detailed instructions for a specific task.",
-            "Skills provide specialized knowledge and step-by-step guidance.",
-            "Use this when a task matches an available skill's description.",
+            "Load the instructions for a matching skill; use reference to read a listed supporting file.",
             "<available_skills>",
-            ...accessible.map((entry) => `${entry.name}: ${truncateSkillDescription(entry.description)}`),
+            ...accessible
+              .toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+              .map((entry) => `${entry.name}: ${entry.description.replace(/\s+/g, " ").trim()}`),
             "</available_skills>",
           ].join("\n")
   } catch {

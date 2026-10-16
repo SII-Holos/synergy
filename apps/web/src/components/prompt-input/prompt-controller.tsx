@@ -301,10 +301,6 @@ export function createPromptInputController(props: PromptInputProps) {
     const workflow = activeWorkflow()
     return backendLightLoopActive() && workflow?.kind === "lightloop" ? workflow.instructions : undefined
   })
-  const lightLoopReviewPending = createMemo(() => {
-    const workflow = activeWorkflow()
-    return backendLightLoopActive() && workflow?.kind === "lightloop" && !!workflow.stopRequest
-  })
   const storedPlan = createMemo(
     () => capabilities.has("blueprint") && (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()),
   )
@@ -351,10 +347,6 @@ export function createPromptInputController(props: PromptInputProps) {
     loopID: () => blueprintBinding()?.loopID,
     lightActive: backendLightLoopActive,
     lightInstructions: lightLoopInstructions,
-    lightReviewer: () => {
-      const workflow = activeWorkflow()
-      return workflow?.kind === "lightloop" ? workflow.stopRequest?.reviewSessionID : undefined
-    },
     history: loopHistory,
     reconnect: globalSync.reconnectVersion,
     selection: capabilities.current,
@@ -1069,7 +1061,6 @@ export function createPromptInputController(props: PromptInputProps) {
         instructions={workflow.instructions}
         active={active}
         working={working}
-        reviewPending={lightLoopReviewPending}
         onSave={async (instructions) => {
           if (!active()) throw new Error(i18n._(PI.lightLoopSessionUnavailable))
           await sdk.client.workflow.session.updateLightloop(

@@ -22,14 +22,13 @@ const stopRequest = {
   requesterMessageID: "msg",
 }
 
-describe("Loop presentation follows independent review", () => {
+describe("Loop presentation follows domain terminal state", () => {
   test("Light Loop keeps its goal as the label instead of execution or review summaries", () => {
     const instructions = "Repair missing final replies after background generation and preserve the history anchor"
-    const reviewing = light({ instructions, stopRequest, review: { attempts: 1, lastReason: "Needs more tests" } })
+    const reviewing = light({ instructions })
     expect(resolveLoopDisplay({ workflow: reviewing, status: { type: "busy" } })).toMatchObject({
       title: instructions,
-      detail: stopRequest.summary,
-      reason: "Needs more tests",
+      stage: "running",
     })
     const revised = instructions + " across reconnects"
     expect(resolveLoopDisplay({ workflow: light({ instructions: revised }), status: paused })?.title).toBe(revised)
@@ -75,18 +74,15 @@ describe("Loop presentation follows independent review", () => {
       lightReview: undefined,
     })
   })
-  test.each(["blueprint", "lightloop"] as const)(
-    "%s does not mistake an idle reviewer or paused run for completion",
-    (kind) => {
-      const input =
-        kind === "blueprint"
-          ? { blueprint: { ...loop, status: "auditing" as const } }
-          : { workflow: light({ stopRequest }) }
-      expect(resolveLoopDisplay({ ...input, status: { type: "idle" } })?.stage).toBe("auditing")
-      expect(resolveLoopDisplay({ ...input, status: paused })?.stage).toBe("paused")
-    },
-  )
-  test.each(["blueprint", "lightloop"] as const)(
+  test.each(["blueprint"] as const)("%s does not mistake an idle reviewer or paused run for completion", (kind) => {
+    const input =
+      kind === "blueprint"
+        ? { blueprint: { ...loop, status: "auditing" as const } }
+        : { workflow: light({ stopRequest }) }
+    expect(resolveLoopDisplay({ ...input, status: { type: "idle" } })?.stage).toBe("auditing")
+    expect(resolveLoopDisplay({ ...input, status: paused })?.stage).toBe("paused")
+  })
+  test.each(["blueprint"] as const)(
     "%s shows rejected work, reason, later review and authoritative approval",
     (kind) => {
       const rejected =

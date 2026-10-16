@@ -4,7 +4,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { BlueprintLoopStore } from "../../src/blueprint/loop-store"
-import { BlueprintLoopStopTool } from "../../src/blueprint/tools/blueprint-loop-stop"
+import { BlueprintLoopStopTool, setBlueprintAgendaAssertClear } from "../../src/blueprint/tools/blueprint-loop-stop"
 import { testRuntime } from "../support/runtime"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { BlueprintLoopApproveTool } from "../../src/blueprint/tools/blueprint-loop-approve"
@@ -27,18 +27,10 @@ test("Blueprint requests review without Agenda installed", async () => {
           expect(PermissionNext.evaluate(reader, "source.ts", reviewer.permission).action).toBe("allow")
         for (const writer of ["edit", "write", "apply_patch", "revise_file", "save_file", "resolve_conflicts"])
           expect(PermissionNext.evaluate(writer, "source.ts", reviewer.permission).action).toBe("deny")
-        expect(reviewer.prompt).toContain("Formally submit the verdict")
-        expect(reviewer.prompt).toContain("execution session ID from your launch context")
-        expect(reviewer.prompt).toContain("Cannot verify is blocking")
-        expect(reviewer.prompt).not.toMatch(/note_read|view_file|scan_files|via `task`|reason:|sessionID:/)
         const approve = await BlueprintLoopApproveTool.init()
         const reject = await BlueprintLoopRejectTool.init()
-        for (const verdict of [approve, reject]) {
-          expect(verdict.description).toContain("execution session ID provided in your launch context")
-          expect(verdict.description).toContain("automatically")
-          expect(verdict.description).toContain("Do not send a separate")
-        }
-        expect(reject.description).toContain("BLOCKING or NON-BLOCKING")
+        expect(Object.keys(approve.parameters.shape)).toEqual(["summary"])
+        expect(Object.keys(reject.parameters.shape)).toEqual(["reason"])
         const tool = await BlueprintLoopStopTool.init()
         const result = await tool.execute(
           { summary: "Verified" },
@@ -53,6 +45,43 @@ test("Blueprint requests review without Agenda installed", async () => {
         )
         expect(result.metadata.reviewRequested).toBe(true)
         expect((await BlueprintLoopStore.get(session.scope.id, loop.id)).stopRequest?.summary).toBe("Verified")
+      },
+    }),
+  )
+})
+
+test("cancelled execution cannot request review after waiting for the Agenda guard", async () => {
+  const controller = new AbortController()
+  await using runtime = await testRuntime(undefined, () => {
+    setBlueprintAgendaAssertClear(async () => {
+      controller.abort(new Error("Execution cancelled"))
+    })
+  })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const session = await Session.create({})
+        const loop = await BlueprintLoopStore.create({ noteID: "note_cancelled", title: "Work", sessionID: session.id })
+        await BlueprintLoopStore.updateStatus(session.scope.id, loop.id, { status: "running" })
+        await Session.update(session.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "execution" }
+        })
+        const tool = await BlueprintLoopStopTool.init()
+        await expect(
+          tool.execute(
+            { summary: "Verified" },
+            {
+              sessionID: session.id,
+              messageID: "message_stop",
+              agent: "build",
+              abort: controller.signal,
+              metadata() {},
+              async ask() {},
+            },
+          ),
+        ).rejects.toThrow("Execution cancelled")
+        expect((await BlueprintLoopStore.get(session.scope.id, loop.id)).stopRequest).toBeUndefined()
       },
     }),
   )

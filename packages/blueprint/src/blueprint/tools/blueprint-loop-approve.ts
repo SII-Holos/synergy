@@ -1,10 +1,9 @@
-import z from "zod"
-import { BlueprintLoopStore, LoopError } from "../index"
+import { z } from "zod"
+import { BlueprintLoopStore } from "../index"
 import { LoopEvent } from "../event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { Session } from "@ericsanchezok/synergy-harness/session"
 import { BlueprintLoopReviewAccess } from "../review-access"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import DESCRIPTION from "./blueprint-loop-approve.txt"
@@ -12,8 +11,7 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BlueprintLoopSources } from "../source"
 
 const parameters = z.object({
-  sessionID: z.string().describe("The execution session ID provided in your launch context"),
-  summary: z.string().describe("Concise approved completion verdict"),
+  summary: z.string().describe("Completion verdict with concrete evidence for all required outcomes."),
 })
 
 function completionNotificationText(input: { loopID: string; summary: string; userPrompt?: string }) {
@@ -32,29 +30,15 @@ export const BlueprintLoopApproveTool = Tool.define("blueprint_loop_approve", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
+    ctx.abort.throwIfAborted()
     const summary = params.summary.trim()
     if (!summary) throw new Error("summary is required")
 
-    const executionSession = await Session.get(params.sessionID)
-    const loopID = executionSession.blueprint?.loopID
-    if (!loopID || executionSession.blueprint?.loopRole !== "execution") {
-      throw new Error(`Session ${params.sessionID} does not have an active BlueprintLoop execution`)
-    }
-
+    const context = await BlueprintLoopReviewAccess.resolve({ agent: ctx.agent, reviewSessionID: ctx.sessionID })
+    ctx.abort.throwIfAborted()
+    if (!context) throw new Error("Only the recorded reviewer session may approve this BlueprintLoop review")
+    const { loop } = context
     const scopeID = ScopeContext.current.scope.id
-    const loop = await BlueprintLoopStore.get(scopeID, loopID).catch(() => {
-      throw new LoopError.NotFound({ id: loopID })
-    })
-    if (loop.status !== "auditing" || !loop.auditSessionID) {
-      throw new Error(`BlueprintLoop ${loop.id} has no pending review`)
-    }
-
-    await BlueprintLoopReviewAccess.assertForTarget({
-      agent: ctx.agent,
-      reviewSessionID: ctx.sessionID,
-      targetSessionID: params.sessionID,
-      action: "approve",
-    })
 
     const completionText = completionNotificationText({ loopID: loop.id, summary, userPrompt: loop.userPrompt })
 

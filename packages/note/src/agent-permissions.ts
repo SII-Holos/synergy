@@ -13,9 +13,7 @@ const contribution: AgentPermissionContributions.Phases = {
       })
     if (
       (identity.owner === "harness" && agent.mode === "subagent") ||
-      (identity.source === "builtin" &&
-        ((identity.owner === "blueprint" && identity.registrationKey === "supervisor") ||
-          (identity.owner === "light-loop" && identity.registrationKey === "lightloop-reviewer")))
+      (identity.source === "builtin" && identity.owner === "blueprint" && identity.registrationKey === "supervisor")
     )
       return PermissionNext.fromConfig({ note_list: "allow", note_read: "allow", note_search: "allow" })
     return []

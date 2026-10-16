@@ -5,7 +5,7 @@ export function registerBridge() {
     {
       name: "lightloop",
       triggers: ["/lightloop"],
-      help: "/lightloop <task> — keep working until the task passes independent review",
+      help: "/lightloop <task> — keep working until the full task is complete and verified",
       async execute(ctx, scope) {
         if (!ctx.remainder) return { action: "handled", reply: "Usage: /lightloop <task>" }
         return ChannelCommand.changeWorkflow(ctx, scope, "✅ Light Loop enabled.", async (session) => {

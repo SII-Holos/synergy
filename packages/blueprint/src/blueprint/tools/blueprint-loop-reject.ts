@@ -1,11 +1,10 @@
-import z from "zod"
+import { z } from "zod"
 import { BlueprintLoopSources } from "../source"
-import { BlueprintLoopStore, LoopError } from "../index"
+import { BlueprintLoopStore } from "../index"
 import { LoopEvent } from "../event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { Session } from "@ericsanchezok/synergy-harness/session"
 import { BlueprintLoopReviewAccess } from "../review-access"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { isIterationBudgetExhausted } from "@ericsanchezok/synergy-harness/session/iteration-budget"
@@ -13,44 +12,25 @@ import DESCRIPTION from "./blueprint-loop-reject.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 
 const parameters = z.object({
-  sessionID: z.string().describe("The execution session ID provided in your launch context"),
-  reason: z.string().describe("Clear explanation of why the Blueprint outcome is not complete"),
-  completed: z.string().optional().describe("Optional summary of work that is already correct"),
-  remaining: z.string().describe("Missing or incorrect work, marking each item BLOCKING or NON-BLOCKING"),
-  instructions: z.string().describe("Concrete next actions the execution agent can follow without clarification"),
+  reason: z
+    .string()
+    .describe("Unmet requirements, evidence and concrete corrections; distinguish optional suggestions."),
 })
 
 export const BlueprintLoopRejectTool = Tool.define("blueprint_loop_reject", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
+    ctx.abort.throwIfAborted()
     const reason = params.reason.trim()
-    const remaining = params.remaining.trim()
-    const instructions = params.instructions.trim()
     if (!reason) throw new Error("reason is required")
-    if (!remaining) throw new Error("remaining is required")
-    if (!instructions) throw new Error("instructions is required")
 
-    const executionSession = await Session.get(params.sessionID)
-    const loopID = executionSession.blueprint?.loopID
-    if (!loopID || executionSession.blueprint?.loopRole !== "execution") {
-      throw new Error(`Session ${params.sessionID} does not have an active BlueprintLoop execution`)
-    }
-
+    const context = await BlueprintLoopReviewAccess.resolve({ agent: ctx.agent, reviewSessionID: ctx.sessionID })
+    ctx.abort.throwIfAborted()
+    if (!context) throw new Error("Only the recorded reviewer session may reject this BlueprintLoop review")
+    const { loop } = context
     const scopeID = ScopeContext.current.scope.id
-    const loop = await BlueprintLoopStore.get(scopeID, loopID).catch(() => {
-      throw new LoopError.NotFound({ id: loopID })
-    })
-    if (loop.status !== "auditing" || !loop.auditSessionID) {
-      throw new Error(`BlueprintLoop ${loop.id} has no pending review`)
-    }
 
-    await BlueprintLoopReviewAccess.assertForTarget({
-      agent: ctx.agent,
-      reviewSessionID: ctx.sessionID,
-      targetSessionID: params.sessionID,
-      action: "reject",
-    })
     const attempts = (loop.audit?.attempts ?? 0) + 1
     const maxIterations = loop.budget?.maxIterations
     if (isIterationBudgetExhausted(attempts, maxIterations)) {
@@ -85,16 +65,8 @@ export const BlueprintLoopRejectTool = Tool.define("blueprint_loop_reject", {
       attempts,
     }
 
-    const text = [
-      `BlueprintLoop ${loop.id} review requested changes.`,
-      "",
-      `**Reason:** ${reason}`,
-      params.completed?.trim() ? `\n**Completed:**\n${params.completed.trim()}` : "",
-      `\n**Remaining:**\n${remaining}`,
-      `\n**Instructions:**\n${instructions}`,
-    ]
-      .filter(Boolean)
-      .join("\n")
+    const text = `BlueprintLoop ${loop.id} review requested changes.
+${reason}`
 
     await SessionManager.deliver({
       target: loop.sessionID,
@@ -121,9 +93,6 @@ export const BlueprintLoopRejectTool = Tool.define("blueprint_loop_reject", {
           noteID: loop.noteID,
           title: loop.title,
           reason,
-          completed: params.completed,
-          remaining,
-          instructions,
         },
       },
     })

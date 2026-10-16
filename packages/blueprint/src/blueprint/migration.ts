@@ -242,6 +242,20 @@ async function migrateBlueprintLoopSource(progress: (current: number, total: num
   log.info("BlueprintLoop source migration complete", { totalLoops: loops.length, changed })
 }
 
+const foldStopSummary: NonNullable<Migration["upgradeRecord"]> = (key, value) => {
+  if (key[0] !== "blueprint_loops") return
+  const stop = value.stopRequest
+  if (!stop || typeof stop !== "object" || Array.isArray(stop)) return
+  const request = stop as Record<string, unknown>
+  const parts = typeof request.summary === "string" ? [request.summary] : []
+  for (const field of ["completed", "evidence", "remaining"]) {
+    if (Array.isArray(request[field]) && request[field].length)
+      parts.push(`${field}:\n${request[field].filter((item): item is string => typeof item === "string").join("\n")}`)
+    delete request[field]
+  }
+  request.summary = parts.join("\n\n")
+}
+
 export const migrations: Migration[] = [
   {
     id: "20261012-blueprint-home-scope",
@@ -555,6 +569,23 @@ export const migrations: Migration[] = [
         progress(++done, 0)
       }
       progress(done, done)
+    },
+  },
+  {
+    id: "20261016-blueprint-stop-summary",
+    execution: "record",
+    description: "Fold retained structured stop evidence into the natural-language summary",
+    scope: "global",
+    upgradeRecord: foldStopSummary,
+    async up(progress) {
+      let count = 0
+      for await (const { key, value } of Storage.records<Record<string, unknown>>({ kind: "blueprint_loops" })) {
+        const before = JSON.stringify(value)
+        foldStopSummary(key, value)
+        if (before !== JSON.stringify(value)) await Storage.write(key, value)
+        progress(++count, 0)
+      }
+      progress(count, count)
     },
   },
 ]

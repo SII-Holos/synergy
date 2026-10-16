@@ -1,41 +1,18 @@
-Executes a bash command in a persistent shell session. All commands run in ${directory} by default.
+Run a shell command; default directory: ${directory}. Select another directory with workdir rather than cd. Use this for terminal operations and command-line reads (rg, rg --files, find); prefer the selected file interface for editing.
 
-Use the `workdir` parameter to run in a different directory. AVOID `cd <directory> && <command>` patterns — use `workdir` instead.
-
-Use this for terminal operations such as git, npm and docker. Command-line discovery and reads, including rg, rg --files and find, are allowed. Use the selected specialized file interface for normal editing.
-
-Before executing the command:
-- If the command will create new directories or files, first use `ls` to verify the parent directory exists and is the correct location (e.g. check `foo` exists before `mkdir foo/bar`).
-- Always quote file paths that contain spaces with double quotes: `rm "path with spaces/file.txt"` works; `mkdir /Users/name/My Documents` fails; `mkdir "/Users/name/My Documents"` works.
-- Capture the output of the command.
-- For unattended work, use the command's supported non-interactive options or explicit inputs when their values are known and authorized. An acceptance flag may not cover every prompt. Use script entry points for scripts; do not accidentally start a REPL. Keep diagnostic output accessible.
-- Run validation commands directly when their exit status matters. Filtered or clipped output is useful for diagnosis, but a pipeline's zero exit does not prove an earlier command or test passed.
+- Verify the parent directory before creating files. Quote paths containing spaces and keep literal text out of shell interpolation.
+- Use supported non-interactive options or explicit input only when known and authorized. Run scripts through their entry points, avoid accidental REPLs, and retain diagnostic output.
+- Run validation directly: a successful output-filtering pipeline does not prove its earlier test or command passed.
+- Independent commands may run in parallel. Chain dependencies with &&; use ; only when earlier failure is irrelevant. Do not separate commands with unquoted newlines.
 
 ${artifactGuidance}
 
-Usage notes:
-- `command` is required. Use `workdir` to select the working directory.
-- If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it is truncated and the full output is written to a file. You can read specific sections with offset/limit or search the file. Because of this, you do NOT need `head`, `tail`, or other truncation commands to limit output — run the command directly.
-- `background: true` runs the command in the background immediately and returns a processId. `yieldSeconds` delays auto-backgrounding until a command has run that long (default 30); if the command completes first it returns normally.
-- After backgrounding, continue independent work if available. Otherwise choose a completion wait, readiness check or targeted diagnosis using `process` guidance. Running means alive, not necessarily progressing; do not restart a command merely to refresh its status.
-- For very long-running commands (experiments, training, large downloads, data processing running for minutes or hours), prefer the tracked background flow so Synergy shows a processId you can later poll, log, or kill. Detached launches (`tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, shell `&`) are blocked unless the runtime intentionally permits them (`full_access` control profile or `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`).
-- For outbound text the user should review before publication (PR body, commit message, channel message), prepare a file with the available writing tools and let the user review it. Pass the reviewed file to the command's file-input option, such as `gh pr create --body-file ./pr-body.md`; keep its contents out of shell parsing.
+Output beyond ${maxLines} lines or ${maxBytes} bytes is saved to a file; read/search that file as needed. Manual output truncation is unnecessary.
 
-Prefer the available file, search and editing tools over shell equivalents; output text directly when no command is needed.
+background: true immediately returns a processId. yieldSeconds controls auto-backgrounding (default 30); earlier completion returns normally. For long work use this tracked flow. Detached launches (tmux/screen/nohup/setsid/disown/shell &) require full_access or SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1. Continue independent work, then use process for completion, readiness or diagnosis; running does not prove progress.
 
-When issuing multiple commands: independent commands can run in parallel — issue multiple Bash tool calls in one message. Sequential dependencies chain with `&&` in a single call. Use `;` only when the failure of the first command does not matter. DO NOT use newlines to separate commands (newlines are fine inside quoted strings).
-
-# Committing changes with git
-
-Git Safety Protocol:
-- NEVER update the git config.
-- NEVER run destructive/irreversible git commands (like push --force, hard reset, etc.) unless the user explicitly requests them.
-- NEVER skip hooks (--no-verify, --no-gpg-sign) unless the user explicitly requests it. NEVER force-push to main/master.
-- Avoid `git commit --amend`. Only use it when ALL conditions hold: the user explicitly requested the amend (or the commit succeeded but a pre-commit hook auto-modified files), the HEAD commit was created by you in this conversation, and the commit was NOT pushed. If a commit FAILED or was REJECTED by a hook, never amend — fix the issue and create a NEW commit.
-- NEVER commit changes unless the user explicitly asks.
-
-Commit flow: run `git status`, `git diff`, and `git log` in parallel first. Stage only files owned by the current task; preserve unrelated dirty and untracked files. Draft a concise conventional-type message focused on the "why". Verify with `git status` after committing. Do not create an empty commit. Never run additional commands to read or explore code besides git commands. Never use the TodoWrite or Task tools. Never push unless the user asks.
-
-# Creating pull requests
-
-Use the `gh` command for ALL GitHub-related tasks (issues, PRs, checks, releases). When creating a PR: run `git status`, `git diff`, and `git log` plus `git diff [base-branch]...HEAD` in parallel to understand the current branch state and full commit history. Analyze ALL commits and draft a pull request summary. Create the branch if needed, push with `-u` if needed, then `gh pr create --body-file` with the reviewed file. Return the PR URL when done. Never push, open a PR, or mutate external systems unless the user requests it. Never use the TodoWrite or Task tools for PR work.
+Git and publication:
+- Commit, push, open PRs or mutate external systems only when the user requests it. Never update Git configuration or force-push main/master. Destructive commands and hook/signing bypasses require explicit user authority.
+- Inspect status, diff and history before Git mutations; preserve unrelated dirty/untracked work and stage only task-owned files. Verify status afterward; do not create empty commits.
+- Amend only your own unpushed commit when the user requests it or a successful commit's hook changed intended files. After a failed/rejected commit, fix the issue and create a new commit.
+- Use gh for GitHub tasks. Review all branch commits before PR creation. Prepare outbound prose in a file for review and pass a file-input option (such as --body-file); do not interpolate it into a shell command. Return the PR URL after creation.

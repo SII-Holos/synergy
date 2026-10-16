@@ -5493,7 +5493,7 @@ export class Session extends HeyApiClient {
   /**
    * Cancel Light Loop
    *
-   * Stop active session work and completion review, then clear the Light Loop workflow.
+   * Stop active session work, then clear the Light Loop workflow.
    */
   public cancelLightloop<ThrowOnError extends boolean = false>(
     parameters: {
@@ -5529,7 +5529,7 @@ export class Session extends HeyApiClient {
   /**
    * Get Light Loop terminal status
    *
-   * Read the authoritative terminal status of the most recent Light Loop on a session. Terminal Light Loops clear the interactive workflow, so the durable terminal record is the only way to distinguish approval, exhaustion, timeout, cancellation, and failure.
+   * Read the authoritative terminal status of the most recent Light Loop on a session. Terminal Light Loops clear the interactive workflow, so the durable terminal record is the only way to distinguish completion, timeout, cancellation, and failure.
    */
   public getLightloopTerminal<ThrowOnError extends boolean = false>(
     parameters: {
@@ -12667,7 +12667,7 @@ export class Loop extends HeyApiClient {
   /**
    * Complete BlueprintLoop
    *
-   * Mark a BlueprintLoop as completed.
+   * Return an already accepted BlueprintLoop. An unfinished loop requires its recorded reviewer to call blueprint_loop_approve.
    */
   public complete<ThrowOnError extends boolean = false>(
     parameters: {

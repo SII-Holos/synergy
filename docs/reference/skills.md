@@ -49,6 +49,8 @@ Strict manifests accept this field set and reject unknown fields.
 
 The runtime record stores normalized fields only: `name`, `description`, `declaredLicense`, `declaredCompatibility`, `invocation`, `origin`, `backing`, and `diagnostics`. It does not preserve raw frontmatter, arbitrary vendor fields, `allowed-tools`, or `metadata` as runtime authorization state.
 
+The model catalog shows each accessible, model-invocable Skill's full declared `description`, collapsing whitespace onto one line without cutting content. Descriptions carry purpose, selection triggers, and exclusions; bodies carry execution steps, next-reference routing, and authorization or safety guards rather than repeating the selection prose.
+
 `allowed-tools` is descriptive metadata only. Tool visibility and execution still come from the active agent, tool resolver, control profile, permission rules, Scope/workspace boundary, and sandbox. A Skill can ask the model to use a tool, but it cannot authorize that tool.
 
 ## Source Profiles and Roots

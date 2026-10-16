@@ -8,6 +8,7 @@ export const loopCopy = {
   paused: { id: "prompt.loopStatus.paused", message: "Paused" },
   rework: { id: "prompt.loopStatus.rework", message: "Changes requested" },
   completed: { id: "prompt.loopStatus.completed", message: "Review passed" },
+  lightCompleted: { id: "prompt.loopStatus.lightCompleted", message: "Completed" },
   failed: { id: "prompt.loopStatus.failed", message: "Failed" },
   cancelled: { id: "prompt.loopStatus.cancelled", message: "Cancelled" },
   timed_out: { id: "prompt.loopStatus.timedOut", message: "Time limit reached" },

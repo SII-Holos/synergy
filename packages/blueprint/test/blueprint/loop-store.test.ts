@@ -355,7 +355,8 @@ describe("BlueprintLoopStore transitions", () => {
           await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
             status: "running" as any,
           })
-          await BlueprintLoopStore.complete(ScopeContext.current.scope.id, loop.id)
+          await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "auditing" })
+          await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "completed" })
 
           await expect(
             BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
@@ -440,7 +441,8 @@ describe("BlueprintLoopStore transitions", () => {
           await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
             status: "running" as any,
           })
-          await BlueprintLoopStore.complete(ScopeContext.current.scope.id, loop.id)
+          await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "auditing" })
+          await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "completed" })
 
           const updated = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
             status: "completed" as any,

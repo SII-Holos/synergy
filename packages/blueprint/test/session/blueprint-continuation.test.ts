@@ -53,6 +53,8 @@ async function setupLoop(status: "running" | "auditing" | "completed" = "running
     source: "user",
   })
   await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+  if (status === "completed")
+    await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "auditing" })
   if (status !== "running") {
     await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status })
   }
@@ -133,8 +135,8 @@ describe("BlueprintContinuation", () => {
           expect(item.message?.origin?.type).toBe("blueprint")
           const part = item.message?.parts[0] as MessageV2.TextPart
           expect(part.synthetic).toBe(true)
-          expect(part.text).toContain(`BlueprintLoop ${loop.id} status is \`running\``)
-          expect(part.text).toContain("current delivered state")
+          expect(part.text).toContain(loop.noteID)
+          expect(part.text).toContain("full outcome")
           expect(part.text).not.toContain("implementation state")
           expect(part.text).not.toContain("implementation work")
           expect(part.text).toContain("blueprint_loop_stop")
@@ -152,9 +154,7 @@ describe("BlueprintContinuation", () => {
           const { session, loop } = await setupLoop()
           const scopeID = ScopeContext.current.scope.id
           await (BlueprintLoopStore as any).recordStopRequest(scopeID, loop.id, {
-            summary: "Blueprint complete",
-            completed: ["Implemented the requested behavior"],
-            evidence: ["Focused tests pass"],
+            summary: "Blueprint complete. Focused tests pass",
             requestedAt: Date.now(),
             requesterSessionID: session.id,
             requesterMessageID: "msg_stop",
@@ -169,9 +169,7 @@ describe("BlueprintContinuation", () => {
             expect(input.visibility).toBe("visible")
             expect(input.notifyParentOnComplete).toBe(false)
             expect(input.prompt).toContain("Focused tests pass")
-            expect(input.prompt).toContain("Change Scope, boundaries, and non-goals")
-            expect(input.prompt).toContain("within the Blueprint and start-instruction scope")
-            expect(input.prompt).toContain("first successful blueprint_loop_stop")
+            expect(input.prompt).toContain("activity after this stop request")
             const reviewSession = await Session.create({ parentID: session.id })
             reviewSessionID = reviewSession.id
             return { id: "ctx_audit", sessionID: reviewSession.id, status: "queued" }

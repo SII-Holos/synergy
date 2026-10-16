@@ -1,12 +1,10 @@
 import { z } from "zod"
 import { WorkflowKindRegistry } from "@ericsanchezok/synergy-harness/session/workflow-kind-registry"
-import { WorkflowPromptRegistry } from "@ericsanchezok/synergy-harness/session/workflow-prompt-registry"
 import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/session/execution-contributions"
 import { SessionModePolicy } from "@ericsanchezok/synergy-harness/session/tool-mode-policy"
 import { WorkflowInfo } from "../session-schema"
-import { WorkflowSessionService, WorkflowConflictError } from "./workflow"
+import { WorkflowSessionService } from "./workflow"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
-import { LightLoopReviewAccess } from "./light-loop-review-access"
 export function registerSessions() {
   WorkflowKindRegistry.register({
     id: "lightloop",
@@ -40,16 +38,6 @@ export function registerSessions() {
           "loop_stop",
           SessionModePolicy.unavailable({ toolName: "loop_stop", reason: "light_loop_required", session }),
         )
-      const review = session?.id
-        ? await LightLoopReviewAccess.resolve({
-            agent: input.agent,
-            reviewSessionID: session.id,
-            reviewSession: session,
-          })
-        : undefined
-      if (!review)
-        for (const toolName of ["light_loop_approve", "light_loop_reject"])
-          result.set(toolName, SessionModePolicy.unavailable({ toolName, reason: "permission", session }))
       return result
     },
     unavailable(input) {

@@ -100,7 +100,7 @@ export namespace SessionContextContributions {
             `${entry.id}:selection`,
             [
               knowledge.guidance,
-              "Current applicable knowledge versions follow. Entries absent from this selection are historical, not current guidance. Unavailable retrieval means unknown relevance, not deletion.",
+              "Current applicable knowledge versions:",
               ...entries.map(
                 (item) =>
                   `${item.selection}: memory:${entry.id}:entry:${item.id} version=${RuntimeAdvisory.knowledgeRevision(item.text)}${item.annotation ? ` ${item.annotation}` : ""}`,

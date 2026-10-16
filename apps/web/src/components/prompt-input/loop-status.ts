@@ -51,27 +51,11 @@ export function resolveLoopDisplay(input: {
     }
   const workflow = input.workflow
   if (workflow?.kind === "lightloop") {
-    const terminal =
-      workflow.status &&
-      ["completed", "failed", "cancelled", "timed_out", "iteration_exhausted"].includes(workflow.status)
     return {
       kind: "lightloop",
-      stage: terminal
-        ? (workflow.status as LoopTerminal["status"])
-        : input.status.type === "paused"
-          ? "paused"
-          : workflow.stopRequest || workflow.status === "reviewing"
-            ? "auditing"
-            : workflow.review?.lastReason
-              ? "rework"
-              : input.status.type === "idle"
-                ? "bound"
-                : "running",
+      stage: input.status.type === "paused" ? "paused" : input.status.type === "idle" ? "bound" : "running",
       title: workflow.instructions,
-      reason: workflow.terminalError ?? (workflow.status === "completed" ? undefined : workflow.review?.lastReason),
-      detail: workflow.stopRequest?.summary,
-      reviewerSessionID: workflow.stopRequest?.reviewSessionID,
-      terminal: !!terminal,
+      terminal: false,
     }
   }
   if (input.lightPending) return { kind: "lightloop", stage: "bound", title: "", terminal: false, pending: true }
