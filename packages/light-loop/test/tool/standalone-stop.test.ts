@@ -1,58 +1,151 @@
-import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Session } from "@ericsanchezok/synergy-harness/session"
-import { LoopStopTool } from "../../src/light-loop/tools/loop-stop"
-import { testRuntime } from "../support/runtime"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
-import { LightLoopApproveTool } from "../../src/light-loop/tools/light-loop-approve"
-import { LightLoopRejectTool } from "../../src/light-loop/tools/light-loop-reject"
+import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
+import { LoopStopTool } from "../../src/light-loop/tools/loop-stop"
+import { LightLoopTerminalStore } from "../../src/light-loop/terminal-hook"
+import { LightLoopRuntime } from "../../src/light-loop/runtime"
+import { WorkflowSessionService } from "../../src/session/workflow"
+import { testRuntime } from "../support/runtime"
 
-test("Light Loop requests review without Agenda installed", async () => {
+function context(sessionID: string): Tool.Context {
+  return {
+    sessionID,
+    messageID: "message_stop",
+    agent: "build",
+    abort: new AbortController().signal,
+    metadata() {},
+    async ask() {},
+  }
+}
+
+test("Light Loop completes durably without a reviewer or Agenda", async () => {
   await using runtime = await testRuntime()
   await runtime.run(() =>
     ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
         const session = await Session.create({})
-        await Session.update(session.id, (draft) => {
-          draft.workflow = { kind: "lightloop", instructions: "Complete the work" }
-        })
-        const reviewer = await Agent.get("lightloop-reviewer")
-        for (const reader of ["read", "view_file", "scan_files", "file_search"])
-          expect(PermissionNext.evaluate(reader, "source.ts", reviewer.permission).action).toBe("allow")
-        for (const writer of ["edit", "write", "apply_patch", "revise_file", "save_file", "resolve_conflicts"])
-          expect(PermissionNext.evaluate(writer, "source.ts", reviewer.permission).action).toBe("deny")
-        expect(reviewer.prompt).toContain("Formally submit the verdict")
-        expect(reviewer.prompt).toContain("execution session ID from your launch context")
-        expect(reviewer.prompt).toContain("Cannot verify items are documented and non-blocking")
-        expect(reviewer.prompt).not.toMatch(/session_read|view_file|scan_files|`bash`|via `task`|reason:|sessionID:/)
-        const approve = await LightLoopApproveTool.init()
-        const reject = await LightLoopRejectTool.init()
-        for (const verdict of [approve, reject]) {
-          expect(verdict.description).toContain("execution session ID provided in your launch context")
-          expect(verdict.description).toContain("automatically")
-          expect(verdict.description).toContain("Do not send a separate")
-        }
-        expect(reject.description).toContain("BLOCKING or NON-BLOCKING")
+        await WorkflowSessionService.startLightloop(session.id, "Complete the work")
         const tool = await LoopStopTool.init()
-        const result = await tool.execute(
-          { summary: "Verified" },
-          {
-            sessionID: session.id,
-            messageID: "message_stop",
-            agent: "build",
-            abort: new AbortController().signal,
-            metadata() {},
-            async ask() {},
-          },
-        )
-        expect(result.metadata.loopStopRequested).toBe(true)
-        expect((await Session.get(session.id)).workflow).toMatchObject({
-          kind: "lightloop",
-          stopRequest: { summary: "Verified" },
+        const result = await tool.execute({ summary: "Verified the delivered behavior" }, context(session.id))
+        expect(result.metadata.loopCompleted).toBe(true)
+        expect((await Session.get(session.id)).workflow).toBeUndefined()
+        expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+          status: "completed",
+          instructions: "Complete the work",
+          hookDeliveredAt: expect.any(Number),
         })
+        expect(await Session.children(session.id)).toEqual([])
+        expect(await Agent.get("lightloop-reviewer")).toBeUndefined()
+        const terminal = await LightLoopTerminalStore.get(session)
+        expect((await tool.execute({ summary: "Duplicate" }, context(session.id))).metadata.loopCompleted).toBe(true)
+        expect(await LightLoopTerminalStore.get(session)).toEqual(terminal)
+        await WorkflowSessionService.startLightloop(session.id, "A second task")
+        await tool.execute({ summary: "Second task verified" }, context(session.id))
+        expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+          status: "completed",
+          instructions: "A second task",
+        })
+      },
+    }),
+  )
+})
+
+test("completion cannot overwrite cancellation or accept an empty summary", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.startLightloop(session.id, "Preserve unfinished work")
+        const tool = await LoopStopTool.init()
+        await expect(tool.execute({ summary: " " }, context(session.id))).rejects.toThrow()
+        expect((await Session.get(session.id)).workflow?.kind).toBe("lightloop")
+        await LightLoopRuntime.setTerminalStatus(session.id, "cancelled")
+        await expect(tool.execute({ summary: "Late completion" }, context(session.id))).rejects.toThrow()
+        expect((await LightLoopTerminalStore.get(session))?.status).toBe("cancelled")
+      },
+    }),
+  )
+})
+
+test("terminal publication rolls back atomically and stale goals cannot complete revised work", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const session = await Session.create({})
+        const original = await WorkflowSessionService.startLightloop(session.id, "Original goal")
+        {
+          using failure = spyOn(Session, "update").mockImplementation(async () => {
+            throw new Error("publication failed")
+          })
+          await expect(LightLoopRuntime.setTerminalStatus(session.id, "completed")).rejects.toThrow(
+            "publication failed",
+          )
+        }
+        expect(await LightLoopTerminalStore.get(session)).toBeUndefined()
+        expect((await Session.get(session.id)).workflow).toEqual(original.workflow)
+        await WorkflowSessionService.updateLightloopInstructions(session.id, "Revised goal")
+        if (original.workflow?.kind !== "lightloop") throw new Error("missing workflow")
+        await LightLoopRuntime.setTerminalStatus(session.id, "completed", undefined, original.workflow)
+        expect(await LightLoopTerminalStore.get(session)).toBeUndefined()
+        expect((await Session.get(session.id)).workflow).toMatchObject({ instructions: "Revised goal" })
+        await Promise.all([
+          LightLoopRuntime.setTerminalStatus(session.id, "cancelled"),
+          LightLoopRuntime.setTerminalStatus(session.id, "completed"),
+        ])
+        expect((await LightLoopTerminalStore.get(session))?.status).toBe("cancelled")
+      },
+    }),
+  )
+})
+
+test("a stale deadline cannot abort a revised run, while the current deadline cancels execution", async () => {
+  const { SessionManager } = await import("@ericsanchezok/synergy-harness/session/manager")
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.startLightloop(session.id, "Deadline-bound goal")
+        const deadlineAt = Date.now() - 1
+        await Session.update(session.id, (draft) => {
+          if (draft.workflow?.kind === "lightloop") draft.workflow.deadlineAt = deadlineAt
+        })
+        const lease = SessionManager.acquire(session.id)!
+        try {
+          const distantDeadline = Date.now() + 30 * 24 * 60 * 60 * 1000
+          await Session.update(session.id, (draft) => {
+            if (draft.workflow?.kind === "lightloop") draft.workflow.deadlineAt = distantDeadline
+          })
+          LightLoopRuntime.scheduleDeadline(session.id, distantDeadline)
+          await Bun.sleep(20)
+          expect(lease.signal.aborted).toBe(false)
+          expect(await LightLoopTerminalStore.get(session)).toBeUndefined()
+          await Session.update(session.id, (draft) => {
+            if (draft.workflow?.kind === "lightloop") draft.workflow.deadlineAt = deadlineAt
+          })
+          LightLoopRuntime.scheduleDeadline(session.id, deadlineAt - 1)
+          await Bun.sleep(20)
+          expect(lease.signal.aborted).toBe(false)
+          expect(await LightLoopTerminalStore.get(session)).toBeUndefined()
+          LightLoopRuntime.scheduleDeadline(session.id, deadlineAt)
+          const until = Date.now() + 1000
+          while (!(await LightLoopTerminalStore.get(session)) && Date.now() < until) await Bun.sleep(10)
+          expect(lease.signal.aborted).toBe(true)
+          expect((await LightLoopTerminalStore.get(session))?.status).toBe("timed_out")
+        } finally {
+          LightLoopRuntime.cancelDeadline(session.id)
+          await SessionManager.release(lease, { requestNextWork: false })
+          SessionManager.unregisterRuntime(session.id)
+        }
       },
     }),
   )

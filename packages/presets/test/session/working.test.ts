@@ -86,31 +86,6 @@ describe("SessionWorking", () => {
         })
       }))
 
-    test("does not recover a terminal Light Loop retained for plugin lifecycle delivery", () =>
-      runtime.run(async () => {
-        await using tmp = await tmpdir({ git: true })
-        await ScopeContext.provide({
-          scope: await tmp.scope(),
-          fn: async () => {
-            const session = await Session.create({})
-            await Session.update(session.id, (draft) => {
-              draft.workflow = {
-                kind: "lightloop",
-                instructions: "Plugin-owned task",
-                status: "completed",
-                pluginOwner: {
-                  pluginId: "test-plugin",
-                  pluginGeneration: "generation-one",
-                  scopeId: tmp.path,
-                },
-              }
-            })
-
-            expect(await SessionWorking.resolve(session.id)).toBeUndefined()
-          },
-        })
-      }))
-
     test("returns busy when runtime is active", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
@@ -1157,58 +1132,6 @@ describe("SessionWorking", () => {
             } finally {
               ;(SessionInvoke.loop as any) = originalLoop
               SessionManager.unregisterRuntime(parent.id)
-            }
-          },
-        })
-      }))
-
-    test("marks an interrupted Light Loop reviewer and leaves its stop intent bound", () =>
-      runtime.run(async () => {
-        await using tmp = await tmpdir({ git: true })
-        await ScopeContext.provide({
-          scope: await tmp.scope(),
-          fn: async () => {
-            const parent = await Session.create({})
-            const parentMessageID = Identifier.ascending("message")
-            const child = await Session.create({
-              parentID: parent.id,
-              cortex: {
-                taskID: "cortex-interrupted-light-loop-review",
-                parentSessionID: parent.id,
-                parentMessageID,
-                description: "Review LightLoop",
-                agent: "lightloop-reviewer",
-                startedAt: Date.now(),
-                status: "running",
-              },
-            })
-            await Session.update(parent.id, (draft) => {
-              draft.workflow = {
-                kind: "lightloop",
-                instructions: "Finish the task",
-                stopRequest: {
-                  summary: "Task complete",
-                  requestedAt: Date.now(),
-                  requesterSessionID: parent.id,
-                  requesterMessageID: parentMessageID,
-                  reviewTaskID: child.cortex?.taskID,
-                  reviewSessionID: child.id,
-                },
-              }
-            })
-            await SessionInvoke.reconcilePausedSessions(ScopeContext.current.scope.id)
-            const childSession = await Session.get(child.id)
-            const parentSession = await Session.get(parent.id)
-            const workflow = parentSession.workflow
-            expect(childSession.cortex?.status).toBe("interrupted")
-            expect(workflow?.kind).toBe("lightloop")
-            // The reviewer is recorded as interrupted and its stop intent is left
-            // exactly as the crash left it. Unbinding the reviewer so the review
-            // re-drives automatically is part of the retired auto-recovery path;
-            // deciding what to do with a stalled review is now the user's.
-            if (workflow?.kind === "lightloop") {
-              expect(workflow.stopRequest?.reviewTaskID).toBe(child.cortex?.taskID)
-              expect(workflow.stopRequest?.reviewSessionID).toBe(child.id)
             }
           },
         })

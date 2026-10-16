@@ -123,31 +123,6 @@ describe("WorkflowSessionService", () => {
       })
     }))
 
-  test("rejects instruction updates while Light Loop review is pending", () =>
-    runtime.run(async () => {
-      await withScope(async () => {
-        const session = await Session.create({})
-        await WorkflowSessionService.startLightloop(session.id, "Original task")
-        await Session.update(session.id, (draft) => {
-          if (draft.workflow?.kind !== "lightloop") return
-          draft.workflow.stopRequest = {
-            summary: "Ready for review",
-            requestedAt: Date.now(),
-            requesterSessionID: session.id,
-            requesterMessageID: "msg_request",
-            reviewTaskID: "ctx_review",
-            reviewSessionID: "ses_review",
-          }
-        })
-
-        await expect(WorkflowSessionService.updateLightloopInstructions(session.id, "Revised task")).rejects.toThrow(
-          "review is pending",
-        )
-        const unchanged = await Session.get(session.id)
-        expect(unchanged.workflow?.kind === "lightloop" && unchanged.workflow.instructions).toBe("Original task")
-      })
-    }))
-
   test("cancels a running Light Loop and remains idempotent", () =>
     runtime.run(async () => {
       await withScope(async () => {

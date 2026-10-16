@@ -181,6 +181,7 @@ describe("LatticeController", () => {
         await Session.update(session.id, (draft) => {
           draft.workflow = { kind: "lattice", runID: run.id, mode: run.mode }
         })
+        await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "auditing" })
         await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
           status: "completed",
           summary: "Final Step verified",
@@ -243,6 +244,7 @@ describe("LatticeController", () => {
         await Session.update(session.id, (draft) => {
           draft.workflow = { kind: "lattice", runID: run.id, mode: run.mode }
         })
+        await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "auditing" })
         await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
           status: "completed",
           summary: "Recovered final summary",

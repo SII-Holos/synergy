@@ -1,6 +1,6 @@
 # agenda-light-loop Package
 
-Agenda wake-up guidance and review guards for Light Loop. Required components: Agenda and Light Loop. See [owning architecture](../../docs/architecture/workflows.md).
+Agenda wake-up guidance and completion guards for Light Loop. Required components: Agenda and Light Loop. See [owning architecture](../../docs/architecture/workflows.md).
 
 Register the explicit lifecycle bridge only. Do not load Blueprint or Note.
 

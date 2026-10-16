@@ -5146,6 +5146,21 @@ msgstr "⟦Library⟧"
 msgid "app.library.views"
 msgstr ""
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.checkConnection"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.configure"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.unavailable"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "app.name.synergy"
 msgstr "⟦Synergy⟧"
@@ -8741,11 +8756,6 @@ msgstr "⟦Tools⟧"
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tools.title"
 msgstr "⟦Tools⟧"
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.shell.modelConfigCmd"
-msgstr "⟦synergy config⟧"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -14254,13 +14264,6 @@ msgstr "⟦Task description⟧"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.lightLoop.taskDialog.reviewPending"
-msgstr "⟦Completion review is pending. Stop or finish the review before changing the task.⟧"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.save"
 msgstr "⟦Save task⟧"
 
@@ -14437,6 +14440,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.iterationExhausted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.lightCompleted"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -18066,6 +18073,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.progress.needsAttentionBlocked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttentionMixed"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -25593,6 +25604,10 @@ msgid "tool.title.compact-session"
 msgstr "⟦Compact Session⟧"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.complete-light-loop"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.control-session"
 msgstr "⟦Manage session⟧"
 
@@ -25951,10 +25966,6 @@ msgstr "⟦Render content⟧"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.request-blueprint-review"
 msgstr "⟦Request Blueprint Review⟧"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.request-review"
-msgstr "⟦Request Review⟧"
 
 #. Research
 msgid "tool.title.research-init"

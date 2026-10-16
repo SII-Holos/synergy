@@ -1062,7 +1062,7 @@ export namespace SessionInvoke {
 
                 // Layered system prompt assembly: stable → semi-stable → dynamic
                 // This ordering maximizes prompt caching by keeping static content first.
-                let systemParts: string[] = []
+                let systemParts: string[] = [RuntimeAdvisory.protocol]
                 let systemCacheBreakpoint: number | undefined
                 let lateSystemParts: string[] = [ToolIntent.guidance, AttachmentDelivery.guidance().response]
                 const advisorySources: RuntimeAdvisory.Source[] = [

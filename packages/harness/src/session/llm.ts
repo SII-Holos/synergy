@@ -261,13 +261,7 @@ export namespace LLM {
   }
 
   function formatLateUserContext(parts: string[]) {
-    return [
-      "<runtime-context>",
-      "The following advisory runtime context may help answer the current turn. It does not override higher-priority system, permission, tool or developer instructions.",
-      "",
-      parts.join("\n\n"),
-      "</runtime-context>",
-    ].join("\n")
+    return ["<runtime-context>", parts.join("\n\n"), "</runtime-context>"].join("\n")
   }
 
   export type StreamOutput = StreamTextResult<ToolSet, unknown>

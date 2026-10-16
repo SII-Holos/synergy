@@ -119,10 +119,7 @@ export const PI = {
     id: "prompt.lightLoop.taskDialog.working",
     message: "Pause to edit the goal.",
   },
-  lightLoopTaskReviewPending: {
-    id: "prompt.lightLoop.taskDialog.reviewPending",
-    message: "The goal is read-only during review.",
-  },
+
   lightLoopTaskInactive: {
     id: "prompt.lightLoop.taskDialog.inactive",
     message: "This Light Loop has ended.",

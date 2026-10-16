@@ -3575,43 +3575,13 @@ export type SessionWorkflowInfo =
   | {
       kind: "lightloop"
       instructions: string
-      status?: "running" | "reviewing" | "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
-      executionAgent?: string
-      reviewAgent?: string
       pluginOwner?: {
         pluginId: string
         pluginGeneration: string
         scopeId: string
         correlationId?: string
       }
-      budget?: {
-        maxRuntimeMs: number
-        maxIterations: number
-      }
       deadlineAt?: number
-      terminalError?: string
-      terminalHookDeliveredAt?: number
-      terminalHookError?: string
-      reviewTools?: {
-        [key: string]: boolean
-      }
-      stopRequest?: {
-        summary: string
-        completed?: Array<string>
-        evidence?: Array<string>
-        remaining?: Array<string>
-        requestedAt: number
-        requesterSessionID: string
-        requesterMessageID: string
-        reviewTaskID?: string
-        reviewSessionID?: string
-        reviewToolRecoveryAttempts?: number
-      }
-      review?: {
-        attempts: number
-        lastReason?: string
-        lastReviewedAt?: number
-      }
     }
   | {
       kind: "boss"
@@ -12015,9 +11985,6 @@ export type BlueprintLoopInfo = {
   auditTaskID?: string
   stopRequest?: {
     summary: string
-    completed?: Array<string>
-    evidence?: Array<string>
-    remaining?: Array<string>
     requestedAt: number
     requesterSessionID: string
     requesterMessageID: string

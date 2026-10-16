@@ -1,7 +1,0 @@
-Use this when the LightLoop review audit confirms the task is fully and correctly delivered.
-
-Parameters:
-- sessionID: The execution session ID provided in your launch context
-- summary: Concise approved completion verdict citing the checked requirements, supporting evidence, and any non-blocking limitations
-
-A successful call records formal approval and automatically notifies the execution session. Do not send a separate completion notification.

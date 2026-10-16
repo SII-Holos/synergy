@@ -1,14 +1,16 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import z from "zod"
+import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { LightLoopRuntime } from "../runtime"
+import { LightLoopTerminalStore } from "../terminal-hook"
 import DESCRIPTION from "./loop-stop.txt"
 
 export type LightLoopAgendaAssertClear = (input: {
   sessionID: string
   scopeID: string
-  operation: "Light Loop review"
+  operation: "Light Loop completion"
 }) => Promise<void>
 
 const runtimeState = RuntimeContext.state(() => ({
@@ -24,79 +26,35 @@ export function setLightLoopAgendaAssertClear(fn: LightLoopAgendaAssertClear): v
 }
 
 const parameters = z.object({
-  summary: z.string().describe("Summary of what was completed."),
-  completed: z.array(z.string()).optional().describe("Completed deliverable or requirement statements."),
-  evidence: z
-    .array(z.string())
-    .optional()
-    .describe("Concrete verification evidence (test results, file paths, checks)."),
-  remaining: z.array(z.string()).optional().describe("Any known remaining work or limitations."),
+  summary: z.string().describe("Completed results and concrete verification evidence, including relevant limitations."),
 })
 
 export const LoopStopTool = Tool.define("loop_stop", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
-    const instanceState = runtimeState()
-
+    if (!params.summary.trim()) throw new Error("summary is required")
+    ctx.abort.throwIfAborted()
     const session = await Session.get(ctx.sessionID)
-    if (session.workflow?.kind !== "lightloop") {
-      throw new Error("No active Light Loop workflow on this session")
+    if (session.workflow && session.workflow.kind !== "lightloop")
+      throw new Error("No active Light Loop on this session")
+    if (session.workflow?.kind === "lightloop") {
+      await runtimeState().agendaAssertClear?.({
+        sessionID: ctx.sessionID,
+        scopeID: ScopeContext.current.scope.id,
+        operation: "Light Loop completion",
+      })
+      ctx.abort.throwIfAborted()
+      await LightLoopRuntime.setTerminalStatus(ctx.sessionID, "completed", undefined, session.workflow)
     }
-
-    const summary = params.summary.trim()
-    if (!summary) throw new Error("summary is required")
-
-    if (session.workflow.stopRequest) {
-      const reviewSessionID = session.workflow.stopRequest.reviewSessionID
-      return {
-        title: "Light Loop review already requested",
-        output: reviewSessionID
-          ? `A review was already requested for this Light Loop task. The reviewer is session \`${reviewSessionID}\`. Do not call any tools to check on it — the reviewer will deliver results directly to this session when the audit completes.`
-          : "A review was already requested for this Light Loop task. The reviewer will start after the current session turn finishes.",
-        metadata: {
-          loopStopRequested: true,
-          reviewTaskID: session.workflow.stopRequest.reviewTaskID,
-          reviewSessionID,
-        },
-      }
+    const terminal = await LightLoopTerminalStore.get(session)
+    if (terminal?.status !== "completed" || (await Session.get(ctx.sessionID)).workflow) {
+      throw new Error("No active Light Loop to complete, or its goal changed during completion")
     }
-    await instanceState.agendaAssertClear?.({
-      sessionID: ctx.sessionID,
-      scopeID: ScopeContext.current.scope.id,
-      operation: "Light Loop review",
-    })
-
-    const requestedAt = Date.now()
-    let stopRequestRecorded = false
-    await Session.update(ctx.sessionID, (draft) => {
-      if (draft.workflow?.kind !== "lightloop" || draft.workflow.stopRequest) return
-      draft.workflow = {
-        ...draft.workflow,
-        stopRequest: {
-          summary,
-          completed: params.completed,
-          evidence: params.evidence,
-          remaining: params.remaining,
-          requestedAt,
-          requesterSessionID: ctx.sessionID,
-          requesterMessageID: ctx.messageID,
-        },
-      }
-      stopRequestRecorded = true
-    })
-
-    if (!stopRequestRecorded) {
-      const latest = await Session.get(ctx.sessionID)
-      if (latest.workflow?.kind !== "lightloop" || !latest.workflow.stopRequest) {
-        throw new Error("Failed to record Light Loop stop request")
-      }
-    }
-
     return {
-      title: "Light Loop review requested",
-      output: "Light Loop stop review requested. The reviewer will start after the current session turn finishes.",
-      metadata: { loopStopRequested: true, reviewTaskID: undefined, reviewSessionID: undefined },
+      title: "Light Loop completed",
+      output: "Light Loop completed. Summarize the verified result for the user.",
+      metadata: { loopCompleted: true },
     }
   },
 })

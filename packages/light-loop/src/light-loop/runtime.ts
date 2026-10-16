@@ -1,4 +1,5 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -6,8 +7,8 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import {
   isActiveLightLoopWorkflow,
-  isLightLoopTerminalStatus,
   type LightLoopTerminalStatus,
+  type LightLoopWorkflow,
 } from "../session/light-loop-state"
 import { LightLoopTerminalStore, type LightLoopTerminalRecord } from "./terminal-hook"
 
@@ -61,18 +62,6 @@ function timerKey(executionSessionID: string): string {
 
 function terminalHookLock(executionSessionID: string): string {
   return `lightloop_terminal_hook:${executionSessionID}`
-}
-
-function samePluginOwner(
-  a: NonNullable<LightLoopTerminalRecord["pluginOwner"]>,
-  b: NonNullable<LightLoopTerminalRecord["pluginOwner"]>,
-) {
-  return (
-    a.pluginId === b.pluginId &&
-    a.pluginGeneration === b.pluginGeneration &&
-    a.scopeId === b.scopeId &&
-    a.correlationId === b.correlationId
-  )
 }
 
 async function deliverTerminalHook(session: Awaited<ReturnType<typeof Session.get>>, record: LightLoopTerminalRecord) {
@@ -129,7 +118,10 @@ function setDeadlineTimer(executionSessionID: string, deadlineAt: number, onExpi
     onExpire()
     return
   }
-  const timer = setTimeout(onExpire, delayMs)
+  const timer = setTimeout(
+    () => setDeadlineTimer(executionSessionID, deadlineAt, onExpire),
+    Math.min(delayMs, 2_147_483_647),
+  )
   timer.unref()
   instanceState.activeTimers.set(timerKey(executionSessionID), timer)
 }
@@ -157,10 +149,8 @@ export namespace LightLoopRuntime {
     const candidates = new Set(
       nav.entries.filter((entry) => entry.workflow?.kind === "lightloop").map((entry) => entry.id),
     )
-    const terminals = new Map<string, LightLoopTerminalRecord>()
     for await (const terminal of LightLoopTerminalStore.list(scopeID)) {
       if (terminal.hookDeliveredAt !== undefined && !candidates.has(terminal.sessionID)) continue
-      terminals.set(terminal.sessionID, terminal)
       candidates.add(terminal.sessionID)
     }
     for (const sessionID of candidates) {
@@ -168,106 +158,48 @@ export namespace LightLoopRuntime {
         if (!(error instanceof Storage.NotFoundError)) throw error
       })
       if (!session) continue
-      const terminal = terminals.get(sessionID)
-      if (terminal) {
-        const workflow = session.workflow
-        if (
-          workflow?.kind === "lightloop" &&
-          workflow.pluginOwner &&
-          terminal.pluginOwner &&
-          samePluginOwner(workflow.pluginOwner, terminal.pluginOwner)
-        ) {
-          await Session.update(session.id, (draft) => {
-            if (draft.workflow?.kind === "lightloop") draft.workflow = undefined
-          })
-          clearDeadlineTimer(session.id)
-        }
-        await deliverTerminalHook(session, terminal).catch(() => undefined)
-        continue
+      {
+        using _ = await Lock.write(terminalHookLock(sessionID))
+        const current = await LightLoopTerminalStore.get(session)
+        if (current) await deliverTerminalHook(session, current).catch(() => undefined)
       }
-
       const workflow = session.workflow
-      if (workflow?.kind === "lightloop" && workflow.pluginOwner && isLightLoopTerminalStatus(workflow.status)) {
-        await setTerminalStatus(session.id, workflow.status, workflow.terminalError).catch(() => undefined)
-        continue
-      }
-
       if (workflow?.kind !== "lightloop" || !workflow.pluginOwner || !workflow.deadlineAt) continue
       if (instanceState.activeTimers.has(timerKey(session.id))) continue
       scheduleDeadline(session.id, workflow.deadlineAt)
     }
   }
 
-  /**
-   * Terminal Light Loops always exit by clearing the interactive workflow.
-   * Plugin-owned loops first persist a separate terminal record so their
-   * lightloop.after hook and terminal query remain durable after unequip.
-   *
-   * This is the SINGLE terminal path — approve, cancel, deadline timeout,
-   * max-iteration exhaustion, and failure all use this method.
-   */
   export async function setTerminalStatus(
     sessionID: string,
     status: LightLoopTerminalStatus,
     error?: string,
+    expected?: LightLoopWorkflow,
   ): Promise<void> {
     using _ = await Lock.write(terminalHookLock(sessionID))
     const session = await Session.get(sessionID)
     const existing = await LightLoopTerminalStore.get(session)
-    if (existing) {
-      const workflow = session.workflow
-      const activeLoop = workflow?.kind === "lightloop" && !isLightLoopTerminalStatus(workflow.status)
-      if (
-        activeLoop &&
-        workflow.pluginOwner !== undefined &&
-        existing.pluginOwner !== undefined &&
-        samePluginOwner(workflow.pluginOwner, existing.pluginOwner)
-      ) {
-        // Plugin-owned retry: the same loop ended again; clear the workflow and
-        // retry the pending terminal hook.
-        await Session.update(sessionID, (draft) => {
-          if (draft.workflow?.kind === "lightloop") draft.workflow = undefined
-        })
-        clearDeadlineTimer(sessionID)
-        await deliverTerminalHook(session, existing)
-        return
+    if (existing) await deliverTerminalHook(session, existing).catch(() => undefined)
+    const terminal = await Storage.transaction(async () => {
+      const current = await Session.get(sessionID)
+      const workflow = current.workflow
+      if (workflow?.kind !== "lightloop") return
+      if (expected && JSON.stringify(workflow) !== JSON.stringify(expected)) return
+      const record: LightLoopTerminalRecord = {
+        sessionID,
+        status,
+        instructions: workflow.instructions,
+        ...(workflow.pluginOwner ? { pluginOwner: workflow.pluginOwner } : {}),
+        ...(error ? { error } : {}),
+        createdAt: Date.now(),
       }
-      if (!activeLoop) {
-        // Idempotent re-entry (no active loop on this session) or a stale
-        // record with no matching loop: preserve the existing record and retry
-        // its hook delivery instead of replacing it.
-        await deliverTerminalHook(session, existing)
-        return
-      }
-      // A different loop is ending on this session — either an ordinary loop on
-      // top of a stale plugin record, or a plugin loop whose owner does not
-      // match the retained record. Retry the stale hook best-effort (the old
-      // loop's completion notification), then replace the record with the
-      // fresh terminal state for the current loop.
-      await deliverTerminalHook(session, existing).catch(() => undefined)
-    }
-    if (session.workflow?.kind !== "lightloop") return
-
-    const workflow = session.workflow
-    const terminal = {
-      sessionID,
-      status: isLightLoopTerminalStatus(workflow.status) ? workflow.status : status,
-      instructions: workflow.instructions,
-      ...(workflow.pluginOwner ? { pluginOwner: workflow.pluginOwner } : {}),
-      ...(workflow.terminalError || error
-        ? { error: workflow.terminalError ?? error }
-        : status === "iteration_exhausted"
-          ? { error: "iteration_exhausted" }
-          : {}),
-      ...(workflow.terminalHookDeliveredAt ? { hookDeliveredAt: workflow.terminalHookDeliveredAt } : {}),
-      ...(workflow.terminalHookError ? { hookError: workflow.terminalHookError } : {}),
-      createdAt: Date.now(),
-    } satisfies LightLoopTerminalRecord
-    await LightLoopTerminalStore.put(session, terminal)
-
-    await Session.update(sessionID, (draft) => {
-      if (draft.workflow?.kind === "lightloop") draft.workflow = undefined
+      await LightLoopTerminalStore.put(current, record)
+      await Session.update(sessionID, (draft) => {
+        draft.workflow = undefined
+      })
+      return record
     })
+    if (!terminal) return
     clearDeadlineTimer(sessionID)
     await deliverTerminalHook(session, terminal)
   }
@@ -293,7 +225,10 @@ export namespace LightLoopRuntime {
   export function scheduleDeadline(sessionID: string, deadlineAt: number) {
     setDeadlineTimer(sessionID, deadlineAt, async () => {
       try {
-        await setTerminalStatus(sessionID, "timed_out", "deadline exceeded")
+        const session = await Session.get(sessionID)
+        if (session.workflow?.kind !== "lightloop" || session.workflow.deadlineAt !== deadlineAt) return
+        await SessionAbort.abort(sessionID, { internalCancel: true })
+        await setTerminalStatus(sessionID, "timed_out", "deadline exceeded", session.workflow)
       } catch {
         // best effort
       }

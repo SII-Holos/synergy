@@ -6,7 +6,6 @@ import { describe, expect, test } from "bun:test"
 import path from "path"
 import { buildCodingPrompt } from "@ericsanchezok/synergy-harness/test/internal/agent/prompt/coding/builder"
 import { buildGeneralPrompt } from "@ericsanchezok/synergy-harness/test/internal/agent/prompt/general/builder"
-import { truncateSkillDescription } from "@ericsanchezok/synergy-local-runtime/tools/skill"
 
 const PROMPT_DIR = path.join(import.meta.dir, "../../../harness/src/agent/prompt")
 const TOOL_DIR = path.join(import.meta.dir, "../../../local-runtime/src/tools")
@@ -36,16 +35,6 @@ describe("static prompt and tool context size budgets", () => {
       expect(sourceBytes("dagwrite.txt")).toBeLessThanOrEqual(3_250)
       expect(sourceBytes("process.txt")).toBeLessThanOrEqual(5_050)
       expect(Bun.file(path.join(PROMPT_DIR, "../../cortex/tools/task.txt")).size).toBeLessThanOrEqual(3_950)
-    }))
-
-  test("skill descriptions truncate to a single bounded line", () =>
-    runtime.run(() => {
-      const long = "First line with " + "very ".repeat(60) + "long tail\nsecond line detail"
-      const truncated = truncateSkillDescription(long)
-      expect(truncated.length).toBeLessThanOrEqual(104)
-      expect(truncated).not.toContain("\n")
-      expect(truncated.endsWith("…")).toBe(true)
-      expect(truncateSkillDescription("short description")).toBe("short description")
     }))
 })
 

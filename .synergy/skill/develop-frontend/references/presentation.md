@@ -42,6 +42,8 @@ Compile repeated Review acceptance fixtures before serving them, so development 
 
 ## Preserve Product Presentation
 
+Keep model configuration and recovery inside the existing model selector. Verify that provider changes preserve shell and Composer geometry, input focus and reading position; cover Home, project overrides, unresolved Scope snapshots and Settings recovery without adding polling.
+
 Do not introduce focus-triggered borders, outlines, rings, inset strokes or glows in any color, including `:focus-within`, Tailwind variants, composite-control proxies and embedded Synergy controls. Text inputs and their containers must retain their resting appearance through hover, pointer press and focus, with no background overlay; preserve the caret. Other controls use the shared neutral focus surface or text treatment. Run `bun run verify local --test apps/web/test/testing/focus-presentation.browser.test.ts` when changing focus presentation; extend its real control fixtures for new kinds of widgets. Keep pointer and keyboard activation, focus return, resting borders and error states intact.
 
 When reviewing optional-feature UI, trace displayed descriptors and server errors through their actual presentation paths. Apply the minimal-copy rule in [PRODUCT.md](../../../../apps/web/PRODUCT.md): confirmed absence is a quiet normal state; a failed user action keeps concise recovery feedback. Check that missing integrations are not advertised by retained settings descriptions and that raw startup diagnostics remain available only through explicit disclosure. Preserve useful field consequences and validation instead of replacing them with generic explanations.

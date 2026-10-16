@@ -830,8 +830,8 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // LightLoop review tools — session state coordination
-      if (toolName === "loop_stop" || toolName === "light_loop_approve" || toolName === "light_loop_reject") {
+      // Light Loop completion — session state coordination
+      if (toolName === "loop_stop") {
         caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }

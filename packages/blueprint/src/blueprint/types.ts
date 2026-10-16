@@ -18,9 +18,7 @@ export const Info = z
     stopRequest: z
       .object({
         summary: z.string(),
-        completed: z.array(z.string()).optional(),
-        evidence: z.array(z.string()).optional(),
-        remaining: z.array(z.string()).optional(),
+
         requestedAt: z.number(),
         requesterSessionID: z.string(),
         requesterMessageID: z.string(),

@@ -5146,6 +5146,21 @@ msgstr "知识库"
 msgid "app.library.views"
 msgstr "知识库视图"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.checkConnection"
+msgstr "检查模型连接"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.configure"
+msgstr "配置模型"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.unavailable"
+msgstr "暂无可选模型"
+
 #. js-lingui-explicit-id
 msgid "app.name.synergy"
 msgstr "Synergy"
@@ -8744,11 +8759,6 @@ msgstr "工具"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.shell.modelConfigCmd"
-msgstr "synergy config"
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.action.connect"
 msgstr "连接提供商"
 
@@ -8760,17 +8770,17 @@ msgstr "查看提供商"
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.needsAttention"
-msgstr "已连接的提供商需要处理后，其模型才能使用。"
+msgstr "请检查提供商连接或用量限制。"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.notConfigured"
-msgstr "尚未连接任何 AI 提供商。连接一个即可选择模型，也可以在终端中运行 {cmd}。"
+msgstr "连接提供商后即可开始对话。"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.restricted"
-msgstr "没有可选择的模型。请确认已连接的提供商已启用并提供模型。"
+msgstr "暂无可选模型，请启用提供商并检查模型列表。"
 
 #. js-lingui-explicit-id
 msgid "app.shell.window.maximize"
@@ -14254,13 +14264,6 @@ msgstr "任务描述"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.lightLoop.taskDialog.reviewPending"
-msgstr "审核中，目标只读。"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.save"
 msgstr "保存任务"
 
@@ -14438,6 +14441,10 @@ msgstr "失败原因"
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.iterationExhausted"
 msgstr "审核达上限"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.lightCompleted"
+msgstr "已完成"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.openNote"
@@ -18067,6 +18074,10 @@ msgstr "需要处理 · {count, plural, one {# 个任务失败} other {# 个任�
 #. js-lingui-explicit-id
 msgid "session.progress.needsAttentionBlocked"
 msgstr "需要处理 · {count, plural, one {# 个任务受阻} other {# 个任务受阻}}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttentionMixed"
+msgstr "需要处理 · {failed} 个失败，{blocked} 个受阻"
 
 #. js-lingui-explicit-id
 msgid "session.progress.noActivePlan"
@@ -25593,6 +25604,10 @@ msgid "tool.title.compact-session"
 msgstr "整理会话上下文"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.complete-light-loop"
+msgstr "完成轻循环"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.control-session"
 msgstr "管理会话"
 
@@ -25951,10 +25966,6 @@ msgstr "渲染内容"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.request-blueprint-review"
 msgstr "请求 Blueprint 审查"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.request-review"
-msgstr "请求审查"
 
 #. Research
 msgid "tool.title.research-init"

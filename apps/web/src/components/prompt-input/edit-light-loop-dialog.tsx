@@ -13,7 +13,6 @@ export function EditLightLoopDialog(props: {
   instructions: string
   active: Accessor<boolean>
   working: Accessor<boolean>
-  reviewPending: Accessor<boolean>
   onSave: (instructions: string) => Promise<void>
 }) {
   const dialog = useDialog()
@@ -26,7 +25,6 @@ export function EditLightLoopDialog(props: {
     resolveLightLoopControlState({
       active: props.active(),
       working: props.working(),
-      reviewPending: props.reviewPending(),
     }),
   )
   const value = () => instructions().trim()
@@ -36,8 +34,6 @@ export function EditLightLoopDialog(props: {
     switch (state().reason) {
       case "inactive":
         return i18n._(PI.lightLoopTaskInactive)
-      case "reviewPending":
-        return i18n._(PI.lightLoopTaskReviewPending)
       case "working":
         return i18n._(PI.lightLoopTaskWorking)
       case "editable":

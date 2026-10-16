@@ -25095,7 +25095,7 @@
           }
         ],
         "summary": "Complete BlueprintLoop",
-        "description": "Mark a BlueprintLoop as completed.",
+        "description": "Return an already accepted BlueprintLoop. An unfinished loop requires its recorded reviewer to call blueprint_loop_approve.",
         "responses": {
           "200": {
             "description": "Completed BlueprintLoop",
@@ -25695,7 +25695,7 @@
           }
         ],
         "summary": "Cancel Light Loop",
-        "description": "Stop active session work and completion review, then clear the Light Loop workflow.",
+        "description": "Stop active session work, then clear the Light Loop workflow.",
         "responses": {
           "200": {
             "description": "Updated session",
@@ -25775,7 +25775,7 @@
           }
         ],
         "summary": "Get Light Loop terminal status",
-        "description": "Read the authoritative terminal status of the most recent Light Loop on a session. Terminal Light Loops clear the interactive workflow, so the durable terminal record is the only way to distinguish approval, exhaustion, timeout, cancellation, and failure.",
+        "description": "Read the authoritative terminal status of the most recent Light Loop on a session. Terminal Light Loops clear the interactive workflow, so the durable terminal record is the only way to distinguish completion, timeout, cancellation, and failure.",
         "responses": {
           "200": {
             "description": "Light Loop terminal record",
@@ -50604,16 +50604,6 @@
               "instructions": {
                 "type": "string"
               },
-              "status": {
-                "type": "string",
-                "enum": ["running", "reviewing", "completed", "failed", "cancelled", "timed_out", "iteration_exhausted"]
-              },
-              "executionAgent": {
-                "type": "string"
-              },
-              "reviewAgent": {
-                "type": "string"
-              },
               "pluginOwner": {
                 "type": "object",
                 "properties": {
@@ -50632,105 +50622,9 @@
                 },
                 "required": ["pluginId", "pluginGeneration", "scopeId"]
               },
-              "budget": {
-                "type": "object",
-                "properties": {
-                  "maxRuntimeMs": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  "maxIterations": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0,
-                    "maximum": 9007199254740991
-                  }
-                },
-                "required": ["maxRuntimeMs", "maxIterations"]
-              },
               "deadlineAt": {
                 "type": "number",
                 "exclusiveMinimum": 0
-              },
-              "terminalError": {
-                "type": "string"
-              },
-              "terminalHookDeliveredAt": {
-                "type": "number"
-              },
-              "terminalHookError": {
-                "type": "string"
-              },
-              "reviewTools": {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "type": "boolean"
-                }
-              },
-              "stopRequest": {
-                "type": "object",
-                "properties": {
-                  "summary": {
-                    "type": "string"
-                  },
-                  "completed": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "evidence": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "remaining": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "requestedAt": {
-                    "type": "number"
-                  },
-                  "requesterSessionID": {
-                    "type": "string"
-                  },
-                  "requesterMessageID": {
-                    "type": "string"
-                  },
-                  "reviewTaskID": {
-                    "type": "string"
-                  },
-                  "reviewSessionID": {
-                    "type": "string"
-                  },
-                  "reviewToolRecoveryAttempts": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  }
-                },
-                "required": ["summary", "requestedAt", "requesterSessionID", "requesterMessageID"]
-              },
-              "review": {
-                "type": "object",
-                "properties": {
-                  "attempts": {
-                    "type": "number"
-                  },
-                  "lastReason": {
-                    "type": "string"
-                  },
-                  "lastReviewedAt": {
-                    "type": "number"
-                  }
-                },
-                "required": ["attempts"]
               }
             },
             "required": ["kind", "instructions"]
@@ -73624,24 +73518,6 @@
             "properties": {
               "summary": {
                 "type": "string"
-              },
-              "completed": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "evidence": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "remaining": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
               },
               "requestedAt": {
                 "type": "number"

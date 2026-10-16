@@ -14,6 +14,7 @@ import "./session-progress-island.css"
 interface SessionProgressIslandProps {
   mode: Exclude<ProgressMode, "none">
   snapshot: ProgressIslandSnapshot
+  viewSummary: Pick<ProgressIslandSnapshot, "total" | "completed" | "cancelled">
   activeLabel?: string
   activeTab: "dag" | "todo"
   expanded: boolean
@@ -120,14 +121,14 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
           </div>
         </Show>
         <span class="session-progress-island-count">
-          {props.snapshot.total > 0
+          {props.viewSummary.total > 0
             ? i18n()._({
                 ...S.progressCompleteFraction,
-                values: { completed: props.snapshot.completed, total: props.snapshot.total },
+                values: { completed: props.viewSummary.completed, total: props.viewSummary.total },
               })
             : i18n()._(S.progressEnded)}
-          <Show when={props.snapshot.cancelled > 0}>
-            <span> · {i18n()._({ ...S.progressCancelled, values: { count: props.snapshot.cancelled } })}</span>
+          <Show when={props.viewSummary.cancelled > 0}>
+            <span> · {i18n()._({ ...S.progressCancelled, values: { count: props.viewSummary.cancelled } })}</span>
           </Show>
         </span>
         <Show when={compact()}>

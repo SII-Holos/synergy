@@ -1,7 +1,1 @@
-Use this when the BlueprintLoop review confirms every required outcome is fully and correctly delivered.
-
-Parameters:
-- sessionID: The execution session ID provided in your launch context
-- summary: Concise approved completion verdict citing the required outcomes and supporting evidence
-
-A successful call records formal approval. User-owned loops automatically notify and wake the execution session; Lattice consumes the completed loop directly. Do not send a separate completion notification.
+Accept the current bound BlueprintLoop only when all required outcomes are verified and within scope. Include concrete evidence in summary. Only its recorded reviewer can approve; the host infers the loop.

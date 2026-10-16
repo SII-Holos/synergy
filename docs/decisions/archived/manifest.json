@@ -1,5 +1,6 @@
 {
   "files": {
+    "archived/bug-fix/2026-09-06-builtin-mcp-search-expand-by-default.md": "3cf4c7bab470cf03fdce8d545d06d019ca2aee426aee50ab1c732cc0dc0c89fa",
     "archived/bug-fix/2026-10-09-reconnect-lease-renewal-after-projection-loss.md": "9f2d3d292bcf82508cd0e938f9d9946500e05eea8a3898bcdc721a443ed66acc",
     "archived/bug-fix/2026-08-22-tool-attachments-collapsible-card.md": "f749b6376aae3f2abb13bd276800d08033833f728107d52a48f2eecb8ba77a4a",
     "archived/bug-fix/2026-09-08-await-completion-context-contributions.md": "2c28dc7acd291e2311bf6c6d70e54aa8b59e36c271b47d907ac5285c2222b570",

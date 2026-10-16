@@ -14,10 +14,9 @@ const MATCHED_TOOL_PREVIEW_LIMIT = 8
 
 export const SearchToolsTool = Tool.define("search_tools", async (initCtx) => ({
   description: [
-    "Discover non-resident tool capabilities that are not currently visible to the model. This tool searches deferred groups and search-only tools; it does not enable, expand, activate, execute, or grant permission to any tool.",
-    'When a result has type="group" or includes a group field, prefer expand_tools({ groups: [group] }) so the whole capability group becomes available on the next model request or subsequent turns.',
-    "When a result is a search-only individual tool with no group, use expand_tools({ tools: [id] }) to activate it. If you already know the capability domain, call expand_tools directly instead of searching first.",
-  ].join("\n\n"),
+    "Discover deferred groups and search-only tools without changing visibility, executing tools or granting permission.",
+    "Expand a known group directly with expand_tools({groups:[id]}). Otherwise search here, then expand the returned group; use expand_tools({tools:[id]}) only for a search-only tool without a group. Schemas become available on the next request.",
+  ].join("\n"),
   parameters,
   async execute(params: z.infer<typeof parameters>, ctx) {
     const agent = initCtx?.agent ?? (await Agent.get(ctx.agent))
@@ -75,7 +74,8 @@ export const SearchToolsTool = Tool.define("search_tools", async (initCtx) => ({
         entry.type === "group" && entry.matchedToolCount > 0
           ? `\n   matchedTools: ${formatMatchedTools(entry.matchedToolPreview, entry.matchedToolCount)}`
           : ""
-      return `${index + 1}. ${target} - ${state}${matchedTools}\n   next: ${entry.next}`
+      const summary = entry.type === "group" ? `\n   ${entry.description}` : ""
+      return `${index + 1}. ${target} - ${state}${summary}${matchedTools}\n   next: ${entry.next}`
     })
 
     return {
@@ -105,6 +105,7 @@ type SearchResult =
       type: "group"
       id: string
       title: string
+      description: string
       active: boolean
       disabled: boolean
       score: number
@@ -132,6 +133,7 @@ function aggregateMatches(matches: ScoredEntry[], catalog: ToolDiscovery.Catalog
       disabled: boolean
       score: number
       matchedTools: string[]
+      description: string
     }
   >()
   const standaloneTools: SearchResult[] = []
@@ -148,6 +150,7 @@ function aggregateMatches(matches: ScoredEntry[], catalog: ToolDiscovery.Catalog
         disabled: groupInfo ? groupInfo.tools.every((id) => catalog.disabled.has(id)) : catalog.disabled.has(entry.id),
         score: 0,
         matchedTools: [],
+        description: groupInfo?.description ?? entry.description,
       }
 
       group.score = Math.max(group.score, entry.score)
@@ -173,6 +176,7 @@ function aggregateMatches(matches: ScoredEntry[], catalog: ToolDiscovery.Catalog
       type: "group",
       id: group.id,
       title: group.title,
+      description: group.description,
       active: group.active,
       disabled: group.disabled,
       score: group.score,

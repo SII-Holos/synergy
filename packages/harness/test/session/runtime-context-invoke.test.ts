@@ -34,6 +34,14 @@ for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
         throw new Error("Unexpected non-streaming call")
       },
       async doStream(input) {
+        const protocol = input.prompt
+          .filter((message) => message.role === "system")
+          .map((message) => message.content)
+          .join("\n")
+        expect(protocol.split("<runtime-context-protocol>")).toHaveLength(2)
+        expect(JSON.stringify(input.prompt.filter((message) => message.role !== "system"))).not.toContain(
+          "<runtime-context-protocol>",
+        )
         prompts.push(structuredClone(input.prompt))
         const chunks: LanguageModelV2StreamPart[] = [0, 4].includes(calls++)
           ? [

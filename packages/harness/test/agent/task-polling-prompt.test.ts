@@ -11,19 +11,18 @@ describe("background task guidance", () => {
   })
 
   test("task description reserves progress checks for one-shot diagnostics", () => {
-    expect(TASK_DESCRIPTION).toMatch(/Do not poll|not.*polling loop/)
-    expect(TASK_DESCRIPTION).toMatch(/wakes you automatically|wait for the automatic completion notification/)
+    expect(TASK_DESCRIPTION).toMatch(/do not poll\/loop for progress/i)
+    expect(TASK_DESCRIPTION).toMatch(/Completion automatically wakes you/)
   })
 
   test("completion notification is a lightweight wake-up, not the final result", () => {
-    expect(TASK_DESCRIPTION).toMatch(/(?:does|do) NOT contain the final result/i)
+    expect(TASK_DESCRIPTION).toMatch(/notification, not the final result/i)
     expect(TASK_DESCRIPTION).toMatch(/task_output\(.*mode.*"full"\)/)
   })
 
   test("full/default read acknowledges completion, diagnostic modes do not", () => {
-    expect(TASK_DESCRIPTION).toMatch(/acknowledges the completion/i)
     expect(TASK_DESCRIPTION).toMatch(
-      /do not acknowledge completion|do \*\*not\*\* acknowledge completion|not acknowledge completion/i,
+      /Full\/default output acknowledges and clears the notification; diagnostic modes do not/i,
     )
   })
 
@@ -32,7 +31,7 @@ describe("background task guidance", () => {
   })
 
   test("automatic completion notifications do not require a scheduler product", () => {
-    expect(TASK_DESCRIPTION).toMatch(/Do NOT schedule additional wake-ups/i)
+    expect(TASK_DESCRIPTION).toMatch(/Do not schedule extra completion wake-ups/i)
     expect(TASK_DESCRIPTION).not.toMatch(/agenda_\w+/)
   })
 })

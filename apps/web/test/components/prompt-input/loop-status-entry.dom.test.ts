@@ -88,7 +88,6 @@ for (const width of [320, 375, 720])
         "paused",
         "rework",
         "resolving",
-        "completed",
         "failed",
         "cancelled",
         "timed_out",
@@ -112,6 +111,32 @@ for (const width of [320, 375, 720])
     expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(1)
     expect(errors).toEqual([])
   })
+
+test.each(["lightloop", "blueprint"])(
+  "%s completion removes the row without replacing the editor or its draft",
+  async (kind) => {
+    await page.goto(server.url)
+    const entry = page.locator('[data-component="loop-status-entry"]')
+    const editor = page.getByRole("textbox", { name: "Message" })
+    await editor.fill("Keep this draft")
+    const original = await editor.elementHandle()
+    const set = (stage: string) =>
+      page.evaluate(
+        ({ stage, kind }) =>
+          (window as unknown as { fixture: { set(stage: string, kind: string): void } }).fixture.set(stage, kind),
+        { stage, kind },
+      )
+    await set("running")
+    expect(await entry.count()).toBe(1)
+    await set("completed")
+    expect(await entry.count()).toBe(0)
+    expect(await editor.inputValue()).toBe("Keep this draft")
+    expect(await editor.evaluate((node, old) => node === old, original)).toBe(true)
+    await set("bound")
+    expect(await entry.getAttribute("data-stage")).toBe("bound")
+    expect(errors).toEqual([])
+  },
+)
 
 test("keyboard opens review reasons, live updates retain the dialog, and Escape never pauses the task", async () => {
   await page.setViewportSize({ width: 375, height: 700 })

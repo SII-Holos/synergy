@@ -4,18 +4,19 @@ import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { useParams } from "@/context/session-route"
 import { createMemo } from "solid-js"
 import { isRecommendedProvider } from "@/components/provider/provider-recommendation"
+import { resolveModelReadiness } from "@/components/provider/model-readiness"
 
 export function useProviders() {
   const globalSync = useGlobalSync()
   const params = useParams()
   const currentDirectory = createMemo(() => base64Decode(params.dir ?? ""))
-  const providers = createMemo(() => {
+  const scope = createMemo(() => {
     if (currentDirectory() && !isHomeScope(currentDirectory())) {
       const [projectStore] = globalSync.ensureScopeState(currentDirectory())
-      return projectStore.provider
+      return projectStore
     }
-    return globalSync.data.provider
   })
+  const providers = createMemo(() => scope()?.provider ?? globalSync.data.provider)
   const connected = createMemo(() => providers().all.filter((provider) => providers().connected.includes(provider.id)))
   const available = createMemo(() =>
     providers().all.filter((provider) => {
@@ -25,6 +26,7 @@ export function useProviders() {
   )
   const popular = createMemo(() => providers().all.filter((p) => isRecommendedProvider(providers().profiles, p.id)))
   return {
+    readiness: createMemo(() => (scope()?.status === "loading" ? undefined : resolveModelReadiness(providers()))),
     all: createMemo(() => providers().all),
     default: createMemo(() => providers().default),
     popular,

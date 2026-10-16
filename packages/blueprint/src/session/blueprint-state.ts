@@ -13,9 +13,7 @@ export namespace SessionBlueprintState {
    * recovery patches. */
   export interface LoopStopRequest {
     summary: string
-    completed?: string[]
-    evidence?: string[]
-    remaining?: string[]
+
     requestedAt: number
     requesterSessionID: string
     requesterMessageID: string

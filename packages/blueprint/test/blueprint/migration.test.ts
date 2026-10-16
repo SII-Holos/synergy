@@ -364,3 +364,28 @@ describe("blueprint migrations", () => {
 })
 
 afterRuntimeTests(() => runtime.close())
+
+test("stop summary migration retains all evidence and is idempotent", () =>
+  runtime.run(async () => {
+    const key = ["blueprint_loops", "home", "loop_legacy"]
+    const value = {
+      stopRequest: {
+        summary: "Delivered",
+        completed: ["Requirement A"],
+        evidence: ["Real check passed"],
+        remaining: ["Known limitation"],
+        requesterMessageID: "msg_original",
+      },
+    }
+    await Storage.write(key, value)
+    const migration = migrations.find((item) => item.id === "20261016-blueprint-stop-summary")!
+    await migration.up(() => {})
+    const current = await Storage.read<{ stopRequest: Record<string, unknown> }>(key)
+    expect(current.stopRequest.summary).toContain("Requirement A")
+    expect(current.stopRequest.summary).toContain("Real check passed")
+    expect(current.stopRequest.summary).toContain("Known limitation")
+    expect(current.stopRequest.requesterMessageID).toBe("msg_original")
+    expect(current.stopRequest).not.toHaveProperty("evidence")
+    await migration.up(() => {})
+    expect(await Storage.read<unknown>(key)).toEqual(current)
+  }))

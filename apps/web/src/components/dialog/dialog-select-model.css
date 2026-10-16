@@ -21,6 +21,9 @@
 .model-selector-popover[data-component="popover-content"] {
   max-height: min(30rem, var(--kb-popper-content-available-height, calc(100dvh - 2rem)));
 }
+.model-selector-recovery {
+  width: 20rem;
+}
 .model-selector-popover [data-slot="popover-body"] {
   overflow: hidden;
 }

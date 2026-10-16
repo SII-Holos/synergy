@@ -203,7 +203,7 @@ describe("ChannelCommand", () => {
               "/chat [message] — use normal chat for this conversation",
               "/blueprint [request] (/plan) — use Plan to author a Blueprint",
               "/lattice [goal] — decompose and execute a larger goal",
-              "/lightloop <task> — keep working until the task passes independent review",
+              "/lightloop <task> — keep working until the full task is complete and verified",
               "/model <providerID/modelID> — change the model for this conversation",
               "/new — start a new conversation",
               "/status — show the current conversation status",

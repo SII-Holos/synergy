@@ -144,6 +144,7 @@ describe("LatticeBridge", () => {
           LatticeBridge.init()
           await LatticeRuntime.init()
 
+          await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "auditing" })
           const completedLoop = await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "completed" })
           const completedRun = await waitForRun(
             scopeID,

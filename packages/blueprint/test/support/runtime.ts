@@ -4,7 +4,7 @@ import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
 import { blueprint } from "../../src/component"
 import { note } from "@ericsanchezok/synergy-note/component"
 import { registerWorker } from "../../src/worker"
-export function testRuntime(env?: Record<string, string | undefined>) {
+export function testRuntime(env?: Record<string, string | undefined>, register?: () => void) {
   const composition = RuntimeComponents.compose([
     localRuntime({ workers: false, environment: false }),
     note(),
@@ -15,6 +15,7 @@ export function testRuntime(env?: Record<string, string | undefined>) {
     composition: {
       register() {
         composition.register()
+        register?.()
       },
     },
   })

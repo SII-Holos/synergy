@@ -1,3 +1,4 @@
+import { LightLoopRuntime } from "@ericsanchezok/synergy-light-loop/light-loop/runtime"
 import { describe, expect, test } from "bun:test"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -179,15 +180,8 @@ describe("SessionNav workflow activity", () => {
           active: true,
         })
 
-        await Session.update(session.id, (draft) => {
-          if (draft.workflow?.kind !== "lightloop") throw new Error("expected a lightloop workflow")
-          draft.workflow.status = "completed"
-        })
-
-        expect(SessionNav.deriveSessionIdentity(await Session.get(session.id)).workflow).toEqual({
-          kind: "lightloop",
-          active: false,
-        })
+        await LightLoopRuntime.setTerminalStatus(session.id, "completed")
+        expect(SessionNav.deriveSessionIdentity(await Session.get(session.id)).workflow).toBeUndefined()
 
         await Session.remove(session.id)
       })

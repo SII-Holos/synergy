@@ -22,7 +22,7 @@ import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime
  * and behaves like a first-class kind: enable persists through the extension
  * envelope projection, the user-message wrapper applies through the registry,
  * the mutual-exclusion gate rejects competing core kinds, and setNone
- * releases it. Legacy workflow records parse unchanged (pure addition).
+ * releases it. Core workflow records retain their owner-defined contracts.
  */
 
 const TEST_KIND = "testonly_kind"
@@ -163,19 +163,14 @@ describe("workflow kind registry (H3 test-only kind)", () => {
       })
     }))
 
-  test("legacy workflow records parse unchanged through the extension member", () =>
+  test("core workflow records and extension payloads retain their owner-defined contracts", () =>
     runtime.run(() => {
       const legacy = [
         { kind: "plan" },
         {
           kind: "lightloop",
           instructions: "Keep going",
-          stopRequest: {
-            summary: "done",
-            requestedAt: 1,
-            requesterSessionID: "ses_a",
-            requesterMessageID: "msg_a",
-          },
+          deadlineAt: 1000,
         },
         { kind: "lattice", runID: "ltr_x", mode: "collaborative" },
         { kind: "boss", role: "worker", workerRole: "research", rootID: "ses_root" },

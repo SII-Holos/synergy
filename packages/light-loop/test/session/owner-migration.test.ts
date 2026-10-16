@@ -61,3 +61,63 @@ test("terminal extraction rolls back with its Session metadata and can be retrie
     expect(await Storage.read<unknown>(terminalKey)).toEqual(terminal)
   })
 })
+
+test("retired completion reviews preserve the goal, pause interactive work and retire the reviewer", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    const owner = { scopeID: "home", sessionID: "pending" }
+    const key = ["sessions", "home", "pending", "info"]
+    const reviewKey = ["sessions", "home", "reviewer", "info"]
+    await Storage.write(key, {
+      time: { updated: 42 },
+      workflow: {
+        kind: "lightloop",
+        instructions: "all original requirements",
+        status: "reviewing",
+        reviewAgent: "old-reviewer",
+        budget: { maxRuntimeMs: 123, maxIterations: 3 },
+        stopRequest: { reviewSessionID: "reviewer", reviewTaskID: "old-task", summary: "claimed done" },
+      },
+      unknown: { retained: true },
+    })
+    await Storage.write(reviewKey, {
+      cortex: { taskID: "old-task", parentSessionID: "pending", status: "interrupted" },
+    })
+    await migrations[1].upSession!(owner, () => {})
+    const upgraded = await Storage.read<Record<string, unknown>>(key)
+    expect(upgraded.workflow).toEqual({ kind: "lightloop", instructions: "all original requirements" })
+    expect(upgraded.paused).toMatchObject({ reason: "workflow" })
+    expect(upgraded.unknown).toEqual({ retained: true })
+    expect(await Storage.read<unknown>(reviewKey)).toMatchObject({ cortex: { status: "cancelled" } })
+    expect(await Storage.readMany([["sessions", "home", "pending", "lightloop_terminal"]])).toEqual([undefined])
+    await migrations[1].upSession!(owner, () => {})
+    expect(await Storage.read<unknown>(key)).toEqual(upgraded)
+  })
+})
+
+test("retired unattended review fails durably instead of claiming completion or hanging", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    const owner = { scopeID: "home", sessionID: "plugin" }
+    const key = ["sessions", "home", "plugin", "info"]
+    const pluginOwner = { pluginId: "p", pluginGeneration: "g", scopeId: "home" }
+    await Storage.write(key, {
+      time: { updated: 42 },
+      cortex: { taskID: "task" },
+      workflow: {
+        kind: "lightloop",
+        instructions: "retained goal",
+        pluginOwner,
+        stopRequest: { summary: "claimed done" },
+      },
+    })
+    await migrations[1].upSession!(owner, () => {})
+    expect(await Storage.read<unknown>(key)).not.toHaveProperty("workflow")
+    expect(await Storage.read<unknown>(["sessions", "home", "plugin", "lightloop_terminal"])).toMatchObject({
+      status: "failed",
+      instructions: "retained goal",
+      pluginOwner,
+      error: "legacy_review_requires_restart",
+    })
+  })
+})

@@ -1,6 +1,7 @@
 import { LoopEvent } from "./event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Cortex, CortexTypes } from "@ericsanchezok/synergy-harness/cortex"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { BlueprintLoopStore, type Info as BlueprintLoopInfo } from "./index"
 import { ContinuationKernel } from "@ericsanchezok/synergy-harness/session/continuation-kernel"
@@ -20,6 +21,9 @@ export const BlueprintContinuationPolicy: ContinuationKernel.Policy = {
     return [
       gate.terminalMessageID,
       loop.status,
+      loop.auditSessionID
+        ? (await Session.get(loop.auditSessionID).catch(() => undefined))?.cortex?.status
+        : "new-review",
       loop.stopRequest?.requesterMessageID ?? "no-stop-request",
       loop.auditTaskID ?? "no-audit-task",
       loop.stopRequest?.reviewToolRecoveryAttempts ?? 0,
@@ -35,6 +39,11 @@ export const BlueprintContinuationPolicy: ContinuationKernel.Policy = {
     if (loop.status !== "running") return undefined
     if (!loop.stopRequest) return continuationProposal(loop)
 
+    if (loop.auditSessionID) {
+      const reviewer = await Session.get(loop.auditSessionID)
+      if (SessionManager.isRunning(reviewer.id) || ["queued", "running"].includes(reviewer.cortex?.status ?? ""))
+        return undefined
+    }
     let task: Awaited<ReturnType<typeof Cortex.prepare>> | undefined
     try {
       task = await Cortex.prepare({
@@ -45,6 +54,7 @@ export const BlueprintContinuationPolicy: ContinuationKernel.Policy = {
         category: "general",
         parentSessionID: loop.sessionID,
         parentMessageID: loop.stopRequest.requesterMessageID,
+        sessionID: loop.auditSessionID,
         tools: loop.auditTools,
         reuseInterrupted: true,
         notifyParentOnComplete: false,
@@ -142,44 +152,21 @@ async function recoverTerminalReviewer(
 }
 
 function reviewPrompt(loop: BlueprintLoopInfo): string {
-  const stopRequest = loop.stopRequest
-  if (!stopRequest) throw new Error(`BlueprintLoop ${loop.id} has no pending stop request`)
+  if (!loop.stopRequest) throw new Error(`BlueprintLoop ${loop.id} has no pending stop request`)
   return [
-    "## Task",
-    `Audit BlueprintLoop ${loop.id}.`,
-    "",
-    "## Blueprint",
-    `Note ID: ${loop.noteID}. Read the complete Blueprint with note_read.`,
-    loop.userPrompt ? "" : undefined,
-    loop.userPrompt ? "## Start user instruction" : undefined,
+    `Review Blueprint ${loop.noteID}; execution session ${loop.sessionID}. Read the full Note and start instruction.`,
     loop.userPrompt,
-    "",
-    "## Stop request",
-    `**Summary:** ${stopRequest.summary}`,
-    stopRequest.completed?.length
-      ? `**Completed:**\n${stopRequest.completed.map((item) => `- ${item}`).join("\n")}`
-      : "",
-    stopRequest.evidence?.length ? `**Evidence:**\n${stopRequest.evidence.map((item) => `- ${item}`).join("\n")}` : "",
-    stopRequest.remaining?.length
-      ? `**Remaining:**\n${stopRequest.remaining.map((item) => `- ${item}`).join("\n")}`
-      : "**Remaining:** none claimed",
-    "",
-    "## Execution session",
-    `Session ID: ${loop.sessionID}. Use session_read to inspect the execution trajectory.`,
-    "",
-    "## Instructions",
-    "1. Inspect the Blueprint, start user instruction, execution trajectory, delivered artifacts, workspace changes, and domain-appropriate verification evidence.",
-    "2. Treat Change Scope, boundaries, and non-goals as review requirements, not optional advice. Unauthorized adjacent work is a scope defect, not an acceptable superset.",
-    loop.source === "lattice"
-      ? "3. This loop owns exactly one current Lattice Step. Implementation of future Lattice Pathway steps is unauthorized even when it appears useful or already passes tests."
-      : "3. Verify that delivered work stays within the Blueprint and start-instruction scope.",
-    "4. Inspect the trajectory after the first successful blueprint_loop_stop. If the execution session called more tools, modified artifacts, assisted review, or began adjacent work after that stop request, reject with a concrete scope and lifecycle violation.",
-    "5. Map every requirement to concrete evidence and classify any gap as blocking or non-blocking.",
-    "6. If all required outcomes are complete, verified, in scope, and lifecycle-correct, call blueprint_loop_approve with the execution session ID and a verdict summary.",
-    "7. If anything required is missing, incorrect, unverified, out of scope, or performed after the stop boundary, call blueprint_loop_reject with concrete remaining work and instructions.",
+    `Executor summary:
+${loop.stopRequest.summary}`,
+    loop.audit?.lastReason
+      ? `Previous requested changes:
+${loop.audit.lastReason}
+Reuse valid evidence; inspect corrections and changes, then confirm the full goal.`
+      : "Perform an independent check of the complete outcome.",
+    "Use session_read and artifact checks as needed. Inspect activity after this stop request; further tools or changes by the executor violate the review boundary. Submit blueprint_loop_approve({summary}) or blueprint_loop_reject({reason}).",
   ]
-    .filter((line): line is string => line !== undefined && line !== "")
-    .join("\n")
+    .filter(Boolean)
+    .join("\n\n")
 }
 
 function continuationProposal(loop: BlueprintLoopInfo): ContinuationKernel.InboxProposal {
@@ -210,22 +197,7 @@ function continuationProposal(loop: BlueprintLoopInfo): ContinuationKernel.Inbox
 }
 
 function continuationText(loop: BlueprintLoopInfo): string {
-  return [
-    `BlueprintLoop ${loop.id} status is \`running\`.`,
-    "",
-    `A normal final response does not finish this loop. Inspect the Blueprint note (${loop.noteID}), any start user instruction, the current delivered state, and any domain-appropriate quality evidence before deciding what to do next.`,
-    loop.source === "lattice"
-      ? "This BlueprintLoop owns exactly one current Lattice Step. Future Pathway Steps are context only, not authorization. Earlier user language such as “continue” means continue this current Blueprint, never advance into a later Step."
-      : "",
-    loop.userPrompt ? `Start user instruction: ${loop.userPrompt}` : "",
-    loop.userPrompt ? `This start user instruction is run-specific contract for execution and audit.` : "",
-    "",
-    `If the Blueprint outcome is not complete, continue the remaining execution work now.`,
-    `If the Blueprint outcome is complete and verified, call blueprint_loop_stop with a concise summary, completed requirements, concrete evidence, and any known limitations to request independent review.`,
-    "After blueprint_loop_stop succeeds, execution work is closed: do not call another tool or modify anything, and end the assistant turn immediately so the reviewer can start.",
-  ]
-    .filter(Boolean)
-    .join("\n")
+  return `Continue Blueprint ${loop.noteID} toward its full outcome. Use the durable Blueprint context, not just the latest subtask. If all required work is delivered and verified, call blueprint_loop_stop with evidence in summary, then end the turn.`
 }
 
 export namespace BlueprintContinuation {

@@ -83,7 +83,8 @@ export const BlueprintRoute = () =>
       "/loop/:id/complete",
       describeRoute({
         summary: "Complete BlueprintLoop",
-        description: "Mark a BlueprintLoop as completed.",
+        description:
+          "Return an already accepted BlueprintLoop. An unfinished loop requires its recorded reviewer to call blueprint_loop_approve.",
         operationId: "blueprint.loop.complete",
         responses: {
           200: {
