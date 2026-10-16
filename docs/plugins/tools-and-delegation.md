@@ -76,6 +76,8 @@ Parent Session failures use stable Host Service error codes: `PLUGIN_TASK_PARENT
 
 `exposure` controls how a tool appears to agents: resident, grouped, searchable, or internal. `display` supplies host-owned presentation metadata. Both are declarations copied into the generated manifest; the executable handler remains in the runtime bundle.
 
+For grouped tools, put capability and selection guidance in `exposure.description`; the host uses it in discovery and the expandable-group directory. API4 retains `whenToExpand` for existing definitions, but it is not a model-visible instruction or a search signal. New definitions need only the canonical description.
+
 A handler may return a string or `ToolResult` with title, output, metadata, and attachments. Keep durable business state and provenance in plugin-owned artifacts.
 
 ## Invoking Other Tools

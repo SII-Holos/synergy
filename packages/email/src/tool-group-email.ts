@@ -4,9 +4,8 @@ export function registerToolGroup() {
     {
       id: "email",
       title: "Email",
-      description: "Compose, send, and read emails via SMTP/IMAP. Supports plain text and HTML mail.",
-      whenToExpand:
-        "Expand when the user asks to send an email, check inbox, read mail, or search for specific emails.",
+      description:
+        "Compose and send plain-text or HTML email, check inboxes, read messages and search mail via SMTP/IMAP.",
       tools: ["email_send", "email_read"],
     },
   ])

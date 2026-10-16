@@ -135,9 +135,8 @@ export function registerComputerTools() {
     {
       id: "computer",
       title: "Computer",
-      description: "Find, observe and act on native application windows through local Synergy Desktop.",
-      whenToExpand:
-        "Expand when a task needs native desktop application inspection or interaction. Requires the native Environment and Full Access.",
+      description:
+        "Find, observe and interact with native application windows through local Synergy Desktop. Requires a native Environment and Full Access.",
       tools: ["computer_apps", "computer_observe", "computer_action"],
     },
   ])

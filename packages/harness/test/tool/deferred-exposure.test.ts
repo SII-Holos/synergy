@@ -9,7 +9,6 @@ describe("deferred tool exposure folding", () => {
     expect(folded.group).toBe(ToolExposure.ORCHESTRATION_GROUP)
     expect(folded.title).toBeTruthy()
     expect(folded.description).toContain("delegation")
-    expect(folded.whenToExpand).toContain("expand_tools")
   })
 
   test("leaves tools outside the deferred list untouched", () => {

@@ -209,14 +209,6 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
         },
         toolEntries: async () => mcpEntries,
         toolCallTimeout: () => undefined,
-        async deferredGroupCatalog() {
-          return {
-            totalTools: mcpEntries.length - 1,
-            servers: servers
-              .filter((server) => server.name !== "catalog-resident")
-              .map((server) => ({ serverName: server.name, toolNames: server.tools })),
-          }
-        },
         normalizeResult() {
           throw new Error("Catalog must not normalize tool results")
         },

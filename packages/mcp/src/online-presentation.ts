@@ -88,7 +88,6 @@ function onlinePresentation(entry: MCP.ToolEntry, resident: boolean): ToolMcpSou
           group: "online",
           title: "Online search and reading",
           description: "Online source search and reading.",
-          whenToExpand: "Expand for online facts, source reading, or literature retrieval.",
           summary: contract.summary,
           keywords: contract.keywords,
         },

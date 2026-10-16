@@ -50,7 +50,7 @@ Synergy assembles tools from built-ins, plugins, MCP servers, and turn-specific 
 
 Exposure is not permission. Tool taxonomy, effective arguments, Scope/workspace, protected paths, external effects, and active profile determine whether a call is allowed, denied, or can ask.
 
-The expandable-group directory retains every available tool name. MCP groups factor their shared tool-ID prefix out of the displayed names; the prefix and listed name reconstruct the unchanged full ID. Expansion loads the actual descriptions and parameter schemas. Names alone are not a parameter specification.
+The expandable-group directory retains every available tool name and the group's selection description. Discovery search uses the same description; expansion syntax is explained once by the discovery tools rather than repeated per group. MCP groups factor their shared tool-ID prefix out of the displayed names; the prefix and listed name reconstruct the unchanged full ID. Expansion loads the actual descriptions and parameter schemas. Names alone are not a parameter specification.
 
 `visuals` contains interactive rendering and `computer` contains native application observation and actions; both are deferred across primary agents. `runtime_reload` remains resident. The built-in web and AI-paper services share the deferred `online` group. Its directory and discovery summary describe only capabilities whose tools are available to the caller. AI literature discovery prefers paper search; general web facts, documentation and project sources use web search. Known URLs can be read directly without a preceding search.
 

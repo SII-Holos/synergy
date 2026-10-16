@@ -17,8 +17,8 @@ export function registerMediaTools() {
     {
       id: "visuals",
       title: "Visuals",
-      description: "Interactive visual results built from HTML, SVG, JavaScript or the native component catalog.",
-      whenToExpand: "Expand when a task needs a rendered diagram, chart, interactive explanation, form or comparison.",
+      description:
+        "Create interactive diagrams, charts, explanations, forms or comparisons using native components or HTML/SVG/JavaScript.",
       tools: ["render"],
     },
   ])

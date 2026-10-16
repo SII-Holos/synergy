@@ -9,7 +9,6 @@ export namespace ToolExposure {
         group: string
         title?: string
         description?: string
-        whenToExpand?: string
         summary?: string
       }
     | {
@@ -30,7 +29,6 @@ export namespace ToolExposure {
     id: string
     title: string
     description: string
-    whenToExpand: string
     tools: string[]
     keywords?: string[]
   }
@@ -60,9 +58,7 @@ export namespace ToolExposure {
       id: "session",
       title: "Session",
       description:
-        "Browse, search, read, control, and message Synergy sessions across scopes and channels. Includes scope discovery for cross-project session creation.",
-      whenToExpand:
-        "Expand when the task depends on previous conversations, session history, another active session, channel delivery, session control actions, or choosing a scopeID for cross-project session creation.",
+        "Browse previous conversations, search history, control or message other Synergy sessions, and discover scopes for cross-project session creation.",
       tools: ["session_list", "session_read", "session_search", "session_send", "session_control", "scope_list"],
     },
   ]
@@ -118,17 +114,6 @@ export namespace ToolExposure {
     return `mcp:${sanitizeID(serverName)}`
   }
 
-  export function mcpGroup(serverName: string, tools: string[]): GroupInfo {
-    return {
-      id: mcpGroupID(serverName),
-      title: `MCP: ${serverName}`,
-      description: `Tools exposed by the connected MCP server "${serverName}".`,
-      whenToExpand:
-        "Expand when a task specifically needs this MCP server or search_tools returns one of its tools as the best match.",
-      tools,
-    }
-  }
-
   export function mcpExposure(serverName: string, expandByDefault?: boolean): Info {
     if (expandByDefault === true) return RESIDENT
     return {
@@ -136,8 +121,6 @@ export namespace ToolExposure {
       group: mcpGroupID(serverName),
       title: `MCP: ${serverName}`,
       description: `Tools exposed by the connected MCP server "${serverName}".`,
-      whenToExpand:
-        "Expand when a task specifically needs this MCP server or search_tools returns one of its tools as the best match.",
     }
   }
 
@@ -171,8 +154,6 @@ export namespace ToolExposure {
     title: "Orchestration",
     description:
       "Specialist delegation (task) and DAG planning (dagwrite, dagpatch, dagread) for parallel or multi-phase work.",
-    whenToExpand:
-      'Expand with expand_tools({ groups: ["orchestration"] }) when the user asks for parallel or delegated work, when the request is clearly a large multi-part task, or when you already know you will dispatch specialists or plan a DAG.',
     tools: [],
   }
 
@@ -192,12 +173,17 @@ export namespace ToolExposure {
       group: ORCHESTRATION_GROUP,
       title: ORCHESTRATION_GROUP_INFO.title,
       description: ORCHESTRATION_GROUP_INFO.description,
-      whenToExpand: ORCHESTRATION_GROUP_INFO.whenToExpand,
     }
   }
 
   export function normalize(toolID: string, explicit?: Info): Info {
-    if (explicit) return explicit
+    if (explicit) {
+      if (explicit.mode === "group" && "whenToExpand" in explicit) {
+        const { whenToExpand: _legacy, ...current } = explicit
+        return current
+      }
+      return explicit
+    }
     const group = builtinGroupForTool(toolID)
     if (group) return { mode: "group", group: group.id }
     return RESIDENT
@@ -259,41 +245,6 @@ export namespace ToolExposure {
     return { available, visible }
   }
 
-  export function groupTable(groups: GroupInfo[] = groupState().groups): string {
-    return [
-      "| Group | What it does | When to expand |",
-      "| --- | --- | --- |",
-      ...groups.map((group) => `| ${group.id} | ${group.description} | ${group.whenToExpand} |`),
-    ].join("\n")
-  }
-  export const MCP_GROUP_TABLE_MAX_SERVERS = 10
-  export const MCP_GROUP_TABLE_MAX_TOOL_NAMES = 6
-
-  export interface McpServerGroupSummary {
-    serverName: string
-    toolNames: string[]
-  }
-
-  /**
-   * Render the "Connected MCP groups" table appended to the expand_tools
-   * description. Returns "" when no servers are present so callers can drop
-   * the section (and its heading) entirely.
-   */
-  export function mcpGroupTable(servers: McpServerGroupSummary[]): string {
-    if (servers.length === 0) return ""
-    const visible = servers.slice(0, MCP_GROUP_TABLE_MAX_SERVERS)
-    const rows = visible.map((server) => {
-      const names = unique(server.toolNames).slice(0, MCP_GROUP_TABLE_MAX_TOOL_NAMES)
-      const remainder = unique(server.toolNames).length - names.length
-      const nameList = remainder > 0 ? `${names.join(", ")} … and ${remainder} more` : names.join(", ")
-      const groupID = mcpGroupID(server.serverName)
-      return `| ${groupID} | ${server.serverName} (${unique(server.toolNames).length} tools): ${nameList} | Expand with expand_tools({groups:["${groupID}"]}) when a task needs this server. |`
-    })
-    const remainderServers = servers.length - visible.length
-    if (remainderServers > 0) rows.push(`| … | +${remainderServers} more servers | … |`)
-    return ["| Group | What it does | When to expand |", "| --- | --- | --- |", ...rows].join("\n")
-  }
-
   export function state(input?: ToolState): Required<ToolState> {
     return {
       expandedGroups: unique(input?.expandedGroups ?? []),
@@ -346,9 +297,6 @@ export namespace ToolExposure {
       id: normalized.group,
       title: normalized.title ?? normalized.group,
       description: normalized.description ?? `Tools in the ${normalized.group} group.`,
-      whenToExpand:
-        normalized.whenToExpand ??
-        "Expand when search_tools returns this group or when the task clearly depends on this group of tools.",
       tools: [toolID],
     }
   }
