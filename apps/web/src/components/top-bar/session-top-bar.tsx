@@ -353,17 +353,26 @@ export function SessionTopBar(props: {
             <TooltipKeybind
               open={String(triggerProps["aria-expanded"]) === "true" ? false : undefined}
               placement="bottom"
-              title={_(topBar.chooseModel)}
+              title={triggerProps["aria-label"] ?? _(topBar.chooseModel)}
               keybind={command.keybind("model.choose")}
             >
               <button {...triggerProps} type="button" class="stb-selector-btn">
-                <span class="stb-selector-label">{local.model.current()?.name ?? _(topBar.selectModel)}</span>
-                <Show when={local.model.current()?.catalogState === "retained"}>
-                  <Tooltip placement="bottom" value={_(topBar.retainedModel)}>
-                    <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base" />
-                  </Tooltip>
+                <Show
+                  when={triggerProps.children}
+                  fallback={
+                    <>
+                      <span class="stb-selector-label">{local.model.current()?.name ?? _(topBar.selectModel)}</span>
+                      <Show when={local.model.current()?.catalogState === "retained"}>
+                        <Tooltip placement="bottom" value={_(topBar.retainedModel)}>
+                          <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base" />
+                        </Tooltip>
+                      </Show>
+                      <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="stb-chevron" />
+                    </>
+                  }
+                >
+                  {triggerProps.children}
                 </Show>
-                <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="stb-chevron" />
               </button>
             </TooltipKeybind>
           )}

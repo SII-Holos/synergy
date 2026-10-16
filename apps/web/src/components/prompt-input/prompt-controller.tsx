@@ -2423,25 +2423,34 @@ export function createPromptInputController(props: PromptInputProps) {
                             {...triggerProps}
                             type="button"
                             class="prompt-input-toolbar-button max-w-full flex items-center gap-1.5"
-                            aria-label={i18n._(topBar.chooseModel)}
+                            aria-label={triggerProps["aria-label"] ?? i18n._(topBar.chooseModel)}
                           >
-                            <span class="truncate text-12-medium text-text-base">
-                              {local.model.current()?.name ?? i18n._(topBar.selectModel)}
-                            </span>
-                            <Show when={local.model.current()?.catalogState === "retained"}>
-                              <Tooltip value={i18n._(topBar.retainedModel)}>
-                                <Icon
-                                  name={getSemanticIcon("state.warning")}
-                                  size="small"
-                                  class="text-icon-warning-base"
-                                />
-                              </Tooltip>
+                            <Show
+                              when={triggerProps.children}
+                              fallback={
+                                <>
+                                  <span class="truncate text-12-medium text-text-base">
+                                    {local.model.current()?.name ?? i18n._(topBar.selectModel)}
+                                  </span>
+                                  <Show when={local.model.current()?.catalogState === "retained"}>
+                                    <Tooltip value={i18n._(topBar.retainedModel)}>
+                                      <Icon
+                                        name={getSemanticIcon("state.warning")}
+                                        size="small"
+                                        class="text-icon-warning-base"
+                                      />
+                                    </Tooltip>
+                                  </Show>
+                                  <Icon
+                                    name={getSemanticIcon("navigation.collapse")}
+                                    size="small"
+                                    class="text-icon-weak-base shrink-0"
+                                  />
+                                </>
+                              }
+                            >
+                              {triggerProps.children}
                             </Show>
-                            <Icon
-                              name={getSemanticIcon("navigation.collapse")}
-                              size="small"
-                              class="text-icon-weak-base shrink-0"
-                            />
                           </button>
                         )}
                       />

@@ -5146,6 +5146,21 @@ msgstr "Library"
 msgid "app.library.views"
 msgstr "Library views"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.checkConnection"
+msgstr "Check model connection"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.configure"
+msgstr "Configure model"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.unavailable"
+msgstr "No models available"
+
 #. js-lingui-explicit-id
 msgid "app.name.synergy"
 msgstr "Synergy"
@@ -8744,11 +8759,6 @@ msgstr "Tools"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.shell.modelConfigCmd"
-msgstr "synergy config"
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.action.connect"
 msgstr "Connect a provider"
 
@@ -8760,17 +8770,17 @@ msgstr "Review providers"
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.needsAttention"
-msgstr "A connected provider needs attention before its models can run."
+msgstr "Check your provider’s connection or usage limits to continue."
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.notConfigured"
-msgstr "No AI provider is connected. Connect one to choose a model, or run {cmd} in your terminal."
+msgstr "Connect a provider to start a conversation."
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.restricted"
-msgstr "No model is available to select. Check that a connected provider is enabled and offers models."
+msgstr "No model is available. Enable a provider and check its model list."
 
 #. js-lingui-explicit-id
 msgid "app.shell.window.maximize"
