@@ -2,6 +2,7 @@ import { For, Show, createMemo, createSignal, onCleanup } from "solid-js"
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { AttachmentGallery } from "@ericsanchezok/synergy-ui/attachment-card"
 import { ResourceReferenceProvider } from "@ericsanchezok/synergy-ui/context/resource-open"
@@ -76,7 +77,14 @@ export function PendingTimelineItem(props: {
           class="pending-composer-status"
           title={props.rollbackActive ? _(S.convPausedTooltip) : props.item.failReason}
         >
-          <Icon name={getSemanticIcon(props.item.mode === "steer" ? "inbox.steer" : "inbox.task")} size="small" />
+          <Show
+            when={pending()}
+            fallback={
+              <Icon name={getSemanticIcon(props.item.mode === "steer" ? "inbox.steer" : "inbox.task")} size="small" />
+            }
+          >
+            <Spinner class="size-4!" />
+          </Show>
           <span classList={{ "sr-only": !view().frozen && props.item.status !== "failed" }}>
             {_(
               props.rollbackActive
@@ -90,7 +98,7 @@ export function PendingTimelineItem(props: {
         <div class="pending-composer-label" title={label()}>
           {label()}
         </div>
-        <div class="pending-composer-actions">
+        <div class="pending-composer-actions" aria-busy={pending()}>
           <Show when={view().primaryAction}>
             {(action) => (
               <Tooltip value={action() === "queue" ? _(S.convMoveToQueueTitle) : _(S.convGuideRunTitle)}>
@@ -143,11 +151,9 @@ export function PendingTimelineItem(props: {
           <For each={references()}>{(reference) => <span title={reference}>{reference}</span>}</For>
         </div>
       </Show>
-      <Show when={pending()}>
-        <div role="status" class="pending-composer-feedback">
-          {_(S.inboxOperationPending)}
-        </div>
-      </Show>
+      <span role="status" class="sr-only">
+        {pending() ? _(S.inboxOperationPending) : ""}
+      </span>
       <Show when={failure()}>
         {(failed) => (
           <div role="alert" class="flex flex-col gap-2 text-text-base">

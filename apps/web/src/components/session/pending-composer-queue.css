@@ -112,13 +112,6 @@
   white-space: nowrap;
 }
 
-.pending-composer-feedback {
-  margin-top: 6px;
-  color: var(--text-weak);
-  font-size: 12px;
-  line-height: 20px;
-}
-
 [data-prompt-pending] {
   display: flow-root;
 }
