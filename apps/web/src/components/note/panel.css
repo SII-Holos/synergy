@@ -1,5 +1,6 @@
 .note-workspace-editor-layout {
   position: relative;
+  container: note-workspace / inline-size;
   display: flex;
   height: 100%;
   min-width: 0;
@@ -120,6 +121,7 @@
   height: 32px;
 }
 .note-resource-group-header > button:first-child {
+  padding-inline: 6px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -134,18 +136,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.note-resource-group-header > [data-component="icon-button"] {
-  opacity: 0;
-}
-.note-resource-group-header:hover > [data-component="icon-button"],
-.note-resource-group-header:focus-within > [data-component="icon-button"] {
-  opacity: 1;
-}
-@media (hover: none) {
-  .note-resource-group-header > [data-component="icon-button"] {
-    opacity: 1;
-  }
 }
 .note-resource-group-header small {
   margin-inline-start: auto;
@@ -164,17 +154,10 @@
   text-align: start;
   transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
-.note-resource-row--blueprint {
-  height: 48px;
-}
 .note-resource-row:hover,
-.note-resource-row[aria-pressed="true"] {
+.note-resource-row[aria-pressed="true"],
+.note-resource-row[aria-current="page"] {
   background: var(--surface-raised-base-hover);
-}
-.note-resource-time {
-  flex-shrink: 0;
-  color: var(--text-weak);
-  font-size: 11px;
 }
 .note-resource-loading span {
   display: block;
@@ -229,62 +212,11 @@
   --note-reading-gutter: clamp(16px, 4cqi, 48px);
   --document-editor-background: var(--background-base);
 }
-.note-navigation-search {
-  display: flex;
-  min-height: 48px;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border-weak-base);
-}
-.note-navigation-search input {
-  min-width: 0;
-  flex: 1;
-  padding: 4px;
-  font-size: 13px;
-  background: transparent;
-}
 .note-navigation-list {
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 6px;
-}
-.note-navigation-group {
-  display: flex;
-  width: 100%;
-  height: 32px;
-  align-items: center;
-  gap: 6px;
-  padding-inline: 6px;
-  color: var(--text-weak);
-  font-size: 12px;
-}
-.note-navigation-row {
-  display: flex;
-  height: 32px;
-  align-items: center;
-  border-radius: 6px;
-}
-.note-navigation-row--blueprint {
-  height: 48px;
-}
-.note-navigation-document {
-  display: flex;
-  height: 100%;
-  min-width: 0;
-  flex: 1;
-  align-items: center;
-  gap: 6px;
-  padding-inline: 6px;
-  font-size: 13px;
-  color: var(--text-base);
-  text-align: start;
-}
-.note-navigation-document[aria-current="page"] {
-  background: var(--surface-raised-base-hover);
-  border-radius: 6px;
-  color: var(--text-strong);
 }
 .note-navigation-copy {
   display: flex;
@@ -297,21 +229,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.note-navigation-copy small {
-  font-size: 11px;
-  color: var(--text-weak);
-}
-.note-navigation-row > button:last-child:not(:first-child) {
-  opacity: 0;
-}
-.note-navigation-row:hover,
-.note-navigation-row:focus-within {
-  background: var(--surface-raised-base-hover);
-}
-.note-navigation-row:hover > button:last-child,
-.note-navigation-row:focus-within > button:last-child {
-  opacity: 1;
 }
 .note-navigation-message {
   padding: 16px 8px;
@@ -332,11 +249,6 @@
 }
 .note-document-error button {
   flex-shrink: 0;
-}
-@media (hover: none) {
-  .note-navigation-row > button:last-child:not(:first-child) {
-    opacity: 1;
-  }
 }
 
 .note-scope-section {
@@ -948,4 +860,51 @@
   .note-run-model-run {
     transition: none;
   }
+}
+
+.note-navigation-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.note-navigation-content .note-workspace-toolbar {
+  padding-inline: 8px;
+}
+.note-navigation-content .note-list-search {
+  margin-inline: 8px;
+  min-height: 40px;
+  height: 40px;
+}
+.note-navigation-status {
+  display: flex;
+  color: var(--icon-weak);
+}
+.note-workspace-empty {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  overflow: hidden;
+  color: var(--text-weak);
+  font-size: 13px;
+}
+@container note-workspace (max-width: 519px) {
+  .note-workspace-empty {
+    display: none;
+  }
+}
+.note-run-menu .note-run-agent-list {
+  padding-inline: 0;
+  gap: 8px;
+}
+.note-run-menu .note-run-model-body:has(.note-run-agent-list) {
+  padding: 8px;
+}
+.note-run-menu .note-run-agent-list [data-slot="list-item"] {
+  padding-inline: 8px;
 }

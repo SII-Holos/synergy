@@ -1841,7 +1841,7 @@ export function createPromptInputController(props: PromptInputProps) {
     noteAttachments,
     sessionAttachments,
     localArmedLoop: availableLocalLoop,
-    activeLoopID: () => blueprintBinding()?.loopID,
+    activeLoopID: boundLoopID,
     working,
     workflowKind: armedWorkflowKind,
     clearPendingWorkflows: () => {

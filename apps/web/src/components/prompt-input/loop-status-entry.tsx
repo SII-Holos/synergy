@@ -12,7 +12,11 @@ import { loopCopy } from "./loop-status-copy"
 
 const name = (value: LoopDisplay) => (value.kind === "blueprint" ? "BlueprintLoop" : "Light Loop")
 const statusCopy = (value: LoopDisplay) =>
-  value.kind === "lightloop" && value.stage === "completed" ? loopCopy.lightCompleted : loopCopy[value.stage]
+  value.kind === "blueprint" && value.pending
+    ? loopCopy.ready
+    : value.kind === "lightloop" && value.stage === "completed"
+      ? loopCopy.lightCompleted
+      : loopCopy[value.stage]
 
 export function LoopStatusEntry(props: {
   value: LoopDisplay

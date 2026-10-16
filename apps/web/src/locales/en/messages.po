@@ -13109,6 +13109,10 @@ msgid "note.list.options"
 msgstr "Notes list options"
 
 #. js-lingui-explicit-id
+msgid "note.navigation.choose"
+msgstr "Select a note to read or edit"
+
+#. js-lingui-explicit-id
 msgid "note.navigation.hide"
 msgstr "Hide notes list"
 
@@ -14457,6 +14461,10 @@ msgstr "Paused"
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.pending"
 msgstr "Send a task to start"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.ready"
+msgstr "Ready to run"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.reason"

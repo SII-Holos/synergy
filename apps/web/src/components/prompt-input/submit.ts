@@ -273,6 +273,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         return
       }
       if (submitIntent === "blocked") {
+        if (blueprintSlot && input.working()) {
+          showToast({ type: "warning", title: i18n._(PI.sessionRunning), description: i18n._(PI.attachWaitRun) })
+          return
+        }
         if (input.pendingLightLoop()) {
           showToast({
             type: "warning",

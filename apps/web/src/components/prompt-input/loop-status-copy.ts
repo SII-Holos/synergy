@@ -1,4 +1,5 @@
 export const loopCopy = {
+  ready: { id: "prompt.loopStatus.ready", message: "Ready to run" },
   resolving: { id: "prompt.loopStatus.resolving", message: "Checking result" },
   unavailable: { id: "prompt.loopStatus.unavailable", message: "Status unavailable" },
   retry: { id: "prompt.loopStatus.retry", message: "Retry" },

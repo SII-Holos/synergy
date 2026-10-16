@@ -13109,6 +13109,10 @@ msgid "note.list.options"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "note.navigation.choose"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "note.navigation.hide"
 msgstr ""
 
@@ -14456,6 +14460,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.ready"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -13109,6 +13109,10 @@ msgid "note.list.options"
 msgstr "笔记列表选项"
 
 #. js-lingui-explicit-id
+msgid "note.navigation.choose"
+msgstr "选择笔记以阅读或编辑"
+
+#. js-lingui-explicit-id
 msgid "note.navigation.hide"
 msgstr "隐藏笔记列表"
 
@@ -14457,6 +14461,10 @@ msgstr "已暂停"
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.pending"
 msgstr "发送任务后开始"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.ready"
+msgstr "待运行"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.reason"
