@@ -48,7 +48,8 @@ description: bad: yaml: here
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await SkillTool.init()
-          expect(tool.description).toContain("Load a skill")
+          expect(tool.description).not.toContain("broken-skill")
+          expect((await Skill.all()).some((skill) => skill.name === "broken-skill")).toBe(false)
           const tools = await ToolRegistry.tools("test-provider")
           expect(tools.some((item) => item.id === "skill")).toBe(true)
         },

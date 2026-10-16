@@ -6,6 +6,7 @@ import { setupI18n } from "@lingui/core"
 import { createComponent, createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import type { Prompt } from "../../../src/context/prompt"
+import type { LoopTerminal } from "../../../src/components/prompt-input/loop-status"
 
 // The composer has exactly one primary control whose meaning follows session
 // state: Send with a draft, Pause while running, Continue while paused, and
@@ -65,6 +66,7 @@ let lightUpdateBarrier: Promise<void> | undefined
 let loopCancelFails = false
 let loopCancelBarrier: Promise<void> | undefined
 let loopReply: Promise<unknown> | undefined
+let lightTerminalReply: LoopTerminal | undefined
 
 const message = (content: string): Prompt => [{ type: "text", content, start: 0, end: content.length }]
 
@@ -96,7 +98,7 @@ const sdkClient = () => ({
         return { data: {} }
       },
       getLightloopTerminal: async () => ({
-        data: { status: "cancelled", instructions: "Verify edge cases", createdAt: 1 },
+        data: lightTerminalReply ?? { status: "cancelled", instructions: "Verify edge cases", createdAt: 1 },
       }),
     },
   },
@@ -400,6 +402,7 @@ afterEach(() => {
   loopGetCalls.length = 0
   loopGetSignals.length = 0
   loopReply = undefined
+  lightTerminalReply = undefined
   setSessionID("ses_prompt")
   lightCancelCalls.length = 0
   lightUpdateCalls.length = 0
@@ -816,17 +819,12 @@ describe("Loop status entry", () => {
     }
   })
   test.each([
-    [
-      {
-        stopRequest: { summary: "ready", requestedAt: 1, requesterSessionID: "ses_prompt", requesterMessageID: "msg" },
-      },
-      "In review",
-    ],
-    [{ review: { attempts: 1, lastReason: "Missing cancellation coverage" } }, "Changes requested"],
-    [{ status: "failed", terminalError: "Reviewer failed to launch" }, "Failed"],
-  ] as const)("Light Loop exposes the authoritative stage %j", async (patch, label) => {
-    setSessionWorkflow({ kind: "lightloop", instructions: "Verify edge cases", ...patch })
-    setStatusType("busy")
+    ["idle", "Bound"],
+    ["busy", "Running"],
+    ["paused", "Paused"],
+  ] as const)("Light Loop exposes the active session stage %s", async (status, label) => {
+    setSessionWorkflow({ kind: "lightloop", instructions: "Verify edge cases" })
+    setStatusType(status)
     const harness = mount()
     try {
       await settle()
@@ -834,6 +832,38 @@ describe("Loop status entry", () => {
       expect(entry?.getAttribute("aria-label")).toBe("Light Loop")
       expect(entry?.textContent).toContain(label)
       expect(entry?.querySelector("button")?.disabled).toBe(false)
+    } finally {
+      harness.dispose()
+    }
+  })
+  test.each([
+    ["completed", undefined],
+    ["failed", "Failed"],
+    ["cancelled", "Cancelled"],
+    ["timed_out", "Time limit reached"],
+    ["iteration_exhausted", "Review limit reached"],
+  ] as const)("Light Loop settles from the terminal record (%s)", async (status, label) => {
+    setSessionWorkflow({ kind: "lightloop", instructions: "Verify edge cases" })
+    setStatusType("busy")
+    const harness = mount()
+    try {
+      await settle()
+      expect(harness.root.querySelector('[data-component="loop-status-entry"]')?.textContent).toContain("Running")
+      lightTerminalReply = {
+        status,
+        instructions: "Verify edge cases",
+        error: "Execution could not finish",
+        createdAt: 2,
+      }
+      setSessionWorkflow(undefined)
+      setStatusType("idle")
+      await settle()
+      const entry = harness.root.querySelector('[data-component="loop-status-entry"]')
+      if (label) {
+        expect(entry?.textContent).toContain(label)
+        expect(entry?.textContent).toContain("Verify edge cases")
+        expect(entry?.querySelector('[aria-label="Edit goal"]')).toBeNull()
+      } else expect(entry).toBeNull()
     } finally {
       harness.dispose()
     }

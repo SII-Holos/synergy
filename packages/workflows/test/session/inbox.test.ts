@@ -634,7 +634,7 @@ describe("SessionInbox", () => {
         },
       })
     }))
-  test("agenda delivery tells a Light Loop how to clean up and request review", () =>
+  test("agenda delivery requires a verified Light Loop outcome and released wakeups before completion", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
@@ -673,7 +673,9 @@ describe("SessionInbox", () => {
               expect(prompt.text).toContain("Light Loop")
               expect(prompt.text).toContain(item.id)
               expect(prompt.text).toContain("cancel the remaining wakeups")
-              expect(prompt.text).toContain("Do not request review while an Agenda watch still holds continuation")
+              expect(prompt.text).toContain("complete task is finished and verified")
+              expect(prompt.text).toContain("complete the task through loop_stop")
+              expect(prompt.text).toContain("Do not complete while an Agenda watch still holds continuation")
               expect(prompt.text).toContain("loop_stop")
               expect(prompt.text).not.toContain("blueprint_loop_stop")
               expect(prompt.text).not.toContain("Ignore cleanup")

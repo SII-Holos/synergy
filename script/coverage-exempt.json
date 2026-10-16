@@ -2762,23 +2762,11 @@
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/compat/light-loop/tools/light-loop-approve.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/light-loop/tools/light-loop-reject.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
           "glob": "src/compat/light-loop/tools/loop-stop.ts",
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
           "glob": "src/compat/session/blueprint-state.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/session/light-loop-review-access.ts",
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {

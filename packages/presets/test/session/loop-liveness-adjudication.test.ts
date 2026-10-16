@@ -329,6 +329,9 @@ describe("orphaned BlueprintLoop adjudication preserves real drivers", () => {
             status: "running",
           })
           await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, created.id, {
+            status: "auditing",
+          })
+          await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, created.id, {
             status: "completed",
             summary: "done",
           })

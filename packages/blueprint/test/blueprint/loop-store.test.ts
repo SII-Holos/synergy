@@ -19,7 +19,7 @@ const runtime = await testRuntime()
  *
  * These tests encode the contracted transition table:
  *   armed     → running,cancelled
- *   running   → auditing,completed,failed,cancelled
+ *   running   → auditing,failed,cancelled
  *   auditing  → running,completed,failed,cancelled
  *   completed → completed
  *   failed    → (none)
@@ -225,7 +225,7 @@ describe("BlueprintLoopStore transitions", () => {
       })
     }))
 
-  test("running → auditing is valid (leaves running for a non-terminal hold)", () =>
+  test("running must enter auditing before it can complete", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = (await Scope.fromDirectory(tmp.path)).scope
@@ -243,6 +243,10 @@ describe("BlueprintLoopStore transitions", () => {
             status: "running" as any,
           })
 
+          await expect(
+            BlueprintLoopStore.updateStatus(scope.id, loop.id, { status: "completed" }),
+          ).rejects.toBeInstanceOf(LoopError.InvalidTransition)
+          expect((await BlueprintLoopStore.get(scope.id, loop.id)).status).toBe("running")
           const updated = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
             status: "auditing" as any,
           })
@@ -351,7 +355,7 @@ describe("BlueprintLoopStore transitions", () => {
             title: "Loop",
             sessionID: "ses_test",
           })
-          // armed → running → completed
+          // armed → running → auditing → completed
           await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
             status: "running" as any,
           })
@@ -437,7 +441,7 @@ describe("BlueprintLoopStore transitions", () => {
             title: "Loop",
             sessionID: "ses_test",
           })
-          // armed → running → completed
+          // armed → running → auditing → completed
           await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
             status: "running" as any,
           })
