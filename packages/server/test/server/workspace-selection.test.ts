@@ -54,7 +54,7 @@ test("busy sessions reject Workspace changes with a conflict and preserve their 
     })
   }))
 
-test("creating a Home session with current selection preserves its absent Workspace", () =>
+test("creating a Home session selects its shared default unless none is explicit", () =>
   runtime.run(async () => {
     const response = await Server.App().request("/session?scopeID=home", {
       method: "POST",
@@ -62,7 +62,27 @@ test("creating a Home session with current selection preserves its absent Worksp
       body: JSON.stringify({ workspace: { mode: "current" } }),
     })
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ scope: { id: "home" }, workspaceID: null, workspace: null })
+    const session = await response.json()
+    expect(session).toMatchObject({
+      scope: { id: "home", local: null },
+      workspace: { type: "directory", path: await fs.realpath(path.join(runtime.host.root, "workspaces", "home")) },
+    })
+    expect(session.workspaceID).toStartWith("wsp_")
+    const none = await Server.App().request("/session?scopeID=home", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workspace: { mode: "none" } }),
+    })
+    expect(none.status).toBe(200)
+    const cleared = await none.json()
+    expect(cleared).toMatchObject({ workspaceID: null, workspace: null })
+    const current = await Server.App().request(`/session/${cleared.id}/workspace?scopeID=home`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode: "current" }),
+    })
+    expect(current.status).toBe(200)
+    expect(await current.json()).toMatchObject({ workspaceID: null, workspace: null })
   }))
 
 test("current selection preserves a missing historical reference without adopting the Scope directory", () =>

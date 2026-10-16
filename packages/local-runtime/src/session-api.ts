@@ -152,9 +152,19 @@ export async function createSession(
       : isWorktree && body.environmentID === undefined && !body.parentID
         ? await EnvironmentProviders.resolveDefault()
         : undefined
-  const scope = body.scope ?? (body.parentID ? (await Session.get(body.parentID)).scope : ScopeContext.current.scope)
-  const selectedWorkspace =
-    workspace?.mode === "workspace" ? await WorkspaceCatalog.get(workspace.workspaceID, scope.id) : undefined
+  const parent = body.parentID ? await Session.get(body.parentID) : undefined
+  const scope = body.scope ?? parent?.scope ?? ScopeContext.current.scope
+  const selectedWorkspaceID =
+    workspace?.mode === "workspace"
+      ? workspace.workspaceID
+      : workspace?.mode === "none"
+        ? null
+        : body.workspaceID !== undefined
+          ? body.workspaceID
+          : parent?.scope.id === scope.id
+            ? parent.workspaceID
+            : undefined
+  const selectedWorkspace = selectedWorkspaceID ? await WorkspaceCatalog.get(selectedWorkspaceID, scope.id) : undefined
   if (
     selectedWorkspace &&
     workspace?.mode === "workspace" &&
@@ -169,8 +179,10 @@ export async function createSession(
     environmentSelection.provider !== "native" &&
     (workspace?.mode === "create" ||
       workspace?.mode === "existing" ||
-      (workspace?.mode !== "none" &&
-        (selectedWorkspace ? selectedWorkspace.backend?.provider !== "objects" : !!scope.local)))
+      (selectedWorkspaceID !== null &&
+        (selectedWorkspace
+          ? selectedWorkspace.backend?.provider !== "objects"
+          : !!scope.local || scope.type === "home")))
   )
     throw new SessionLocationError({
       code: "incompatible_files",

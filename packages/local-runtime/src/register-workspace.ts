@@ -14,10 +14,19 @@ import { Worktree } from "./workspace/worktree"
 import { WorkspaceFileImport } from "@ericsanchezok/synergy-harness/workspace/file-import"
 import { WorkspaceFileService } from "./workspace-file/service"
 import { registerWorkspaceIdentityMigrations } from "./workspace/identity-migration"
+import fs from "node:fs/promises"
+import path from "node:path"
+import { Global } from "@ericsanchezok/synergy-harness/global"
+import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 
 const log = Log.create({ service: "runtime.workspace" })
 
 const workspaceServices: SessionWorkspaceRuntime.Provider = {
+  async homeWorkspace() {
+    const directory = path.join(Global.Path.root, "workspaces", "home")
+    await fs.mkdir(directory, { recursive: true })
+    return WorkspaceCatalog.projection(await WorkspaceBinding.register("home", directory))
+  },
   withWorktree: (directory, sessionID, fn) => Worktree.withUse(directory, sessionID, fn),
   createWorktree: (input) => Worktree.create(input),
   enterWorktree: (input) => Worktree.enter(input),

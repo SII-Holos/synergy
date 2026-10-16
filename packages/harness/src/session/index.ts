@@ -596,7 +596,9 @@ export namespace Session {
               ? input.workspace
               : parent?.scope.id === scope.id
                 ? parent.workspace
-                : ScopeContext.defaultWorkspace(scope),
+                : scope.type === "home"
+                  ? await SessionWorkspaceRuntime.homeWorkspace()
+                  : ScopeContext.defaultWorkspace(scope),
             scope.id,
           )
     if (workspace) {
