@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { SkillTool, truncateSkillDescription } from "@ericsanchezok/synergy-local-runtime/tools/skill"
+import { expect, test } from "bun:test"
+import { SkillTool } from "@ericsanchezok/synergy-local-runtime/tools/skill"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { InstructionRegistry } from "@ericsanchezok/synergy-harness/instruction/registry"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
@@ -8,54 +8,9 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 
-describe("truncateSkillDescription", () => {
-  test("empty input returns an empty string", () => {
-    expect(truncateSkillDescription("")).toBe("")
-  })
-
-  test("whitespace-only input returns an empty string", () => {
-    expect(truncateSkillDescription("   \n\t\t  ")).toBe("")
-  })
-
-  test("keeps a short description unchanged apart from collapsing internal whitespace", () => {
-    expect(truncateSkillDescription("  Route   changes to the   focused owner.  ")).toBe(
-      "Route changes to the focused owner.",
-    )
-  })
-
-  test("a description of exactly 100 characters passes through without an ellipsis", () => {
-    const description = "a".repeat(100)
-    expect(truncateSkillDescription(description)).toBe(description)
-  })
-
-  test("keeps only the first line of a multi-line description", () => {
-    const firstLine = "Route the change to the owning skill."
-    const description = `${firstLine}\nSecond line with many hundreds of characters that must never appear in the result.`
-    const result = truncateSkillDescription(description)
-    expect(result).toBe(firstLine)
-    expect(result).not.toContain("\n")
-  })
-
-  test("truncates a long description to one line, at most 104 chars, ending with an ellipsis at a word boundary", () => {
-    const words = Array.from({ length: 40 }, (_, index) => `word${index}`)
-    const description = words.join(" ")
-    const result = truncateSkillDescription(description)
-    expect(result.length).toBeLessThanOrEqual(104)
-    expect(result).not.toContain("\n")
-    expect(result.endsWith("…")).toBe(true)
-    const content = result.slice(0, -1)
-    expect(content.length).toBeLessThanOrEqual(100)
-    expect(description.startsWith(content)).toBe(true)
-    expect(description[content.length]).toBe(" ")
-  })
-
-  test("hard-cuts a single unbroken word longer than 100 characters at the cap", () => {
-    const description = "x".repeat(300)
-    expect(truncateSkillDescription(description)).toBe(`${"x".repeat(100)}…`)
-  })
-})
-
-test("Skill catalog keeps every accessible name in source order with the existing truncated description", async () => {
+test("Skill catalog retains late exclusions and multiline descriptions, with ordered accessible loading", async () => {
+  const longDescription =
+    "Create and update custom agents through validated configuration writes, including model selection, prompt text, permissions, visibility, and default-agent settings. Do not use for built-in agent source changes; load add-agent instead."
   const entries: InstructionRegistry.Entry[] = [
     "z-last",
     "category/helper",
@@ -66,9 +21,9 @@ test("Skill catalog keeps every accessible name in source order with the existin
     name,
     description:
       index === 0
-        ? "  Route   changes to the focused owner.  \nDetails are loaded separately."
+        ? longDescription
         : index === 1
-          ? "x".repeat(120)
+          ? "  Design   agent-facing tools, MCP servers, and CLIs.\nLoad details for contract design.\r\n\tDo not use for connecting existing MCP servers; use synergy-config.  "
           : `Instructions for ${name}.`,
     source: "fixture",
     scope: "project",
@@ -117,8 +72,8 @@ test("Skill catalog keeps every accessible name in source order with the existin
         const accessible = entries.filter((entry) => entry.name !== "blocked" && entry.model)
         const definition = await SkillTool.init({ agent })
         const rows = [
-          "z-last: Route changes to the focused owner.",
-          `category/helper: ${"x".repeat(100)}…`,
+          `z-last: ${longDescription}`,
+          "category/helper: Design agent-facing tools, MCP servers, and CLIs. Load details for contract design. Do not use for connecting existing MCP servers; use synergy-config.",
           ...accessible.slice(2).map((entry) => `${entry.name}: ${entry.description}`),
         ]
         expect(
@@ -151,6 +106,7 @@ test("Skill catalog keeps every accessible name in source order with the existin
           const loaded = await definition.execute({ name: entry.name }, context)
           expect(loaded.metadata.name).toBe(entry.name)
           expect(loaded.output).toContain(`Main content for ${entry.name}.`)
+          expect(loaded.output).toContain("references/detail.txt")
         }
         expect(requests).toEqual(
           accessible.map((entry) => ({ permission: "skill", patterns: [entry.name], metadata: {} })),
