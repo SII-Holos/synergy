@@ -368,8 +368,7 @@ function SessionConversationView(input: SessionConversationProps) {
       (!input.initialScrollSettled || input.initialScrollSettled()) &&
       !sdk.content.pending(sdk.scopeKey, props.sessionID) &&
       rowsReady() &&
-      !executionPending() &&
-      !execution.state?.loading,
+      !executionPending(),
     surface: () => scrollRef()?.querySelector<HTMLElement>("[data-conversation-motion]") ?? undefined,
     onHydrated: () =>
       batch(() => {
