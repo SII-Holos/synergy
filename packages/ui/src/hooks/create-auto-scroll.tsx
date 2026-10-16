@@ -272,7 +272,8 @@ export function createAutoScroll(options: AutoScrollOptions) {
   )
 
   createEffect(() => {
-    const targets = new Set(enabled() ? [store.contentRef, store.viewportRef] : [])
+    // Virtual rows can resize before the content extent updates; preserve reading in that same paint.
+    const targets = new Set(enabled() ? [store.contentRef, store.viewportRef, readingAnchorOwner()] : [])
     for (const target of targets) if (target) resizeObserver.observe(target)
     onCleanup(() => {
       for (const target of targets) if (target) resizeObserver.unobserve(target)

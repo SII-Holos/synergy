@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url"
 import { build } from "vite"
 import solidPlugin from "vite-plugin-solid"
 
-test("accepted Part removal releases a seeded body budget without a materializer reader", async () => {
+test("Sync content leases release removed bodies, share reads and recover from live checkpoints", async () => {
   const dir = await mkdtemp(path.join(import.meta.dir, ".sync-part-recovery-"))
   const entry = path.join(dir, "main.tsx")
   const stub = path.join(dir, "stub.tsx")
@@ -18,24 +18,28 @@ test("accepted Part removal releases a seeded body budget without a materializer
     stub,
     `
 import {createStore} from 'solid-js/store';
+import {batch} from 'solid-js';
 import {createContentBudget,contentBudgetKey} from ${JSON.stringify(budget)};
 import {partSummaryPageState} from ${JSON.stringify(summaries)};
 import {createPartContentStore} from ${JSON.stringify(contentStore)};
 const partContentStore=createPartContentStore();
 export const contentCalls=[];
+export const recoveryCalls=[];
 let finishContent;export const completeContent=()=>finishContent();
-const summary=id=>({id,sessionID:'session',messageID:'message',type:'text',preview:id,content:{version:'one',bytes:32}});
+const summary=id=>({id,sessionID:'session',messageID:id==='live'?'live-message':'message',type:'text',preview:id,content:{version:'one',bytes:32}});
 const page=items=>({items,nextCursor:null,previousCursor:null,hasMore:false,hasEarlier:false});
 const contentBudget=createContentBudget();
 const state=createStore({status:'ready',session:[],path:{directory:''},partSummary:{message:[summary('a'),summary('b')]},partPage:{message:{...partSummaryPageState(page([summary('a'),summary('b')])),stale:true}},part:{message:[{id:'b',messageID:'message',sessionID:'session',type:'text',text:'seeded body'}]},partVersion:{b:'one'}});
+export const seedRecovery=()=>batch(()=>{state[1]('partSummary','live-message',[summary('live')]);state[1]('partPage','live-message',partSummaryPageState(page([summary('live')])))});
+export const checkpoint=()=>batch(()=>{state[1]('partVersion','live','one');state[1]('part','live-message',[{id:'live',sessionID:'session',messageID:'live-message',type:'text',text:'Final response from the live checkpoint'}])});
 contentBudget.publish(contentBudgetKey('probe','message','b'),'one',64,()=>{});
 export const snapshot=()=>({bytes:contentBudget.bytes,parts:state[0].part.message.map(part=>part.id),versions:Object.keys(state[0].partVersion),summaries:state[0].partSummary.message.map(part=>part.id)});
 export const useGlobalSync=()=>({contentBudget,partContentStore,retainContentCache:(_key,create)=>{const controller=new AbortController();const cache=create(controller.signal);return {cache,release:()=>{controller.abort();cache.dispose()}}},retainScopeState:()=>({state,release:()=>{}}),peekScopeState:()=>state,capturePartSnapshotRequest:()=>({}),partSnapshotAction:()=>'apply'});
 export const refreshPlanBlueprintOfferFromLoadedParts=()=>{};
 export const updatePlanBlueprintOfferState=()=>{};
 export const useSDK=()=>({url:'http://fixture',scopeKey:'probe',content:{retain:()=>()=>{}},client:{session:{
-partPage:()=>Promise.resolve({data:page([summary('a')])}),
-partContent:(input,options)=>{contentCalls.push(options.signal);return new Promise(resolve=>{finishContent=()=>resolve({data:{part:{id:'a',sessionID:'session',messageID:'message',type:'text',text:'Original body'},version:input.version}})})},
+partPage:input=>Promise.resolve({data:page([summary(input.messageID==='live-message'?'live':'a')])}),
+partContent:(input,options)=>{if(input.partID==='live'){recoveryCalls.push(input);return Promise.reject({name:'SessionDisplayConflict',data:{message:'Part content changed; refresh its summary'}})}contentCalls.push(options.signal);return new Promise(resolve=>{finishContent=()=>resolve({data:{part:{id:'a',sessionID:'session',messageID:'message',type:'text',text:'Original body'},version:input.version}})})},
 }}});
 `,
   )
@@ -44,7 +48,7 @@ partContent:(input,options)=>{contentCalls.push(options.signal);return new Promi
     `
 import {render} from 'solid-js/web';
 import {SyncProvider,useSync} from ${JSON.stringify(sync)};
-import {snapshot,contentCalls,completeContent} from ${JSON.stringify(stub)};
+import {snapshot,contentCalls,completeContent,seedRecovery,checkpoint,recoveryCalls} from ${JSON.stringify(stub)};
 let api,peer;
 function Child(){api=useSync();return <div>probe</div>}
 function Peer(){peer=useSync();return <div>peer</div>}
@@ -52,7 +56,16 @@ const root=document.getElementById('root'),peerRoot=document.createElement('div'
 const disposeMain=render(()=><SyncProvider><Child/></SyncProvider>,root);
 const disposePeer=render(()=><SyncProvider><Peer/></SyncProvider>,peerRoot);
 const dispose=()=>{disposePeer();disposeMain()};
-export const harness={snapshot,dispose,run:()=>api.session.content.summaries('session','message'),runContent:async()=>{
+export const harness={snapshot,dispose,run:()=>api.session.content.summaries('session','message'),runRecovery:async()=>{
+  seedRecovery();const summary=api.data.partSummary['live-message'][0];
+  const failed=api.session.content.retain(summary);let error;
+  try{await failed.ready}catch(cause){error=cause.name}
+  const before=recoveryCalls.length;checkpoint();
+  const obsolete=!failed.isCurrent();const healed=api.session.content.retain(summary);failed.release();
+  let recovered=true;try{await healed.ready}catch{recovered=false}
+  const text=api.data.part['live-message'][0].text;healed.release();
+  return {error,obsolete,recovered,before,after:recoveryCalls.length,text};
+},runContent:async()=>{
   const summary=api.data.partSummary.message[0];
   const dropped=[];
   for(let index=0;index<3;index++){
@@ -107,6 +120,14 @@ export const harness={snapshot,dispose,run:()=>api.session.content.summaries('se
         snapshot(): { bytes: number; parts: string[]; versions: string[]; summaries: string[] }
         run(): Promise<void>
         runContent(): Promise<{ reads: number; totalReads: number; text: string; restored: string; aborted: boolean }>
+        runRecovery(): Promise<{
+          error: string
+          obsolete: boolean
+          recovered: boolean
+          before: number
+          after: number
+          text: string
+        }>
         dispose(): void
       }
     }
@@ -120,6 +141,14 @@ export const harness={snapshot,dispose,run:()=>api.session.content.summaries('se
         text: "Original body",
         restored: "Original body",
         aborted: false,
+      })
+      expect(await harness.runRecovery()).toEqual({
+        error: "PartContentSyncError",
+        obsolete: true,
+        recovered: true,
+        before: 8,
+        after: 8,
+        text: "Final response from the live checkpoint",
       })
     } finally {
       harness.dispose()

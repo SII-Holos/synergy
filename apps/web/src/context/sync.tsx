@@ -138,6 +138,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       createPartMaterializer({
         memory: globalSync.contentBudget,
         memoryKey: (summary) => contentBudgetKey(sdk.scopeKey, summary.messageID, summary.id),
+        cached: (summary) =>
+          store.partVersion[summary.id] === summary.content.version
+            ? store.part[summary.messageID]?.find((part) => part.id === summary.id)
+            : undefined,
         read: async (summary) => {
           const cached = store.part[summary.messageID]?.find((part) => part.id === summary.id)
           if (cached && store.partVersion[summary.id] === summary.content.version)
@@ -174,18 +178,19 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const current = store.partSummary[summary.messageID]?.find((item) => item.id === summary.id)
           return current?.content.version === summary.content.version
         },
-        apply: (part, summary) => {
-          setStore("partVersion", part.id, summary.content.version)
-          const parts = store.part[part.messageID] ?? []
-          const index = parts.findIndex((item) => item.id === part.id)
-          if (index >= 0) setStore("part", part.messageID, index, reconcile(part))
-          else
-            setStore(
-              "part",
-              part.messageID,
-              [...parts, part].sort((a, b) => a.id.localeCompare(b.id)),
-            )
-        },
+        apply: (part, summary) =>
+          batch(() => {
+            setStore("partVersion", part.id, summary.content.version)
+            const parts = store.part[part.messageID] ?? []
+            const index = parts.findIndex((item) => item.id === part.id)
+            if (index >= 0) setStore("part", part.messageID, index, reconcile(part))
+            else
+              setStore(
+                "part",
+                part.messageID,
+                [...parts, part].sort((a, b) => a.id.localeCompare(b.id)),
+              )
+          }),
         evict: (summary) => {
           if (store.partVersion[summary.id] && store.partVersion[summary.id] !== summary.content.version) return
           setStore("part", summary.messageID, (parts) => (parts ?? []).filter((part) => part.id !== summary.id))
