@@ -98,7 +98,8 @@
 }
 
 [data-component="markdown"] [data-reference-icon] {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   width: 1em;
   height: 1em;
   margin-inline-end: 0.3em;

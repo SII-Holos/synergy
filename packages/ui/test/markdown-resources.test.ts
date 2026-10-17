@@ -57,6 +57,28 @@ function fixture(nativeLink = false) {
 }
 
 describe("Markdown managed resources", () => {
+  test.each([false, true])("webpage references preserve Space paging with native opening %s", async (native) => {
+    const f = fixture(native)
+    try {
+      f.root.innerHTML = sanitizeHtml(await parser.parse("[Page](https://example.org/page) [Note](note://nte_example)"))
+      await flush()
+      const [link, note] = f.root.querySelectorAll<HTMLAnchorElement>("a")
+      for (const shiftKey of [false, true]) {
+        const event = new dom.window.KeyboardEvent("keydown", { key: " ", shiftKey, bubbles: true, cancelable: true })
+        link.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(false)
+      }
+      expect(f.references).toEqual([])
+      const space = new dom.window.KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true })
+      note.dispatchEvent(space)
+      expect(space.defaultPrevented).toBe(true)
+      expect(f.references).toHaveLength(1)
+      expect(f.references[0]).toMatchObject({ resource: { kind: "note", id: "nte_example" } })
+    } finally {
+      f.dispose()
+    }
+  })
+
   test("host-confirmed native web links preserve click, modifier, middle-click and keyboard defaults", async () => {
     const f = fixture(true)
     const target = "https://example.org/?doc=first#section"

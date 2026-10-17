@@ -215,6 +215,7 @@ export function observeMarkdownResources(
       })
   }
   const key = (event: KeyboardEvent) => {
+    if (event.key === " " && event.target instanceof view.Element && event.target.closest("a[href]")) return
     if (event.key === "Enter" || event.key === " ") open(event)
   }
   root.addEventListener("click", open)

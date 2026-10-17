@@ -42,13 +42,14 @@ beforeAll(async () => {
       const [fullscreen, setFullscreen] = createSignal(false)
       const [tabs, setTabs] = createSignal(restored ? [{ id, panelId: id }, {id:"restored-extra",panelId:"extra"}] : [{ id, panelId: id }])
       const [active, setActive] = createSignal(id)
-      return [id, { opened, setOpened, close: () => setOpened(false), toggle: () => setOpened(!opened()), size, setSize, tabs, setTabs,
+      return [id, { opened, setOpened, close: () => setOpened(false), toggle: () => setOpened(!opened()), size, setSize, tabs, savedTabs: tabs, setTabs,
         fullscreen, setFullscreen, activeTab: () => tabs().find(tab => tab.id === active()), active, setActive }]
     }))
     window.fixture = { resetTabs: () => states.side.setTabs([{id:"side",panelId:"side"}]), available: setAvailable, generation: setGeneration, select: id => states.side.setActive(id), retarget: () => states.side.setTabs([{id:"side",panelId:"extra"}]), open: id => states[id].setOpened(true), close: id => states[id].close(), crash: setCrash, resize: (id,size) => states[id].setSize(size), size: id => states[id].size(), populate: () => states.side.setTabs(Array.from({length:20}, (_,i) => ({ id: i ? 'tab-'+i : 'side', panelId:'side', title: 'Long document title ' + i }))) }
     export const useWorkbenchPanels = () => ({
       revalidating: () => false,
       openingForTab: () => undefined,
+      supportsTab: tab => registered().some(entry => entry.id === tab.panelId),
       surface: id => states[id], panels: registered, panelForTab: tab => registered().find(x => x.id === tab?.panelId),
       interact() {}, activateTab(name, id) { states[name].setActive(id) }, getPanel: id => entries.find(entry => entry.id === id),
       panelTitle: tab => tab.title ?? tab.panelId, openPanel: () => {}, closeTab: () => {}, closeOtherTabs: () => {}, moveTab: () => {}
@@ -121,7 +122,7 @@ beforeAll(async () => {
     import { MemoryRouter, Route, createMemoryHistory } from "@solidjs/router"
     import ${JSON.stringify(`/@fs/${source}/components/top-bar/session-top-bar.css`)}
     import ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar.css`)}
-    import { createSignal, useContext } from "solid-js"
+    import { createSignal, Show, useContext } from "solid-js"
     import { messages as en } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     import "./state"
     import "@ericsanchezok/synergy-ui/styles"

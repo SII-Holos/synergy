@@ -16,6 +16,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { OverlayLayerProvider } from "@ericsanchezok/synergy-ui/context/overlay-layer"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { workspaceNavigatorWidth } from "@/context/layout/workspace"
+import { useViewActivity } from "@/context/view-residency"
 import { workspaceTabStops } from "./focus"
 import "./workspace-navigator.css"
 
@@ -43,6 +44,7 @@ export function WorkspaceNavigator(
 ) {
   const lingui = useLingui()
   const dialogs = useDialog()
+  const active = useViewActivity()
   const [width, setWidth] = createSignal(0)
   const [drawerOpen, setDrawerOpen] = createSignal(false)
   const [frame, setFrame] = createSignal<HTMLElement>()
@@ -86,16 +88,23 @@ export function WorkspaceNavigator(
     const content = anchor.parentElement!
     setFrame(content)
     measureLayout = () => {
+      if (!active() || resource.getClientRects().length === 0) return
       setWidth(Number(resource.dataset.workspaceWidth) || resource.getBoundingClientRect().width)
     }
-    const observer = new ResizeObserver(measureLayout)
-    observer.observe(resource)
-    if (content !== resource) observer.observe(content)
-    window.addEventListener("resize", measureLayout)
-    measureLayout()
-    onCleanup(() => {
-      observer.disconnect()
-      window.removeEventListener("resize", measureLayout)
+    createEffect(() => {
+      if (!active()) {
+        closeDrawer()
+        return
+      }
+      const observer = new ResizeObserver(measureLayout)
+      observer.observe(resource)
+      if (content !== resource) observer.observe(content)
+      window.addEventListener("resize", measureLayout)
+      measureLayout()
+      onCleanup(() => {
+        observer.disconnect()
+        window.removeEventListener("resize", measureLayout)
+      })
     })
   })
   return (

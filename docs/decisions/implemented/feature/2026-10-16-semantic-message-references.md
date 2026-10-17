@@ -18,6 +18,8 @@ Ordinary HTTP(S) references open a peer Browser tab when the selected Browser mo
 
 Validate the complete capability result before classifying an unsupported remote host. Incompatible versions, rejected authority and inconsistent results are failures, not external-navigation permission. Pure Web message anchors retain their browser default, including modifier, middle-button, keyboard and context-menu behavior; managed Desktop anchors use the App opener.
 
+Webpage anchors retain Space and Shift+Space for native reading in both hosts; Enter activates the link. Resource buttons retain Space activation. Inline icons use a flex box within the text line: an anonymous baseline box can overflow the message by a few pixels and make its inner container consume native paging. References and their previews must not change the conversation's keyboard paging or replace its visible reading anchor with a focused offscreen link.
+
 The optional Browser owner provides anonymous public metadata and fixed-commit GitHub excerpts. Requests use no website identity, model, executable HTML or real Browser page. Public-address validation, DNS connection pinning and redirect checks apply only to passive preview, not user-directed Chromium navigation. All DNS answers are validated before choosing a pinned address; mixed public answers prefer IPv4 to avoid an unreachable first IPv6 route. Short-lived memory caching is owner-scoped, and late results cannot cross Session, Scope, server or capability changes.
 
 ## Alternatives considered

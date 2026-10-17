@@ -299,6 +299,12 @@ for (const { key, change } of [
     expect(await page.evaluate(() => window.__conversationProcess.locate("work", "reading-30"))).toBe(true)
     const reference = page.getByRole("link", { name: "Project reference 30", exact: true })
     await reference.focus()
+    expect(
+      await reference.evaluate((element) => {
+        const content = element.closest<HTMLElement>('[data-slot="session-turn-content"]')!
+        return content.scrollHeight - content.clientHeight
+      }),
+    ).toBeLessThanOrEqual(1)
     const selected =
       change === "same-version body growth"
         ? await reference.evaluate((element) => {
@@ -378,8 +384,6 @@ test("native Shift+Space leaves latest following and retains its reading row thr
   const link = page.getByRole("link", { name: "Project reference 59", exact: true })
   await link.waitFor({ state: "visible" })
   await link.evaluate((element) => (element as HTMLElement).focus({ preventScroll: true }))
-  // The setup locator retains its own anchor until input; release it before testing Latest following.
-  await link.press("Escape")
   await page.evaluate(() => window.__conversationProcess.latest())
   for (let index = 0; index < 4; index++) await frames()
   await page.waitForFunction(() => {

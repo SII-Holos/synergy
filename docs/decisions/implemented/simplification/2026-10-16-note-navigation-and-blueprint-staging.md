@@ -10,6 +10,8 @@ Notes used separate list-home and editor navigation trees. The home stretched do
 
 Notes use one compact Workspace navigator beside the existing retained document reader. Its single create menu selects an active Scope. Kind icons identify documents, while active and terminal Blueprint states retain accessible compact indicators. Narrow list homes render inline; selected documents use the shared focus-contained navigation drawer. Metadata filters do not remove the current editor. The execution-agent picker uses one heading and the available width.
 
+The shared navigator retains its last visible layout while its view is inactive. Hidden geometry cannot unmount the inline navigation tree. Inactive views release resize observers and close transient drawers; reactivation measures the current container before adjusting presentation. Keyboard ownership and selection remain with the retained panel.
+
 Blueprint drops replace idle Plan or Light Loop and stage a pending row with the Note title and a short ready status. This preserves the user’s binding intent while deferring Blueprint creation and start to submission. Running workflows remain protected by the existing idle requirement; ordinary busy Sessions may stage a Blueprint for later. Failed, stale or duplicate transitions cannot overwrite the current Composer. Removing the pending row makes no request. The existing submission owner creates and starts the Blueprint only when submitted from an idle Session. Busy submission stays blocked while the normal stop action remains available. Ordinary Note drops retain their reference-attachment behavior.
 
 ## Alternatives considered
