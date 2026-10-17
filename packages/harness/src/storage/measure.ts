@@ -31,14 +31,9 @@ export async function measureStorageOperation<T>(
     try {
       return await body()
     } catch (error) {
-      status = "error"
-      // Expected "file does not exist" paths (note scope probing, index
-      // rebuilds) used try/catch as control flow; every miss raised a
-      // PERF_STORAGE_OPERATION_ERROR issue and amplified telemetry writes.
-      // Keep the error metric (observability still counts it) but skip the
-      // issue when the caller declared the miss expected.
       const isNotFound = error instanceof NotFoundError
-      if (!(options.silentNotFound && isNotFound)) {
+      status = options.silentNotFound && isNotFound ? "missing" : "error"
+      if (status === "error") {
         ObservabilityIssues.raise({
           code: "PERF_STORAGE_OPERATION_ERROR",
           severity: "warning",

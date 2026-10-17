@@ -13,6 +13,7 @@ import {
   powerSaveBlocker,
   shell,
   safeStorage,
+  session,
   systemPreferences,
   Tray,
   type BrowserWindowConstructorOptions,
@@ -27,6 +28,7 @@ import { BrowserNativePagePool } from "./browser-native-page-pool.js"
 import { runBrowserPageAction } from "./browser-page-actions.js"
 import { BrowserDataStore } from "./browser-data-store.js"
 import { BrowserDataActions } from "./browser-data-actions.js"
+import { BrowserDataContexts } from "./browser-data-contexts.js"
 import {
   BrowserFileActionSchema,
   sanitizeBrowserFilename,
@@ -127,6 +129,7 @@ let nativeViews: BrowserNativeViewManager | null = null
 let nativePagePool: BrowserNativePagePool | null = null
 let browserData: BrowserDataStore | undefined
 let browserDataActions: BrowserDataActions | undefined
+const browserDataContexts = new BrowserDataContexts({ session: (partition) => session.fromPartition(partition) })
 
 function localBrowserData() {
   return (browserData ??= new BrowserDataStore(path.join(app.getPath("userData"), "browser-data"), {
@@ -631,6 +634,7 @@ async function syncLocalBrowserBroker(force = false): Promise<void> {
   browserBrokerOrigin = nextOrigin
   browserBrokerStatus = "connecting"
   browserBroker = new BrowserHostBrokerClient({
+    dataContexts: browserDataContexts,
     clearSavedData: (partition) => localBrowserData().clear(partition),
     serverUrl,
     token,
@@ -712,9 +716,11 @@ function registerIpcHandlers() {
     }
     return { cancelled: false }
   })
-  registerNativeViewHandlers("browserNative.dataAction", async (input) => {
+  const dataActions = () => {
     browserDataActions ??= new BrowserDataActions({
       store: localBrowserData(),
+      profileTarget: (contextId) => browserDataContexts.target(contextId),
+      closeProfileContext: (contextId) => browserDataContexts.close(contextId),
       target(ownerKey, pageId) {
         const page = nativePagePool?.find(ownerKey, pageId)
         if (!page || page.failed || page.closing) throw new Error("Page is unavailable. Resume it and retry.")
@@ -733,7 +739,15 @@ function registerIpcHandlers() {
         return result.canceled ? undefined : result.filePaths[0]
       },
     })
-    return browserDataActions.execute(input as import("@ericsanchezok/synergy-browser-core").BrowserDataRequest)
+    return browserDataActions
+  }
+  registerNativeViewHandlers("browserNative.dataAction", (input) => {
+    return dataActions().execute(input as import("@ericsanchezok/synergy-browser-core").BrowserDataRequest)
+  })
+  registerNativeViewHandlers("browserNative.profileDataAction", (input) => {
+    return dataActions().executeProfile(
+      input as import("@ericsanchezok/synergy-browser-core").BrowserProfileDataRequest,
+    )
   })
   registerNativeViewHandlers("browserNative.pageAction", async (input) => {
     const request = BrowserPageActionRequestSchema.parse(input)

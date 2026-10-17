@@ -224,6 +224,21 @@ export namespace PerformanceCatalog {
       "operation",
     ]),
     metric("storage.queue.depth", "Storage queue depth", "count", "gauge", "latest", "storage", "backend", ["queue"]),
+    metric("storage.queue.depth.peak", "Storage queue peak depth", "count", "gauge", "max", "storage", "backend", [
+      "queue",
+    ]),
+    metric("execution.tree.build", "Execution tree builds", "count", "counter", "sum", "session", "backend", []),
+    metric("execution.owner.build", "Execution owner repairs", "count", "counter", "sum", "session", "backend", []),
+    metric(
+      "frontend.file.status.coalesced",
+      "Coalesced file status invalidations",
+      "count",
+      "counter",
+      "sum",
+      "frontend",
+      "browser",
+      [],
+    ),
     metric("storage.queue.wait", "Storage queue wait", "ms", "duration", "p95", "storage", "backend", [
       "queue",
       "slow",

@@ -10,12 +10,14 @@ import { GlobalBus } from "../bus/global"
 import { Context } from "../util/context"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
+import { Lock } from "../util/lock"
 import { StorageRecovery } from "../storage/recovery"
 import { SessionExecutionSource } from "./execution-source"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { SessionCompat } from "./compat-import"
 import type { MessageV2 } from "./message-v2"
+import type { SessionInbox } from "./inbox"
 import { BusyError, PausedTurnAbort } from "./error"
 import { SessionEvent } from "./event"
 import type { Scope } from "../scope"
@@ -91,6 +93,7 @@ export namespace SessionManager {
     phase: LoopPhase
     purpose?: "passive_input"
     rootID?: string
+    acceptingSteer?: boolean
     /** Set by an internal cancellation (Cortex) that owns the session's queued work: fenced cleanup
      *  discards items queued before this timestamp at the loop boundary, preserving mail delivered
      *  after the cancelled acknowledgement, and release stops requesting follow-up work unless such
@@ -557,7 +560,34 @@ export namespace SessionManager {
     const runtime = getRuntime(lease.sessionID)
     if (!runtime || !owns(runtime, lease) || runtime.owner!.phase === "stopping") return false
     runtime.owner!.rootID = rootID
+    runtime.owner!.acceptingSteer = true
     return true
+  }
+
+  export function closeRootSteering(lease: LoopLease): void {
+    const runtime = getRuntime(lease.sessionID)
+    if (runtime && owns(runtime, lease)) runtime.owner!.acceptingSteer = false
+  }
+
+  export async function finishRootSteering(lease: LoopLease): Promise<void> {
+    if (lease.signal.aborted) return closeRootSteering(lease)
+    using control = await Lock.writeWithSignal(`session-control:${lease.sessionID}`, lease.signal)
+    if (!control) return closeRootSteering(lease)
+    const runtime = getRuntime(lease.sessionID)
+    if (!runtime || !owns(runtime, lease)) return
+    closeRootSteering(lease)
+    if (lease.signal.aborted) return
+    const { SessionInbox } = await import("./inbox")
+    await Storage.transaction(async () => {
+      const session = await requireSession(lease.sessionID)
+      for (const item of await SessionInbox.peekSteer(lease.sessionID)) {
+        if (
+          item.message?.metadata?.source === "session_send" &&
+          item.message.metadata.sourceSessionID === session.cortex?.parentSessionID
+        )
+          await SessionInbox.failScheduledTask(lease.sessionID, item.id)
+      }
+    })
   }
 
   export type AbortOutcome = "not_found" | "idle" | "signaled" | "already_stopping" | "not_owner"
@@ -952,7 +982,8 @@ export namespace SessionManager {
     target: string | SessionEndpoint.Info
     mail: SessionMail
     waitForProcessing?: boolean
-  }): Promise<void> {
+    sourceSessionID?: string
+  }): Promise<SessionInbox.Item | void> {
     const { SessionInbox } = await import("./inbox")
     const session = await getSession(input.target)
     if (!session) {
@@ -965,7 +996,7 @@ export namespace SessionManager {
     const runtime = registerRuntime(session.id)
     runtime.lastActiveAt = Date.now()
     const releaseIfIdle = () => {
-      if (!occupied(runtime)) unregisterRuntime(session.id)
+      if (!isRunning(session.id)) unregisterRuntime(session.id)
     }
 
     if (input.mail.type === "assistant") {
@@ -984,34 +1015,61 @@ export namespace SessionManager {
       return
     }
 
-    const item = await SessionInbox.enqueueMail({ sessionID: session.id, mail: input.mail })
+    let item: SessionInbox.Item
+    {
+      using control = input.sourceSessionID ? await Lock.write(`session-control:${session.id}`) : undefined
+      item = await Storage.transaction(async () => {
+        const current = await requireSession(session.id)
+        const owner = getRuntime(session.id)?.owner
+        const steer =
+          input.sourceSessionID !== undefined &&
+          current.parentID === input.sourceSessionID &&
+          current.cortex?.parentSessionID === input.sourceSessionID &&
+          current.cortex.executionRole === "delegated_subagent" &&
+          current.cortex.status === "running" &&
+          !current.paused &&
+          !current.time.archived &&
+          !current.history?.rollback?.canUnrollback &&
+          owner?.phase === "running" &&
+          owner.purpose !== "passive_input" &&
+          !!owner.rootID &&
+          owner.acceptingSteer === true &&
+          !owner.lease.signal.aborted
+        return SessionInbox.enqueueMail({
+          sessionID: session.id,
+          mail: input.mail,
+          ...(steer ? { mode: "steer" } : {}),
+        })
+      })
+    }
 
     if (isRunning(session.id)) {
       log.info("mail queued (session running)", { sessionID: session.id })
-      return
+      return item
     }
 
     if (item.mode === "context") {
       log.info("context mail queued without waking session", { sessionID: session.id, itemID: item.id })
       releaseIfIdle()
-      return
+      return item
     }
 
     if (item.mode === "steer" && !(await SessionInbox.latestRootID(session.id))) {
       log.info("steer mail queued without root to resume", { sessionID: session.id, itemID: item.id })
       releaseIfIdle()
-      return
+      return item
     }
 
     if (input.waitForProcessing === false) {
       log.info("mail queued (session idle), processing asynchronously", { sessionID: session.id })
       releaseIfIdle()
       scheduleWake(session.id, "deliver")
-      return
+      return item
     }
 
     log.info("mail queued (session idle), processing", { sessionID: session.id })
     await wake(session.id)
+    return item
   }
 
   export async function listInterruptedCortexDelegations(scopeID?: string): Promise<string[]> {

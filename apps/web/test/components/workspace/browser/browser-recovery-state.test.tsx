@@ -1,3 +1,4 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -73,7 +74,7 @@ beforeAll(async () => {
         browserCatalog.replacePages([{ ...pageState, profileId: "personal", status: "active" }])
         store.setSession("connectionStatus", "connected")
         const nativePresentation = {
-          protocolVersion: 6,
+          protocolVersion: ${BROWSER_PROTOCOL_VERSION},
           kind: "native",
           capabilities: { native: true },
           reason: "desktop-local",

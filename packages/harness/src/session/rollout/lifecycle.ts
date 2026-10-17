@@ -257,7 +257,11 @@ export namespace RolloutLifecycle {
       if (child.cortex.status === "queued" || child.cortex.status === "running" || !child.cortex.settledAt) return run
     }
     if (!outcome && (await SessionWorkflowService.hasPendingExecution(session))) return run
-    if (!outcome && (await SessionInbox.list(sessionID)).some((item) => item.mode === "steer")) return run
+    if (
+      !outcome &&
+      (await SessionInbox.list(sessionID)).some((item) => item.mode === "steer" && item.status !== "failed")
+    )
+      return run
     const messages = await SessionHistory.messages({ sessionID })
     const terminal = SessionProgress.findTerminalReply(messages, runID)
     const latestRoot = messages.findLast((message) => message.info.role === "user" && message.info.isRoot)

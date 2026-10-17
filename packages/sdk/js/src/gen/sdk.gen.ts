@@ -106,6 +106,9 @@ import type {
   BrowserCreateAnnotationResponses,
   BrowserCreateProfileErrors,
   BrowserCreateProfileResponses,
+  BrowserDataContextErrors,
+  BrowserDataContextInput,
+  BrowserDataContextResponses,
   BrowserDiagnosticsErrors,
   BrowserDiagnosticsRequest,
   BrowserDiagnosticsResponses,
@@ -117,9 +120,13 @@ import type {
   BrowserOpenPage,
   BrowserOpenPageErrors,
   BrowserOpenPageResponses,
+  BrowserPreviewErrors,
+  BrowserPreviewResponses,
   BrowserProfileCreate,
   BrowserProfilesErrors,
   BrowserProfilesResponses,
+  BrowserReleaseDataContextErrors,
+  BrowserReleaseDataContextResponses,
   BrowserSessionErrors,
   BrowserSessionResponses,
   ChannelAppResetErrors,
@@ -14015,6 +14022,172 @@ export class Asset extends HeyApiClient {
 }
 
 export class Browser extends HeyApiClient {
+  /**
+   * Preview an anonymous public webpage
+   *
+   * Read public metadata or a fixed-commit GitHub source excerpt without using a website identity or creating a Browser page.
+   */
+  public preview<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "scope"
+      url?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "body", key: "url" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BrowserPreviewResponses, BrowserPreviewErrors, ThrowOnError>({
+      url: "/{directory}/browser/preview",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Prepare browser profile data access
+   */
+  public dataContext<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      browserDataContextInput?: BrowserDataContextInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { key: "browserDataContextInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BrowserDataContextResponses, BrowserDataContextErrors, ThrowOnError>({
+      url: "/{directory}/browser/data-context",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Release browser profile data access
+   */
+  public releaseDataContext<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      contextId: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            { in: "path", key: "contextId" },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      BrowserReleaseDataContextResponses,
+      BrowserReleaseDataContextErrors,
+      ThrowOnError
+    >({
+      url: "/{directory}/browser/data-context/{contextId}",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * Open a browser page
    */

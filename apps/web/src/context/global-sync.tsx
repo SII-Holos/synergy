@@ -2388,14 +2388,9 @@ function createGlobalSync() {
       case "cortex.task.created":
       case "cortex.task.completed": {
         const task = event.properties.task
-        setGlobalStore(
-          "cortex",
-          produce((draft) => {
-            const idx = draft.findIndex((t) => t.id === task.id)
-            if (idx === -1) draft.push(task)
-            else draft[idx] = task
-          }),
-        )
+        const index = globalStore.cortex.findIndex((item) => item.id === task.id)
+        if (index < 0) setGlobalStore("cortex", (items) => [...items, task])
+        else setGlobalStore("cortex", index, reconcile(task))
         if (stamp) globalRuntimeTracker.cortexWrite(stamp, task.id)
         break
       }

@@ -1,3 +1,4 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { afterEach, expect, test } from "bun:test"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -16,7 +17,7 @@ async function fixture() {
   roots.push(root)
   return root
 }
-const request = { protocolVersion: 6 as const, ownerKey: "owner", pageId: "page" }
+const request = { protocolVersion: BROWSER_PROTOCOL_VERSION, ownerKey: "owner", pageId: "page" }
 const encryption = {
   available: async () => true,
   encrypt: async (text: string) => Buffer.from(text).reverse(),

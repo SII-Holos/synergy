@@ -1,7 +1,8 @@
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import type { ResourceOpenController } from "../context/resource-open"
-import { chooseIconName } from "./file-icons/model"
-import sprite from "./file-icons/sprite.svg"
+import { getOwner, runWithOwner } from "solid-js"
+import { decorateMarkdownResource } from "./markdown-resource-decoration"
+import { resourceDisplay } from "./resource-display"
 import { revealMarkdownHeading } from "./markdown-navigation"
 
 const selector = "a[data-resource-reference], img[data-resource-reference], a[href], img[src]"
@@ -14,8 +15,25 @@ export function observeMarkdownResources(
   const view = root.ownerDocument.defaultView
   if (!view) return () => {}
   let disposed = false
+  const owner = getOwner()
   const activations = new WeakMap<Element, object>()
   const busy = new Set<Element>()
+  const decorations = new Map<HTMLElement, () => void>()
+  const githubLabels = new Map<string, Map<HTMLElement, ResourceReference.Target>>()
+  const labelGroups = new WeakMap<HTMLElement, string>()
+  const dirtyLabels = new Set<string>()
+  const refreshLabels = () => {
+    for (const key of dirtyLabels) {
+      const peers = githubLabels.get(key)
+      if (!peers) continue
+      const targets = [...peers.values()]
+      for (const [element, reference] of peers) {
+        const label = resourceDisplay(reference, targets).label
+        if (element.dataset.resourceLabel !== label) element.dataset.resourceLabel = label
+      }
+    }
+    dirtyLabels.clear()
+  }
   const bind = (element: Element) => {
     const value =
       element.getAttribute("data-resource-reference") ??
@@ -26,7 +44,6 @@ export function observeMarkdownResources(
     }
     const reference = ResourceReference.parse(value)
     if (element.tagName === "A" && !element.hasAttribute("data-resource-reference")) {
-      if (reference.kind === "url") return
       if (reference.kind === "anchor") {
         element.removeAttribute("target")
         return
@@ -52,9 +69,11 @@ export function observeMarkdownResources(
       }
       return
     }
-    element.removeAttribute("href")
-    element.removeAttribute("target")
-    element.setAttribute("role", "button")
+    if (reference.kind !== "url") {
+      element.removeAttribute("href")
+      element.removeAttribute("target")
+      element.setAttribute("role", "button")
+    }
     element.setAttribute("tabindex", "0")
     const image = element.querySelector("img")
     const title =
@@ -65,17 +84,25 @@ export function observeMarkdownResources(
     else element.removeAttribute("title")
     element.setAttribute("data-resource-kind", reference.kind)
     element.setAttribute("data-resource-bound", "true")
-    if (element.querySelector("img") || element.querySelector("[data-reference-icon]")) return
-    if (reference.kind !== "workspace-file" && reference.kind !== "asset") return
-    const svg = root.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "svg")
-    svg.setAttribute("data-reference-icon", "")
-    svg.setAttribute("aria-hidden", "true")
-    svg.setAttribute("focusable", "false")
-    const use = root.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "use")
-    const path = reference.kind === "workspace-file" ? reference.path : reference.url
-    use.setAttribute("href", `${sprite}#${chooseIconName(path, path.endsWith("/") ? "directory" : "file", false)}`)
-    svg.append(use)
-    element.prepend(svg)
+    if (
+      element.querySelector("img") ||
+      element.querySelector("[data-reference-icon]") ||
+      reference.kind === "unavailable"
+    )
+      return
+    if (element instanceof view.HTMLElement) {
+      const dispose = runWithOwner(owner, () => decorateMarkdownResource(element, reference))
+      if (dispose) decorations.set(element, dispose)
+      const display = resourceDisplay(reference)
+      if (element.hasAttribute("data-resource-label") && display.disambiguatedLabel) {
+        const key = display.label
+        const peers = githubLabels.get(key) ?? new Map<HTMLElement, ResourceReference.Target>()
+        peers.set(element, reference)
+        githubLabels.set(key, peers)
+        labelGroups.set(element, key)
+        dirtyLabels.add(key)
+      }
+    }
   }
   const visit = (node: Node) => {
     if (!(node instanceof view.Element)) return
@@ -87,6 +114,20 @@ export function observeMarkdownResources(
       if (record.type === "attributes") visit(record.target)
       else for (const node of record.addedNodes) visit(node)
     }
+    for (const [element, dispose] of decorations)
+      if (!root.contains(element)) {
+        dispose()
+        decorations.delete(element)
+        const key = labelGroups.get(element)
+        if (key) {
+          const peers = githubLabels.get(key)
+          peers?.delete(element)
+          if (!peers?.size) githubLabels.delete(key)
+          else dirtyLabels.add(key)
+          labelGroups.delete(element)
+        }
+      }
+    refreshLabels()
   })
   const imageError = (event: Event) => {
     const image = event.target
@@ -109,6 +150,7 @@ export function observeMarkdownResources(
     attributeFilter: ["data-resource-reference", "href"],
   })
   visit(root)
+  refreshLabels()
   const open = (event: MouseEvent | KeyboardEvent) => {
     if (event.defaultPrevented || (event instanceof view.KeyboardEvent && event.repeat)) return
     if (event instanceof view.MouseEvent && event.button > 1) return
@@ -125,14 +167,22 @@ export function observeMarkdownResources(
     const element = anchor ?? clicked
     const value = element.getAttribute("data-resource-reference")
     if (!value) return
+    const reference = ResourceReference.parse(value)
+    const image = element.querySelector("img")
+    if (
+      reference.kind === "url" &&
+      /^https?:/i.test(reference.url) &&
+      !image &&
+      anchor?.getAttribute("href") === reference.url &&
+      resources.nativeLink?.(reference)
+    )
+      return
     event.preventDefault()
     const peers = () =>
       Array.from(root.querySelectorAll<HTMLElement>("a[data-resource-reference]")).filter(
         (item) => item.dataset.resourceReference === value && !item.closest("[inert]"),
       )
     const occurrence = Math.max(0, peers().indexOf(element as HTMLElement))
-    const reference = ResourceReference.parse(value)
-    const image = element.querySelector("img")
     element.setAttribute("aria-busy", "true")
     const activation = {}
     activations.set(element, activation)
@@ -173,6 +223,10 @@ export function observeMarkdownResources(
   return () => {
     disposed = true
     observer.disconnect()
+    for (const dispose of decorations.values()) dispose()
+    decorations.clear()
+    githubLabels.clear()
+    dirtyLabels.clear()
     root.removeEventListener("error", imageError, true)
     for (const element of busy) element.removeAttribute("aria-busy")
     busy.clear()

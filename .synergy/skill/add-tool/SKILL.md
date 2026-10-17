@@ -100,6 +100,8 @@ Use an isolated development instance for an end-to-end model/tool call. Check th
 
 Update product or architecture docs when the tool introduces a user-visible concept or durable boundary. Update `AGENTS.md` only for a reusable repository rule. Do not copy the tool registry into documentation.
 
+For queued message tools, keep the admitted scheduling mode and message identity in the result and distinguish durable acceptance from a read acknowledgement. Verify next-model-call behavior through a real Session loop, not only a mocked delivery adapter; preserve task roots, in-flight tools, pause and cancellation fencing, including completion during authorization and root handoff. Check Runtime replacement after lock waits and final Rollout settlement with parked messages retained; a completed child status alone cannot prove execution settlement.
+
 ## Handoff
 
 Report the tool ID, registry/exposure, taxonomy and capabilities, UI registrations, denial/cancellation behavior, migrations, tests, and end-to-end result.

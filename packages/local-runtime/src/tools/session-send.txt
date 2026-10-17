@@ -1,5 +1,9 @@
 Send an actionable user message to a session. The target session's agent will process and respond to the message.
 
+Messages to your own actively running delegated subagent join its current task's next model call without interrupting a tool or model request already in progress. Other messages queue as new tasks, after any current task finishes. Sending does not resume a paused session or override cancellation.
+
+The result reports the admitted mode and queue/message IDs. Queue admission is not confirmation that the target has read or acted on the message.
+
 The `target` parameter identifies which session to send to:
 - A session ID (e.g. "ses_xxx") to send to a specific session
 

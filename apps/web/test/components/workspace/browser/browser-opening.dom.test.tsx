@@ -1,3 +1,4 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
@@ -117,7 +118,7 @@ beforeAll(async () => {
   )
   await Bun.write(
     path.join(directory, "sdk.ts"),
-    `export const useSDK=() => ({url:"http://fixture.test",scopeID:"home",client:{browser:{session:async () => (window.requests++,{data:{ownerKey:"scope:home:scope",pages:window.pages,seq:window.pages.length,epoch:"one",hostStatus:"ready",presentation:{kind:"native",protocolVersion:6,capabilities:{native:true},reason:"desktop-local"}}})}}})`,
+    `export const useSDK=() => ({url:"http://fixture.test",scopeID:"home",client:{browser:{session:async () => (window.requests++,{data:{ownerKey:"scope:home:scope",pages:window.pages,seq:window.pages.length,epoch:"one",hostStatus:"ready",presentation:{kind:"native",protocolVersion:${BROWSER_PROTOCOL_VERSION},capabilities:{native:true},reason:"desktop-local"}}})}}})`,
   )
   await Bun.write(
     path.join(directory, "platform.ts"),

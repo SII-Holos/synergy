@@ -1,3 +1,4 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
@@ -36,7 +37,7 @@ beforeAll(async () => {
     `
     window.attachments=[]; window.detachments=[]; window.dataRequests=[]; window.resizes=[]; window.commands=[];
     export const usePlatform = () => ({browserNative:{
-      presentationCapability:async () => ({protocolVersion:6,managedLocal:true,status:"ready"}),
+      presentationCapability:async () => ({protocolVersion:${BROWSER_PROTOCOL_VERSION},managedLocal:true,status:"ready"}),
       attachView:async input => window.attachments.push(input), resizeView:async input => window.resizes.push(input),
       detachView:async input => window.detachments.push(input), focusView:async () => {}, onEvent:() => () => {},
       get dataAction() { return window.dataUnavailable ? undefined : async input => {
@@ -91,7 +92,7 @@ beforeAll(async () => {
     import {messages} from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
-    window.presentation={kind:"native",protocolVersion:6,capabilities:{native:true},reason:"desktop-local"};
+    window.presentation={kind:"native",protocolVersion:${BROWSER_PROTOCOL_VERSION},capabilities:{native:true},reason:"desktop-local"};
     window.pages=["one","two"].map(id => ({id:"page-"+id,profileId:"personal",status:"active",url:new URLSearchParams(location.search).has("blank") ? "about:blank" : "https://example.test/"+id,title:id,isLoading:false,lastActiveAt:null}));
     window.catalogPages=new URLSearchParams(location.search).has("missing") ? [] : window.pages;
     window.seq=1; window.dataUnavailable=new URLSearchParams(location.search).has("no-data");

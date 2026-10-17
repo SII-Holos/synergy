@@ -52,6 +52,34 @@ function basePart(messageID: string, id: string) {
   }
 }
 
+test("message transforms isolate mutable containers while retaining opaque metadata values", () => {
+  const timestamp = new Date(100)
+  const metadata = {
+    detail: { labels: ["canonical"] },
+    timestamp,
+    callback: () => "canonical",
+  }
+  const message: MessageV2.WithParts = {
+    info: { ...userInfo("root"), metadata },
+    parts: [{ ...basePart("root", "text"), type: "text", text: "Canonical evidence", metadata }],
+  }
+  const transformed = MessageV2.copyForTransform([message])
+  transformed[0].info.time.created = 200
+  const part = transformed[0].parts[0]
+  if (part.type !== "text") throw new Error("Expected text fixture")
+  part.text = "Ephemeral evidence"
+  const copied = part.metadata as typeof metadata
+  copied.detail.labels.push("ephemeral")
+  copied.timestamp.setTime(200)
+
+  expect(message.info.time.created).toBe(0)
+  expect(message.parts[0]).toMatchObject({ text: "Canonical evidence" })
+  expect(metadata.detail.labels).toEqual(["canonical"])
+  expect(timestamp.getTime()).toBe(100)
+  expect(transformed[0].info.metadata).toBe(part.metadata)
+  expect(copied.callback()).toBe("canonical")
+})
+
 describe("session.message-v2.compareStorageOrder", () => {
   test("orders current-format message IDs by creation time with an ID tie-break", () =>
     runtime.run(() => {

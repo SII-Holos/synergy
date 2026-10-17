@@ -2,19 +2,21 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { JSDOM } from "jsdom"
 import { createMarkdownParser } from "../src/context/markdown-parser"
 import { createMarkdownStreamController } from "../src/components/markdown-stream"
-import { observeMarkdownResources } from "../src/components/markdown-resources"
+import { domFixture } from "./support/dom-fixtures"
 import { attachmentFromReference, type AttachmentFile } from "../src/components/attachment-card-utils"
 import type { ResourceOpenController } from "../src/context/resource-open"
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "https://ui.example/" })
 const previous = ["document", "window"].map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const)
 let sanitizeHtml: (input: string) => string
+let observeMarkdownResources: typeof import("../src/components/markdown-resources").observeMarkdownResources
 const parser = createMarkdownParser()
 beforeAll(async () => {
   Object.defineProperty(globalThis, "document", { configurable: true, value: dom.window.document })
   Object.defineProperty(globalThis, "window", { configurable: true, value: dom.window })
   ;({ sanitizeHtml } = await import("../src/components/markdown-sanitize"))
-})
+  ;({ observeMarkdownResources } = await import(await domFixture("markdown-resources")))
+}, 120000)
 afterAll(() => {
   parser.dispose()
   for (const [key, descriptor] of previous) {
@@ -26,12 +28,13 @@ afterAll(() => {
 
 const text = "![Cost chart](asset://0123456789abcdef.png)\n\nRead [Report.docx](asset://fedcba9876543210.docx)."
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
-function fixture() {
+function fixture(nativeLink = false) {
   const root = document.createElement("div")
   document.body.append(root)
   const opened: AttachmentFile[] = []
   const references: unknown[] = []
   const resources: ResourceOpenController = {
+    nativeLink: () => nativeLink,
     resolveUrl(reference) {
       return reference.kind === "asset" ? `https://backend.example/asset/${reference.url.slice(8)}` : undefined
     },
@@ -54,6 +57,149 @@ function fixture() {
 }
 
 describe("Markdown managed resources", () => {
+  test("host-confirmed native web links preserve click, modifier, middle-click and keyboard defaults", async () => {
+    const f = fixture(true)
+    const target = "https://example.org/?doc=first#section"
+    try {
+      f.root.innerHTML = sanitizeHtml(await parser.parse(`[Native link](${target}) [Note](note://nte_example)`))
+      await flush()
+      const link = f.root.querySelector<HTMLAnchorElement>("a")!
+      for (const input of [
+        new dom.window.MouseEvent("click", { bubbles: true, cancelable: true }),
+        new dom.window.MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true }),
+        new dom.window.MouseEvent("click", { bubbles: true, cancelable: true, metaKey: true }),
+        new dom.window.MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 1 }),
+        new dom.window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }),
+        new dom.window.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" }),
+      ]) {
+        link.dispatchEvent(input)
+        expect(input.defaultPrevented).toBe(false)
+      }
+      expect(f.references).toEqual([])
+      expect(link.getAttribute("href")).toBe(target)
+      const noteClick = new dom.window.MouseEvent("click", { bubbles: true, cancelable: true })
+      f.root.querySelectorAll("a")[1].dispatchEvent(noteClick)
+      expect(noteClick.defaultPrevented).toBe(true)
+      expect(f.references.at(-1)).toMatchObject({ resource: { kind: "note", id: "nte_example" } })
+    } finally {
+      f.dispose()
+    }
+  })
+
+  test("same-name GitHub files gain path context without changing explicit labels or hrefs", async () => {
+    const f = fixture()
+    const first = "https://github.com/org/repo/blob/commit/packages/first/index.ts#L2"
+    const second = "https://github.com/org/repo/blob/commit/packages/second/index.ts#L2"
+    try {
+      f.root.innerHTML = sanitizeHtml(await parser.parse(`${first}，后文`))
+      await flush()
+      expect(f.root.querySelector<HTMLElement>("a")!.dataset.resourceLabel).toBe("repo / index.ts:2")
+      f.root.insertAdjacentHTML("beforeend", sanitizeHtml(await parser.parse(`${second}。 [Explicit label](${first})`)))
+      await flush()
+      const links = [...f.root.querySelectorAll<HTMLAnchorElement>("a")]
+      expect(links.map((link) => link.dataset.resourceLabel)).toEqual([
+        "repo / first/index.ts:2",
+        "repo / second/index.ts:2",
+        undefined,
+      ])
+      expect(links.map((link) => link.getAttribute("href"))).toEqual([first, second, first])
+      expect(links[2].textContent).toBe("Explicit label")
+    } finally {
+      f.dispose()
+    }
+  })
+  test("same-path query and fragment targets retain distinct labels and full native hrefs", async () => {
+    const f = fixture()
+    const targets = [
+      "https://example.org/?doc=first#section",
+      "https://example.org/?doc=second#section",
+      "https://example.org/?doc=second#other",
+    ]
+    try {
+      f.root.innerHTML = sanitizeHtml(await parser.parse(targets.join("\n\n")))
+      await flush()
+      const links = [...f.root.querySelectorAll<HTMLAnchorElement>("a")]
+      expect(links.map((link) => link.dataset.resourceLabel)).toEqual([
+        "example.org?doc=first#section",
+        "example.org?doc=second#section",
+        "example.org?doc=second#other",
+      ])
+      expect(links.map((link) => link.getAttribute("href"))).toEqual(targets)
+      expect(links.map((link) => link.textContent)).toEqual(targets)
+    } finally {
+      f.dispose()
+    }
+  })
+  test.each([
+    {
+      name: "owner",
+      targets: [
+        "https://github.com/first/repo/blob/main/src/index.ts#L2",
+        "https://github.com/second/repo/blob/main/src/index.ts#L2",
+      ],
+      labels: ["first/repo / index.ts:2", "second/repo / index.ts:2"],
+    },
+    {
+      name: "branch",
+      targets: [
+        "https://github.com/org/repo/blob/main/src/index.ts#L2",
+        "https://github.com/org/repo/blob/feature/topic/src/index.ts#L2",
+      ],
+      labels: ["repo / blob/main/src/index.ts:2", "repo / blob/feature/topic/src/index.ts:2"],
+    },
+  ])(
+    "late GitHub $name peers update both labels and recycled peers return to compact form",
+    async ({ targets, labels }) => {
+      const f = fixture()
+      try {
+        f.root.innerHTML = sanitizeHtml(await parser.parse(targets[0]!))
+        await flush()
+        const first = f.root.querySelector<HTMLAnchorElement>("a")!
+        expect(first.dataset.resourceLabel).toBe("repo / index.ts:2")
+        const icon = first.querySelector("[data-reference-icon]")
+        f.root.insertAdjacentHTML("beforeend", sanitizeHtml(await parser.parse(targets[1]!)))
+        await flush()
+        const links = [...f.root.querySelectorAll<HTMLAnchorElement>("a")]
+        expect(links.map((link) => link.dataset.resourceLabel)).toEqual([...labels])
+        expect(links.map((link) => link.getAttribute("href"))).toEqual([...targets])
+        expect(links.map((link) => link.textContent)).toEqual([...targets])
+        expect(first.querySelector("[data-reference-icon]")).toBe(icon)
+        expect(f.root.querySelectorAll("[data-reference-icon]")).toHaveLength(2)
+        links[1]!.remove()
+        await flush()
+        expect(first.dataset.resourceLabel).toBe("repo / index.ts:2")
+        expect(first.querySelector("[data-reference-icon]")).toBe(icon)
+      } finally {
+        f.dispose()
+      }
+    },
+  )
+  test("unifies web and Note references without replacing explicit labels or native URL semantics", async () => {
+    const f = fixture()
+    const github =
+      "https://github.com/deepseek-ai/deepseek-harness/blob/86a402200d95fecef4529d969836f1fe13c6cb0d/packages/compaction/compaction-basic/src/index.ts#L289-L327"
+    try {
+      f.root.innerHTML = sanitizeHtml(
+        await parser.parse(
+          `${github}，后文 [Original label](${github}) [Note](note://nte_example#stable-block) [Other](https://github.example.org/a)`,
+        ),
+      )
+      await flush()
+      const links = [...f.root.querySelectorAll<HTMLAnchorElement>("a")]
+      expect(links[0].getAttribute("href")).toBe(github)
+      expect(links[0].dataset.resourceLabel).toBe("deepseek-harness / index.ts:289–327")
+      expect(links[0].textContent).toBe(github)
+      expect(links[0].dataset.resourceIcon).toBe("github.main")
+      expect(links[1].textContent).toBe("Original label")
+      expect(links[1].hasAttribute("data-resource-label")).toBe(false)
+      expect(links[2].dataset.resourceKind).toBe("note")
+      expect(links[3].dataset.resourceIcon).toBe("browser.main")
+      links[0].dispatchEvent(new dom.window.MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }))
+      expect(f.references.at(-1)).toMatchObject({ resource: { kind: "url", url: github }, options: { newTab: true } })
+    } finally {
+      f.dispose()
+    }
+  })
   test("keeps a non-image asset usable when authored as a Markdown image", async () => {
     const f = fixture()
     try {

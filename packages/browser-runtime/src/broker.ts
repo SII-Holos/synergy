@@ -1,10 +1,11 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { randomBytes, timingSafeEqual } from "node:crypto"
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
 import {
   BROWSER_ACTION_SETTLE_TIMEOUT_MS,
   BROWSER_BEST_EFFORT_SNAPSHOT_TIMEOUT_MS,
   BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS,
   BROWSER_PROTOCOL_VERSION,
+  BROWSER_DATA_CONTEXT_TTL_MS,
   BrowserBackendCommandSchema,
   BrowserHostMessageSchema,
   BrowserProtocolError,
@@ -41,10 +42,12 @@ interface PendingRequest {
 
 interface Connection {
   hostId: string
+  epoch: string
   socket: BrowserBrokerSocket
   capabilities: BrowserPresentationCapabilities
   pending: Map<string, PendingRequest>
   pages: Set<string>
+  dataContexts: Map<string, { ownerKey: string; profileId: string; timer: ReturnType<typeof setTimeout> }>
   eventWindowStartedAt: number
   eventCount: number
 }
@@ -57,6 +60,7 @@ const runtimeState = RuntimeContext.state(() => ({
   profiles: new Map<string, string>(),
   popupListeners: new Map<string, (input: { id: string; url: string; openerId: string }) => Promise<unknown>>(),
   bufferedEvents: new Map<string, BrowserHostPageEvent[]>(),
+  dataProfileSubscription: undefined as (() => void) | undefined,
   registrationSecret: BrowserRegistrationSecretSchema.parse(
     RuntimeContext.current().host.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET || randomBytes(32).toString("hex"),
   ),
@@ -158,10 +162,12 @@ export namespace BrowserBroker {
     }
     const active: Connection = {
       hostId: message.hostId,
+      epoch: randomUUID(),
       socket,
       capabilities: message.capabilities,
       pending: new Map(),
       pages: new Set(),
+      dataContexts: new Map(),
       eventWindowStartedAt: Date.now(),
       eventCount: 0,
     }
@@ -403,6 +409,115 @@ export namespace BrowserBroker {
     })
   }
 
+  export function dataContext(owner: BrowserOwner.Info, profileId?: string) {
+    const state = runtimeState()
+    state.dataProfileSubscription ??= BrowserProfiles.beforeChange(revokeDataProfile)
+    return BrowserProfiles.withDataProfile(profileId, async (profile) => {
+      const active = state.connection
+      if (!active)
+        throw new BrowserProtocolError({
+          code: "browser_native_host_unavailable",
+          message: "The Desktop Browser Host is reconnecting. Retry.",
+          retryable: true,
+        })
+      const contextId = randomUUID(),
+        ownerKey = BrowserOwner.key(owner)
+      const expiresAt = Date.now() + BROWSER_DATA_CONTEXT_TTL_MS
+      const timer = setTimeout(() => {
+        if (state.connection !== active || !active.dataContexts.has(contextId)) return
+        void releaseDataContext(owner, contextId).catch(() =>
+          active.socket.close(1011, "Browser data expiration failed"),
+        )
+      }, BROWSER_DATA_CONTEXT_TTL_MS)
+      timer.unref()
+      active.dataContexts.set(contextId, { ownerKey, profileId: profile.id, timer })
+      try {
+        await request({
+          type: "profile.data.prepare",
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          requestId: nextRequestId(),
+          contextId,
+          ownerKey,
+          epoch: active.epoch,
+          expiresAt,
+          profile: { id: profile.id, partition: profile.partition, revision: profile.revision },
+        })
+        if (state.connection !== active || !active.dataContexts.has(contextId))
+          throw new Error("Browser data access expired. Reopen the dialog.")
+        return { contextId, profile: BrowserProfiles.publicProfile(profile) }
+      } catch (error) {
+        if (state.connection === active)
+          await releaseDataContext(owner, contextId).catch(() =>
+            active.socket.close(1011, "Browser data context cleanup failed"),
+          )
+        throw error
+      }
+    })
+  }
+
+  export async function releaseDataContext(owner: BrowserOwner.Info, contextId: string): Promise<void> {
+    const active = runtimeState().connection
+    const context = active?.dataContexts.get(contextId)
+    if (!active || !context) return
+    if (context.ownerKey !== BrowserOwner.key(owner))
+      throw new BrowserProtocolError({
+        code: "browser_data_context_owner_mismatch",
+        message: "Browser data access belongs to another Scope.",
+        retryable: false,
+      })
+    active.dataContexts.delete(contextId)
+    clearTimeout(context.timer)
+    await request({
+      type: "profile.data.release",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      requestId: nextRequestId(),
+      contextId,
+      ownerKey: context.ownerKey,
+      epoch: active.epoch,
+    })
+  }
+
+  export async function releaseDataContexts(): Promise<void> {
+    const active = runtimeState().connection
+    if (!active) return
+    const contexts = [...active.dataContexts.entries()]
+    for (const [, context] of contexts) clearTimeout(context.timer)
+    active.dataContexts.clear()
+    await Promise.all(
+      contexts.map(([contextId, context]) =>
+        request({
+          type: "profile.data.release",
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          requestId: nextRequestId(),
+          contextId,
+          ownerKey: context.ownerKey,
+          epoch: active.epoch,
+        }),
+      ),
+    )
+  }
+
+  async function revokeDataProfile(profileId: string): Promise<void> {
+    const active = runtimeState().connection
+    if (!active || ![...active.dataContexts.values()].some((context) => context.profileId === profileId)) return
+    for (const [id, context] of active.dataContexts)
+      if (context.profileId === profileId) {
+        clearTimeout(context.timer)
+        active.dataContexts.delete(id)
+      }
+    try {
+      await request({
+        type: "profile.data.revoke",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        requestId: nextRequestId(),
+        profileId,
+      })
+    } catch (error) {
+      active.socket.close(1011, "Browser data revocation failed")
+      throw error
+    }
+  }
+
   export async function command(
     owner: BrowserOwner.Info,
     pageId: string,
@@ -550,9 +665,21 @@ function dispatchLifecycle(notify: () => void): void {
   if (failure) throw failure.error
 }
 
-function request(
-  message: Extract<BrowserHostMessage, { type: "page.create" | "page.command" | "page.close" | "profile.clear" }>,
-): Promise<BrowserBackendResult> {
+type BrokerRequest = Extract<
+  BrowserHostMessage,
+  {
+    type:
+      | "page.create"
+      | "page.command"
+      | "page.close"
+      | "profile.clear"
+      | "profile.data.prepare"
+      | "profile.data.release"
+      | "profile.data.revoke"
+  }
+>
+
+function request(message: BrokerRequest): Promise<BrowserBackendResult> {
   const instanceState = runtimeState()
 
   const active = instanceState.connection
@@ -577,12 +704,7 @@ function request(
           code: "browser_host_timeout",
           message: `Browser Host request timed out: ${message.type}`,
           retryable: true,
-          pageId:
-            message.type === "profile.clear"
-              ? message.profileId
-              : "pageId" in message
-                ? message.pageId
-                : message.page.id,
+          pageId: requestTarget(message),
         }),
       )
     }, requestTimeout(message))
@@ -590,8 +712,7 @@ function request(
       resolve,
       reject,
       timer,
-      pageId:
-        message.type === "profile.clear" ? message.profileId : "pageId" in message ? message.pageId : message.page.id,
+      pageId: requestTarget(message),
     })
     try {
       active.socket.send(JSON.stringify(message))
@@ -603,9 +724,7 @@ function request(
   })
 }
 
-function requestTimeout(
-  message: Extract<BrowserHostMessage, { type: "page.create" | "page.command" | "page.close" | "profile.clear" }>,
-): number {
+function requestTimeout(message: BrokerRequest): number {
   if (message.type !== "page.command") return 35_000
   const command = message.command
   if (command.type === "evaluate") return Math.min(125_000, (command.timeoutMs ?? 30_000) + 5_000)
@@ -632,6 +751,8 @@ function disconnect(active: Connection, error: Error): () => void {
     pending.reject(error)
   }
   active.pending.clear()
+  for (const context of active.dataContexts.values()) clearTimeout(context.timer)
+  active.dataContexts.clear()
   const pages = [...active.pages]
   const preferences = [...instanceState.preferences.values()]
   const notifications = pages.map((key) => {
@@ -700,10 +821,15 @@ function secureEqual(actual: string, expected: string): boolean {
   return a.byteLength === b.byteLength && timingSafeEqual(a, b)
 }
 
-function telemetryOwner(
-  message: Extract<BrowserHostMessage, { type: "page.create" | "page.command" | "page.close" | "profile.clear" }>,
-): BrowserOwner.Info | undefined {
+function telemetryOwner(message: BrokerRequest): BrowserOwner.Info | undefined {
   const instanceState = runtimeState()
 
   return "ownerKey" in message ? instanceState.preferences.get(message.ownerKey)?.owner : undefined
+}
+
+function requestTarget(message: BrokerRequest): string {
+  if (message.type === "page.create") return message.page.id
+  if ("pageId" in message) return message.pageId
+  if ("contextId" in message) return message.contextId
+  return message.profileId
 }

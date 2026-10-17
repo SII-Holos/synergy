@@ -6,6 +6,7 @@ import { NoteMarkdown } from ".."
 import { NoteDocument } from ".."
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import DESCRIPTION from "./note-read.txt"
+import { noteReferenceLine } from "./note-reference"
 
 const MAX_IDS = 10
 const MAX_LINES = 2000
@@ -71,6 +72,7 @@ export const NoteReadTool = Tool.define(
           const kind = note.kind ?? "note"
           const header = [
             `[${id}] ${note.title}`,
+            noteReferenceLine(note.id, note.title),
             `Kind: ${kind}`,
             ...NoteDocumentKinds.details(note),
             `Version: ${note.version}`,

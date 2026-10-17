@@ -6,6 +6,7 @@ import { createBrowserFixture, type BrowserFixture } from "../../support/browser
 
 type Fixture = {
   remove(): void
+  unregister(): void
   pause(): void
   resume(): void
   features(features?: string[]): void
@@ -83,6 +84,7 @@ beforeAll(async () => {
     register()
     window.fixture={
       remove,
+      unregister:()=>release(),
       pause(){batch(()=>{setActive(false);release()})},
       resume(){batch(()=>{register();setActive(true)})},
       features:features=>setSelection(features?{features}:undefined),
@@ -213,5 +215,28 @@ test("closing a saved native tab during capability revalidation releases its ins
   await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features(["note"]))
   expect(await facts()).toMatchObject({ mounts: 1, disposed: 1, aborted: [true], saved: 0, visible: 0 })
   expect(await input.count()).toBe(0)
+  expect(errors).toEqual([])
+})
+
+test("built-in revalidation retains its paused view until registration catches up", async () => {
+  await page.goto(`${fixture.url}?builtin`)
+  const input = page.getByRole("textbox", { name: "Plugin draft" })
+  await input.fill("Draft during registry recovery")
+  const original = await input.elementHandle()
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { fixture: Fixture }).fixture
+    fixture.features(undefined)
+    fixture.unregister()
+  })
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(true)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features(["note"]))
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(true)
+  expect(await input.isVisible()).toBe(false)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.generation("one"))
+  expect(await input.evaluate((element, previous) => element === previous, original)).toBe(true)
+  expect(await input.inputValue()).toBe("Draft during registry recovery")
+  expect(await facts()).toMatchObject({ mounts: 1, disposed: 0, active: [true] })
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features([]))
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(false)
   expect(errors).toEqual([])
 })

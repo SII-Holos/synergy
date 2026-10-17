@@ -4,17 +4,205 @@ import { z } from "zod"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { RolloutEvents } from "@ericsanchezok/synergy-harness/rollout"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutTransportRecorder } from "@ericsanchezok/synergy-harness/session/rollout/transport-recorder"
-import { complete, fixture } from "@ericsanchezok/synergy-harness/test/support/rollout"
+import { complete, contextDraft, fixture } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import { testRuntime } from "../support/runtime"
 import { ExecutionSchema } from "../../src/execution/schema"
 import { ExecutionService } from "../../src/execution/service"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
+
+test("updates to an inactive execution cache do not reread its message history", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      await ExecutionService.summary(session.id)
+      using reads = spyOn(MessageV2, "stream")
+      await Session.update(session.id, (info) => {
+        info.title = "Changed while hidden"
+      })
+      const summary = await ExecutionService.summary(session.id)
+      expect(summary.sessionID).toBe(session.id)
+      const page = await ExecutionService.trajectory(
+        session.id,
+        ExecutionSchema.Query.parse({ mode: "records", kind: "turn" }),
+      )
+      expect(page.items[0].title).toBe("Changed while hidden")
+      expect(reads).not.toHaveBeenCalled()
+    }),
+  ))
+
+test("consecutive revisions of one record during loading do not rebuild the task tree", () =>
+  runtime.run(() =>
+    fixture(async ({ session, call }) => {
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const list = SessionInbox.list
+      let held = false
+      using inbox = spyOn(SessionInbox, "list").mockImplementation(async (id) => {
+        const result = await list(id)
+        if (id === session.id && !held) {
+          held = true
+          entered.resolve()
+          await release.promise
+        }
+        return result
+      })
+      using reads = spyOn(MessageV2, "stream")
+      const pending = ExecutionService.summary(session.id)
+      try {
+        await entered.promise
+        for (let index = 0; index < 3; index++)
+          await RolloutLedger.updateContextEstimate(call.owner, call.runID, call.id, {
+            ...contextDraft(10 + index),
+            version: 1,
+            capturedAt: Date.now(),
+          })
+      } finally {
+        release.resolve()
+      }
+      await pending
+      expect(reads.mock.calls.filter(([input]) => input.sessionID === session.id)).toHaveLength(1)
+    }),
+  ))
+
+test("unrelated output during a message refresh cannot extend its finite revision cut", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      const other = await Session.create({ title: "Unrelated producer" })
+      const messages = await Session.messages({ sessionID: session.id })
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const list = SessionInbox.list
+      using inbox = spyOn(SessionInbox, "list").mockImplementation(async (id) => {
+        const items = await list(id)
+        if (id === session.id) {
+          entered.resolve()
+          await release.promise
+        }
+        return items
+      })
+      const get = MessageV2.get
+      let reads = 0
+      using read = spyOn(MessageV2, "get").mockImplementation(
+        Object.assign(async (input: Parameters<typeof get>[0]) => {
+          if (input.sessionID === session.id && reads++ < 8)
+            await Session.update(other.id, (info) => {
+              info.title = `Output ${reads}`
+            })
+          return get(input)
+        }, get),
+      )
+      const loading = ExecutionService.summary(session.id)
+      try {
+        await entered.promise
+        await Session.updateMessage(messages[0].info)
+      } finally {
+        release.resolve()
+      }
+      expect((await loading).sessionID).toBe(session.id)
+      expect(reads).toBe(1)
+    }),
+  ))
+
+test("adding a child reads only the new branch", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      await ExecutionService.summary(session.id)
+      using read = spyOn(MessageV2, "stream")
+      const child = await Session.create({ parentID: session.id, title: "New child" })
+      expect((await ExecutionService.summary(session.id)).tasks.some((task) => task.sessionID === child.id)).toBe(true)
+      expect(read.mock.calls.map(([input]) => input.sessionID)).toEqual([child.id])
+    }),
+  ))
+
+test("one cancelled reader leaves a shared execution load available to its other reader", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const children = Session.children
+      using read = spyOn(Session, "children").mockImplementation(
+        Object.assign(async (id: string) => {
+          if (id === session.id) {
+            entered.resolve()
+            await release.promise
+          }
+          return children(id)
+        }, children),
+      )
+      const controller = new AbortController()
+      const first = ExecutionService.summary(session.id, undefined, controller.signal)
+      await entered.promise
+      const second = ExecutionService.summary(session.id)
+      await Bun.sleep(0)
+      controller.abort()
+      await expect(first).rejects.toHaveProperty("name", "AbortError")
+      release.resolve()
+      expect((await second).sessionID).toBe(session.id)
+      expect(read.mock.calls.filter(([id]) => id === session.id)).toHaveLength(1)
+    }),
+  ))
+
+test("the last cancelled reader stops subsequent owner reads", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const children = Session.children
+      using read = spyOn(Session, "children").mockImplementation(
+        Object.assign(async (id: string) => {
+          if (id === session.id) {
+            entered.resolve()
+            await release.promise
+          }
+          return children(id)
+        }, children),
+      )
+      using messages = spyOn(MessageV2, "stream")
+      const controller = new AbortController()
+      const loading = ExecutionService.summary(session.id, undefined, controller.signal)
+      await entered.promise
+      controller.abort()
+      await expect(loading).rejects.toHaveProperty("name", "AbortError")
+      release.resolve()
+      await Bun.sleep(25)
+      expect(messages).not.toHaveBeenCalled()
+    }),
+  ))
+
+test("a new reader arriving during cancellation starts a fresh execution load", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const children = Session.children
+      let held = false
+      using read = spyOn(Session, "children").mockImplementation(
+        Object.assign(async (id: string) => {
+          if (id === session.id && !held) {
+            held = true
+            entered.resolve()
+            await release.promise
+          }
+          return children(id)
+        }, children),
+      )
+      const controller = new AbortController()
+      const first = ExecutionService.summary(session.id, undefined, controller.signal)
+      await entered.promise
+      controller.abort()
+      await expect(first).rejects.toHaveProperty("name", "AbortError")
+      const second = ExecutionService.summary(session.id)
+      release.resolve()
+      expect((await second).sessionID).toBe(session.id)
+      expect(read.mock.calls.filter(([id]) => id === session.id)).toHaveLength(2)
+    }),
+  ))
 
 test("a delayed inbox read cannot attach a newer revision to stale active intervals", () =>
   runtime.run(() =>
@@ -172,6 +360,7 @@ test(
         expect(initial.status).toBe("running")
         expect(initial.elapsedActive).toBe(true)
 
+        using reads = spyOn(MessageV2, "stream")
         const publish = Bus.publish
         let missed = 0
         const delivery = spyOn(Bus, "publish").mockImplementation(async (definition, properties) => {
@@ -204,6 +393,8 @@ test(
           })
           const recovered = await running.result
           expect(missed).toBe(1)
+          expect(reads.mock.calls.filter(([input]) => input.sessionID === session.id)).toHaveLength(0)
+          expect(reads.mock.calls.filter(([input]) => input.sessionID === child.id)).toHaveLength(1)
           expect(recovered.properties.revision).toBeGreaterThan(initial.revision)
           expect(recovered.properties.summary.tasks[0].status).toBe("running")
           expect(

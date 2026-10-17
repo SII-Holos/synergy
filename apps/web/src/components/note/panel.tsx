@@ -18,6 +18,7 @@ import {
 } from "solid-js"
 import { useParams } from "@/context/session-route"
 import type { Editor } from "@tiptap/core"
+import { NodeSelection } from "@tiptap/pm/state"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -79,6 +80,8 @@ import { createBlueprintLoopsResource } from "./blueprint-loops"
 import { WorkspaceNavigator, type WorkspaceNavigatorController } from "../workspace/workspace-navigator"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { CopyIconButton } from "@ericsanchezok/synergy-ui/clipboard"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import "./panel.css"
 
 type LoopStatus = BlueprintLoopInfo["status"]
@@ -1542,11 +1545,22 @@ function NoteEditor(props: {
           (item) =>
             item.id === tab.id && item.panelId === "notes" && item.resourceId === noteID && item.source === scopeID,
         ))
+  const currentTab = () =>
+    tab &&
+    workbench
+      .surface("side")
+      .tabs()
+      .find(
+        (item) =>
+          item.id === tab.id && item.panelId === "notes" && item.resourceId === noteID && item.source === scopeID,
+      )
   createEffect(() => {
     const value = note()
     if (!tab || !value) return
     const kind = value.kind ?? "note"
-    const state = tab.state && typeof tab.state === "object" ? tab.state : {}
+    const live = currentTab()
+    if (!live) return
+    const state = live.state && typeof live.state === "object" ? live.state : {}
     if ("kind" in state && state.kind === kind) return
     untrack(() => workbench.updateTab(tab.id, { state: { ...state, kind } }))
   })
@@ -1557,6 +1571,8 @@ function NoteEditor(props: {
   const conflict = doc.conflict
   const [tagInput, setTagInput] = createSignal("")
   const [editor, setEditor] = createSignal<Editor>()
+  const [selectedBlockId, setSelectedBlockId] = createSignal<string>()
+  const [referenceUnavailable, setReferenceUnavailable] = createSignal(false)
   const [convertingBlueprint, setConvertingBlueprint] = createSignal(false)
   const [runningBlueprint, setRunningBlueprint] = createSignal(false)
   const [showRunMenu, setShowRunMenu] = createSignal(false)
@@ -1604,6 +1620,24 @@ function NoteEditor(props: {
     setEditor(instance)
   }
 
+  function handlePositionChange() {
+    doc.persist()
+    const instance = editor()
+    if (!instance || instance.isDestroyed) return
+    const selection = instance.state.selection
+    let blockId: string | undefined
+    if (!selection.empty || instance.isFocused) {
+      if (selection instanceof NodeSelection && typeof selection.node.attrs.blockId === "string")
+        blockId = selection.node.attrs.blockId
+      for (let depth = selection.$from.depth; depth > 0 && !blockId; depth--) {
+        const node = selection.$from.node(depth)
+        if (selection.to > selection.$from.end(depth)) continue
+        if (typeof node.attrs.blockId === "string") blockId = node.attrs.blockId
+      }
+    }
+    setSelectedBlockId(blockId)
+  }
+
   createEffect(() => {
     const incoming = note()
     if (incoming) doc.ingest(incoming)
@@ -1618,6 +1652,49 @@ function NoteEditor(props: {
     instance.commands.setContent(content as Parameters<Editor["commands"]["setContent"]>[0], { emitUpdate: false })
     const size = instance.state.doc.content.size
     instance.commands.setTextSelection({ from: Math.min(selection.from, size), to: Math.min(selection.to, size) })
+  })
+  createEffect(() => {
+    if (!active() || !isCurrent()) return
+    const instance = editor()
+    const state = currentTab()?.state
+    if (!instance || instance.isDestroyed || !state || typeof state !== "object") return
+    if (!("referenceNavigation" in state) || typeof state.referenceNavigation !== "string") return
+    const sequence = state.referenceNavigation
+    if (doc.view.referenceNavigation === sequence) return
+    const location = "referenceLocation" in state ? state.referenceLocation : undefined
+    const frame = requestAnimationFrame(() => {
+      if (!active() || !isCurrent() || instance.isDestroyed) return
+      doc.view.referenceNavigation = sequence
+      setReferenceUnavailable(false)
+      if (location !== undefined) {
+        const parsed = ResourceReference.Location.safeParse(location)
+        let element: Element | undefined
+        if (parsed.success && parsed.data.kind === "heading") {
+          const blockId = parsed.data.id
+          instance.state.doc.descendants((node, position) => {
+            if (element || node.attrs.blockId !== blockId) return
+            const target = instance.view.nodeDOM(position)
+            if (target instanceof Element) element = target
+          })
+        }
+        if (element) element.scrollIntoView({ block: "start", inline: "nearest", behavior: "instant" })
+        else setReferenceUnavailable(true)
+      }
+      const liveState = currentTab()?.state
+      if (
+        !tab ||
+        !liveState ||
+        typeof liveState !== "object" ||
+        !("referenceNavigation" in liveState) ||
+        liveState.referenceNavigation !== sequence
+      )
+        return
+      const nextState: Record<string, unknown> = { ...liveState }
+      delete nextState.referenceLocation
+      delete nextState.referenceNavigation
+      workbench.updateTab(tab.id, { state: nextState })
+    })
+    onCleanup(() => cancelAnimationFrame(frame))
   })
   createEffect(() => {
     if (!tab || !noteLoaded()) return
@@ -1926,6 +2003,19 @@ function NoteEditor(props: {
                     ? lingui._({ id: "note.document.unsaved", message: "Unsaved changes" })
                     : lingui._({ id: "note.document.saved", message: "Saved" })}
           </span>
+          <CopyIconButton
+            text={() =>
+              ResourceReference.format({
+                kind: "note",
+                id: noteID,
+                ...(selectedBlockId() ? { location: { kind: "heading", id: selectedBlockId()! } } : {}),
+              })
+            }
+            copyLabel={lingui._({ id: "note.reference.copy", message: "Copy reference" })}
+            disabled={!noteLoaded()}
+            variant="ghost"
+            onPointerDown={(event: PointerEvent) => event.preventDefault()}
+          />
           <Show when={sdk.capabilities.has("blueprint") && isBlueprint()}>
             <button
               type="button"
@@ -2115,6 +2205,14 @@ function NoteEditor(props: {
         </Show>
       </div>
 
+      <Show when={referenceUnavailable()}>
+        <div class="note-document-error" role="status">
+          {lingui._({
+            id: "note.reference.unavailable",
+            message: "This location is no longer available in this note.",
+          })}
+        </div>
+      </Show>
       <Show when={doc.backupUnavailable() && hasDirtyFields(doc.dirty())}>
         <div class="note-document-error" role="alert">
           <span>
@@ -2166,7 +2264,7 @@ function NoteEditor(props: {
             <DocumentEditorCore
               content={doc.content()}
               retained={doc.view}
-              onPositionChange={doc.persist}
+              onPositionChange={handlePositionChange}
               onUpdate={() => {
                 const instance = editor()
                 if (instance) doc.edit("content", instance.getJSON())

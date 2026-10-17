@@ -27,9 +27,10 @@ beforeAll(async () => {
       `
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
-        import { createComponent, createSignal, onMount, onCleanup } from "solid-js"
+        import { createComponent, createSignal, onMount, onCleanup, Show } from "solid-js"
         import { render } from "solid-js/web"
         import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+        import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
         import { SettingsDialogFrame } from ${JSON.stringify(`/@fs/${componentPath}`)}
 
         import { useSettingsSave } from "/@fs/${path.resolve(import.meta.dir, "../../../src/components/settings/hooks/useSettingsSave.ts")}"
@@ -40,9 +41,21 @@ beforeAll(async () => {
         import { SettingsChoices } from "/@fs/${path.resolve(import.meta.dir, "../../../src/components/settings/components/SettingsChoices.tsx")}"
         import { locateSettingsField } from "/@fs/${path.resolve(import.meta.dir, "../../../src/components/settings/settings-search.ts")}"
         import { createProviderSetupDrafts } from "/@fs/${path.resolve(import.meta.dir, "../../../src/components/provider/provider-setup-drafts.ts")}"
+        function ConfirmationOwner() {
+          const confirm = useConfirm()
+          const ask = async () => {
+            window.confirmFixture.result = undefined
+            window.confirmFixture.result = await confirm.ask({title:"Owned confirmation",description:"Owner-bound request",confirmLabel:"Confirm owned",tone:"danger"})
+          }
+          window.confirmFixture.ask = ask
+          return <button onClick={() => void ask()}>Open owned confirmation</button>
+        }
         function Settings() {
           const dialog = useDialog()
           const confirm = useConfirm()
+          const [confirmationOwner, setConfirmationOwner] = createSignal(true)
+          let unrelated
+          window.confirmFixture = {removeOwner:()=>setConfirmationOwner(false),openUnrelated:()=>{unrelated=dialog.push(()=><Dialog title="Unrelated confirmation surface"><p>Unrelated content</p></Dialog>)},closeUnrelated:()=>dialog.close(unrelated)}
           let fields
           let cleanupSearch
           const [showFields, setShowFields] = createSignal(false)
@@ -71,6 +84,7 @@ beforeAll(async () => {
             showConfirm: confirm.show,
           })
           return <SettingsDialogFrame ariaLabel="Settings" onRequestClose={save.closeWithGuard}>
+            <Show when={confirmationOwner()}><ConfirmationOwner /></Show>
             <input aria-label="Draft" value={draft()} onInput={e => setDraft(e.currentTarget.value)} />
             <input aria-label="Inline editor" on:keydown={event => { if (event.key === "Escape") event.preventDefault() }} />
             <input aria-label="Account remark" value={account.name} onInput={e => accountDrafts.update("edit:service", { name: e.currentTarget.value })} />
@@ -181,6 +195,35 @@ async function loadSettings() {
 afterEach(() => expect(errors).toEqual([]))
 
 describe("Settings dialog dismissal", () => {
+  test("confirmation owner disposal cancels its pending ask without closing unrelated dialogs or permitting late reopen", async () => {
+    await loadSettings()
+    await page.getByRole("textbox", { name: "Draft", exact: true }).fill("Preserved settings")
+    await page.getByRole("button", { name: "Open owned confirmation", exact: true }).click()
+    await page.getByRole("dialog", { name: "Owned confirmation", exact: true }).waitFor()
+    await page.evaluate(() => {
+      const fixture = (window as unknown as { confirmFixture: { openUnrelated(): void; removeOwner(): void } })
+        .confirmFixture
+      fixture.openUnrelated()
+      fixture.removeOwner()
+    })
+    await page.waitForFunction(
+      () => (window as unknown as { confirmFixture: { result?: boolean } }).confirmFixture.result === false,
+    )
+    expect(
+      await page.getByRole("dialog", { name: "Owned confirmation", exact: true, includeHidden: true }).count(),
+    ).toBe(0)
+    expect(await page.getByRole("dialog", { name: "Unrelated confirmation surface", exact: true }).count()).toBe(1)
+    await page.evaluate(() => (window as unknown as { confirmFixture: { ask(): Promise<void> } }).confirmFixture.ask())
+    expect(
+      await page.getByRole("dialog", { name: "Owned confirmation", exact: true, includeHidden: true }).count(),
+    ).toBe(0)
+    expect(await page.getByRole("dialog", { name: "Unrelated confirmation surface", exact: true }).count()).toBe(1)
+    await page.evaluate(() =>
+      (window as unknown as { confirmFixture: { closeUnrelated(): void } }).confirmFixture.closeUnrelated(),
+    )
+    expect(await page.getByRole("textbox", { name: "Draft", exact: true }).inputValue()).toBe("Preserved settings")
+  })
+
   test.each(["escape", "Close settings", "Cancel settings"])(
     "account drafts guard %s independently of preference save",
     async (action) => {

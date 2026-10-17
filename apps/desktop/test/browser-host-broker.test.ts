@@ -1,5 +1,8 @@
 import { afterEach, expect, test } from "bun:test"
 import type { ServerWebSocket } from "bun"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import path from "node:path"
 import {
   BROWSER_PROTOCOL_VERSION,
   BrowserHostMessageSchema,
@@ -150,6 +153,66 @@ test("broker rejects remote or credential-bearing servers before connecting", ()
     expect(() => new BrowserHostBrokerClient({ serverUrl, token, theme })).toThrow("local Desktop server")
   }
   expect(() => new BrowserHostBrokerClient({ serverUrl: "http://localhost", token: "invalid", theme })).toThrow()
+})
+
+test("Node WebSocket closes incompatible or wrong-role broker messages without unhandled rejection", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "synergy-broker-close-"))
+  cleanups.push(() => rm(root, { recursive: true, force: true }))
+  const built = await Bun.build({
+    entrypoints: [path.resolve(import.meta.dir, "../src/browser-host-broker.ts")],
+    outdir: root,
+    target: "node",
+    format: "esm",
+    naming: "broker.mjs",
+    plugins: [
+      {
+        name: "electron-session-fixture",
+        setup(build) {
+          build.onResolve({ filter: /^electron$/ }, () => ({ path: "electron", namespace: "fixture" }))
+          build.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({
+            contents: "export const session = {}",
+            loader: "js",
+          }))
+        },
+      },
+    ],
+  })
+  expect(built.success).toBe(true)
+  const script = `import { BrowserHostBrokerClient } from ${JSON.stringify(new URL("broker.mjs", `file://${root}/`).href)};
+    const timeout=setTimeout(()=>{console.error("Close was not observed");process.exit(2)},3000);
+    const client=new BrowserHostBrokerClient({serverUrl:process.argv[1],token:"a".repeat(64),theme:{},onStatus(status){if(status==="restarting"){clearTimeout(timeout);void client.close().then(()=>process.exit(0))}}});client.connect();`
+  for (const payload of [
+    JSON.stringify({ type: "host.registered", protocolVersion: 6, hostId: "old-host" }),
+    JSON.stringify({ type: "page.result", protocolVersion, requestId: "wrong-role", result: { type: "void" } }),
+  ]) {
+    let closeCode = 0
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request, server) {
+        return server.upgrade(request) ? undefined : new Response(null, { status: 404 })
+      },
+      websocket: {
+        message(socket) {
+          socket.send(payload)
+        },
+        close(_socket, code) {
+          closeCode = code
+        },
+      },
+    })
+    try {
+      const child = Bun.spawn(["node", "--input-type=module", "--eval", script, server.url.href], {
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const [exit, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+      expect({ exit, stderr }).toEqual({ exit: 0, stderr: "" })
+      expect(closeCode).toBe(payload.includes("old-host") ? 4003 : 4008)
+    } finally {
+      await server.stop(true)
+    }
+  }
 })
 
 test("broker registers native capability and keeps command queues page-scoped", async () => {

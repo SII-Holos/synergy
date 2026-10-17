@@ -3,6 +3,7 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { NoteError, NoteStore, NoteMarkdown, NoteDocumentKinds } from ".."
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import DESCRIPTION from "./note-write.txt"
+import { noteReferenceLine } from "./note-reference"
 
 const parameters = NoteDocumentKinds.toolSchema(
   z.object({
@@ -96,6 +97,7 @@ async function updateExisting(input: {
       `${label} updated successfully (${input.action === "append" ? "appended" : "replaced"}).`,
       `noteId: ${input.id}`,
       `noteTitle: ${nextTitle}`,
+      noteReferenceLine(input.id, nextTitle),
       `Kind: ${kind}`,
       ...(input.tags ? [`Tags: ${input.tags.join(", ")}`] : []),
     ].join("\n"),
@@ -154,6 +156,7 @@ export const NoteWriteTool = Tool.define(
             `${label} created successfully.`,
             `noteId: ${note.id}`,
             `noteTitle: ${note.title}`,
+            noteReferenceLine(note.id, note.title),
             `Kind: ${kind}`,
             `Scope: ${scopeID}`,
             ...(note.tags.length > 0 ? [`Tags: ${note.tags.join(", ")}`] : []),

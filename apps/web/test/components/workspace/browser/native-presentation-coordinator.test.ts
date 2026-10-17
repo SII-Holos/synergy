@@ -1,3 +1,4 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { describe, expect, test } from "bun:test"
 import type { BrowserNativeViewBridge } from "../../../../src/context/platform"
 import {
@@ -13,10 +14,10 @@ function bridge(overrides: Partial<BrowserNativeViewBridge> = {}): BrowserNative
     async resizeView() {},
     async retryPage() {},
     async presentationCapability() {
-      return { protocolVersion: 6, managedLocal: true, status: "ready" }
+      return { protocolVersion: BROWSER_PROTOCOL_VERSION, managedLocal: true, status: "ready" }
     },
     async createPresentationTicket() {
-      return { ok: true, protocolVersion: 6, ticket: "native-ticket" }
+      return { ok: true, protocolVersion: BROWSER_PROTOCOL_VERSION, ticket: "native-ticket" }
     },
     ...overrides,
   }
@@ -31,7 +32,7 @@ describe("native presentation coordinator", () => {
       resolveBrowserClientPresentation({
         bridge: bridge({
           async presentationCapability() {
-            return { protocolVersion: 6, managedLocal: false, status: "failed" }
+            return { protocolVersion: BROWSER_PROTOCOL_VERSION, managedLocal: false, status: "failed" }
           },
         }),
         serverUrl: "https://remote.example.com",
@@ -79,7 +80,7 @@ describe("native presentation coordinator", () => {
         async presentationCapability() {
           capabilityCalls++
           return {
-            protocolVersion: 6,
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
             managedLocal: true,
             status: capabilityCalls === 1 ? "connecting" : "ready",
           }
@@ -102,7 +103,7 @@ describe("native presentation coordinator", () => {
     const coordinator = new NativePresentationCoordinator({
       bridge: bridge({
         async presentationCapability() {
-          return { protocolVersion: 6, managedLocal: true, status: "connecting" }
+          return { protocolVersion: BROWSER_PROTOCOL_VERSION, managedLocal: true, status: "connecting" }
         },
       }),
       serverUrl: "http://127.0.0.1:4096",

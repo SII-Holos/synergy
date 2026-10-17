@@ -51,7 +51,7 @@ export class BrowserDataStore {
       password: await this.encryption.decrypt(Buffer.from(entry.encrypted, "base64")),
     }
   }
-  async savePassword(partition: string, input: ImportedPassword, overwrite: boolean) {
+  async savePassword(partition: string, input: ImportedPassword, overwrite: boolean, current?: () => boolean) {
     const revision = this.revisions.get(partition) ?? 0
     if (!partition.startsWith("persist:") || !(await this.encryption.available()))
       throw new Error("A persistent browser profile and system password store are required.")
@@ -60,6 +60,7 @@ export class BrowserDataStore {
       throw new Error("Password entry is invalid.")
     const encrypted = (await this.encryption.encrypt(input.password)).toString("base64")
     return this.mutate(partition, (value) => {
+      if (current && !current()) throw new Error("Browser data access expired. Reopen this dialog.")
       if (revision !== (this.revisions.get(partition) ?? 0))
         throw new Error("Browser profile was cleared. Reopen it before saving passwords.")
       const previous = value.passwords.find((entry) => entry.origin === origin && entry.username === input.username)

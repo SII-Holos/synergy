@@ -473,7 +473,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
     const bound = state()
     const tabs = bound.tabs()
     const revalidating = workbench.revalidating()
-    const savedTabs = revalidating ? bound.savedTabs() : tabs
+    const savedTabs = bound.savedTabs()
     const key = panelMountKey()
     const panel = activePanel()
     const opened = bound.opened() && viewActive()
@@ -483,7 +483,10 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
         const current = workbench.panelForTab(resident.tab())
         const builtin = !entry.pluginId || entry.pluginId === "builtin"
         const retain = builtin || entry.retention === "pause"
-        const pending = revalidating && builtin && savedTabs.some((tab) => workbenchPanelMountKey(tab) === id)
+        const pending =
+          builtin &&
+          savedTabs.some((tab) => workbenchPanelMountKey(tab) === id) &&
+          (revalidating || workbench.supportsTab(resident.tab()))
         const replaced =
           entry.pluginId &&
           entry.pluginId !== "builtin" &&

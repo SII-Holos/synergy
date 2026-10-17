@@ -6,6 +6,7 @@ import { RolloutLedger } from "./ledger"
 import { RolloutEvents } from "./events"
 
 export namespace RolloutEvidence {
+  export class QueryError extends RangeError {}
   export const Kind = z.enum(["run", "segment", "call", "attempt", "tool", "process"])
   export type Kind = z.infer<typeof Kind>
   export const Content = z
@@ -74,7 +75,7 @@ export namespace RolloutEvidence {
   }
 
   export function textBoundary(bytes: Uint8Array, limit: number) {
-    if (bytes.length && (bytes[0] & 0xc0) === 0x80) throw new RangeError("Content offset splits a UTF-8 character")
+    if (bytes.length && (bytes[0] & 0xc0) === 0x80) throw new QueryError("Content offset splits a UTF-8 character")
     let end = Math.min(limit, bytes.length)
     while (end > 0 && end < bytes.length && (bytes[end] & 0xc0) === 0x80) end--
     if (!end && bytes.length) {
@@ -95,9 +96,14 @@ export namespace RolloutEvidence {
     const saved = sources(record).find((source) => source.field === field)
     if (!saved) throw new Storage.NotFoundError({ message: "Execution content was not recorded" })
     const current = await RolloutArtifact.get(owner, saved.artifact.id)
-    const ref = version
-      ? RolloutSchema.ArtifactRef.parse(JSON.parse(Buffer.from(version, "base64url").toString()))
-      : current
+    let ref = current
+    if (version) {
+      try {
+        ref = RolloutSchema.ArtifactRef.parse(JSON.parse(Buffer.from(version, "base64url").toString()))
+      } catch {
+        throw new QueryError("Invalid execution content version")
+      }
+    }
     if (
       ref.id !== current.id ||
       ref.mediaType !== current.mediaType ||
@@ -105,7 +111,7 @@ export namespace RolloutEvidence {
       ref.chunks > current.chunks ||
       (ref.status === "complete" && (ref.sha256 !== current.sha256 || ref.bytes !== current.bytes))
     )
-      throw new RangeError("Execution content version does not match its source")
+      throw new QueryError("Execution content version does not match its source")
     return { ref, contentVersion: Buffer.from(JSON.stringify(ref)).toString("base64url") }
   }
 
@@ -130,7 +136,7 @@ export namespace RolloutEvidence {
     z.number().int().nonnegative().safe().parse(offset)
     z.number().int().min(1).max(65_536).parse(limit)
     const { ref, contentVersion } = await source(owner, record, field, version)
-    if (offset > ref.bytes) throw new RangeError("Content offset exceeds the recorded artifact")
+    if (offset > ref.bytes) throw new QueryError("Content offset exceeds the recorded artifact")
     const bytes = await RolloutArtifact.readRange(owner, ref, offset, limit + 4)
     const end = textBoundary(bytes, limit)
     const next = offset + end

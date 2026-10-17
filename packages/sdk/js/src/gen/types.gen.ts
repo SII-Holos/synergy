@@ -2619,6 +2619,9 @@ export type PerfBrowserMetricBatch = {
     transferSize?: number
     encodedBodySize?: number
     decodedBodySize?: number
+    requestStart?: number
+    responseStart?: number
+    responseEnd?: number
   }>
   longTasks?: Array<{
     startTime: number
@@ -12655,6 +12658,58 @@ export type AssetInfo = {
   size: number
 }
 
+export type BrowserPreviewResult = {
+  title: string
+  source: string
+  path?: string
+  description?: string
+  code?: {
+    text: string
+    language?: string
+    startLine?: number
+  }
+  meta?: string
+  unavailable?:
+    | "invalid_url"
+    | "blocked_address"
+    | "dns_failed"
+    | "network_error"
+    | "timeout"
+    | "cancelled"
+    | "redirect_loop"
+    | "redirect_limit"
+    | "target_changed"
+    | "authentication_required"
+    | "bot_challenge"
+    | "http_error"
+    | "non_text"
+    | "unsupported_encoding"
+    | "too_large"
+    | "empty_metadata"
+    | "invalid_range"
+}
+
+export type BrowserProfile = {
+  id: string
+  name: string
+  kind: "persistent" | "temporary"
+  enabled: boolean
+  revision: number
+  createdAt: number
+  origins: {
+    [key: string]: {
+      access?: "inherit" | "allow" | "ask" | "deny"
+      downloads?: "inherit" | "allow" | "ask" | "deny"
+      uploads?: "inherit" | "allow" | "ask" | "deny"
+    }
+  }
+}
+
+export type BrowserDataContext = {
+  contextId: string
+  profile: BrowserProfile
+}
+
 export type BrowserApiError = {
   type: "error"
   code: string
@@ -12702,6 +12757,10 @@ export type BrowserApiError = {
   locator?: unknown
 }
 
+export type BrowserDataContextInput = {
+  profileId?: string
+}
+
 export type BrowserApiSessionPage = {
   id: string
   url: string
@@ -12719,22 +12778,6 @@ export type BrowserOpenPage = {
   requestId: string
   url?: string
   profileId?: string
-}
-
-export type BrowserProfile = {
-  id: string
-  name: string
-  kind: "persistent" | "temporary"
-  enabled: boolean
-  revision: number
-  createdAt: number
-  origins: {
-    [key: string]: {
-      access?: "inherit" | "allow" | "ask" | "deny"
-      downloads?: "inherit" | "allow" | "ask" | "deny"
-      uploads?: "inherit" | "allow" | "ask" | "deny"
-    }
-  }
 }
 
 export type BrowserProfileList = {
@@ -12777,7 +12820,7 @@ export type BrowserManageProfile =
     }
 
 export type BrowserAnnotationResponse = {
-  protocolVersion: 6
+  protocolVersion: 7
   annotation: {
     id: string
     pageURL: string
@@ -12793,7 +12836,7 @@ export type BrowserAnnotationResponse = {
 }
 
 export type BrowserAnnotationRequest = {
-  protocolVersion: 6
+  protocolVersion: 7
   pageId: string
   x: number
   y: number
@@ -12804,14 +12847,14 @@ export type BrowserAnnotationRequest = {
 }
 
 export type BrowserDiagnosticsResponse = {
-  protocolVersion: 6
+  protocolVersion: 7
   pageId: string
   action: string
   data: unknown
 }
 
 export type BrowserDiagnosticsRequest = {
-  protocolVersion: 6
+  protocolVersion: 7
   pageId: string
   commandId: string
   action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
@@ -12820,7 +12863,7 @@ export type BrowserDiagnosticsRequest = {
 
 export type BrowserApiSessionState = {
   type: "session.state"
-  protocolVersion: 6
+  protocolVersion: 7
   ownerKey: string
   status: "empty" | "suspended" | "active" | "failed"
   agentActivities?: Array<{
@@ -12835,7 +12878,7 @@ export type BrowserApiSessionState = {
     completed?: boolean
   }>
   presentation: {
-    protocolVersion: 6
+    protocolVersion: 7
     kind: "native"
     capabilities: {
       native: boolean
@@ -12860,7 +12903,7 @@ export type BrowserApiSessionState = {
 
 export type BrowserControlResponse = {
   type: "control.result"
-  protocolVersion: 6
+  protocolVersion: 7
   result:
     | {
         userChanges?: string
@@ -12964,7 +13007,7 @@ export type BrowserControlResponse = {
 
 export type BrowserControlRequest = {
   pageId: string
-  protocolVersion: 6
+  protocolVersion: 7
   command:
     | {
         type: "navigate"
@@ -19455,6 +19498,10 @@ export type SessionExecutionSummaryErrors = {
    */
   404: unknown
   /**
+   * Execution computation failed
+   */
+  500: unknown
+  /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
@@ -19495,6 +19542,10 @@ export type SessionExecutionContextHistoryErrors = {
    * Execution evidence was not found in the selected Scope and session
    */
   404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
   /**
    * Runtime shutting down
    */
@@ -19537,6 +19588,10 @@ export type SessionExecutionContextSnapshotErrors = {
    * Execution evidence was not found in the selected Scope and session
    */
   404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
   /**
    * Runtime shutting down
    */
@@ -19592,6 +19647,10 @@ export type SessionExecutionContextItemsErrors = {
    * Execution evidence was not found in the selected Scope and session
    */
   404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
   /**
    * Runtime shutting down
    */
@@ -19663,6 +19722,10 @@ export type SessionExecutionTrajectoryErrors = {
    */
   404: unknown
   /**
+   * Execution computation failed
+   */
+  500: unknown
+  /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
@@ -19703,6 +19766,10 @@ export type SessionExecutionNodeErrors = {
    * Execution evidence was not found in the selected Scope and session
    */
   404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
   /**
    * Runtime shutting down
    */
@@ -19748,6 +19815,10 @@ export type SessionExecutionContentErrors = {
    */
   404: unknown
   /**
+   * Execution computation failed
+   */
+  500: unknown
+  /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
@@ -19791,6 +19862,10 @@ export type SessionExecutionContentSectionsErrors = {
    * Execution evidence was not found in the selected Scope and session
    */
   404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
   /**
    * Runtime shutting down
    */
@@ -19839,6 +19914,10 @@ export type SessionExecutionContentSearchErrors = {
    * Execution evidence was not found in the selected Scope and session
    */
   404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
   /**
    * Runtime shutting down
    */
@@ -28361,6 +28440,137 @@ export type AssetGetResponses = {
    */
   200: unknown
 }
+
+export type BrowserPreviewData = {
+  body?: {
+    url: string
+  }
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "scope"
+  }
+  url: "/{directory}/browser/preview"
+}
+
+export type BrowserPreviewErrors = {
+  /**
+   * Invalid preview request
+   */
+  400: {
+    code: string
+    message: string
+  }
+  /**
+   * Preview request is too large
+   */
+  413: {
+    code: string
+    message: string
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserPreviewError = BrowserPreviewErrors[keyof BrowserPreviewErrors]
+
+export type BrowserPreviewResponses = {
+  /**
+   * Public metadata or a typed unavailable reason
+   */
+  200: BrowserPreviewResult
+}
+
+export type BrowserPreviewResponse = BrowserPreviewResponses[keyof BrowserPreviewResponses]
+
+export type BrowserDataContextData = {
+  body?: BrowserDataContextInput
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/data-context"
+}
+
+export type BrowserDataContextErrors = {
+  /**
+   * Browser data access rejected
+   */
+  400: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserDataContextError = BrowserDataContextErrors[keyof BrowserDataContextErrors]
+
+export type BrowserDataContextResponses = {
+  /**
+   * Profile data context
+   */
+  200: BrowserDataContext
+}
+
+export type BrowserDataContextResponse = BrowserDataContextResponses[keyof BrowserDataContextResponses]
+
+export type BrowserReleaseDataContextData = {
+  body?: never
+  path: {
+    directory: string
+    contextId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/data-context/{contextId}"
+}
+
+export type BrowserReleaseDataContextErrors = {
+  /**
+   * Browser data access rejected
+   */
+  400: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserReleaseDataContextError = BrowserReleaseDataContextErrors[keyof BrowserReleaseDataContextErrors]
+
+export type BrowserReleaseDataContextResponses = {
+  /**
+   * Data context released
+   */
+  200: boolean
+}
+
+export type BrowserReleaseDataContextResponse =
+  BrowserReleaseDataContextResponses[keyof BrowserReleaseDataContextResponses]
 
 export type BrowserOpenPageData = {
   body?: BrowserOpenPage

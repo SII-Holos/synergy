@@ -507,6 +507,14 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
+          "glob": "src/components/settings/panels/BrowserPanel.tsx",
+          "reason": "test/components/settings/browser-settings.dom.test.tsx renders the two-action Settings page, navigation/search/deep-link gating and immediate dialogs in Chromium; Vite TSX execution is outside Bun LCOV. Capability and context lifecycle remain measured by browser-settings.test.ts and browser-data-context.test.ts."
+        },
+        {
+          "glob": "src/components/settings/browser-profile-data-dialog.tsx",
+          "reason": "test/components/settings/browser-settings.dom.test.tsx exercises the actual profile dialog, captured target, password metadata, reconnect removal and retained Settings drafts in Chromium; Bun cannot instrument Vite's TSX bundle. Context creation and release remain measured by browser-data-context.test.ts."
+        },
+        {
           "glob": "src/components/settings/components/AccountToggleCard.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
@@ -2238,6 +2246,18 @@
         {
           "glob": "src/components/resize-handle.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/resource-preview.tsx",
+          "reason": "test/components/resource-preview.browser.test.ts exercises the real portalled preview with 400ms intent, keyboard traversal, touch, copy, stale cancellation and stream settlement in Chromium; Bun cannot instrument Vite TSX execution. Parsing and target projection remain measured by markdown-link-boundary.test.ts and resource-display.test.ts."
+        },
+        {
+          "glob": "src/components/resource-icon.tsx",
+          "reason": "test/markdown-resources.test.ts and test/components/resource-preview.browser.test.ts verify the real semantic and file icons, idempotence and baseline geometry through compiled DOM/Chromium fixtures; Bun cannot attribute the generated TSX bundle to this source."
+        },
+        {
+          "glob": "src/components/markdown-resource-decoration.tsx",
+          "reason": "test/markdown-resources.test.ts and test/components/resource-preview.browser.test.ts exercise compact labels, duplicate-path disambiguation, one icon, original selection/copy and touch information actions in actual DOM; Vite and fixture-compiled TSX execute outside Bun source LCOV."
         },
         {
           "glob": "src/components/review-viewer.tsx",

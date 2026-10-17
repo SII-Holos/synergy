@@ -878,10 +878,15 @@ export namespace SessionInbox {
     }
   }
 
-  export async function enqueueMail(input: { sessionID: string; mail: SessionManager.SessionMail }): Promise<Item> {
+  export async function enqueueMail(input: {
+    sessionID: string
+    mail: SessionManager.SessionMail
+    mode?: "task" | "steer"
+  }): Promise<Item> {
     const itemID = Identifier.ascending("inbox")
     const ids = { itemID, messageID: Identifier.ascending("message"), orderKey: itemID }
-    return publicItem(await writeItem(mailItem(input, ids)))
+    const item = mailItem(input, ids)
+    return publicItem(await writeItem(input.mode ? { ...item, mode: input.mode } : item))
   }
 
   export async function enqueueMailUnique(input: {

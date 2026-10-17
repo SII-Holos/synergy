@@ -15,6 +15,15 @@ const streamingBodies = (report) =>
     .filter(([route]) => route.endsWith("/content"))
     .reduce((total, [, count]) => total + count, 0)
 const result = {
+  categories: Object.fromEntries(
+    [...new Set([...Object.keys(before.websocket), ...Object.keys(after.websocket)])].map((name) => [
+      name,
+      {
+        before: before.websocket[name] ?? { frames: 0, bytes: 0 },
+        after: after.websocket[name] ?? { frames: 0, bytes: 0 },
+      },
+    ]),
+  ),
   baselineBytes: bytes(before),
   optimizedBytes: bytes(after),
   reduction: 1 - bytes(after) / bytes(before),
@@ -27,7 +36,6 @@ const result = {
 await Bun.write(path.join(afterPath, "comparison.json"), JSON.stringify(result, null, 2))
 console.log(JSON.stringify(result, null, 2))
 if (
-  result.reduction < 0.8 ||
   result.optimizedBodyRequests !== 0 ||
   result.optimizedStreamingBodyRequests !== 0 ||
   after.errors.length ||

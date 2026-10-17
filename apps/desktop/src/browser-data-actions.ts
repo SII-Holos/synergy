@@ -4,13 +4,16 @@ import { z } from "zod"
 import {
   browserOrigin,
   BrowserDataRequestSchema,
+  BrowserProfileDataRequestSchema,
   type BrowserDataRequest,
+  type BrowserProfileDataRequest,
   type BrowserDataResult,
   type BrowserImportResult,
   type BrowserImportKind,
 } from "@ericsanchezok/synergy-browser-core"
 import { BrowserDataStore, parseCookieImport, parsePasswordCSV } from "./browser-data-store.js"
 import { BrowserImportSources, type NativeImportBatch } from "./browser-import-sources.js"
+import type { BrowserProfileDataTarget } from "./browser-data-contexts.js"
 
 const MAX_IMPORT_BYTES = 32 * 1024 * 1024
 export async function readBrowserImport(file: string, kind: "passwords" | "cookies") {
@@ -58,12 +61,18 @@ export async function readBrowserImport(file: string, kind: "passwords" | "cooki
 }
 
 type Target = { partition: string; contents: Electron.WebContents }
+type ImportTarget = {
+  partition: string
+  session: Electron.Session
+  current(): boolean
+  signal?: AbortSignal
+  write?<T>(operation: () => Promise<T>): Promise<T>
+}
 export class BrowserDataActions {
   private imports = new Map<
     string,
     {
-      ownerKey: string
-      pageId: string
+      targetId: string
       partition: string
       cancelled: boolean
       processed: number
@@ -77,6 +86,8 @@ export class BrowserDataActions {
     private options: {
       store: BrowserDataStore
       target(ownerKey: string, pageId: string): Target
+      profileTarget?(contextId: string): BrowserProfileDataTarget
+      closeProfileContext?(contextId: string): void
       chooseFile(kind: "passwords" | "cookies"): Promise<string | undefined>
       sources?: BrowserImportSources
     },
@@ -89,19 +100,20 @@ export class BrowserDataActions {
   async execute(input: BrowserDataRequest): Promise<BrowserDataResult> {
     const request = BrowserDataRequestSchema.parse(input)
     const action = request.action
+    const targetId = JSON.stringify(["page", request.ownerKey, request.pageId])
     if (action.type === "importProgress") {
       const job = this.imports.get(action.requestId)
       return {
         type: "progress",
-        phase: job?.ownerKey === request.ownerKey && job.pageId === request.pageId ? job.phase : "reading",
-        kind: job?.ownerKey === request.ownerKey && job.pageId === request.pageId ? job.kind : undefined,
-        processed: job?.ownerKey === request.ownerKey && job.pageId === request.pageId ? job.processed : 0,
-        total: job?.ownerKey === request.ownerKey && job.pageId === request.pageId ? job.total : 0,
+        phase: job?.targetId === targetId ? job.phase : "reading",
+        kind: job?.targetId === targetId ? job.kind : undefined,
+        processed: job?.targetId === targetId ? job.processed : 0,
+        total: job?.targetId === targetId ? job.total : 0,
       }
     }
     if (action.type === "cancelImport") {
       const job = this.imports.get(action.requestId)
-      if (job?.ownerKey === request.ownerKey && job.pageId === request.pageId) {
+      if (job?.targetId === targetId) {
         job.cancelled = true
         job.abort.abort()
       }
@@ -113,7 +125,23 @@ export class BrowserDataActions {
     if (action.type === "state") return { type: "state", ...(await store.list(target.partition)) }
     if (action.type === "clearHistory") await store.clearHistory(target.partition)
     if (action.type === "deletePassword") await store.removePassword(target.partition, action.id)
-    if (action.type === "import") return this.import(request, target, action)
+    if (action.type === "import")
+      return this.import(
+        targetId,
+        {
+          partition: target.partition,
+          session: target.contents.session,
+          current: () => {
+            try {
+              const live = this.options.target(request.ownerKey, request.pageId)
+              return live.contents === target.contents && live.partition === target.partition
+            } catch {
+              return false
+            }
+          },
+        },
+        action,
+      )
     if (action.type === "saveLogin") {
       const address = target.contents.getURL()
       const origin = browserOrigin(address)
@@ -165,9 +193,50 @@ export class BrowserDataActions {
     return { type: "done" }
   }
 
+  async executeProfile(input: BrowserProfileDataRequest): Promise<BrowserDataResult> {
+    const request = BrowserProfileDataRequestSchema.parse(input)
+    const action = request.action
+    const targetId = JSON.stringify(["profile", request.contextId])
+    if (action.type === "closeContext") {
+      for (const job of this.imports.values())
+        if (job.targetId === targetId) {
+          job.cancelled = true
+          job.abort.abort()
+        }
+      this.options.closeProfileContext?.(request.contextId)
+      return { type: "done" }
+    }
+    if (action.type === "cancelImport") {
+      const job = this.imports.get(action.requestId)
+      if (job?.targetId === targetId) {
+        job.cancelled = true
+        job.abort.abort()
+      }
+      return { type: "done" }
+    }
+    const target = this.options.profileTarget?.(request.contextId)
+    if (!target || !target.current()) throw new Error("Browser data access expired. Reopen this dialog.")
+    if (action.type === "importProgress") {
+      const job = this.imports.get(action.requestId)
+      if (!job || job.targetId !== targetId) throw new Error("Browser import was not found for this dialog.")
+      return { type: "progress", phase: job.phase, kind: job.kind, processed: job.processed, total: job.total }
+    }
+    if (action.type === "import") return this.import(targetId, target, action)
+    if (action.type === "deletePassword") {
+      await target.write(() => this.options.store.removePassword(target.partition, action.id))
+      return { type: "done" }
+    }
+    const result: BrowserDataResult =
+      action.type === "importSources"
+        ? { type: "sources", sources: await this.sources.list() }
+        : { type: "state", ...(await this.options.store.list(target.partition)), history: [] }
+    if (!target.current()) throw new Error("Browser data access expired. Reopen this dialog.")
+    return result
+  }
+
   private async import(
-    request: BrowserDataRequest,
-    target: Target,
+    targetId: string,
+    target: ImportTarget,
     action: Extract<BrowserDataRequest["action"], { type: "import" }>,
   ): Promise<BrowserImportResult> {
     if (
@@ -176,8 +245,7 @@ export class BrowserDataActions {
     )
       throw new Error("An import is already running for this browser. Wait for it to finish.")
     const job: NonNullable<ReturnType<typeof this.imports.get>> = {
-      ownerKey: request.ownerKey,
-      pageId: request.pageId,
+      targetId,
       partition: target.partition,
       cancelled: false,
       processed: 0,
@@ -197,14 +265,17 @@ export class BrowserDataActions {
     }
     const current = () => {
       if (job.cancelled) return false
-      try {
-        const live = this.options.target(request.ownerKey, request.pageId)
-        if (live.contents === target.contents && live.partition === target.partition) return true
-      } catch {}
+      if (target.current()) return true
       job.cancelled = true
       job.abort.abort()
       return false
     }
+    const revoked = () => {
+      job.cancelled = true
+      job.abort.abort()
+    }
+    target.signal?.addEventListener("abort", revoked, { once: true })
+    const write = <T>(operation: () => Promise<T>) => (target.write ? target.write(operation) : operation())
     try {
       const source =
         action.sourceId === "file"
@@ -267,7 +338,17 @@ export class BrowserDataActions {
               const row = z.object({ origin: z.string(), username: z.string(), password: z.string() }).safeParse(raw)
               try {
                 if (!row.success) throw new Error("Invalid row")
-                if (await this.options.store.savePassword(target.partition, row.data, action.overwrite)) item.imported++
+                if (
+                  await write(() =>
+                    this.options.store.savePassword(
+                      target.partition,
+                      row.data,
+                      action.overwrite,
+                      target.write ? target.current : undefined,
+                    ),
+                  )
+                )
+                  item.imported++
                 else item.skipped++
               } catch {
                 issue(index + 1, "invalid")
@@ -277,7 +358,7 @@ export class BrowserDataActions {
             }
           } else {
             const rows = parseCookieImport(batch ? JSON.stringify(batch.rows) : text!)
-            const existing = await target.contents.session.cookies.get({})
+            const existing = await target.session.cookies.get({})
             const keys = new Set(existing.map((entry) => JSON.stringify([entry.name, entry.domain, entry.path])))
             job.total = rows.length
             for (const [index, parsed] of rows.entries()) {
@@ -309,31 +390,33 @@ export class BrowserDataActions {
                 )
                 if (url.hostname !== entry.domain.replace(/^\./, "") || url.username || url.password)
                   throw new Error("Invalid domain")
-                await target.contents.session.cookies.set({
-                  url: url.href,
-                  name: entry.name,
-                  value: entry.value,
-                  ...(entry.domain.startsWith(".") ? { domain: entry.domain } : {}),
-                  path: entry.path,
-                  secure: entry.secure,
-                  httpOnly: entry.httpOnly,
-                  sameSite:
-                    entry.sameSite === "None"
-                      ? "no_restriction"
-                      : entry.sameSite === "Strict"
-                        ? "strict"
-                        : entry.sameSite === "Lax"
-                          ? "lax"
-                          : "unspecified",
-                  ...(entry.expires !== undefined && entry.expires >= 0 ? { expirationDate: entry.expires } : {}),
-                })
+                await write(() =>
+                  target.session.cookies.set({
+                    url: url.href,
+                    name: entry.name,
+                    value: entry.value,
+                    ...(entry.domain.startsWith(".") ? { domain: entry.domain } : {}),
+                    path: entry.path,
+                    secure: entry.secure,
+                    httpOnly: entry.httpOnly,
+                    sameSite:
+                      entry.sameSite === "None"
+                        ? "no_restriction"
+                        : entry.sameSite === "Strict"
+                          ? "strict"
+                          : entry.sameSite === "Lax"
+                            ? "lax"
+                            : "unspecified",
+                    ...(entry.expires !== undefined && entry.expires >= 0 ? { expirationDate: entry.expires } : {}),
+                  }),
+                )
                 keys.add(key)
                 item.imported++
               } catch {
                 issue(index + 1, "storage")
               }
             }
-            await target.contents.session.cookies.flushStore()
+            await target.session.cookies.flushStore()
           }
         } catch {
           item.error = "format"
@@ -346,6 +429,7 @@ export class BrowserDataActions {
       }
       return { ...result, cancelled: job.cancelled }
     } finally {
+      target.signal?.removeEventListener("abort", revoked)
       this.imports.delete(action.requestId)
     }
   }

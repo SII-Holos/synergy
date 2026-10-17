@@ -37,6 +37,8 @@ Cortex creates a child session in the parent's `Scope` and inherits its canonica
 
 Tasks are admitted through both per-agent and process-global concurrency limits. Each concurrency key allows at most eight running tasks. The global maximum defaults to eight and can be set with the global `cortex.maxConcurrentTasks` configuration or overridden for the process by `SYNERGY_CORTEX_GLOBAL_CONCURRENCY`. Lowering the maximum does not cancel running tasks; it queues new work until capacity is available, while raising it wakes eligible queued work.
 
+Workspace waits lend both Cortex and tool capacity. Recovery acquires Cortex before tool capacity, matching new-tool admission, so simultaneous returning and starting tools cannot hold opposite slots while waiting for each other. Cancellation and admission limits still apply. See [capacity recovery order](../decisions/implemented/bug-fix/2026-10-17-order-execution-capacity-recovery.md).
+
 Memory pressure lowers new-task admission to four under elevated pressure or two under critical pressure. The scheduler uses the shared session memory classification, plus earlier ArrayBuffer thresholds at 1 GiB and 2 GiB, so it converges before Bun stream allocations fail. The configured, environment-provided, or default value remains the user-selected maximum; the effective admission limit is the lower of that maximum and the current memory-pressure ceiling. Running tasks are not cancelled. Queued tasks are reconsidered when capacity is released and while pressure is active, so they resume after memory recovers. The read-only `cortex.concurrency` API reports configured, environment, effective, memory-pressure limit and reason, source, per-agent, running, and queued values.
 
 An explicit task model wins. Otherwise the native `task` tool inherits the parent assistant message's model when it is still available to preserve the parent's provider choice. Only when the parent model is no longer available does resolution fall back to the selected agent's configured model, with the parent model retained as the final reference. Other Cortex callers retain the shared manager fallback: explicit model, available agent model, then the parent session model or provider default. The resolved model is persisted on the child session.
@@ -66,6 +68,12 @@ Completion uses a two-phase protocol (see "Two-Phase Completion Protocol" below)
 
 When the parent explicitly reads a terminal task through `task_output(mode="full")` (or the default mode), `afterPersist` calls `acknowledgeParentCompletion()`, which disables future notification recovery and removes the still-pending Inbox item. Diagnostic modes (`progress`, `tail`, `summary`) do **not** acknowledge completion; the notification persists until the parent retrieves the full result.
 
+## Parent follow-up messages
+
+`session_send` supplies the caller's Session identity to `SessionManager.deliver`. During durable Inbox admission, a message to that caller's own `delegated_subagent` uses `steer` only when the child has a running Cortex delegation and a live, non-aborted, running loop owner whose bound task root still accepts steering. Admission rereads the live owner after control-lock waits. Paused, archived, rewound, starting, stopping, rootless, finishing and idle children do not qualify. Other deliveries retain their ordinary mail mode, including `task` for a new independent request. Scheduling does not trust source display names or caller-authored metadata.
+
+The normal Inbox drain adds the steer to the current task's next model call without cancelling an existing model request or tool execution. The last drain and root-steering closure share the admission control lock: a message accepted before closure is consumed by that root, while later messages are new tasks rather than steers for the next queued root. Non-aborted loop exits park any unconsumed parent follow-up as a failed Inbox item for explicit retry. Aborted exits preserve the existing cancellation cleanup. Control-lock waits in the loop are cancellable so a stop holding that lock can still await loop release. The tool reports the admitted mode, Inbox item and message identity; this is durable acceptance, not a read acknowledgement. No public mode parameter, new message state, historical queue rewrite or separate child wake mechanism is introduced.
+
 ## Progress
 
 Cortex observes the child session while it runs. Progress includes:
@@ -74,7 +82,7 @@ Cortex observes the child session while it runs. Progress includes:
 - current and recent tool calls with their states
 - elapsed time and update time
 
-Recent tool history is bounded, and progress events are throttled to avoid turning streaming activity into excessive durable or frontend updates. Progress is observability, not a separate execution log; the child message history remains authoritative.
+Recent tool history is bounded. Pure progress coalesces into at most one visible task-table publication per second; creation, status changes and terminal outcomes publish immediately and consume pending progress. The global frontend index reconciles tasks by ID so unaffected objects retain identity. Progress is observability, not a separate execution log; the child message history remains authoritative.
 
 ## Output Contracts
 

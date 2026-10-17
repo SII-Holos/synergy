@@ -847,3 +847,105 @@ test("cancelled Workspace admission does not wait to regain an occupied tool slo
       await scheduler.stop()
     }
   }))
+
+test("Cortex and tool capacity recover together when a new tool races a returning wait", () =>
+  runtime.run(async () => {
+    const { ExecutionCapacity } = await import("../../src/session/execution-capacity")
+    const { Lock } = await import("../../src/util/lock")
+    const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 8 })
+    const target = processor()
+    const controller = new AbortController()
+    const waiting = Promise.withResolvers<void>()
+    const returnFirst = Promise.withResolvers<void>()
+    const firstResuming = Promise.withResolvers<void>()
+    const secondAdmitted = Promise.withResolvers<void>()
+    const startSecond = Promise.withResolvers<void>()
+    const owner = (second: boolean) => {
+      let lease: Disposable | undefined
+      let attempts = 0
+      const pause = () => {
+        lease?.[Symbol.dispose]()
+        lease = undefined
+      }
+      const resume = async () => {
+        if (lease) return
+        if (!second && ++attempts > 1) firstResuming.resolve()
+        lease = await Lock.writeWithSignal("fixture-cortex-capacity", controller.signal)
+      }
+      return {
+        pause,
+        resume,
+        fork: () => ({
+          pause,
+          async resume() {
+            await resume()
+            if (second) {
+              secondAdmitted.resolve()
+              await startSecond.promise
+            }
+          },
+          finish() {},
+        }),
+      }
+    }
+    const first = owner(false)
+    const second = owner(true)
+    const dispatch = (id: string, capacity: ReturnType<typeof owner>, execute: () => Promise<void>) =>
+      ExecutionCapacity.provide("cortex", capacity, () =>
+        scheduler
+          .dispatch({
+            sessionID: id,
+            generation: 1,
+            messageID: id,
+            callID: id,
+            toolName: "capacity-probe",
+            input: {},
+            processor: target,
+            signal: controller.signal,
+            tool: {
+              inputSchema: z.object({}),
+              async execute() {
+                await execute()
+                expect(scheduler.stats().active).toBe(1)
+                target.beginExecution(id).complete({}, { title: id, output: id, metadata: {} })
+                return {}
+              },
+            },
+          })
+          .finally(capacity.pause),
+      )
+    await first.resume()
+    const one = dispatch("returning", first, () =>
+      ExecutionCapacity.wait(async () => {
+        waiting.resolve()
+        await returnFirst.promise
+      }),
+    )
+    await waiting.promise
+    await second.resume()
+    const two = dispatch("starting", second, async () => {})
+    await secondAdmitted.promise
+    returnFirst.resolve()
+    await firstResuming.promise
+    startSecond.resolve()
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      const results = await Promise.race([
+        Promise.all([one, two]),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error("Capacity recovery did not complete")), 1000)
+        }),
+      ])
+      expect(results.map((result) => result.state)).toEqual(["completed", "completed"])
+      expect(scheduler.stats().queued).toBe(0)
+    } finally {
+      clearTimeout(timeout)
+      controller.abort()
+      startSecond.resolve()
+      returnFirst.resolve()
+      first.pause()
+      second.pause()
+      await Promise.allSettled([one, two])
+      await scheduler.stop()
+    }
+  }))

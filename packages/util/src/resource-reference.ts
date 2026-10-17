@@ -33,6 +33,7 @@ export namespace ResourceReference {
   export type Target =
     | { kind: "workspace-file"; path: string; location?: Location }
     | { kind: "asset"; url: string; location?: Location }
+    | { kind: "note"; id: string; location?: Location }
     | { kind: "url"; url: string }
     | { kind: "image"; url: string }
     | { kind: "anchor"; id: string }
@@ -82,6 +83,14 @@ export namespace ResourceReference {
     }
     if (value.startsWith("//")) return parse(`https:${value}`)
     try {
+      if (/^note:/i.test(value)) {
+        const match = value.match(/^note:\/\/([a-zA-Z0-9_-]+)(?:#(.*))?$/i)
+        if (!match) return unavailable()
+        const id = match[1]!
+        const block = match[2] ? decodeURIComponent(match[2]) : undefined
+        if (block && controls.test(block)) return unavailable("invalid-location")
+        return { kind: "note", id, ...(block ? { location: { kind: "heading", id: block } as const } : {}) }
+      }
       if (value.startsWith("#")) return { kind: "anchor", id: decodeURIComponent(value.slice(1)) }
       let path = value
       let location: Location | undefined
@@ -146,9 +155,11 @@ export namespace ResourceReference {
     const target =
       reference.kind === "asset"
         ? reference.url
-        : absolute(slash(reference.path))
-          ? fileUrl(reference.path)
-          : reference.path.split("/").map(encodeURIComponent).join("/")
+        : reference.kind === "note"
+          ? `note://${reference.id}`
+          : absolute(slash(reference.path))
+            ? fileUrl(reference.path)
+            : reference.path.split("/").map(encodeURIComponent).join("/")
     const position = location ?? reference.location
     if (!position) return target
     if (position.kind === "heading") return `${target}#${encodeURIComponent(position.id)}`

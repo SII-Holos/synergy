@@ -8306,11 +8306,19 @@ msgid "app.rawMessages.title"
 msgstr "⟦Raw messages⟧"
 
 #. js-lingui-explicit-id
+msgid "app.reference.browserUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.reference.chooseWorkspace"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.reference.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.fileSource"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -8322,11 +8330,39 @@ msgid "app.reference.locationUnavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.reference.noteLocationUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.noteSource"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.reference.noWorkspace"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.reference.open"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.openBrowser"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.openExternal"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.reference.openFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.openFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.openNote"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -8335,6 +8371,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.reference.pageUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.previewSignIn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.previewUnavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13118,6 +13162,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "note.navigation.show"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.reference.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.reference.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -19184,6 +19236,62 @@ msgid "settings.archivedSessions.you"
 msgstr "⟦You: {text}⟧"
 
 #. js-lingui-explicit-id
+msgid "settings.browser.chooseProfile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.contextExpired"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.data"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.action"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.section"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.preparing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.target"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.account.description"
 msgstr "⟦Holos agent identities and local account controls.⟧"
 
@@ -19218,6 +19326,18 @@ msgstr "⟦Boss Mode⟧"
 #. js-lingui-explicit-id
 msgid "settings.catalog.boss.searchTerms"
 msgstr "⟦boss | task | project | assistant | feishu⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.searchTerms"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
@@ -26546,6 +26666,34 @@ msgstr "⟦Generation failed⟧"
 #. js-lingui-explicit-id
 msgid "ui.mediaGeneration.generating"
 msgstr "⟦Generating media⟧"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.resource.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.resource.external"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.resource.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.resource.open"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.resource.preview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.resource.unavailable"
+msgstr ""
 
 #. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
 msgid "ui.review.after"

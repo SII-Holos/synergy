@@ -8,6 +8,12 @@ import solid from "vite-plugin-solid"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import type { ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import type { WorkbenchPanelTab } from "../../src/plugin/registries/workbench-panel-registry"
+import type {
+  OpenableResource,
+  ResourceOpenOptions,
+  ResourceOpenResult,
+  ResourcePreview,
+} from "@ericsanchezok/synergy-ui/context/resource-open"
 
 type Fixture = {
   features(features: string[] | undefined): void
@@ -33,6 +39,20 @@ type Fixture = {
   browserPages(value: { id: string; title: string; url: string }[]): void
   sync(value: boolean): void
   revision(): number
+  native(
+    value: "local" | "remote" | "missing" | "failed" | "incompatible" | "rejected" | "malformed" | "inconsistent",
+  ): void
+  open(resource: OpenableResource, options?: ResourceOpenOptions): Promise<ResourceOpenResult>
+  external: string[]
+  preview(resource: OpenableResource, options?: ResourceOpenOptions): Promise<ResourcePreview>
+  noteDraft(text: string): void
+  fileDraft(text: string): void
+  controls: { pageId: string; command: { type: string; url?: string } }[]
+  previewContexts: string[]
+  openingAttempts: string[]
+  openingMode(): void
+  platform(value: "web" | "desktop"): void
+  nativeEvents: { type: string; prevented: boolean; href: string | null }[]
 }
 interface FixtureWindow extends Window {
   fixture: Fixture
@@ -66,8 +86,8 @@ beforeAll(async () => {
       surfaces.set(id,value);return value
     }
     const [session,setSession]=createSignal("session"),[scope,setScope]=createSignal("project"),[server,setServer]=createSignal("http://fixture.test")
-    const calls=[],reads=[]; let complete; let hold=false; let missing=false; let evidence; let workbench; let pending
-    let notes=[{scopeID:"home",notes:[{id:"note"},{id:"one"}]}]
+    const calls=[],reads=[],external=[],controls=[],nativeEvents=[]; let complete; let hold=false; let missing=false; let evidence; let workbench; let pending; let native="missing"; let pageSequence=0; let platform="desktop"
+    let notes=[{scopeID:"home",notes:[{id:"note"},{id:"one"}]}],noteDraft,fileDraft
     const route={mode:"scope",scopeID:"project",path_directory:"project"}
     const [catalog,setCatalog]=createStore({session:{pages:[]}}),[sync,setSync]=createSignal(false)
     const register=()=>[
@@ -75,12 +95,20 @@ beforeAll(async () => {
       registerWorkbenchPanel({id:"browser",label:"Browser",icon:"globe",surface:"side",cardinality:"multi",async resolveTab(init){
         if(hold){hold=false;await new Promise(resolve=>complete=resolve)}
         if(missing)return
+        const url=init.state?.url
+        if(url){
+          const page={id:"linked-"+(++pageSequence),url,title:url,status:"active",profileId:"personal"}
+          setCatalog("session","pages",pages=>[...pages,page])
+          return {...init,resourceId:page.id,source:"browser-owner",state:{browserRoute:route,browserURL:url}}
+        }
         return {...init,source:"browser-owner"}
       }})
     ]
     let disposers=register()
+    const openingAttempts=[],openingResults=new Map()
+    function openingMode(){disposers.forEach(dispose=>dispose());disposers=[registerWorkbenchPanel({id:"browser",label:"Browser",icon:"globe",surface:"side",cardinality:"multi",openingComponent:()=>null,async resolveTab(init,context){openingAttempts.push(context.requestId);let page=openingResults.get(context.requestId);if(!page){page={id:"unknown-page",url:init.state.url,title:"Created page",status:"active",profileId:"personal"};openingResults.set(context.requestId,page);setCatalog("session","pages",[page]);throw new Error("Native response lost after creation")}return {...init,resourceId:page.id,source:"browser-owner",state:{browserRoute:route,browserURL:page.url}}}})]}
     registerWorkbenchPanel({id:"execution-detail",label:"Details",icon:"file",surface:"side",cardinality:"singleton"})
-    export const fixture=window.fixture={calls,reads,features:features=>setSelection(features ? {features} : undefined),tabs:()=>workbench.surface("side").tabs(),active:()=>workbench.surface("side").active(),
+    export const fixture=window.fixture={calls,reads,external,controls,nativeEvents,platform:value=>platform=value,openingAttempts,openingMode,native:value=>native=value,features:features=>setSelection(features ? {features} : undefined),tabs:()=>workbench.surface("side").tabs(),active:()=>workbench.surface("side").active(),
       availability(value){disposers.forEach(dispose=>dispose());disposers=value?register():[]},owner(id,scopeID="project",url="http://fixture.test"){setSession(id);setScope(scopeID);setServer(url)},
       browserPages(value){setCatalog("session","pages",value)},sync:setSync,revision:()=>workbench.surface("side").selectionRevision(),
       hold(){hold=true},resolve(){complete?.();complete=undefined},missing(value){missing=value},close(){workbench.surface("side").close()},
@@ -88,24 +116,41 @@ beforeAll(async () => {
       retarget(resourceId){workbench.updateTab(workbench.surface("side").active(),{resourceId})},
       switchBack(){const side=workbench.surface("side"),active=side.active();side.setActive("other");side.setActive(active)},
       reopen(){const side=workbench.surface("side");side.close();side.open()},
-      select(){workbench.surface("side").setActive("other");workbench.surface("side").open()},evidence(value){evidence=value},notes(value){notes=value}
+      select(){workbench.surface("side").setActive("other");workbench.surface("side").open()},evidence(value){evidence=value},notes(value){notes=value},noteDraft:text=>noteDraft=text,fileDraft:text=>fileDraft=text
     }
     export const attachWorkbench=value=>{workbench=value}
-    export const useGlobalSDK=()=>({capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false}})
+    export const useGlobalSDK=()=>({capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false},event:{listen:()=>()=>{}}})
     export const useSDK=()=>({get url(){return server()},get scopeKey(){return scope()},get scopeID(){return scope()},client:{
-      note:{async listMeta({archived}){reads.push("notes");return {data:notes.filter(group=>!!group.archived===(archived==="true"))}}},
+      note:{async listMeta({archived}){reads.push("notes");return {data:notes.filter(group=>!!group.archived===(archived==="true"))}},async get(){reads.push("note-body");return {data:{title:"Saved note",content:{type:"doc",content:[{type:"paragraph",attrs:{blockId:"block"},content:[{type:"text",text:"Saved note body"}]}]}}}}},
+      browser:{async preview(input){reads.push("web-preview");if(hold){hold=false;await new Promise(resolve=>complete=resolve)}return {data:{title:"Public article",source:"example.test",description:"Anonymous summary"}}},async session(){return {data:{ownerKey:"browser-owner",pages:catalog.session.pages}}},async control({browserControlRequest}){controls.push(browserControlRequest);if(browserControlRequest.command.type!=="navigate")throw new Error("Unsupported fixture navigation");setCatalog("session","pages",page=>page.id===browserControlRequest.pageId,"url",browserControlRequest.command.url);return {data:{}}}},
+      workspace:{files:{async stat(input){reads.push("file-stat");return {data:{type:"file",binary:false}}},async read(input){reads.push(JSON.stringify(input));return {data:{kind:"text",content:"Saved file body",range:{startLine:input.offset+1}}}}}},
       session:{async toolActivity(){reads.push("evidence");return {data:{part:evidence}}}}
     }})
     export const useParams=()=>({get id(){return session()},get dir(){return scope()+server()}})
-    export const useFile=()=>({normalize:value=>value})
-    export const useProjectFiles=()=>({open:async()=>undefined})
-    export const usePlatform=()=>({platform:"web",openLink(){}})
-    export const useSync=()=>({data:{session:[],message:{},part:{}}})
+    export const useFile=()=>({normalize:value=>value,workspace:{id:"wsp_fixture",generation:2,scopeID:"project",type:"local",path:"/fixture"}})
+    export const useProjectFiles=()=>({open:async()=>undefined,peek:()=>fileDraft===undefined?undefined:{draft:{content:fileDraft}}})
+    export const usePlatform=()=>({
+      get platform(){return platform},
+      openLink(url){external.push(url)},
+      get browserNative(){
+        if(native==="missing")return undefined
+        return {async createPresentationTicket(){return {ok:true,ticket:"fixture-ticket"}},async presentationCapability(){
+          if(native==="failed")throw new Error("Native bridge disconnected")
+          if(native==="incompatible")return {protocolVersion:6,managedLocal:false,status:"failed",error:{code:"browser_native_ticket_rejected",message:"The Browser native capability request was invalid.",retryable:false}}
+          if(native==="rejected")return {protocolVersion:7,managedLocal:false,status:"failed",error:{code:"browser_native_sender_rejected",message:"The Browser native capability request was rejected.",retryable:false}}
+          if(native==="malformed")return {managedLocal:false,status:"ready"}
+          if(native==="inconsistent")return {protocolVersion:7,managedLocal:false,status:"ready"}
+          return {protocolVersion:7,managedLocal:native==="local",status:native==="local"?"ready":"failed"}
+        }}
+      }
+    })
+    export const useNoteDocuments=()=>({peek:()=>noteDraft===undefined?undefined:{title:()=>"Unsaved note",content:()=>({type:"doc",content:[{type:"paragraph",attrs:{blockId:"block"},content:[{type:"text",text:noteDraft}]}]})}})
+    export const useSync=()=>({data:{session:[],message:{},part:{},workspaces:[]}})
     export const useSessionTransition=()=>({get:()=>undefined}),draftTransitionKey=(server,scope)=>JSON.stringify([server,scope])
     export const usePluginHost=()=>({resources:{register:()=>()=>{}}})
     export const useLayout=()=>({surface,transferWorkbenchState(){}})
     export const useLocale=()=>({i18n:setupI18n({locale:"en",messages:{en:{}}})})
-    export const browserRoute=route,isSyncEnabled=sync,useBrowserCatalog=()=>({get:async()=>({route,store:catalog})})
+    export const browserRoute=route,isSyncEnabled=sync,useBrowserCatalog=()=>({get:async()=>({route,store:catalog}),peek:()=>({route,store:catalog})})
     export const useConfirm=()=>({ask:async()=>true})
     export const useWorkbenchPanels=()=>({...workbench,openPanel(panelId,options){calls.push({panelId,options});return pending=workbench.openPanel(panelId,options)}})
   `,
@@ -114,14 +159,16 @@ beforeAll(async () => {
     path.join(directory, "main.tsx"),
     `
     import {render} from "solid-js/web"
-    import {createSignal,createMemo,Show,Suspense} from "solid-js"
+    import {createSignal,createMemo,createEffect,onMount,onCleanup,Show,Suspense} from "solid-js"
     import {createStore} from "solid-js/store"
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
     import {DialogProvider} from "@ericsanchezok/synergy-ui/context/dialog"
+    import {Toast} from "@ericsanchezok/synergy-ui/toast"
     import {DataProvider} from "@ericsanchezok/synergy-ui/context/data"
     import {useResourceOpen} from "@ericsanchezok/synergy-ui/context/resource-open"
     import {ActivityTrace} from "@ericsanchezok/synergy-ui/activity-trace"
+    import {observeMarkdownResources} from ${JSON.stringify(`/@fs/${path.resolve(source, "../../../packages/ui/src/components/markdown-resources.ts")}`)}
     import {ResourceOpenProvider} from ${JSON.stringify(`/@fs/${source}/context/resource-open.tsx`)}
     import {WorkbenchPanelsProvider,useWorkbenchPanels} from ${JSON.stringify(`/@fs/${source}/context/workbench/index.tsx`)}
     import {BrowserWorkbenchSync} from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-workbench-sync.tsx`)}
@@ -130,8 +177,9 @@ beforeAll(async () => {
     fixture.tool=(tool,input={},metadata={},status="completed")=>setPart({...part(),sessionID:"session",tool,state:{status,input,metadata,title:tool,output:"receipt",error:status==="error"?"Failed":undefined,time:{start:1,end:2}}})
     const [data,setData]=createStore({session:[],message:{},part:{}})
     const group=createMemo(()=>({kind:"group",id:"group",family:"produce",state:part().state.status==="error"?"error":"done",steps:[{part:part(),title:"Open resource",icon:"file-text",state:part().state.status==="error"?"error":"done",family:"produce"}]}))
-    function Controls(){const resources=useResourceOpen();fixture.openTool=()=>resources.openToolActivity({sessionID:"session",messageID:"message",partID:"part",callID:"call"},part());return <ActivityTrace group={group()} serverUrl="http://fixture.test"/>}
-    function Harness(){attachWorkbench(useWorkbenchPanels());return <><Show when={isSyncEnabled()}><Suspense><BrowserWorkbenchSync route={browserRoute}/></Suspense></Show><ResourceOpenProvider><Controls/></ResourceOpenProvider></>}
+    function NativeLinks(){const resources=useResourceOpen();let root;onMount(()=>{const dispose=observeMarkdownResources(root,resources);const record=event=>{if(event.target.closest("a#native-link"))fixture.nativeEvents.push({type:event.type,prevented:event.defaultPrevented,href:event.target.closest("a").getAttribute("href")})};for(const type of ["click","auxclick","contextmenu","keydown"])document.addEventListener(type,record);onCleanup(()=>{dispose();for(const type of ["click","auxclick","contextmenu","keydown"])document.removeEventListener(type,record)})});return <div ref={root}><a id="native-link" href="https://example.test/native?doc=first#section" target="_blank" rel="noopener noreferrer">Native web target</a></div>}
+    function Controls(){const resources=useResourceOpen();fixture.previewContexts=[];createEffect(()=>fixture.previewContexts.push(resources.contextKey()));fixture.open=(resource,options)=>resources.open(resource,options);fixture.preview=(resource,options)=>resources.preview(resource,options);fixture.openTool=()=>resources.openToolActivity({sessionID:"session",messageID:"message",partID:"part",callID:"call"},part());return <><ActivityTrace group={group()} serverUrl="http://fixture.test"/><NativeLinks/></>}
+    function Harness(){attachWorkbench(useWorkbenchPanels());return <><Toast.Region/><Show when={isSyncEnabled()}><Suspense><BrowserWorkbenchSync route={browserRoute}/></Suspense></Show><ResourceOpenProvider><Controls/></ResourceOpenProvider></>}
     render(()=><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><DataProvider data={data} directory={null} serverUrl="http://fixture.test" hasFeature={() => true}><WorkbenchPanelsProvider><Harness/></WorkbenchPanelsProvider></DataProvider></DialogProvider></I18nProvider>,document.getElementById("root"))
   `,
   )
@@ -147,6 +195,8 @@ beforeAll(async () => {
         { find: "lucide-solid", replacement: resolveUI.resolve("lucide-solid") },
         { find: "./browser-catalog", replacement: bridge },
         { find: "./platform", replacement: bridge },
+        { find: "@/components/note/documents", replacement: bridge },
+        { find: "@/components/workspace/browser/browser-catalog", replacement: bridge },
         ...[
           "@/context/sdk",
           "@/context/global-sdk",
@@ -504,4 +554,333 @@ test("a captured tool action cannot open a removed owner or request its resource
   expect(opened).toBe(false)
   expect((await facts()).reads).toEqual([])
   expect((await facts()).calls).toEqual([])
+})
+
+test("message URLs open the native Browser, reuse only their local tab and preserve explicit external intent", async () => {
+  await load()
+  await page.evaluate(() => (window as unknown as FixtureWindow).fixture.native("local"))
+  const target = "https://github.com/example/repo/blob/abc/index.ts#L2-L8"
+  const open = (url: string, prefer?: ResourceOpenOptions["prefer"]) =>
+    page.evaluate(
+      ({ url, prefer }) => (window as unknown as FixtureWindow).fixture.open({ kind: "url", url }, { prefer }),
+      { url, prefer },
+    )
+  expect(await open(target)).toEqual({ status: "opened" })
+  expect((await facts()).tabs.filter((tab) => tab.panelId === "browser")).toHaveLength(1)
+  expect(await open(target)).toEqual({ status: "opened" })
+  expect((await facts()).tabs.filter((tab) => tab.panelId === "browser")).toHaveLength(1)
+  expect(await open(target, "external")).toEqual({ status: "dispatched" })
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.external)).toEqual([target])
+  expect(await open("mailto:person@example.test")).toEqual({ status: "dispatched" })
+  expect((await facts()).tabs.filter((tab) => tab.panelId === "browser")).toHaveLength(1)
+})
+
+test("unmounted or unsupported native Browser stays external; a broken selected bridge does not silently fall back", async () => {
+  for (const mode of ["missing", "remote", "failed", "local"] as const) {
+    await load()
+    await page.evaluate((mode) => {
+      const f = (window as unknown as FixtureWindow).fixture
+      f.native(mode)
+      if (mode === "local") f.features([])
+    }, mode)
+    const result = await page.evaluate(() =>
+      (window as unknown as FixtureWindow).fixture.open({ kind: "url", url: "https://example.test/article" }),
+    )
+    expect(result.status).toBe(mode === "failed" ? "unavailable" : "dispatched")
+    expect((await facts()).tabs).toHaveLength(0)
+    expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.external.length)).toBe(
+      mode === "failed" ? 0 : 1,
+    )
+  }
+})
+
+test("selected Browser rejects incompatible, rejected and malformed capabilities without silent external navigation", async () => {
+  for (const mode of ["incompatible", "rejected", "malformed", "inconsistent"] as const) {
+    await load()
+    await page.evaluate((mode) => (window as unknown as FixtureWindow).fixture.native(mode), mode)
+    const result = await page.evaluate(() =>
+      (window as unknown as FixtureWindow).fixture.open({ kind: "url", url: "https://example.test/protocol" }),
+    )
+    expect(result.status).toBe("unavailable")
+    expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.external)).toEqual([])
+    expect((await facts()).tabs).toEqual([])
+    await page.getByRole("button", { name: "Retry", exact: true }).waitFor()
+    await page.getByRole("button", { name: "Open in system browser", exact: true }).click()
+    expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.external)).toEqual([
+      "https://example.test/protocol",
+    ])
+  }
+  await load()
+  await page.evaluate(() => (window as unknown as FixtureWindow).fixture.native("incompatible"))
+  await page.evaluate(() =>
+    (window as unknown as FixtureWindow).fixture.open({ kind: "url", url: "https://example.test/retry" }),
+  )
+  await page.evaluate(() => (window as unknown as FixtureWindow).fixture.native("local"))
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  await page.waitForFunction(() =>
+    (window as unknown as FixtureWindow).fixture.tabs().some((tab) => tab.panelId === "browser"),
+  )
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.external)).toEqual([])
+})
+
+test("pure Web URLs retain native modifier, middle, keyboard and context-menu anchor behavior", async () => {
+  const target = "https://example.test/native?doc=first#section"
+  await page
+    .context()
+    .route("https://example.test/**", (route) =>
+      route.fulfill({ contentType: "text/html", body: "<title>Native destination</title><p>Destination</p>" }),
+    )
+  try {
+    for (const selected of [true, false]) {
+      await load()
+      await page.evaluate((selected) => {
+        const f = (window as unknown as FixtureWindow).fixture
+        f.platform("web")
+        f.native(selected ? "local" : "missing")
+        if (!selected) f.features([])
+      }, selected)
+      const link = page.locator("#native-link")
+      const source = page.url()
+      const tabModifier = process.platform === "darwin" ? "Meta" : "Control"
+      for (const input of ["ordinary", tabModifier, "middle", "keyboard"] as const) {
+        const popup = page.context().waitForEvent("page")
+        if (input === "keyboard") {
+          await link.focus()
+          await page.keyboard.press("Enter")
+        } else if (input === "middle") await link.click({ button: "middle" })
+        else await link.click({ modifiers: input === "ordinary" ? [] : [input] })
+        const opened = await popup
+        await opened.waitForURL(target)
+        expect(opened.url()).toBe(target)
+        expect(await opened.title()).toBe("Native destination")
+        await opened.close()
+        expect(page.url()).toBe(source)
+        expect(
+          await page.evaluate(() => (window as unknown as FixtureWindow).fixture.nativeEvents.at(-1)),
+        ).toMatchObject({
+          prevented: false,
+          href: target,
+        })
+      }
+      await link.click({ modifiers: [process.platform === "darwin" ? "Control" : "Meta"] })
+      expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.nativeEvents.at(-1))).toMatchObject(
+        {
+          prevented: false,
+          href: target,
+        },
+      )
+      await page.keyboard.press("Escape")
+      await link.click({ button: "right" })
+      expect(await link.getAttribute("href")).toBe(target)
+      expect(
+        await page.evaluate(() =>
+          (window as unknown as FixtureWindow).fixture.nativeEvents
+            .filter((event) => event.type === "contextmenu")
+            .at(-1),
+        ),
+      ).toMatchObject({
+        type: "contextmenu",
+        prevented: false,
+        href: target,
+      })
+      await page.keyboard.press("Escape")
+      expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.external)).toEqual([])
+      expect((await facts()).calls).toEqual([])
+      expect((await facts()).tabs).toEqual([])
+    }
+    await load()
+    await page.evaluate(() => (window as unknown as FixtureWindow).fixture.native("local"))
+    await page.locator("#native-link").click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] })
+    await page.waitForFunction(() =>
+      (window as unknown as FixtureWindow).fixture.tabs().some((tab) => tab.panelId === "browser"),
+    )
+    expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.nativeEvents.at(-1))).toMatchObject({
+      prevented: true,
+      href: target,
+    })
+    expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.external)).toEqual([])
+  } finally {
+    await page.context().unroute("https://example.test/**")
+  }
+})
+
+test("a slow message URL open cannot add a Browser tab to a later human selection or Session", async () => {
+  for (const action of ["select", "session"] as const) {
+    await load()
+    await page.evaluate(() => {
+      const f = (window as unknown as FixtureWindow).fixture
+      f.native("local")
+      f.hold()
+      void f.open({ kind: "url", url: "https://example.test/slow" })
+    })
+    await page.waitForFunction(() =>
+      (window as unknown as FixtureWindow).fixture.calls.some((call) => call.panelId === "browser"),
+    )
+    await page.evaluate((action) => {
+      const f = (window as unknown as FixtureWindow).fixture
+      if (action === "select") f.select()
+      else f.owner("next-session")
+      f.resolve()
+    }, action)
+    await page.evaluate(() => (window as unknown as FixtureWindow).fixture.settled())
+    expect((await facts()).tabs.filter((tab) => tab.panelId === "browser")).toHaveLength(0)
+  }
+})
+
+test("Note references share current Scope resolution and carry one-shot block navigation without replacing drafts", async () => {
+  await load()
+  const result = await page.evaluate(() =>
+    (window as unknown as FixtureWindow).fixture.open({
+      kind: "note",
+      id: "note",
+      location: { kind: "heading", id: "block" },
+    }),
+  )
+  expect(result.status).toBe("opened")
+  const tab = (await facts()).tabs.find((tab) => tab.panelId === "notes")
+  expect(tab?.source).toBe("home")
+  expect(tab?.state).toMatchObject({ referenceLocation: { kind: "heading", id: "block" } })
+  expect((await facts()).reads).not.toContain("note-body")
+})
+
+test("previews are lazy, prefer live Note and file drafts, and never choose an unknown historical Workspace", async () => {
+  await load()
+  expect((await facts()).reads).toEqual([])
+  const preview = await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    f.noteDraft("Unsaved target section")
+    f.fileDraft("First\nUnsaved target line\nThird")
+    return {
+      note: await f.preview({ kind: "note", id: "note", location: { kind: "heading", id: "block" } }),
+      file: await f.preview(
+        { kind: "workspace-file", path: "index.ts", location: { kind: "text", line: 2 } },
+        {
+          context: { state: "bound", workspace: { id: "wsp_fixture", generation: 2, root: "/fixture" }, directory: "" },
+        },
+      ),
+      unknown: await f.preview({ kind: "workspace-file", path: "index.ts" }, { context: { state: "unresolved" } }),
+    }
+  })
+  expect(preview.note.title).toBe("Unsaved note")
+  expect(preview.note.description).toContain("Unsaved target section")
+  expect(preview.file.code?.text).toContain("Unsaved target line")
+  expect(preview.unknown.unavailable).toBeTruthy()
+  expect((await facts()).reads).not.toContain("note-body")
+  expect((await facts()).reads.every((read) => read === "notes")).toBe(true)
+  expect((await facts()).tabs).toHaveLength(0)
+})
+
+test("different fragments navigate one suitable current tab while query targets and new-tab intent remain distinct", async () => {
+  await load()
+  await page.evaluate(() => (window as unknown as FixtureWindow).fixture.native("local"))
+  await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    await f.open({ kind: "url", url: "https://example.test/article?view=source#first" })
+    await f.open({ kind: "url", url: "https://example.test/article?view=source#second" })
+  })
+  expect((await facts()).tabs).toHaveLength(1)
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.controls)).toMatchObject([
+    { command: { type: "navigate", url: "https://example.test/article?view=source#second" } },
+  ])
+  await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    await f.open({ kind: "url", url: "https://example.test/article?view=rendered#second" })
+    await f.open({ kind: "url", url: "https://example.test/article?view=source#second" }, { newTab: true })
+  })
+  expect((await facts()).tabs).toHaveLength(3)
+})
+
+test("anonymous URL preview uses one lazy request, never opens a page, and respects capability removal", async () => {
+  await load()
+  const preview = await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    const target = { kind: "url" as const, url: "https://example.test/article#section" }
+    const [first, second] = await Promise.all([f.preview(target), f.preview(target)])
+    f.features([])
+    return { first, second, absent: await f.preview(target) }
+  })
+  expect(preview.first.title).toBe("Public article")
+  expect(preview.second.description).toBe("Anonymous summary")
+  expect(preview.absent.unavailable).toBeTruthy()
+  expect((await facts()).reads).toEqual(["web-preview"])
+  expect((await facts()).tabs).toHaveLength(0)
+})
+
+test("a late preview response cannot transfer across an A-to-B-to-A Session change", async () => {
+  await load()
+  const cancelled = await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    f.hold()
+    const result = f.preview({ kind: "url", url: "https://example.test/held" }).then(
+      () => false,
+      () => true,
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    f.owner("other")
+    f.owner("session")
+    f.resolve()
+    return result
+  })
+  expect(cancelled).toBe(true)
+  expect((await facts()).tabs).toHaveLength(0)
+})
+
+test("identical Note previews share metadata resolution and body reads without allocating a tab", async () => {
+  await load()
+  const previews = await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    const target = { kind: "note" as const, id: "note", location: { kind: "heading" as const, id: "block" } }
+    return Promise.all([f.preview(target), f.preview(target)])
+  })
+  expect(previews.map((preview) => preview.description)).toEqual(["Saved note body", "Saved note body"])
+  expect((await facts()).reads).toEqual(["notes", "notes", "note-body"])
+  expect((await facts()).tabs).toHaveLength(0)
+})
+
+test("a selected native Browser preparation failure reports unavailable without silently opening externally", async () => {
+  await load()
+  const result = await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    f.native("local")
+    f.missing(true)
+    return f.open({ kind: "url", url: "https://example.test/missing" })
+  })
+  expect(result.status).toBe("unavailable")
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.external)).toEqual([])
+})
+
+test("human Workspace selection reactively invalidates an open reference preview context", async () => {
+  await load()
+  const result = await page.evaluate(async () => {
+    const fixture = (window as unknown as FixtureWindow).fixture
+    const before = fixture.previewContexts.length
+    fixture.select()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    return { before, contexts: fixture.previewContexts }
+  })
+  expect(result.contexts.length).toBeGreaterThan(result.before)
+  expect(result.contexts.at(-1)).not.toBe(result.contexts.at(-2))
+})
+
+test("message URL toast Retry reuses an unknown Browser creation request and its single peer tab", async () => {
+  await load()
+  await page.evaluate(() => {
+    const fixture = (window as unknown as FixtureWindow).fixture
+    fixture.native("local")
+    fixture.openingMode()
+    void fixture.open({ kind: "url", url: "https://example.test/unknown-response" })
+  })
+  await page.waitForFunction(() => (window as unknown as FixtureWindow).fixture.openingAttempts.length === 1)
+  const original = await page.evaluate(() => (window as unknown as FixtureWindow).fixture.tabs()[0]!.id)
+  await page.getByRole("button", { name: "Retry", exact: true }).click({ timeout: 5000 })
+  await page.waitForFunction(() => (window as unknown as FixtureWindow).fixture.openingAttempts.length === 2)
+  const result = await page.evaluate(() => {
+    const fixture = (window as unknown as FixtureWindow).fixture
+    fixture.resolve()
+    return { attempts: fixture.openingAttempts, tabs: fixture.tabs() }
+  })
+  expect(result.attempts[1]).toBe(result.attempts[0])
+  expect(result.tabs).toHaveLength(1)
+  expect(result.tabs[0]).toMatchObject({ id: original, resourceId: "unknown-page" })
+  expect(errors).toEqual([])
 })

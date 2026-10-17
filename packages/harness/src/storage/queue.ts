@@ -165,6 +165,7 @@ export class StorageQueue {
           const index = this.waiting.indexOf(entry)
           if (index === -1) return
           this.waiting.splice(index, 1)
+          this.recordDepth()
           clean()
           waited()
           reject(error)
@@ -180,15 +181,7 @@ export class StorageQueue {
         entry.reject(expired())
       }
       this.waiting.push(entry)
-      const depth = this.waiting.length + Number(this.active)
-      if (depth > 1)
-        ObservabilityMetrics.record({
-          name: "storage.queue.depth",
-          value: depth,
-          unit: "count",
-          module: "storage",
-          labels: { queue: this.name },
-        })
+      this.recordDepth()
       signal?.addEventListener("abort", cancel, { once: true })
       timer = setTimeout(expire, Math.max(1, deadline - performance.now()))
       this.dispatch()
@@ -208,8 +201,19 @@ export class StorageQueue {
   private release() {
     this.active = false
     this.activePriority = undefined
+    this.recordDepth()
     this.dispatch()
     if (!this.active && !this.waiting.length) this.drained?.resolve()
+  }
+
+  private recordDepth() {
+    ObservabilityMetrics.record({
+      name: "storage.queue.depth",
+      value: this.waiting.length + Number(this.active),
+      unit: "count",
+      module: "storage",
+      labels: { queue: this.name },
+    })
   }
 
   close(): Promise<void> {
