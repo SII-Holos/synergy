@@ -1,3 +1,6 @@
+import { RolloutEvidence } from "@ericsanchezok/synergy-harness/rollout"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { ExecutionQueryError } from "./query"
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import { z } from "zod"
@@ -5,6 +8,7 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { ExecutionSchema } from "./schema"
 import { ExecutionService } from "./service"
+import { ExecutionProjection } from "./projection"
 import { ExecutionContent } from "./content"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -86,6 +90,7 @@ const metadata = (operationId: string, summary: string, schema: z.ZodType) =>
     responses: {
       200: { description: summary, content: { "application/json": { schema: resolver(schema) } } },
       400: { description: "Invalid execution query" },
+      500: { description: "Execution computation failed" },
       404: { description: "Execution evidence was not found in the selected Scope and session" },
     },
   })
@@ -94,13 +99,16 @@ async function result<T>(body: () => Promise<T>) {
     return { status: 200 as const, value: await body() }
   } catch (error) {
     if (error instanceof Storage.NotFoundError) return { status: 404 as const, value: { message: error.message } }
-    if (
-      error instanceof z.ZodError ||
-      error instanceof SyntaxError ||
-      error instanceof RangeError ||
-      (error instanceof Error && error.message.includes("cursor"))
-    )
+    if (error instanceof ExecutionQueryError || error instanceof RolloutEvidence.QueryError)
       return { status: 400 as const, value: { message: "Invalid execution query" } }
+    if (!(error instanceof Error && error.name === "AbortError"))
+      Log.create({ service: "execution" }).error("execution read failed", {
+        kind: error instanceof Error ? error.name : "unknown",
+        issues:
+          error instanceof z.ZodError
+            ? error.issues.map((issue) => ({ code: issue.code, path: issue.path }))
+            : undefined,
+      })
     throw error
   }
 }
@@ -110,10 +118,17 @@ export const ExecutionRoute = () =>
       "/:sessionID/execution/summary",
       metadata("session.executionSummary", "Read a compact session execution summary", ExecutionSchema.Summary),
       validator("param", Params),
-      validator("query", ExecutionSchema.Query.pick({ runID: true })),
+      validator(
+        "query",
+        ExecutionSchema.Query.pick({ runID: true }).extend({ projection: z.string().uuid().optional() }),
+      ),
       async (c) => {
         const response = await result(() =>
-          ExecutionService.summary(c.req.valid("param").sessionID, c.req.valid("query").runID),
+          c.req.valid("query").projection
+            ? Promise.resolve(
+                ExecutionProjection.checkpoint(c.req.valid("param").sessionID, c.req.valid("query").projection!),
+              )
+            : ExecutionService.summary(c.req.valid("param").sessionID, c.req.valid("query").runID, c.req.raw.signal),
         )
         return c.json(response.value, response.status)
       },
@@ -125,7 +140,7 @@ export const ExecutionRoute = () =>
       validator("query", ExecutionSchema.ContextQuery),
       async (c) => {
         const response = await result(() =>
-          ExecutionService.contextHistory(c.req.valid("param").sessionID, c.req.valid("query")),
+          ExecutionService.contextHistory(c.req.valid("param").sessionID, c.req.valid("query"), c.req.raw.signal),
         )
         return c.json(response.value, response.status)
       },
@@ -142,7 +157,7 @@ export const ExecutionRoute = () =>
       async (c) => {
         const { sessionID, callID } = c.req.valid("param")
         const response = await result(() =>
-          ExecutionService.contextSnapshot(sessionID, callID, c.req.valid("query").runID),
+          ExecutionService.contextSnapshot(sessionID, callID, c.req.valid("query").runID, c.req.raw.signal),
         )
         return c.json(response.value, response.status)
       },
@@ -167,7 +182,7 @@ export const ExecutionRoute = () =>
       validator("query", ExecutionSchema.Query),
       async (c) => {
         const response = await result(() =>
-          ExecutionService.trajectory(c.req.valid("param").sessionID, c.req.valid("query")),
+          ExecutionService.trajectory(c.req.valid("param").sessionID, c.req.valid("query"), c.req.raw.signal),
         )
         return c.json(response.value, response.status)
       },
@@ -194,7 +209,7 @@ export const ExecutionRoute = () =>
         const { sessionID, nodeID } = c.req.valid("param")
         const { field, offset, limit, runID, version } = c.req.valid("query")
         const response = await result(() =>
-          ExecutionService.content(sessionID, nodeID, field, offset, limit, runID, version),
+          ExecutionService.content(sessionID, nodeID, field, offset, limit, runID, version, c.req.raw.signal),
         )
         return c.json(response.value, response.status)
       },
@@ -213,7 +228,14 @@ export const ExecutionRoute = () =>
         const input = c.req.valid("query")
         const response = await result(async () =>
           ExecutionContent.sections(
-            await ExecutionService.contentSource(sessionID, nodeID, input.field, input.runID, input.version),
+            await ExecutionService.contentSource(
+              sessionID,
+              nodeID,
+              input.field,
+              input.runID,
+              input.version,
+              c.req.raw.signal,
+            ),
             input,
             c.req.raw.signal,
           ),
@@ -235,7 +257,14 @@ export const ExecutionRoute = () =>
         const input = c.req.valid("query")
         const response = await result(async () =>
           ExecutionContent.search(
-            await ExecutionService.contentSource(sessionID, nodeID, input.field, input.runID, input.version),
+            await ExecutionService.contentSource(
+              sessionID,
+              nodeID,
+              input.field,
+              input.runID,
+              input.version,
+              c.req.raw.signal,
+            ),
             input,
             c.req.raw.signal,
           ),
@@ -264,7 +293,14 @@ export const ExecutionRoute = () =>
         const input = c.req.valid("query")
         const response = await result(async () =>
           download(
-            await ExecutionService.contentSource(sessionID, nodeID, input.field, input.runID, input.version),
+            await ExecutionService.contentSource(
+              sessionID,
+              nodeID,
+              input.field,
+              input.runID,
+              input.version,
+              c.req.raw.signal,
+            ),
             input.field,
             c.req.raw.signal,
           ),

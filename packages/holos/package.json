@@ -1,0 +1,91 @@
+{
+  "name": "@ericsanchezok/synergy-holos",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./cli-adapter": "./src/cli-adapter.ts",
+    "./component": "./src/component.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./holos": "./src/holos/index.ts",
+    "./holos/account-configured": "./src/holos/account-configured.ts",
+    "./holos/accounts": "./src/holos/accounts.ts",
+    "./holos/auth": "./src/holos/auth.ts",
+    "./holos/cli/holos": "./src/holos/cli/holos.ts",
+    "./holos/cli/holos-server": "./src/holos/cli/holos-server.ts",
+    "./holos/constants": "./src/holos/constants.ts",
+    "./holos/contact": "./src/holos/contact.ts",
+    "./holos/endpoint": "./src/holos/endpoint.ts",
+    "./holos/envelope": "./src/holos/envelope.ts",
+    "./holos/login": "./src/holos/login.ts",
+    "./holos/login-flow": "./src/holos/login-flow.ts",
+    "./holos/mailbox": "./src/holos/mailbox.ts",
+    "./holos/migration": "./src/holos/migration.ts",
+    "./holos/native": "./src/holos/native.ts",
+    "./holos/presence": "./src/holos/presence.ts",
+    "./holos/profile": "./src/holos/profile.ts",
+    "./holos/protocol": "./src/holos/protocol.ts",
+    "./holos/readiness": "./src/holos/readiness.ts",
+    "./holos/routes/holos": "./src/holos/routes/holos.ts",
+    "./holos/runtime": "./src/holos/runtime.ts",
+    "./holos/security": "./src/holos/security.ts",
+    "./holos/startup": "./src/holos/startup.ts",
+    "./holos/state": "./src/holos/state.ts",
+    "./holos/util": "./src/holos/util.ts",
+    "./http": "./src/http.ts",
+    "./reload": "./src/reload.ts",
+    "./script/holos-cli-assets": "./script/holos-cli-assets.ts",
+    "./startup-status": "./src/startup-status.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/holos",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "1.0.0-alpha.1",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "@sii-holos/holos-cli": "0.1.1",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "open": "10.1.2",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "holos",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "holos",
+    "requires": {
+      "local-runtime": "1.1.26"
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}

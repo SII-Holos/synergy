@@ -10,7 +10,7 @@ The welcome background covers the entire chat pane, but its clock uses the game'
 
 The welcome host supplies document visibility directly to the ambient field and retains the complete interaction gate as `gameActive` for the selected game. The ambient field combines document visibility with the reactive reduced-motion preference. Its existing bounded frame clock freezes in place when either condition disallows animation, resumes without paused wall-clock debt and is disposed with the component.
 
-Game status, editing, dialogs, composer expansion and game artwork intersection affect only the game clock. Ending and replay presentation continue to follow that clock. Ambient rendering keeps its existing seeded motifs, theme tokens, pane placement and input-transparent Canvas.
+Explicit game pause, dialogs, composer expansion and game artwork intersection affect only the game clock. Ordinary typing and focus changes leave both clocks running, following the interaction rules in [playable welcome games](../feature/2026-10-02-playable-welcome-games.md). Ending and replay presentation continue to follow that clock. Ambient rendering keeps its existing seeded motifs, theme tokens, pane placement and input-transparent Canvas.
 
 The motion gating facts in [interactive task introductions](../feature/2026-10-02-interactive-task-welcome.md) and [playable welcome games](../feature/2026-10-02-playable-welcome-games.md) reflect these separate lifetimes; their selection, model and rendering decisions remain applicable.
 

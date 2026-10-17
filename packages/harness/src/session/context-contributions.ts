@@ -1,6 +1,8 @@
 import { RuntimeContext } from "../lifecycle/context"
 import type { MessageV2 } from "./message-v2"
 import { Log } from "../util/log"
+import { RuntimeAdvisory } from "./runtime-context"
+import type { AgentPermissionContributions } from "../agent/permission-contributions"
 
 export namespace SessionContextContributions {
   export const DEFAULT_TIMEOUT_MS = 15_000
@@ -9,14 +11,21 @@ export namespace SessionContextContributions {
     scopeID: string
     messages: MessageV2.WithParts[]
     isTopSession: boolean
+    agentIdentity?: Readonly<AgentPermissionContributions.Identity>
     signal: AbortSignal
   }
   export interface Result {
     context: string
     injection: Record<string, string>
+    knowledge?: {
+      entries: Array<{ id: string; text: string; selection: string; annotation?: string }>
+      guidance: string
+      unavailable?: string[]
+    }
   }
   export interface Collected extends Result {
     sources: Array<{ id: string; context: string; injection: Record<string, string> }>
+    observations: RuntimeAdvisory.Source[]
   }
   export interface Provider {
     refresh?: "root" | "model"
@@ -50,7 +59,7 @@ export namespace SessionContextContributions {
     const results = await Promise.all(
       [...instanceState.providers].map(async ([id, provider]) => {
         if (refresh && (provider.refresh ?? "root") !== refresh) return
-        if (provider.enabled && !(await provider.enabled(input))) return
+        if (provider.enabled && !(await provider.enabled(input))) return { id, state: "cleared" as const }
         input.signal.throwIfAborted()
         const timeout = new AbortController()
         const signal = AbortSignal.any([input.signal, timeout.signal])
@@ -61,11 +70,11 @@ export namespace SessionContextContributions {
         const scoped = { ...input, signal }
         try {
           const result = await abortable(provider.contribute(scoped), signal)
-          return { id, result: result ?? (await fallback(provider, input)) }
+          return { id, result: result ?? (await fallback(provider, input)), state: "cleared" as const }
         } catch (error) {
           input.signal.throwIfAborted()
           log.warn("context contribution failed", { id, error })
-          return { id, result: await fallback(provider, input) }
+          return { id, result: await fallback(provider, input), state: "unavailable" as const }
         } finally {
           clearTimeout(timer)
         }
@@ -73,11 +82,46 @@ export namespace SessionContextContributions {
     )
     input.signal.throwIfAborted()
     const active = results.flatMap((entry) => (entry?.result ? [{ id: entry.id, result: entry.result }] : []))
-    if (!active.length) return
+    const observations = results.flatMap((entry): RuntimeAdvisory.Source[] => {
+      if (!entry) return []
+      if (entry.result?.knowledge) {
+        const knowledge = entry.result.knowledge
+        const entries = [...knowledge.entries].sort((a, b) => a.id.localeCompare(b.id))
+        return [
+          ...entries.map(
+            (item): RuntimeAdvisory.Source => ({
+              id: `${entry.id}:entry:${item.id}`,
+              kind: "knowledge",
+              state: "present",
+              text: item.text,
+            }),
+          ),
+          RuntimeAdvisory.present(
+            `${entry.id}:selection`,
+            [
+              knowledge.guidance,
+              "Current applicable knowledge versions:",
+              ...entries.map(
+                (item) =>
+                  `${item.selection}: memory:${entry.id}:entry:${item.id} version=${RuntimeAdvisory.knowledgeRevision(item.text)}${item.annotation ? ` ${item.annotation}` : ""}`,
+              ),
+              ...(knowledge.unavailable ?? []).map((kind) => `${kind}: retrieval unavailable for this task.`),
+            ].join("\n"),
+          ),
+        ]
+      }
+      return [
+        entry.result
+          ? { id: entry.id, state: "present", text: entry.result.context }
+          : { id: entry.id, state: entry.state },
+      ]
+    })
+    if (!observations.length) return
     return {
       context: active.map(({ result }) => result.context).join("\n\n"),
       injection: Object.assign({}, ...active.map(({ result }) => result.injection)),
       sources: active.map(({ id, result }) => ({ id, context: result.context, injection: result.injection })),
+      observations,
     }
   }
 
@@ -88,6 +132,7 @@ export namespace SessionContextContributions {
       context: active.map((result) => result.context).join("\n\n"),
       injection: Object.assign({}, ...active.map((result) => result.injection)),
       sources: active.flatMap((result) => result.sources),
+      observations: active.flatMap((result) => result.observations),
     }
   }
 

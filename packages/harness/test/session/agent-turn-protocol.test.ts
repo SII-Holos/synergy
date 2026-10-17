@@ -3,6 +3,29 @@ import { APICallError } from "ai"
 import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
 
 describe("AgentTurnProtocol", () => {
+  test("preserves permitted expandable tool identities across the worker boundary", () => {
+    const input = {
+      user: { id: "message" },
+      sessionID: "session",
+      model: { id: "model", providerID: "provider" },
+      agent: { name: "assistant" },
+      system: [],
+      messages: [],
+      toolDefinitions: [],
+      activeToolIDs: ["read"],
+      availableToolIDs: ["read", "note_read"],
+      prepared: {
+        system: [],
+        baseSystemLength: 0,
+        provider: { options: {}, timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false } },
+        params: { options: {} },
+      },
+    }
+    const parsed = AgentTurnProtocol.TurnInputSchema.parse(input)
+    expect(parsed.activeToolIDs).toEqual(["read"])
+    expect(parsed.availableToolIDs).toEqual(["read", "note_read"])
+  })
+
   test("requires complete worker memory snapshots at lifecycle boundaries", () => {
     const memory: AgentTurnProtocol.WorkerMemory = {
       rssBytes: 100,

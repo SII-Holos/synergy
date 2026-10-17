@@ -104,6 +104,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   scan_document: entry("code.analyze"),
   edit: entry("code.write", { stateful: true }),
   revise_file: entry("code.write", { stateful: true }),
+  apply_patch: entry("code.write", { stateful: true }),
   resolve_conflicts: entry("code.write", { stateful: true }),
   write: entry("code.write", { stateful: true }),
   save_file: entry("code.write", { stateful: true }),
@@ -124,8 +125,6 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   blueprint_loop_approve: entry("orchestration.task", { stateful: true }),
   blueprint_loop_reject: entry("orchestration.task", { stateful: true }),
   loop_stop: entry("orchestration.task", { stateful: true }),
-  light_loop_approve: entry("orchestration.task", { stateful: true }),
-  light_loop_reject: entry("orchestration.task", { stateful: true }),
   skill: entry("knowledge.skill"),
 
   // orchestration
@@ -210,6 +209,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   openai_image_edit: entry("communication.visual", { externalIO: true, stateful: true }),
   render: entry("communication.visual"),
   response_card: entry("communication.deliver", { stateful: true, externalIO: true }),
+  channel_reaction_only: entry("communication.deliver", { stateful: true, externalIO: true }),
   speak: entry("communication.audio", { externalIO: true }),
   // browser
   browser_navigation: entry("browser.navigate", { externalIO: true, stateful: true }),

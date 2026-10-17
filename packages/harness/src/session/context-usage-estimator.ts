@@ -1,11 +1,13 @@
 import { ContextCategoryKeys } from "./context-usage-schema"
 import { RuntimeContext } from "../lifecycle/context"
 import { Worker } from "node:worker_threads"
+import { createHash } from "node:crypto"
 
 export namespace ContextUsageEstimator {
   const CATEGORY_KEYS = ContextCategoryKeys
   export const LIMITS = {
     activeWorkers: 2,
+    cacheEntries: 512,
     workerTimeoutMs: 1_000,
     contributionsPerCategory: 32,
     sampleCharactersPerCategory: 1_024,
@@ -33,29 +35,88 @@ export namespace ContextUsageEstimator {
 
   const runtimeState = RuntimeContext.state(() => ({
     activeWorkers: 0,
+    closed: false,
+    cache: new Map<string, number>(),
+    pending: new Set<() => void>(),
   }))
 
-  export function estimate(request: Request): Promise<Result | undefined> {
+  export function close() {
+    const state = runtimeState()
+    state.closed = true
+    state.cache.clear()
+    for (const stop of state.pending) stop()
+  }
+
+  export function estimate(
+    request: Request,
+    identity?: { sessionID: string; providerID: string; modelID: string },
+  ): Promise<Result | undefined> {
     const instanceState = runtimeState()
 
     const bounded = parseRequest(request)
-    if (!bounded || instanceState.activeWorkers >= LIMITS.activeWorkers) return Promise.resolve(undefined)
+    if (!bounded || instanceState.closed) return Promise.resolve(undefined)
+    const keys = new Map<CategoryKey, string>()
+    const cached = new Map<CategoryKey, number>()
+    const categories = { ...bounded.categories }
+    for (const category of CATEGORY_KEYS) {
+      if (!identity) continue
+      const fingerprint = createHash("sha256").update(JSON.stringify(categories[category])).digest("hex")
+      const key = JSON.stringify([
+        "bounded-utf8-v1",
+        identity.sessionID,
+        identity.providerID,
+        identity.modelID,
+        category,
+        fingerprint,
+      ])
+      keys.set(category, key)
+      const value = instanceState.cache.get(key)
+      if (value === undefined) continue
+      instanceState.cache.delete(key)
+      instanceState.cache.set(key, value)
+      cached.set(category, value)
+      categories[category] = []
+    }
+    const result = (measured: Result): Result => {
+      for (const category of CATEGORY_KEYS) {
+        measured.categories[category] = cached.get(category) ?? measured.categories[category]
+        const key = keys.get(category)
+        if (!key) continue
+        instanceState.cache.delete(key)
+        instanceState.cache.set(key, measured.categories[category])
+        while (instanceState.cache.size > LIMITS.cacheEntries)
+          instanceState.cache.delete(instanceState.cache.keys().next().value!)
+      }
+      return { ...measured, sampledCharacters: bounded.sampledCharacters, truncated: bounded.truncated }
+    }
+    if (cached.size === CATEGORY_KEYS.length)
+      return Promise.resolve(
+        result({
+          categories: Object.fromEntries(cached) as Result["categories"],
+          sampledCharacters: 0,
+          truncated: false,
+        }),
+      )
+    if (instanceState.activeWorkers >= LIMITS.activeWorkers) return Promise.resolve(undefined)
     instanceState.activeWorkers++
 
     return new Promise((resolve) => {
       let worker: Worker | undefined
       let settled = false
+      const stop = () => settle(undefined)
+      instanceState.pending.add(stop)
       const timer = setTimeout(() => settle(undefined), LIMITS.workerTimeoutMs)
 
-      function settle(result: Result | undefined) {
+      function settle(measured: Result | undefined) {
         if (settled) return
         settled = true
         clearTimeout(timer)
+        instanceState.pending.delete(stop)
         instanceState.activeWorkers--
         const current = worker
         worker = undefined
         if (current) void current.terminate().catch(() => {})
-        resolve(result)
+        resolve(measured && !instanceState.closed ? result(measured) : undefined)
       }
 
       try {
@@ -63,7 +124,13 @@ export namespace ContextUsageEstimator {
         worker.once("message", (value) => settle(parseResult(value)))
         worker.once("error", () => settle(undefined))
         worker.once("exit", () => settle(undefined))
-        worker.postMessage(bounded)
+        worker.postMessage({
+          categories,
+          sampledCharacters: Object.values(categories)
+            .flat()
+            .reduce((sum, entry) => sum + entry.sample.length, 0),
+          truncated: bounded.truncated,
+        })
       } catch {
         settle(undefined)
       }

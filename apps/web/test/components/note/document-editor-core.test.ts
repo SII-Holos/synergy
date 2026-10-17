@@ -97,6 +97,7 @@ describe("Note document editor", () => {
         content: [
           {
             type: "paragraph",
+            attrs: { blockId: "blk_original" },
             content: [{ type: "text", text: "hello" }],
           },
         ],
@@ -108,6 +109,8 @@ describe("Note document editor", () => {
     expect(editor.state.doc.childCount).toBe(2)
     expect(editor.state.doc.child(0).textContent).toBe("hello")
     expect(editor.state.doc.child(1).textContent).toBe("")
+    expect(editor.state.doc.child(0).attrs.blockId).toBe("blk_original")
+    expect(editor.state.doc.child(1).attrs.blockId).toBeNull()
   })
 
   test("keeps blockquote commands available", () => {
@@ -235,5 +238,11 @@ describe("Note document editor", () => {
     expect(editor.getText()).toContain("Goal and Requirements")
     expect(editor.getText()).toContain("pure config")
     expect(editor.getText()).toContain("emberfall")
+    expect(editor.state.doc.firstChild?.attrs.blockId).toBe("blk_heading_1")
+    expect(editor.view.dom.querySelector('h1[data-block-id="blk_heading_1"]')).not.toBeNull()
+    expect(editor.view.dom.querySelector('[data-block-id="blk_item_para_1"]')?.textContent).toBe("pure config")
+    expect(editor.view.dom.querySelector('[data-block-id="blk_td_para_2"]')?.textContent).toBe("2")
+    editor.commands.insertContent("Edited ")
+    expect(editor.getJSON().content?.[0]?.attrs?.blockId).toBe("blk_heading_1")
   })
 })

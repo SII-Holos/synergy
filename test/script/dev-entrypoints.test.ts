@@ -1,10 +1,66 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
-import { mkdtemp, rm } from "node:fs/promises"
+import { chmod, mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
-import { createDevPlan } from "../../script/dev"
+import { createDevPlan, runDevPlan } from "../../script/dev"
+import { assertBunVersion } from "../../script/check-bun-version"
 
 const root = path.resolve(import.meta.dir, "../..")
+test("dev rejects an incompatible runtime before executing preparation or startup work", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-version-"))
+  const marker = path.join(directory, "executed")
+  try {
+    await Bun.write(path.join(directory, "package.json"), JSON.stringify({ packageManager: "bun@0.0.0" }))
+    await expect(
+      runDevPlan(
+        {
+          kind: "run",
+          mode: "serial",
+          help: "",
+          exitCode: 0,
+          processes: [
+            {
+              label: "build",
+              cwd: directory,
+              command: [process.execPath, "-e", `Bun.write(${JSON.stringify(marker)}, "ran")`],
+            },
+          ],
+          requiredPorts: [],
+          requiredServers: [],
+        },
+        { repoRoot: directory },
+      ),
+    ).rejects.toThrow("bun@0.0.0")
+    expect(await Bun.file(marker).exists()).toBe(false)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("dev preparation validates an explicit Bun override before it can install dependencies", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-override-"))
+  const executable = path.join(directory, "bun-fixture")
+  const marker = path.join(directory, "executed")
+  try {
+    await Bun.write(path.join(directory, "package.json"), JSON.stringify({ packageManager: `bun@${Bun.version}` }))
+    await Bun.write(
+      executable,
+      `#!${process.execPath}\nif (Bun.argv.includes("--version")) console.log("0.0.0"); else await Bun.write(${JSON.stringify(marker)}, "ran")`,
+    )
+    await chmod(executable, 0o755)
+    const options = { repoRoot: directory, bunPath: executable }
+    await expect(runDevPlan(createDevPlan(["prepare"], options), options)).rejects.toThrow(
+      "selected child runtime: 0.0.0",
+    )
+    expect(await Bun.file(marker).exists()).toBe(false)
+    await expect(assertBunVersion(directory)).resolves.toBeUndefined()
+    await Bun.write(executable, `#!${process.execPath}\nconsole.log(${JSON.stringify(Bun.version)})`)
+    await expect(assertBunVersion(directory, executable)).resolves.toBeUndefined()
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 for (const exitCode of [0, 7]) {
   test(`dev forwards live Computer build status and compiler output before exit ${exitCode}`, async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-computer-progress-"))
@@ -69,6 +125,38 @@ for (const exitCode of [0, 7]) {
     }
   })
 }
+
+test("dev registers the owning launch entry without relabeling an attached backend", () => {
+  for (const [args, entry] of [
+    [["server"], "dev-server"],
+    [["web"], "dev-web"],
+    [["desktop"], "dev-desktop"],
+    [["desktop", "--managed"], "dev-desktop-managed"],
+    [["send", "hello"], "dev-send"],
+  ] as const) {
+    const plan = createDevPlan([...args], { repoRoot: root })
+    const owner = plan.processes.find(
+      (process) => process.label === "server" || process.label === "desktop" || process.label === "send",
+    )!
+    expect(owner.env?.SYNERGY_RUNTIME_ENTRY).toBe(entry)
+    for (const name of [
+      "SYNERGY_DAEMON",
+      "SYNERGY_DESKTOP_STARTUP_PROGRESS",
+      "SYNERGY_DESKTOP_PARENT_PID",
+      "SYNERGY_INSTALLATION_PIN",
+      "SYNERGY_INSTALLATION_ROOT",
+      "SYNERGY_LAUNCHER_COMMAND",
+    ]) {
+      expect(Object.hasOwn(owner.env!, name)).toBe(true)
+      expect(owner.env?.[name]).toBeUndefined()
+    }
+  }
+  for (const command of ["web", "desktop"]) {
+    const plan = createDevPlan([command, "--attach", "http://127.0.0.1:5123"], { repoRoot: root })
+    expect(plan.processes.some((process) => process.label === "server")).toBe(false)
+    expect(plan.processes.every((process) => process.env?.SYNERGY_RUNTIME_ENTRY === undefined)).toBe(true)
+  }
+})
 
 for (const args of [
   ["server"],

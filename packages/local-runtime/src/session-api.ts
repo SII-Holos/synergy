@@ -4,6 +4,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInvoke, type InvokeInput } from "@ericsanchezok/synergy-harness/session/invoke"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
+import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
@@ -64,13 +65,26 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
     }
     const paused = await SessionLifecycle.snapshot(input.sessionID)
     if (paused && !idleNoReply) await SessionManager.waitForIdle(input.sessionID)
-    const rootID = paused ? await SessionInbox.latestRootID(input.sessionID) : undefined
+    const session = await Session.get(input.sessionID)
+    const canResume = idleNoReply || (await SessionExecutionOwners.allowsResume(session))
+    const newTask = !canResume && MessageV2.isHumanInput(input)
+    if (!canResume && !newTask) await SessionExecutionOwners.assertResume(session)
+    const rootID = paused && canResume ? await SessionInbox.latestRootID(input.sessionID) : undefined
     item = await SessionInbox.enqueueUser(
       input,
-      idleNoReply ? { mode: "steer", admission: "idle_no_reply" } : rootID ? { mode: "steer" } : undefined,
+      idleNoReply
+        ? { mode: "steer", admission: "idle_no_reply" }
+        : newTask
+          ? { mode: "task" }
+          : rootID
+            ? { mode: "steer" }
+            : undefined,
     )
     runID = rootID
-    if (!idleNoReply) await takeSessionBack(input.sessionID)
+    if (!idleNoReply) {
+      if (newTask) await SessionLifecycle.clear(input.sessionID)
+      else await takeSessionBack(input.sessionID)
+    }
   }
   if (idleNoReply) SessionManager.scheduleWake(item.sessionID, "durable-no-reply-input")
   else scheduleInput(item, "user-input")
@@ -138,9 +152,19 @@ export async function createSession(
       : isWorktree && body.environmentID === undefined && !body.parentID
         ? await EnvironmentProviders.resolveDefault()
         : undefined
-  const scope = body.scope ?? (body.parentID ? (await Session.get(body.parentID)).scope : ScopeContext.current.scope)
-  const selectedWorkspace =
-    workspace?.mode === "workspace" ? await WorkspaceCatalog.get(workspace.workspaceID, scope.id) : undefined
+  const parent = body.parentID ? await Session.get(body.parentID) : undefined
+  const scope = body.scope ?? parent?.scope ?? ScopeContext.current.scope
+  const selectedWorkspaceID =
+    workspace?.mode === "workspace"
+      ? workspace.workspaceID
+      : workspace?.mode === "none"
+        ? null
+        : body.workspaceID !== undefined
+          ? body.workspaceID
+          : parent?.scope.id === scope.id
+            ? parent.workspaceID
+            : undefined
+  const selectedWorkspace = selectedWorkspaceID ? await WorkspaceCatalog.get(selectedWorkspaceID, scope.id) : undefined
   if (
     selectedWorkspace &&
     workspace?.mode === "workspace" &&
@@ -155,8 +179,10 @@ export async function createSession(
     environmentSelection.provider !== "native" &&
     (workspace?.mode === "create" ||
       workspace?.mode === "existing" ||
-      (workspace?.mode !== "none" &&
-        (selectedWorkspace ? selectedWorkspace.backend?.provider !== "objects" : !!scope.local)))
+      (selectedWorkspaceID !== null &&
+        (selectedWorkspace
+          ? selectedWorkspace.backend?.provider !== "objects"
+          : !!scope.local || scope.type === "home")))
   )
     throw new SessionLocationError({
       code: "incompatible_files",
@@ -256,6 +282,7 @@ export async function continueSession(sessionID: string): Promise<boolean> {
   let interrupted: boolean
   {
     using control = await Lock.write(`session-control:${sessionID}`)
+    await SessionExecutionOwners.assertResume(await Session.get(sessionID))
     await takeSessionBack(sessionID)
     const messages = await SessionHistory.modelMessages({ sessionID })
     interrupted = SessionProgress.pendingReply(messages)

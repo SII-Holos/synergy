@@ -65,6 +65,7 @@ const toolPart = {
 }
 const secondToolPart = {
   ...toolPart,
+  workBrief: " \n ",
   tool: "mcp__scholight__extract_url",
   state: { ...toolPart.state, input: { url: "https://example.com/paper" } },
   id: "tool-activity-switch-second",
@@ -78,7 +79,7 @@ const failedToolPart = {
   type: "tool",
   callID: "call-activity-switch-failed",
   tool: "bash",
-  workBrief: "Inspect missing.json without changing files.",
+  workBrief: "  Inspect missing.json without changing files.  ",
   state: {
     status: "error",
     input: { command: "cat missing.json" },
@@ -123,6 +124,7 @@ const resourceController = {
 }
 const EmptyDiff = () => null
 const [mode, setMode] = createSignal("minimal")
+const [preferWorkBrief, setPreferWorkBrief] = createSignal(false)
 const [executionState, setExecutionState] = createSignal()
 const SlotProbe = (props) => <span data-test-slot={props.slot} data-test-message={props.messageId} />
 setExternalMessageSlotLookup((slot) =>
@@ -138,7 +140,13 @@ render(
         <ResourceOpenProvider value={resourceController}>
           <MarkedProvider>
             <DiffComponentProvider component={EmptyDiff}>
-              <DataProvider data={data} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
+              <DataProvider
+                hasFeature={(id) => ["mcp"].includes(id)}
+                data={data}
+                runtime={runtime}
+                directory="/workspace"
+                serverUrl="http://localhost"
+              >
                 <SessionTurn
                   sessionID={sessionID}
                   messageID={rootID}
@@ -146,6 +154,7 @@ render(
                   messages={[rootMessage, assistantMessage, secondAssistantMessage]}
                   lastUserMessageID={rootID}
                   activityDisplay={mode()}
+                  preferWorkBrief={preferWorkBrief()}
                   executionState={executionState()}
                   executionSummary={sessionPaused() ? { status: "running", elapsedMs: 3000 } : undefined}
                 >
@@ -166,6 +175,7 @@ render(
 globalThis.__activitySwitchHarness = {
   setSessionPaused,
   setMode,
+  setPreferWorkBrief,
   openedTools,
   setExecutionStatus: (status) =>
     setExecutionState({ rootID, status, startedAt: 1, endedAt: 4, stoppedAt: status === "stopped" ? [4] : [] }),

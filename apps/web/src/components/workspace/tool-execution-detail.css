@@ -50,6 +50,8 @@
 [data-slot="execution-detail-toolbar"] [role="tablist"] {
   display: flex;
   min-width: 0;
+  overflow-x: auto;
+  padding-top: 2px;
 }
 [data-slot="execution-detail-toolbar"] [role="tab"] {
   font: inherit;
@@ -59,14 +61,11 @@
   background: transparent;
   color: var(--text-weak);
   cursor: pointer;
+  flex-shrink: 0;
 }
 [data-slot="execution-detail-toolbar"] [aria-selected="true"] {
   color: var(--text-base);
   border-bottom-color: var(--text-base);
-}
-[data-component="execution-detail"] button:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 [data-slot="execution-detail-body"] {
   flex: 1;
@@ -172,6 +171,87 @@
 [data-slot="execution-detail-empty"] {
   padding: 24px 20px;
   color: var(--text-weak);
+}
+[data-slot="execution-detail-heading"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+[data-slot="execution-detail-resource"] {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+[data-slot="execution-detail-heading"] [data-slot="execution-process-meta"] {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+}
+[data-slot="execution-detail-heading"] > p {
+  flex-basis: 100%;
+}
+[data-slot="execution-partial-notice"] {
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-weaker-base);
+  color: var(--text-weak);
+  font-size: 12px;
+}
+[data-slot="execution-rich-result"] {
+  min-width: 0;
+}
+[data-component="execution-report"] {
+  min-width: 0;
+}
+[data-component="execution-report"] > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+[data-slot="execution-raw-output"] {
+  margin-top: 20px;
+}
+[data-slot="execution-raw-output"] > summary {
+  cursor: pointer;
+  color: var(--text-weak);
+  font-size: 12px;
+  padding-block: 8px;
+}
+[data-component="execution-report"] > header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-weak);
+}
+[data-component="execution-report"] [data-component="markdown"] {
+  font-size: 14px;
+  line-height: 1.6;
+}
+[data-component="execution-report"] [data-component="markdown"] :is(h1, h2, h3, h4, h5, h6) {
+  border: 0;
+  padding: 0;
+  margin-top: 24px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+[data-component="execution-report"] [data-component="markdown"] h1 {
+  font-size: 18px;
+}
+[data-component="execution-report"] [data-component="markdown"] h2 {
+  font-size: 16px;
+}
+[data-component="execution-report"] [data-component="markdown"] :is(h3, h4, h5, h6) {
+  font-size: 14px;
+}
+[data-component="execution-report"] [data-component="markdown"] p {
+  margin-bottom: 12px;
+}
+[data-component="execution-report"] [data-component="markdown"] > :first-child {
+  margin-top: 0;
 }
 [data-slot="execution-directory"] {
   overflow-wrap: anywhere;

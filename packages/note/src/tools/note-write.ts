@@ -1,32 +1,27 @@
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
-import { NoteError, NoteStore, NoteMarkdown, NoteBlueprintPolicy } from ".."
+import { NoteError, NoteStore, NoteMarkdown, NoteDocumentKinds } from ".."
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import DESCRIPTION from "./note-write.txt"
-import { Session } from "@ericsanchezok/synergy-harness/session"
+import { noteReferenceLine } from "./note-reference"
 
-const parameters = z.object({
-  noteId: z.string().optional().describe("Note ID to update. If omitted, creates a new note."),
-  noteTitle: z.string().optional().describe("Note title. Required when creating a new note."),
-  noteContent: z.string().describe("Note content in markdown format."),
-  mode: z
-    .enum(["create", "append", "replace"])
-    .default("create")
-    .describe("'create': new note, 'append': add content to end of existing note, 'replace': overwrite content."),
-  tags: z.array(z.string()).optional().describe("Tags for the note."),
-  kind: z
-    .enum(["note", "blueprint"])
-    .optional()
-    .describe("Document kind. Use 'blueprint' when this note should be executable as a BlueprintLoop."),
-  blueprintDescription: z
-    .string()
-    .optional()
-    .describe("Short blueprint description. Only used when kind is 'blueprint'."),
-  scope: z
-    .enum(["current", "home"])
-    .default("current")
-    .describe("Which scope to create the note in. Only used for create mode."),
-})
+const parameters = NoteDocumentKinds.toolSchema(
+  z.object({
+    noteId: z.string().optional().describe("Note ID to update. If omitted, creates a new note."),
+    noteTitle: z.string().optional().describe("Note title. Required when creating a new note."),
+    noteContent: z.string().describe("Note content in markdown format."),
+    mode: z
+      .enum(["create", "append", "replace"])
+      .default("create")
+      .describe("'create': new note, 'append': add content to end of existing note, 'replace': overwrite content."),
+    tags: z.array(z.string()).optional().describe("Tags for the note."),
+    kind: z.string().optional().describe("Registered document kind."),
+    scope: z
+      .enum(["current", "home"])
+      .default("current")
+      .describe("Which scope to create the note in. Only used for create mode."),
+  }),
+)
 
 function createConflictResult(input: {
   id: string
@@ -48,66 +43,38 @@ function createConflictResult(input: {
   }
 }
 
-function numberValue(value: unknown): number | undefined {
-  if (typeof value === "number") return Number.isFinite(value) ? value : undefined
-  if (typeof value === "string" && value.length > 0) {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : undefined
-  }
-  return undefined
-}
-
 async function updateExisting(input: {
   id: string
   action: "append" | "replace"
   title?: string
   tags?: string[]
-  kind?: "note" | "blueprint"
-  description?: string
+  fields: NoteDocumentKinds.Document
   content(existing: Awaited<ReturnType<typeof NoteStore.getAny>>): unknown
   ctx: Tool.Context
   optimistic?: boolean
 }) {
   const existing = await NoteStore.getAny(ScopeContext.current.scope.id, input.id)
   const nextTitle = input.title ?? existing.title
-  const nextKind = NoteBlueprintPolicy.requestedKind({
-    kind: input.kind,
-    description: input.description,
-  })
-  const session = await Session.get(input.ctx.sessionID)
-  const decision = NoteBlueprintPolicy.evaluateWrite({
-    workflowKind: session.workflow?.kind,
+  const nextKind = input.fields.kind
+  const blocked = await NoteDocumentKinds.guard({
+    sessionID: input.ctx.sessionID,
     action: "update",
-    existingKind: existing.kind ?? "note",
+    existing,
     requestedKind: nextKind,
+    title: nextTitle,
   })
+  if (blocked) return blocked
 
-  if (!decision.allowed) {
-    return NoteBlueprintPolicy.blockedResult({ action: decision.action, id: input.id, title: nextTitle })
-  }
-
-  const patch: Record<string, unknown> = {
+  const patch = {
+    ...input.fields,
     title: input.title ?? undefined,
     content: input.content(existing),
     tags: input.tags ?? undefined,
     ...(input.optimistic === false ? {} : { expectedVersion: existing.version }),
   }
 
-  if (nextKind === "note") {
-    patch.kind = "note"
-    patch.blueprint = null
-  } else if (nextKind === "blueprint") {
-    const blueprint = existing.blueprint ?? {}
-    patch.kind = "blueprint"
-    patch.blueprint = {
-      ...(existing.blueprint ?? {}),
-      ...(input.description !== undefined ? { description: input.description } : {}),
-      runCount: numberValue(blueprint.runCount) ?? 0,
-    }
-  }
-
   try {
-    await NoteStore.updateAny(ScopeContext.current.scope.id, input.id, patch as any)
+    await NoteStore.updateAny(ScopeContext.current.scope.id, input.id, patch)
   } catch (error) {
     if (NoteError.Conflict.isInstance(error)) {
       return createConflictResult({
@@ -122,7 +89,7 @@ async function updateExisting(input: {
   }
 
   const kind = nextKind ?? existing.kind ?? "note"
-  const label = kind === "blueprint" ? "Blueprint" : "Note"
+  const label = NoteDocumentKinds.title(kind)
 
   return {
     title: nextTitle,
@@ -130,6 +97,7 @@ async function updateExisting(input: {
       `${label} updated successfully (${input.action === "append" ? "appended" : "replaced"}).`,
       `noteId: ${input.id}`,
       `noteTitle: ${nextTitle}`,
+      noteReferenceLine(input.id, nextTitle),
       `Kind: ${kind}`,
       ...(input.tags ? [`Tags: ${input.tags.join(", ")}`] : []),
     ].join("\n"),
@@ -138,17 +106,17 @@ async function updateExisting(input: {
       action: input.action,
       title: nextTitle,
       kind,
-      ...(kind === "blueprint" ? { runCount: numberValue((existing.blueprint ?? {}).runCount) ?? 0 } : undefined),
+      ...NoteDocumentKinds.metadata(existing),
     } as Record<string, any>,
   }
 }
 
 export const NoteWriteTool = Tool.define(
   "note_write",
-  {
-    description: DESCRIPTION,
+  async () => ({
+    description: NoteDocumentKinds.toolDescription(DESCRIPTION),
     parameters,
-    async execute(params: z.infer<typeof parameters>, ctx) {
+    async execute(params: z.infer<typeof parameters>, ctx: Tool.Context) {
       const tiptapContent = NoteMarkdown.fromMarkdown(params.noteContent)
 
       if (params.mode === "create") {
@@ -161,44 +129,34 @@ export const NoteWriteTool = Tool.define(
         }
 
         const scopeID = params.scope === "home" ? "home" : ScopeContext.current.scope.id
-        const kind = NoteBlueprintPolicy.requestedKind({
-          kind: params.kind,
-          description: params.blueprintDescription,
-          fallback: "note",
-        })
-        const session = await Session.get(ctx.sessionID)
-        const decision = NoteBlueprintPolicy.evaluateWrite({
-          workflowKind: session.workflow?.kind,
+        const fields = NoteDocumentKinds.toolInput(params)
+        const kind = fields.kind ?? "note"
+        const blocked = await NoteDocumentKinds.guard({
+          sessionID: ctx.sessionID,
           action: "create",
           requestedKind: kind,
+          title: params.noteTitle,
         })
-        if (!decision.allowed) {
-          return NoteBlueprintPolicy.blockedResult({ action: decision.action, title: params.noteTitle })
-        }
+        if (blocked) return blocked
         const note = await NoteStore.create(
           {
+            ...fields,
             title: params.noteTitle,
             content: tiptapContent,
             tags: params.tags,
             kind,
-            blueprint:
-              kind === "blueprint"
-                ? {
-                    description: params.blueprintDescription,
-                  }
-                : undefined,
           },
           { scopeID },
         )
 
-        const label = kind === "blueprint" ? "Blueprint" : "Note"
-        const runCount = kind === "blueprint" ? numberValue(note.blueprint?.runCount) : undefined
+        const label = NoteDocumentKinds.title(kind)
         return {
           title: note.title,
           output: [
             `${label} created successfully.`,
             `noteId: ${note.id}`,
             `noteTitle: ${note.title}`,
+            noteReferenceLine(note.id, note.title),
             `Kind: ${kind}`,
             `Scope: ${scopeID}`,
             ...(note.tags.length > 0 ? [`Tags: ${note.tags.join(", ")}`] : []),
@@ -209,7 +167,7 @@ export const NoteWriteTool = Tool.define(
             title: note.title,
             kind,
             scopeID,
-            ...(runCount !== undefined ? { runCount } : undefined),
+            ...NoteDocumentKinds.metadata(note),
           } as Record<string, any>,
         }
       }
@@ -228,8 +186,7 @@ export const NoteWriteTool = Tool.define(
           action: "append",
           title: params.noteTitle,
           tags: params.tags,
-          kind: params.kind,
-          description: params.blueprintDescription,
+          fields: NoteDocumentKinds.toolInput(params),
           content: (existing) => ({
             type: "doc" as const,
             content: [...(existing.content?.content ?? []), ...(tiptapContent.content ?? [])],
@@ -244,8 +201,7 @@ export const NoteWriteTool = Tool.define(
           action: "replace",
           title: params.noteTitle,
           tags: params.tags,
-          kind: params.kind,
-          description: params.blueprintDescription,
+          fields: NoteDocumentKinds.toolInput(params),
           content: () => tiptapContent,
           ctx,
           optimistic: false,
@@ -258,6 +214,6 @@ export const NoteWriteTool = Tool.define(
         metadata: { action: params.mode } as Record<string, any>,
       }
     },
-  },
+  }),
   { activityKind: "object" },
 )

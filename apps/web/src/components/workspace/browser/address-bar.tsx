@@ -48,7 +48,7 @@ export function AddressBar(props: AddressBarProps) {
   const modifier = navigator.platform.includes("Mac") ? "⌘" : "Ctrl+"
   const [draft, setDraft] = createSignal("")
   const [editing, setEditing] = createSignal(false)
-  const [suggestionsDismissed, setSuggestionsDismissed] = createSignal(false)
+  const [suggestionsRequested, setSuggestionsRequested] = createSignal(false)
   const [selectedSuggestion, setSelectedSuggestion] = createSignal(-1)
   const [submitted, setSubmitted] = createSignal<string>()
   const suggestions = createMemo(() => {
@@ -57,7 +57,7 @@ export function AddressBar(props: AddressBarProps) {
       .filter((entry) => `${entry.title} ${entry.url}`.toLowerCase().includes(query))
       .slice(0, 8)
   })
-  const suggestionsOpen = () => editing() && !suggestionsDismissed() && suggestions().length > 0
+  const suggestionsOpen = () => editing() && suggestionsRequested() && suggestions().length > 0
   createEffect(() => {
     suggestions()
     setSelectedSuggestion(-1)
@@ -183,7 +183,10 @@ export function AddressBar(props: AddressBarProps) {
     if (result?.type === "zoom") setZoom(result.factor)
   }
   function shortcut(action: BrowserShortcut) {
-    if (action === "address") focusAddress()
+    if (action === "address") {
+      focusAddress()
+      setSuggestionsRequested(true)
+    }
     if (action === "find") openFind()
     if (action === "newTab") props.onNewTab?.()
     if (action === "closeTab") props.onCloseTab?.()
@@ -269,21 +272,23 @@ export function AddressBar(props: AddressBarProps) {
               value={draft()}
               placeholder={_(B.enterUrl)}
               spellcheck={false}
-              onFocus={() => {
-                setEditing(true)
-                setSuggestionsDismissed(false)
+              onFocus={() => setEditing(true)}
+              onBlur={() => {
+                setEditing(false)
+                setSuggestionsRequested(false)
+                setSelectedSuggestion(-1)
               }}
-              onBlur={() => setEditing(false)}
+              onClick={() => setSuggestionsRequested(true)}
               onInput={(event) => {
                 setDraft(event.currentTarget.value)
-                setSuggestionsDismissed(false)
+                setSuggestionsRequested(true)
               }}
               onKeyDown={(event) => {
                 if (event.isComposing) return
                 if (event.key === "Escape") {
                   event.preventDefault()
                   event.stopPropagation()
-                  setSuggestionsDismissed(true)
+                  setSuggestionsRequested(false)
                   setSelectedSuggestion(-1)
                   setSubmitted(undefined)
                   setDraft(props.activeUrl() === "about:blank" ? "" : props.activeUrl())
@@ -291,7 +296,7 @@ export function AddressBar(props: AddressBarProps) {
                 }
                 if ((event.key === "ArrowDown" || event.key === "ArrowUp") && suggestions().length) {
                   event.preventDefault()
-                  setSuggestionsDismissed(false)
+                  setSuggestionsRequested(true)
                   setSelectedSuggestion((current) =>
                     event.key === "ArrowDown"
                       ? (current + 1) % suggestions().length

@@ -4,7 +4,8 @@ import { sidebar, topBar } from "@/locales/messages"
 import { Show, createMemo, createSignal, onMount, onCleanup, useContext, type Accessor } from "solid-js"
 import { Portal } from "solid-js/web"
 import { SessionWorkbenchChrome } from "@/components/session/workbench-chrome"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useNavigate } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
@@ -352,17 +353,26 @@ export function SessionTopBar(props: {
             <TooltipKeybind
               open={String(triggerProps["aria-expanded"]) === "true" ? false : undefined}
               placement="bottom"
-              title={_(topBar.chooseModel)}
+              title={triggerProps["aria-label"] ?? _(topBar.chooseModel)}
               keybind={command.keybind("model.choose")}
             >
               <button {...triggerProps} type="button" class="stb-selector-btn">
-                <span class="stb-selector-label">{local.model.current()?.name ?? _(topBar.selectModel)}</span>
-                <Show when={local.model.current()?.catalogState === "retained"}>
-                  <Tooltip placement="bottom" value={_(topBar.retainedModel)}>
-                    <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base" />
-                  </Tooltip>
+                <Show
+                  when={triggerProps.children}
+                  fallback={
+                    <>
+                      <span class="stb-selector-label">{local.model.current()?.name ?? _(topBar.selectModel)}</span>
+                      <Show when={local.model.current()?.catalogState === "retained"}>
+                        <Tooltip placement="bottom" value={_(topBar.retainedModel)}>
+                          <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base" />
+                        </Tooltip>
+                      </Show>
+                      <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="stb-chevron" />
+                    </>
+                  }
+                >
+                  {triggerProps.children}
                 </Show>
-                <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="stb-chevron" />
               </button>
             </TooltipKeybind>
           )}

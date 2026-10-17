@@ -143,7 +143,8 @@ def test_short_control_rejects_lost_or_changed_native_process_evidence(bun_jit):
             assert_native_control(changed, tool_turns=2, bun_jit=bun_jit, observations=False, task_home=True)
 
 
-def test_native_control_rejects_wrong_identity_jit_and_early_completion():
+@pytest.mark.parametrize(("read_tool", "edit_tool"), [("view_file", "revise_file"), ("read", "apply_patch")])
+def test_native_control_rejects_wrong_identity_jit_and_early_completion(read_tool, edit_tool):
     records = [
         {
             "type": "tool_use",
@@ -156,8 +157,8 @@ def test_native_control_rejects_wrong_identity_jit_and_early_completion():
                     "BENCH_NATIVE_PHASE=start\nBENCH_SYNERGY_WRAPPER_BUN_JSC_useJIT=1\n"
                     "BENCH_SYNERGY_CLI_BUN_JSC_useJIT=1\n",
                 ),
-                ("view_file", "[/app/observation.txt#abc]\n0|row 0 中😀\n"),
-                ("revise_file", "changed 2"),
+                (read_tool, "[/app/observation.txt#abc]\n0|row 0 中😀\n"),
+                (edit_tool, "changed 2"),
                 (
                     "bash",
                     "BENCH_NATIVE_PHASE=end\nBENCH_SYNERGY_WRAPPER_BUN_JSC_useJIT=1\n"
@@ -179,13 +180,18 @@ def test_native_control_rejects_wrong_identity_jit_and_early_completion():
     missing_edit = json.loads(json.dumps(records).replace("BENCH_OBSERVATION_VERIFIED=3", "unverified"))
     with pytest.raises(AssertionError, match="verified file edits"):
         assert_native_control(missing_edit, tool_turns=4, bun_jit=True, observations=True)
+    missing_writer = copy.deepcopy(records)
+    missing_writer[2]["part"]["tool"] = "bash"
+    with pytest.raises(AssertionError, match="file read/edit tool pair"):
+        assert_native_control(missing_writer, tool_turns=4, bun_jit=True, observations=True)
     manifest = {"snapshots": [{"calls": [{"model": {"modelID": "fixture-two"}}]}]}
     assert_fixture_models(manifest, "fixture-two")
     with pytest.raises(AssertionError, match="model identity"):
         assert_fixture_models(manifest, "fixture-one")
 
 
-async def test_observation_fixture_requires_the_file_edit_to_reach_the_disk(tmp_path):
+@pytest.mark.parametrize(("read_tool", "edit_tool"), [("view_file", "revise_file"), ("read", "apply_patch")])
+async def test_observation_fixture_requires_the_file_edit_to_reach_the_disk(tmp_path, read_tool, edit_tool):
     async def handler(request):
         return await fixture_provider(
             request, observation_turn=int(request.query["turn"]), observation_directory=str(tmp_path)
@@ -198,7 +204,7 @@ async def test_observation_fixture_requires_the_file_edit_to_reach_the_disk(tmp_
     await web.TCPSite(server, "127.0.0.1", 0).start()
     tools = [
         {"type": "function", "function": {"name": name, "parameters": {"properties": properties}}}
-        for name, properties in [("bash", {"command": {"type": "string"}}), ("view_file", {}), ("revise_file", {})]
+        for name, properties in [("bash", {"command": {"type": "string"}}), (read_tool, {}), (edit_tool, {})]
     ]
     try:
         async with aiohttp.ClientSession() as client:
@@ -216,12 +222,19 @@ async def test_observation_fixture_requires_the_file_edit_to_reach_the_disk(tmp_
                     assert response.status == 200
                     function = (await response.json())["choices"][0]["message"]["tool_calls"][0]["function"]
                     commands.append((function["name"], json.loads(function["arguments"])))
-        assert [name for name, _ in commands] == ["bash", "view_file", "revise_file", "bash"]
+        assert [name for name, _ in commands] == ["bash", read_tool, edit_tool, "bash"]
         await asyncio.to_thread(subprocess.run, ["sh", "-c", commands[0][1]["command"]], check=True, timeout=10)
         file = tmp_path / "observation.txt"
         assert "中😀" in file.read_text()
         assert commands[1][1] == {"filePath": str(file), "limit": 32}
-        assert commands[2][1]["input"] == f"[{file}#abc]\nSWAP 1..1:\n+changed 2"
+        if edit_tool == "revise_file":
+            assert commands[2][1] == {"input": f"[{file}#abc]\nSWAP 1..1:\n+changed 2"}
+        else:
+            assert commands[2][1] == {
+                "patch": f"*** Begin Patch\n*** Update File: {file}\n@@\n-row 0 "
+                + "中😀" * 128
+                + "\n+changed 2\n*** End Patch"
+            }
         for edited in [False, True]:
             if edited:
                 file.write_text("changed 2\n" + "\n".join(file.read_text().splitlines()[1:]))

@@ -13,7 +13,7 @@ import {
   assertPackagedHolosCliAsset,
   copyHolosCliAsset,
   HOLOS_CLI_RUNTIME_PATH,
-} from "@ericsanchezok/synergy-connections/script/holos-cli-assets"
+} from "@ericsanchezok/synergy-holos/script/holos-cli-assets"
 
 const temporaryDirectories: string[] = []
 

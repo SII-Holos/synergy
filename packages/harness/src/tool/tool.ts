@@ -13,6 +13,8 @@ import type { Agent } from "../agent/agent"
 import type { PermissionNext } from "../permission/next"
 import { Truncate } from "./truncation"
 import { ToolExposure } from "./exposure"
+import type { FileToolGroup } from "./file-tool-group"
+export { FileToolGroup } from "./file-tool-group"
 import type { ToolDisplay } from "@ericsanchezok/synergy-util/tool"
 import type { SettingCondition as PluginSettingCondition } from "@ericsanchezok/synergy-util/setting-condition"
 type PluginJsonSchema = Record<string, unknown>
@@ -84,6 +86,7 @@ export namespace Tool {
 
   export interface InitContext {
     agent?: Agent.Info
+    fileToolGroup?: FileToolGroup
   }
 
   export type Source =
@@ -119,6 +122,7 @@ export namespace Tool {
     id: string
     requiresWorkspace?: boolean
     requiresExecution?: "exec" | "pty"
+    fileToolGroups?: readonly FileToolGroup[]
     exposure?: ToolExposure.Info
     display?: ToolDisplay
     source?: Source
@@ -139,7 +143,7 @@ export namespace Tool {
   export type InferMetadata<T extends Info> = T extends Info<any, infer M> ? M : never
 
   export function lazy(
-    declaration: Pick<Info, "id" | "requiresWorkspace" | "requiresExecution">,
+    declaration: Pick<Info, "id" | "requiresWorkspace" | "requiresExecution" | "fileToolGroups">,
     load: () => Promise<Info>,
   ): Info {
     let pending: Promise<Info> | undefined
@@ -151,7 +155,8 @@ export namespace Tool {
             if (
               implementation.id !== declaration.id ||
               Boolean(implementation.requiresWorkspace) !== Boolean(declaration.requiresWorkspace) ||
-              implementation.requiresExecution !== declaration.requiresExecution
+              implementation.requiresExecution !== declaration.requiresExecution ||
+              JSON.stringify(implementation.fileToolGroups) !== JSON.stringify(declaration.fileToolGroups)
             )
               throw new Error(`Lazy tool ${declaration.id} does not match its declaration`)
             return implementation
@@ -240,6 +245,7 @@ export namespace Tool {
       exposure?: ToolExposure.Info
       display?: ToolDisplay
       activityKind?: ToolActivityEvidence["kind"]
+      fileToolGroups?: readonly FileToolGroup[]
     },
   ): Info<Parameters, Result> {
     // When `init` is a plain object (not a factory function), the same object
@@ -258,6 +264,7 @@ export namespace Tool {
       id,
       requiresWorkspace: options?.requiresWorkspace,
       requiresExecution: options?.requiresExecution,
+      fileToolGroups: options?.fileToolGroups,
       exposure: options?.exposure,
       display: options?.display,
       init: async (initCtx) => {

@@ -28,6 +28,7 @@ import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/se
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 runtime.run(() => Log.init({ print: false }))
 
@@ -60,6 +61,40 @@ async function createInterruptedTurn(sessionID: string) {
 }
 
 describe("POST /session/:sessionID/continue", () => {
+  test("rejects a retained task with an absent owner before clearing its pause", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({ title: "Retained owner task" })
+          const key = ["sessions", session.scope.id, session.id, "info"]
+          const workflow = { kind: "lattice", runID: "retained-run", mode: "auto" }
+          await Storage.write(key, { ...session, workflow })
+          await SessionLifecycle.pause({ sessionID: session.id, reason: "interrupted" })
+          const pause = await SessionLifecycle.snapshot(session.id)
+          const response = await Server.App().request(`/session/${session.id}/continue`, { method: "POST" })
+          expect(response.status).toBe(409)
+          expect(await response.json()).toMatchObject({
+            name: "SessionExecutionOwnerUnavailableError",
+            data: { sessionID: session.id },
+          })
+          const input = await Server.App().request(`/session/${session.id}/input`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              metadata: { source: "agenda" },
+              parts: [{ type: "text", text: "Retained owner instruction" }],
+            }),
+          })
+          expect(input.status).toBe(409)
+          expect(await input.json()).toMatchObject({ name: "SessionExecutionOwnerUnavailableError" })
+          expect(await SessionLifecycle.snapshot(session.id)).toEqual(pause)
+          expect((await Storage.read<Record<string, unknown>>(key)).workflow).toEqual(workflow)
+        },
+      })
+    }))
+
   test("clears the pause latch and reports the drive result", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

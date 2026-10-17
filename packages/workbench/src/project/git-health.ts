@@ -37,6 +37,9 @@ export namespace GitHealth {
     _aliases: new Map<string, string>(),
     _lastDir: undefined as string | undefined,
     _generation: 0,
+    _revisions: new Map<string, number>(),
+    _dirty: new Set<string>(),
+    _failed: new Set<string>(),
   }))
 
   const CACHE_TTL_MS = 5 * 60 * 1000
@@ -64,40 +67,42 @@ export namespace GitHealth {
     return Math.max(0, deadline - Date.now())
   }
 
-  async function withTimeoutValue<T>(promise: Promise<T>, ms: number, value: T): Promise<T> {
+  async function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined
-    const fallback = new Promise<T>((resolve) => {
-      timer = setTimeout(() => resolve(value), ms)
+    const fallback = new Promise<T>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error("Git health scan timed out")), ms)
     })
     return Promise.race([promise, fallback]).finally(() => {
       if (timer) clearTimeout(timer)
     })
   }
 
-  async function gitText(cwd: string, args: string[]): Promise<string | undefined> {
-    try {
-      const proc = Bun.spawn(["git", ...args], {
-        cwd,
-        stdout: "pipe",
-        stderr: "pipe",
-        signal: AbortSignal.timeout(GIT_COMMAND_TIMEOUT_MS),
-      })
-      const stdout = new Response(proc.stdout).text()
-      const stderr = new Response(proc.stderr).text().catch(() => "")
-      const [output, exitCode] = await Promise.all([stdout, proc.exited])
-      await stderr
-      if (exitCode !== 0) return undefined
-      return output
-    } catch {
-      return undefined
+  async function gitText(
+    cwd: string,
+    args: string[],
+    options?: { allowedExit?: number[]; notRepo?: boolean },
+  ): Promise<string | undefined> {
+    const proc = Bun.spawn(["git", ...args], {
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+      signal: AbortSignal.timeout(GIT_COMMAND_TIMEOUT_MS),
+    })
+    const stdout = new Response(proc.stdout).text()
+    const stderr = new Response(proc.stderr).text().catch(() => "")
+    const [output, exitCode] = await Promise.all([stdout, proc.exited])
+    const errorText = await stderr
+    if (exitCode !== 0) {
+      if (options?.allowedExit?.includes(exitCode) || (options?.notRepo && /not a git repository/i.test(errorText)))
+        return undefined
+      throw new Error(`Git health probe failed (${args[0]}, exit ${exitCode})`)
     }
+    return output
   }
 
   async function resolveRepo(cwd: string): Promise<RepoInfo | undefined> {
-    const instanceState = runtimeState()
-
     const dir = normalizeDir(cwd)
-    const inside = await gitText(dir, ["rev-parse", "--is-inside-work-tree"])
+    const inside = await gitText(dir, ["rev-parse", "--is-inside-work-tree"], { notRepo: true })
     if (inside?.trim() !== "true") return undefined
 
     const [rootText, gitDirText] = await Promise.all([
@@ -109,7 +114,6 @@ export namespace GitHealth {
     if (!root || !gitDir) return undefined
 
     const resolvedRoot = normalizeDir(root)
-    instanceState._aliases.set(dir, resolvedRoot)
     return {
       root: resolvedRoot,
       gitDir: path.isAbsolute(gitDir) ? gitDir : path.resolve(dir, gitDir),
@@ -120,7 +124,10 @@ export namespace GitHealth {
     const active = issues.filter((i) => i.level === "warn" || i.level === "critical")
     if (active.length === 0) return undefined
 
-    const lines = ["<git-health>"]
+    const lines = [
+      "<git-health>",
+      "Latest completed diagnostic check; this is a bounded historical observation, not a live guarantee of repository state.",
+    ]
     for (const issue of active) {
       const label = issue.level === "critical" ? "Critical" : "Warning"
       lines.push(`${label}: ${issue.message}`)
@@ -170,9 +177,11 @@ export namespace GitHealth {
   // diff_files thresholds: 10→warn, 25→critical
   // ---------------------------------------------------------------------------
   async function checkDiff(cwd: string): Promise<Issue[]> {
+    const head = await gitText(cwd, ["rev-parse", "--verify", "--quiet", "HEAD"], { allowedExit: [1] })
+    const reference = head ? ["HEAD"] : []
     const [unstaged, staged] = await Promise.all([
-      gitText(cwd, ["diff", "--numstat", "HEAD"]).then((x) => x ?? ""),
-      gitText(cwd, ["diff", "--cached", "--numstat", "HEAD"]).then((x) => x ?? ""),
+      gitText(cwd, ["diff", "--numstat", ...reference]).then((x) => x ?? ""),
+      gitText(cwd, ["diff", "--cached", "--numstat", ...reference]).then((x) => x ?? ""),
     ])
 
     const unstagedParsed = parseNumstat(unstaged)
@@ -248,19 +257,21 @@ export namespace GitHealth {
     const large: { path: string; size: number }[] = []
 
     for (let i = 0; i < cappedNames.length; i += LARGE_FILE_STAT_BATCH_SIZE) {
-      if (Date.now() >= deadline) break
+      if (Date.now() >= deadline) throw new Error("Git health file scan timed out")
       const batch = cappedNames.slice(i, i + LARGE_FILE_STAT_BATCH_SIZE)
-      const stats = await withTimeoutValue(
+      const stats = await withDeadline(
         Promise.all(
           batch.map(async (fileName) => {
             const filePath = path.join(cwd, fileName)
-            const stat = await fs.promises.lstat(filePath).catch(() => undefined)
+            const stat = await fs.promises.lstat(filePath).catch((error: NodeJS.ErrnoException) => {
+              if (error.code === "ENOENT") return undefined
+              throw error
+            })
             if (!stat || stat.isSymbolicLink()) return undefined
             return { fileName, stat }
           }),
         ),
         remainingMs(deadline),
-        [],
       )
       for (const result of stats) {
         if (result && result.stat.size > 10 * 1024 * 1024) {
@@ -295,7 +306,7 @@ export namespace GitHealth {
   // ---------------------------------------------------------------------------
   async function checkExtraBranches(cwd: string): Promise<Issue | undefined> {
     const [headBranch, branchesText] = await Promise.all([
-      gitText(cwd, ["rev-parse", "--abbrev-ref", "HEAD"]).then((x) => x?.trim() ?? ""),
+      gitText(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"], { allowedExit: [1] }).then((x) => x?.trim() ?? ""),
       gitText(cwd, ["for-each-ref", "--format=%(refname:short)", "refs/heads/"]).then((x) => x ?? ""),
     ])
 
@@ -319,7 +330,7 @@ export namespace GitHealth {
   // Dimension 6: detached_head
   // ---------------------------------------------------------------------------
   async function checkDetachedHead(cwd: string): Promise<Issue | undefined> {
-    const symRef = await gitText(cwd, ["symbolic-ref", "HEAD"])
+    const symRef = await gitText(cwd, ["symbolic-ref", "--quiet", "HEAD"], { allowedExit: [1] })
     if (symRef !== undefined) return undefined
 
     const headCommit = (await gitText(cwd, ["rev-parse", "HEAD"]))?.trim() ?? ""
@@ -344,7 +355,7 @@ export namespace GitHealth {
   async function checkGcNeeded(cwd: string, gitDir: string, deadline: number): Promise<Issue | undefined> {
     const [output, gcAutoText] = await Promise.all([
       gitText(cwd, ["count-objects", "-v"]).then((x) => x ?? ""),
-      gitText(cwd, ["config", "--get", "gc.auto"]),
+      gitText(cwd, ["config", "--get", "gc.auto"], { allowedExit: [1] }),
     ])
 
     const countMatch = output.match(/count:\s*(\d+)/)
@@ -380,6 +391,7 @@ export namespace GitHealth {
     // repo actually tracks a remote.
     const remoteRefs = await gitText(cwd, ["for-each-ref", "--count=1", "--format=%(refname)", "refs/remotes/"])
     if (!remoteRefs?.trim()) return undefined
+    if (!(await gitText(cwd, ["rev-parse", "--verify", "--quiet", "HEAD"], { allowedExit: [1] }))) return undefined
 
     const output = await gitText(cwd, ["rev-list", "--count", "HEAD", "--not", "--remotes"])
 
@@ -405,7 +417,7 @@ export namespace GitHealth {
     if (!repo) return { dir: fallbackDir, issues: [] }
 
     const remaining = remainingMs(deadline)
-    if (remaining === 0) return { dir: repo.root, issues: [] }
+    if (remaining === 0) throw new Error("Git health repository probe timed out")
 
     const checks: Promise<Issue | Issue[] | undefined>[] = [
       checkDiff(repo.root),
@@ -416,7 +428,7 @@ export namespace GitHealth {
       checkGcNeeded(repo.root, repo.gitDir, deadline),
       checkUnpushed(repo.root),
     ]
-    const results = await withTimeoutValue(Promise.all(checks), remaining, [])
+    const results = await withDeadline(Promise.all(checks), remaining)
 
     const issues = results.flat().filter((i): i is Issue => i !== undefined)
     return { dir: repo.root, issues }
@@ -428,7 +440,7 @@ export namespace GitHealth {
    * answer, and a stale repo probe is exactly the bug this replaces.
    */
   export async function isGitRepo(cwd?: string): Promise<boolean> {
-    const repo = await resolveRepo(normalizeDir(cwd ?? process.cwd()))
+    const repo = await resolveRepo(normalizeDir(cwd ?? process.cwd())).catch(() => undefined)
     return repo !== undefined
   }
 
@@ -441,25 +453,43 @@ export namespace GitHealth {
     if (existing) return existing
 
     const generation = instanceState._generation
+    const revisions = new Map(instanceState._revisions)
+    const unchanged = (dir: string) => (revisions.get(dir) ?? 0) === (instanceState._revisions.get(dir) ?? 0)
     let promise!: Promise<Issue[]>
     promise = scan(inputDir)
       .then((result) => {
         const instanceState = runtimeState()
 
-        instanceState._aliases.set(inputDir, result.dir)
-        if (generation === instanceState._generation) {
+        if (generation === instanceState._generation) instanceState._aliases.set(inputDir, result.dir)
+        if (generation === instanceState._generation && unchanged(key) && unchanged(result.dir)) {
           instanceState._cache.set(result.dir, { issues: result.issues, ts: Date.now() })
           instanceState._lastDir = result.dir
+          instanceState._dirty.delete(key)
+          instanceState._dirty.delete(result.dir)
+          instanceState._dirty.delete(inputDir)
+          instanceState._failed.delete(key)
+          instanceState._failed.delete(result.dir)
         }
         return result.issues
       })
-      .catch(() => [])
+      .catch(() => {
+        if (generation === instanceState._generation && unchanged(key)) {
+          instanceState._failed.add(key)
+          instanceState._dirty.delete(key)
+        }
+        return instanceState._cache.get(key)?.issues ?? []
+      })
       .finally(() => {
         const instanceState = runtimeState()
 
         if (instanceState._refreshing.get(key) === promise) instanceState._refreshing.delete(key)
         if (instanceState._refreshing.get(inputDir) === promise) instanceState._refreshing.delete(inputDir)
       })
+      .then((issues) =>
+        generation === instanceState._generation && (!unchanged(key) || !unchanged(cacheKey(inputDir)))
+          ? refresh(inputDir)
+          : issues,
+      )
 
     instanceState._refreshing.set(key, promise)
     if (key !== inputDir) instanceState._refreshing.set(inputDir, promise)
@@ -472,7 +502,12 @@ export namespace GitHealth {
     const dir = normalizeDir(cwd ?? process.cwd())
     const key = cacheKey(dir)
     const cached = instanceState._cache.get(key)
-    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    if (
+      cached &&
+      !instanceState._dirty.has(key) &&
+      !instanceState._failed.has(key) &&
+      Date.now() - cached.ts < CACHE_TTL_MS
+    ) {
       instanceState._lastDir = key
       return cached.issues
     }
@@ -484,17 +519,31 @@ export namespace GitHealth {
   }
 
   export function injectCached(cwd?: string): string | undefined {
+    const observation = observeCached(cwd)
+    return observation.state === "present" ? observation.text : undefined
+  }
+
+  export function observeCached(
+    cwd?: string,
+  ): { state: "present"; text: string } | { state: "cleared" | "unavailable" | "pending" } {
     const instanceState = runtimeState()
 
     const dir = normalizeDir(cwd ?? process.cwd())
     const key = cacheKey(dir)
     const cached = instanceState._cache.get(key)
-    if (!cached || Date.now() - cached.ts >= CACHE_TTL_MS) {
+    if (
+      !cached ||
+      instanceState._dirty.has(key) ||
+      instanceState._failed.has(key) ||
+      Date.now() - cached.ts >= CACHE_TTL_MS
+    ) {
       refresh(dir).catch(() => {})
     }
-    if (!cached) return undefined
+    if (instanceState._failed.has(key)) return { state: "unavailable" }
+    if (!cached || instanceState._dirty.has(key) || Date.now() - cached.ts >= CACHE_TTL_MS) return { state: "pending" }
     instanceState._lastDir = key
-    return render(cached.issues)
+    const text = render(cached.issues)
+    return text ? { state: "present", text } : { state: "cleared" }
   }
 
   export function lastReport(): Issue[] | undefined {
@@ -514,16 +563,15 @@ export namespace GitHealth {
       instanceState._cache.clear()
       instanceState._aliases.clear()
       instanceState._lastDir = undefined
+      instanceState._revisions.clear()
+      instanceState._dirty.clear()
+      instanceState._failed.clear()
       return
     }
 
     const dir = normalizeDir(cwd)
     const key = cacheKey(dir)
-    instanceState._cache.delete(dir)
-    instanceState._cache.delete(key)
-    instanceState._aliases.delete(dir)
-    instanceState._refreshing.delete(dir)
-    instanceState._refreshing.delete(key)
-    if (instanceState._lastDir === dir || instanceState._lastDir === key) instanceState._lastDir = undefined
+    instanceState._revisions.set(key, (instanceState._revisions.get(key) ?? 0) + 1)
+    instanceState._dirty.add(key)
   }
 }

@@ -8,18 +8,15 @@ import { AgentConfig } from "@ericsanchezok/synergy-harness/agent/config-crud"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { EOL } from "os"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import type { Argv } from "yargs"
 
 type AgentMode = "all" | "primary" | "subagent"
 
-const AVAILABLE_TOOLS = [
+const SHARED_TOOLS = [
   "bash",
-  "read",
-  "write",
-  "edit",
-  "list",
-  "glob",
-  "grep",
+  "process",
+  "file_search",
   "webfetch",
   "task",
   "todowrite",
@@ -48,7 +45,8 @@ const AgentCreateCommand = cmd({
       })
       .option("tools", {
         type: "string",
-        describe: `comma-separated list of tools to enable (default: all). Available: "${AVAILABLE_TOOLS.join(", ")}"`,
+        describe:
+          "comma-separated tool permission allowlist (default: all); fileToolGroup in scoped configuration selects the file interface",
       })
       .option("model", {
         type: "string",
@@ -56,9 +54,14 @@ const AgentCreateCommand = cmd({
         describe: "model to use in the format of provider/model",
       }),
   async handler(args) {
+    const toolScope = ScopeContext.tryScope() ?? (await Scope.resolve({ directory: process.cwd() }))
     await ScopeContext.provide({
       scope: Scope.home(),
       async fn() {
+        const availableTools = [
+          ...SHARED_TOOLS,
+          ...(await ScopeContext.provide({ scope: toolScope, fn: () => ToolRegistry.fileInterfaceIDs() })),
+        ]
         const cliPath = args.path
         const cliDescription = args.description
         const cliMode = args.mode as AgentMode | undefined
@@ -126,15 +129,15 @@ const AgentCreateCommand = cmd({
         // Select tools
         let selectedTools: string[]
         if (cliTools !== undefined) {
-          selectedTools = cliTools ? cliTools.split(",").map((t) => t.trim()) : AVAILABLE_TOOLS
+          selectedTools = cliTools ? cliTools.split(",").map((t) => t.trim()) : availableTools
         } else {
           const result = await prompts.multiselect({
             message: "Select tools to enable",
-            options: AVAILABLE_TOOLS.map((tool) => ({
+            options: availableTools.map((tool) => ({
               label: tool,
               value: tool,
             })),
-            initialValues: AVAILABLE_TOOLS,
+            initialValues: availableTools,
           })
           if (prompts.isCancel(result)) throw new UI.CancelledError()
           selectedTools = result
@@ -172,7 +175,7 @@ const AgentCreateCommand = cmd({
 
         // Build tools config
         const tools: Record<string, boolean> = {}
-        for (const tool of AVAILABLE_TOOLS) {
+        for (const tool of availableTools) {
           if (!selectedTools.includes(tool)) {
             tools[tool] = false
           }

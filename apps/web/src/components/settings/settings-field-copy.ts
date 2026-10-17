@@ -42,6 +42,7 @@ export const settingsFieldCopy = {
   agentWorkers: { id: "settings.runtime.agents.agentWorkers.title", message: "Parallel model requests" },
   agentConcurrency: { id: "settings.runtime.agents.concurrency.title", message: "Parallel collaborator tasks" },
   coauthor: { id: "settings.runtime.agents.coauthor.title", message: "Co-author Reminder" },
+  fileToolGroup: { id: "settings.runtime.fileToolGroup.title", message: "File read/write tool group" },
   defaultAgent: { id: "settings.runtime.agents.defaultAgent.title", message: "Default Agent" },
   invokeTimeout: { id: "settings.runtime.agents.invoke.title", message: "Invoke Timeout" },
   providerTtfb: { id: "settings.runtime.agents.ttfb.title", message: "TTFB Timeout" },

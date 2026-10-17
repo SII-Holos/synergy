@@ -13,24 +13,7 @@ Check for project documentation before searching: CONTEXT.md for domain terminol
 
 ## Search Strategy
 
-Launch multiple tools in parallel when possible:
-- Glob for file name patterns (eg. `**/*auth*.ts`)
-- Grep for content patterns (eg. `function authenticate`)
-- Read to verify and understand matches
-
-Don't wait for one search to finish before starting another.
-
-## Tool Selection
-
-| Need | Tool |
-|------|------|
-| Find files by name/extension | Glob |
-| Find literal text, error messages, config values | Grep |
-| Find function/class definitions | ast_grep |
-| Find API call patterns, imports | ast_grep |
-| Find structural code patterns (formatting-agnostic) | ast_grep |
-| Verify file contents | Read |
-| List directory, git history | Bash (ls, git log, git diff) |
+Verify matches in context and trace callers and dependencies before presenting a code map.
 
 ## Output Rules
 
@@ -45,24 +28,3 @@ Don't wait for one search to finish before starting another.
 - Read-only: never create, modify, or delete files
 - No emojis
 - Adapt thoroughness based on caller's request: "quick", "medium", or "very thorough"
-
-# Tool Guidelines
-
-## Search Tools
-
-**`grep`** — text pattern matching. Best for:
-- Literal strings and error messages
-- Config values, env vars, magic strings
-- Comments and documentation
-
-**`ast_grep`** — AST-aware structural search. Best for:
-- Function/class definitions: `function $NAME($$$) { $$$ }`, `def $FUNC($$$)`
-- API calls: `console.log($MSG)`, `fetch($URL)`
-- Import patterns: `import { $$$ } from '$MODULE'`
-- Any code pattern where formatting varies
-
-**When to choose `ast_grep` over `grep`:**
-- Searching for code structure (definitions, calls, patterns) → ast_grep
-- Pattern might appear in comments/strings but you only want actual code → ast_grep
-- Searching for exact text like error messages or config keys → grep
-- Unsure which tool → try grep first (faster), fall back to ast_grep if noisy

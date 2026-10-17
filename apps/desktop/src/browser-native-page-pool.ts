@@ -25,7 +25,7 @@ export interface BrowserNativePageInput {
 
 export interface BrowserNativePageHandle {
   state(): BrowserPage
-  execute(command: BrowserBackendCommand): Promise<BrowserBackendResult>
+  execute(command: BrowserBackendCommand, agentSessionID?: string): Promise<BrowserBackendResult>
   destroy(): Promise<void>
   isAlive(): boolean
 }
@@ -43,6 +43,7 @@ interface Generation {
   navigationTimer: ReturnType<typeof setTimeout> | null
   navigationRetries: number
   unresponsiveTimer: ReturnType<typeof setTimeout> | null
+  capture?: { window: BrowserWindow; users: number; visible: boolean }
 }
 
 interface Entry extends BrowserNativePageHandle {
@@ -53,6 +54,7 @@ interface Entry extends BrowserNativePageHandle {
   recovery: Promise<void> | null
   failed: boolean
   closing: boolean
+  attached: boolean
   recoveryBudget: number
   lastResumeRecoveryAt: number | null
   replacementListeners: Set<(view: WebContentsView, previous: WebContentsView) => void>
@@ -80,6 +82,7 @@ export class BrowserNativePagePool {
       unresponsiveGraceMs?: number
       navigationTimeoutMs?: number
       resumeRecoveryCooldownMs?: number
+      captureWindow?(): BrowserWindow | null | undefined
       onVisit?(partition: string, url: string, title: string): Promise<void>
     } = {},
   ) {}
@@ -101,11 +104,13 @@ export class BrowserNativePagePool {
         recovery: null,
         failed: false,
         closing: false,
+        attached: false,
         recoveryBudget: MAX_RECOVERY_BUDGET,
         lastResumeRecoveryAt: null,
         replacementListeners: new Set<(view: WebContentsView, previous: WebContentsView) => void>(),
         state: () => entry.generation.state(),
-        execute: (command: BrowserBackendCommand) => this.execute(entry, command),
+        execute: (command: BrowserBackendCommand, agentSessionID?: string) =>
+          this.execute(entry, command, agentSessionID),
         destroy: () => this.destroyEntry(key),
         isAlive: () => !entry.closing,
       } satisfies Partial<Entry>)
@@ -126,12 +131,33 @@ export class BrowserNativePagePool {
     const entry = this.find(ownerKey, pageId)
     if (!entry || entry.failed) throw restartingError(pageId, entry?.failed ? "failed" : "restarting")
     window.contentView.addChildView(entry.generation.view)
+    if (!entry.attached) {
+      entry.attached = true
+      this.updateNativeViewport(entry)
+    }
     return entry.generation.view
   }
 
   detach(window: BrowserWindow, ownerKey: string, pageId: string): void {
     const entry = this.find(ownerKey, pageId)
-    if (entry) window.contentView.removeChildView(entry.generation.view)
+    if (!entry || !entry.attached) return
+    if (entry.generation.capture) entry.generation.view.setVisible(false)
+    else window.contentView.removeChildView(entry.generation.view)
+    entry.attached = false
+    this.updateNativeViewport(entry)
+  }
+
+  private updateNativeViewport(entry: Entry): void {
+    const generation = entry.generation
+    const { width, height } = generation.view.getBounds()
+    void generation.control.setNativeViewport(entry.attached ? null : { width, height }).catch((error) => {
+      if (entry.closing || entry.generation !== generation) return
+      entry.input.emit({
+        type: "page.error",
+        pageId: entry.input.page.id,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    })
   }
 
   onGeneration(
@@ -158,7 +184,11 @@ export class BrowserNativePagePool {
     if (failures.length) throw new AggregateError(failures, "One or more native Browser pages could not be closed.")
   }
 
-  private async execute(entry: Entry, command: BrowserBackendCommand): Promise<BrowserBackendResult> {
+  private async execute(
+    entry: Entry,
+    command: BrowserBackendCommand,
+    agentSessionID?: string,
+  ): Promise<BrowserBackendResult> {
     if (command.type === "resume") {
       if (entry.recovery) await entry.recovery
       else if (entry.failed) await this.beginRecovery(entry, "resume-retry")
@@ -169,14 +199,48 @@ export class BrowserNativePagePool {
         throw restartingError(entry.state().id, entry.failed ? "failed" : "restarting")
       }
     }
+    const releaseCapture = command.type === "screenshot" ? this.retainCapture(entry) : undefined
     try {
-      return await entry.generation.control.execute(command)
+      return await entry.generation.control.execute(command, agentSessionID)
     } catch (error) {
       if (isRecoverableWebContentsError(error, entry.generation.view.webContents)) {
         void this.recover(entry, isCdpTimeout(error) ? "cdp-timeout" : "command-failure").catch(() => undefined)
         throw restartingError(entry.state().id, "restarting", error)
       }
       throw error
+    } finally {
+      releaseCapture?.()
+    }
+  }
+
+  private retainCapture(entry: Entry): () => void {
+    const generation = entry.generation
+    if (!generation.capture) {
+      const window = this.options.captureWindow?.()
+      if (!window || window.isDestroyed()) {
+        throw new BrowserProtocolError({
+          code: "browser_native_window_unavailable",
+          message: "The Desktop window is unavailable for Browser capture.",
+          retryable: true,
+          pageId: entry.input.page.id,
+          suggestedAction: "Open the Desktop window and retry the screenshot.",
+        })
+      }
+      const visible = generation.view.getVisible()
+      if (!entry.attached) {
+        generation.view.setVisible(false)
+        window.contentView.addChildView(generation.view)
+      }
+      generation.capture = { window, users: 0, visible }
+    }
+    const capture = generation.capture
+    capture.users++
+    return () => {
+      if (--capture.users) return
+      generation.capture = undefined
+      if (entry.generation === generation && entry.attached) return
+      if (!capture.window.isDestroyed()) capture.window.contentView.removeChildView(generation.view)
+      if (!generation.contents.isDestroyed()) generation.view.setVisible(capture.visible)
     }
   }
 
@@ -206,15 +270,6 @@ export class BrowserNativePagePool {
     let control: BrowserWebContentsControl | undefined
     let cleanupEvents: (() => void) | undefined
     try {
-      await configureProfileProxy(contents.session, input.networkProxy)
-      if (!existingView) await contents.loadURL("about:blank")
-      diagnostics = new BrowserHostDiagnostics({
-        pageId: input.page.id,
-        contents,
-        downloadDir: input.downloadDir,
-        emitHostEvent: input.emit,
-      })
-      await diagnostics.start()
       let lastState = input.page
       const state = (): BrowserPage =>
         contents.isDestroyed()
@@ -226,20 +281,29 @@ export class BrowserNativePagePool {
               isLoading: contents.isLoading(),
               lastActiveAt: null,
             })
-      control = new BrowserWebContentsControl({
+      const createControl = () =>
+        new BrowserWebContentsControl({
+          pageId: input.page.id,
+          contents: () => contents,
+          diagnostics: () => diagnostics,
+          pageState: state,
+          initialNavigationURL: existingView ? restoreURL : undefined,
+          onWindowOpen: (details) => this.openPopup(input, details),
+          onNavigationBlocked: (url, reason) =>
+            input.emit({ type: "page.error", pageId: input.page.id, url, message: reason }),
+        })
+      if (existingView) control = createControl()
+      await configureProfileProxy(contents.session, input.networkProxy)
+      if (!existingView) await contents.loadURL("about:blank")
+      diagnostics = new BrowserHostDiagnostics({
         pageId: input.page.id,
-        contents: () => contents,
-        diagnostics: () => diagnostics,
-        pageState: state,
-        resize: (width, height) => {
-          const current = view.getBounds()
-          view.setBounds({ x: current.x, y: current.y, width, height })
-        },
-        onWindowOpen: (details) => this.openPopup(input, details),
-        onNavigationBlocked: (url, reason) =>
-          input.emit({ type: "page.error", pageId: input.page.id, url, message: reason }),
+        contents,
+        downloadDir: input.downloadDir,
+        emitHostEvent: input.emit,
       })
-      await control.execute({ type: "setViewport", width: bounds.width, height: bounds.height })
+      await diagnostics.start()
+      control ??= createControl()
+      await control.setNativeViewport({ width: bounds.width, height: bounds.height })
       const generation: Generation = {
         id,
         view,
@@ -257,7 +321,7 @@ export class BrowserNativePagePool {
       cleanupEvents = this.bindPageEvents(input, generation)
       generation.cleanupEvents = cleanupEvents
       if (!existingView && restoreURL && restoreURL !== "about:blank") {
-        await control.execute({ type: "navigate", url: restoreURL, source: "user" })
+        await control.execute({ type: "navigate", url: restoreURL, source: "user" }, undefined, false)
       }
       return generation
     } catch (error) {
@@ -519,6 +583,7 @@ export class BrowserNativePagePool {
           entry.generation = next
           entry.failed = false
           this.bindRecoveryEvents(entry, next)
+          if (entry.attached) this.updateNativeViewport(entry)
           for (const listener of entry.replacementListeners) listener(next.view, previous.view)
           // Closing the replaced generation is best-effort: a wedged old
           // renderer must not roll back a recovery that already succeeded, or

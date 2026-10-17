@@ -20,12 +20,14 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { requestErrorMessage } from "@/utils/error"
 import { useProjectDirectoryPicker } from "./project-directory-picker"
+import { projectEntryCopy } from "./project-entry-copy"
 import { locationCopy } from "./task-location-copy"
 import "./project-flow.css"
 import { workspaceCopy as copy } from "./workspace-dialog-copy"
 import {
   sortWorkspaces,
   workspaceAvailable,
+  workspaceUnavailable,
   workspaceBranch,
   workspaceLabel,
   type WorkspaceDialogTarget,
@@ -108,7 +110,7 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
           ? sync.data.path.workspace?.generation
           : undefined,
   )
-  const [failedBinding, setFailedBinding] = createSignal<{ workspaceID: string; generation: number }>()
+  const [failedBinding, setFailedBinding] = createSignal<{ workspaceID: string; generation: number; reason?: string }>()
   const [sharing, setSharing] = createSignal<string[]>([])
   const [sharingRevision, setSharingRevision] = createSignal<number>()
   const [stores, setStores] = createSignal<ResourceProfiles["stores"]>([])
@@ -117,6 +119,7 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
   const [savedRevision, setSavedRevision] = createSignal<number>()
   const label = workspaceLabel
   const [search, setSearch] = createSignal("")
+  const [showCopies, setShowCopies] = createSignal(false)
   const [bindingPath, setBindingPath] = createSignal("")
   const [bindingRevision, setBindingRevision] = createSignal<number>()
   const [pending, setPending] = createSignal(false)
@@ -133,16 +136,48 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
     !(failedBinding()?.workspaceID === item.id && failedBinding()?.generation === item.binding.generation)
   const bindingChanged = () =>
     !!record() && selectedGeneration() !== undefined && selectedGeneration() !== record()!.binding.generation
+  const canRebind = () => view() === "manage" && !!record() && record()!.backend?.provider !== "objects"
+  const recoveryID = () => (props.mode === "recover" ? props.recovery.workspaceID : undefined)
+  const extraCopy = (item: WorkspaceInfo) =>
+    item.type === "git_worktree" && ![currentID(), mainID(), recoveryID(), selected()].includes(item.id)
+  const hiddenCopies = () => (props.copiesOnly ? 0 : records.data.filter(extraCopy).length)
+  const reason = () => {
+    const current = record()
+    const value =
+      failedBinding()?.workspaceID === current?.id
+        ? failedBinding()?.reason
+        : current?.binding.state !== "bound"
+          ? "binding_unavailable"
+          : "identity_unverified"
+    return _(
+      value === "identity_changed"
+        ? projectEntryCopy.folderChanged
+        : value === "directory_unavailable"
+          ? projectEntryCopy.folderMissing
+          : value === "binding_unavailable"
+            ? projectEntryCopy.folderUnbound
+            : value === "identity_unverified"
+              ? projectEntryCopy.folderUnverified
+              : copy.recovery,
+    )
+  }
   const filtered = createMemo(() =>
     sortWorkspaces(
       records.data.filter(
         (item) =>
           (!props.copiesOnly || item.type === "git_worktree") &&
+          (props.copiesOnly || showCopies() || search().trim() || !extraCopy(item)) &&
           `${label(item)} ${item.binding.path ?? ""} ${workspaceBranch(item) ?? ""} ${item.id}`
             .toLowerCase()
             .includes(search().trim().toLowerCase()),
       ),
-      { currentID: currentID(), mainID: mainID() ?? undefined, available, locale: i18n().locale },
+      {
+        currentID: currentID(),
+        mainID: mainID() ?? undefined,
+        recoveryID: recoveryID(),
+        available,
+        locale: i18n().locale,
+      },
     ),
   )
   const sharingDirty = createMemo(() => {
@@ -235,7 +270,11 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
         if (props.mode === "recover" && !failedBinding()) {
           const failed = records.data.find((item) => item.id === props.recovery.workspaceID)
           if (failed)
-            setFailedBinding({ workspaceID: failed.id, generation: selectedGeneration() ?? failed.binding.generation })
+            setFailedBinding({
+              workspaceID: failed.id,
+              generation: selectedGeneration() ?? failed.binding.generation,
+              reason: props.recovery.reason,
+            })
         }
         const initialID = resolveInitialExisting ? (currentID() ?? selected()) : selected()
         resolveInitialExisting = false
@@ -269,9 +308,10 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
   onMount(() => void reload())
   onCleanup(sdk.event.on("workspace.updated", (event) => upsert(structuredClone(event.properties))))
 
-  async function manage() {
+  async function manage(path?: string) {
     if (pending() || !record()) return
     setView("manage")
+    if (path) editBinding(path)
     await perform(loadSessions)
   }
   async function back() {
@@ -290,11 +330,30 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
       if (!(await discard())) return
       const path = await pick()
       if (!path) return
-      const result = await client.workspace.register({ scopeID, path }, options)
-      upsert(result.data)
-      if (!controller.signal.aborted) {
+      try {
+        const result = await client.workspace.register({ scopeID, path }, options)
+        upsert(result.data)
+        if (!active()) return
         select(result.data.id)
-        setView("list")
+        if (available(result.data)) setView("list")
+        else {
+          setView("manage")
+          editBinding(path)
+          await loadSessions()
+        }
+      } catch (failure) {
+        const unavailable = workspaceUnavailable(failure)
+        const current = records.data.find((item) => item.id === unavailable?.workspaceID)
+        if (!current || !active()) throw failure
+        setFailedBinding({
+          workspaceID: current.id,
+          generation: current.binding.generation,
+          reason: unavailable?.reason,
+        })
+        select(current.id)
+        editBinding(path)
+        setView("manage")
+        await loadSessions()
       }
     })
   const createStored = () =>
@@ -350,22 +409,21 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
       const current = record()
       const expectedRevision = bindingRevision()
       if (!current || expectedRevision === undefined || !bindingPath().trim()) return
+      const path = bindingPath().trim()
       await loadSessions()
+      if (!active()) return
       if (
         !(await confirm.ask({
           title: copy.rebind,
-          description: `${_(copy.rebindDescription)}\n${
-            affected()
-              .map((item) => item.title)
-              .join("\n") || _(locationCopy.noAssociated)
-          }`,
+          description: { ...copy.confirmBinding, values: { path, count: affected().length } },
           confirmLabel: copy.applyBinding,
           tone: "warning",
         }))
       )
         return
+      if (!active()) return
       const result = await client.workspace.rebind(
-        { scopeID, workspaceID: current.id, expectedRevision, path: bindingPath().trim() },
+        { scopeID, workspaceID: current.id, expectedRevision, path },
         options,
       )
       upsert(result.data)
@@ -412,29 +470,33 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
           <Button variant="ghost" onClick={() => void close()} disabled={pending()}>
             {_(props.mode === "manage" ? copy.close : copy.cancel)}
           </Button>
-          <Show when={props.mode !== "manage" || view() === "create"}>
+          <Show when={props.mode !== "manage" || view() === "create" || canRebind()}>
             <Button
               variant="primary"
-              onClick={() => (view() === "create" ? createStored() : choose())}
+              onClick={() => (view() === "create" ? createStored() : canRebind() ? rebind() : choose())}
               disabled={
                 pending() ||
                 loading() ||
                 (view() === "create"
                   ? !storeProfile() || !workspaceName().trim()
-                  : sharingDirty() ||
-                    !!bindingPath() ||
-                    bindingChanged() ||
-                    (!!selected() && (!record() || !available(record()!))))
+                  : canRebind()
+                    ? !sessionsLoaded() || !bindingPath().trim() || sharingDirty()
+                    : sharingDirty() ||
+                      !!bindingPath() ||
+                      bindingChanged() ||
+                      (!!selected() && (!record() || !available(record()!))))
               }
             >
               {_(
                 view() === "create"
                   ? copy.create
-                  : selected() === null
-                    ? copy.useNone
-                    : record()?.backend?.provider === "objects"
-                      ? copy.useObjects
-                      : copy.choose,
+                  : canRebind()
+                    ? copy.applyBinding
+                    : selected() === null
+                      ? copy.useNone
+                      : record()?.backend?.provider === "objects"
+                        ? copy.useObjects
+                        : copy.choose,
               )}
             </Button>
           </Show>
@@ -479,15 +541,38 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
               </Button>
             </Show>
           </Show>
-          <Button variant="ghost" onClick={reload} disabled={pending()}>
+          <Button variant="ghost" onClick={reload} disabled={pending()} title={_(copy.refreshHint)}>
             {_(copy.reload)}
           </Button>
         </div>
+        <Show when={error()}>
+          <p role="alert" class="text-small text-text-error break-words">
+            {error()}
+          </p>
+        </Show>
         <Show when={!loading() && !directoryBrowsing()}>
           <p>{_(locationCopy.cannotBrowse)}</p>
         </Show>
         <Show when={loading()}>
           <p role="status">{_(copy.loading)}</p>
+        </Show>
+        <Show
+          when={
+            view() === "list" &&
+            record() &&
+            !available(record()!) &&
+            record()!.backend?.provider !== "objects" &&
+            directoryBrowsing()
+          }
+        >
+          <section class="workspace-directory-recovery">
+            <strong>{label(record()!)}</strong>
+            <p class="project-flow-path">{record()!.binding.path}</p>
+            <p class="text-small text-text-weak">{reason()}</p>
+            <Button onClick={() => void manage(record()?.binding.path ?? undefined)} disabled={pending()}>
+              {_(copy.repair)}
+            </Button>
+          </section>
         </Show>
         <Show when={view() === "list"}>
           <div class="workspace-directory-list" aria-label={_(copy.title)}>
@@ -548,6 +633,16 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
               <p class="text-small text-text-weak">{_(copy.empty)}</p>
             </Show>
           </div>
+          <Show when={hiddenCopies() && !search().trim()}>
+            <Button
+              variant="ghost"
+              aria-expanded={showCopies()}
+              onClick={() => setShowCopies(!showCopies())}
+              disabled={pending()}
+            >
+              {_(showCopies() ? copy.hideCopies : { ...copy.otherCopies, values: { count: hiddenCopies() } })}
+            </Button>
+          </Show>
         </Show>
         <Show when={view() === "create"}>
           <TextField label={_(copy.name)} value={workspaceName()} onChange={setWorkspaceName} disabled={pending()} />
@@ -570,15 +665,48 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
           {(current) => (
             <>
               <p class="project-flow-path">{current().binding.path ?? label(current())}</p>
-              <section class="project-flow-section">
-                <h3>{_(locationCopy.associated)}</h3>
+              <Show when={current().backend?.provider !== "objects"}>
+                <section class="project-flow-section">
+                  <h3>{_(copy.rebind)}</h3>
+                  <div class="flex flex-col gap-2 pt-2">
+                    <p class="text-small text-text-weak">{_(copy.rebindDescription)}</p>
+                    <TextField
+                      label={_(copy.rebindPath)}
+                      value={bindingPath()}
+                      onChange={editBinding}
+                      disabled={pending()}
+                    />
+                    <div class="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          perform(async () => {
+                            const value = await pick()
+                            if (value) editBinding(value)
+                          })
+                        }
+                        disabled={pending()}
+                      >
+                        {_(copy.pick)}
+                      </Button>
+                    </div>
+                  </div>
+                </section>
+              </Show>
+              <details class="project-flow-section workspace-associated-tasks">
+                <summary>
+                  {_(locationCopy.associated)}
+                  <Show when={sessionsLoaded()}> · {affected().length}</Show>
+                </summary>
                 <Show when={sessionsLoaded()} fallback={<p role="alert">{_(locationCopy.associatedFailed)}</p>}>
-                  <For each={affected()}>{(session) => <p>{session.title}</p>}</For>
+                  <div class="workspace-associated-list" role="list" aria-label={_(locationCopy.associated)}>
+                    <For each={affected()}>{(session) => <p role="listitem">{session.title}</p>}</For>
+                  </div>
                   <Show when={!affected().length}>
                     <p>{_(locationCopy.noAssociated)}</p>
                   </Show>
                 </Show>
-              </section>
+              </details>
               <Show when={stores().length}>
                 <Button
                   variant="ghost"
@@ -641,51 +769,12 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
                   </Button>
                 </fieldset>
               </Show>
-              <Show when={current().backend?.provider !== "objects"}>
-                <section class="project-flow-section">
-                  <h3>{_(copy.rebind)}</h3>
-                  <div class="flex flex-col gap-2 pt-2">
-                    <p class="text-small text-text-weak">{_(copy.rebindDescription)}</p>
-                    <TextField
-                      label={_(copy.rebindPath)}
-                      value={bindingPath()}
-                      onChange={editBinding}
-                      disabled={pending()}
-                    />
-                    <div class="flex gap-2">
-                      <Button
-                        variant="ghost"
-                        onClick={() =>
-                          perform(async () => {
-                            const value = await pick()
-                            if (value) editBinding(value)
-                          })
-                        }
-                        disabled={pending()}
-                      >
-                        {_(copy.pick)}
-                      </Button>
-                      <Button
-                        onClick={rebind}
-                        disabled={pending() || !sessionsLoaded() || !bindingPath().trim() || sharingDirty()}
-                      >
-                        {_(copy.applyBinding)}
-                      </Button>
-                    </div>
-                  </div>
-                </section>
-              </Show>
             </>
           )}
         </Show>
         <Show when={bindingChanged()}>
           <p role="status" class="text-small text-text-weak">
             {_(copy.changed)}
-          </p>
-        </Show>
-        <Show when={error()}>
-          <p role="alert" class="text-small text-text-error break-words">
-            {error()}
           </p>
         </Show>
       </div>

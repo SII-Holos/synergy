@@ -1,8 +1,9 @@
+import { useViewActivity } from "./view-residency"
 import { createExecutionContext } from "./execution-context"
 import { createExecutionClock } from "@/composables/create-execution-clock"
 import { createExecutionSummary } from "./execution-summary"
-import { createMemo, createSignal, onCleanup } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { createEffect, createMemo, createSignal, onCleanup, type Accessor } from "solid-js"
+import { useParams } from "@/context/session-route"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useSDK } from "./sdk"
 import { useGlobalSDK } from "./global-sdk"
@@ -16,6 +17,9 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
     const global = useGlobalSDK()
     const panels = useWorkbenchPanels()
     const params = useParams()
+    const active = useViewActivity()
+    const [consumers, setConsumers] = createSignal(0)
+    const [restored, setRestored] = createSignal(0)
     const available = () => global.capabilities.has("workbench")
     const [visible, setVisible] = createSignal(document.visibilityState !== "hidden")
     const visibility = () => setVisible(document.visibilityState !== "hidden")
@@ -26,28 +30,65 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
       sessionID: () => params.id,
       available,
       connected: sdk.connected,
-      visible,
+      visible: () => visible() && active() && consumers() > 0,
       subscribe: (receive) => sdk.event.on("execution.updated", (event) => receive(event.properties)),
     })
     const advance = createExecutionClock(() => state.summary, connected)
+    const currentConnection = () => connectionVersion() + restored()
+    onCleanup(
+      sdk.event.on("server.view.patch", (event) => {
+        if (event.properties.sessionID === params.id && event.properties.snapshot) setRestored((value) => value + 1)
+      }),
+    )
+    const retain = (options?: {
+      active?: Accessor<boolean>
+      runID?: Accessor<string | undefined>
+      nodeIDs?: Accessor<string[]>
+    }) => {
+      const panelActive = useViewActivity()
+      const consuming = () =>
+        active() && panelActive() && visible() && !!params.id && available() && options?.active?.() !== false
+      createEffect(() => {
+        const sessionID = params.id
+        if (!consuming() || !sessionID) return
+        const release = global.content.view({
+          kind: "execution",
+          scopeID: sdk.scopeID,
+          sessionID,
+          runID: options?.runID?.(),
+          nodeIDs: options?.nodeIDs?.(),
+        })
+        setConsumers((value) => value + 1)
+        onCleanup(() => {
+          release()
+          setConsumers((value) => value - 1)
+        })
+      })
+      return consuming
+    }
     const rounds = createMemo(() => new Map(state.summary?.rounds.map((round) => [round.id, round]) ?? []))
     return {
       state,
       refresh,
       available,
-      connectionVersion,
+      connectionVersion: currentConnection,
+      retain,
       advance,
       connected,
       createContextHistory: (
         options: Pick<Parameters<typeof createExecutionContext>[0], "runID" | "active" | "selected">,
-      ) =>
-        createExecutionContext({
+      ) => {
+        const consuming = retain({ active: options.active, runID: options.runID })
+        return createExecutionContext({
           ...options,
+          active: consuming,
           client: sdk.client,
+          scopeID: () => sdk.scopeID,
           sessionID: () => params.id,
-          connectionVersion,
+          connectionVersion: currentConnection,
           subscribe: (receive) => sdk.event.on("execution.updated", (event) => receive(event.properties)),
-        }),
+        })
+      },
       round: (id: string) => {
         const round = rounds().get(id)
         return round

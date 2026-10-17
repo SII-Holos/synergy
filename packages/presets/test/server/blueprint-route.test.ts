@@ -1,9 +1,9 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
-import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint"
 import { NoteStore } from "@ericsanchezok/synergy-note"
-import { BlueprintRoute } from "@ericsanchezok/synergy-workflows/blueprint/routes/blueprint"
+import { BlueprintRoute } from "@ericsanchezok/synergy-blueprint/blueprint/routes/blueprint"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -56,6 +56,16 @@ async function createLoop(noteID: string, sessionID: string) {
   })
   expect(response.status).toBe(200)
   return response.json() as Promise<{ id: string; noteID: string; executionAgent?: string; auditAgent: string }>
+}
+
+function expectExecutionPrompt(text: string, noteID: string) {
+  expect(text).toContain(`Execute Blueprint "Prompt split" (${noteID})`)
+  expect(text).toContain("Read the complete Note before starting")
+  expect(text).toContain("preserve its requirements, boundaries and acceptance criteria")
+  expect(text).toContain("Work directly unless coordination materially helps")
+  expect(text).toContain("Verify the delivered outcome with evidence appropriate to the claim")
+  expect(text).toContain("blueprint_loop_stop with concise results, key checks, evidence references and limitations")
+  expect(text).toContain("then end the turn")
 }
 
 describe("BlueprintRoute start prompt", () => {
@@ -123,13 +133,7 @@ describe("BlueprintRoute start prompt", () => {
           expect(mail.agent).toBe(PrimaryAgentIdentity.names.coding)
           expect(mail.model).toEqual({ providerID: "openai", modelID: "gpt-test" })
           const text = (mail.parts[0] as MessageV2.TextPart).text
-          expect(text).toContain('Execute the coding Blueprint "Prompt split"')
-          expect(text).toContain("Evidence must match the semantic strength of the claim")
-          expect(text).toContain("A weaker proxy cannot prove a stronger outcome")
-          expect(text).toContain("representative use")
-          expect(text).toContain("unverified blocking limitation")
-          expect(text).toContain("After that tool succeeds, execution is closed")
-          expect(text).toContain("end the assistant turn immediately")
+          expectExecutionPrompt(text, note.id)
         },
       })
     }))
@@ -262,7 +266,7 @@ describe("BlueprintRoute start prompt", () => {
       })
     }))
 
-  test("uses the general Blueprint prompt for the general primary", () =>
+  test("keeps the shared outcome contract when the general primary executes", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -289,11 +293,7 @@ describe("BlueprintRoute start prompt", () => {
           if (mail.type !== "user") throw new Error("expected user mail")
           expect(mail.agent).toBe(PrimaryAgentIdentity.names.general)
           const text = (mail.parts[0] as MessageV2.TextPart).text
-          expect(text).toContain('Execute the Blueprint "Prompt split"')
-          expect(text).toContain("domain-appropriate specialists")
-          expect(text).not.toContain("coding Blueprint")
-          expect(text).not.toContain("migration or compatibility")
-          expect(text).not.toContain("parallel implementation slices")
+          expectExecutionPrompt(text, note.id)
         },
       })
     }))
@@ -334,7 +334,7 @@ describe("BlueprintRoute start prompt", () => {
       })
     }))
 
-  test("uses the coding Blueprint prompt for the coding primary", () =>
+  test("keeps the shared outcome contract when the coding primary executes", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -361,13 +361,7 @@ describe("BlueprintRoute start prompt", () => {
           if (mail.type !== "user") throw new Error("expected user mail")
           expect(mail.agent).toBe(PrimaryAgentIdentity.names.coding)
           const text = (mail.parts[0] as MessageV2.TextPart).text
-          expect(text).toContain('Execute the coding Blueprint "Prompt split"')
-          expect(text).toContain("migration or compatibility")
-          expect(text).toContain("parallel implementation slices")
-          expect(text).toContain("Evidence must match the semantic strength of the claim")
-          expect(text).toContain("unverified blocking limitation")
-          expect(text).toContain("After that tool succeeds, execution is closed")
-          expect(text).toContain("end the assistant turn immediately")
+          expectExecutionPrompt(text, note.id)
         },
       })
     }))

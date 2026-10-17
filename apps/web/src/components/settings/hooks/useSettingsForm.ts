@@ -41,6 +41,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     colorScheme: params.colorScheme(),
     snapshot: cfg.snapshot ?? UI_DEFAULTS.snapshot,
     compactReasoning: cfg.compactReasoning ?? UI_DEFAULTS.compactReasoning,
+    preferWorkBrief: cfg.preferWorkBrief ?? UI_DEFAULTS.preferWorkBrief,
     welcomeGames: cfg.welcomeGames ?? UI_DEFAULTS.welcomeGames,
     username: cfg.username ?? UI_DEFAULTS.username,
     theme: cfg.theme ?? UI_DEFAULTS.theme,
@@ -65,9 +66,11 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   })
 
   params.setSettings("agents", {
-    defaultAgent: params.availableAgents
-      ? (defaultPrimaryAgent(cfg.default_agent, params.availableAgents) ?? "")
-      : (cfg.default_agent ?? UI_DEFAULTS.defaultAgent),
+    fileToolGroup: cfg.fileToolGroup ?? UI_DEFAULTS.fileToolGroup,
+    defaultAgent:
+      cfg.default_agent && params.availableAgents
+        ? (defaultPrimaryAgent(cfg.default_agent, params.availableAgents) ?? "")
+        : (cfg.default_agent ?? UI_DEFAULTS.defaultAgent),
   })
   const roleVariantDraft: Record<string, string> = {}
   for (const [role, variant] of Object.entries(cfg.role_variant ?? {})) {
@@ -257,7 +260,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   params.setSettings("library", {
     learning:
       memory?.enabled === false && experience?.encode === false && experience?.retrieve === false ? "false" : "true",
-    autonomy: library?.autonomy === undefined ? UI_DEFAULTS.libraryAutonomy : library.autonomy ? "true" : "false",
+    autonomy: cfg.anima?.enabled === undefined ? UI_DEFAULTS.libraryAutonomy : cfg.anima.enabled ? "true" : "false",
     memorySimThreshold:
       memoryRetrieve?.simThreshold !== undefined ? String(memoryRetrieve.simThreshold) : UI_DEFAULTS.memorySimThreshold,
     memoryTopK: memoryRetrieve?.topK !== undefined ? String(memoryRetrieve.topK) : UI_DEFAULTS.memoryTopK,

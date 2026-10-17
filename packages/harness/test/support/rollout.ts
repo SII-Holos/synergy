@@ -9,6 +9,9 @@ import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/le
 import { RolloutTransportRecorder } from "@ericsanchezok/synergy-harness/session/rollout/transport-recorder"
 import { ProviderPricing } from "@ericsanchezok/synergy-harness/provider/pricing"
 
+export { contextDraft } from "./context-usage"
+export { RolloutCall } from "../../src/session/rollout/call"
+
 export async function measurePhase<T>(phase: string, body: () => Promise<T>): Promise<T> {
   const started = performance.now()
   try {

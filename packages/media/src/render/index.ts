@@ -52,7 +52,7 @@ export namespace Render {
     if (`asset://${Asset.generateId(bytes, RenderArtifact.MIME)}` !== descriptor.source)
       throw new Unavailable({ message: "Visual source integrity check failed" })
     const source = RenderArtifact.Source.parse(JSON.parse(bytes.toString()))
-    const { html: _, ...identity } = source
+    const { html: _, ui: _ui, ...identity } = source
     if (
       JSON.stringify(RenderArtifact.Descriptor.parse({ ...identity, source: descriptor.source })) !==
       JSON.stringify(descriptor)
@@ -64,6 +64,7 @@ export namespace Render {
   export async function write(target: RenderArtifact.Target, input: RenderArtifact.Write) {
     RenderArtifact.Target.parse(target)
     const update = RenderArtifact.Write.parse(input)
+    await owned(target)
     return Storage.transaction(async () => {
       const { part, descriptor, state } = await owned(target)
       if (descriptor.mode !== "interactive") throw new Unavailable({ message: "Static visuals cannot save state" })

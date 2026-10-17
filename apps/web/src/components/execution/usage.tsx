@@ -10,7 +10,6 @@ export function ExecutionPerformance(props: { summary: ExecutionSummary }) {
   const rate = () => props.summary.rates.generation
   const cache = () => props.summary.cache
   const ratio = () => cache().ratio ?? cache().observedRatio
-  const observed = () => cache().ratio == null
   const rateText = () =>
     _({
       ...E.tokenRate,
@@ -29,7 +28,7 @@ export function ExecutionPerformance(props: { summary: ExecutionSummary }) {
         </Show>
         <Show when={ratio() != null}>
           <div>
-            <dt>{_(observed() ? E.observedCacheHit : E.cacheHit)}</dt>
+            <dt>{_(E.cacheHit)}</dt>
             <dd>{cacheText()}</dd>
           </div>
         </Show>

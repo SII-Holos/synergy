@@ -11,7 +11,6 @@ import { Log } from "../util/log"
 import { Identifier } from "../id/id"
 import { Session } from "."
 import { SessionEvent } from "./event"
-import { Agent } from "../agent/agent"
 import { Bus } from "../bus"
 import { SessionRetry } from "./retry"
 import { SessionManager } from "./manager"
@@ -49,7 +48,6 @@ import type { Activity } from "./types"
 import { RuntimeContext } from "../lifecycle/context"
 
 export namespace SessionProcessor {
-  const DOOM_LOOP_THRESHOLD = 3
   const TOOL_SETTLE_TIMEOUT = 5_000
   const log = Log.create({ service: "session.processor" })
 
@@ -134,20 +132,6 @@ export namespace SessionProcessor {
     resolverInput?: Omit<ToolResolver.Input, "processor">
     intentBindings?: ReadonlyMap<string, ToolIntent.Binding>
     onModelStreamSettled?: (error?: MessageV2.Assistant["error"]) => void
-  }
-
-  export function shouldAskDoomLoop(parts: MessageV2.Part[], toolName: string, input: unknown) {
-    const lastThree = parts.slice(-DOOM_LOOP_THRESHOLD)
-    return (
-      lastThree.length === DOOM_LOOP_THRESHOLD &&
-      lastThree.every(
-        (part) =>
-          part.type === "tool" &&
-          part.tool === toolName &&
-          part.state.status !== "pending" &&
-          JSON.stringify(part.state.input) === JSON.stringify(input),
-      )
-    )
   }
 
   function streamToolDiagnostic(toolName: string, error: unknown): ToolDiagnostic {
@@ -1055,6 +1039,7 @@ export namespace SessionProcessor {
             let retryEligible = false
             let contextUsageEnrichment:
               | {
+                  callID?: string
                   draft: Promise<ContextUsage.Draft | undefined>
                   totalInput: number
                 }
@@ -1337,7 +1322,8 @@ export namespace SessionProcessor {
                       generatingAccum[value.id] = raw
                       streamInput.memoryTurn?.observeToolRawChars(value.id, raw.length)
                       // Throttle generating updates: emit when enough new content has accumulated
-                      if (raw.length - (prevRaw.length || 0) < 50 && raw.length % 128 !== 0) break
+                      const published = match.state.status === "generating" ? match.state.charsReceived : 0
+                      if (raw.length - published < 50) break
                       const part = await Session.updatePart({
                         ...match,
                         state: {
@@ -1647,6 +1633,7 @@ export namespace SessionProcessor {
                         exactProviderInputTotal != null
                       ) {
                         contextUsageEnrichment = {
+                          callID: rollout?.callID,
                           draft: stream.contextUsageDraft,
                           totalInput: exactProviderInputTotal,
                         }
@@ -1805,22 +1792,6 @@ export namespace SessionProcessor {
               agentTurnInput.activeToolIDs?.splice(0)
               if (deferredToolCalls.length > 0) {
                 SessionManager.setExecutionPhase(input.sessionID, "authorizing_tools")
-              }
-              for (const call of deferredToolCalls) {
-                if (!shouldAskDoomLoop(Object.values(toolcalls), call.toolName, call.input)) continue
-                const agent = await Agent.get(input.assistantMessage.agent)
-                const session = await Session.get(input.assistantMessage.sessionID)
-                await PermissionNext.ask({
-                  permission: "doom_loop",
-                  patterns: [call.toolName],
-                  sessionID: input.assistantMessage.sessionID,
-                  metadata: {
-                    tool: call.toolName,
-                    input: call.input,
-                  },
-                  ruleset: PermissionNext.merge(agent.permission, PermissionNext.sessionRuleset(session)),
-                  signal: input.abort,
-                })
               }
               if (deferredToolCalls.length > 0) {
                 SessionManager.setExecutionPhase(input.sessionID, "queued_tools")
@@ -2106,6 +2077,7 @@ export namespace SessionProcessor {
   function persistContextUsage(input: {
     sessionID: string
     messageID: string
+    callID?: string
     draft: Promise<ContextUsage.Draft | undefined>
     totalInput: number
   }) {
@@ -2115,7 +2087,7 @@ export namespace SessionProcessor {
         await Session.updateAssistantContextUsage({
           sessionID: input.sessionID,
           messageID: input.messageID,
-          contextUsage: ContextUsage.reconcile(draft, input.totalInput),
+          contextUsage: { ...ContextUsage.reconcile(draft, input.totalInput), callID: input.callID },
         })
       })
       .catch((error) => {

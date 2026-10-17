@@ -12,6 +12,9 @@ type ResourceEntry = {
   transferSize?: number
   encodedBodySize?: number
   decodedBodySize?: number
+  requestStart?: number
+  responseStart?: number
+  responseEnd?: number
 }
 
 type LongTaskEntry = {
@@ -137,6 +140,36 @@ function enqueue(entry: QueueEntry) {
     return
   }
   queue.push(entry)
+}
+
+const workMetrics = new Map<string, BrowserMetric>()
+export function recordFrontendWork(
+  name: string,
+  value: number,
+  unit: BrowserMetric["unit"],
+  mode: "sum" | "max" | "last" = "sum",
+) {
+  if (!started || !Number.isFinite(value) || value < 0) return
+  const previous = workMetrics.get(name)
+  if (!previous && workMetrics.size >= 128) return
+  workMetrics.set(
+    name,
+    metricValue(
+      name,
+      mode === "sum" ? (previous?.value ?? 0) + value : mode === "max" ? Math.max(previous?.value ?? 0, value) : value,
+      unit,
+      {},
+    ),
+  )
+}
+export function recordSessionPhase(input: BrowserTelemetryContext & { phase: string; duration: number }) {
+  enqueue({
+    kind: "metric",
+    value: metricValue("frontend.session_switch.phase.duration", input.duration, "ms", {
+      ...contextLabels(input),
+      phase: input.phase,
+    }),
+  })
 }
 
 export function recordSessionSwitchTiming(input: {
@@ -326,6 +359,8 @@ export function drainTokenDurationMetrics(): BrowserMetric[] {
 
 async function flushBrowserMetrics(input: { url: string; client: SynergyClient }, options?: { keepalive?: boolean }) {
   if (uploading || (!options?.keepalive && Date.now() < nextUploadAt)) return
+  for (const metric of workMetrics.values()) enqueue({ kind: "metric", value: metric })
+  workMetrics.clear()
   for (const metric of drainTokenDurationMetrics()) enqueue({ kind: "metric", value: metric })
   if (queue.length === 0 && locallyRejected === 0) return
   const candidates = queue.splice(0, MAX_BATCH)
@@ -441,6 +476,9 @@ function observePerformanceEntries() {
         transferSize: entry.transferSize,
         encodedBodySize: entry.encodedBodySize,
         decodedBodySize: entry.decodedBodySize,
+        requestStart: entry.requestStart,
+        responseStart: entry.responseStart,
+        responseEnd: entry.responseEnd,
       },
     })
   })
@@ -605,6 +643,7 @@ export function stopBrowserPerformanceMetrics() {
   queue = []
   locallyRejected = 0
   tokenDurations.clear()
+  workMetrics.clear()
   tokenDurationSampleRate = DEFAULT_TOKEN_DURATION_SAMPLE_RATE
   started = false
 }

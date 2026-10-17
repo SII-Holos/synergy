@@ -1,10 +1,11 @@
 import { batch, createEffect, createSignal, For, on, onCleanup, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import type { ExecutionSummary } from "@ericsanchezok/synergy-sdk/client"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { useExecution } from "@/context/execution"
+import { useViewActivity } from "@/context/view-residency"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
@@ -26,6 +27,7 @@ const record = (value: unknown) => (value && typeof value === "object" ? (value 
 
 export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
   const execution = useExecution()
+  const viewActive = useViewActivity()
   const sdk = useSDK()
   const panels = useWorkbenchPanels()
   const params = useParams()
@@ -56,6 +58,7 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
   let summaryRequest = 0
   let summaryOwner = ""
   const visible = () =>
+    viewActive() &&
     execution.available() &&
     (["side", "bottom"] as const).some(
       (surface) => panels.surface(surface).opened() && panels.surface(surface).active() === tabID,
@@ -113,7 +116,7 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
     }),
   )
   const unsubscribe = sdk.event.on("execution.updated", (event) => {
-    if (event.properties.sessionID !== params.id || !runID()) return
+    if (!active() || event.properties.sessionID !== params.id || !runID()) return
     const next = event.properties.roundSummaries.find((entry) => entry.runID === runID())
     if (next && (!scoped.summary || next.revision >= scoped.summary.revision)) setScoped("summary", reconcile(next))
   })
@@ -152,6 +155,25 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
     })
     setRecords(true)
   }
+  createEffect(
+    on(
+      () => props.tab.state,
+      (value) => {
+        const target = record(value)
+        if (target.contextDashboard) return
+        const targetRun = typeof target.runID === "string" ? target.runID : undefined
+        if (typeof target.nodeID === "string") {
+          openRecords({ nodeID: target.nodeID, runID: targetRun ?? "" })
+        } else if (targetRun !== undefined) {
+          batch(() => {
+            selectRound(targetRun)
+            setRecords(false)
+          })
+        }
+      },
+      { defer: true },
+    ),
+  )
   const diagnosticRun = () => record(diagnosticTab().state).runID as string | undefined
   const scopeLabel = () => {
     if (!diagnosticRun()) return _(D.taskScope)
@@ -228,7 +250,7 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
         <ContextDashboardLayout
           composition={
             <ContextComposition
-              snapshot={history.state.latest}
+              snapshot={history.state.displayedLatest}
               category={category()}
               highlight={highlight()}
               onHighlight={setHighlight}

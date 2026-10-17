@@ -12,6 +12,7 @@ Generated from `packages/harness/src/config/domain.ts` and the domain-owned conf
 | `models` | `10-models.jsonc` | merge |
 | `providers` | `20-providers.jsonc` | merge |
 | `library` | `30-library.jsonc` | merge |
+| `anima` | `35-anima.jsonc` | merge |
 | `mcp` | `40-mcp.jsonc` | merge |
 | `plugins` | `50-plugins.jsonc` | merge |
 | `skills` | `55-skills.jsonc` | merge |
@@ -45,6 +46,7 @@ File: `00-general.jsonc` · Merge: merge
 | `keybinds` | Keybinds.optional (optional) | Custom keybind configurations |
 | `toast` | object (optional) | Toast notification preferences |
 | `compactReasoning` | boolean (optional) | Show a compact reasoning preview in the execution process (default: false) |
+| `preferWorkBrief` | boolean (optional) | Prefer a tool call's purpose description over its action and target when available (default: false) |
 | `welcomeGames` | boolean (optional) | Show interactive games on the new-task greeting (default: true). Set false to render a plain greeting. |
 | `locale` | "system" \| "en" \| "zh-CN" (optional) | UI locale (system = follow OS, default: system) |
 | `activityDisplay` | "full" \| "balanced" \| "minimal" (optional) | Execution process detail: full = expanded process, balanced = current stage with completed process collapsed, minimal = compact progress. All modes use the same process view (default: balanced) |
@@ -86,6 +88,14 @@ File: `30-library.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `library` | LibraryConfig |  |
+
+## Anima
+
+File: `35-anima.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `anima` | object (optional) |  |
 
 ## MCP
 
@@ -129,7 +139,8 @@ File: `60-agents.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `default_agent` | string (optional) | Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable. |
+| `default_agent` | string (optional) | Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable. |
+| `fileToolGroup` | FileToolGroup.optional (optional) |  |
 | `agent` | object (optional) | Agent configuration |
 | `instructions` | array (optional) | Additional instruction files or patterns to include |
 | `project_doc_fallback_filenames` | array (optional) | Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory |
@@ -144,7 +155,7 @@ File: `70-commands.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `command` | array (optional) |  |
+| `command` | record (optional) | Command configuration |
 
 ## Permissions
 
@@ -166,7 +177,7 @@ File: `90-channels.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `channel` | record (optional) | Channel configurations for messaging platform integrations |
+| `channel` | record (optional) | Channel configurations for selected messaging providers |
 
 ## Holos
 
@@ -174,7 +185,7 @@ File: `100-holos.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `holos` | Holos.optional (optional) | Holos platform configuration |
+| `holos` | Holos.optional (optional) |  |
 | `enterprise` | object (optional) |  |
 
 ## Email
@@ -183,15 +194,15 @@ File: `110-email.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `email` | Email.optional (optional) | Outgoing email configuration |
+| `email` | Email.optional (optional) |  |
 
-## GitHub
+## Github
 
 File: `115-github.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `github` | Github.optional (optional) | GitHub integration settings (git identity sync, agenda watch) |
+| `github` | Github.optional (optional) |  |
 
 ## Runtime
 
@@ -207,12 +218,12 @@ File: `120-runtime.jsonc` · Merge: merge
 | `question` | object (optional) |  |
 | `compaction` | object (optional) |  |
 | `observability` | ObservabilityConfig.optional (optional) | Local logs, indexed telemetry, and diagnostics settings |
+| `boss` | object (optional) |  |
 | `formatter` | union (optional) |  |
-| `lsp` | boolean (optional) | Expose the LSP tool; permission checks still apply (default: false) |
+| `lsp` | union (optional) |  |
 | `lspWriteDiagnostics` | boolean (optional) | Include LSP diagnostics after file-writing tools complete (default: true) |
 | `lspDiagnostics` | object (optional) | Severity and scope policy for diagnostics returned after file-writing tools |
 | `toolExposure` | object (optional) |  |
-| `boss` | object (optional) |  |
 
 ## Voice
 

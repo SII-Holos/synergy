@@ -99,6 +99,17 @@ describe("session.retry.delay", () => {
 })
 
 describe("session.message-v2.fromError", () => {
+  test.each([
+    "Our servers are currently overloaded. Please try again later.",
+    "Selected model is at capacity. Please try a different model.",
+  ])("retains bounded retry admission for a message-only subscription failure: %s", (message) => {
+    const error = AgentTurnProtocol.deserializeError(AgentTurnProtocol.serializeError(new Error(message)))
+    const result = MessageV2.fromError(error, { providerID: "openai-codex" })
+    expect(result).toMatchObject({ name: "APIError", data: { isRetryable: true, message } })
+    expect(SessionRetry.retryable(result)?.maxAttempts).toBe(SessionRetry.RETRY_MAX_ATTEMPTS)
+    expect(SessionRetry.retryable({ name: "UnknownError", data: { message: `Error: ${message}` } })).toBeDefined()
+  })
+
   test.each(["ETIMEOUT", "EHOSTUNREACH", "ESERVFAIL", "UND_ERR_SOCKET", "UND_ERR_BODY_TIMEOUT"])(
     "preserves retry classification for nested %s through the worker protocol",
     (code) => {

@@ -6,6 +6,11 @@ export type ConversationReadingPosition = {
   offset: number
 }
 
+const readingBlocks = (container: HTMLElement) =>
+  [...container.querySelectorAll<HTMLElement>("p,li,pre,h1,h2,h3,h4,h5,h6")].filter(
+    (node) => !node.closest("[data-content-error]"),
+  )
+
 export function captureConversationReadingPosition(container: HTMLElement): ConversationReadingPosition | undefined {
   const top = container.getBoundingClientRect().top
   const bottom = container.getBoundingClientRect().bottom
@@ -13,7 +18,7 @@ export function captureConversationReadingPosition(container: HTMLElement): Conv
     const rect = node.getBoundingClientRect()
     return rect.height > 0 && rect.bottom > top && rect.top < bottom && !node.closest("[hidden]")
   }
-  const paragraphs = [...container.querySelectorAll<HTMLElement>("p,li,pre,h1,h2,h3,h4,h5,h6")].filter(visible)
+  const paragraphs = readingBlocks(container).filter(visible)
   const node =
     paragraphs.find((node) => node.getBoundingClientRect().top >= top) ??
     paragraphs[0] ??
@@ -23,7 +28,7 @@ export function captureConversationReadingPosition(container: HTMLElement): Conv
   const part = node.closest<HTMLElement>("[data-part-id]")
   const anchor = node.closest<HTMLElement>("[data-scroll-anchor]")
   const owner = part ?? anchor ?? message
-  const blocks = [...owner.querySelectorAll<HTMLElement>("p,li,pre,h1,h2,h3,h4,h5,h6")]
+  const blocks = readingBlocks(owner)
   const block = blocks.indexOf(node)
   return {
     messageID: message.dataset.messageId,
@@ -57,10 +62,7 @@ export function restoreConversationReadingPosition(
     messages[0]
   if (!message) return false
   const owner = part ?? anchor ?? message
-  const block =
-    position.block === undefined
-      ? undefined
-      : owner.querySelectorAll<HTMLElement>("p,li,pre,h1,h2,h3,h4,h5,h6")[position.block]
+  const block = position.block === undefined ? undefined : readingBlocks(owner)[position.block]
   if (requireBlock && position.block !== undefined && (!block || block.getBoundingClientRect().height === 0))
     return false
   const node = block ?? owner
@@ -76,7 +78,8 @@ export function captureConversationReadingAnchor(container: HTMLElement, isCurre
     const rect = node.getBoundingClientRect()
     return rect.height > 0 && rect.bottom > viewportTop && rect.top < viewport.bottom && !node.closest("[hidden]")
   }
-  const message = Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]")).find(visible)
+  const messages = Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]")).filter(visible)
+  const message = messages.find((node) => readingBlocks(node).some(visible)) ?? messages[0]
   const row =
     target?.closest<HTMLElement>('[data-component="process-window"]') ??
     target?.closest<HTMLElement>("[data-scroll-anchor]") ??
@@ -86,7 +89,7 @@ export function captureConversationReadingAnchor(container: HTMLElement, isCurre
   const rowBounds = row.getBoundingClientRect()
   const block =
     !target &&
-    Array.from(row.querySelectorAll<HTMLElement>("p,li,pre,h1,h2,h3,h4,h5,h6")).find((node) => {
+    readingBlocks(row).find((node) => {
       const rect = node.getBoundingClientRect()
       return visible(node) && rect.top >= rowBounds.top && rect.bottom <= rowBounds.bottom
     })
@@ -98,8 +101,9 @@ export function captureConversationReadingAnchor(container: HTMLElement, isCurre
       offset: node.getBoundingClientRect().top - viewportTop,
     }),
   )
+  const owner = row.closest<HTMLElement>("[data-display-row]")
   return {
-    owner: row,
+    owner: owner && container.contains(owner) ? owner : row,
     restore() {
       if (!isCurrent() || !container.isConnected) return
       for (let index = fallbacks.length - 1; index >= 0; index--) {

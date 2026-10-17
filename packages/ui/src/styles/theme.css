@@ -75,7 +75,6 @@
   --shadow-xs-border: 0 0 0 1px var(--border-base);
   --shadow-xs-border-base: 0 0 0 1px var(--border-weak-base);
   --shadow-xs-border-select: 0 0 0 1px var(--border-selected);
-  --shadow-xs-border-focus: 0 0 0 1px var(--border-selected), 0 0 0 3px var(--surface-focus);
 
   --motion-duration-fast: 120ms;
   --motion-duration-base: 180ms;

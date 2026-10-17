@@ -1,6 +1,6 @@
 # Shared UI Package Rules
 
-Reusable Solid components, rendering, styles, themes, icons and plugin primitives follow Root `AGENTS.md`, `apps/web/AGENTS.md`, and `apps/web/PRODUCT.md`.
+Shared Solid UI follows Root `AGENTS.md`, `apps/web/AGENTS.md`, and `apps/web/PRODUCT.md`.
 
 Load `develop-frontend`; plugin registries also require `change-plugin-runtime`.
 
@@ -15,18 +15,22 @@ Load `develop-frontend`; plugin registries also require `change-plugin-runtime`.
 - Shared scroll surfaces declare native vertical viewport ownership for Markdown as defined in [frontend data sync](../../docs/architecture/frontend-data-sync.md#markdown-terminal-handoff).
 - Resource controls share `ResourceReference` parsing, the Markdown resource observer and `ResourceOpenController.open`; App owns opening policy.
 - Preserve Markdown sanitization, streaming/terminal rendering bounds, attachment behavior, and theme polarity. Treat SVG and rendered HTML as untrusted input at their owning boundary.
-- The published color contract is owned by `packages/plugin/src/theme`; `src/theme/*` keeps compatibility facades and owns Solid runtime application, the single theme registry, and shell snapshots. Themes provide validated light/dark seeds plus typed overrides. Built-in curated skins pre-register from `src/theme/default-themes.ts`; the default Synergy skin keeps its curated overrides in `themes/synergy.json`, while the other built-in skins stay seeds-only. Plugin themes register into the same registry and may not shadow built-in skin ids. Run `bun run generate:theme` after changing the contract or built-in theme and do not hand-edit generated CSS, schema, Web boot fallback, or Desktop fallback skin.
+- `packages/plugin/src/theme` owns the published color contract; `src/theme/*` owns compatibility facades, Solid application, the single registry and shell snapshots. Themes supply validated light/dark seeds and typed overrides. Built-ins pre-register in `src/theme/default-themes.ts`; only `themes/synergy.json` adds curated overrides. Plugins share the registry without shadowing built-in ids. Run `bun run generate:theme` after contract/built-in changes; never edit generated CSS, schema or Web/Desktop fallbacks.
 - Consumer color utilities must name canonical tokens. Add or change a semantic token at the theme boundary instead of inventing component-local aliases such as `*-soft`, `*-muted`, or unregistered foreground names. Keep status foreground/surface pairs at WCAG AA contrast.
-- Follow [Frontend themes and color](../../docs/reference/frontend-theming.md) for the complete consumer contract and theme-authoring workflow. New distributable selectable themes belong in structured plugin contributions; the other built-in skins stay seeds-only in `default-themes.ts`, and `themes/synergy.json` owns the built-in default's curated overrides.
+- Follow [Frontend themes and color](../../docs/reference/frontend-theming.md). New distributable themes use structured plugin contributions.
+- Consume compaction status through the public `compaction-card` presentation resolver.
 - Public exports are package contracts. Add exports deliberately and keep App-only components in `apps/web`.
+- `DataProvider.hasFeature` carries host-confirmed services. Public `tool-result-presentation` helpers gate specialized cards and resource jumps; unknown or missing owners stay hidden. Preserve ordinary transcript text and attachments, never structured control metadata.
 - `DataProvider.view` accepts a host-owned read-only session projection; `data` remains the canonical store. Local submission overlays belong to the App and must retain message and Part identities through canonical admission.
 - `RenderProvider` follows [visual ownership](../../docs/architecture/visual-results.md): UI owns sandboxed presentation; App owns Scope, state operations and confirmed Inbox inputs.
 
 ## Verify
 
-Keep shared UI tests under `test/`, mirroring the relevant `src/` domain. Never colocate `*.test.*` or `*.spec.*` files with UI implementation files.
+Keep tests under `test/`, mirroring their `src/` domain; never colocate tests with implementation.
 
-Keep browser conditions, isolation lists and batch timeouts in `script/test-options.ts`; the package runner and CI planner share that executable batch definition.
+Keep browser conditions, isolation and timeouts in `script/test-options.ts`, shared by the package runner and CI planner.
+
+Capability-dependent presentation tests mount real components with unknown, removed and restored selections. Assert specialized cards and resource actions disappear while ordinary transcript text and attachments survive; an older host epoch cannot restore removed presentation.
 
 Run the narrow test, `bun test test/semantic-icon.test.ts` for icon changes, and `bun test test/theme.test.ts test/theme-generation.test.ts` for theme changes. Then run `bun run test` and `bun run typecheck`. Exercise affected components through the App when visual or interaction behavior changed, and finish with root `bun run quality:quick`.
 

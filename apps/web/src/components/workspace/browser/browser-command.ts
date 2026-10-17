@@ -1,5 +1,4 @@
-import type { BrowserStoreAPI } from "./browser-store"
-import type { BrowserAPISessionState, BrowserBackendResult } from "@ericsanchezok/synergy-browser-core"
+import type { BrowserAPISessionState } from "@ericsanchezok/synergy-browser-core"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 
 export function createBrowserCommandId() {
@@ -26,6 +25,7 @@ export function browserControlCommandFromMessage(msg: Record<string, unknown>): 
         type: "setViewport",
         width: Number(msg.width),
         height: Number(msg.height),
+        ...(msg.mode === "fit" ? { mode: "fit" } : {}),
       }
     case "download.accept":
     case "download.cancel":
@@ -52,17 +52,5 @@ export function browserControlCommandFromMessage(msg: Record<string, unknown>): 
       return null
     default:
       return null
-  }
-}
-
-export function applyBrowserControlResult(store: BrowserStoreAPI, result: BrowserBackendResult) {
-  switch (result.type) {
-    case "page":
-      store.upsertPage(result.page)
-      break
-    case "navigation":
-      store.upsertPage(result.page)
-      store.setPageLoading(result.page.id, false)
-      break
   }
 }

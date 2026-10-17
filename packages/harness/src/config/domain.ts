@@ -78,6 +78,7 @@ export namespace ConfigDomain {
       label: "Agents",
       ownedKeys: [
         "default_agent",
+        "fileToolGroup",
         "agent",
         "instructions",
         "project_doc_fallback_filenames",
@@ -261,8 +262,7 @@ export namespace ConfigDomain {
     if (!domain) throw new Error(`Unknown config domain: ${id}`)
     const allowed = new Set(domain.ownedKeys.map(String))
     const invalid = Object.keys(config).filter(
-      (key) =>
-        !allowed.has(key) && !(options.preserveUnregistered && !ConfigExtensions.isComplete() && !domainForKey(key)),
+      (key) => !allowed.has(key) && !(options.preserveUnregistered && !domainForKey(key)),
     )
     if (invalid.length) {
       throw new Error(`Invalid key(s) for ${id} config: ${invalid.join(", ")}`)

@@ -1,3 +1,8 @@
+import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
+import { Vcs } from "./project/vcs"
+import { Ide } from "./project/ide"
+import { ReviewState } from "./review/state"
+import { ExecutionSchema } from "./execution/schema"
 import { registerProjectMigrations } from "./project/migration"
 import { PushBridge } from "./push/bridge"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
@@ -41,6 +46,12 @@ export function workbench(): RuntimeComponent {
     },
     adapters: { cli: new URL("./cli-adapter.ts", import.meta.url), http: new URL("./http.ts", import.meta.url) },
     register() {
+      BusEvent.register(
+        ...Object.values(Vcs.Event),
+        ...Object.values(Ide.Event),
+        ReviewState.Updated,
+        ExecutionSchema.Updated,
+      )
       registerConfig()
       registerProjectMigrations()
       registerWorkbenchAgents()

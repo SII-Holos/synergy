@@ -43,7 +43,7 @@ import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { createAutoScroll } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
 import { getSemanticIcon } from "./semantic-icon"
-import { isToolCardHidden } from "./tool-result-presentation"
+import { isToolCardHidden, toolFeatureAvailable } from "./tool-result-presentation"
 import { ToolResultBody } from "./tool-result-body"
 import { CompactionCard } from "./compaction-card"
 import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
@@ -133,6 +133,7 @@ export interface MessagePartProps {
   message: MessageType
   hideDetails?: boolean
   defaultOpen?: boolean
+  showAttachments?: boolean
 }
 
 export type PartComponent = Component<MessagePartProps>
@@ -476,10 +477,11 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: TOOL_TITLE_DESC["multiedit"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
+    case "apply_patch":
     case "patch":
       return {
         icon: "diff",
-        title: TOOL_TITLE_DESC["patch"],
+        title: TOOL_TITLE_DESC[tool],
       }
     case "write":
       return {
@@ -588,6 +590,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "message-square-more",
         title: TOOL_TITLE_DESC["response_card"],
         subtitle: input.title,
+      }
+    case "channel_reaction_only":
+      return {
+        icon: "message-square-more",
+        title: TOOL_TITLE_DESC["channel_reaction_only"],
+        subtitle: metadata?.intent?.reaction,
       }
     case "openai_image_gen":
       return {
@@ -1397,6 +1405,7 @@ export function Part(props: MessagePartProps) {
               message={props.message}
               hideDetails={props.hideDetails}
               defaultOpen={props.defaultOpen}
+              showAttachments={props.showAttachments}
             />
           </ToolExpansionIdentity>
         </ResourceReferenceProvider>
@@ -1466,6 +1475,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
   const view = data.view
   const part = () => props.part as ToolPart
+  const available = () => toolFeatureAvailable(part(), data.hasFeature)
   if (isToolCardHidden(part()) && part().state.status !== "error") return null
 
   const permission = createMemo(() => {
@@ -1480,8 +1490,8 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const audit = createMemo(() => getApprovalAudit(approval()))
 
   return (
-    <div data-component="tool-part-wrapper" data-permission={!!permission()}>
-      <Show when={audit().icon}>
+    <div data-component="tool-part-wrapper" data-permission={available() && !!permission()}>
+      <Show when={available() && audit().icon}>
         <Tooltip
           placement="right"
           value={
@@ -1500,12 +1510,14 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       </Show>
       <div data-component="tool-card-area">
         <ToolResultBody
+          hasFeature={data.hasFeature}
           part={part()}
           serverUrl={data.serverUrl}
           sessionId={props.message.sessionID}
           messageId={props.message.id}
           hideDetails={props.hideDetails}
           defaultOpen={props.defaultOpen}
+          showAttachments={props.showAttachments}
         />
       </div>
     </div>

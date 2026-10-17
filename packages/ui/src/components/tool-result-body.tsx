@@ -13,7 +13,9 @@ import { createAnimatedNumber } from "../hooks"
 import { AttachmentGallery } from "./attachment-card"
 import { SmartTool, ToolResultPresentationProvider } from "./basic-tool"
 import { ErrorCard } from "./error-card"
+import { toolFeatureAvailable, toolHistoricalText } from "./tool-result-presentation"
 import { ToolObjectResult } from "./tool-object-result"
+import { patchOutcome } from "./tool/patch-result"
 import {
   externalFallbackLookup,
   externalLoadNotify,
@@ -77,12 +79,14 @@ function fallbackRender(props: ToolProps) {
 
 export function ToolResultBody(props: {
   part: ToolPart
+  hasFeature?: (id: string) => boolean
   serverUrl: string
   sessionId?: string
   messageId?: string
   hideDetails?: boolean
   defaultOpen?: boolean
   resultOnly?: boolean
+  showAttachments?: boolean
 }) {
   const state = () => props.part.state
   const throttledRaw = createThrottledValue(() => {
@@ -99,14 +103,18 @@ export function ToolResultBody(props: {
     return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
   }
   const metadata = () => state().metadata ?? {}
+  const available = () => toolFeatureAvailable(props.part, props.hasFeature)
   const render = createMemo(() =>
-    resolveToolRenderer(props.part.tool, ToolRegistry, { externalLookup, externalLoadNotify }),
+    available()
+      ? resolveToolRenderer(props.part.tool, ToolRegistry, { externalLookup, externalLoadNotify })
+      : undefined,
   )
   const component = createMemo(() => render() ?? fallbackRender)
   const completed = () => (state().status === "completed" ? (state() as ToolStateCompleted) : undefined)
   const error = () => (state().status === "error" ? (state() as ToolStateError) : undefined)
   const generating = () => (state().status === "generating" ? (state() as ToolStateGenerating) : undefined)
-  const output = () => completed()?.output
+  const patchResult = () => props.part.tool === "apply_patch" && !!patchOutcome(metadata().outcome)
+  const output = () => completed()?.output ?? (patchResult() ? error()?.error : undefined)
   const structured = createMemo(() => {
     if (!props.resultOnly || render() || !output()) return undefined
     try {
@@ -125,58 +133,64 @@ export function ToolResultBody(props: {
   }
   const charsAnimated = createAnimatedNumber(() => generating()?.charsReceived ?? 0)
   const attachments = createMemo<AttachmentPart[]>(() => completed()?.attachments ?? [])
+  const historicalText = createMemo(() => toolHistoricalText(props.part))
   const result = () => (
     <Show
-      when={error()?.error}
-      fallback={
-        <Show
-          when={structured() !== undefined}
-          fallback={
-            <Dynamic
-              component={component()}
-              input={input()}
-              tool={props.part.tool}
-              metadata={metadata()}
-              title={completed()?.title}
-              output={output()}
-              status={state().status}
-              time={time()}
-              raw={generating()?.raw}
-              charsReceived={charsAnimated()}
-              hideDetails={props.hideDetails}
-              defaultOpen={props.defaultOpen}
-              partId={props.part.id}
-              sessionId={props.sessionId ?? props.part.sessionID}
-              messageId={props.messageId ?? props.part.messageID}
-              attachments={completed()?.attachments}
-            />
-          }
-        >
-          <ToolObjectResult value={structured()} />
-        </Show>
-      }
+      when={available()}
+      fallback={<Show when={historicalText()}>{(text) => <ToolObjectResult value={text()} />}</Show>}
     >
-      {(message) => (
-        <Show
-          when={props.resultOnly}
-          fallback={
-            <ErrorCard
-              error={message()}
-              input={error()?.input as Record<string, unknown> | undefined}
-              defaultOpen={props.defaultOpen}
-            />
-          }
-        >
-          <div data-slot="tool-result-error" role="status">
-            {message()}
-          </div>
-        </Show>
-      )}
+      <Show
+        when={!patchResult() && error()?.error}
+        fallback={
+          <Show
+            when={structured() !== undefined}
+            fallback={
+              <Dynamic
+                component={component()}
+                input={input()}
+                tool={props.part.tool}
+                metadata={metadata()}
+                title={completed()?.title}
+                output={output()}
+                status={state().status}
+                time={time()}
+                raw={generating()?.raw}
+                charsReceived={charsAnimated()}
+                hideDetails={props.hideDetails}
+                defaultOpen={props.defaultOpen}
+                partId={props.part.id}
+                sessionId={props.sessionId ?? props.part.sessionID}
+                messageId={props.messageId ?? props.part.messageID}
+                attachments={completed()?.attachments}
+              />
+            }
+          >
+            <ToolObjectResult value={structured()} />
+          </Show>
+        }
+      >
+        {(message) => (
+          <Show
+            when={props.resultOnly}
+            fallback={
+              <ErrorCard
+                error={message()}
+                input={error()?.input as Record<string, unknown> | undefined}
+                defaultOpen={props.defaultOpen}
+              />
+            }
+          >
+            <div data-slot="tool-result-error" role="status">
+              {message()}
+            </div>
+          </Show>
+        )}
+      </Show>
     </Show>
   )
 
   const attachmentsDisplay = () => (
-    <Show when={attachments().length > 0}>
+    <Show when={props.showAttachments !== false && attachments().length > 0}>
       <AttachmentGallery files={attachments()} serverUrl={props.serverUrl} />
     </Show>
   )

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { ManagedProjectOwnership } from "@ericsanchezok/synergy-connections/channel/managed-project-ownership"
+import { ManagedProjectOwnership } from "@ericsanchezok/synergy-channels/channel/managed-project-ownership"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"

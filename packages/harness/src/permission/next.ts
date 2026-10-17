@@ -1,3 +1,4 @@
+import { filePermissionNames } from "./file-permission"
 import { Bus } from "../bus"
 import { BusEvent } from "../bus/bus-event"
 import { Config } from "../config/config"
@@ -137,7 +138,11 @@ export namespace PermissionNext {
 
       const decisions = request.patterns.map((pattern) => evaluate(request.permission, pattern, ruleset))
       if (decisions.some((rule) => rule.action === "deny"))
-        throw new DeniedError(ruleset.filter((r: Rule) => Wildcard.match(request.permission, r.permission)))
+        throw new DeniedError(
+          ruleset.filter((r: Rule) =>
+            filePermissionNames(request.permission).some((name) => Wildcard.match(name, r.permission)),
+          ),
+        )
       if (decisions.some((rule) => rule.action === "ask" || (rule.action === "allow" && isNonBypassable(request)))) {
         const id = input.id ?? Identifier.ascending("permission")
         const info: Request = { id, ...request }
@@ -254,19 +259,17 @@ export namespace PermissionNext {
     const merged = merge(...rulesets)
     log.debug("evaluate", { permission, patternLength: pattern.length, rulesetCount: merged.length, mirror: true })
     const match = merged.findLast(
-      (rule) => Wildcard.match(permission, rule.permission) && Wildcard.match(pattern, rule.pattern),
+      (rule) =>
+        filePermissionNames(permission).some((name) => Wildcard.match(name, rule.permission)) &&
+        Wildcard.match(pattern, rule.pattern),
     )
     return match ?? { action: "ask", permission, pattern: "*" }
   }
 
-  const EDIT_TOOLS = ["edit", "write", "patch", "multiedit"]
-
   export function disabled(tools: string[], ruleset: Ruleset): Set<string> {
     const result = new Set<string>()
     for (const tool of tools) {
-      const permission = EDIT_TOOLS.includes(tool) ? "edit" : tool
-
-      const rule = ruleset.findLast((r) => Wildcard.match(permission, r.permission))
+      const rule = ruleset.findLast((r) => filePermissionNames(tool).some((name) => Wildcard.match(name, r.permission)))
       if (!rule) continue
       if (rule.pattern === "*" && rule.action === "deny") result.add(tool)
     }

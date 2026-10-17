@@ -1,43 +1,68 @@
-import { Show, createSignal } from "solid-js"
+import { For, Show, createMemo, createSignal, onCleanup } from "solid-js"
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { AttachmentGallery } from "@ericsanchezok/synergy-ui/attachment-card"
+import { ResourceReferenceProvider } from "@ericsanchezok/synergy-ui/context/resource-open"
+import { extractPromptDraft } from "@/utils/prompt"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLocale } from "@/context/locale"
 import { requestErrorMessage } from "@/utils/error"
-import { pendingTimelineItemView } from "./conversation-pending"
+import { pendingMessageText, pendingTimelineItemView } from "./conversation-pending"
 import { S } from "./session-i18n"
+import "./pending-composer-queue.css"
 
 export function PendingTimelineItem(props: {
   item: SessionInboxItem
   rollbackActive: boolean
   hasCanonicalRoot: boolean
+  serverUrl?: string
   onGuide?(item: SessionInboxItem): void | Promise<void>
   onRemove?(item: SessionInboxItem): void | Promise<void>
+  onEdit?(item: SessionInboxItem): void | Promise<void>
 }) {
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const [pending, setPending] = createSignal(false)
-  const [failure, setFailure] = createSignal<{ action: "guide" | "remove"; error: unknown }>()
+  const [failure, setFailure] = createSignal<{ action: "guide" | "remove" | "edit"; error: unknown }>()
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+  })
+  const attachments = createMemo(() => (props.item.message?.parts ?? []).filter((part) => part.type === "attachment"))
+  const references = createMemo(() => {
+    const draft = extractPromptDraft({ message: { metadata: props.item.message?.metadata }, parts: [] })
+    return [
+      ...draft.prompt.flatMap((part) => (part.type === "note" || part.type === "session" ? [part.title] : [])),
+      ...draft.context.items.map((item) => item.path),
+    ]
+  })
   const view = () =>
     pendingTimelineItemView(props.item.mode, props.rollbackActive, {
       hasCanonicalRoot: props.hasCanonicalRoot,
       status: props.item.status,
     })
-  const label = () => {
-    const part = props.item.message?.parts?.[0]
-    return part?.type === "text" ? part.text : (props.item.summary?.title ?? _(S.convPending))
-  }
-  const run = async (action: "guide" | "remove") => {
-    if (pending()) return
+  const label = () =>
+    pendingMessageText(props.item) || props.item.summary?.preview || props.item.summary?.title || _(S.convPending)
+  const canEdit = () => view().canWithdraw && !!props.item.message && !!props.onEdit
+  const run = async (action: "guide" | "remove" | "edit") => {
+    if (
+      pending() ||
+      (action === "edit" ? !canEdit() : action === "remove" ? !view().canWithdraw : !view().primaryAction)
+    )
+      return
     setPending(true)
     setFailure(undefined)
     try {
-      await (action === "remove" ? props.onRemove?.(props.item) : props.onGuide?.(props.item))
+      if (action === "edit") await props.onEdit?.(props.item)
+      else if (action === "remove") await props.onRemove?.(props.item)
+      else await props.onGuide?.(props.item)
     } catch (error) {
-      setFailure({ action, error })
+      if (!disposed) setFailure({ action, error })
     } finally {
-      setPending(false)
+      if (!disposed) setPending(false)
     }
   }
   return (
@@ -45,54 +70,110 @@ export function PendingTimelineItem(props: {
       data-slot="pending-timeline-item"
       data-mode={props.item.mode}
       data-frozen={view().frozen}
-      class="flex w-full flex-col gap-2 rounded-lg bg-background-weak px-3 py-2 text-sm text-text-weak"
+      class="flex w-full flex-col text-sm text-text-weak"
     >
-      <div class="flex items-center gap-2">
+      <div class="pending-composer-row">
         <span
-          class="inline-flex items-center gap-1 text-11-medium"
+          class="pending-composer-status"
           title={props.rollbackActive ? _(S.convPausedTooltip) : props.item.failReason}
         >
-          <Icon name={getSemanticIcon("agenda.main")} size="small" />
-          {_(
-            props.rollbackActive ? S.convPaused : props.item.status === "failed" ? S.inboxFailedStatus : S.convPending,
-          )}
+          <Show
+            when={pending()}
+            fallback={
+              <Icon name={getSemanticIcon(props.item.mode === "steer" ? "inbox.steer" : "inbox.task")} size="small" />
+            }
+          >
+            <Spinner class="size-4!" />
+          </Show>
+          <span classList={{ "sr-only": !view().frozen && props.item.status !== "failed" }}>
+            {_(
+              props.rollbackActive
+                ? S.convPaused
+                : props.item.status === "failed"
+                  ? S.inboxFailedStatus
+                  : S.convPending,
+            )}
+          </span>
         </span>
-        <div class="min-w-0 flex-1 text-14-regular line-clamp-2">{label()}</div>
-        <div class="ml-auto flex shrink-0 items-center gap-1">
+        <div class="pending-composer-label" title={label()}>
+          {label()}
+        </div>
+        <div class="pending-composer-actions" aria-busy={pending()}>
           <Show when={view().primaryAction}>
             {(action) => (
+              <Tooltip value={action() === "queue" ? _(S.convMoveToQueueTitle) : _(S.convGuideRunTitle)}>
+                <Button
+                  variant="ghost"
+                  disabled={pending()}
+                  aria-label={action() === "queue" ? _(S.convQueue) : _(S.convGuide)}
+                  onClick={() => void run("guide")}
+                >
+                  <Icon name={getSemanticIcon(action() === "queue" ? "inbox.task" : "inbox.steer")} size="small" />
+                </Button>
+              </Tooltip>
+            )}
+          </Show>
+          <Show when={canEdit()}>
+            <Tooltip value={_(S.convEditPending)}>
               <Button
                 variant="ghost"
                 disabled={pending()}
-                title={action() === "queue" ? _(S.convMoveToQueueTitle) : _(S.convGuideRunTitle)}
-                onClick={() => void run("guide")}
+                aria-label={_(S.convEditPending)}
+                onClick={() => void run("edit")}
               >
-                {action() === "queue" ? _(S.convQueue) : _(S.convGuide)}
+                <Icon name={getSemanticIcon("action.edit")} size="small" />
               </Button>
-            )}
+            </Tooltip>
           </Show>
           <Show when={view().canWithdraw}>
-            <Button
-              variant="ghost"
-              disabled={pending()}
-              title={_(S.convRemovePendingTitle)}
-              onClick={() => void run("remove")}
-            >
-              {_(S.convWithdraw)}
-            </Button>
+            <Tooltip value={_(S.inboxDelete)}>
+              <Button
+                variant="ghost"
+                disabled={pending()}
+                aria-label={_(S.inboxDelete)}
+                onClick={() => void run("remove")}
+              >
+                <Icon name={getSemanticIcon("action.remove")} size="small" />
+              </Button>
+            </Tooltip>
           </Show>
         </div>
       </div>
-      <Show when={pending()}>
-        <div role="status">{_(S.inboxOperationPending)}</div>
+      <Show when={attachments().length}>
+        <ResourceReferenceProvider value={props.item.message?.referenceContext}>
+          <div class="pending-composer-attachments">
+            <AttachmentGallery files={attachments()} serverUrl={props.serverUrl ?? ""} layout="rows" compact="draft" />
+          </div>
+        </ResourceReferenceProvider>
       </Show>
+      <Show when={references().length}>
+        <div class="pending-composer-references">
+          <For each={references()}>{(reference) => <span title={reference}>{reference}</span>}</For>
+        </div>
+      </Show>
+      <span role="status" class="sr-only">
+        {pending() ? _(S.inboxOperationPending) : ""}
+      </span>
       <Show when={failure()}>
         {(failed) => (
           <div role="alert" class="flex flex-col gap-2 text-text-base">
-            <span>{_(failed().action === "remove" ? S.inboxRemoveFailed : S.inboxGuideFailed)}</span>
-            <Show when={failed().action === "remove"}>
+            <span>
+              {_(
+                failed().action === "edit"
+                  ? S.convEditPendingFailed
+                  : failed().action === "remove"
+                    ? S.inboxRemoveFailed
+                    : S.inboxGuideFailed,
+              )}
+            </span>
+            <Show when={failed().action === "edit" && canEdit()}>
+              <Button variant="secondary" disabled={pending()} onClick={() => void run("edit")}>
+                {_(S.convEditPending)}
+              </Button>
+            </Show>
+            <Show when={failed().action === "remove" && view().canWithdraw}>
               <div>
-                <Button variant="secondary" onClick={() => void run("remove")}>
+                <Button variant="secondary" disabled={pending()} onClick={() => void run("remove")}>
                   {_(S.inboxRetryRemove)}
                 </Button>
               </div>

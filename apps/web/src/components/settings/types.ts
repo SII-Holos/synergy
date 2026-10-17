@@ -1,5 +1,5 @@
 import type { MessageDescriptor } from "@lingui/core"
-import type { McpStatus } from "@ericsanchezok/synergy-sdk/client"
+import type { Config, McpStatus } from "@ericsanchezok/synergy-sdk/client"
 import type { LocalePreference } from "@/context/locale/types"
 import type { ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type { SendShortcut } from "@/context/input"
@@ -45,6 +45,7 @@ export const UI_DEFAULTS = {
   username: "" as string,
   snapshot: true,
   compactReasoning: false,
+  preferWorkBrief: false,
   welcomeGames: true,
   permission: "ask" as string, // resolved from backend { "*": "ask" } object
   sandboxEnabled: "true" as string,
@@ -92,6 +93,7 @@ export const UI_DEFAULTS = {
   lspDiagnosticsSeverity: "error" as string,
   lspDiagnosticsScope: "project" as string,
   defaultAgent: "" as string,
+  fileToolGroup: "patch" as NonNullable<Config["fileToolGroup"]>,
   defaultSessionWorkspace: "main" as NewSessionWorkspacePreference,
 } as const
 
@@ -334,6 +336,7 @@ export type GeneralStore = {
   colorScheme: ColorScheme
   snapshot: boolean
   compactReasoning: boolean
+  preferWorkBrief: boolean
   welcomeGames: boolean
   username: string
   theme: string
@@ -364,6 +367,7 @@ export type ModelsStore = {
 }
 
 export type AgentsStore = {
+  fileToolGroup: NonNullable<Config["fileToolGroup"]>
   defaultAgent: string
 }
 
@@ -461,6 +465,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       colorScheme,
       snapshot: UI_DEFAULTS.snapshot,
       compactReasoning: UI_DEFAULTS.compactReasoning,
+      preferWorkBrief: UI_DEFAULTS.preferWorkBrief,
       welcomeGames: UI_DEFAULTS.welcomeGames,
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
@@ -484,6 +489,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
     },
     agents: {
       defaultAgent: UI_DEFAULTS.defaultAgent,
+      fileToolGroup: UI_DEFAULTS.fileToolGroup,
     },
     providers: {
       enabledProviders: "",

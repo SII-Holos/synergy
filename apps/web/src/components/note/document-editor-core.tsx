@@ -1,5 +1,5 @@
 import { createSignal, onCleanup, onMount, Show, untrack } from "solid-js"
-import { Editor, type AnyExtension, type Content } from "@tiptap/core"
+import { Editor, Extension, type AnyExtension, type Content } from "@tiptap/core"
 import { undoDepth, redoDepth } from "@tiptap/pm/history"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
@@ -422,6 +422,31 @@ export interface DocumentEditorExtensionsConfig {
 
 export function createDocumentEditorExtensions(config: DocumentEditorExtensionsConfig): AnyExtension[] {
   return [
+    Extension.create({
+      name: "noteBlockId",
+      addGlobalAttributes() {
+        return [
+          {
+            types: this.extensions
+              .filter(
+                (extension) =>
+                  extension.type === "node" &&
+                  !["doc", "text", "hardBreak", "inlineMath", "mathInline"].includes(extension.name),
+              )
+              .map((extension) => extension.name),
+            attributes: {
+              blockId: {
+                default: null,
+                keepOnSplit: false,
+                parseHTML: (element) => element.getAttribute("data-block-id"),
+                renderHTML: (attrs) =>
+                  typeof attrs.blockId === "string" && attrs.blockId ? { "data-block-id": attrs.blockId } : {},
+              },
+            },
+          },
+        ]
+      },
+    }),
     StarterKit.configure({
       blockquote: false,
       codeBlock: false,
@@ -493,6 +518,7 @@ export interface DocumentEditorRetention {
   onUpdate?: () => void
   scroll: number
   selection?: { from: number; to: number }
+  referenceNavigation?: string
 }
 
 export function unmountDocumentEditor(editor: Editor) {
@@ -567,13 +593,13 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
     })
 
     setEditorInstance(instance)
-    props.onEditorReady(instance)
 
     if (props.retained) {
       editorRef.scrollTop = props.retained.scroll
       const selection = props.retained.selection
       if (selection) instance.commands.setTextSelection(selection)
     }
+    props.onEditorReady(instance)
     const position = () => {
       if (!props.retained || instance.isDestroyed) return
       props.retained.scroll = editorRef.scrollTop
@@ -612,6 +638,7 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
       <div class="relative h-full overflow-hidden">
         <div
           ref={editorRef}
+          data-slot="document-scroll"
           class="h-full overflow-y-auto px-7 py-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           onClick={handleEditorAreaClick}
         />

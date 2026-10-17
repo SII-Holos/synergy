@@ -1,9 +1,11 @@
+import { useNavigate } from "@solidjs/router"
+import { runtimeFeatureAvailable } from "@/components/runtime-features"
+import { blueprintLoopFeatureAvailable } from "@/components/note/blueprint-run-session"
 import { DialogIndependentCopy } from "../dialog/dialog-independent-copy"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
 import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
 import type { PluginInputService, PluginInputViewPart } from "@ericsanchezok/synergy-plugin"
-import type { BlueprintLoopInfo } from "@ericsanchezok/synergy-sdk/client"
 import { useFilteredList } from "@ericsanchezok/synergy-ui/hooks"
 import {
   createEffect,
@@ -18,7 +20,6 @@ import {
   createMemo,
   createSignal,
   createUniqueId,
-  createResource,
   untrack,
   lazy,
   Suspense,
@@ -50,7 +51,7 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { LatticeConfigDialog, type LatticeEnableConfig } from "@/components/lattice/lattice-config-dialog"
 import { useWorkbenchPanels } from "@/context/workbench"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useSessionDataView } from "@/context/session-data-view"
 import { useSync } from "@/context/sync"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
@@ -95,6 +96,7 @@ import {
 import { createPendingAttachmentTracker } from "@/components/prompt-input/pending-attachments"
 import {
   resolvePromptControlState,
+  promptControlError,
   canLongPressAbandon,
   ABANDON_HOLD_MS,
   ABANDON_HOLD_TOLERANCE_PX,
@@ -117,7 +119,9 @@ import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { EditLightLoopDialog } from "./edit-light-loop-dialog"
-import { LightLoopSubmitControl } from "./light-loop-submit-control"
+import { LoopStatusEntry, LoopStatusDialog } from "./loop-status-entry"
+import { resolveLoopDisplay, resolveLoopHistoryHint } from "./loop-status"
+import { createLoopStatusResource } from "./loop-status-resource"
 import { resolveLightLoopActivity } from "./light-loop-control"
 import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
 import { ComposerDocumentController } from "./composer-document"
@@ -208,6 +212,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const sdk = useSDK()
   const { capabilities } = useGlobalSDK()
   const workflowDialog = useDialog()
+  const navigate = useNavigate()
   let workspaceRecoveryDialogID: string | undefined
   onCleanup(() => {
     if (workspaceRecoveryDialogID) workflowDialog.close(workspaceRecoveryDialogID)
@@ -235,6 +240,11 @@ export function createPromptInputController(props: PromptInputProps) {
   let slashPopoverRef!: HTMLDivElement
 
   const [localArmedLoop, setLocalArmedLoop] = createSignal<BlueprintSlot | null>(null)
+  const availableLocalLoop = createMemo(() => {
+    const slot = localArmedLoop()
+    if (!capabilities.has("blueprint")) return null
+    return slot?.type === "loop" && !blueprintLoopFeatureAvailable(slot, capabilities.has) ? null : slot
+  })
   const [blueprintLoading, setBlueprintLoading] = createSignal(false)
   const [newSessionSubmitPending, setNewSessionSubmitPending] = createSignal(false)
   const [abortStopping, setAbortStopping] = createSignal(false)
@@ -252,7 +262,15 @@ export function createPromptInputController(props: PromptInputProps) {
   const sendShortcut = createMemo(() => input.sendShortcut())
   const presentation = new ComposerPresentation()
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const activeWorkflow = createMemo(() => (params.id ? info()?.workflow : undefined))
+  const blueprintBinding = createMemo(() => {
+    const binding = info()?.blueprint
+    const source = binding?.source ?? (info()?.workflow?.kind === "lattice" ? "lattice" : undefined)
+    return binding?.loopID && blueprintLoopFeatureAvailable({ source }, capabilities.has) ? binding : undefined
+  })
+  const activeWorkflow = createMemo(() => {
+    const workflow = params.id ? info()?.workflow : undefined
+    return workflow && runtimeFeatureAvailable("workflow", workflow.kind, capabilities.has) ? workflow : undefined
+  })
   const backendLightLoopActive = createMemo(() =>
     resolveLightLoopActivity({
       workflow: activeWorkflow(),
@@ -275,22 +293,25 @@ export function createPromptInputController(props: PromptInputProps) {
   const storedLightLoop = createMemo(() =>
     params.id ? backendLightLoopActive() || pendingLightLoop() : pendingLightLoop(),
   )
-  const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
-  const lightLoopActive = createMemo(() => !blueprintModeLocked() && storedLightLoop())
+  const blueprintModeLocked = createMemo(() => !!availableLocalLoop() || !!blueprintBinding()?.loopID)
+  const lightLoopActive = createMemo(
+    () => capabilities.has("light-loop") && !blueprintModeLocked() && storedLightLoop(),
+  )
   const lightLoopInstructions = createMemo(() => {
     const workflow = activeWorkflow()
     return backendLightLoopActive() && workflow?.kind === "lightloop" ? workflow.instructions : undefined
   })
-  const lightLoopReviewPending = createMemo(() => {
-    const workflow = activeWorkflow()
-    return backendLightLoopActive() && workflow?.kind === "lightloop" && !!workflow.stopRequest
-  })
-  const storedPlan = createMemo(() => (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()))
+  const storedPlan = createMemo(
+    () => capabilities.has("blueprint") && (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()),
+  )
   const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
-  const bossActive = createMemo(() => (params.id ? activeWorkflow()?.kind === "boss" : !!pendingBoss()))
+  const bossActive = createMemo(
+    () => capabilities.has("boss") && (params.id ? activeWorkflow()?.kind === "boss" : !!pendingBoss()),
+  )
   // Only the root boss may exit Boss Mode; opening an idle worker must not
   // offer the workflow chip's "exit" action (that would orphan the subtree).
   const bossRootActive = createMemo(() => {
+    if (!capabilities.has("boss")) return false
     if (!params.id) return !!pendingBoss()
     const workflow = activeWorkflow()
     return workflow?.kind === "boss" && workflow.role === "boss"
@@ -312,33 +333,35 @@ export function createPromptInputController(props: PromptInputProps) {
     ),
   )
 
-  const sessionLoopSource = createMemo(() => {
-    const loopID = params.id ? info()?.blueprint?.loopID : undefined
-    if (!loopID) return null
-    // Track reconnectVersion so the loop refetches after a backend restart,
-    // whose in-memory state the server cannot replay via events (issue #331).
-    return { loopID, directory: sessionScopeID(), reconnect: globalSync.reconnectVersion() }
-  })
-
-  const [sessionLoop, { mutate: mutateSessionLoop }] = createResource(
-    sessionLoopSource,
-    async ({ loopID, directory }) => {
-      if (!loopID) return null
-      try {
-        const result = await sdk.client.blueprint.loop.get(blueprintLoopRequest(loopID, directory))
-        return (result.data as BlueprintLoopInfo) ?? null
-      } catch {
-        return null
-      }
-    },
+  const loopOwner = createMemo(
+    () => (params.id && sessionScopeID() ? { sessionID: params.id, scopeID: sessionScopeID()! } : undefined),
+    undefined,
+    { equals: (a, b) => a?.sessionID === b?.sessionID && a?.scopeID === b?.scopeID },
   )
-
+  const loopHistory = createMemo(() => resolveLoopHistoryHint(view().messagesFor(params.id ?? "")), undefined, {
+    equals: (a, b) => a?.blueprintID === b?.blueprintID && a?.light === b?.light && a?.lightReview === b?.lightReview,
+  })
+  const loopStatus = createLoopStatusResource({
+    client: sdk.client,
+    owner: loopOwner,
+    loopID: () => blueprintBinding()?.loopID,
+    lightActive: backendLightLoopActive,
+    lightInstructions: lightLoopInstructions,
+    history: loopHistory,
+    reconnect: globalSync.reconnectVersion,
+    selection: capabilities.current,
+    hasFeature: capabilities.has,
+    getBlueprint: async (id, scopeID, signal) =>
+      (await sdk.client.blueprint.loop.get({ id, scopeID }, { signal })).data,
+    getTerminal: async (id, scopeID, signal) =>
+      (await sdk.client.workflow.session.getLightloopTerminal({ id, scopeID }, { signal })).data,
+  })
+  const sessionLoop = loopStatus.blueprint
   createEffect(
     on(
-      sessionLoopSource,
-      (source) => {
-        const loop = untrack(sessionLoop)
-        if (!source || (loop && loop.id !== source.loopID)) mutateSessionLoop(null)
+      capabilities.current,
+      () => {
+        if (untrack(localArmedLoop)?.type === "loop") setLocalArmedLoop(null)
       },
       { defer: true },
     ),
@@ -354,7 +377,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const continueSession = async (sessionID = params.id) => {
     if (!sessionID) return
     const result = await sdk.client.session.continue({ sessionID })
-    if (result.error) throw new Error(blueprintRequestErrorMessage(result.error))
+    if (result.error) throw result.error
   }
 
   /** The destructive gesture: terminalize the interrupted turn and cancel any
@@ -366,28 +389,11 @@ export function createPromptInputController(props: PromptInputProps) {
     if (result.error || !result.data) throw new Error(blueprintRequestErrorMessage(result.error))
   }
 
-  const clearBoundLoop = (sessionID: string | undefined, loopID: string) => {
-    if (!sessionID) return
-    sync.set(
-      produce((draft) => {
-        const session = draft.session.find((item) => item.id === sessionID)
-        if (session && session.blueprint?.loopID === loopID) {
-          session.blueprint = { ...session.blueprint, loopID: undefined }
-        }
-      }),
-    )
-  }
-
-  const clearVisibleSessionLoop = (sessionID: string | undefined, loopID: string) => {
-    clearBoundLoop(sessionID, loopID)
-    mutateSessionLoop(null)
-  }
-
   /** The BlueprintLoop actually bound to this session, or undefined when there
    *  is none or it already reached a terminal state — cancelling a finished loop
    *  is not what "stop" means, and the store rejects that transition. */
   const boundLoopID = createMemo(() => {
-    const loopID = params.id ? info()?.blueprint?.loopID : undefined
+    const loopID = params.id ? blueprintBinding()?.loopID : undefined
     if (!loopID) return undefined
     const loop = sessionLoop()
     return loop?.id === loopID && isTerminalBlueprintLoopStatus(loop.status) ? undefined : loopID
@@ -397,12 +403,14 @@ export function createPromptInputController(props: PromptInputProps) {
     request: () => abortSession(params.id),
     setPending: setAbortStopping,
   })
-  const reportControlError = (error: unknown) =>
+  const reportControlError = (error: unknown) => {
+    const feedback = promptControlError(error)
     showToast({
       type: "error",
-      title: i18n._(PI.controlFailed),
-      description: blueprintRequestErrorMessage(error),
+      title: feedback.kind === "unavailable" ? i18n._(PI.continueUnavailable) : i18n._(PI.controlFailed),
+      description: feedback.description,
     })
+  }
   const abort = () => {
     void abortController.run().catch(reportControlError)
   }
@@ -415,11 +423,13 @@ export function createPromptInputController(props: PromptInputProps) {
   const abandonController = createAbortRequestController({
     setPending: setAbandonPending,
     request: async () => {
+      const selection = capabilities.current()
       const sessionID = params.id
-      const slot = localArmedLoop()
+      const slot = availableLocalLoop()
       const boundID = boundLoopID()
       await abandonSession(sessionID)
-      if (slot?.type === "loop" && slot.loopID !== boundID) {
+      if (capabilities.current() !== selection) return
+      if (slot?.type === "loop" && slot.loopID !== boundID && blueprintLoopFeatureAvailable(slot, capabilities.has)) {
         const result = await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(slot.loopID))
         if (result.error) throw new Error(blueprintRequestErrorMessage(result.error))
       }
@@ -431,26 +441,8 @@ export function createPromptInputController(props: PromptInputProps) {
     },
   })
 
-  const applySessionLoopEvent = (loop: BlueprintLoopInfo) => {
-    const activeLoopID = params.id ? info()?.blueprint?.loopID : undefined
-    const displayedLoopID = untrack(sessionLoop)?.id
-    if (loop.id !== activeLoopID && loop.id !== displayedLoopID) return
-
-    // Terminal: clear whichever reference matched
-    if (isTerminalBlueprintLoopStatus(loop.status)) {
-      if (loop.id === activeLoopID) clearVisibleSessionLoop(params.id, loop.id)
-      else if (loop.id === displayedLoopID) mutateSessionLoop(null)
-      return
-    }
-
-    // Non-terminal: always update the display. Don't clear first — the
-    // session binding (activeLoopID) may arrive after the loop event,
-    // and clearing would cause a visible flicker.
-    mutateSessionLoop(loop)
-  }
-
   const unsubBlueprintLoopUpdated = sdk.event.on("blueprint_loop.updated", (event) => {
-    applySessionLoopEvent(event.properties.loop)
+    loopStatus.update(event.properties.loop)
   })
   onCleanup(unsubBlueprintLoopUpdated)
 
@@ -528,19 +520,85 @@ export function createPromptInputController(props: PromptInputProps) {
   onCleanup(cancelLongPress)
 
   const displayedBlueprintLoop = createMemo<BlueprintSlotDisplay | null>(() => {
+    if (!capabilities.has("blueprint")) return null
     return resolveBlueprintSlotDisplay({
-      localSlot: localArmedLoop(),
+      localSlot: availableLocalLoop(),
       sessionLoop: sessionLoop(),
-      activeLoopID: params.id ? info()?.blueprint?.loopID : undefined,
+      activeLoopID: params.id ? blueprintBinding()?.loopID : undefined,
+      hasFeature: capabilities.has,
     })
   })
+  const loopDisplay = createMemo(() =>
+    resolveLoopDisplay({
+      localBlueprint: availableLocalLoop(),
+      blueprint: sessionLoop(),
+      blueprintBinding: blueprintBinding(),
+      blueprintUnavailable: loopStatus.blueprintUnavailable(),
+      workflow: activeWorkflow(),
+      lightPending: capabilities.has("light-loop") && pendingLightLoop(),
+      lightTerminal: loopStatus.terminal(),
+      awaitingTerminal: loopStatus.awaitingTerminal(),
+      status: status(),
+    }),
+  )
+  const openLoopNote = () => {
+    const value = loopDisplay()
+    if (value?.noteID)
+      void workbench.openPanel("notes", {
+        reuseExisting: true,
+        init: { resourceId: value.noteID, source: sdk.scopeKey, title: value.title },
+      })
+  }
+  const [loopAction, setLoopAction] = createSignal<{ owner: string }>()
+  const cancelDisplayedLoop = async () => {
+    const owner = sessionKey(),
+      value = loopDisplay()
+    if (!value || value.terminal || loopAction()?.owner === owner) return
+    const action = { owner },
+      sessionID = params.id,
+      scopeID = sessionScopeID(),
+      slot = availableLocalLoop()
+    setLoopAction(action)
+    try {
+      if (value.kind === "lightloop" && activeWorkflow()?.kind === "lightloop" && sessionID)
+        await sdk.client.workflow.session.cancelLightloop({ id: sessionID, scopeID }, { throwOnError: true })
+      else if (value.kind === "blueprint") {
+        if (boundLoopID() && (!slot || (slot.type === "loop" && slot.loopID === boundLoopID())))
+          await abandonSession(sessionID)
+        else if (slot?.type === "loop")
+          await sdk.client.blueprint.loop.cancel({ id: slot.loopID, scopeID }, { throwOnError: true })
+      }
+      if (sessionKey() !== owner) return
+      if (localArmedLoop() === slot) setLocalArmedLoop(null)
+      if (value.kind === "lightloop" && value.pending) setPendingLightLoop(false)
+    } catch (error) {
+      if (sessionKey() === owner) reportControlError(error)
+    } finally {
+      if (loopAction() === action) setLoopAction(undefined)
+    }
+  }
+  const openLoopStatus = () => {
+    const owner = sessionKey()
+    workflowDialog.show(() => (
+      <LoopStatusDialog
+        value={() => (sessionKey() === owner ? loopDisplay() : undefined)}
+        onReviewer={() => {
+          const reviewer = loopDisplay()?.reviewerSessionID
+          if (sessionKey() === owner && reviewer) {
+            workflowDialog.close()
+            navigate(`/${params.dir}/session/${reviewer}`)
+          }
+        }}
+      />
+    ))
+  }
   const armedWorkflowKind = createMemo<"plan" | "lightloop" | "lattice" | "boss" | "extension" | undefined>(() => {
     const workflow = activeWorkflow()?.kind
     if (workflow) return workflow
-    if (pendingPlan()) return "plan"
-    if (pendingLightLoop()) return "lightloop"
-    if (pendingLattice()) return "lattice"
-    if (pendingBoss()) return "boss"
+    if (capabilities.has("blueprint") && pendingPlan()) return "plan"
+    if (capabilities.has("light-loop") && pendingLightLoop()) return "lightloop"
+    if (capabilities.has("lattice") && pendingLattice()) return "lattice"
+    if (capabilities.has("boss") && pendingBoss()) return "boss"
   })
 
   const promptText = createMemo(() => inlineText(prompt.current()))
@@ -555,14 +613,14 @@ export function createPromptInputController(props: PromptInputProps) {
     const intent = resolvePromptSubmitIntent({
       text: promptText(),
       working: working(),
-      hasBlueprintSlot: !!localArmedLoop(),
+      hasBlueprintSlot: !!availableLocalLoop(),
     })
     if (intent === "blocked") return false
     if (shouldBlockSubmitForUploadingAttachments({ uploading: attachmentsUploading(), intent })) return false
     return shouldAllowPromptSubmit({
       intent,
       variantReady: local.model.variant.ready(),
-      requiresVariant: store.mode === "normal" && !localArmedLoop(),
+      requiresVariant: store.mode === "normal" && !availableLocalLoop(),
     })
   })
   const hasDraft = createMemo(() => promptText().trim().length > 0)
@@ -573,7 +631,7 @@ export function createPromptInputController(props: PromptInputProps) {
     resolvePromptControlState({
       hasDraft: hasDraft(),
       activity: activity(),
-      hasArmedWorkflow: !!displayedBlueprintLoop() && !!localArmedLoop(),
+      hasArmedWorkflow: !!displayedBlueprintLoop() && !!availableLocalLoop(),
     }),
   )
   const canAbandon = createMemo(() =>
@@ -582,11 +640,11 @@ export function createPromptInputController(props: PromptInputProps) {
       activity: activity(),
       hasBoundWorkflow:
         !!boundLoopID() ||
-        !!localArmedLoop() ||
-        backendLightLoopActive() ||
+        !!availableLocalLoop() ||
+        (capabilities.has("light-loop") && backendLightLoopActive()) ||
         activeWorkflow()?.kind === "lattice" ||
-        !!pendingLattice() ||
-        pendingLightLoop(),
+        (capabilities.has("lattice") && !!pendingLattice()) ||
+        (capabilities.has("light-loop") && pendingLightLoop()),
     }),
   )
   const controlDisabled = createMemo(() => {
@@ -694,7 +752,7 @@ export function createPromptInputController(props: PromptInputProps) {
   )
 
   const cancelArmedLoop = async () => {
-    const slot = localArmedLoop()
+    const slot = availableLocalLoop()
     if (!slot) return
     setBlueprintLoading(true)
     try {
@@ -704,7 +762,6 @@ export function createPromptInputController(props: PromptInputProps) {
     } finally {
       setBlueprintLoading(false)
       setLocalArmedLoop(null)
-      if (slot.type === "loop") mutateSessionLoop(null)
     }
   }
   const scrollCursorIntoView = () => {
@@ -738,6 +795,7 @@ export function createPromptInputController(props: PromptInputProps) {
   }
 
   const setPlan = async (next: boolean, title?: string) => {
+    if (!capabilities.has("blueprint")) return
     if (!params.id) {
       setPendingPlan(next)
       if (next) {
@@ -768,6 +826,8 @@ export function createPromptInputController(props: PromptInputProps) {
   }
 
   const equipPlanBlueprintOffer = async () => {
+    if (!capabilities.has("blueprint")) return
+    const selection = capabilities.current()
     const sessionID = params.id
     const offer = sessionID ? untrack(() => view().planBlueprintOfferFor(sessionID)?.offer) : undefined
     if (!offer || !sessionID) return
@@ -793,6 +853,7 @@ export function createPromptInputController(props: PromptInputProps) {
         id: sessionID,
         workflowSetInput: { kind: "none" },
       })
+      if (capabilities.current() !== selection || params.id !== sessionID) return
       setLocalArmedLoop({
         type: "pending",
         noteID: offer.noteID,
@@ -806,6 +867,7 @@ export function createPromptInputController(props: PromptInputProps) {
         description: i18n._(PI.blueprintEquippedDesc),
       })
     } catch (err) {
+      if (capabilities.current() !== selection || params.id !== sessionID) return
       showToast({
         type: "error",
         title: i18n._(PI.blueprintEquipFailed),
@@ -817,7 +879,9 @@ export function createPromptInputController(props: PromptInputProps) {
   // Lattice is active when the current session already has a run, or — on the
   // new-session composer, mirroring Plan — when a config is armed for the
   // first message. The armed config is applied on submit once the session exists.
-  const latticeActive = createMemo(() => (params.id ? activeWorkflow()?.kind === "lattice" : !!pendingLattice()))
+  const latticeActive = createMemo(
+    () => capabilities.has("lattice") && (params.id ? activeWorkflow()?.kind === "lattice" : !!pendingLattice()),
+  )
   let openedLatticeSession: string | undefined
 
   createEffect(() => {
@@ -828,6 +892,7 @@ export function createPromptInputController(props: PromptInputProps) {
   })
 
   const enableLattice = async (config: LatticeEnableConfig) => {
+    if (!capabilities.has("lattice")) return
     if (!params.id) {
       // Defer: arm the config; submit applies it after the session is created.
       setPendingLattice({ mode: config.mode, maxModelCalls: config.maxModelCalls })
@@ -848,6 +913,7 @@ export function createPromptInputController(props: PromptInputProps) {
   }
 
   const cancelLattice = async () => {
+    if (!capabilities.has("lattice")) return
     if (!params.id) {
       setPendingLattice(null)
       return
@@ -868,6 +934,7 @@ export function createPromptInputController(props: PromptInputProps) {
   }
 
   const openLatticeDialog = (event?: Event) => {
+    if (!capabilities.has("lattice")) return
     if (blueprintModeLocked() || planActive() || lightLoopActive() || bossActive()) {
       event?.preventDefault()
       return
@@ -906,6 +973,7 @@ export function createPromptInputController(props: PromptInputProps) {
   }
 
   const setLightLoop = async (active: boolean) => {
+    if (!capabilities.has("light-loop")) return
     if (!params.id || !backendLightLoopActive()) {
       setPendingLightLoop(active)
       if (active) {
@@ -937,6 +1005,7 @@ export function createPromptInputController(props: PromptInputProps) {
   }
 
   const setBoss = async (active: boolean, title?: string) => {
+    if (!capabilities.has("boss")) return
     if (!params.id) {
       setPendingBoss(active)
       if (active) {
@@ -979,44 +1048,30 @@ export function createPromptInputController(props: PromptInputProps) {
     void setBoss(state.action === "enable")
   }
 
-  const cancelLightLoop = async () => {
-    await setLightLoop(false)
-  }
-
-  const safelyCancelLightLoop = async () => {
-    if (!params.id) return
-    try {
-      const cancelled = await setLightLoop(false)
-      if (!cancelled) return
-      showToast({
-        type: "info",
-        title: i18n._(PI.lightLoopStopped),
-        description: i18n._(PI.lightLoopStoppedDesc),
-      })
-    } catch {
-      return
-    }
-  }
-
-  const updateLightLoopInstructions = async (instructions: string) => {
-    const sessionID = params.id
-    if (!sessionID) throw new Error(i18n._(PI.lightLoopSessionUnavailable))
-    await sdk.client.workflow.session.updateLightloop({
-      id: sessionID,
-      lightloopUpdateInput: { instructions },
-    })
-  }
-
   const openLightLoopDialog = () => {
-    const workflow = activeWorkflow()
-    if (!params.id || workflow?.kind !== "lightloop") return
+    if (!capabilities.has("light-loop")) return
+    const workflow = activeWorkflow(),
+      owner = sessionKey(),
+      sessionID = params.id,
+      scopeID = sessionScopeID()
+    if (!sessionID || workflow?.kind !== "lightloop") return
+    const active = () => sessionKey() === owner && capabilities.has("light-loop") && backendLightLoopActive()
     workflowDialog.show(() => (
       <EditLightLoopDialog
         instructions={workflow.instructions}
-        active={backendLightLoopActive}
+        active={active}
         working={working}
-        reviewPending={lightLoopReviewPending}
-        onSave={updateLightLoopInstructions}
+        onSave={async (instructions) => {
+          if (!active()) throw new Error(i18n._(PI.lightLoopSessionUnavailable))
+          await sdk.client.workflow.session.updateLightloop(
+            {
+              id: sessionID,
+              scopeID,
+              lightloopUpdateInput: { instructions },
+            },
+            { throwOnError: true },
+          )
+        }}
       />
     ))
   }
@@ -1193,7 +1248,24 @@ export function createPromptInputController(props: PromptInputProps) {
           },
         ],
       },
-    ].filter((section) => section.id !== "workflow" || capabilities.has("workflows"))
+    ]
+      .map((section) =>
+        section.id === "workflow"
+          ? {
+              ...section,
+              items: section.items.filter((item) => {
+                const feature = {
+                  "light-loop": "light-loop",
+                  plan: "blueprint",
+                  "lattice-mode": "lattice",
+                  "boss-mode": "boss",
+                }[item.id]
+                return !!feature && capabilities.has(feature)
+              }),
+            }
+          : section,
+      )
+      .filter((section) => section.items.length > 0)
   })
 
   const newSessionStartOptions = createMemo<PromptStartOptionGroup[]>(() => {
@@ -1312,6 +1384,7 @@ export function createPromptInputController(props: PromptInputProps) {
   )
 
   const visiblePlanBlueprintOffer = createMemo(() => {
+    if (!capabilities.has("blueprint")) return null
     if (
       !shouldDisplayPlanBlueprintOffer({
         state: planBlueprintOfferState(),
@@ -1767,8 +1840,8 @@ export function createPromptInputController(props: PromptInputProps) {
     addPart,
     noteAttachments,
     sessionAttachments,
-    localArmedLoop,
-    activeLoopID: () => info()?.blueprint?.loopID,
+    localArmedLoop: availableLocalLoop,
+    activeLoopID: boundLoopID,
     working,
     workflowKind: armedWorkflowKind,
     clearPendingWorkflows: () => {
@@ -2025,20 +2098,20 @@ export function createPromptInputController(props: PromptInputProps) {
     attachmentsUploading,
     attachmentsFailed,
     selectedControlProfile,
-    pendingPlan,
+    pendingPlan: () => capabilities.has("blueprint") && pendingPlan(),
     clearPendingPlan: () => setPendingPlan(false),
-    pendingLattice,
+    pendingLattice: () => (capabilities.has("lattice") ? pendingLattice() : null),
     clearPendingLattice: () => setPendingLattice(null),
-    pendingLightLoop,
+    pendingLightLoop: () => capabilities.has("light-loop") && pendingLightLoop(),
     clearPendingLightLoop: () => {
       setPendingLightLoop(false)
     },
-    pendingBoss,
+    pendingBoss: () => capabilities.has("boss") && pendingBoss(),
     clearPendingBoss: () => {
       setPendingBoss(false)
     },
     onBossEnabled: () => void workbench.openPanel("boss", { reuseExisting: true }),
-    localArmedLoop,
+    localArmedLoop: availableLocalLoop,
     setLocalArmedLoop,
     setBlueprintLoading,
     newSessionSubmitPending,
@@ -2341,25 +2414,34 @@ export function createPromptInputController(props: PromptInputProps) {
                             {...triggerProps}
                             type="button"
                             class="prompt-input-toolbar-button max-w-full flex items-center gap-1.5"
-                            aria-label={i18n._(topBar.chooseModel)}
+                            aria-label={triggerProps["aria-label"] ?? i18n._(topBar.chooseModel)}
                           >
-                            <span class="truncate text-12-medium text-text-base">
-                              {local.model.current()?.name ?? i18n._(topBar.selectModel)}
-                            </span>
-                            <Show when={local.model.current()?.catalogState === "retained"}>
-                              <Tooltip value={i18n._(topBar.retainedModel)}>
-                                <Icon
-                                  name={getSemanticIcon("state.warning")}
-                                  size="small"
-                                  class="text-icon-warning-base"
-                                />
-                              </Tooltip>
+                            <Show
+                              when={triggerProps.children}
+                              fallback={
+                                <>
+                                  <span class="truncate text-12-medium text-text-base">
+                                    {local.model.current()?.name ?? i18n._(topBar.selectModel)}
+                                  </span>
+                                  <Show when={local.model.current()?.catalogState === "retained"}>
+                                    <Tooltip value={i18n._(topBar.retainedModel)}>
+                                      <Icon
+                                        name={getSemanticIcon("state.warning")}
+                                        size="small"
+                                        class="text-icon-warning-base"
+                                      />
+                                    </Tooltip>
+                                  </Show>
+                                  <Icon
+                                    name={getSemanticIcon("navigation.collapse")}
+                                    size="small"
+                                    class="text-icon-weak-base shrink-0"
+                                  />
+                                </>
+                              }
+                            >
+                              {triggerProps.children}
                             </Show>
-                            <Icon
-                              name={getSemanticIcon("navigation.collapse")}
-                              size="small"
-                              class="text-icon-weak-base shrink-0"
-                            />
                           </button>
                         )}
                       />
@@ -2380,16 +2462,6 @@ export function createPromptInputController(props: PromptInputProps) {
                     icon={getSemanticIcon("prompt.plan")}
                     working={working}
                     onCancel={togglePlan}
-                  />
-                </Show>
-                <Show when={lightLoopActive()}>
-                  <WorkflowChip
-                    label={i18n._(PI.cancelLightLoopLabel)}
-                    ariaLabel={i18n._(PI.cancelLightLoop)}
-                    tooltip={i18n._(PI.cancelLightLoop)}
-                    icon={getSemanticIcon("prompt.lightLoop")}
-                    working={working}
-                    onCancel={cancelLightLoop}
                   />
                 </Show>
                 <Show when={latticeActive()}>
@@ -2440,15 +2512,6 @@ export function createPromptInputController(props: PromptInputProps) {
                   editorRef.focus()
                 }}
               />
-            </Show>
-            <Show when={lightLoopInstructions()}>
-              {(instructions) => (
-                <LightLoopSubmitControl
-                  instructions={instructions()}
-                  onEdit={openLightLoopDialog}
-                  onCancel={safelyCancelLightLoop}
-                />
-              )}
             </Show>
             <Show when={!sdk.connected()}>
               <Tooltip placement="top" value={i18n._(PI.connectionLost)}>
@@ -2688,6 +2751,21 @@ export function createPromptInputController(props: PromptInputProps) {
   onCleanup(
     bindComposerPresentation(composerInput, {
       state: presentation,
+      status: () => (
+        <Show when={loopDisplay()}>
+          {(value) => (
+            <LoopStatusEntry
+              value={value()}
+              pending={loopAction()?.owner === sessionKey()}
+              onOpen={openLoopStatus}
+              onEdit={openLightLoopDialog}
+              onNote={openLoopNote}
+              onRemove={() => void cancelDisplayedLoop()}
+              onRetry={loopStatus.retry}
+            />
+          )}
+        </Show>
+      ),
       hasAttachments: () => hasAttachments() || attachmentsUploading(),
       preview() {
         let offset = 0

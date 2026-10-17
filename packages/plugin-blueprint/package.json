@@ -1,0 +1,56 @@
+{
+  "name": "@ericsanchezok/synergy-plugin-blueprint",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./adapter": "./src/adapter.ts",
+    "./component": "./src/component.ts",
+    "./register": "./src/register.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/plugin-blueprint",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-blueprint": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-note": "workspace:*",
+    "@ericsanchezok/synergy-plugin": "workspace:*",
+    "@ericsanchezok/synergy-plugin-host": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "plugin-blueprint",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "pluginBlueprint",
+    "requires": {
+      "plugin-host": "1.1.26",
+      "blueprint": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-blueprint": "1.1.26"
+    }
+  }
+}

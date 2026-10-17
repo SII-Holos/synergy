@@ -1,5 +1,5 @@
 import { Show } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useLingui } from "@lingui/solid"
 import { BossPanel } from "@/components/boss/boss-panel"
 import { useSDK } from "@/context/sdk"

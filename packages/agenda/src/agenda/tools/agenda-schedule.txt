@@ -1,0 +1,15 @@
+Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Recurring schedules reuse their separate execution session; the prompt must be a complete, self-contained brief. The schedule captures this Session’s selected Workspace when created. Changing this conversation’s Workspace later does not move the schedule.
+
+Triggers:
+- `{type:"cron", expr:"0 9 * * *", tz:"Asia/Shanghai"}` — recurring cron
+- `{type:"every", interval:"30m"}` — recurring at a fixed interval
+- `{type:"session", sessionID:"ses_xxx", event:"turn.end"}` — fires once when the target session ends a turn. Optional filters: `agent`, `finish`. Set `once:false` to keep firing on every matching turn.
+
+By default, automatic delivery returns results to the originating conversation and wakes this session (wake=true). Keep that delivery unless the user requests another destination or the origin cannot receive results. Set silent=true to suppress delivery.
+Set controlProfile to "full_access", "autonomous", or "guarded" when the scheduled session needs an explicit permission profile.
+
+**If you need adaptive timing** — shorter checks when things look uncertain, longer intervals when stable — use recursive `agenda_watch` instead. `agenda_schedule` is for rigid, predictable schedules only.
+
+**Never use `agenda_schedule` or `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion.
+
+Use agenda_list to see scheduled tasks. Use agenda_cancel(id) to stop a recurring task.

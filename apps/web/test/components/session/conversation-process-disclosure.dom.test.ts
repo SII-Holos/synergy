@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { page, url, errors, frames, contentPage } from "../../support/conversation-process"
 
-test("a reasoning item has one keyboard disclosure across streaming growth and virtual body chunks", async () => {
+test("continuous reasoning with changing or missing item IDs has one keyboard disclosure across streaming growth and virtual body chunks", async () => {
   await page.goto(url)
   await page.evaluate(() => window.__conversationProcess.fragments(1))
   const trigger = page.locator('[data-slot="process-reasoning-trigger"]')
@@ -355,6 +355,83 @@ test("manual parent disclosure owns bounded space motion without replacing the a
   expect(result.sameAnswer).toBe(true)
   expect(result.changing).toBe(0)
 }, 30000)
+
+test.each([
+  { width: 700, colorScheme: "light", reducedMotion: "no-preference" },
+  { width: 375, colorScheme: "dark", reducedMotion: "reduce" },
+] as const)(
+  "parent disclosure beside a long answer preserves every painted reading position (%j)",
+  async (mode) => {
+    await page.emulateMedia(mode)
+    try {
+      await page.goto(`${url}?scrolling`)
+      await page.getByText("I will check the project first.", { exact: true }).waitFor()
+      await page.evaluate((width) => {
+        document.querySelector<HTMLElement>("[data-scroller]")!.style.width = `${width}px`
+        window.__conversationProcess.stream(
+          "The accepted answer remains readable through process disclosure. ".repeat(150),
+        )
+        window.__conversationProcess.complete()
+        window.__conversationProcess.prependTurns(32)
+      }, mode.width)
+      await page.waitForFunction(() => !document.querySelector('[data-turn-root="root"][data-row-kind="activity"]'))
+      await page.waitForFunction(
+        () => (document.querySelector('[data-part-id="answer"]')?.getBoundingClientRect().height ?? 0) > 1800,
+      )
+      await page.evaluate(() => document.fonts.ready.then(() => undefined))
+      await page.locator("[data-scroller]").evaluate((element) => {
+        element.scrollTop = element.scrollHeight
+      })
+      const parent = page.locator('[data-turn-root="root"] [data-slot="turn-process-trigger"]')
+      await parent.waitFor({ state: "attached" })
+      await parent.evaluate((element) => {
+        const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+        viewport.scrollTop += element.getBoundingClientRect().top - viewport.getBoundingClientRect().top - 200
+      })
+      await frames()
+      const result = await parent.evaluate(async (element) => {
+        const parent = element as HTMLButtonElement
+        const answer = document.querySelector('[data-part-id="answer"]')!
+        const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+        const samples: {
+          open: boolean
+          frame: number
+          drift: number
+          scrollTop: number
+          scrollHeight: number
+          sameAnswer: boolean
+          transform: string
+        }[] = []
+        const initial = parent.getBoundingClientRect().top
+        for (const open of [true, false, true, false]) {
+          parent.click()
+          for (let frame = 0; frame < 48; frame++) {
+            await new Promise(requestAnimationFrame)
+            samples.push({
+              open,
+              frame,
+              drift: parent.getBoundingClientRect().top - initial,
+              scrollTop: viewport.scrollTop,
+              scrollHeight: viewport.scrollHeight,
+              sameAnswer: answer === document.querySelector('[data-part-id="answer"]'),
+              transform: getComputedStyle(parent.closest('[data-component="virtual-conversation-rows"]')!).transform,
+            })
+          }
+        }
+        return { height: answer.getBoundingClientRect().height, samples }
+      })
+      expect(result.height).toBeGreaterThan(1800)
+      for (const sample of result.samples) {
+        expect(Math.abs(sample.drift), JSON.stringify(sample)).toBeLessThanOrEqual(1)
+        expect(sample.sameAnswer).toBe(true)
+        expect(sample.transform).toBe("none")
+      }
+    } finally {
+      await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" })
+    }
+  },
+  30000,
+)
 
 test("disclosure across the overflow threshold preserves width and the clicked reading position", async () => {
   await page.goto(url)

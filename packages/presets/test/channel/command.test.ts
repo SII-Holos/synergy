@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { ChannelCommand } from "@ericsanchezok/synergy-connections/channel/command"
+import { ChannelCommand } from "@ericsanchezok/synergy-channels/channel/command"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
@@ -202,8 +202,8 @@ describe("ChannelCommand", () => {
               "Available commands:",
               "/chat [message] — use normal chat for this conversation",
               "/blueprint [request] (/plan) — use Plan to author a Blueprint",
-              "/lightloop <task> — keep working until the task passes independent review",
               "/lattice [goal] — decompose and execute a larger goal",
+              "/lightloop <task> — keep working until the full task is complete and verified",
               "/model <providerID/modelID> — change the model for this conversation",
               "/new — start a new conversation",
               "/status — show the current conversation status",

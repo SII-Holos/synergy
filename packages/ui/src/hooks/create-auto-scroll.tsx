@@ -1,7 +1,7 @@
 import { createEffect, createSignal, on, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createScrollMotion } from "../utils/scroll-motion"
-import { createResizeObserver } from "@solid-primitives/resize-observer"
+import { makeResizeObserver } from "@solid-primitives/resize-observer"
 
 export interface AutoScrollReadingAnchor {
   owner: HTMLElement
@@ -9,6 +9,7 @@ export interface AutoScrollReadingAnchor {
 }
 
 export interface AutoScrollOptions {
+  enabled?: () => boolean
   motionTarget?: () => HTMLElement | undefined
   working: () => boolean
   onUserInteracted?: () => void
@@ -32,34 +33,40 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let cleanup: (() => void) | undefined
   let readingAnchor: AutoScrollReadingAnchor | undefined
   let anchoredScrollTop: number | undefined
+  let anchoredScrollHeight: number | undefined
   let movementOffset: number | undefined
   let resumeRequested = false
   let previousOffset = 0
   let interactionVersion = 0
   let smoothForce = false
+  let navigating = false
   const motion = createScrollMotion(() => options.motionTarget?.())
 
   const [store, setStore] = createStore({
     contentRef: undefined as HTMLElement | undefined,
+    viewportRef: undefined as HTMLElement | undefined,
     userScrolled: false,
   })
   const [readingAnchorOwner, setReadingAnchorOwner] = createSignal<HTMLElement>()
 
-  const active = () => options.working() || settling || followingLatest
+  const enabled = () => options.enabled?.() !== false
+  const active = () => enabled() && (options.working() || settling || followingLatest)
   const clearReadingAnchor = () => {
     readingAnchor = undefined
     setReadingAnchorOwner(undefined)
     anchoredScrollTop = undefined
+    anchoredScrollHeight = undefined
     movementOffset = undefined
   }
   const preserveReadingAnchor = (target?: Element) => {
-    if (!store.userScrolled) {
+    if (!store.userScrolled || navigating) {
       clearReadingAnchor()
       return
     }
     readingAnchor = options.captureReadingAnchor?.({ reading: store.userScrolled, target })
     setReadingAnchorOwner(readingAnchor?.owner)
     anchoredScrollTop = scroll?.scrollTop
+    anchoredScrollHeight = scroll?.scrollHeight
   }
 
   const distanceFromBottom = () => {
@@ -83,10 +90,11 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const scheduleMeasure = () => {
+    if (!enabled()) return
     if (measureFrame !== undefined) return
     measureFrame = requestAnimationFrame(() => {
       measureFrame = undefined
-      options.onMeasure?.(distanceFromBottom())
+      if (enabled()) options.onMeasure?.(distanceFromBottom())
     })
   }
 
@@ -94,6 +102,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     scrollFrame = undefined
     const force = forceNextScroll
     forceNextScroll = false
+    if (!enabled()) return
     if (!force && !active()) return
     if (!scroll) return
 
@@ -104,17 +113,18 @@ export function createAutoScroll(options: AutoScrollOptions) {
     const distance = bottom - scroll.clientHeight - scroll.scrollTop
     if (Math.abs(distance) < 2 && !options.motionTarget) return
 
-    const animate =
-      !!options.motionTarget && (!force || smoothForce) && !store.contentRef?.querySelector("[data-motion-resizing]")
-    motion.move(scroll, bottom, animate)
+    const animate = !!options.motionTarget && (!force || smoothForce)
+    motion.move(scroll, bottom, animate, animate && !!store.contentRef?.querySelector("[data-motion-resizing]"))
     smoothForce = false
   }
 
   const scrollToBottom = (force: boolean) => {
+    if (!enabled()) return
     if (!force && !active()) return
     if (!scroll) return
     if (!force && store.userScrolled) return
     if (force) {
+      navigating = false
       resumeRequested = false
       clearReadingAnchor()
     }
@@ -142,6 +152,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const beginMovement = () => {
+    navigating = false
     anchoredScrollTop = undefined
     movementOffset = scroll?.scrollTop
   }
@@ -201,8 +212,16 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handleScroll = () => {
-    if (!scroll) return
-    const compensated = anchoredScrollTop !== undefined && Math.abs(scroll.scrollTop - anchoredScrollTop) < 1
+    if (!scroll || !enabled()) return
+    // Virtual layout compensation can deliver scroll before ResizeObserver; retain the pre-layout reading offset.
+    if (readingAnchor && movementOffset === undefined && anchoredScrollHeight !== scroll.scrollHeight) {
+      readingAnchor.restore()
+      anchoredScrollTop = scroll.scrollTop
+      anchoredScrollHeight = scroll.scrollHeight
+    }
+    const compensated =
+      (anchoredScrollTop !== undefined && Math.abs(scroll.scrollTop - anchoredScrollTop) < 1) ||
+      (!!readingAnchor && movementOffset === undefined && Math.abs(scroll.scrollTop - previousOffset) < 1)
     anchoredScrollTop = undefined
     const advancing = scroll.scrollTop > previousOffset
     previousOffset = scroll.scrollTop
@@ -221,14 +240,21 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handleInteraction = (event?: Event) => {
+    navigating = false
     movementOffset = undefined
     stop()
     preserveReadingAnchor(event && event.target instanceof Element ? event.target : undefined)
   }
 
-  createResizeObserver(
-    () => store.contentRef,
+  const handleNavigation = () => {
+    navigating = true
+    stop()
+    clearReadingAnchor()
+  }
+
+  const resizeObserver = makeResizeObserver(
     () => {
+      if (!enabled()) return
       // While pinned-follow, resizes only re-pin (and extend an active settle
       // window). Otherwise content grows without scroll events, so report the
       // distance so "scrolled up" state stays honest in idle sessions.
@@ -247,10 +273,38 @@ export function createAutoScroll(options: AutoScrollOptions) {
       if (!readingAnchor || !readingAnchor.owner.isConnected) preserveReadingAnchor()
       if (scroll && readingAnchor) {
         anchoredScrollTop = scroll.scrollTop
+        anchoredScrollHeight = scroll.scrollHeight
         if (movementOffset !== undefined) movementOffset = scroll.scrollTop
       }
       scheduleMeasure()
     },
+    { box: "border-box" },
+  )
+
+  createEffect(() => {
+    // Virtual rows can resize before the content extent updates; preserve reading in that same paint.
+    const targets = new Set(enabled() ? [store.contentRef, store.viewportRef, readingAnchorOwner()] : [])
+    for (const target of targets) if (target) resizeObserver.observe(target)
+    onCleanup(() => {
+      for (const target of targets) if (target) resizeObserver.unobserve(target)
+    })
+  })
+
+  createEffect(
+    on(enabled, (value) => {
+      if (value) {
+        if (!store.userScrolled) scrollToBottom(false)
+        return
+      }
+      motion.settle()
+      if (settleTimer) clearTimeout(settleTimer)
+      settleTimer = undefined
+      settling = forcedSettling = false
+      if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+      if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
+      scrollFrame = measureFrame = undefined
+      forceNextScroll = false
+    }),
   )
 
   createEffect(
@@ -297,12 +351,14 @@ export function createAutoScroll(options: AutoScrollOptions) {
       settling = false
       forcedSettling = false
       followingLatest = false
+      navigating = false
       if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
       if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
       scrollFrame = undefined
       measureFrame = undefined
       forceNextScroll = false
       scroll = el
+      setStore("viewportRef", el)
       down = false
       resumeRequested = false
       previousOffset = el?.scrollTop ?? 0
@@ -333,6 +389,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     },
     handleScroll,
     handleInteraction,
+    handleNavigation,
     preserveReadingAnchor,
     readingAnchorOwner,
     interactionVersion: () => interactionVersion,

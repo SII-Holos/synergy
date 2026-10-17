@@ -5,6 +5,7 @@ export type MigrationOwner =
 export interface Migration {
   id: string
   description: string
+  configuration?: "files"
   up(progress: (current: number, total: number, phase?: number) => void): Promise<void>
   upgradeConfig?(config: Record<string, unknown>): void
   upgradeRecord?(key: string[], record: Record<string, unknown>): void
@@ -13,7 +14,8 @@ export interface Migration {
   version?: string
   domain?: string
   scope?: "global" | "scope" | "session" | "derived"
-  onAccess?: true
+  /** Metadata-only access. A pure predicate may prove this Session has no input to upgrade; no receipt is written. */
+  onAccess?: true | ((session: Readonly<Record<string, unknown>>) => boolean)
   /** All inputs are records below these prefixes; when all are empty, up has no effects. */
   emptyInput?: string[][]
   /** Read-only proof of the current state; startup proofs run inside the completion transaction. */

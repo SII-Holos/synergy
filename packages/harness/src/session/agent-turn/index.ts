@@ -123,6 +123,15 @@ export namespace AgentTurn {
             ...turnInput,
             tools: ToolCatalog.modelTools(input.toolDefinitions ?? []),
           }))
+    const requestTools = (input.toolDefinitions ?? []).filter(
+      (tool) => !input.activeToolIDs || input.activeToolIDs.includes(tool.id),
+    )
+    const provenance = contextUsageProvenance
+      ? ContextUsage.buildProvenance({
+          history: ContextUsage.remapProvenance(input.messages, contextUsageProvenance),
+          toolDefinitions: requestTools,
+        })
+      : undefined
     try {
       return await instanceState.recovery.stream(providerRetryKey(input.model, prepared?.provider), input.abort, () =>
         RolloutCall.stream(
@@ -146,15 +155,15 @@ export namespace AgentTurn {
                 system: prepared?.system ?? input.system,
                 lateSystem: input.lateSystem,
                 promptSuffix: input.promptSuffix,
-                contextSources: contextUsageProvenance
+                contextSources: provenance
                   ? ContextUsage.sourceIndex({
                       messages: input.messages,
                       system: prepared?.system ?? input.system,
                       lateSystem: input.lateSystem,
-                      provenance: contextUsageProvenance,
+                      provenance,
                     })
                   : undefined,
-                tools: input.toolDefinitions,
+                tools: requestTools,
                 toolChoice: input.toolChoice,
                 params: prepared
                   ? { temperature: prepared.params.temperature, topP: prepared.params.topP, topK: prepared.params.topK }
@@ -168,12 +177,14 @@ export namespace AgentTurn {
             if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
             if (instanceState.inProcessStream) {
               onPhase?.("waiting_model")
-              return RolloutTransport.provide(archive, () => instanceState.inProcessStream!(input))
+              return RolloutTransport.provide(archive, () =>
+                instanceState.inProcessStream!({ ...input, contextUsageProvenance: provenance }),
+              )
             }
             instanceState.pool ??= createExecutor(instanceState.options)
             onPhase?.("queued_agent")
             const result = await instanceState.pool.run({ ...turnInput, prepared: prepared!, archive, onPhase })
-            const contextUsageDraft = startContextUsageDraft(input, prepared!.system, contextUsageProvenance)
+            const contextUsageDraft = startContextUsageDraft(input, prepared!.system, provenance)
             return { ...result, contextUsageDraft }
           },
           () => {

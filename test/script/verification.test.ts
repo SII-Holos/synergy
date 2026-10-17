@@ -98,6 +98,59 @@ test("focused coverage requires measured source and respects only declared exact
   ])
 })
 
+test("local verification validates selection, stops on static failure and only then starts selected tests", async () => {
+  await using f = await fixture()
+  await Bun.write(path.join(f.root, "package.json"), JSON.stringify({ workspaces: { packages: [] } }))
+  await Bun.write(path.join(f.root, "script/coverage-exempt.json"), JSON.stringify({ packages: {} }))
+  await Bun.write(path.join(f.root, "script/check-bun-version.ts"), "export {}\n")
+  await Bun.write(
+    path.join(f.root, "test/selected.test.ts"),
+    `import { test } from "bun:test"\nimport { appendFileSync } from "node:fs"\ntest("selected", () => appendFileSync(".artifacts/order.txt", "behavior\\n"))\n`,
+  )
+  f.git("add", ".")
+  f.git("commit", "--quiet", "-m", "verification inputs")
+  const run = async (file: string, fail: boolean) => {
+    await Bun.write(path.join(f.root, ".artifacts/order.txt"), "")
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "--preload",
+        path.join(import.meta.dir, "fixtures/verify-preflight.ts"),
+        path.resolve(import.meta.dir, "../../script/verify.ts"),
+        "local",
+        "--base",
+        "HEAD",
+        "--test",
+        file,
+      ],
+      {
+        cwd: f.root,
+        env: { ...process.env, VERIFY_FIXTURE_ROOT: f.root, VERIFY_FIXTURE_FAIL: fail ? "1" : "0" },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    )
+    const [exit, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    return { exit, output: stdout + stderr, order: await Bun.file(path.join(f.root, ".artifacts/order.txt")).text() }
+  }
+  const invalid = await run("test/missing.test.ts", false)
+  expect(invalid.exit).toBe(1)
+  expect(invalid.output).toContain("Unknown test file")
+  expect(invalid.order).toBe("")
+  const failed = await run("test/selected.test.ts", true)
+  expect(failed.exit).toBe(1)
+  expect(failed.output).toContain("controlled static failure")
+  expect(failed.order).toBe("static\n")
+  const passed = await run("test/selected.test.ts", false)
+  expect(passed.output).toContain("Selected local verification passed")
+  expect(passed.exit).toBe(0)
+  expect(passed.order).toBe("static\nbehavior\n")
+}, 30_000)
+
 test("hook PATH additions reuse the same tools, while an executable or semantic environment change invalidates receipts", async () => {
   await using f = await fixture()
   const extra = path.join(f.root, "ignored/tools")

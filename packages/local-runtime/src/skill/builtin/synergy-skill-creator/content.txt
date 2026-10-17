@@ -18,7 +18,7 @@ Think of the model as exploring a path: a narrow bridge with cliffs needs specif
 
 ### Description as trigger
 
-The frontmatter `description` is the primary triggering mechanism: it is what the model and the catalog use to decide when the Skill applies. Put all "when to use" information in the description, not in the body — the body is only loaded after the Skill triggers. Name both what the Skill does and the concrete triggers or contexts that should activate it.
+The frontmatter `description` is the canonical selection signal in the catalog. Keep one concise, complete description of the Skill's purpose, triggers, and exclusions; the model sees its full content before loading the body. Do not repeat that self-routing prose in the body. Keep execution steps, next-reference routing, and authorization or safety guards in the body where the agent needs them to act.
 
 ## Progressive disclosure
 

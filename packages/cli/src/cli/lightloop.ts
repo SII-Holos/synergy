@@ -91,13 +91,9 @@ export interface LightLoopWaitResult {
 /**
  * Wait for a Light Loop attempt to finish.
  *
- * The CLI cannot rely on `session.idle` alone: the parent session goes idle
- * while the reviewer runs, and a rejected review resumes the executor. The
- * end-of-attempt signal is the workflow state (terminal status, cleared after
- * approval, or replaced by another workflow). When the workflow is cleared,
- * the authoritative status is read from the durable terminal record so failed,
- * exhausted, timed-out, and cancelled attempts are distinguishable from
- * approval.
+ * Session idle is not completion: continuation may still have work to do.
+ * The separate terminal record distinguishes completion, cancellation,
+ * timeout and failure after the workflow is cleared.
  */
 export async function waitForLightLoopFinish(
   sdk: SynergyClient,

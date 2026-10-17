@@ -3,10 +3,30 @@ import type { Storage } from "../storage/storage"
 import { assertIsolatedTestHome } from "../global/test-home-guard"
 import path from "node:path"
 
+export interface RuntimeLaunch {
+  readonly entry:
+    | "dev-server"
+    | "dev-web"
+    | "dev-desktop"
+    | "dev-desktop-managed"
+    | "dev-send"
+    | "desktop-managed"
+    | "daemon"
+    | "cli-server"
+    | "cli-send"
+    | "embedded"
+  readonly distribution: "source" | "installed" | "unknown"
+  readonly version: string
+  readonly channel: string
+  readonly sourceCheckout?: string
+  readonly revision?: string
+}
+
 export interface RuntimeHost {
   readonly home: string
   readonly root: string
   readonly env: Readonly<Record<string, string | undefined>>
+  readonly launch?: RuntimeLaunch
   readonly workspaceLocation?: import("../workspace/location").WorkspaceLocationSource
 }
 
@@ -16,23 +36,35 @@ export namespace RuntimeContext {
   const localContexts: Array<Pick<AsyncLocalStorage<unknown>, "exit">> = []
   const states = new WeakMap<Instance, Map<symbol, unknown>>()
   const sealedCompositions = new WeakSet<Instance>()
+  const readyInstances = new WeakSet<Instance>()
   const transactionOwner = new AsyncLocalStorage<Instance>()
 
   export interface Instance {
     readonly host: RuntimeHost
+    readonly id: string
+    readonly startedAt: number
+    readonly mode: "server" | "oneshot" | "unknown"
     storage?: Storage.Handle
     dispose(): void
     run<T>(body: () => T): T
     bind<A extends unknown[], R>(body: (...args: A) => R): (...args: A) => R
   }
 
-  export function create(host: RuntimeHost): Instance {
+  export function create(host: RuntimeHost, mode: Instance["mode"] = "unknown"): Instance {
     if (!path.isAbsolute(host.home) || !path.isAbsolute(host.root)) throw new Error("Runtime paths must be absolute")
     assertIsolatedTestHome(host.root, Bun.main, process.argv, host.env)
     const instance: Instance = {
-      host: Object.freeze({ ...host, env: Object.freeze({ ...host.env }) }),
+      host: Object.freeze({
+        ...host,
+        env: Object.freeze({ ...host.env }),
+        ...(host.launch ? { launch: Object.freeze({ ...host.launch }) } : {}),
+      }),
+      id: crypto.randomUUID(),
+      startedAt: Date.now(),
+      mode,
       dispose() {
         instance.storage = undefined
+        readyInstances.delete(instance)
         states.delete(instance)
       },
       run(body) {
@@ -76,6 +108,15 @@ export namespace RuntimeContext {
 
   export function sealComposition() {
     sealedCompositions.add(current())
+  }
+
+  export function isReady(): boolean {
+    return readyInstances.has(current())
+  }
+
+  export function setReady(ready: boolean) {
+    if (ready) readyInstances.add(current())
+    else readyInstances.delete(current())
   }
 
   export function assertCompositionOpen(name: string) {

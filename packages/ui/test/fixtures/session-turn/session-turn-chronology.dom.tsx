@@ -155,7 +155,13 @@ render(
         <ResourceOpenProvider value={resourceController}>
           <MarkedProvider>
             <DiffComponentProvider component={EmptyDiff}>
-              <DataProvider data={data} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
+              <DataProvider
+                hasFeature={(id) => ["media", "mcp"].includes(id)}
+                data={data}
+                runtime={runtime}
+                directory="/workspace"
+                serverUrl="http://localhost"
+              >
                 <ConversationMotionProvider takeArrival={(id) => partArrivals.delete(id)}>
                   <For each={segmented() ? ["header", "first", "second", "answer", "footer"] : [`whole-${mount()}`]}>
                     {(segment) => (
@@ -288,6 +294,10 @@ globalThis.__chronologyHarness = {
   },
   remount: () => setMount((value) => value + 1),
   setFollowing,
+  newText: (id: string) => {
+    partArrivals.add(id)
+    setData("part", assistantID, (parts) => [...parts, { ...answerPart, id, text: "New live answer." }])
+  },
   fastTool: () => {
     partArrivals.add("tool-fast")
     setData("part", assistantID, (parts) => [
@@ -329,6 +339,7 @@ globalThis.__chronologyHarness = {
     title?: string
     error?: string
     output?: string
+    sourceAttachment?: boolean
   }) =>
     batch(() => {
       const active = ["pending", "generating", "running"].includes(options.status)
@@ -352,6 +363,20 @@ globalThis.__chronologyHarness = {
                   title: options.title,
                   metadata: { render: "html", html: options.html },
                   time: { start: 1, end: 2 },
+                  attachments: options.sourceAttachment
+                    ? [
+                        {
+                          id: "visual-source",
+                          sessionID,
+                          messageID: assistantID,
+                          type: "attachment",
+                          mime: "application/vnd.synergy.visual+json",
+                          filename: "visual.synergy.json",
+                          url: "asset://0123456789abcdef.bin",
+                          presentation: { purpose: "deliverable", renderer: "file" },
+                        },
+                      ]
+                    : [],
                 }
       setStage(active ? 3 : 8)
       setExecutionState({

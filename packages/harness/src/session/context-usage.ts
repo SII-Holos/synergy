@@ -8,8 +8,10 @@ import {
   ContextSourceSchema,
   type ContextCategoryKey,
   type ContextUsageSnapshot,
+  type ContextUsageDraft,
 } from "./context-usage-schema"
 import { ContextUsageEstimator } from "./context-usage-estimator"
+import { reconcileContextUsage } from "./context-usage-attribution"
 
 export namespace ContextUsage {
   const CATEGORY_KEYS = ContextCategoryKeys
@@ -21,14 +23,7 @@ export namespace ContextUsage {
     items: number
     precision?: "source" | "role"
   }
-  export interface Draft {
-    modelID: string
-    providerID: string
-    contextLimit?: number
-    usableInputLimit?: number
-    categories: Record<CategoryKey, DraftCategory>
-    estimator: Snapshot["estimator"]
-  }
+  export type Draft = ContextUsageDraft
   type Contribution = MessageV2.ModelMessageContribution
   export type Provenance = MessageV2.ModelMessageProvenance
 
@@ -184,6 +179,16 @@ export namespace ContextUsage {
         category === "toolDefinitions" ? input.provenance.categories[category] : history.categories[category]
       return contributions
         .filter((entry) => entry.path)
+        .flatMap((entry) =>
+          entry.segments?.length
+            ? entry.segments.map((segment) => ({
+                ...entry,
+                text: entry.text.slice(segment.start, segment.end),
+                source: segment.source,
+                range: { start: segment.start, end: segment.end },
+              }))
+            : [entry],
+        )
         .map((entry) =>
           ContextSourceSchema.parse({
             category,
@@ -207,6 +212,7 @@ export namespace ContextUsage {
   }
 
   export async function measureDraft(input: {
+    sessionID?: string
     modelID: string
     providerID: string
     limits?: ModelLimit.Info
@@ -221,7 +227,12 @@ export namespace ContextUsage {
       contributions[category].push(contribution)
       items[category]++
     }
-    const measured = await ContextUsageEstimator.estimate(boundedEstimatorRequest(contributions))
+    const measured = await ContextUsageEstimator.estimate(
+      boundedEstimatorRequest(contributions),
+      input.sessionID
+        ? { sessionID: input.sessionID, providerID: input.providerID, modelID: input.modelID }
+        : undefined,
+    )
     if (!measured) return undefined
     return {
       modelID: input.modelID,
@@ -242,35 +253,7 @@ export namespace ContextUsage {
     }
   }
 
-  export function reconcile(draft: Draft, totalInput: number, capturedAt = Date.now()): Snapshot {
-    const exactTotal = nonNegativeInteger(totalInput)
-    const estimates = CATEGORY_KEYS.map((key) => nonNegativeInteger(draft.categories[key].estimatedTokens))
-    const estimatedTotal = estimates.reduce((sum, value) => sum + value, 0)
-    const scaledDown = estimatedTotal > exactTotal
-    const attributed = scaledDown ? largestRemainder(estimates, exactTotal) : estimates
-    return Schema.parse({
-      version: 2,
-      modelID: draft.modelID,
-      providerID: draft.providerID,
-      totalInput: exactTotal,
-      contextLimit: positiveInteger(draft.contextLimit),
-      usableInputLimit: positiveInteger(draft.usableInputLimit),
-      categories: CATEGORY_KEYS.map((category, index) => ({
-        category,
-        precision: draft.categories[category].precision ?? "source",
-        estimatedTokens: estimates[index],
-        attributedTokens: attributed[index],
-        items: nonNegativeInteger(draft.categories[category].items),
-      })),
-      overhead: { attributedTokens: exactTotal - attributed.reduce((sum, value) => sum + value, 0) },
-      estimator: draft.estimator,
-      reconciliation: {
-        mode: scaledDown ? "scaled-down" : "residual",
-        factor: scaledDown ? exactTotal / estimatedTotal : 1,
-      },
-      capturedAt: nonNegativeInteger(capturedAt),
-    })
-  }
+  export const reconcile = reconcileContextUsage
 
   export function attributedTotal(snapshot: Snapshot): number {
     return snapshot.categories.reduce(
@@ -352,25 +335,6 @@ export namespace ContextUsage {
       sample.push(contributions[contributionIndex].text[position - contributionStart])
     }
     return sample.join("")
-  }
-
-  function largestRemainder(estimates: number[], total: number): number[] {
-    if (total === 0) return estimates.map(() => 0)
-    const estimatedTotal = estimates.reduce((sum, tokens) => sum + tokens, 0)
-    if (estimatedTotal === 0) return estimates.map(() => 0)
-
-    const exact = estimates.map((tokens) => (tokens * total) / estimatedTotal)
-    const allocated = exact.map(Math.floor)
-    let remaining = total - allocated.reduce((sum, tokens) => sum + tokens, 0)
-    const order = exact
-      .map((tokens, index) => ({ index, remainder: tokens - allocated[index] }))
-      .sort((a, b) => b.remainder - a.remainder || a.index - b.index)
-    for (const entry of order) {
-      if (remaining === 0) break
-      allocated[entry.index]++
-      remaining--
-    }
-    return allocated
   }
 
   function nonNegativeInteger(value: number | undefined): number {

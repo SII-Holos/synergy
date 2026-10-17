@@ -3,12 +3,13 @@ import { createEffect, createMemo, createResource, createSignal, onCleanup, Show
 import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
 import { generateSecureUUID } from "@ericsanchezok/synergy-util/uuid"
 import { useDialog } from "../context/dialog"
-import { RenderStateConflict, useRenderHost } from "../context/render"
+import { readRenderState, RenderStateConflict, useRenderHost } from "../context/render"
 import { BasicTool } from "./basic-tool"
 import { Button } from "./button"
 import { Dialog } from "./dialog"
 import { IconButton } from "./icon-button"
 import { RenderHtml, renderHtmlDocument, readThemeCss, readHostContext } from "./render-html"
+import { RenderNative, renderNativeDocument } from "./render-native"
 import { loadRenderLibraries } from "./render/libraries"
 import { loadRenderFonts } from "./render/fonts"
 import { localizeRenderLabels, renderLabels } from "./render/labels"
@@ -36,6 +37,7 @@ export function RenderTool(
     dialog = useDialog(),
     host = useRenderHost()
   const active = () => ["pending", "generating", "running"].includes(props.status ?? "")
+  const native = () => ui() !== undefined || descriptor()?.renderer === "native"
   const descriptor = createMemo(() =>
     props.status === "completed" ? RenderArtifact.descriptor(props.metadata) : undefined,
   )
@@ -51,6 +53,7 @@ export function RenderTool(
   const [expanded, setExpanded] = createSignal(false)
   const [feedback, setFeedback] = createSignal(false)
   const [acknowledged, setAcknowledged] = createSignal(RenderArtifact.emptyState())
+  const [acknowledgedKey, setAcknowledgedKey] = createSignal(key())
   const [exporting, setExporting] = createSignal(false)
   const [error, setError] = createSignal<string>()
   const [unavailable, setUnavailable] = createSignal(false)
@@ -60,17 +63,18 @@ export function RenderTool(
   let writes = Promise.resolve<RenderArtifact.State>(RenderArtifact.emptyState())
   const [snapshot, { refetch }] = createResource(
     () => (descriptor() ? key() : false),
-    async () => {
+    async (owner) => {
       loading?.abort()
       loading = new AbortController()
       if (!host) throw new Error(_(renderLabels.unavailable))
-      return host.read(target(), loading.signal)
+      return { ...(await host.read(target(), loading.signal)), owner }
     },
   )
   createEffect(() => {
     key()
     untrack(() => {
       setAcknowledged(RenderArtifact.emptyState())
+      setAcknowledgedKey(key())
       setError(undefined)
       setUnavailable(false)
       setFeedback(false)
@@ -84,10 +88,16 @@ export function RenderTool(
   })
   createEffect(() => {
     if (!descriptor()) return
+    const observed = key()
     const stop = host?.observe?.(
       target(),
-      (next) => setAcknowledged((current) => (next.revision > current.revision ? next : current)),
+      (next) => {
+        if (key() !== observed) return
+        setAcknowledgedKey(observed)
+        setAcknowledged((current) => (next.revision > current.revision ? next : current))
+      },
       () => {
+        if (key() !== observed) return
         setUnavailable(true)
         setError(_(renderLabels.unavailable))
         if (viewerID) dialog.close(viewerID)
@@ -96,11 +106,23 @@ export function RenderTool(
     )
     onCleanup(() => stop?.())
   })
-  const loaded = () => (unavailable() || snapshot.error || snapshot.loading ? undefined : snapshot())
+  const loaded = createMemo(() =>
+    !descriptor() || unavailable() || snapshot.error || snapshot.loading || snapshot()?.owner !== key()
+      ? undefined
+      : snapshot(),
+  )
+  const ui = createMemo<{ owner: string; value: unknown } | undefined>((previous) => {
+    const owner = [props.sessionId, props.messageId, props.partId].join("/")
+    const value = props.input.ui ?? loaded()?.source.ui
+    if (value !== undefined) return { owner, value }
+    return previous?.owner === owner && (active() || descriptor()?.renderer === "native") ? previous : undefined
+  })
   const state = createMemo(() =>
-    [RenderArtifact.state(props.metadata), acknowledged(), loaded()?.state ?? RenderArtifact.emptyState()].reduce(
-      (newest, next) => (next.revision > newest.revision ? next : newest),
-    ),
+    [
+      readRenderState(props.metadata),
+      acknowledgedKey() === key() ? acknowledged() : RenderArtifact.emptyState(),
+      loaded()?.state ?? RenderArtifact.emptyState(),
+    ].reduce((newest, next) => (next.revision > newest.revision ? next : newest)),
   )
   // Historical unversioned results enter the same surface with static execution policy.
   const html = () =>
@@ -120,7 +142,7 @@ export function RenderTool(
     const captured = untrack(key),
       destination = target(),
       epoch = writeEpoch
-    writes = writes
+    const write = writes
       .catch(() => state())
       .then(async () => {
         if (disposed || key() !== captured || epoch !== writeEpoch || !host) throw new Error(_(renderLabels.closed))
@@ -131,36 +153,61 @@ export function RenderTool(
         } catch (error) {
           if (!disposed && key() === captured) {
             writeEpoch++
-            if (error instanceof RenderStateConflict) setAcknowledged(error.state)
+            if (error instanceof RenderStateConflict) {
+              setAcknowledged(error.state)
+              writes = Promise.resolve(error.state)
+            }
           }
           throw error
         }
       })
-    return writes
+    writes = write
+    return write
   }
   const followUp = (input: RenderArtifact.FollowUp) => {
     if (!host || !loaded()) return Promise.reject(new Error(_(renderLabels.unavailable)))
     return host.followUp(target(), loaded()!.source, input)
   }
   const view = (isExpanded: boolean, close?: () => void) => (
-    <RenderHtml
-      html={html()!}
-      title={title()}
-      source={loaded()?.source}
-      state={state()}
-      maxHeight={480}
-      expanded={isExpanded}
-      active={isExpanded || !expanded()}
-      feedback={feedback()}
-      onEscape={close}
-      onState={save}
-      onFollowUp={followUp}
-      onReady={(flush) => {
-        if (isExpanded) flushExpanded = flush
-        else flushInline = flush
-        if (props.expanded) props.onFlush?.(() => flushView(flush))
-      }}
-    />
+    <Show
+      when={native()}
+      fallback={
+        <RenderHtml
+          html={html()!}
+          title={title()}
+          source={loaded()?.source}
+          state={state()}
+          maxHeight={480}
+          expanded={isExpanded}
+          active={isExpanded || !expanded()}
+          feedback={feedback()}
+          onEscape={close}
+          onState={save}
+          onFollowUp={followUp}
+          onReady={(flush) => {
+            if (isExpanded) flushExpanded = flush
+            else flushInline = flush
+            if (props.expanded) props.onFlush?.(() => flushView(flush))
+          }}
+        />
+      }
+    >
+      <RenderNative
+        input={loaded()?.source.ui ?? ui()?.value}
+        identity={[props.sessionId, props.messageId, props.partId].join("/")}
+        state={state()}
+        preparingLabel={_(C.preparing)}
+        persistent={!!loaded()}
+        active={!unavailable() && (isExpanded || !expanded())}
+        onState={save}
+        onFollowUp={followUp}
+        onReady={(flush) => {
+          if (isExpanded) flushExpanded = flush
+          else flushInline = flush
+          if (props.expanded) props.onFlush?.(() => flushView(flush))
+        }}
+      />
+    </Show>
   )
   async function flushView(flush: (() => Promise<void>) | undefined) {
     const captured = key()
@@ -230,21 +277,23 @@ export function RenderTool(
       if (disposed || key() !== captured) return
       const context = readHostContext(i18n().locale, 1024, true)
       context.viewMode = "export"
-      const document = renderHtmlDocument(
-        documentHTML,
-        (await loadRenderFonts()) + readThemeCss(),
-        {
-          nonce: generateSecureUUID(),
-          version: source?.id ?? "static",
-          offline: true,
-          interactive: source?.mode === "interactive",
-          revision: state().revision,
-          state: state().content,
-          context,
-          labels: localizeRenderLabels(_),
-        },
-        await loadRenderLibraries(source?.libraries ?? []),
-      )
+      const document = source?.ui
+        ? renderNativeDocument(source.ui, state().content, readThemeCss(), i18n().locale)
+        : renderHtmlDocument(
+            documentHTML,
+            (await loadRenderFonts()) + readThemeCss(),
+            {
+              nonce: generateSecureUUID(),
+              version: source?.id ?? "static",
+              offline: true,
+              interactive: source?.mode === "interactive",
+              revision: state().revision,
+              state: state().content,
+              context,
+              labels: localizeRenderLabels(_),
+            },
+            await loadRenderLibraries(source?.libraries ?? []),
+          )
       if (disposed || key() !== captured) return
       const url = URL.createObjectURL(new Blob([document], { type: "text/html" }))
       const link = window.document.createElement("a")
@@ -260,7 +309,7 @@ export function RenderTool(
   }
   const actions = (canExpand: boolean) => (
     <div data-slot="render-actions">
-      <Show when={loaded()?.source.mode === "interactive"}>
+      <Show when={loaded()?.source.mode === "interactive" && !native()}>
         <Button size="small" variant="ghost" aria-pressed={feedback()} onClick={() => setFeedback((value) => !value)}>
           {_(feedback() ? C.stopFeedback : C.feedback)}
         </Button>
@@ -329,7 +378,7 @@ export function RenderTool(
       >
         {failure(props.onClose)}
         <Show
-          when={html()}
+          when={!!html() || native()}
           fallback={
             <div data-slot="render-tool-loading" role="status">
               <span aria-hidden="true">
@@ -339,7 +388,7 @@ export function RenderTool(
             </div>
           }
         >
-          {view(props.expanded ?? false)}
+          {(_visible) => view(props.expanded ?? false)}
         </Show>
         <figcaption>
           <span>{title()}</span>

@@ -7,6 +7,7 @@ import type { ToolDiagnostic } from "./diagnostic"
 import { ToolExposure } from "./exposure"
 import { ToolMcpSource } from "./mcp-source"
 import { ToolPolicySource } from "./policy-source"
+import { imageToolEligibility } from "./modality"
 
 export namespace ToolDiscovery {
   export interface Entry {
@@ -37,13 +38,13 @@ export namespace ToolDiscovery {
     userTools?: Record<string, boolean>
   }): Promise<Catalog> {
     const { ToolRegistry } = await import("./registry")
-    const groupByID = new Map(ToolExposure.groups().map((group) => [group.id, { ...group, tools: [...group.tools] }]))
     const tools: Entry[] = []
+    const imageTools = await imageToolEligibility(input.model)
 
     for (const item of await ToolRegistry.catalog(input.providerID, input.agent, input.session?.workspaceID)) {
+      if ((item.id === "view_image" || item.id === "look_at") && !imageTools.has(item.id)) continue
       const exposure = ToolExposure.normalize(item.id, item.exposure)
       const group = ToolExposure.groupInfoFromExposure(item.id, exposure)
-      if (group) mergeGroup(groupByID, group)
       tools.push({
         id: item.id,
         title: titleForTool(item.id, exposure),
@@ -51,7 +52,7 @@ export namespace ToolDiscovery {
         exposure,
         group: exposure.mode === "group" ? exposure.group : undefined,
         groupTitle: group?.title,
-        keywords: exposure.mode === "search" ? exposure.keywords : undefined,
+        keywords: exposure.keywords,
         source: "tool",
       })
     }
@@ -59,31 +60,19 @@ export namespace ToolDiscovery {
     if (input.includeMCP !== false) {
       const mcpExposure = await ToolMcpSource.get()?.exposureConfiguration()
       const entries = (await ToolMcpSource.get()?.toolEntries()) ?? []
-      const toolsByServer = new Map<string, string[]>()
       for (const entry of entries) {
-        if (!(mcpExposure?.expandByDefault(entry.serverName) ?? false)) {
-          const existing = toolsByServer.get(entry.serverName) ?? []
-          existing.push(entry.id)
-          toolsByServer.set(entry.serverName, existing)
-        }
-      }
-      for (const [serverName, ids] of toolsByServer) {
-        mergeGroup(groupByID, ToolExposure.mcpGroup(serverName, ids))
-      }
-
-      for (const entry of entries) {
-        const exposure = ToolExposure.mcpExposure(
-          entry.serverName,
-          mcpExposure?.expandByDefault(entry.serverName) ?? false,
-        )
+        const exposure =
+          entry.presentation?.exposure ??
+          ToolExposure.mcpExposure(entry.serverName, mcpExposure?.expandByDefault(entry.serverName) ?? false)
         const group = ToolExposure.groupInfoFromExposure(entry.id, exposure)
         tools.push({
           id: entry.id,
-          title: entry.toolName,
-          description: entry.tool.description ?? "",
+          title: entry.presentation?.title ?? entry.toolName,
+          description: entry.presentation?.description ?? entry.tool.description ?? "",
           exposure,
           group: exposure.mode === "group" ? exposure.group : undefined,
           groupTitle: group?.title,
+          keywords: exposure.keywords,
           source: "mcp",
         })
       }
@@ -146,7 +135,7 @@ export namespace ToolDiscovery {
     }
 
     return {
-      groups: [...groupByID.values()].sort((a, b) => a.id.localeCompare(b.id)),
+      groups: ToolExposure.availableGroups(tools.filter((tool) => !disabled.has(tool.id))),
       tools,
       state: ToolExposure.state(input.session?.toolState),
       disabled,
@@ -155,8 +144,9 @@ export namespace ToolDiscovery {
   }
 
   export function availableGroups(catalog: Catalog): ToolExposure.GroupInfo[] {
+    const available = new Set(catalog.tools.filter((tool) => !catalog.disabled.has(tool.id)).map((tool) => tool.id))
     return catalog.groups
-      .map((group) => ({ ...group, tools: group.tools.filter((toolID) => !catalog.disabled.has(toolID)) }))
+      .map((group) => ({ ...group, tools: group.tools.filter((toolID) => available.has(toolID)) }))
       .filter((group) => group.tools.length > 0)
   }
 
@@ -172,6 +162,7 @@ export namespace ToolDiscovery {
         group: group.id,
         active: activeGroups.has(group.id),
         tools: group.tools,
+        keywords: group.keywords,
       }),
     )
 
@@ -202,18 +193,6 @@ export namespace ToolDiscovery {
         { forcedGroups, forcedTools },
       ).visible,
     ].sort()
-  }
-
-  function mergeGroup(groupByID: Map<string, ToolExposure.GroupInfo>, incoming: ToolExposure.GroupInfo) {
-    const existing = groupByID.get(incoming.id)
-    if (!existing) {
-      groupByID.set(incoming.id, { ...incoming, tools: ToolExposure.unique(incoming.tools) })
-      return
-    }
-    existing.tools = ToolExposure.unique([...existing.tools, ...incoming.tools])
-    if (!existing.title && incoming.title) existing.title = incoming.title
-    if (!existing.description && incoming.description) existing.description = incoming.description
-    if (!existing.whenToExpand && incoming.whenToExpand) existing.whenToExpand = incoming.whenToExpand
   }
 
   function titleForTool(toolID: string, exposure: ToolExposure.Info) {

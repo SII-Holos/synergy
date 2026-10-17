@@ -61,7 +61,8 @@ export async function fixtureSettings(directory: string, upstream: string): Prom
       vision_model: "fixture/model",
       controlProfile: "full_access",
       execution: { agentWorkers: 1, agentWorkerMinIdle: 0 },
-      library: { memory: { enabled: false }, experience: { retrieve: false, encode: false }, autonomy: false },
+      library: { memory: { enabled: false }, experience: { retrieve: false, encode: false } },
+      anima: { enabled: false },
       provider: {
         fixture: {
           npm: "@ai-sdk/openai-compatible",

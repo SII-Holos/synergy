@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test"
-import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint/loop-store"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint/loop-store"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { NoteStore } from "@ericsanchezok/synergy-note"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -327,6 +327,9 @@ describe("orphaned BlueprintLoop adjudication preserves real drivers", () => {
           })
           await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, created.id, {
             status: "running",
+          })
+          await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, created.id, {
+            status: "auditing",
           })
           await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, created.id, {
             status: "completed",

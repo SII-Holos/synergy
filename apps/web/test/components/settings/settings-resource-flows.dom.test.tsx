@@ -16,6 +16,7 @@ type FixtureFlags = {
   __catalogFailure?: boolean
   __loseCreateResponse?: boolean
   __pauseWrite?: boolean
+  __pauseUpdate?: boolean
 }
 interface FixtureWindow extends Window, FixtureFlags {
   __resourceCalls: {
@@ -23,9 +24,17 @@ interface FixtureWindow extends Window, FixtureFlags {
     creations: { id: string }[]
     authorizations: { providerID: string }[]
     toasts: unknown[]
+    updates: {
+      providerID: string
+      providerConnectionUpdateInput: { name?: string; endpoint?: string | null; enabled?: boolean }
+    }[]
+    removals: { providerID: string }[]
   }
   __finishOAuth(): void
   __releaseWrite(): void
+  __releaseUpdate(): void
+  __disableDefault(): void
+  __configureFirstAccount(): void
 }
 function calls(key: "writes"): Promise<{ providerID: string }[]>
 function calls(key: "creations"): Promise<{ id: string }[]>
@@ -37,12 +46,21 @@ const flags = (value: FixtureFlags) =>
     Object.assign(window, value)
   }, value)
 
+async function addAnotherAccount(name = "DeepSeek") {
+  await page
+    .locator(".providers-connected-account")
+    .filter({ hasText: name })
+    .getByRole("button", { name: "Account actions", exact: true })
+    .click()
+  await page.getByRole("menuitem", { name: "Add another account", exact: true }).click()
+}
+
 beforeAll(async () => {
   fixture = await mkdtemp(path.join(import.meta.dir, ".settings-resources-"))
   const app = path.resolve(import.meta.dir, "../../../src")
   await Bun.write(
     path.join(fixture, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div><script type="module" src="/main.tsx"></script></body></html>',
   )
   await Bun.write(
     path.join(fixture, "api.ts"),
@@ -52,12 +70,14 @@ beforeAll(async () => {
     export function useLocale() { return { fmt: createIntlFormatter(() => new URLSearchParams(location.search).get("locale") || "en") } }
     const capabilities = { reasoning: true, input: { text: true, image: false, pdf: false, video: false, audio: false }, output: { text: true, audio: false } }
     const model = { id: "chat", name: "Test Chat", capabilities, cost: { input: 1, output: 1 }, variants: {} }
-    const base = (id, connected) => ({ id, name: id === "deepseek" ? "DeepSeek" : id === "openai-codex" ? "OpenAI Codex" : "Test Service", profileID: id, catalogProviderID: id, configured: true, enabled: true, removable: false, canCreateSibling: true, connected, modelCount: 1, models: { chat: model }, catalog: { source: "live", refreshing: false, lastVerifiedAt: 1791028800000 }, health: { status: connected ? "connected" : "unconfigured", source: "api" } })
+    const base = (id, connected) => ({ id, name: id === "deepseek" ? "DeepSeek" : id === "openai-codex" ? "OpenAI Codex" : "Test Service", profile: { name: id === "deepseek" ? "DeepSeek" : id === "openai-codex" ? "OpenAI Codex" : "Test Service" }, profileID: id, catalogProviderID: id, configured: connected, enabled: true, removable: false, canCreateSibling: true, connected, modelCount: 1, models: { chat: model }, catalog: { source: "live", refreshing: false, lastVerifiedAt: 1791028800000 }, health: { status: connected ? "connected" : "unconfigured", source: "api" } })
     const [data, setData] = createStore({ provider: { all: [base("deepseek", true), base("test-service", false), base("openai-codex", false)], connected: ["deepseek"], profiles: {}, default: { deepseek: "chat" } }, provider_auth: { deepseek: [{ type: "api", label: "API key" }], "test-service": [{ type: "api", label: "API key" }], "openai-codex": [{ type: "oauth", label: "Login with ChatGPT" }, { type: "import", label: "Import Codex CLI credentials" }] } })
     setData("provider", "connections", Object.fromEntries(data.provider.all.map(item => [item.id, item])))
-    const writes = []; const creations = []; const authorizations = []; const toasts = []; const authenticated = new Set(["deepseek"])
-    window.__resourceCalls = { writes, creations, authorizations, toasts }
+    const writes = []; const creations = []; const authorizations = []; const toasts = []; const updates = []; const removals = []; const authenticated = new Set(["deepseek"])
+    window.__resourceCalls = { writes, creations, authorizations, toasts, updates, removals }
     window.__useImport = () => setData("provider_auth", "test-service", [{ type: "import", label: "Import credentials" }])
+    window.__configureFirstAccount = () => { const value = { name: "Configured key", endpoint: "https://configured.example.com/v1", enabled: false, configured: true }; setData("provider", "all", item => item.id === "test-service", value); setData("provider", "connections", "test-service", value) }
+    window.__disableDefault = () => { authenticated.delete("deepseek"); setData("provider", "connected", []); setData("provider", "all", item => item.id === "deepseek", { enabled: false, health: { status: "disabled", source: "api" } }); setData("provider", "connections", "deepseek", "enabled", false) }
     window.__publishModelCatalog = () => setData("provider", "all", 0, "models", {
       chat: model,
       "new-model": { ...model, id: "new-model", name: "Test New Model" },
@@ -76,7 +96,8 @@ beforeAll(async () => {
         return { data: catalog }
       } }, connection: {
         create: async ({ providerConnectionCreateInput: input }) => { creations.push(input); const account = { ...base(input.profileID, false), id: input.id, name: input.name, removable: true }; setData("provider", "all", [...data.provider.all, account]); setData("provider", "connections", input.id, account); if (window.__loseCreateResponse) { window.__loseCreateResponse = false; throw new Error("Response lost") } return { data: account } },
-        update: async () => ({ data: data.provider.all[0] }), remove: async () => {} }, disconnect: async () => {} }
+        update: async input => { if (window.__pauseUpdate) await new Promise(resolve => { window.__releaseUpdate = resolve }); if (window.__failWrite) throw { data: { message: "Account update rejected" } }; updates.push(input); const account = { ...data.provider.connections[input.providerID], ...input.providerConnectionUpdateInput }; setData("provider", "all", item => item.id === input.providerID, account); setData("provider", "connections", input.providerID, account); return { data: account } },
+        remove: async input => { removals.push(input); authenticated.delete(input.providerID); setData("provider", "all", data.provider.all.filter(item => item.id !== input.providerID)); } }, disconnect: async () => {} }
     } } }
     export function useProviders() { return { all: () => data.provider.all, connected: () => data.provider.all.filter(provider => data.provider.connected.includes(provider.id)), default: () => data.provider.default, ensureCatalog: async () => {} } }
     export function useLocal() { return { model: { current: () => undefined, set: () => { window.__sessionChanged = true } } } }
@@ -118,17 +139,18 @@ beforeAll(async () => {
       const [repair, setRepair] = createSignal("")
       const saved = { ...models }
       const roles = MODEL_ROLES.map(role => ({ id: role.key === "model" ? "primary" : role.key.replace("_model", ""), field: role.key, label: role.key, summary: "", fallbackChain: role.key === "model" ? ["model"] : [role.key, "model"], usedBy: [], resolvedModel: { providerID: "deepseek", modelID: "chat", via: "model" } }))
-      return <div class="settings-panel-frame"><button onClick={() => setView("models")}>Models page</button><button onClick={() => setView("providers")}>Providers page</button><button onClick={() => setModels("model", "missing/chat")}>Unavailable model</button>
+      return <div class="settings-panel-frame"><button onClick={() => setView("models")}>Models page</button><button onClick={() => setView("providers")}>Providers page</button><button onClick={() => setModels("model", "missing/chat")}>Unavailable model</button><div class="settings-panel-content">
         <Show when={view() === "providers"} fallback={<ModelsPanel models={models} savedModels={saved} roleVariant={{}} modelRoleSummaries={() => roles} providerModels={() => [{ providerId: "deepseek", providerName: "DeepSeek", id: "chat", name: "Test Chat", variantKeys: [] }]} popoverLayer={layer()} onModelChange={(key, value) => setModels(key, value)} onVariantChange={() => {}} onQuickSwitcherChange={preferences => setModels("quick_switcher", preferences)} onConnectProvider={setRepair} />}>
           <ProvidersPanel summaries={summaries()} authMethods={useGlobalSync().data.provider_auth} drafts={drafts} />
-        </Show><output data-testid="models">{JSON.stringify(models)}</output><output data-testid="repair">{repair()}</output><div ref={setLayer} />
-      </div>
+        </Show><output hidden data-testid="models">{JSON.stringify(models)}</output><output hidden data-testid="repair">{repair()}</output><div ref={setLayer} />
+      </div></div>
     }
     render(() => <I18nProvider i18n={i18n}><ThemeProvider><DialogProvider><Fixture /></DialogProvider></ThemeProvider></I18nProvider>, document.getElementById("root"))
   `,
   )
   server = await createBrowserFixture({
     root: fixture,
+    styled: true,
     localized: true,
     aliases: [
       ...["global-sdk", "global-sync", "local", "platform", "locale"].map((name) => ({
@@ -163,6 +185,139 @@ afterAll(async () => {
   await browser?.close()
   await server?.close()
   if (fixture) await rm(fixture, { recursive: true, force: true })
+})
+
+test("default accounts open a focused editor and save an optional remark without changing identity", async () => {
+  await page.locator(".providers-connected-account").getByRole("button", { name: "Edit account", exact: true }).click()
+  const remark = page.getByLabel("Account remark (optional)", { exact: true })
+  await remark.fill("Personal key")
+  expect(await page.getByText("Manage account", { exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Add another account", exact: true }).count()).toBe(0)
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+  await page.locator(".providers-connected-account").filter({ hasText: "Personal key" }).waitFor()
+  expect(await calls("creations")).toHaveLength(0)
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).__resourceCalls.updates)).toEqual([
+    { providerID: "deepseek", providerConnectionUpdateInput: { name: "Personal key" } },
+  ])
+  expect(errors).toEqual([])
+})
+
+test("account edits retain failed saves and retry a saved refresh without another update", async () => {
+  await page.getByRole("button", { name: "Edit account", exact: true }).click()
+  const remark = page.getByLabel("Account remark (optional)", { exact: true })
+  await remark.fill("Work key")
+  await flags({ __failWrite: true })
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await page.getByText("Account update rejected", { exact: true }).waitFor()
+  expect(await remark.inputValue()).toBe("Work key")
+  await flags({ __failWrite: false, __failRead: true })
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await page.getByRole("button", { name: "Refresh connection", exact: true }).waitFor()
+  await page.getByRole("button", { name: "Models page", exact: true }).click()
+  await page.getByRole("button", { name: "Providers page", exact: true }).click()
+  await page.getByRole("button", { name: "Refresh connection", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).__resourceCalls.updates.length)).toBe(1)
+  await remark.fill("")
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await page.waitForFunction(() => (window as unknown as FixtureWindow).__resourceCalls.updates.length === 2)
+  const updates = await page.evaluate(() => (window as unknown as FixtureWindow).__resourceCalls.updates)
+  expect(updates.map((item) => item.providerID)).toEqual(["deepseek", "deepseek"])
+  expect(updates[1].providerConnectionUpdateInput.name).toBe("DeepSeek")
+  expect(errors).toEqual([])
+})
+
+test("credential replacement stays on the account and does not discard an unsaved remark", async () => {
+  await page.getByRole("button", { name: "Edit account", exact: true }).click()
+  const remark = page.getByLabel("Account remark (optional)", { exact: true })
+  await remark.fill("Unsaved remark")
+  await page.getByRole("button", { name: "Update credentials", exact: true }).click()
+  await page.getByLabel("DeepSeek API key", { exact: true }).fill("replacement-key")
+  await page.getByRole("button", { name: "Connect", exact: true }).click()
+  await page.getByRole("button", { name: "Update credentials", exact: true }).waitFor()
+  expect((await calls("writes")).map((item) => item.providerID)).toEqual(["deepseek"])
+  expect(await calls("creations")).toHaveLength(0)
+  expect(await remark.inputValue()).toBe("Unsaved remark")
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+  await page.getByRole("button", { name: "Keep editing", exact: true }).click()
+  expect(await remark.inputValue()).toBe("Unsaved remark")
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+  await page.getByRole("button", { name: "Discard", exact: true }).click()
+  await page.getByRole("button", { name: "Edit account", exact: true }).click()
+  expect(await remark.inputValue()).toBe("")
+  expect(errors).toEqual([])
+})
+
+test("choosing a connected service uses the same add flow and allocates a separate account", async () => {
+  await page.getByRole("button", { name: "Add model service", exact: true }).click()
+  await page.locator(".providers-row").filter({ hasText: "DeepSeek" }).click()
+  await page.getByLabel("Account remark (optional)", { exact: true }).fill("Work key")
+  await page.getByLabel("DeepSeek API key", { exact: true }).fill("fixture-key")
+  expect(await calls("creations")).toHaveLength(0)
+  await page.getByRole("button", { name: "Connect", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).waitFor()
+  expect(await calls("creations")).toHaveLength(1)
+  expect((await calls("writes"))[0].providerID).not.toBe("deepseek")
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+  await page.getByRole("button", { name: "Add model service", exact: true }).click()
+  expect(await page.locator(".providers-row").filter({ hasText: "DeepSeek" }).count()).toBe(1)
+  expect(errors).toEqual([])
+})
+
+test("adding another account from a disabled default never replaces its credentials", async () => {
+  await page.evaluate(() => (window as unknown as FixtureWindow).__disableDefault())
+  await addAnotherAccount()
+  await page.getByLabel("DeepSeek API key", { exact: true }).fill("fixture-key")
+  await page.getByRole("button", { name: "Connect", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).waitFor()
+  expect(await calls("creations")).toHaveLength(1)
+  expect((await calls("writes"))[0].providerID).not.toBe("deepseek")
+  expect(errors).toEqual([])
+})
+
+test("an in-flight account update stays locked across section remounts", async () => {
+  await page.getByRole("button", { name: "Edit account", exact: true }).click()
+  const remark = page.getByLabel("Account remark (optional)", { exact: true })
+  await remark.fill("Submitted key")
+  await flags({ __pauseUpdate: true })
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await page.waitForFunction(() => typeof (window as unknown as FixtureWindow).__releaseUpdate === "function")
+  await page.getByRole("button", { name: "Models page", exact: true }).click()
+  await page.getByRole("button", { name: "Providers page", exact: true }).click()
+  expect(await remark.isDisabled()).toBe(true)
+  await page.evaluate(() => (window as unknown as FixtureWindow).__releaseUpdate())
+  await page.getByRole("button", { name: "Refresh connection", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).waitFor()
+  expect(await remark.inputValue()).toBe("Submitted key")
+  await flags({ __pauseUpdate: false })
+  await remark.fill("Next key")
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await page.waitForFunction(() => (window as unknown as FixtureWindow).__resourceCalls.updates.length === 2)
+  expect(await remark.inputValue()).toBe("Next key")
+  expect(errors).toEqual([])
+})
+
+test("first sign-in preserves a configured endpoint and enabled state while changing its remark", async () => {
+  await page.evaluate(() => (window as unknown as FixtureWindow).__configureFirstAccount())
+  await page.getByRole("button", { name: "Add model service", exact: true }).click()
+  await page.locator(".providers-row").filter({ hasText: "Test Service" }).click()
+  expect(await page.getByLabel("Account remark (optional)", { exact: true }).inputValue()).toBe("Configured key")
+  await page.locator(".providers-advanced > summary").click()
+  expect(await page.getByLabel("API endpoint", { exact: true }).inputValue()).toBe("https://configured.example.com/v1")
+  await page.getByRole("button", { name: "Back to services", exact: true }).click()
+  await page.locator(".providers-row").filter({ hasText: "Test Service" }).waitFor()
+  await page.locator(".providers-row").filter({ hasText: "Test Service" }).click()
+  await page.getByLabel("Account remark (optional)", { exact: true }).fill("Personal key")
+  await page.getByLabel("Configured key API key", { exact: true }).fill("fixture-key")
+  await page.getByRole("button", { name: "Connect", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).__resourceCalls.updates)).toEqual([
+    { providerID: "test-service", providerConnectionUpdateInput: { name: "Personal key" } },
+  ])
+  expect(await page.getByRole("switch", { name: "Enabled", exact: true }).isChecked()).toBe(false)
+  expect(await calls("creations")).toHaveLength(0)
+  expect(errors).toEqual([])
 })
 
 test("provider discovery separates connected accounts and restores search and entry focus on return", async () => {
@@ -204,23 +359,21 @@ test("credential failure remains in the flow and a failed refresh survives secti
   await page.getByRole("button", { name: "Models page", exact: true }).click()
   await page.getByRole("button", { name: "Providers page", exact: true }).click()
   await page.getByRole("button", { name: "Refresh connection", exact: true }).click()
-  await page.getByText("Manage account", { exact: true }).waitFor()
+  await page.getByRole("button", { name: "Save changes", exact: true }).waitFor()
   expect(await page.evaluate(() => (window as any).__resourceCalls.writes.length)).toBe(1)
   expect(errors).toEqual([])
 })
 test("adding an account waits for Connect and resumes the saved connection after a failed read", async () => {
-  await page.locator(".providers-connected-account").click()
-  await page.getByRole("button", { name: "Add another account", exact: true }).click()
+  await addAnotherAccount()
   await page.getByLabel("Account remark (optional)", { exact: true }).fill("Work account")
   expect(await calls("creations")).toHaveLength(0)
-  await page.locator(".provider-method-row").click()
   await page.getByLabel("DeepSeek API key", { exact: true }).fill("fixture-key")
   await flags({ __failRead: true })
   await page.getByRole("button", { name: "Connect", exact: true }).click()
   await page.getByText("Refresh failed", { exact: true }).waitFor()
   expect(await calls("writes")).toHaveLength(0)
   await page.getByRole("button", { name: "Connect", exact: true }).click()
-  await page.getByText("Manage account", { exact: true }).waitFor()
+  await page.getByRole("button", { name: "Save changes", exact: true }).waitFor()
   expect(await calls("creations")).toHaveLength(1)
   const writes = await calls("writes")
   expect(writes).toHaveLength(1)
@@ -229,24 +382,31 @@ test("adding an account waits for Connect and resumes the saved connection after
 })
 
 test("an interrupted additional account remains available to continue or remove", async () => {
-  await page.locator(".providers-connected-account").click()
-  await page.getByRole("button", { name: "Add another account", exact: true }).click()
+  await addAnotherAccount()
   await page.getByLabel("Account remark (optional)", { exact: true }).fill("Work account")
-  await page.locator(".provider-method-row").click()
   await page.getByLabel("DeepSeek API key", { exact: true }).fill("fixture-key")
   await flags({ __failWrite: true })
   await page.getByRole("button", { name: "Connect", exact: true }).click()
   await page.getByText("Credential rejected", { exact: true }).waitFor()
   await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
-  await page.locator(".providers-connected-account").filter({ hasText: "Work account" }).click()
+  expect(await page.getByRole("dialog", { name: "Discard unsaved changes?", exact: true }).count()).toBe(1)
+  await page.getByRole("button", { name: "Keep Editing", exact: true }).click()
+  expect(await page.getByLabel("DeepSeek API key", { exact: true }).inputValue()).toBe("fixture-key")
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+  await page.getByRole("button", { name: "Discard", exact: true }).click()
+  const account = page.locator(".providers-connected-account").filter({ hasText: "Work account" })
+  await account.getByRole("button", { name: "Edit account", exact: true }).click()
   await page.getByLabel("Work account API key", { exact: true }).waitFor()
-  await page.getByText("Manage account", { exact: true }).click()
-  await page.getByRole("button", { name: "Remove account", exact: true }).waitFor()
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+  await account.getByRole("button", { name: "Account actions", exact: true }).click()
+  await page.getByRole("menuitem", { name: "Remove account", exact: true }).click()
+  await page.getByRole("button", { name: "Remove account", exact: true }).click()
+  await account.waitFor({ state: "detached" })
   expect(errors).toEqual([])
 })
 
 test("model list status is neutral until an actual refresh failure and keeps usable models", async () => {
-  await page.locator(".providers-connected-account").click()
+  await page.locator(".providers-connected-open").click()
   expect(await page.locator(".providers-catalog-warning").count()).toBe(0)
   expect(await page.locator(".providers-catalog-status time").getAttribute("datetime")).toBe("2026-10-03T12:00:00.000Z")
   await flags({ __catalogFailure: true })
@@ -261,36 +421,34 @@ test("model list status is neutral until an actual refresh failure and keeps usa
 })
 
 test("draft inputs survive a section change and cancel clears the pending setup", async () => {
-  await page.locator(".providers-connected-account").click()
-  await page.getByRole("button", { name: "Add another account", exact: true }).click()
+  await addAnotherAccount()
   await page.getByLabel("Account remark (optional)", { exact: true }).fill("Work account")
-  await page.locator(".provider-method-row").click()
   await page.getByLabel("DeepSeek API key", { exact: true }).fill("fixture-key")
   await page.getByRole("button", { name: "Models page", exact: true }).click()
   await page.getByRole("button", { name: "Providers page", exact: true }).click()
   expect(await page.getByLabel("Account remark (optional)", { exact: true }).inputValue()).toBe("Work account")
-  await page.locator(".provider-method-row").click()
   expect(await page.getByLabel("DeepSeek API key", { exact: true }).inputValue()).toBe("fixture-key")
   await page.getByRole("button", { name: "Cancel", exact: true }).click()
-  await page.getByRole("button", { name: "Add another account", exact: true }).click()
+  await page.getByRole("button", { name: "Keep Editing", exact: true }).click()
+  expect(await page.getByLabel("Account remark (optional)", { exact: true }).inputValue()).toBe("Work account")
+  await page.getByRole("button", { name: "Cancel", exact: true }).click()
+  await page.getByRole("button", { name: "Discard", exact: true }).click()
+  await addAnotherAccount()
   expect(await page.getByLabel("Account remark (optional)", { exact: true }).inputValue()).toBe("")
-  await page.locator(".provider-method-row").click()
   expect(await page.getByLabel("DeepSeek API key", { exact: true }).inputValue()).toBe("")
   expect(await calls("creations")).toHaveLength(0)
   expect(errors).toEqual([])
 })
 
 test("a lost creation response is recovered using the same account identity", async () => {
-  await page.locator(".providers-connected-account").click()
-  await page.getByRole("button", { name: "Add another account", exact: true }).click()
-  await page.locator(".provider-method-row").click()
+  await addAnotherAccount()
   await page.getByLabel("DeepSeek API key", { exact: true }).fill("fixture-key")
   await flags({ __loseCreateResponse: true })
   await page.getByRole("button", { name: "Connect", exact: true }).evaluate((button) => {
     ;(button as HTMLButtonElement).click()
     ;(button as HTMLButtonElement).click()
   })
-  await page.getByText("Manage account", { exact: true }).waitFor()
+  await page.getByRole("button", { name: "Save changes", exact: true }).waitFor()
   expect(await calls("creations")).toHaveLength(1)
   expect(await calls("writes")).toHaveLength(1)
   expect((await calls("creations"))[0].id).toBe((await calls("writes"))[0].providerID)
@@ -321,9 +479,10 @@ test("completed first sign-in clears its setup and additional OAuth targets a se
   await page.locator(".provider-method-row").first().click()
   await page.getByText("Waiting for authorization", { exact: false }).waitFor()
   await page.evaluate(() => (window as unknown as FixtureWindow).__finishOAuth())
-  await page.getByRole("button", { name: "Add another account", exact: true }).waitFor()
+  await page.getByRole("button", { name: "Save changes", exact: true }).waitFor()
   expect(await page.evaluate(() => (window as unknown as FixtureWindow).__resourceCalls.toasts)).toHaveLength(1)
-  await page.getByRole("button", { name: "Add another account", exact: true }).click()
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+  await addAnotherAccount("OpenAI Codex")
   await page.locator(".provider-method-row").first().click()
   await page.getByText("Waiting for authorization", { exact: false }).waitFor()
   const authorizations = await page.evaluate(() => (window as unknown as FixtureWindow).__resourceCalls.authorizations)
@@ -331,6 +490,7 @@ test("completed first sign-in clears its setup and additional OAuth targets a se
   expect(authorizations[1].providerID).toBe((await calls("creations"))[0].id)
   expect(authorizations[1].providerID).not.toBe("openai-codex")
   await page.getByRole("button", { name: "Cancel", exact: true }).click()
+  await page.getByRole("button", { name: "Discard", exact: true }).click()
   await page.evaluate(() => (window as unknown as FixtureWindow).__finishOAuth())
   expect(await page.evaluate(() => (window as unknown as FixtureWindow).__resourceCalls.toasts)).toHaveLength(1)
   expect(errors).toEqual([])
@@ -351,21 +511,23 @@ test("a late credential write does not complete a disposed connection view", asy
   expect(errors).toEqual([])
 })
 
-test("maintenance disclosure and setup cancellation work from the keyboard at narrow widths", async () => {
+test("account editor, menus and setup cancellation work from the keyboard at narrow widths", async () => {
   await page.setViewportSize({ width: 375, height: 812 })
   for (const theme of ["light", "dark"]) {
     await page.goto(url + "?theme=" + theme)
-    await page.locator(".providers-connected-account").click()
-    const management = page.locator(".providers-management > summary")
-    await management.focus()
-    await management.press("Enter")
-    expect(await page.getByRole("button", { name: "Update credentials", exact: true }).isVisible()).toBe(true)
-    await management.press("Enter")
-    expect(await page.getByRole("button", { name: "Update credentials", exact: true }).isVisible()).toBe(false)
-    await page.getByRole("button", { name: "Add another account", exact: true }).click()
+    await page.getByRole("button", { name: "Edit account", exact: true }).press("Enter")
+    const advanced = page.locator(".providers-advanced > summary")
+    await advanced.press("Enter")
+    expect(await page.getByLabel("API endpoint", { exact: true }).isVisible()).toBe(true)
+    await advanced.press("Enter")
+    expect(await page.getByLabel("API endpoint", { exact: true }).isVisible()).toBe(false)
     await page.getByRole("button", { name: "Cancel", exact: true }).press("Enter")
-    await page.waitForFunction(() => document.activeElement?.hasAttribute("data-add-provider-account"))
+    await page.waitForFunction(() => document.activeElement?.hasAttribute("data-provider-id"))
+    await addAnotherAccount()
+    await page.getByRole("button", { name: "Cancel", exact: true }).press("Enter")
+    await page.waitForFunction(() => document.activeElement?.hasAttribute("data-provider-id"))
     expect(await page.locator(".providers-auth-warning").count()).toBe(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   }
   expect(errors).toEqual([])
 })
@@ -442,7 +604,7 @@ test("a completed credential import survives section changes and retries only ac
   await page.getByRole("button", { name: "Refresh connection", exact: true }).waitFor()
   expect(await calls("writes")).toHaveLength(1)
   await page.getByRole("button", { name: "Refresh connection", exact: true }).click()
-  await page.getByText("Manage account", { exact: true }).waitFor()
+  await page.getByRole("button", { name: "Save changes", exact: true }).waitFor()
   expect(
     await page.evaluate(
       () => (window as unknown as { __resourceCalls: { writes: unknown[] } }).__resourceCalls.writes.length,

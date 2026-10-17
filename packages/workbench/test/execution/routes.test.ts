@@ -1,6 +1,7 @@
 import { RolloutExecution } from "@ericsanchezok/synergy-harness/rollout"
 import { afterAll, expect, spyOn, test } from "bun:test"
 import { Hono } from "hono"
+import { z } from "zod"
 import { generateSpecs } from "hono-openapi"
 import { testRuntime } from "../support/runtime"
 import { fixture, complete } from "@ericsanchezok/synergy-harness/test/support/rollout"
@@ -19,6 +20,66 @@ import { Usage } from "@ericsanchezok/synergy-harness/usage"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const app = new Hono().route("/session", ExecutionRoute())
+
+test("execution records remain readable while tool arguments are generating", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      const messages = await Session.messages({ sessionID: session.id })
+      const message = messages.find((item) => item.info.role === "assistant")?.info
+      if (message?.role !== "assistant") throw new Error("Assistant fixture is missing")
+      await Session.updateMessage({ ...message, finish: undefined, time: { created: message.time.created } })
+      const part = {
+        id: Identifier.ascending("part"),
+        sessionID: session.id,
+        messageID: message.id,
+        type: "tool" as const,
+        tool: "read",
+        callID: "streaming-read",
+      }
+      const states: MessageV2.ToolPart["state"][] = [
+        { status: "pending", input: {}, raw: "" },
+        { status: "generating", input: {}, raw: "{", charsReceived: 1 },
+        { status: "running", input: {}, time: { start: Date.now() } },
+        {
+          status: "completed",
+          input: {},
+          title: "done",
+          output: "done",
+          metadata: {},
+          time: { start: Date.now(), end: Date.now() },
+        },
+      ]
+      for (const [index, state] of states.entries()) {
+        await Session.updatePart({ ...part, state })
+        const response = await app.request(`/session/${session.id}/execution/trajectory?kind=tool&mode=records`)
+        expect(response.status).toBe(200)
+        const page = ExecutionSchema.Page.parse(await response.json())
+        expect(page.items.find((item) => item.messageID === message.id)?.status).toBe(
+          (["unknown", "unknown", "running", "completed"] as const)[index],
+        )
+      }
+    }),
+  ))
+
+test("internal computation failures remain server errors instead of invalid query responses", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      const errors: Error[] = []
+      const isolated = new Hono()
+        .onError((error, c) => {
+          errors.push(error)
+          return c.json({ message: "Internal error" }, 500)
+        })
+        .route("/session", ExecutionRoute())
+      const invalid = z.string().safeParse(123)
+      if (invalid.success) throw new Error("Invalid fixture must fail validation")
+      for (const error of [new RangeError("internal range"), new SyntaxError("internal JSON"), invalid.error]) {
+        using summary = spyOn(ExecutionService, "summary").mockRejectedValue(error)
+        expect((await isolated.request(`/session/${session.id}/execution/summary`)).status).toBe(500)
+        expect(errors.at(-1)).toBe(error)
+      }
+    }),
+  ))
 
 test("historical usage repair refreshes an already loaded task summary", () =>
   runtime.run(() =>
@@ -358,6 +419,8 @@ test("trajectory cursors, cross-page search and evidence reads stay session-owne
       ).json()
       expect(next.items[0].id).not.toBe(page.items[0].id)
       expect((await app.request("/session/" + session.id + "/execution/trajectory?limit=501")).status).toBe(400)
+      for (const query of ["cursor=invalid", "cursor=e30", "kinds=invalid", "statuses=invalid"])
+        expect((await app.request(`/session/${session.id}/execution/trajectory?${query}`)).status).toBe(400)
       expect(
         (await app.request("/session/" + session.id + "/execution/trajectory?kind=tool&cursor=" + page.nextCursor))
           .status,

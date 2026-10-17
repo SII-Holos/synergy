@@ -8,9 +8,13 @@ import {
   getOwner,
   onCleanup,
   useContext,
+  untrack,
   type ParentProps,
 } from "solid-js"
 import { sharedRequests } from "@/utils/shared-requests"
+import { useViewActivity } from "@ericsanchezok/synergy-ui/context/view-activity"
+import { recordFrontendWork } from "@/components/performance/browser-metrics"
+import { createFileStatusRegistry } from "./status"
 import { createFileDraftStorage, type FileDraft } from "./draft-storage"
 import { canLeaveFileDocument } from "./close-policy"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -27,7 +31,7 @@ import type {
   WorkspaceFileCopyInput,
   WorkspaceFileDeleteInput,
 } from "@ericsanchezok/synergy-sdk"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useSDK } from "../sdk"
 import { useSync } from "../sync"
@@ -233,6 +237,10 @@ function createViewSession(dir: string, id: string | undefined) {
   }
 }
 
+const fileStatuses = createFileStatusRegistry(() =>
+  recordFrontendWork("frontend.file.status.coalesced", 1, "count", "sum"),
+)
+
 function createWorkspaceFiles(workspace: FileWorkspace | null) {
   const sdk = useSDK()
   const params = useParams()
@@ -271,37 +279,26 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
   const documentWaiters: VoidFunction[] = []
   const directoryWaiters: VoidFunction[] = []
 
-  let statusGeneration = 0
-  let statusRequest: Promise<void> | undefined
+  let activeConsumers = 0
+  let refreshPending = false
   let gitStatuses = new Map<string, WorkspaceFileNode["gitStatus"]>()
-  const statusKey = `${resourceKey}\u0000git-status`
-  function loadStatus() {
-    if (disposed || !workspace) return Promise.resolve()
-    if (statusRequest) return statusRequest
-    const generation = statusGeneration
-    const controller = new AbortController()
-    controllers.add(controller)
-    const pending = sharedRequests
-      .request(statusKey, (signal) => sdk.client.workspace.files.status(reference(), { signal, throwOnError: true }), {
-        signal: controller.signal,
-      })
-      .then((response) => {
-        if (disposed || generation !== statusGeneration || !response.data) return
-        gitStatuses = new Map(response.data.files.map((file) => [file.path, file.status]))
-        setStore(
-          produce((draft) => {
-            for (const node of Object.values(draft.nodes)) node.gitStatus = gitStatuses.get(node.path)
-          }),
-        )
-      })
-      .catch(() => {})
-      .finally(() => {
-        controllers.delete(controller)
-        if (statusRequest === pending) statusRequest = undefined
-      })
-    statusRequest = pending
-    return pending
-  }
+  const status = fileStatuses.retain(
+    resourceKey,
+    async (signal) => {
+      if (disposed || !workspace) return undefined
+      const response = await sdk.client.workspace.files.status(reference(), { signal, throwOnError: true })
+      return response.data
+    },
+    (value) => {
+      if (disposed) return
+      gitStatuses = new Map(value.files.map((file) => [file.path, file.status]))
+      setStore(
+        produce((draft) => {
+          for (const node of Object.values(draft.nodes)) node.gitStatus = gitStatuses.get(node.path)
+        }),
+      )
+    },
+  )
 
   const normalize = (input: string) => {
     if (!workspace) return undefined
@@ -861,7 +858,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
           }),
         )
         pruneExplorer()
-        void loadStatus()
+        if (activeConsumers) void status.read()
       } catch (error) {
         if (disposed || controller.signal.aborted) return
         if (path && isWorkspaceFileNotFoundError(error)) {
@@ -1008,21 +1005,25 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
       event.properties.workspaceGeneration !== workspace.generation
     )
       return
-    statusGeneration++
-    statusRequest = undefined
-    sharedRequests.invalidate(statusKey)
-    void loadStatus()
+    status.invalidate()
     if (event.properties.resync) {
-      refresh()
+      if (activeConsumers) refresh()
+      else refreshPending = true
       return
     }
     const path = normalize(event.properties.file)
     if (!path || path.startsWith(".git/")) return
     const parent = normalize(event.properties.parent ?? "") ?? ""
+    if (!activeConsumers) {
+      refreshPending = true
+      if (store.documents[path]) setStore("documents", path, "stale", true)
+      if (store.pdfs[path]) setStore("pdfs", path, "stale", true)
+      if (store.directories[parent]) setStore("directories", parent, "stale", true)
+    }
     if (event.properties.event === "renamed") {
       const oldPath = normalize(event.properties.oldPath ?? "")
       if (oldPath) renameCachedPath(oldPath, path)
-      void load(path, { force: true })
+      if (activeConsumers) void load(path, { force: true })
     } else if (event.properties.event === "deleted") {
       setScope("expanded", (items) => removePathTree(items, path))
       setStore(
@@ -1051,16 +1052,19 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
           }
         }),
       )
-    } else if (event.properties.event === "changed" && store.documents[path]) {
+    } else if (activeConsumers && event.properties.event === "changed" && store.documents[path]) {
       void load(path, { force: true })
       if (store.pdfs[path]) void loadPdf(path, { force: true })
-    } else if (event.properties.event === "added" && store.documents[path]?.deleted) {
+    } else if (activeConsumers && event.properties.event === "added" && store.documents[path]?.deleted) {
       void load(path, { force: true })
     }
-    if (store.directories[parent]) void loadChildren(parent, { reset: true, force: true })
+    if (activeConsumers && store.directories[parent]) void loadChildren(parent, { reset: true, force: true })
   })
 
-  const handleFocus = () => refresh()
+  const handleFocus = () => {
+    if (activeConsumers) refresh()
+    else refreshPending = true
+  }
   async function entryRequest<T>(request: () => Promise<{ data?: T }>): Promise<T> {
     try {
       const response = await request()
@@ -1073,6 +1077,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
   window.addEventListener("focus", handleFocus)
   onCleanup(() => {
     disposed = true
+    status.dispose()
     for (const waiter of [...documentWaiters.splice(0), ...directoryWaiters.splice(0)]) waiter()
     stop()
     window.removeEventListener("focus", handleFocus)
@@ -1082,6 +1087,20 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
   })
 
   return {
+    activate() {
+      activeConsumers++
+      const release = status.activate()
+      if (activeConsumers === 1) {
+        if (refreshPending) {
+          refreshPending = false
+          refresh()
+        }
+      }
+      return () => {
+        activeConsumers--
+        release()
+      }
+    },
     workspace,
     resourceKey,
     reference,
@@ -1363,6 +1382,8 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
     const roots = createMemo(() => projectFileWorkspaces(selected(), sync.data.workspaces))
     return {
       roots,
+      peek: (workspace: FileWorkspace, path: string) =>
+        entries.get(fileWorkspaceKey(sdk.url, sdk.scopeID, workspace))?.value.get(path),
       async canClose(tab: WorkbenchPanelTab) {
         if (!tab.resourceId) return true
         const workspace = workspaceFileOwner(tab)
@@ -1450,7 +1471,15 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
 
 export { FileProvider, useFileManager as useProjectFiles }
 export function useFile() {
-  return useContext(FileOverride) ?? useFileManager().current
+  const value = useContext(FileOverride) ?? useFileManager().current
+  const active = useViewActivity()
+  createEffect(() => {
+    if (active()) {
+      const activate = value.activate
+      onCleanup(untrack(activate))
+    }
+  })
+  return value
 }
 export function FileWorkspaceProvider(props: ParentProps<{ workspace: FileWorkspace | null }>) {
   const manager = useFileManager()

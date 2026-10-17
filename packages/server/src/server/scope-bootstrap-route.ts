@@ -57,6 +57,7 @@ const preferenceKeys = [
   "defaultSessionEnvironmentProfile",
   "activityDisplay",
   "compactReasoning",
+  "preferWorkBrief",
   "welcomeGames",
   "locale",
   "fullAccessAcknowledged",
@@ -230,7 +231,7 @@ export function createScopeBootstrapRoute(contributions: BootstrapContributions 
         const agentRequest = timed("agent", Agent.list())
         const configRequest = timed("config", Config.current().then(Config.redactForClient))
         const sessionPageRequest = Session.list({ offset: 0, limit: 20, parentOnly: false }).then((result) => ({
-          data: result.data,
+          data: result.data.map(Session.publicInfo),
           total: result.total,
           offset: 0,
           limit: 20,

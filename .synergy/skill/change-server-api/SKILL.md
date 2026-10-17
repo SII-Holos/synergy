@@ -20,6 +20,7 @@ description: Add or modify a Synergy HTTP route, request/response schema, OpenAP
 3. Keep business logic in the owning domain rather than the route handler. For binary media, document the supported MIME types, preserve structured error reasons and propagate the request abort signal. Test the generated SDK blob path as well as the mounted route; request previews must use saved owner configuration without creating task sessions.
 4. For state changes, persist first and publish the established event shape so frontend state can reconcile without per-event refetches.
 5. Preserve scoped snapshot watermark headers where middleware supplies them. Do not claim Web snapshot gating that the client does not implement.
+   Optional owner schemas must also project actual HTTP and event payloads. Use `Session.publicInfo()` at Session response boundaries; internal reads, imports and archive exports retain canonical metadata. Verify owner selection, absence while a different owner remains selected, ordinary mutation, and reinstall against the same stored records. Dynamic schema facades must retain named OpenAPI references on the facade itself so generated SDK body argument names remain stable.
 6. Regenerate contracts from the repository root:
 
 ```bash
@@ -41,6 +42,7 @@ description: Add or modify a Synergy HTTP route, request/response schema, OpenAP
 8. Native WebSocket callbacks do not inherit the upgrading request's Scope. Capture the owning request context for callbacks that read scoped state or emit scoped telemetry, and test an actual server socket alongside an unrelated Scope request. Directly calling a route or domain callback inside a test Scope hides this boundary.
 9. Optional APIs follow the runtime component selection exposed by `global.capabilities`; installing a package must not claim that it is active before restart. Managed SDK startup uses the public `runtime-ready` protocol, explicit executable/version/home, private credentials and owned-process cleanup. Verify a real Node.js caller as well as Bun fixtures, including timeout, abort, attach ownership and Scope headers retaining caller authentication.
 10. Resource APIs select catalog identities without allocating compute. Test stale selection/generation conflicts, Scope mismatches, retained uses and save retry without command replay. Keep file-operation payloads out of activity responses. Session turn admission must wait for resource binding changes before reading its execution context.
+11. Built Web page paths may overlap domain APIs. Test direct browser navigation with the owner both selected and absent, waiting for rendered page content and successful browser API reads. An unchanged URL alone cannot prove that the Web shell loaded. Keep HTML negotiation restricted to known page paths, retain authentication, Scope, CORS, CSP and API errors, and verify generated OpenAPI operations survive the navigation handler.
 
 Update [Frontend data sync](../../../docs/architecture/frontend-data-sync.md) when snapshot/event/replay semantics change, and update API/help/product docs when the route is a public or user-facing contract.
 

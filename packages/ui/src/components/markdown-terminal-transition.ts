@@ -11,7 +11,29 @@ export function createMarkdownTerminalTransitionController() {
     apply(input: MarkdownTerminalTransitionInput) {
       if (current?.hash === input.hash) return false
       current?.cleanup?.()
-      if (input.container.innerHTML.trim() !== input.html.trim()) input.container.innerHTML = input.html
+      if (input.container.innerHTML.trim() !== input.html.trim()) {
+        const template = input.container.ownerDocument.createElement("template")
+        template.innerHTML = input.html
+        const previous = [...input.container.children]
+        let index = 0
+        let cursor = input.container.firstChild
+        for (const next of [...template.content.childNodes]) {
+          const candidate = next.nodeType === 1 ? previous[index++] : undefined
+          if (candidate?.isEqualNode(next)) {
+            while (cursor && cursor !== candidate) {
+              const removed = cursor
+              cursor = cursor.nextSibling
+              removed.remove()
+            }
+            cursor = candidate.nextSibling
+          } else input.container.insertBefore(next, cursor)
+        }
+        while (cursor) {
+          const removed = cursor
+          cursor = cursor.nextSibling
+          removed.remove()
+        }
+      }
       current = { hash: input.hash, cleanup: input.enhance?.(input.container) }
       return true
     },

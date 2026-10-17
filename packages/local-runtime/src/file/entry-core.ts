@@ -34,6 +34,9 @@ export namespace NativeFileEntry {
       .update(JSON.stringify([values, link]))
       .digest("hex")}`
   }
+  export function identity(entry: Entry) {
+    return [entry.stat.dev, entry.stat.ino, entry.stat.birthtimeNs, entry.stat.mode].map(String).join(":")
+  }
   export async function canonical(input: string) {
     const absolute = path.resolve(input)
     return path.join(await FileMutation.canonical(path.dirname(absolute)), path.basename(absolute))

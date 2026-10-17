@@ -5,11 +5,17 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: min(360px, 40dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .workspace-directory-dialog .workspace-directory-copy > * {
   white-space: normal;
   overflow-wrap: anywhere;
   overflow: visible;
+}
+.workspace-directory-list > button {
+  flex: 0 0 auto;
 }
 .workspace-directory-row > [data-component="icon"] {
   flex-shrink: 0;
@@ -41,10 +47,6 @@
 .project-flow-row:hover:not(:disabled),
 .project-flow-row[aria-pressed="true"] {
   background: var(--surface-float-base-hover);
-}
-.project-flow-row:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
 }
 .project-flow-row:disabled {
   opacity: 0.5;
@@ -119,9 +121,6 @@
   min-height: 36px;
   padding: 6px 10px;
   width: 100%;
-}
-.project-flow-field select:focus-visible {
-  outline: 2px solid var(--border-focus);
 }
 .project-flow-path,
 .project-flow dl dd {
@@ -310,6 +309,11 @@
   gap: 6px;
   min-width: 0;
 }
+.project-recovery-reason {
+  color: var(--text-base);
+  font-size: 14px;
+  line-height: 20px;
+}
 .project-recovery-path {
   font-size: 13px;
   line-height: 20px;
@@ -350,11 +354,6 @@
 }
 .project-flow-row:has(small) {
   min-height: 52px;
-}
-.project-form button:focus-visible,
-.project-folder-name:focus-visible {
-  outline: 2px solid var(--border-selected);
-  outline-offset: 2px;
 }
 .project-form button:disabled {
   opacity: 0.5;
@@ -399,10 +398,6 @@
   border-radius: 10px;
   color: var(--icon-weak-base);
 }
-.project-menu-search:has(:focus-visible) {
-  outline: 2px solid var(--border-selected);
-  outline-offset: -2px;
-}
 .project-menu-search [data-slot="input-wrapper"]:has(:focus-visible) {
   outline: none;
 }
@@ -435,6 +430,19 @@
     --dialog-width: calc(100vw - 16px);
   }
 }
+.project-settings-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.project-settings-footer > [role="status"] {
+  flex: 1 1 180px;
+}
+.project-settings-footer > [data-slot="dialog-actions"] {
+  flex-shrink: 0;
+}
 .project-settings-section {
   display: flex;
   flex-direction: column;
@@ -457,14 +465,24 @@
   border-radius: 10px;
 }
 .project-start-options button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
   min-height: 36px;
   border-radius: 6px;
   color: var(--text-weak);
 }
-.project-start-options button:hover:not(:disabled),
+.project-start-options button:hover:not(:disabled):not([aria-pressed="true"]) {
+  background: var(--surface-float-base-hover);
+}
 .project-start-options button[aria-pressed="true"] {
-  background: var(--workbench-selected-bg);
+  background: var(--surface-raised-base-active);
+  border-color: var(--border-selected);
   color: var(--text-strong);
+  font-weight: var(--font-weight-medium);
 }
 .project-worktree-row {
   display: flex;
@@ -481,4 +499,26 @@
   .project-worktree-row .project-flow-row-copy {
     min-width: 65%;
   }
+}
+
+.workspace-directory-recovery {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.workspace-associated-tasks > summary {
+  cursor: pointer;
+  color: var(--text-weak);
+  font-size: var(--type-ui-body-size, 14px);
+}
+.workspace-associated-list {
+  max-height: min(200px, 30dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-block-start: 8px;
+}
+.workspace-associated-list > p {
+  padding-block: 4px;
+  overflow-wrap: anywhere;
 }

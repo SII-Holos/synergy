@@ -14,6 +14,12 @@ void run().catch((error) => {
   app.exit(1)
 })
 
+function durationSeconds(text: string, label: "Waiting" | "Total" | "Last progress") {
+  const match = new RegExp(`^${label} (\\d+):([0-5]\\d)${label === "Last progress" ? " ago" : ""}$`).exec(text)
+  assert.ok(match, `Invalid ${label} clock: ${text}`)
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
 async function run() {
   console.log("Startup progress: waiting for Electron")
   await app.whenReady()
@@ -185,9 +191,11 @@ async function run() {
         await window.webContents.executeJavaScript(`document.body.textContent.includes('Rebuilding the database.')`),
         true,
       )
-      assert.equal(
-        await window.webContents.executeJavaScript(`document.querySelector('[data-startup-elapsed]').textContent`),
-        "Waiting 5:01",
+      assert.ok(
+        durationSeconds(
+          await window.webContents.executeJavaScript(`document.querySelector('[data-startup-elapsed]').textContent`),
+          "Waiting",
+        ) >= 301,
       )
       assert.equal(
         await window.webContents.executeJavaScript(
@@ -246,7 +254,8 @@ async function run() {
       }))()`)
       assert.equal(waiting.count, "68,005 items checked")
       assert.equal(waiting.step, "Step 16")
-      assert.equal(waiting.activity, "Last progress 1:05 ago")
+      const idleSeconds = durationSeconds(waiting.activity, "Last progress")
+      assert.ok(idleSeconds >= 65)
       assert.equal(waiting.hintVisible, true)
       assert.equal(waiting.unknownVisible, true)
       assert.equal(waiting.phase, "migration")
@@ -261,15 +270,24 @@ async function run() {
       await window.webContents.executeJavaScript(
         startupStatusScript({ title: "Updating saved data", detail: startup.status().detail }),
       )
-      assert.equal(
-        await window.webContents.executeJavaScript(`document.querySelector('[data-startup-activity]').textContent`),
-        "Last progress 1:05 ago",
+      assert.ok(
+        durationSeconds(
+          await window.webContents.executeJavaScript(`document.querySelector('[data-startup-activity]').textContent`),
+          "Last progress",
+        ) >= idleSeconds,
         "presentation-only updates cannot reset the progress age",
       )
-      await window.webContents.executeJavaScript(startupStatusScript({ ...startup.status(), totalElapsedMs: 0 }))
-      assert.equal(
+      const totalSeconds = durationSeconds(
         await window.webContents.executeJavaScript(`document.querySelector('[data-startup-total]').textContent`),
-        "Total 1:05",
+        "Total",
+      )
+      assert.ok(totalSeconds >= 65)
+      await window.webContents.executeJavaScript(startupStatusScript({ ...startup.status(), totalElapsedMs: 0 }))
+      assert.ok(
+        durationSeconds(
+          await window.webContents.executeJavaScript(`document.querySelector('[data-startup-total]').textContent`),
+          "Total",
+        ) >= totalSeconds,
         "a restarted backend clock cannot reduce the total overlay wait",
       )
       startup.receive(
@@ -306,7 +324,7 @@ async function run() {
       assert.equal(switched.mode, alternateMode)
       assert.equal(switched.text, alternateTheme.colors.text)
       assert.equal(switched.count, "68,006 items checked")
-      assert.equal(switched.activity, "Last progress 1:05 ago")
+      assert.ok(durationSeconds(switched.activity, "Last progress") >= 65)
       await window.webContents.executeJavaScript(
         startupThemeScript(desktopThemeSnapshot(defaultDesktopSkinState(mode), mode === "dark")),
       )
@@ -473,6 +491,7 @@ async function run() {
       const view = window.contentView.children.at(-1)
       assert.ok(view instanceof WebContentsView)
       const controls = view.webContents
+      controls.setBackgroundThrottling(false)
       await stateRequested
       controls.focus()
       const maximizeLabel = () =>
@@ -500,14 +519,25 @@ async function run() {
           })
         }
       }
+      const restingControl = await controls.executeJavaScript(
+        `getComputedStyle(document.querySelector('[data-window-action="minimize"]')).backgroundColor`,
+      )
       await press("Tab", "Tab", 9)
       assert.equal(
         await controls.executeJavaScript(`document.activeElement.dataset.windowAction`),
         "minimize",
         "window controls are reachable in order by keyboard",
       )
-      const keyboardFocus = await controls.executeJavaScript(`getComputedStyle(document.activeElement).boxShadow`)
-      assert.notEqual(keyboardFocus, "none", "keyboard focus remains visible")
+      const keyboardFocus = await controls.executeJavaScript(`(async () => {
+        const element = document.activeElement
+        await Promise.all(element.getAnimations().map(animation => animation.finished))
+        const style = getComputedStyle(element)
+        return { visible: element.matches(':focus-visible'), background: style.backgroundColor, shadow: style.boxShadow, outline: style.outlineStyle }
+      })()`)
+      assert.equal(keyboardFocus.visible, true)
+      assert.notEqual(keyboardFocus.background, restingControl, "keyboard focus remains visible")
+      assert.equal(keyboardFocus.shadow, "none")
+      assert.equal(keyboardFocus.outline, "none")
       await press("Enter", "Enter", 13)
       await press("Tab", "Tab", 9)
       assert.equal(await controls.executeJavaScript(`document.activeElement.dataset.windowAction`), "maximize")

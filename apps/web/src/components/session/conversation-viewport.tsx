@@ -1,17 +1,20 @@
-import { AP } from "@/app-i18n"
 import { useLingui } from "@lingui/solid"
 import type { JSX } from "solid-js"
-import { Show, onCleanup } from "solid-js"
-import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { Show, batch, createSignal, onCleanup, useContext } from "solid-js"
+import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { AP } from "@/app-i18n"
 import type { PluginConversationViewport } from "@ericsanchezok/synergy-plugin"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { SessionPromptDockAnchor } from "./workbench-chrome"
 import "./conversation-viewport.css"
+import { useViewActivity } from "@/context/view-residency"
 
 export function ConversationViewport(props: {
   ready?: boolean
-  animateAdmission?: boolean
   scrolledUp: boolean
+  hasUnseenLatest?: boolean
   onScrolledUpChange: (value: boolean) => void
   autoScroll: PluginConversationViewport
   setScrollRef: (el: HTMLDivElement | undefined, releaseOf?: HTMLDivElement) => void
@@ -25,6 +28,44 @@ export function ConversationViewport(props: {
   children: JSX.Element
 }) {
   const { _ } = useLingui()
+  const active = useViewActivity()
+  const promptAnchor = useContext(SessionPromptDockAnchor)
+  const [container, setContainer] = createSignal<HTMLDivElement>()
+  const [viewport, setViewport] = createSignal<HTMLDivElement>()
+  const [content, setContent] = createSignal<HTMLElement>()
+  const [hasContentBelow, setHasContentBelow] = createSignal(false)
+  const [buttonPosition, setButtonPosition] = createSignal<{ bottom: string; right: string }>()
+  const measure = () => {
+    if (!active()) return
+    const scroll = viewport()
+    const below = !!scroll && scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop > 100
+    const root = container()
+    const anchor = promptAnchor?.element()
+    let position: { bottom: string; right: string } | undefined
+    if (root && anchor && !props.scrollButtonOffsetClass) {
+      const bounds = root.getBoundingClientRect()
+      const input = anchor.getBoundingClientRect()
+      position = {
+        bottom: `${Math.max(12, bounds.bottom - input.top + 12)}px`,
+        right: `${Math.max(16, bounds.right - input.right)}px`,
+      }
+    }
+    batch(() => {
+      setHasContentBelow(below)
+      setButtonPosition((previous) =>
+        previous?.bottom === position?.bottom && previous?.right === position?.right ? previous : position,
+      )
+    })
+  }
+  createResizeObserver(
+    () =>
+      active()
+        ? [container(), viewport(), content(), promptAnchor?.element()].filter(
+            (element): element is HTMLElement => !!element,
+          )
+        : [],
+    measure,
+  )
   // Keyed session-tree swaps mount the successor viewport before this
   // owner's cleanup runs. Releasing with the element this viewport bound
   // lets holders ignore the stale cleanup instead of dropping the
@@ -36,16 +77,20 @@ export function ConversationViewport(props: {
     props.autoScroll.contentRef(undefined, boundContentEl)
   })
   return (
-    <div class="relative w-full h-full min-w-0">
-      <Show when={props.overlay}>{props.overlay}</Show>
+    <div ref={setContainer} class="relative w-full h-full min-w-0">
       <Show when={props.ready === false}>
-        <div class="absolute inset-0 flex items-center justify-center" role="status" aria-label={_(AP.sessionLoading)}>
-          <Spinner class="size-6 text-text-weak" />
+        <div class="absolute inset-0 flex flex-col items-center justify-center gap-3" role="status">
+          <Spinner class="size-10 text-text-weak" />
+          <span class="text-sm text-text-weak">{_(AP.sessionLoading)}</span>
         </div>
       </Show>
-      <Show when={props.ready !== false && props.scrolledUp}>
+      <Show when={props.overlay}>{props.overlay}</Show>
+      <Show when={props.hasUnseenLatest || (props.scrolledUp && hasContentBelow())}>
         <div
-          class={`absolute right-4 md:right-6 z-20 pointer-events-auto ${props.scrollButtonOffsetClass ?? "bottom-16 md:bottom-[calc(var(--prompt-height,8rem)+16px)]"}`}
+          data-conversation-latest
+          data-anchored={buttonPosition() ? "" : undefined}
+          style={buttonPosition()}
+          class={`absolute right-4 md:right-6 z-60 pointer-events-auto ${props.scrollButtonOffsetClass ?? "bottom-3 md:bottom-[calc(var(--prompt-height,8rem)+16px)]"}`}
         >
           <IconButton
             icon={getSemanticIcon("navigation.latest")}
@@ -67,27 +112,30 @@ export function ConversationViewport(props: {
         data-conversation-viewport
         data-scroll-viewport="vertical"
         data-ready={props.ready !== false}
-        aria-hidden={props.ready === false}
+        aria-hidden={props.ready === false ? true : undefined}
         inert={props.ready === false}
-        style={{ opacity: props.ready === false ? 0 : undefined }}
         ref={(el) => {
           boundScrollEl = el
+          setViewport(el)
           props.setScrollRef(el)
         }}
         onScroll={(event) => {
+          if (!active() || event.target !== event.currentTarget) return
           props.autoScroll.handleScroll()
           const el = event.currentTarget
-          props.onScrolledUpChange(el.scrollHeight - el.clientHeight - el.scrollTop > 100)
+          const below = el.scrollHeight - el.clientHeight - el.scrollTop > 100
+          setHasContentBelow(below)
+          props.onScrolledUpChange(below)
           props.onScrollContainer?.(el)
         }}
         onClick={props.autoScroll.handleInteraction}
         class="relative min-w-0 w-full h-full overflow-y-auto [overflow-x:clip] no-scrollbar md:pt-[58px] md:[scroll-padding-top:58px]"
-        classList={{ "conversation-viewport-admission": props.animateAdmission !== false }}
       >
         <Show when={props.stickyHeader}>{props.stickyHeader}</Show>
         <div
           ref={(el) => {
             boundContentEl = el
+            setContent(el)
             props.autoScroll.contentRef(el)
           }}
           style={{ overflow: "clip" }}

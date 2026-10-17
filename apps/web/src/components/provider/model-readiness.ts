@@ -1,6 +1,6 @@
 import type { ProviderListResponse } from "@ericsanchezok/synergy-sdk/client"
 
-/** App-wide answer to "is at least one model usable right now", derived from the global provider snapshot. */
+/** Whether a synchronized provider snapshot exposes at least one usable model. */
 export type ModelReadiness =
   | { state: "ready" }
   | { state: "not-configured" }

@@ -1,3 +1,4 @@
+import { projectionContent } from "./projection-content"
 import { SessionActivity } from "@ericsanchezok/synergy-harness/session/activity"
 import { TurnExecutionState } from "@ericsanchezok/synergy-harness/session/turn-execution-state"
 import {
@@ -20,6 +21,7 @@ import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktre
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInvoke, InvokeInput } from "@ericsanchezok/synergy-harness/session/invoke"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
+import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
 import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionInputStatus } from "@ericsanchezok/synergy-harness/session/input-status"
@@ -274,7 +276,7 @@ export const SessionRoute = () =>
           tag: query.tag,
         })
         return c.json({
-          data: result.data,
+          data: result.data.map(Session.publicInfo),
           total: result.total,
           offset: query.offset,
           limit: query.limit,
@@ -334,7 +336,7 @@ export const SessionRoute = () =>
         log.info("SEARCH", { route: ObservabilityRedaction.routePath(c.req.url) })
         await SessionInvoke.reconcilePausedSession(sessionID)
         const session = await Session.get(sessionID)
-        return c.json(session)
+        return c.json(Session.publicInfo(session))
       },
     )
     .get(
@@ -389,7 +391,7 @@ export const SessionRoute = () =>
           search: query.search,
           includeArchived: query.includeArchived,
         })
-        return c.json(result)
+        return c.json({ ...result, items: result.items.map(Session.publicInfo) })
       },
     )
     .get(
@@ -505,7 +507,7 @@ export const SessionRoute = () =>
           .optional(),
       ),
       async (c) => {
-        return c.json(await createSession(c.req.valid("json")))
+        return c.json(Session.publicInfo(await createSession(c.req.valid("json"))))
       },
     )
     .post(
@@ -525,7 +527,7 @@ export const SessionRoute = () =>
         const session = await Session.get(sessionID)
         if (session.scope.id !== ScopeContext.current.scope.id)
           throw new Storage.NotFoundError({ message: "Session not found in this Scope" })
-        return c.json(await Session.updateEnvironment(sessionID, c.req.valid("json")))
+        return c.json(Session.publicInfo(await Session.updateEnvironment(sessionID, c.req.valid("json"))))
       },
     )
     .delete(
@@ -637,7 +639,7 @@ export const SessionRoute = () =>
 
         if (updates.resolvePendingPermissions === true) {
           const result = await Session.transitionControlProfileAndResolve(sessionID, "full_access", applyOtherUpdates)
-          return c.json(result)
+          return c.json(Session.publicInfo(result))
         }
 
         const hasOtherUpdates =
@@ -649,7 +651,7 @@ export const SessionRoute = () =>
           updates.modelOverride !== undefined
 
         if (!hasOtherUpdates && updates.completionNotice?.unread === false) {
-          return c.json(await Session.clearCompletionNotice(sessionID))
+          return c.json(Session.publicInfo(await Session.clearCompletionNotice(sessionID)))
         }
 
         const updatedSession =
@@ -657,7 +659,7 @@ export const SessionRoute = () =>
             ? await Session.update(sessionID, applyOtherUpdates)
             : await Session.updateControlProfile(sessionID, updates.controlProfile, applyOtherUpdates)
 
-        return c.json(updatedSession)
+        return c.json(Session.publicInfo(updatedSession))
       },
     )
     .put(
@@ -679,7 +681,9 @@ export const SessionRoute = () =>
       validator("json", Session.ModelSelectionInput),
       async (c) => {
         try {
-          return c.json(await Session.setModelSelection(c.req.valid("param").sessionID, c.req.valid("json")))
+          return c.json(
+            Session.publicInfo(await Session.setModelSelection(c.req.valid("param").sessionID, c.req.valid("json"))),
+          )
         } catch (error) {
           if (error instanceof Error && "toObject" in error && typeof error.toObject === "function") {
             if (error.name === "SessionModelSelectionConflictError") return c.json(error.toObject(), 409)
@@ -708,7 +712,12 @@ export const SessionRoute = () =>
       }),
       validator("param", z.object({ sessionID: z.string() })),
       validator("json", Session.WorkspaceSelection),
-      async (c) => c.json(await Session.applyWorkspaceSelection(c.req.valid("param").sessionID, c.req.valid("json"))),
+      async (c) =>
+        c.json(
+          Session.publicInfo(
+            await Session.applyWorkspaceSelection(c.req.valid("param").sessionID, c.req.valid("json")),
+          ),
+        ),
     )
     .post(
       "/:sessionID/init",
@@ -780,7 +789,7 @@ export const SessionRoute = () =>
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
         const result = await Session.fork({ ...body, sessionID })
-        return c.json(result)
+        return c.json(Session.publicInfo(result))
       },
     )
     .post(
@@ -800,6 +809,10 @@ export const SessionRoute = () =>
             },
           },
           ...errors(400, 404),
+          409: {
+            description: "The saved task requires an unavailable component",
+            content: { "application/json": { schema: resolver(SessionExecutionOwners.UnavailableError.Schema) } },
+          },
         },
       }),
       validator(
@@ -810,7 +823,12 @@ export const SessionRoute = () =>
       ),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
-        return c.json({ handled: await continueSession(sessionID) })
+        try {
+          return c.json({ handled: await continueSession(sessionID) })
+        } catch (error) {
+          if (SessionExecutionOwners.UnavailableError.isInstance(error)) return c.json(error.toObject(), 409)
+          throw error
+        }
       },
     )
     .post(
@@ -981,7 +999,7 @@ export const SessionRoute = () =>
       describeRoute({
         summary: "Submit session input",
         description:
-          "Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input queues durable passive materialization without model execution.",
+          "Persist input before scheduling it. Input on a paused session with an available existing task steers and resumes it; ordinary input starts a new task when the saved task's owner is absent. Idle no-reply input queues durable passive materialization without model execution.",
         operationId: "session.input",
         responses: {
           200: {
@@ -994,10 +1012,12 @@ export const SessionRoute = () =>
           },
           ...errors(400, 404),
           409: {
-            description: "Session worktree unavailable",
+            description: "Session worktree or saved task owner unavailable",
             content: {
               "application/json": {
-                schema: resolver(Worktree.UnavailableError.Schema),
+                schema: resolver(
+                  z.union([Worktree.UnavailableError.Schema, SessionExecutionOwners.UnavailableError.Schema]),
+                ),
               },
             },
           },
@@ -1434,6 +1454,26 @@ export const SessionRoute = () =>
       },
     )
     .post(
+      "/:sessionID/display/manifest",
+      describeRoute({
+        summary: "Validate loaded message and Part page versions without returning content",
+        operationId: "session.displayManifest",
+        responses: {
+          200: {
+            description: "Changed, deleted, unchanged and recovery states for the loaded window",
+            content: { "application/json": { schema: resolver(SessionHistory.DisplayManifest) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator("json", SessionHistory.DisplayManifestInput),
+      async (c) => {
+        await Session.flushPartWrites(c.req.valid("param").sessionID)
+        return c.json(await SessionHistory.displayManifest({ ...c.req.valid("param"), ...c.req.valid("json") }))
+      },
+    )
+    .post(
       "/:sessionID/part/pages",
       describeRoute({
         summary: "Get presentation summaries for a batch of messages' Parts",
@@ -1490,8 +1530,19 @@ export const SessionRoute = () =>
           partID: Identifier.schema("part"),
         }),
       ),
-      validator("query", z.object({ version: z.string().optional() })),
+      validator("query", z.object({ version: z.string().optional(), projection: z.string().uuid().optional() })),
       async (c) => {
+        const projection = c.req.valid("query").projection
+        if (projection) {
+          const param = c.req.valid("param")
+          const session = await Session.get(param.sessionID)
+          if (session.scope.id !== ScopeContext.current.scope.id)
+            throw new Storage.NotFoundError({ message: "Content belongs to another Scope" })
+          const page = await SessionHistory.partPage({ ...param, limit: 1 })
+          if (!page.items.some((part) => part.id === param.partID))
+            throw new Storage.NotFoundError({ message: "Content checkpoint is no longer visible" })
+          return c.json(await projectionContent().read({ ...param, scopeID: session.scope.id }, projection))
+        }
         await Session.flushPartWrites(c.req.valid("param").sessionID)
         try {
           return c.json(await SessionHistory.partContent({ ...c.req.valid("param"), ...c.req.valid("query") }))
@@ -1749,7 +1800,7 @@ export const SessionRoute = () =>
           204: {
             description: "Prompt accepted",
           },
-          ...errors(400, 404),
+          ...errors(400, 404, 409),
         },
       }),
       validator(

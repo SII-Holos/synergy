@@ -1,3 +1,4 @@
+import { useViewActivity } from "@/context/view-residency"
 import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
 import { useSessionPreparation } from "./session-preparation"
 import { isOptimisticMessagePending } from "@/context/session-optimistic-message"
@@ -5,7 +6,7 @@ import { isSessionSubmissionContentReady } from "./session-transition-handoff"
 import { useSync } from "@/context/sync"
 import { useGlobalSync } from "@/context/global-sync"
 import { ConversationMotionProvider } from "@ericsanchezok/synergy-ui/conversation-motion"
-import { submissionForRoot } from "./session-submission-status"
+import { createOptimisticSubmissionActivity, submissionForRoot } from "./session-submission-status"
 import { useFileRestore } from "./file-restore-dialog-loader"
 import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
@@ -33,15 +34,16 @@ import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import type { UserMessage, AssistantMessage, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
 import { buildConversationTimelineSnapshot } from "./conversation-timeline"
+import { createConversationHydration } from "./conversation-hydration"
 import { ConversationViewport } from "./conversation-viewport"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
-import { PendingTimelineItem } from "./pending-timeline-item"
 import { useExecution } from "@/context/execution"
 
 type SessionConversationProps = PluginComponentProps<PluginConversationService> & {
   initialScrollSettled?: () => boolean
   onAdmitted?: (sessionID: string) => void
+  onHydrated?: (sessionID: string) => void
 }
 
 export function SessionConversation(input: SessionConversationProps) {
@@ -54,6 +56,7 @@ export function SessionConversation(input: SessionConversationProps) {
           context={mergeProps(input.context, { sessionID: untrack(() => input.context.sessionID) })}
           initialScrollSettled={input.initialScrollSettled}
           onAdmitted={input.onAdmitted}
+          onHydrated={input.onHydrated}
         />
       )}
     </Show>
@@ -61,47 +64,39 @@ export function SessionConversation(input: SessionConversationProps) {
 }
 
 function SessionConversationView(input: SessionConversationProps) {
+  const active = useViewActivity()
   const transitions = useSessionTransition()
   const props = input.context
-  const [contentReady, setContentReady] = createSignal(false)
   const [admitted, setAdmitted] = createSignal(!input.initialScrollSettled)
-  createEffect(() => {
-    if (!input.initialScrollSettled || admitted()) return
-    if (!input.initialScrollSettled() || (props.content && !contentReady())) return
-    let frame = requestAnimationFrame(() => {
-      frame = requestAnimationFrame(() => {
-        input.onAdmitted?.(props.sessionID)
-        setAdmitted(true)
-      })
-    })
-    onCleanup(() => cancelAnimationFrame(frame))
-  })
   const preparation = useSessionPreparation()
   const execution = useExecution()
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const sdk = useSDK()
-  const animateAdmission = !untrack(
+  const settleHistory = !untrack(
     () => transitions.get(props.sessionID)?.draft ?? transitions.get(draftTransitionKey(sdk.url, sdk.scopeKey))?.draft,
   )
   const globalSync = useGlobalSync()
   const [arrivalView, setArrivalView] = createSignal<ReturnType<typeof globalSync.partArrival.open>>()
+  const [visible, setVisible] = createSignal(document.visibilityState === "visible")
+  const visibility = () => setVisible(document.visibilityState === "visible")
+  window.addEventListener("visibilitychange", visibility)
+  onCleanup(() => window.removeEventListener("visibilitychange", visibility))
   createEffect(() => {
+    if (!active() || !visible()) return
     const view = globalSync.partArrival.open([sdk.url, sdk.scopeKey, props.sessionID])
     setArrivalView(view)
-    onCleanup(() => view.release())
+    onCleanup(() => {
+      view.release()
+      setArrivalView(undefined)
+    })
   })
   createEffect(() => {
     const view = arrivalView()
-    const root = props.lastUserMessage()
-    const latest = root ? (props.turnProjection().turnMessagesFor(root).at(-1) ?? root) : undefined
-    const snapshot = globalSync.peekScopeState(sdk.scopeKey)?.[0].messageWindow[props.sessionID]
-    if (snapshot && (!latest || !props.content || props.content.page(latest.id))) view?.ready(true)
+    view?.ready(admitted())
   })
-  const takePartArrival = (partID: string) => {
-    const arrival = arrivalView()?.take(partID) ?? false
-    return document.visibilityState === "visible" && arrival
-  }
+  const takePartArrival = (partID: string) =>
+    active() && (arrivalView()?.take(partID) ?? false) && document.visibilityState === "visible"
   const takeUserArrival = (messageID: string) =>
     transitions.messageArrival.take([sdk.url, sdk.scopeKey, props.sessionID], messageID)
   const messageKey = (messageID: string) =>
@@ -109,11 +104,27 @@ function SessionConversationView(input: SessionConversationProps) {
   const restoreFiles = useFileRestore(() => props.sessionID)
   const data = useSessionDataView()
   const sync = useSync()
+  const [executionStates, setExecutionStates] = createStore<Record<string, TurnExecutionState | undefined>>({})
+  const optimisticSubmission = createOptimisticSubmissionActivity({
+    message: props.lastUserMessage,
+    messageKey,
+    status: () => data().statusFor(props.sessionID),
+    settled: (rootID) =>
+      !!executionStates[rootID] ||
+      props
+        .turnProjection()
+        .turnMessagesFor(props.lastUserMessage())
+        .some(
+          (message) =>
+            message.role === "assistant" && message.rootID === rootID && message.time.completed !== undefined,
+        ),
+  })
   const submissionFor = (rootID: string) =>
     submissionForRoot(
       transitions.get(props.sessionID) ?? transitions.get(draftTransitionKey(sdk.url, sdk.scopeKey)),
       rootID,
       data().statusFor(props.sessionID),
+      optimisticSubmission(),
     )
   let stateRequest: AbortController | undefined
   const executionRequest = createMemo(
@@ -153,7 +164,6 @@ function SessionConversationView(input: SessionConversationProps) {
           a.rootIDs.every((rootID, index) => rootID === b.rootIDs[index])),
     },
   )
-  const [executionStates, setExecutionStates] = createStore<Record<string, TurnExecutionState | undefined>>({})
   let baseline: ReturnType<typeof executionRequest>
   let identityEpoch = 0
   let rootVersion = 0
@@ -161,20 +171,27 @@ function SessionConversationView(input: SessionConversationProps) {
   let queued = false
   const versions = new Map<string, number>()
   const dirtyRoots = new Set<string>()
+  let pendingRoots: string[] = []
+  const [executionPending, setExecutionPending] = createSignal(false)
   const scheduleExecutions = () => {
-    if (disposed || queued || stateRequest || !dirtyRoots.size) return
+    if (disposed || !active() || queued || stateRequest || !dirtyRoots.size) return
     queued = true
+    setExecutionPending(true)
     queueMicrotask(() => {
       queued = false
-      if (disposed || stateRequest || !baseline) return
+      if (disposed || !active() || stateRequest || !baseline) return
       const request = baseline
       const rootIDs = request.rootIDs.filter((rootID) => dirtyRoots.has(rootID))
-      if (!rootIDs.length) return
+      if (!rootIDs.length) {
+        setExecutionPending(false)
+        return
+      }
       const capturedVersions = new Map(rootIDs.map((rootID) => [rootID, versions.get(rootID)]))
       for (const rootID of rootIDs) dirtyRoots.delete(rootID)
       const epoch = identityEpoch
       const controller = new AbortController()
       stateRequest = controller
+      pendingRoots = rootIDs
       const isCurrent = () =>
         !disposed &&
         !controller.signal.aborted &&
@@ -199,16 +216,12 @@ function SessionConversationView(input: SessionConversationProps) {
             }
           })
         } catch {
-          if (!isCurrent()) return
-          batch(() => {
-            for (const rootID of rootIDs) {
-              if (versions.has(rootID) && versions.get(rootID) === capturedVersions.get(rootID))
-                setExecutionStates(rootID, undefined)
-            }
-          })
+          // A failed refresh is not evidence that accepted execution state disappeared.
         } finally {
           if (stateRequest === controller) {
             stateRequest = undefined
+            pendingRoots = []
+            setExecutionPending(false)
             scheduleExecutions()
           }
         }
@@ -240,6 +253,8 @@ function SessionConversationView(input: SessionConversationProps) {
         identityEpoch++
         stateRequest?.abort()
         stateRequest = undefined
+        pendingRoots = []
+        setExecutionPending(false)
         versions.clear()
         dirtyRoots.clear()
         setExecutionStates(reconcile({}))
@@ -262,6 +277,20 @@ function SessionConversationView(input: SessionConversationProps) {
         else if (previous.revision !== request.revision) invalidateExecution(request.latestRootID)
       }
       scheduleExecutions()
+    })
+  })
+  createEffect(() => {
+    const visible = active()
+    untrack(() => {
+      if (visible) {
+        scheduleExecutions()
+        return
+      }
+      for (const rootID of pendingRoots) if (versions.has(rootID)) dirtyRoots.add(rootID)
+      stateRequest?.abort()
+      stateRequest = undefined
+      pendingRoots = []
+      setExecutionPending(false)
     })
   })
   onCleanup(() => {
@@ -325,6 +354,31 @@ function SessionConversationView(input: SessionConversationProps) {
   const lastTimelineID = createMemo(() => props.timeline()?.at(-1)?.id)
   const turnProjection = props.turnProjection
   const [scrollRef, setScrollRef] = createSignal<HTMLDivElement>()
+  const [rowsReady, setRowsReady] = createSignal(!props.content)
+  createEffect(() => {
+    if (!active() || (input.initialScrollSettled && !input.initialScrollSettled())) return
+    if ((!settleHistory || !props.content) && !admitted()) {
+      input.onAdmitted?.(props.sessionID)
+      setAdmitted(true)
+    }
+  })
+  const hydrated = createConversationHydration({
+    active,
+    ready: () =>
+      (!input.initialScrollSettled || input.initialScrollSettled()) &&
+      !sdk.content.pending(sdk.scopeKey, props.sessionID) &&
+      rowsReady() &&
+      !executionPending(),
+    surface: () => scrollRef()?.querySelector<HTMLElement>("[data-conversation-motion]") ?? undefined,
+    onHydrated: () =>
+      batch(() => {
+        if (!admitted()) {
+          input.onAdmitted?.(props.sessionID)
+          setAdmitted(true)
+        }
+        input.onHydrated?.(props.sessionID)
+      }),
+  })
   // Rows below are keyed by the stable message id (see conversation-timeline):
   // message objects are replaced in place by window reload, reconnect replay,
   // rollback copies, and message.updated reconcile. Reference-keyed rows would
@@ -333,11 +387,15 @@ function SessionConversationView(input: SessionConversationProps) {
   // heap grew to the 4 GiB V8 limit after ~33h of a long session.
   const timelineSnapshot = createMemo(() => buildConversationTimelineSnapshot(props.timeline() ?? [], messageKey))
   return (
-    <ConversationMotionProvider takeArrival={takePartArrival} liveRevision={() => arrivalView()?.revision() ?? 0}>
+    <ConversationMotionProvider
+      takeArrival={takePartArrival}
+      liveRevision={() => arrivalView()?.revision() ?? 0}
+      ready={hydrated}
+    >
       <ConversationViewport
         ready={admitted()}
-        animateAdmission={animateAdmission && !input.onAdmitted}
         scrolledUp={props.scrolledUp()}
+        hasUnseenLatest={props.historyPendingLatest() || sync.data.messageWindow[props.sessionID]?.tailMissingLatest}
         onScrolledUpChange={props.onScrolledUpChange}
         autoScroll={props.autoScroll}
         setScrollRef={(element, releaseOf) => {
@@ -370,33 +428,17 @@ function SessionConversationView(input: SessionConversationProps) {
             </Button>
           </div>
         </Show>
-        <Show when={props.historyMore() || props.historyMode() === "history" || props.historyPendingLatest()}>
-          <div class="w-full flex flex-wrap justify-center gap-2">
-            <Show when={props.historyMore()}>
-              <Button
-                variant="ghost"
-                size="large"
-                class="text-12-medium opacity-50"
-                disabled={props.historyLoading()}
-                onClick={props.onLoadMore}
-              >
-                {props.historyLoading() ? _(S.convLoadingEarlier) : _(S.convLoadEarlier)}
-              </Button>
-            </Show>
-            <Show when={props.historyMode() === "history" || props.historyPendingLatest()}>
-              <Button
-                variant="secondary"
-                size="large"
-                class="text-12-medium"
-                disabled={props.historyLoading()}
-                onClick={(event: MouseEvent) => {
-                  event.stopPropagation()
-                  props.onReturnLatest()
-                }}
-              >
-                {props.historyPendingLatest() ? _(S.convNewMessagesReturnLatest) : _(S.convReturnLatest)}
-              </Button>
-            </Show>
+        <Show when={props.historyMore()}>
+          <div class="w-full flex justify-center">
+            <Button
+              variant="ghost"
+              size="large"
+              class="text-12-medium opacity-50"
+              disabled={props.historyLoading()}
+              onClick={props.onLoadMore}
+            >
+              {props.historyLoading() ? _(S.convLoadingEarlier) : _(S.convLoadEarlier)}
+            </Button>
           </div>
         </Show>
         <Show
@@ -484,6 +526,7 @@ function SessionConversationView(input: SessionConversationProps) {
                       onRestoreChanges={(messageID) => void restoreFiles({ messageID })}
                       lastUserMessageID={props.lastUserMessage()?.id}
                       compactReasoning={props.compactReasoning()}
+                      preferWorkBrief={props.preferWorkBrief?.()}
                       onRewind={props.canRewind(rootMessage()) ? () => props.onRewind?.(rootMessage()) : undefined}
                       rollbackActive={props.rollbackActive}
                       onReviewChanges={props.onReviewChanges}
@@ -503,8 +546,8 @@ function SessionConversationView(input: SessionConversationProps) {
           }
         >
           <VirtualConversationRows
+            onReady={setRowsReady}
             layoutOwner={[sdk.url, sdk.scopeKey, props.sessionID]}
-            onReady={setContentReady}
             onReadingMessage={(messageID) => {
               const element = scrollRef()
               if (element && props.isDesktop()) props.onScheduleScrollSpy(element, messageID)
@@ -522,26 +565,6 @@ function SessionConversationView(input: SessionConversationProps) {
           />
         </Show>
         {props.transition?.()}
-        <Show when={props.pendingTimeline?.()?.length}>
-          <div class="w-full flex flex-col items-start gap-2">
-            <For each={(props.pendingTimeline?.() ?? []).map((item) => item.id)}>
-              {(id) => {
-                const item = () => props.pendingTimeline?.()?.find((item) => item.id === id)
-                return (
-                  <Show when={item()}>
-                    <PendingTimelineItem
-                      item={item()!}
-                      rollbackActive={props.rollbackActive === true}
-                      hasCanonicalRoot={props.hasCanonicalRoot()}
-                      onGuide={props.onPendingGuide}
-                      onRemove={props.onPendingRemove}
-                    />
-                  </Show>
-                )
-              }}
-            </For>
-          </div>
-        </Show>
         <MessageSlotOutlet slot="message.footer" sessionId={props.sessionID} />
       </ConversationViewport>
     </ConversationMotionProvider>

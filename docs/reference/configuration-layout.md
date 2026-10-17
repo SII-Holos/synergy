@@ -213,6 +213,10 @@ The frontend may mirror the value locally to choose a catalog before the server 
 
 The mode changes only activity presentation. It never hides permission requests, failures, or external-action and production communication receipts, and it never rewrites message parts or changes model context. Historical derived activity metadata is preserved in storage but ignored by presentation. Mode changes update already rendered turns reactively without remounting them.
 
+## Tool action descriptions
+
+Tool rows have an independent global General preference, `preferWorkBrief`, stored in `00-general.jsonc` and defaulting to `false`. Settings labels it **Prefer action descriptions**. When enabled, a non-empty `workBrief` supplies the row label; missing or whitespace-only intent retains the action-and-target label. All activity display modes, session views and Kanban use the same preference. It changes presentation only, preserves original messages and does not request generated summaries.
+
 ## Compact reasoning
 
 `compactReasoning` is a global General preference that keeps live reasoning output in a single-line view. It lives in `00-general.jsonc`:
@@ -338,6 +342,20 @@ Automatic reasoning variants are derived from model identity (`model.id`, API mo
 Feishu/Lark account configuration may pair an explicit `model` with `variant`. The Settings Channel model selector lists the same model variants used by model roles, and the selected variant is sent only while that account model is effective. A conversation-level `/model` override takes precedence and does not reuse the account model's variant.
 
 A Feishu/Lark account may also set `projectDir` to bind the account's sessions to a project Scope. Resolution rules and error behavior are documented in the [Channels reference](../product/connections.md).
+
+## MCP Tool Exposure
+
+MCP tools are deferred unless a per-server `expandByDefault` or the `mcpDefaults.expandByDefault` setting explicitly makes them resident. Per-server settings override the global default. Built-in Anysearch and Scholight tools share the `online` capability group; full typed user entries with those names remain user-owned servers. API-key-only stubs retain built-in ownership and the default deferred presentation. See [tool catalog and exposure](../product/agents-and-tools.md#tool-catalog-and-exposure).
+
+```jsonc
+{
+  "mcp": {
+    "anysearch": { "expandByDefault": true },
+  },
+}
+```
+
+This makes the built-in Anysearch tools resident without taking ownership of the server configuration. A global `mcpDefaults.expandByDefault: true` applies to every server unless that server explicitly sets `false`. Exposure never bypasses tool permissions, disabled servers, or connection availability.
 
 ## MCP Server Authentication
 
@@ -550,11 +568,11 @@ Compaction settings are owned by the Runtime domain (`120-runtime.jsonc`):
 | Field                          | Required | Default | Description                                                                                 |
 | ------------------------------ | -------- | ------- | ------------------------------------------------------------------------------------------- |
 | `compaction.auto`              | no       | `true`  | Enable automatic compaction when the measured prompt crosses the soft budget                |
-| `compaction.prune`             | no       | `true`  | Enable pruning of old tool outputs                                                          |
+| `compaction.prune`             | no       | `true`  | Prune eligible old tool outputs when the existing prompt budget reports pressure            |
 | `compaction.overflowThreshold` | no       | `0.85`  | Fraction of the input envelope that triggers auto-compaction; constrained to `0.5`–`1`      |
 | `compaction.maxHistoryImages`  | no       | `8`     | Maximum historical images sent as base64 per request; older images become text placeholders |
 
-The soft budget is `floor(inputEnvelope * overflowThreshold)`. The input envelope is the usable input for models with an explicit input limit, and `context - output - margin` for shared-context models only when reserving output and margin leaves a positive remainder; fully shared or near-window output declarations otherwise use the model's usable input. The margin is `min(32000, max(2048, ceil(context * 0.05)))`. See [LLM loop and compaction](../architecture/llm-loop.md#prompt-budget) for the full budgeting model. When automatic compaction is enabled, a prompt with no response space receives one root-scoped compaction attempt before Synergy stops locally with an actionable error; when automatic compaction is disabled, it stops immediately. An explicit per-request output limit remains effective when model context metadata is unavailable. `SYNERGY_DISABLE_AUTOCOMPACT=1` and `SYNERGY_DISABLE_PRUNE=1` force `auto` and `prune` off for the process.
+The soft budget is `floor(inputEnvelope * overflowThreshold)`. The input envelope is the usable input for models with an explicit input limit, and `context - output - margin` for shared-context models only when reserving output and margin leaves a positive remainder; fully shared or near-window output declarations otherwise use the model's usable input. The margin is `min(32000, max(2048, ceil(context * 0.05)))`. See [LLM loop and compaction](../architecture/llm-loop.md#prompt-budget) for the full budgeting model. Prompt pressure first permits eligible pruning and remeasurement. If no response space remains, automatic compaction receives one root-scoped recovery attempt before Synergy stops locally with an actionable error; with automatic compaction disabled, it stops after pruning cannot relieve that overflow. The `prune` and `auto` switches are independent. An explicit per-request output limit remains effective when model context metadata is unavailable. `SYNERGY_DISABLE_AUTOCOMPACT=1` and `SYNERGY_DISABLE_PRUNE=1` force `auto` and `prune` off for the process.
 
 ## Runtime Boss Mode
 
@@ -762,3 +780,11 @@ Domain files are the durable configuration contract. Environment variables are p
 | `SYNERGY_DISABLE_LSP_REAP=1`      | Disable idle-age reaping; native write contention still retires idle LSP clients                                                                         |
 
 Experimental and diagnostic variables are not persisted preferences. Use them to isolate behavior, then fix or configure the owning subsystem instead of relying on them as permanent compatibility layers. Performance-specific environment variables are listed in [Performance Observability](../operations/performance-observability.md); Desktop build/release variables are listed in [Desktop Release](../operations/desktop-release.md).
+
+## File read/write tool group
+
+Set `fileToolGroup` in the existing `60-agents.jsonc` domain. The values are `replace` (Text replacement / 文本替换), `hashline` (Line-anchored editing / 行锚编辑), and `patch` (Patch editing / 补丁编辑). The universal fallback is `patch`. The existing Agent runtime Settings page stages this global preference through Save/Discard; project domain files and configuration import use the normal project override layer. Removing an override reveals the lower layer, or `patch` when absent everywhere.
+
+This setting changes the local file interface independently of Agent and model selection. It does not grant permission, install an optional component, or configure external agents' own tools. Existing permission-only interface switching must be replaced by an explicit group setting. Existing `read`/`edit` and concrete-tool restrictions remain authoritative; a conflicting `edit: deny` can leave the selected interface read-only. No migration deletes these restrictions or falls back to another group. See [file tool interfaces](../architecture/workspace-and-files.md#file-tool-interfaces) for the member table, search modes and patch failure guarantees.
+
+`parse_code` now checks permission against resolved file paths before returning matches. Rules previously keyed to an AST expression must be replaced with path patterns; semantic `read` restrictions also apply.

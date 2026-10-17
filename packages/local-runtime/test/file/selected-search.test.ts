@@ -11,6 +11,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Ripgrep } from "../../src/file/ripgrep"
 import { FileView } from "../../src/file/view"
 import { WorkspaceFileSearch } from "../../src/workspace-file/search"
+import { FileSearchTool } from "../../src/tools/file-search"
 import { ScanFilesTool } from "../../src/tools/scan-files"
 import { GlobTool } from "../../src/tools/glob"
 import { GrepTool } from "../../src/tools/grep"
@@ -93,6 +94,42 @@ test("search reads selected Workspace bytes, preserves regex and ignore semantic
                   metadata() {},
                   resources,
                 }
+                const precise = await (
+                  await FileSearchTool.init()
+                ).execute(
+                  { mode: "content", syntax: "regex", query: "中文|second", path: "src", include: "main.ts", limit: 1 },
+                  { ...context, callID: "precise" },
+                )
+                expect(precise.metadata.nextOffset).toBe(1)
+                expect(precise.output).toContain("中文")
+                const continuation = await (
+                  await FileSearchTool.init()
+                ).execute(
+                  {
+                    mode: "content",
+                    syntax: "regex",
+                    query: "中文|second",
+                    path: "src",
+                    include: "main.ts",
+                    offset: 1,
+                  },
+                  { ...context, callID: "continuation" },
+                )
+                expect(continuation.output).toContain("second")
+                const precisePaths = await (
+                  await FileSearchTool.init()
+                ).execute(
+                  { mode: "paths", query: "**/*.ts", exclude: "*.generated.ts,hidden.ts" },
+                  { ...context, callID: "paths" },
+                )
+                expect(precisePaths.output).toContain("src/main.ts")
+                expect(precisePaths.output).not.toContain("no.generated")
+                await expect(
+                  (await FileSearchTool.init()).execute(
+                    { mode: "content", syntax: "regex", query: "(", path: "empty" },
+                    context,
+                  ),
+                ).rejects.toThrow("regex")
                 const scan = await (await ScanFilesTool.init()).execute({ pattern: "second = 7" }, context)
                 expect(scan.output).toContain("second = 7")
                 expect(scan.output).toContain("src/main.ts#")

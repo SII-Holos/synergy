@@ -40,6 +40,7 @@ beforeAll(async () => {
     export const surface = { tabs: () => state[task()].tabs, savedTabs: () => state[task()].tabs, hasOpening: () => false, active: () => state[task()].active,
       setTabs: tabs => setState(task(), "tabs", tabs), setActive: active => setState(task(), "active", active), opened: () => false }
     window.switchTask = id => setTask(id)
+    export const useParams = () => ({ get id() { return task() } })
     export const useWorkbenchPanels = () => ({ sessionKey: task, surface: () => surface, openingForTab: () => undefined })
   `,
   )
@@ -62,7 +63,7 @@ beforeAll(async () => {
       surface.setActive(id)
     }
     render(() => <BrowserCatalogProvider><>
-      <div role="tablist"><For each={surface.tabs()}>{tab => <button role="tab" aria-selected={surface.active() === tab.id}>{tab.id}</button>}</For></div>
+      <div role="tablist"><For each={surface.tabs()}>{tab => <button role="tab" title={tab.title} aria-selected={surface.active() === tab.id}>{tab.id}</button>}</For></div>
       <Suspense><BrowserWorkbenchSync route={{mode:"scope",scopeID:"home",path_directory:"home"}} /></Suspense>
     </></BrowserCatalogProvider>, document.querySelector("#root"))
   `,
@@ -76,6 +77,7 @@ beforeAll(async () => {
       alias: {
         "@/context/sdk": path.join(directory, "sdk.ts"),
         "@/context/workbench": path.join(directory, "workbench.ts"),
+        "@/context/session-route": path.join(directory, "workbench.ts"),
         "./browser-ws": path.join(directory, "transport.ts"),
         "@": source,
       },
@@ -107,6 +109,40 @@ type Fixture = Window & {
   switchTask(id: string): void
 }
 
+test("Agent-created pages reconcile silently on bootstrap, task switching and navigation", async () => {
+  await page.goto(url)
+  await page.waitForFunction(() => typeof (window as unknown as Fixture).completeSnapshot === "function")
+  const pages = ["one", "two"].map((sessionID) => ({
+    id: `agent-${sessionID}`,
+    profileId: "personal",
+    title: sessionID,
+    url: "about:blank",
+    createdBySessionID: sessionID,
+    status: "active",
+    isLoading: false,
+    lastActiveAt: null,
+  }))
+  await page.evaluate(
+    (pages) =>
+      (window as unknown as Fixture).completeSnapshot({ data: { pages, seq: 1, epoch: "one", ownerKey: "owner-one" } }),
+    pages,
+  )
+  await page.getByRole("tab", { name: /agent-one/ }).waitFor()
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["file", expect.stringContaining("agent-one")])
+  expect(await page.getByRole("tab", { name: "file", exact: true }).getAttribute("aria-selected")).toBe("true")
+  await page.evaluate(() => (window as unknown as Fixture).switchTask("two"))
+  await page.getByRole("tab", { name: /agent-two/ }).waitFor()
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["two-file", expect.stringContaining("agent-two")])
+  await page.getByRole("tab", { name: "two-file", exact: true }).focus()
+  await page.evaluate(
+    (pages) => (window as unknown as Fixture).deliverPages(pages),
+    pages.map((item) => ({ ...item, title: "Navigated", url: "https://example.com/new" })),
+  )
+  await page.locator('[role="tab"][title="Navigated"]').waitFor()
+  expect(await page.getByRole("tab", { name: "two-file", exact: true }).getAttribute("aria-selected")).toBe("true")
+  expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("two-file")
+})
+
 test("a held bootstrap removes stale tabs but preserves a page opened after its request", async () => {
   await page.goto(url)
   await page.waitForFunction(() => typeof (window as unknown as Fixture).completeSnapshot === "function")
@@ -137,11 +173,13 @@ test("a held bootstrap removes stale tabs but preserves a page opened after its 
   expect(await page.getByRole("tab", { name: "file", exact: true }).getAttribute("aria-selected")).toBe("true")
 })
 
-test("one Scope catalog reconciles across task switches without changing human selection", async () => {
+test("one Scope catalog preserves independent task tabs through updates and task switches", async () => {
   await page.goto(url)
   await page.waitForFunction(() => typeof (window as unknown as Fixture).completeSnapshot === "function")
-  await page.evaluate(() =>
-    (window as unknown as Fixture).completeSnapshot({
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.openPage("shared")
+    fixture.completeSnapshot({
       data: {
         pages: [
           {
@@ -158,16 +196,39 @@ test("one Scope catalog reconciles across task switches without changing human s
         epoch: "one",
         ownerKey: "owner-one",
       },
-    }),
-  )
+    })
+  })
   await page.getByRole("tab", { name: /shared/ }).waitFor()
   await page.evaluate(() => (window as unknown as Fixture).switchTask("two"))
   await page.getByRole("tab", { name: "two-file", exact: true }).waitFor()
-  expect(await page.getByRole("tab").count()).toBe(2)
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["two-file"])
   expect(await page.getByRole("tab", { name: "two-file", exact: true }).getAttribute("aria-selected")).toBe("true")
-  await page.evaluate(() => (window as unknown as Fixture).deliverPages([]))
-  await page.getByRole("tab", { name: /shared/ }).waitFor({ state: "hidden" })
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.openPage("two")
+    fixture.deliverPages([
+      { id: "shared", title: "Updated", url: "https://example.com" },
+      { id: "two", title: "Second", url: "https://example.org" },
+      { id: "popup", openerId: "shared", title: "Popup", url: "https://example.com/login" },
+    ])
+  })
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["two-file", "two"])
+  expect(await page.getByRole("tab", { name: "two", exact: true }).getAttribute("aria-selected")).toBe("true")
   await page.evaluate(() => (window as unknown as Fixture).switchTask("one"))
   await page.getByRole("tab", { name: "file", exact: true }).waitFor()
-  expect(await page.getByRole("tab").allTextContents()).toEqual(["file"])
+  await page.getByRole("tab", { name: /popup/ }).waitFor()
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["file", "shared", expect.stringContaining(":popup")])
+  expect(await page.getByRole("tab", { name: "shared", exact: true }).getAttribute("title")).toBe("Updated")
+  expect(await page.getByRole("tab", { name: "shared", exact: true }).getAttribute("aria-selected")).toBe("true")
+  await page.evaluate(() =>
+    (window as unknown as Fixture).deliverPages([
+      { id: "two", title: "Second", url: "https://example.org" },
+      { id: "popup", openerId: "shared", title: "Popup", url: "https://example.com/login" },
+    ]),
+  )
+  await page.getByRole("tab", { name: "shared", exact: true }).waitFor({ state: "hidden" })
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["file", expect.stringContaining(":popup")])
+  await page.evaluate(() => (window as unknown as Fixture).switchTask("two"))
+  await page.getByRole("tab", { name: "two-file", exact: true }).waitFor()
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["two-file", "two"])
 })

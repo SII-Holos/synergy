@@ -27,3 +27,5 @@ The page uses the persisted Desktop skin's text, muted text and border colors, a
 ## Consequences
 
 Users can see advancing unknown-total work and assess how long a step has been silent. The change improves waiting feedback without reducing the underlying migration or build cost. Known task classification requires maintenance as migrations evolve; unclassified work retains a generic label and real counts. Behavioral tests cover protocol privacy, producer emission, accepted-event clocks and deadlines, plus actual Electron rendering, reflow, zoom, reduced motion, live theme changes, stable task announcements and keyboard window controls with delayed state delivery.
+
+Exact clock values are asserted with the startup model's injected clock. The native rendering test validates elapsed-label format and monotonicity across updates and backend clock resets, allowing the renderer's live clock to cross a second boundary between IPC reads.

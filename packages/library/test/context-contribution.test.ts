@@ -6,6 +6,9 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { SessionContextContributions } from "@ericsanchezok/synergy-harness/session/context-contributions"
 import { SessionLibraryRecall } from "../src/library-recall"
 import { Embedding } from "../src/vector/embedding"
+import { LibraryDB } from "../src/database"
+import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { AgentPermissionContributions } from "@ericsanchezok/synergy-harness/agent/permission-contributions"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "./support/runtime"
 const runtime = await testRuntime()
@@ -69,7 +72,8 @@ test("enabled Library preserves always-memory prompt and injection metadata", ()
           "</active-memory>",
         ].join("\n"),
       )
-      expect(result?.context).toContain("`memory_search`")
+      expect(result?.context).toContain("Long-Term Memory")
+      expect(result?.context).not.toMatch(/memory_search|memory_get|When to search memory/)
       expect(result?.injection.experience).toBeUndefined()
     } finally {
       unregister()
@@ -169,6 +173,16 @@ test("context contribution combines filtered semantic memory with attributed exp
       expect(result?.injection.memory).toContain('similarity="0.950"')
       expect(result?.injection.memory).toContain("Seed every trial")
       expect(result?.context).not.toContain("Discard")
+      expect(result?.knowledge?.entries.map((entry) => entry.id)).toEqual([
+        "memory:always",
+        "memory:strong",
+        "experience:scope-research:positive",
+        "experience:scope-research:neutral",
+      ])
+      expect(result?.knowledge?.entries.map((entry) => entry.text).join("\n")).not.toMatch(/similarity=|sim=|q=/)
+      expect(result?.knowledge?.entries.find((entry) => entry.id.endsWith(":positive"))?.annotation).toBe(
+        "Successful result",
+      )
       expect(result?.injection.experience).toContain('<experience sim="0.900" q="0.800">')
       expect(result?.injection.experience).toContain("<script>seed(7)</script>")
       expect(result?.injection.experience).toContain("<evaluation>Successful result</evaluation>")
@@ -209,6 +223,9 @@ test("failed semantic retrieval retains always-memory context and cancellation s
       expect(experienceCalls).toBe(0)
       expect(result?.injection.memory).toContain("Preserve observations")
       expect(result?.injection.experience).toBeUndefined()
+      expect(result?.knowledge?.unavailable).toEqual(["contextual", "experience"])
+      const experienceOnly = await buildMemoryContext("session", "scope", messages, { memory: { enabled: false } })
+      expect(experienceOnly?.knowledge?.unavailable).toEqual(["experience"])
       await expect(
         buildMemoryContext("session", "scope", messages, undefined, AbortSignal.abort(new Error("research cancelled"))),
       ).rejects.toThrow("research cancelled")
@@ -218,43 +235,127 @@ test("failed semantic retrieval retains always-memory context and cancellation s
     }
   }))
 
-test("automatic Library recall cancels slow embeddings and retains always-memory within the interactive budget", () =>
-  runtime.run(async () => {
-    const original = Embedding.generate
-    let observed: AbortSignal | undefined
-    let calls = 0
-    Embedding.generate = async ({ signal }) => {
-      calls++
-      observed = signal
-      return new Promise((_, reject) => signal?.addEventListener("abort", () => reject(signal.reason), { once: true }))
-    }
-    const unregister = SessionLibraryRecall.register({
-      ...emptyProvider(),
-      listAlwaysMemories: () => [
-        { id: "always", title: "Evidence", content: "Preserve observations", category: "knowledge" },
-      ],
-    })
-    try {
-      const result = await ScopeContext.provide({
-        scope: Scope.home(),
-        fn: () =>
-          SessionContextContributions.collect({
-            sessionID: "slow-recall",
-            scopeID: "home",
-            messages: [
-              { info: { role: "user" }, parts: [{ type: "text", text: "slow query" }] },
-            ] as MessageV2.WithParts[],
-            isTopSession: true,
-            signal: AbortSignal.timeout(4_500),
-          }),
+for (const agentIdentity of [undefined, { owner: "anima", registrationKey: "anima", source: "builtin" as const }]) {
+  test(`automatic Library recall cancels slow embeddings and retains always-memory (${agentIdentity ? "maintainer" : "ordinary"})`, () =>
+    runtime.run(async () => {
+      const original = Embedding.generate
+      let observed: AbortSignal | undefined
+      let calls = 0
+      Embedding.generate = async ({ signal }) => {
+        calls++
+        observed = signal
+        return new Promise((_, reject) =>
+          signal?.addEventListener("abort", () => reject(signal.reason), { once: true }),
+        )
+      }
+      const unregister = SessionLibraryRecall.register({
+        ...emptyProvider(),
+        listAlwaysMemories: () => [
+          { id: "always", title: "Evidence", content: "Preserve observations", category: "knowledge", updated_at: 42 },
+        ],
       })
-      expect(observed?.aborted).toBe(true)
-      expect(calls).toBe(1)
-      expect(result?.injection.memory).toContain("Preserve observations")
-      expect(result?.injection.experience).toBeUndefined()
+      try {
+        const result = await ScopeContext.provide({
+          scope: Scope.home(),
+          fn: () =>
+            SessionContextContributions.collect({
+              sessionID: "slow-recall",
+              scopeID: "home",
+              agentIdentity,
+              messages: [
+                { info: { role: "user" }, parts: [{ type: "text", text: "slow query" }] },
+              ] as MessageV2.WithParts[],
+              isTopSession: true,
+              signal: AbortSignal.timeout(4_500),
+            }),
+        })
+        expect(observed?.aborted).toBe(true)
+        expect(calls).toBe(1)
+        expect(result?.injection.memory).toContain("Preserve observations")
+        expect(result?.injection.experience).toBeUndefined()
+        if (agentIdentity) {
+          expect(result?.context).toContain('memoryId="always" category="knowledge" recallMode="always" updatedAt="42"')
+          expect(result?.context?.split("Preserve observations")).toHaveLength(2)
+        } else {
+          expect(result?.context).not.toContain('memoryId="always"')
+        }
+      } finally {
+        Embedding.generate = original
+        unregister()
+      }
+    }))
+}
+
+test("maintenance inventory annotates every always entry only for trusted memory maintainers", () =>
+  runtime.run(async () => {
+    const row = LibraryDB.Memory.insert(
+      {
+        id: "inventory",
+        title: "Consent",
+        content: "Ask before sending.",
+        category: "relationship",
+        recallMode: "always",
+      },
+      { id: "inventory", vector: [1, 0, 0, 0], model: "fixture" },
+    )
+    LibraryDB.Memory.insert(
+      {
+        id: "background",
+        title: "Incident",
+        content: "Historical details",
+        category: "knowledge",
+        recallMode: "search_only",
+      },
+      { id: "background", vector: [0, 1, 0, 0], model: "fixture" },
+    )
+    try {
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const input = {
+            sessionID: "inventory-session",
+            scopeID: "home",
+            messages: [],
+            isTopSession: false,
+            signal: new AbortController().signal,
+          }
+          const ordinary = await SessionContextContributions.collect(input)
+          expect(ordinary?.context).toContain("Ask before sending.")
+          expect(ordinary?.context).not.toContain('memoryId="inventory"')
+          const chroniclerIdentity = AgentPermissionContributions.identity(await Agent.get("chronicler"))!
+          expect(chroniclerIdentity).toMatchObject({
+            owner: "library",
+            registrationKey: "chronicler",
+            source: "builtin",
+          })
+          for (const agentIdentity of [
+            { owner: "anima", registrationKey: "anima", source: "builtin" as const },
+            chroniclerIdentity,
+          ]) {
+            const result = await SessionContextContributions.collect({ ...input, agentIdentity })
+            expect(result?.context).toContain('memoryId="inventory"')
+            expect(result?.context).toContain('recallMode="always"')
+            expect(result?.context).toContain(`updatedAt="${row.updated_at}"`)
+            expect(result?.context?.split("Ask before sending.")).toHaveLength(2)
+            expect(result?.context).not.toContain("Historical details")
+          }
+          for (const agentIdentity of [
+            { owner: "config", registrationKey: "anima", source: "config" as const },
+            { owner: "library", registrationKey: "intent", source: "builtin" as const },
+          ]) {
+            const result = await SessionContextContributions.collect({ ...input, agentIdentity })
+            expect(result?.context).toBe(ordinary?.context)
+          }
+          const root = await SessionContextContributions.collect({
+            ...input,
+            isTopSession: true,
+            agentIdentity: { owner: "anima", registrationKey: "anima", source: "builtin" },
+          })
+          expect(root?.context).toContain('memoryId="inventory"')
+        },
+      })
     } finally {
-      Embedding.generate = original
-      unregister()
+      LibraryDB.Memory.removeAll()
     }
   }))
 

@@ -8,6 +8,8 @@ import {
   BrowserOpenPageSchema,
   BrowserAPISessionPageSchema,
   BrowserProfileListSchema,
+  BrowserDataContextInputSchema,
+  BrowserDataContextSchema,
   BrowserProfileCreateSchema,
   BrowserProfileSchema,
   BrowserProfileUpdateSchema,
@@ -36,6 +38,7 @@ import { BrowserAssets } from "../assets.js"
 import { BrowserCommandService } from "../command-service.js"
 import { BrowserEvent } from "../event.js"
 import { BrowserNativePresentation } from "../native-presentation.js"
+import { BrowserPreviewRoutes } from "./browser-preview-route.js"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { requestWithinLimit } from "@ericsanchezok/synergy-server/server/request-body-limit"
@@ -149,6 +152,7 @@ function send(ws: BrowserWS, payload: unknown): void {
 
 export const BrowserRoute = () =>
   new Hono()
+    .route("/", BrowserPreviewRoutes())
     .get(
       "/browser/host/broker",
       upgradeWebSocket(async (c) => {
@@ -189,6 +193,62 @@ export const BrowserRoute = () =>
           },
         }
       }),
+    )
+    .post(
+      "/:directory/browser/data-context",
+      describeRoute({
+        summary: "Prepare browser profile data access",
+        operationId: "browser.dataContext",
+        responses: {
+          200: {
+            description: "Profile data context",
+            content: { "application/json": { schema: resolver(BrowserDataContextSchema) } },
+          },
+          400: {
+            description: "Browser data access rejected",
+            content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
+          },
+        },
+      }),
+      limitBrowserBody(MAX_TICKET_BYTES),
+      validator("query", BrowserRouteQuery),
+      validator("json", BrowserDataContextInputSchema),
+      async (c) => {
+        try {
+          const state = await routeState(c, true)
+          return c.json(await BrowserBroker.dataContext(state.owner, c.req.valid("json").profileId))
+        } catch (error) {
+          return c.json(protocolError(error, "browser_data_context_failed"), 400)
+        }
+      },
+    )
+    .delete(
+      "/:directory/browser/data-context/:contextId",
+      describeRoute({
+        summary: "Release browser profile data access",
+        operationId: "browser.releaseDataContext",
+        responses: {
+          200: {
+            description: "Data context released",
+            content: { "application/json": { schema: resolver(z.boolean()) } },
+          },
+          400: {
+            description: "Browser data access rejected",
+            content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
+          },
+        },
+      }),
+      validator("query", BrowserRouteQuery),
+      validator("param", z.object({ directory: z.string(), contextId: z.string().uuid() })),
+      async (c) => {
+        try {
+          const state = await routeState(c, true)
+          await BrowserBroker.releaseDataContext(state.owner, c.req.valid("param").contextId)
+          return c.json(true)
+        } catch (error) {
+          return c.json(protocolError(error, "browser_data_context_failed"), 400)
+        }
+      },
     )
     .post(
       "/:directory/browser/pages",

@@ -341,17 +341,21 @@ describe("session migrations", () => {
           const worktree = await Worktree.create({ name: "legacy-migration", bind: false, baseRef: "current" })
           const scope = Identifier.asScopeID(tmpScope.id)
           const sid = Identifier.asSessionID(session.id)
+          const { local: _local, ...scopeInfo } = session.scope
+          const { workspaceID: _workspaceID, workspace: _workspace, ...legacySession } = session
           const legacyScope = {
-            ...(session.scope as any),
+            ...scopeInfo,
             directory: worktree.path,
             worktree: tmpScope.local!.worktree,
             sandboxes: [worktree.path],
           }
           await Storage.write(StoragePath.sessionInfo(scope, sid), {
-            ...session,
+            ...legacySession,
             scope: legacyScope,
             workspace: { type: "main", path: worktree.path, scopeID: tmpScope.id },
           })
+          for (const id of ["20260921-session-workspace-binding", "20260923-session-workspace-reference"])
+            await Storage.remove(["sessions", tmpScope.id, session.id, "migrations", "session", id])
           await Storage.write(StoragePath.sessionIndex(sid), {
             sessionID: session.id,
             scopeID: tmpScope.id,
@@ -362,13 +366,18 @@ describe("session migrations", () => {
           expect(migration).toBeDefined()
           await migration!.up(() => {})
 
-          const migrated = await Storage.read<any>(StoragePath.sessionInfo(scope, sid))
+          const migrated = await Session.get(session.id)
           expect(migrated.scope.local!.directory).toBe(tmpScope.local!.worktree)
-          expect(migrated.workspace.type).toBe("git_worktree")
-          expect(migrated.workspace.path).toBe(worktree.path)
-          expect(migrated.workspace.worktreeID).toBe(worktree.id)
-          expect(migrated.workspace.name).toBe(worktree.name)
-          expect(migrated.workspace.originalCheckout).toBe(tmpScope.local!.worktree)
+          expect(migrated.workspace?.type).toBe("git_worktree")
+          expect(migrated.workspace?.path).toBe(worktree.path)
+          expect(migrated.workspace).toMatchObject({
+            worktreeID: worktree.id,
+            name: worktree.name,
+            originalCheckout: tmpScope.local!.worktree,
+          })
+          const stored = await Storage.read<Record<string, unknown>>(StoragePath.sessionInfo(scope, sid))
+          expect(stored.workspaceID).toBe(migrated.workspace?.id)
+          expect(stored.workspace).toBeUndefined()
 
           const index = await Storage.read<any>(StoragePath.sessionIndex(sid))
           expect(index.directory).toBe(tmpScope.local!.worktree)

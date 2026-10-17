@@ -59,6 +59,40 @@ async function visual(html: string, title = "Evidence at a glance") {
 }
 const frame = () => page.locator('[data-component="render-html"] iframe').first()
 
+test("embedded keyboard focus preserves structural surfaces and marks action controls", async () => {
+  try {
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme })
+      await visual(
+        `<input aria-label="Draft"><div role="dialog" tabindex="0">Dialog</div><div role="tabpanel" tabindex="0">Panel</div><pre tabindex="0">Preview</pre><canvas tabindex="0" aria-label="Canvas"></canvas><button>Action</button><div role="button" tabindex="0">Custom action</div>`,
+      )
+      const content = page.frameLocator('[data-component="render-html"] iframe')
+      for (const forcedColors of ["none", "active"] as const) {
+        await page.emulateMedia({ forcedColors })
+        for (const target of await content.locator("[tabindex], button").all()) {
+          await content.getByRole("textbox", { name: "Draft" }).focus()
+          await page.keyboard.press("ArrowLeft")
+          const read = () =>
+            target.evaluate((el) => {
+              const style = el.ownerDocument.defaultView!.getComputedStyle(el)
+              return { background: style.background, color: style.color }
+            })
+          const resting = await read()
+          await target.focus()
+          expect(
+            await target.evaluate((el) => el.ownerDocument.activeElement === el && el.matches(":focus-visible")),
+          ).toBe(true)
+          if (await target.evaluate((el) => el.matches('button, [role="button"]')))
+            expect(await read()).not.toEqual(resting)
+          else expect(await read()).toEqual(resting)
+        }
+      }
+    }
+  } finally {
+    await page.emulateMedia({ colorScheme: "light", forcedColors: "none" })
+  }
+})
+
 type RenderStreamState = {
   status: "pending" | "generating" | "running" | "completed" | "error"
   raw?: string
@@ -66,6 +100,7 @@ type RenderStreamState = {
   title?: string
   error?: string
   output?: string
+  sourceAttachment?: boolean
 }
 
 async function renderStream(options: RenderStreamState) {
@@ -89,6 +124,28 @@ async function executionDetails() {
     harness.setToolDetailFallback(true)
   })
 }
+
+test("keeps the inline visual and one source attachment through mode switches and remounts", async () => {
+  await renderStream({
+    status: "completed",
+    html: '<p id="visual-result">The visual content remains visible.</p>',
+    title: "Visual with source",
+    sourceAttachment: true,
+  })
+  for (const mode of ["full", "balanced", "minimal"]) {
+    await page.evaluate((mode) => {
+      const harness = (window as unknown as { __chronologyHarness: { setMode(mode: string): void; remount(): void } })
+        .__chronologyHarness
+      harness.setMode(mode)
+      harness.remount()
+    }, mode)
+    await page.frameLocator('[data-component="render-html"] iframe').locator("#visual-result").waitFor()
+    expect(await page.locator('[data-component="render-tool"]').count()).toBe(1)
+    const attachments = page.locator('[data-component="attachment-card"]')
+    expect(await attachments.count()).toBe(1)
+    expect(await attachments.innerText()).toContain("visual.synergy.json")
+  }
+})
 
 test("streams Render inline from pending arguments to the completed visual", async () => {
   await page.evaluate(() => {

@@ -1,26 +1,27 @@
 # harness Package
 
-Own composition, lifecycle and exports. Public `agent/primary-identity` maps responsibilities to primary names.
+Own composition, lifecycle and exports. `context` owns pure attribution; `agent/primary-identity` maps primary names.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
-- Keep optional product schemas out of the harness. `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; workflow state and execution/recovery policy belong to their domain packages. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk and stay out of client output. Full product composition explicitly completes schema registration.
+- `SessionExecutionOwners` gates queued and retained execution against selected components. Domains check durable references; `MessageV2` derives historical origins and requirements. Preserve blocked records; new human tasks cannot resume an unavailable predecessor. Persist independent root admission and Agent selection, keeping its execution view separate from canonical Session writes.
+- `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; domain packages own workflow state and execution/recovery policy. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk but outside client output. Full composition explicitly completes schema registration.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
-- Supply Host, composition and owned or borrowed storage to `RuntimeHandle`. Registration is sealed for that instance before storage startup; imports cannot register capabilities. Use `run` for owned work and `bind` for native callbacks. Migration listings are detached snapshots. Test independent instances in one process and entrypoint behavior in isolated child processes.
-- Tests live under test/ and use explicit Runtime fixtures with isolated homes. Pure functions need no Runtime; migration mechanism tests use the explicit unsealed migration fixture.
+- Supply Host, composition and owned or borrowed storage to `RuntimeHandle`. Registration seals before storage startup; imports cannot register capabilities. Use `run` for owned work and `bind` for native callbacks. Migration listings are detached snapshots. Test independent instances together and entrypoints in isolated child processes.
+- Runtime tests use isolated homes under test/; pure functions need no Runtime. Migration mechanism tests use the unsealed fixture.
 
 Run `bun run typecheck`, affected tests, and root package/dependency checks.
 
 - Hosts register model SDKs and native image codecs through `ProviderSdkSource` and `AttachmentImageInput`. Keep absence explicit; verify `test/attachment/model-input.test.ts`.
 - Keep native PTYs, filesystem watchers and OS sandbox implementations in local-runtime. Harness owns permission policy and `SandboxHost`; missing host registration must fail closed for sandboxed execution.
 
-- Keep application-facing operations under the explicit session, scope, tools, context, lifecycle, config, persistence, rollout and usage entries. Host adapters may use individually declared contract leaves; never export processor, resolver, scheduler or journal implementations to production. Published manifests omit `test/` exports, and production sources must not import them. Within this package use relative owner imports, not public entry points.
+- Expose operations through session, scope, tools, context, lifecycle, config, persistence, rollout and usage entries. Host adapters may use declared contract leaves; never export processor, resolver, scheduler or journal implementations to production. Published manifests omit `test/` exports; production cannot import them. Use relative owner imports within this package.
 - File browsing, indexing, Ripgrep, Hashline editing and conflict resolution belong to local-runtime; this package retains execution read evidence and locking.
 - Native file imports cross the Runtime-scoped `workspace/file-import` Host contract; register the implementation before opening the Runtime and reject unavailable hosts explicitly.
 - Workspace catalog references and binding generations own file identity. Native write admission uses `workspace/access`; execution-capacity scheduling remains private. File resources use `WorkspaceState`; Scope configuration and event sequencing use `ScopedState`. Startup contributions declare Workspace ownership when they depend on working files.
 - Environment ownership: [Environments](../../docs/architecture/environments.md).
 - Metadata mutations have short claims. Retirement admits only its owner. Session selection pins destinations and drains registered resources before commit; file-aware commands share the binding lease. Release claims when capacity resumption fails.
 
-Agent authority is owned by `Storage.Handle`: read [Agent storage](../../docs/architecture/agent-storage.md) before persistence changes. Use SQL business transactions for records, indexes and outbox entries; keep files and external effects outside retryable callbacks. The central bootstrap owns historical JSON import and activation. Runtime and maintenance entry points run registered owner recovery before admission. Storage engine changes run `bun test test/storage`; macOS packaging changes also run `bun test --config /dev/null test/script/release/workspace-sqlite.test.ts` from the repository root; the PostgreSQL CI matrix requires a real database via `SYNERGY_TEST_POSTGRES_URL`.
+`Storage.Handle` owns Agent authority; read [Agent storage](../../docs/architecture/agent-storage.md) before persistence changes. Use SQL transactions for records, indexes and outbox entries; keep files and external effects outside retryable callbacks. Central bootstrap owns historical JSON import and activation. Runtime and maintenance entry points recover registered owners before admission. Storage engine changes run `bun test test/storage`; macOS packaging changes run root `bun test --config /dev/null test/script/release/workspace-sqlite.test.ts`; PostgreSQL CI requires a real database via `SYNERGY_TEST_POSTGRES_URL`.
 
 Register PG contracts in `test/support/storage-backends.ts`; follow [backend selection](../../.synergy/skill/testing-guide/SKILL.md).
 

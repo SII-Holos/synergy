@@ -11,6 +11,7 @@ import {
 } from "@ericsanchezok/synergy-browser-core"
 import { type DesktopThemeSnapshot } from "./theme.js"
 import { BrowserNativePagePool, type BrowserNativePageHandle } from "./browser-native-page-pool.js"
+import { BrowserDataContexts } from "./browser-data-contexts.js"
 
 export interface BrowserHostBrokerOptions {
   serverUrl: string
@@ -20,6 +21,7 @@ export interface BrowserHostBrokerOptions {
   theme: DesktopThemeSnapshot
   onStatus?(status: BrowserNativeBrokerStatus): void
   clearSavedData?(partition: string): Promise<void>
+  dataContexts?: BrowserDataContexts
 }
 
 type ManagedPage = BrowserNativePageHandle
@@ -84,6 +86,7 @@ export class BrowserHostBrokerClient {
       if (this.socket !== socket) return
       this.connectionEpoch++
       this.socket = null
+      this.options.dataContexts?.disconnect()
       if (!this.closed) this.options.onStatus?.("restarting")
       const pages = this.takePages()
       this.commandTails.clear()
@@ -101,6 +104,7 @@ export class BrowserHostBrokerClient {
   async close(): Promise<void> {
     this.closed = true
     this.connectionEpoch++
+    this.options.dataContexts?.disconnect()
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     const socket = this.socket
     this.socket = null
@@ -126,24 +130,47 @@ export class BrowserHostBrokerClient {
   private async handle(data: unknown, epoch: number): Promise<void> {
     if (epoch !== this.connectionEpoch) return
     if (Buffer.byteLength(String(data), "utf8") > 80 * 1024 * 1024) {
-      this.socket?.close(1009, "Browser Host command is too large")
+      this.socket?.close(4009, "Browser Host command is too large")
       return
     }
     let message: BrowserHostMessage
     try {
       message = BrowserHostMessageSchema.parse(JSON.parse(String(data)))
     } catch {
-      this.socket?.close(1003, "Invalid Browser Host message")
+      this.socket?.close(4003, "Invalid Browser Host message")
       return
     }
     if (message.type === "host.registered") {
       this.options.onStatus?.("ready")
       return
     }
+    if (
+      message.type === "profile.data.prepare" ||
+      message.type === "profile.data.release" ||
+      message.type === "profile.data.revoke"
+    ) {
+      try {
+        const contexts = this.options.dataContexts
+        if (!contexts) throw new Error("Browser profile data management is unavailable.")
+        if (message.type === "profile.data.prepare") contexts.prepare(message)
+        else if (message.type === "profile.data.release")
+          contexts.release(message.contextId, message.epoch, message.ownerKey)
+        else contexts.revokeProfile(message.profileId)
+        this.result(message.requestId, { type: "void" })
+      } catch {
+        this.failure(
+          message.requestId,
+          new Error("Browser profile data access could not be prepared. Reopen the dialog."),
+        )
+      }
+      return
+    }
     if (message.type === "profile.clear") {
       try {
         if (!/^(persist:)?synergy-browser-[a-zA-Z0-9._-]+$/.test(message.partition))
           throw new Error("Invalid browser partition.")
+        this.options.dataContexts?.revokeProfile(message.profileId)
+        await this.options.dataContexts?.drain(message.partition)
         const profile = session.fromPartition(message.partition)
         await profile.clearStorageData()
         await profile.clearCache()
@@ -160,7 +187,7 @@ export class BrowserHostBrokerClient {
       return
     }
     if (message.type !== "page.create" && message.type !== "page.close" && message.type !== "page.command") {
-      this.socket?.close(1008, "Browser Host received a message for the wrong protocol role")
+      this.socket?.close(4008, "Browser Host received a message for the wrong protocol role")
       return
     }
     // A page command can be waiting synchronously for this response.
@@ -228,7 +255,7 @@ export class BrowserHostBrokerClient {
       return
     }
     try {
-      this.result(message.requestId, await entry.page.execute(message.command))
+      this.result(message.requestId, await entry.page.execute(message.command, message.agentSessionID))
     } catch (error) {
       this.failure(message.requestId, error)
     }

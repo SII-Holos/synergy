@@ -13,12 +13,10 @@ export interface FatalErrorPresentation {
   source: FatalErrorSource
   /** Human-readable label for this category. */
   title: FatalErrorSource
-  /** Human-readable longer description for this category. */
-  description: FatalErrorSource
+  /** Task-state consequences that affect the recovery action. */
+  description?: "renderer" | "connection"
   /** Optional impact guarantee. Only present when the source provides one. */
   impact?: string
-  /** Short actionable summary derived from the error. */
-  summary: string
   /** Full diagnostic text (includes chain, stack, and structured data). */
   details: string
   /** Primary recovery action. */
@@ -36,9 +34,7 @@ export interface CreateFatalErrorPresentationInput {
 
 export function createFatalErrorPresentation(input: CreateFatalErrorPresentationInput): FatalErrorPresentation {
   const details = formatError(input.error)
-  const lines = details.split("\n")
-  const summary = lines.slice(0, 3).join("\n").trim() || details
-  const base = { details, summary } as const
+  const base = { details } as const
   switch (input.source) {
     case "renderer":
       return {
@@ -63,7 +59,6 @@ export function createFatalErrorPresentation(input: CreateFatalErrorPresentation
         ...base,
         source: "initialization",
         title: "initialization",
-        description: "initialization",
         primaryAction: { label: "try-again", run: input.onRecover },
       }
     case "scope":
@@ -71,7 +66,6 @@ export function createFatalErrorPresentation(input: CreateFatalErrorPresentation
         ...base,
         source: "scope",
         title: "scope",
-        description: "scope",
         primaryAction: { label: "try-again", run: input.onRecover },
       }
   }

@@ -1,3 +1,4 @@
+import { registerAgentPermissions } from "./agent-permissions"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { migrations } from "./migration"
@@ -15,6 +16,7 @@ export function registerBrowser() {
 
   if (instanceState.registered) return
   MigrationRegistry.register("browser", migrations)
+  registerAgentPermissions()
   registerBrowserTools()
   registerBrowserCommands()
   SessionWorkspaceRuntime.registerTransition("browser", (session) =>

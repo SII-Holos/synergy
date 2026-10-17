@@ -68,63 +68,6 @@ function toolPart(
   } as MessageV2.ToolPart
 }
 
-describe("SessionProcessor.shouldAskDoomLoop", () => {
-  test("asks when the same edit input appears three times in a row", () =>
-    runtime.run(() => {
-      const input = {
-        filePath: "/tmp/example.ts",
-        oldString: "const value = foo()",
-        newString: "const value = bar()",
-      }
-
-      const parts: MessageV2.Part[] = [toolPart("1", input), toolPart("2", input), toolPart("3", input)]
-
-      expect(SessionProcessor.shouldAskDoomLoop(parts, "edit", input)).toBe(true)
-    }))
-
-  test("does not ask when repeated edit calls vary the input slightly", () =>
-    runtime.run(() => {
-      const parts: MessageV2.Part[] = [
-        toolPart("1", {
-          filePath: "/tmp/example.ts",
-          oldString: "const value = foo()",
-          newString: "const value = bar()",
-        }),
-        toolPart("2", {
-          filePath: "/tmp/example.ts",
-          oldString: "  const value = foo()",
-          newString: "const value = bar()",
-        }),
-        toolPart("3", {
-          filePath: "/tmp/example.ts",
-          oldString: "const value = foo()\nreturn value",
-          newString: "const value = bar()\nreturn value",
-        }),
-      ]
-
-      expect(
-        SessionProcessor.shouldAskDoomLoop(parts, "edit", {
-          filePath: "/tmp/example.ts",
-          oldString: "const value = foo()\nreturn value",
-          newString: "const value = bar()\nreturn value",
-        }),
-      ).toBe(false)
-    }))
-
-  test("ignores pending tool parts when checking for repeated calls", () =>
-    runtime.run(() => {
-      const input = {
-        filePath: "/tmp/example.ts",
-        oldString: "const value = foo()",
-        newString: "const value = bar()",
-      }
-
-      const parts: MessageV2.Part[] = [toolPart("1", input), toolPart("2", input), toolPart("3", input, "pending")]
-
-      expect(SessionProcessor.shouldAskDoomLoop(parts, "edit", input)).toBe(false)
-    }))
-})
-
 describe("SessionProcessor.streamToolErrorOutcome", () => {
   test("turns unavailable synthetic tool errors into unknown_tool diagnostics", () =>
     runtime.run(() => {

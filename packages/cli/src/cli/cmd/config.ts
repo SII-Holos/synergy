@@ -16,14 +16,11 @@ import { EOL } from "os"
 export const ConfigCommand = cmd({
   command: "config",
   describe: "manage synergy configuration",
-  builder: (yargs) =>
-    yargs
-      .command(ConfigPathCommand)
-      .command(ConfigImportCommand)
-      .command(ConfigExportCommand)
-      .command(ConfigEmbeddingCommand)
-      .command(ConfigRerankCommand)
-      .command(ConfigWizardCommand),
+  builder: (yargs) => {
+    const commands = yargs.command(ConfigPathCommand).command(ConfigImportCommand).command(ConfigExportCommand)
+    if (ConfigDomain.byId().has("library")) commands.command(ConfigEmbeddingCommand).command(ConfigRerankCommand)
+    return commands.command(ConfigWizardCommand)
+  },
   async handler() {},
 })
 
@@ -611,8 +608,9 @@ async function useDetectedProviders(detectedEnv: DetectedProvider[], primaryProv
   prompts.log.info("Synergy will use:")
   prompts.log.info("")
   prompts.log.info(`  Default model:  ${modelString}`)
-  prompts.log.info(`  Embedding:      Xenova/all-MiniLM-L6-v2 (local, automatic)`)
-  prompts.log.info(`  Vision model:   not configured (look_at will show a helpful error)`)
+  if (ConfigDomain.byId().has("library"))
+    prompts.log.info(`  Embedding:      Xenova/all-MiniLM-L6-v2 (local, automatic)`)
+  prompts.log.info(`  Vision model:   not configured`)
   prompts.log.info("")
 
   const confirm = await prompts.confirm({

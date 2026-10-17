@@ -1,6 +1,6 @@
 ---
 name: change-channel-runtime
-description: Add, modify, or review Synergy Channel targets, provider lifecycle, managed Project ownership, ChannelHost Scope/Session routing, native Clarus task handling over Holos, durable result or extension delivery, Channel diagnostics and routes, or Channel account navigation. Use across packages/connections/src/channel, adjacent Holos/Session/Agenda/server owners, generated SDK contracts, and apps/web Channel surfaces.
+description: Add, modify, or review Synergy Channel targets, provider lifecycle, managed Project ownership, ChannelHost Scope/Session routing, native Clarus task handling over Holos, durable result or extension delivery, Channel diagnostics and routes, or Channel account navigation. Use across packages/channels/src/channel, adjacent Holos/Session/Agenda/server owners, generated SDK contracts, and apps/web Channel surfaces.
 ---
 
 # Change the Channel Runtime
@@ -14,7 +14,7 @@ description: Add, modify, or review Synergy Channel targets, provider lifecycle,
 
 ## GitHub Channel Provider
 
-The `github` provider (`packages/connections/src/channel/provider/github/`) connects a GitHub App installation as a conversation channel. It is `self_connected` and polls the GitHub REST API outbound — no inbound webhook.
+The `github` provider (`packages/channel-github/src/channel/provider/github/`) connects a GitHub App installation as a conversation channel. It is `self_connected` and polls the GitHub REST API outbound — no inbound webhook.
 
 - **Conversation ingress only** — synthesized repository events (`issue.opened`, `pull_request.opened`, `pull_request.synchronize`, `comment.created`) flow through `ChannelHost.conversations.receive()` with `chatId = "owner/repo#<number>"`.
 - **Per-thread Scope** — implement `resolveConversationScope()` to bind each thread to its own random-hash checkout directory (see `GithubChannelWorkspace.ensure()`), so sessions are isolated per issue/PR. `workspaceDir` is configured per account.
@@ -34,6 +34,16 @@ Preserve these invariants when changing the provider: deterministic per-thread d
 3. Keep Project targets as ownership/navigation identity only. Discovery and Project-level events must not create a Project conversation Session or invoke a model.
 4. Map each external Project identity to one canonical managed Project Scope with hashed forward and reverse ownership indexes. Keep raw external IDs out of path components, reject path escape and symbolic links, keep the managed workspace non-Git, and never remove a Scope in response to remote archive.
 5. Map one external Task ID to one stable unattended Session in its managed Project Scope. Deliver assignments and updates through the persistent inbox with deterministic delivery keys; keep participation and deadline guidance hidden and system-authored.
+
+## Exclusive Conversation Terminals
+
+- Register provider tools, policy and loop jobs through the owning component and its worker entry point. Assembly tests must not manually restore missing production registrations. Model-chain fixtures replace inference and network boundaries but retain permission classification, real inbox execution and storage.
+- Build one target-root delivery plan from `SessionHistory.turnInfos()` and `turnMessages()`; reuse that operation-local body read across terminal segments. Recheck authoritative headers under the root lock before sending. Count Channel body reads separately from model context reads, including thousands of unrelated older messages, large turns, duplicate delivery and cancellation.
+
+- Process every newly completed terminal owned by the foreground root, not the inbox drain's last result or only the root's last terminal. A drain can complete other queued roots or fail after this root completed; neither changes its delivery obligations. Limit live updates and each terminal's transcript/projection to their owner. Classify terminal intent independently from root-level reaction idempotency, so ordinary answers in either order with reaction steers still deliver and repeated reaction-only terminals stay silent.
+- Respect the loop's AbortSignal in both collection and execution before closing an intent-bearing assistant. Paused assistants must remain resumable; error terminals must not become successful reactions.
+- For provider effects without idempotency keys, persist an attempt before dispatch under the root's delivery lock. Confirmation failure, response loss, and process exit leave an ambiguous attempt; do not automatically repeat it or append another external failure effect. Only an authoritative rejection is a confirmed failure. Cover metadata-event re-entry before acquiring a non-reentrant outbound lock, confirmation-write failures, response loss, queued-root errors, and both orders of ordinary versus reaction-only terminals with real Session/Storage fixtures.
+- Keep terminal delivery separate from resource finalization. `StreamingSession.close()` may flush cached content or send fallback; use `closeWithoutDelivery()` when classification failed. Test real streaming providers with only network fakes, including cached text, rejected settings, terminal CardKit errors and oversized content; assert no fallback and release of foreground ownership/subscriptions even on cleanup rejection. Never infer a no-delivery guarantee from an omitted `finalText` argument.
 
 ## Preserve Native Clarus Semantics
 
@@ -60,9 +70,10 @@ Preserve these invariants when changing the provider: deterministic per-thread d
 1. Write the smallest failing behavioral test first. Use real temporary Scope, Storage, Session, inbox, Agenda, and filesystem state; fake only Holos/Clarus network boundaries.
 2. When Channel behavior depends on Scope-local subscriptions, cover both the first account connection and `ScopeRuntime.dispose()` followed by `ScopeRuntime.ensure()`; an active account must rebind its bridges exactly once before startup recovery can terminalize pending Channel messages, so recovery-time events are delivered rather than lost.
 3. Run the focused Channel, Holos native tunnel, Session endpoint/navigation, Agenda guidance, tool, server route, and frontend account/navigation tests affected by the change.
-4. Run `bun test test/channel/` and the relevant Holos, Agenda, Session, tool, and server suites from `packages/harness`; preserve Feishu compatibility coverage.
-5. For route changes, run `./script/generate.ts` twice and confirm generated OpenAPI/SDK output is stable. Run App/UI tests, localization checks, typecheck, build, Skill validation, and `bun run quality:quick` as applicable.
-6. Exercise the protocol in an isolated second runtime with a separate `SYNERGY_HOME` and explicit ports. Verify disabled and zero-Project idle behavior, discovery, one Task Session per Task ID, result/extension settlement, reconnect recovery, diagnostics download, and cleanup without using the active runtime.
+4. Run `bun test test/channel/` from the affected Channels/provider package and the relevant Holos, Agenda, Session, tool, and server package suites; preserve Feishu compatibility coverage.
+5. Verify independent selection, import-without-registration, failed startup and shutdown, then unload the provider, edit another provider, and reinstall. The unloaded owner must expose no feature, account, setup choice, tool or transport while its persisted settings and records remain intact.
+6. For route changes, run `./script/generate.ts` twice and confirm generated OpenAPI/SDK output is stable. Run App/UI tests, localization checks, typecheck, build, Skill validation, and `bun run quality:quick` as applicable.
+7. Exercise the protocol in an isolated second runtime with a separate `SYNERGY_HOME` and explicit ports. Verify disabled and zero-Project idle behavior, discovery, one Task Session per Task ID, result/extension settlement, reconnect recovery, diagnostics download, and cleanup without using the active runtime.
 
 ## Handoff
 

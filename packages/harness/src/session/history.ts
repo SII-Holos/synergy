@@ -33,11 +33,23 @@ export namespace SessionHistory {
   export const TimelinePage = SessionHistoryDisplay.TimelinePage
   export const PartPage = SessionHistoryDisplay.PartPage
   export const PartPages = SessionHistoryDisplay.PartPages
+  export const DisplayManifest = SessionHistoryDisplay.DisplayManifest
+  export const DisplayManifestInput = SessionHistoryDisplay.DisplayManifestInput
   export const PartContent = SessionHistoryDisplay.PartContent
   export const DisplayConflict = SessionHistoryDisplay.Conflict
   export const summarizePart = SessionHistoryDisplay.summarizePart
   export const summarizeMessage = SessionHistoryDisplay.summarizeMessage
   export const MessageDetails = SessionHistoryDisplay.MessageDetails
+
+  export async function refreshDisplayPart(scopeID: string, part: MessageV2.Part) {
+    await Storage.transaction(async () => {
+      const key = StoragePath.sessionDisplayPart(scopeID, part.sessionID, part.messageID, part.id)
+      const [display] = await Storage.readMany<Record<string, unknown>>([key])
+      if (!display) return
+      await SessionHistoryDisplay.partWritten(scopeID, part)
+      await Storage.write(key, { ...display, ...summarizePart(part) })
+    })
+  }
 
   export async function prepareDisplay(sessionID: string, progress?: (current: number, total: number) => void) {
     const session = await SessionManager.requireSession(sessionID)
@@ -145,6 +157,13 @@ export namespace SessionHistory {
     const session = await SessionManager.requireSession(input.sessionID)
     await requireDisplayMessage(session, input.messageID)
     return SessionHistoryDisplay.partPage(input, session.scope.id)
+  }
+  export async function displayManifest(input: Parameters<typeof SessionHistoryDisplay.displayManifest>[0]) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+    return Storage.snapshot(async () =>
+      SessionHistoryDisplay.displayManifest(input, session.scope.id, await displayVisibility(session)),
+    )
   }
   export async function partPages(input: { sessionID: string; messageIDs: string[]; limit?: number }) {
     const session = await SessionManager.requireSession(input.sessionID)
@@ -506,8 +525,10 @@ export namespace SessionHistory {
       numTurns: z.number().int().min(1).optional(),
       cutMessageID: z.string().optional(),
     }),
-    async (input) =>
-      Storage.transaction(async () => {
+    async (input) => {
+      const session = await SessionManager.requireSession(input.sessionID)
+      await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+      return Storage.transaction(async () => {
         if ((input.numTurns == null) === (input.cutMessageID == null)) {
           throw new Error("Provide exactly one of numTurns or cutMessageID")
         }
@@ -560,7 +581,8 @@ export namespace SessionHistory {
         const nextEvents = [...events, event]
         await updateSessionHistory(input.sessionID, info(input.sessionID, raw, nextEvents))
         return event
-      }),
+      })
+    },
   )
 
   export const unrollback = fn(
@@ -568,8 +590,10 @@ export namespace SessionHistory {
       sessionID: Identifier.schema("session"),
       rollbackID: Identifier.schema("history").optional(),
     }),
-    async (input) =>
-      Storage.transaction(async () => {
+    async (input) => {
+      const session = await SessionManager.requireSession(input.sessionID)
+      await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+      return Storage.transaction(async () => {
         SessionManager.assertIdle(input.sessionID)
         const [raw, events] = await Promise.all([
           rawMessages({ sessionID: input.sessionID }),
@@ -609,7 +633,8 @@ export namespace SessionHistory {
         const nextEvents = [...events, event]
         await updateSessionHistory(input.sessionID, info(input.sessionID, raw, nextEvents))
         return event
-      }),
+      })
+    },
   )
 
   export const FileDiffInput = z.object({
@@ -786,32 +811,45 @@ export namespace SessionHistory {
     return sliceWithReferencedRoots(derived, input.limit)
   }
 
-  export async function turnMessages(input: { sessionID: string; rootID: string; signal?: AbortSignal }) {
+  export async function turnInfos(input: { sessionID: string; rootID: string; signal?: AbortSignal }) {
+    input.signal?.throwIfAborted()
     const session = await SessionManager.requireSession(input.sessionID)
     const root = await requireDisplayMessage(session, input.rootID)
-    const visibility = await displayVisibility(session)
-    const result: MessageV2.WithParts[] = []
-    let before = visibility.cut
-    for (;;) {
-      input.signal?.throwIfAborted()
-      const page = await Array.fromAsync(
-        MessageV2.readNewestInfos({
-          scopeID: asScopeID(session.scope.id),
-          sessionID: asSessionID(session.id),
-          before,
-          limit: 32,
-        }),
-      )
-      if (!page.length) break
-      for (const info of page) {
-        if (MessageV2.messageOrderMarker(info) < root.order) return MessageV2.deriveSemantics(result.reverse())
-        if (visibility.hidden.has(info.id) || (info.id !== input.rootID && info.rootID !== input.rootID)) continue
+    return Storage.snapshot(async () => {
+      const visibility = await displayVisibility(session)
+      const result: MessageV2.Info[] = []
+      let before = visibility.cut
+      for (;;) {
         input.signal?.throwIfAborted()
-        result.push(await MessageV2.get({ sessionID: session.id, messageID: info.id }))
+        const page = await Array.fromAsync(
+          MessageV2.readNewestInfos({
+            scopeID: asScopeID(session.scope.id),
+            sessionID: asSessionID(session.id),
+            before,
+            limit: 32,
+          }),
+        )
+        if (!page.length) break
+        for (const info of page) {
+          if (MessageV2.messageOrderMarker(info) < root.order) return result.reverse()
+          if (visibility.hidden.has(info.id) || (info.id !== input.rootID && info.rootID !== input.rootID)) continue
+          input.signal?.throwIfAborted()
+          result.push(info)
+        }
+        before = MessageV2.messageOrderMarker(page.at(-1)!)
       }
-      before = MessageV2.messageOrderMarker(page.at(-1)!)
+      return result.reverse()
+    })
+  }
+
+  export async function turnMessages(input: { sessionID: string; rootID: string; signal?: AbortSignal }) {
+    const infos = await turnInfos(input)
+    const result: MessageV2.WithParts[] = []
+    for (const info of infos) {
+      input.signal?.throwIfAborted()
+      result.push(await MessageV2.get({ sessionID: input.sessionID, messageID: info.id }))
     }
-    return MessageV2.deriveSemantics(result.reverse())
+    return MessageV2.deriveSemantics(result)
   }
 
   export async function modelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {
@@ -900,6 +938,7 @@ export namespace SessionHistory {
   }): Promise<MessagePage> {
     const session = await SessionManager.requireSession(input.sessionID)
     const scopeID = session.scope.id
+    await prepareSessionMigrations({ scopeID, sessionID: session.id })
     const [infos, events] = await Promise.all([readMessageInfo(input.sessionID), readEvents(input.sessionID)])
     const loadedParts = new Map<string, MessageV2.Part[]>()
     const loadParts = async (messageID: string) => {
@@ -1175,6 +1214,25 @@ export namespace SessionHistory {
 
   export function messageInfos(sessionID: string) {
     return readMessageInfo(sessionID)
+  }
+
+  export async function effectiveMessageInfos(session: Info) {
+    const [infos, events] = await Promise.all([
+      MessageV2.readInfoList({ scopeID: asScopeID(session.scope.id), sessionID: asSessionID(session.id) }),
+      readSessionEvents(session),
+    ])
+    const canonical = await deriveInfoSemantics(infos, async (messageID) => {
+      const parts: MessageV2.Part[] = []
+      for await (const record of Storage.records<MessageV2.Part>({
+        kind: "part",
+        scopeID: session.scope.id,
+        sessionID: session.id,
+        messageID,
+      }))
+        parts.push(upgradeAccessRecord(record.key, record.value))
+      return parts.sort((a, b) => a.id.localeCompare(b.id))
+    })
+    return applyEventsToInfo(canonical, events)
   }
 
   async function readMessageInfo(sessionID: string) {

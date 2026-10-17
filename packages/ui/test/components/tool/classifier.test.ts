@@ -46,6 +46,20 @@ describe("tool classifier localization", () => {
     expect(classified.subtitle).toBe("Choose a release path")
   })
 
+  test("classifies channel_reaction_only as localized communication with the reaction as subtitle", () => {
+    // The tool takes no parameters and records its terminal intent in part
+    // metadata, so the reaction only ever lives under metadata.intent.
+    const classified = classifyTool(
+      "channel_reaction_only",
+      {},
+      { intent: { type: "reaction_only", reaction: "SILENT" } },
+    )
+
+    expect(classified.category).toBe("communication")
+    expect(classified.titleDescriptor).toBe(TOOL_TITLE_DESC.channel_reaction_only)
+    expect(classified.subtitle).toBe("SILENT")
+  })
+
   test("classifies speak as localized communication", () => {
     const classified = classifyTool("speak", { text: "Hello" })
 

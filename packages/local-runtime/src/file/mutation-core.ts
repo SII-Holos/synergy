@@ -74,6 +74,7 @@ export namespace NativeFileMutation {
       if (input.createParents) await FileOwnership.mkdir(parent, { owner: input.owner })
       const parentBefore = await fs.stat(parent, { bigint: true })
       const temporary = path.join(parent, `.${path.basename(target)}.synergy-write-${process.pid}-${randomUUID()}`)
+      let published = false
       try {
         const file = await fs.open(temporary, "wx", before ? before.mode & 0o777 : 0o666)
         try {
@@ -104,6 +105,7 @@ export namespace NativeFileMutation {
                 if (error.code === "EEXIST") throw new ConflictError()
                 throw error
               })
+            published = true
           },
           {
             attempts: 6,
@@ -129,9 +131,20 @@ export namespace NativeFileMutation {
           existed: before !== null,
           contentVersion: `sha256:${createHash("sha256").update(input.content).digest("hex")}`,
         }
+      } catch (cause) {
+        if (published)
+          throw new WorkspaceErrors.PartialError("File written, but durability confirmation failed", [target], {
+            cause,
+          })
+        throw cause
       } finally {
         await fs.unlink(temporary).catch((error: NodeJS.ErrnoException) => {
-          if (error.code !== "ENOENT") throw error
+          if (error.code === "ENOENT") return
+          if (published)
+            throw new WorkspaceErrors.PartialError("File written, but staging cleanup failed", [target], {
+              cause: error,
+            })
+          throw error
         })
       }
     })

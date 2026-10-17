@@ -7,7 +7,7 @@ import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
-import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceBinding, WorkspaceCatalog, WorkspaceLocation } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { testRuntime } from "../support/runtime"
@@ -217,13 +217,14 @@ test("legacy folders migrate with real shared access while Git worktrees retain 
   })
 })
 
-test("changing the main folder preserves existing tasks and old Worktrees while new tasks use the new main", async () => {
+test("changing main and adding folders preserve tasks while existing and new Worktrees use current sharing", async () => {
   const { ScopeContext } = await import("@ericsanchezok/synergy-harness/scope/context")
   const { Session } = await import("@ericsanchezok/synergy-harness/session")
   const { Worktree } = await import("@ericsanchezok/synergy-local-runtime/workspace/worktree")
   await using runtime = await testRuntime()
   await using a = await tmpdir({ git: true })
   await using b = await tmpdir({ git: true })
+  await using c = await tmpdir()
   await runtime.run(async () => {
     const project = await ProjectDirectories.create({
       name: "Multiple repositories",
@@ -287,6 +288,36 @@ test("changing the main folder preserves existing tasks and old Worktrees while 
         } finally {
           await rename(`${a.path}/.git-offline`, `${a.path}/.git`)
         }
+        const expanded = await ProjectDirectories.update(project.scope.id, {
+          directories: [a.path, b.path, c.path],
+          mainDirectory: b.path,
+          revision: changed.revision,
+        })
+        expect(expanded.folders.map((folder) => folder.path)).toEqual([b.path, a.path, c.path])
+        for (const [workspace, shared] of [
+          [bindingA, b.path],
+          [bindingB, a.path],
+        ] as const)
+          expect(
+            await WorkspaceBinding.writableRoots(
+              WorkspaceCatalog.projection(await WorkspaceCatalog.get(workspace.id, project.scope.id))!,
+            ),
+          ).toEqual([workspace.binding.path!, shared, c.path])
+        const treeC = await Worktree.create({
+          name: "new-task",
+          sourceWorkspaceID: expanded.mainWorkspaceID!,
+          bind: false,
+          baseRef: "current",
+        })
+        const active = (await WorkspaceCatalog.list(project.scope.id)).find(
+          (record) => record.binding.path === treeC.path,
+        )!
+        expect(await WorkspaceBinding.writableRoots(WorkspaceCatalog.projection(active)!)).toEqual([
+          treeC.path,
+          a.path,
+          c.path,
+        ])
+        await Worktree.remove({ target: treeC.id, force: true })
         await Worktree.remove({ target: treeA.id, force: true })
         expect((await Worktree.resolve(treeB.id)).path).toBe(treeB.path)
         await Worktree.remove({ target: treeB.id, force: true })
@@ -294,6 +325,55 @@ test("changing the main folder preserves existing tasks and old Worktrees while 
     })
   })
 })
+
+for (const state of ["deleted", "deleting", "unbound", "foreign"] as const) {
+  test(`a ${state} historical Worktree cannot block folder changes or gain sharing authority`, async () => {
+    await using runtime = await testRuntime()
+    await using main = await tmpdir()
+    await using extra = await tmpdir()
+    await using history = await tmpdir()
+    await runtime.run(async () => {
+      const project = await ProjectDirectories.create({
+        name: "History",
+        directories: [main.path],
+        mainDirectory: main.path,
+      })
+      const root = await WorkspaceCatalog.get(project.directories.mainWorkspaceID!, project.scope.id)
+      const registered = await WorkspaceCatalog.register({
+        scopeID: project.scope.id,
+        type: "git_worktree",
+        hostID: state === "foreign" ? "another-host" : root.binding.hostID,
+        ...(await WorkspaceLocation.source().identify(history.path)),
+        metadata: { originalCheckout: main.path, sourceWorkspaceID: root.id },
+      })
+      const retained =
+        state === "deleted"
+          ? (
+              await WorkspaceCatalog.completeRetirement(await WorkspaceCatalog.beginRetirement([registered]), "deleted")
+            )[0]!
+          : state === "deleting"
+            ? (await WorkspaceCatalog.beginRetirement([registered]))[0]!
+            : state === "unbound"
+              ? await WorkspaceCatalog.importRecord(registered)
+              : registered
+      const changed = await ProjectDirectories.update(project.scope.id, {
+        directories: [main.path, extra.path],
+        mainDirectory: main.path,
+        revision: project.directories.revision,
+      })
+      expect(changed.folders.map((item) => item.path)).toEqual([main.path, extra.path])
+      expect(await WorkspaceCatalog.get(retained.id, project.scope.id)).toEqual(retained)
+      expect(
+        await WorkspaceBinding.writableRoots(
+          WorkspaceCatalog.projection(await WorkspaceCatalog.get(root.id, root.scopeID))!,
+        ),
+      ).toEqual([main.path, extra.path])
+      await expect(WorkspaceBinding.validate(retained.id, project.scope.id)).rejects.toMatchObject({
+        name: "WorkspaceUnavailable",
+      })
+    })
+  })
+}
 
 test("new product projects start in their main folder even when the global preference is Worktree", async () => {
   const { Config } = await import("@ericsanchezok/synergy-harness/config/config")

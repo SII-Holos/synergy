@@ -382,7 +382,7 @@ export namespace Scope {
 
   export async function list(): Promise<Scope.Project[]> {
     const ids = await listScopeIDs()
-    const results = await Promise.all(ids.map((id) => readPersisted(id)))
+    const results = await Storage.readMany<Info>(ids.map((id) => StoragePath.scope(pid(id))))
     const active = results.filter((data): data is z.infer<typeof Info> => !!data && !data.time?.archived)
 
     return active.filter((data) => !data.local || !isEphemeralTestWorktree(data.local.worktree))

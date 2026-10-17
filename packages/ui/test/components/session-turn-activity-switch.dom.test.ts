@@ -7,6 +7,7 @@ type ActivityDisplayMode = "full" | "balanced" | "minimal"
 interface ActivitySwitchHarness {
   setSessionPaused: (paused: boolean) => void
   setMode: (mode: ActivityDisplayMode) => void
+  setPreferWorkBrief: (enabled: boolean) => void
   openedTools: { sessionID: string; messageID: string; partID: string; callID?: string }[]
   setExecutionStatus: (status: "completed" | "stopped" | "failed") => void
 }
@@ -156,6 +157,35 @@ describe("SessionTurn activity display switching", () => {
     await waitForUpdate()
     expect(process.textContent?.trim()).toBe("Execution failed")
     harness.setExecutionStatus("completed")
+  })
+
+  test("preferring intent updates tool labels in every mode and preserves fallback and result identity", async () => {
+    const rows = Array.from(document.querySelectorAll('[data-slot="activity-step-trigger"]')) as HTMLButtonElement[]
+    const labels = rows.map((row) => row.textContent?.trim())
+    const brief = "Inspect missing.json without changing files."
+    try {
+      for (const mode of ["full", "balanced", "minimal"] as const) {
+        harness.setMode(mode)
+        harness.setPreferWorkBrief(true)
+        await waitForUpdate()
+        expect(rows[2].textContent?.trim()).toBe(brief)
+        expect(rows[2].getAttribute("aria-label")).toContain(brief)
+        expect(rows[2].getAttribute("aria-label")).toContain("Failed")
+        expect(rows[2].querySelector('[data-slot="activity-step-title"]')?.getAttribute("title")).toBe(brief)
+        expect(rows.slice(0, 2).map((row) => row.textContent?.trim())).toEqual(labels.slice(0, 2))
+        expect(Array.from(document.querySelectorAll('[data-slot="activity-step-trigger"]'))).toEqual(rows)
+        harness.setPreferWorkBrief(false)
+        await waitForUpdate()
+        expect(rows.map((row) => row.textContent?.trim())).toEqual(labels)
+      }
+      harness.setPreferWorkBrief(true)
+      await waitForUpdate()
+      rows[2].click()
+      expect(harness.openedTools.at(-1)?.partID).toBe("tool-activity-switch-failed")
+    } finally {
+      harness.setPreferWorkBrief(false)
+      await waitForUpdate()
+    }
   })
 
   test("a canonical pause prevents the completion footer from advertising a stale running round", async () => {

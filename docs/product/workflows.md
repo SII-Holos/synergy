@@ -12,7 +12,7 @@ Only one of Plan, Light Loop, Lattice, or Boss Mode can be active on a session a
 | ------------------------------------------------------------------------------ | ------------- |
 | Decide what should be done before execution                                    | Plan          |
 | Execute an authored Blueprint with independent review                          | BlueprintLoop |
-| Keep working on one bounded task until an independent reviewer accepts it      | Light Loop    |
+| Keep working on one bounded task until the agent verifies completion           | Light Loop    |
 | Decompose a larger goal into an ordered sequence of planned and reviewed steps | Lattice       |
 | Coordinate a tree of persistent specialist workers from one boss session       | Boss Mode     |
 
@@ -51,12 +51,11 @@ Starting a user-owned BlueprintLoop exits Plan or Light Loop when the session is
 
 Light Loop is the smaller persistence workflow. It records one task description and wakes the same session whenever the agent becomes idle after a valid terminal response. The agent repeatedly checks the requested deliverables, current work, verification evidence, errors, and edge cases.
 
-Completion is a review request, not a claim. Calling `loop_stop` launches a visible `lightloop-reviewer` Cortex child in Task details on Workbench-enabled servers and pauses generic continuation while review is pending.
+After verifying the requested outcome, the executor calls `loop_stop` with a completion summary. This clears the active workflow and records the result. Light Loop has no independent reviewer; use BlueprintLoop when independent acceptance is required.
 
-- approval clears the Light Loop workflow and reports the verdict
-- rejection records the review attempt, clears the pending stop request, and delivers actionable remaining work so the loop continues
+Light Loop does not require an authored Blueprint or a multi-step Pathway. Use it for one task whose scope is already sufficiently clear. Light Loop and BlueprintLoop share a compact row at the bottom of the pending-message stack above the editor. A workflow icon, short stage and goal identify binding, execution, review, pause, rework and the authoritative result. Direct icon buttons open the Light Loop goal editor or Blueprint, and cancel the current loop. Light Loop goals can be edited while stopped; running goals remain readable. The ordinary message control still pauses or continues work. Review feedback and failures are available through the information icon. Successful completion removes the row, including after navigation and reload. Failed or cancelled runs retain a feedback entry; pending reads preserve the existing row and never claim completion.
 
-Light Loop does not require an authored Blueprint or a multi-step Pathway. Use it for one task whose scope is already sufficiently clear. When Light Loop is armed, the composer shows its workflow chip. After the first message commits the workflow, a task control also appears beside Submit. Click that control to inspect the task; it is editable while the session is idle and read-only while the session is running, completion review is pending, or the workflow has exited elsewhere. Hold it for two seconds to stop active work, cancel completion review, and exit Light Loop safely.
+The row label is the saved Light Loop goal or the associated Blueprint note title. Keep it verbatim, truncate long labels to one line with an ellipsis, and expose the complete text on hover. Execution summaries and review feedback must not replace that identity.
 
 ## Lattice and the Pathway
 

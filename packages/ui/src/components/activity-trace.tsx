@@ -1,3 +1,4 @@
+import { toolFeatureAvailable, toolHistoricalText } from "./tool-result-presentation"
 import type { MessageDescriptor } from "@lingui/core"
 import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presentation"
 import { AttachmentGallery } from "./attachment-card"
@@ -233,6 +234,7 @@ function ActivityState(props: { state: ActivityGroupState | "paused"; label: str
 function ActivityStep(props: {
   step: ActivityStepProjection
   serverUrl: string
+  preferWorkBrief?: boolean
   hidden?: boolean
   current?: boolean
   quiet?: boolean
@@ -243,6 +245,10 @@ function ActivityStep(props: {
   const [open, setOpen] = createSignal(false)
   const resources = useResourceOpen()
   const data = useData()
+  const available = () => toolFeatureAvailable(props.step.part, data.hasFeature)
+  createEffect(() => {
+    if (!available()) setOpen(false)
+  })
   const [responding, setResponding] = createSignal(false)
   const [responseError, setResponseError] = createSignal<string>()
   const request = () =>
@@ -263,7 +269,7 @@ function ActivityStep(props: {
   )
   const respond = async (response: "once" | "reject") => {
     const selected = request()
-    if (!selected || responding() || !data.respondToPermission) return
+    if (!available() || !selected || responding() || !data.respondToPermission) return
     setResponding(true)
     try {
       await data.respondToPermission({ sessionID: props.step.part.sessionID, permissionID: selected.id, response })
@@ -282,9 +288,11 @@ function ActivityStep(props: {
   // Provenance: docs/decisions/implemented/feature/2026-10-04-semantic-process-disclosure.md
   // Local adaptation: registered targets lead; invocation identity still opens the existing result owner.
   const target = () => props.step.subtitle?.trim()
-  const object = () => (target() && !title().includes(target()!) ? target() : undefined)
+  const preferredBrief = () => (props.preferWorkBrief ? props.step.part.workBrief?.trim() : undefined)
+  const object = () => (!preferredBrief() && target() && !title().includes(target()!) ? target() : undefined)
   const label = () =>
-    object() ? `${title()} · ${object()}` : target() ? title() : props.step.part.workBrief?.trim() || title()
+    preferredBrief() ||
+    (object() ? `${title()} · ${object()}` : target() ? title() : props.step.part.workBrief?.trim() || title())
   const pathParts = () => {
     const value = object() ?? ""
     const index = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")) + 1
@@ -309,61 +317,66 @@ function ActivityStep(props: {
     appear: () => props.hidden !== true && takeArrival(props.step.part.id),
   })
   return (
-    <li
-      data-slot="activity-step"
-      data-part-id={props.step.part.id}
-      data-family={props.step.family}
-      data-state={paused() ? "paused" : props.step.state}
-      data-current={props.current ? "" : undefined}
-      data-working={!paused() && props.current && props.step.state === "running" ? "" : undefined}
-      ref={motionRef}
-      onFocusIn={() => props.onFocus?.(props.step.part.id)}
-      onFocusOut={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) props.onFocus?.(undefined)
-      }}
-    >
-      <Show when={props.step.state === "error" && audit().icon}>
-        <Tooltip
-          placement="right"
-          class="activity-step-audit-trigger"
-          value={
-            <div class="max-w-72">
-              <div class="text-12-medium text-text-base">{audit().tooltip.split("\n")[0]}</div>
-              <Show when={audit().tooltip.includes("\n")}>
-                <div class="mt-1 text-11-regular text-text-weak">{audit().tooltip.split("\n").slice(1).join("\n")}</div>
-              </Show>
-            </div>
+    <Show
+      when={available()}
+      fallback={
+        <Show
+          when={
+            toolHistoricalText(props.step.part) ||
+            (props.step.part.state.status === "completed" && props.step.part.state.attachments?.length)
           }
         >
-          <span
-            data-component="tool-audit-icon"
-            data-slot="activity-step-audit-icon"
-            tabindex="0"
-            role="img"
-            aria-label={audit().tooltip}
+          <li data-slot="activity-retained-output">
+            <ToolResultBody part={props.step.part} hasFeature={data.hasFeature} serverUrl={props.serverUrl} />
+          </li>
+        </Show>
+      }
+    >
+      <li
+        data-slot="activity-step"
+        data-part-id={props.step.part.id}
+        data-family={props.step.family}
+        data-state={paused() ? "paused" : props.step.state}
+        data-current={props.current ? "" : undefined}
+        data-working={!paused() && props.current && props.step.state === "running" ? "" : undefined}
+        ref={motionRef}
+        onFocusIn={() => props.onFocus?.(props.step.part.id)}
+        onFocusOut={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) props.onFocus?.(undefined)
+        }}
+      >
+        <Show when={props.step.state === "error" && audit().icon}>
+          <Tooltip
+            placement="right"
+            class="activity-step-audit-trigger"
+            value={
+              <div class="max-w-72">
+                <div class="text-12-medium text-text-base">{audit().tooltip.split("\n")[0]}</div>
+                <Show when={audit().tooltip.includes("\n")}>
+                  <div class="mt-1 text-11-regular text-text-weak">
+                    {audit().tooltip.split("\n").slice(1).join("\n")}
+                  </div>
+                </Show>
+              </div>
+            }
           >
-            <Icon name={audit().icon as IconName} size="small" class={audit().iconClass} />
-          </span>
-        </Tooltip>
-      </Show>
-      <button
-        data-slot="activity-step-trigger"
-        type="button"
-        aria-label={`${label()} · ${stateLabel()}`}
-        aria-pressed={
-          resources?.isToolActivitySelected?.(
-            {
-              sessionID: props.step.part.sessionID,
-              messageID: props.step.part.messageID,
-              partID: props.step.part.id,
-              callID: props.step.part.callID,
-            },
-            props.step.part,
-          ) ?? open()
-        }
-        onClick={() => {
-          if (
-            !resources?.openToolActivity?.(
+            <span
+              data-component="tool-audit-icon"
+              data-slot="activity-step-audit-icon"
+              tabindex="0"
+              role="img"
+              aria-label={audit().tooltip}
+            >
+              <Icon name={audit().icon as IconName} size="small" class={audit().iconClass} />
+            </span>
+          </Tooltip>
+        </Show>
+        <button
+          data-slot="activity-step-trigger"
+          type="button"
+          aria-label={`${label()} · ${stateLabel()}`}
+          aria-pressed={
+            resources?.isToolActivitySelected?.(
               {
                 sessionID: props.step.part.sessionID,
                 messageID: props.step.part.messageID,
@@ -371,70 +384,85 @@ function ActivityStep(props: {
                 callID: props.step.part.callID,
               },
               props.step.part,
+            ) ?? open()
+          }
+          onClick={() => {
+            if (
+              !toolFeatureAvailable(props.step.part, data.hasFeature) ||
+              !resources?.openToolActivity?.(
+                {
+                  sessionID: props.step.part.sessionID,
+                  messageID: props.step.part.messageID,
+                  partID: props.step.part.id,
+                  callID: props.step.part.callID,
+                },
+                props.step.part,
+              )
             )
-          )
-            setOpen(true)
-        }}
-      >
-        <span data-slot="activity-step-icon" aria-hidden="true">
-          <Icon name={props.step.icon} size="small" />
-        </span>
-        <span data-slot="activity-step-copy">
-          <span data-slot="activity-step-title" data-object={object() ? "" : undefined} title={label()}>
-            <Show when={object()} fallback={label()}>
-              <span data-slot="activity-step-action">{title()}</span>
-              <span data-slot="activity-step-object" data-kind={props.step.objectKind}>
-                <Show when={props.step.objectKind === "path"} fallback={object()}>
-                  <span data-slot="activity-step-directory">{pathParts()[0]}</span>
-                  <span data-slot="activity-step-filename">{pathParts()[1]}</span>
-                </Show>
-              </span>
-            </Show>
+              setOpen(true)
+          }}
+        >
+          <span data-slot="activity-step-icon" aria-hidden="true">
+            <Icon name={props.step.icon} size="small" />
           </span>
-        </span>
-        <Show when={props.step.changes}>{(changes) => <DiffChanges changes={changes()} />}</Show>
-        <Show when={props.step.state === "error" && !audit().icon}>
-          <span data-slot="activity-step-error" aria-hidden="true">
-            <Icon name={getSemanticIcon("state.error")} size="small" />
+          <span data-slot="activity-step-copy">
+            <span data-slot="activity-step-title" data-object={object() ? "" : undefined} title={label()}>
+              <Show when={object()} fallback={label()}>
+                <span data-slot="activity-step-action">{title()}</span>
+                <span data-slot="activity-step-object" data-kind={props.step.objectKind}>
+                  <Show when={props.step.objectKind === "path"} fallback={object()}>
+                    <span data-slot="activity-step-directory">{pathParts()[0]}</span>
+                    <span data-slot="activity-step-filename">{pathParts()[1]}</span>
+                  </Show>
+                </span>
+              </Show>
+            </span>
           </span>
+          <Show when={props.step.changes}>{(changes) => <DiffChanges changes={changes()} />}</Show>
+          <Show when={props.step.state === "error" && !audit().icon}>
+            <span data-slot="activity-step-error" aria-hidden="true">
+              <Icon name={getSemanticIcon("state.error")} size="small" />
+            </span>
+          </Show>
+          <Show when={(!props.quiet && props.step.state === "running") || props.step.state === "waiting-approval"}>
+            <ActivityState state={paused() ? "paused" : props.step.state} label={stateLabel()} />
+          </Show>
+        </button>
+        <Show when={evidence().length > 0}>
+          <div data-slot="activity-evidence">
+            <AttachmentGallery files={evidence()} serverUrl={props.serverUrl} compact="process" layout="rows" />
+          </div>
         </Show>
-        <Show when={(!props.quiet && props.step.state === "running") || props.step.state === "waiting-approval"}>
-          <ActivityState state={paused() ? "paused" : props.step.state} label={stateLabel()} />
+        <Show when={request() && data.respondToPermission}>
+          <div data-slot="activity-approval-actions">
+            <button type="button" disabled={responding()} onClick={() => void respond("once")}>
+              {_({ id: "activity.approval.allowOnce", message: "Allow once" })}
+            </button>
+            <button type="button" disabled={responding()} onClick={() => void respond("reject")}>
+              {_({ id: "activity.approval.reject", message: "Decline" })}
+            </button>
+            <Show when={responseError()}>{(error) => <span role="alert">{error()}</span>}</Show>
+          </div>
         </Show>
-      </button>
-      <Show when={evidence().length > 0}>
-        <div data-slot="activity-evidence">
-          <AttachmentGallery files={evidence()} serverUrl={props.serverUrl} compact="process" layout="rows" />
-        </div>
-      </Show>
-      <Show when={request() && data.respondToPermission}>
-        <div data-slot="activity-approval-actions">
-          <button type="button" disabled={responding()} onClick={() => void respond("once")}>
-            {_({ id: "activity.approval.allowOnce", message: "Allow once" })}
-          </button>
-          <button type="button" disabled={responding()} onClick={() => void respond("reject")}>
-            {_({ id: "activity.approval.reject", message: "Decline" })}
-          </button>
-          <Show when={responseError()}>{(error) => <span role="alert">{error()}</span>}</Show>
-        </div>
-      </Show>
-      <KobalteDialog open={open()} onOpenChange={setOpen}>
-        <Show when={open()}>
-          <KobalteDialog.Portal>
-            <Dialog title={label()} size="wide">
-              <ToolResultBody
-                part={props.step.part}
-                serverUrl={props.serverUrl}
-                sessionId={props.step.part.sessionID}
-                messageId={props.step.part.messageID}
-                resultOnly
-                defaultOpen
-              />
-            </Dialog>
-          </KobalteDialog.Portal>
-        </Show>
-      </KobalteDialog>
-    </li>
+        <KobalteDialog open={open()} onOpenChange={setOpen}>
+          <Show when={open()}>
+            <KobalteDialog.Portal>
+              <Dialog title={label()} size="wide">
+                <ToolResultBody
+                  hasFeature={data.hasFeature}
+                  part={props.step.part}
+                  serverUrl={props.serverUrl}
+                  sessionId={props.step.part.sessionID}
+                  messageId={props.step.part.messageID}
+                  resultOnly
+                  defaultOpen
+                />
+              </Dialog>
+            </KobalteDialog.Portal>
+          </Show>
+        </KobalteDialog>
+      </li>
+    </Show>
   )
 }
 
@@ -473,6 +501,7 @@ export function ActivityReasoningSummary(props: { item: ActivityReasoningSummary
 export function ActivityTrace(props: {
   group: ActivityGroupItem
   serverUrl: string
+  preferWorkBrief?: boolean
   id?: string
   visibleSteps?: ReadonlySet<string>
   currentSteps?: ReadonlySet<string>
@@ -508,6 +537,7 @@ export function ActivityTrace(props: {
                     <ActivityStep
                       step={current()}
                       serverUrl={props.serverUrl}
+                      preferWorkBrief={props.preferWorkBrief}
                       hidden={props.visibleSteps !== undefined && !props.visibleSteps.has(key)}
                       current={props.currentSteps?.has(key)}
                       quiet={props.quiet}

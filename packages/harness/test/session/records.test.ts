@@ -16,6 +16,7 @@ async function withRecords(
     scopeID: string
     directory: string
   }) => Promise<void>,
+  kind: "parent" | "child" = "parent",
 ) {
   await using runtime = await testRuntime()
   await runtime.run(async () => {
@@ -36,6 +37,7 @@ async function withRecords(
           id: Identifier.ascending("session"),
           title: `Fixture Session ${index}`,
           workspaceID: index < 150 ? workspace.id : `wsp_fixture_${index}`,
+          ...(kind === "child" ? { parentID: seed.id } : {}),
         }))
         await Storage.transaction(async (tx) => {
           for (const [index, record] of records.entries()) {
@@ -82,15 +84,15 @@ test("lists more Workspace-backed parent sessions than storage admission capacit
 }, 30_000)
 
 test("lists more Workspace-backed child sessions than storage admission capacity", async () => {
-  await withRecords(async ({ seed, records, scopeID }) => {
-    await Storage.transaction(async (tx) => {
-      for (const record of records)
-        await Storage.write(["sessions", scopeID, record.id, "info"], { ...record, parentID: seed.id })
-      await Session.rebuildStorageIndexes(tx)
-    })
+  await withRecords(async ({ seed, records }) => {
     expect(await Session.children(seed.id)).toHaveLength(records.length)
+  }, "child")
+}, 30_000)
+
+test("pages more Workspace-backed child sessions than storage admission capacity", async () => {
+  await withRecords(async ({ seed, records }) => {
     expect((await Session.childPage({ parentID: seed.id })).items).toHaveLength(records.length)
-  })
+  }, "child")
 }, 30_000)
 
 test("batch hydration preserves missing, foreign, null and legacy Workspace semantics", async () => {

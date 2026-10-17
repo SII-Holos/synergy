@@ -105,7 +105,9 @@ beforeAll(async () => {
         editor:{label:()=>"Message",completion:()=>undefined,placeholder:()=>undefined,mount:()=>()=>{},beforeInput:()=>{},input:()=>{},paste:async()=>{},keyDown:()=>{}},
         render:part=>part==="leading"?<><div data-extension>Composer extension</div><SessionWorkContext directories={directories()} directoryError={state.error} onRefresh={()=>patch("error","")} workspaceSelection={state.deriveSelection&&state.selection.mode==="workspace"?{...state.selection,workspaceGeneration:state.gen}:state.selection} workspaceSelectionKey={JSON.stringify(state.selection)} running={state.running} disabled={state.disabled} environmentProfile={state.profile} startOptions={[]} onSelect={selection=>{window.fixture.selection=selection;patch("selection",selection)}}>{state.extras&&<><button data-shortcuts>Quick actions</button><span data-agenda>Scheduled wake</span></>}</SessionWorkContext></>:part==="context"?<><button data-attachment>Attachment</button><p data-permission>Permission request</p><p role="alert" data-error>Request failed</p></>:part==="toolbar"?<button type="submit" data-send>Send</button>:null}
       if(new URLSearchParams(location.search).has("welcome")) {
-        const composer={input:()=>input,mount:dock.mount,ready:()=>true,readOnly:()=>false,links:()=>[],render:()=>null}
+        const [controller,setController]=createSignal(input)
+        window.fixture.replaceController=()=>setController({...input,editor:{...input.editor,mount:element=>{element.textContent="Restored project draft";return ()=>{}}}})
+        const composer={input:controller,mount:dock.mount,ready:()=>true,readOnly:()=>false,links:()=>[],render:()=>null}
         return <div data-pane style={{width:state.width+"px",height:"100dvh","max-width":"100%"}}><DefaultSession context={{layout:{
           minimumWidth:()=>undefined,promptHeight:height,
           render:part=>part==="composer"?<PromptDock context={composer}/>:part==="conversation"?<div class="flex-1 min-h-0"><div class="session-empty-view" data-interactive><div class="session-welcome-region"><WelcomeStage definition={welcomeScenes.find(scene=>scene.id==="flight")} seed={8} memory={memory} blocked={!!dialog.active}/></div></div></div>:null
@@ -455,8 +457,8 @@ async function openRecovery() {
     .getByRole("dialog", { name: "Worktrees", exact: true })
     .getByRole("button", { name: /New Worktree/ })
     .click()
-  const dialog = page.getByRole("dialog", { name: "Confirm project folders", exact: true })
-  await dialog.getByRole("button", { name: "Confirm and restore", exact: true }).waitFor()
+  const dialog = page.getByRole("dialog", { name: "Restore project folders", exact: true })
+  await dialog.getByRole("button", { name: /^Continue using (this folder|these folders)$/ }).waitFor()
   return dialog
 }
 
@@ -467,7 +469,7 @@ test("an unavailable main without Worktrees offers confirmation and cancellation
   await patch({ available: false, git: false, emptyTrees: true, gen: 2 })
   const dialog = await openRecovery()
   expect(await dialog.getByText("/projects/main-folder", { exact: true }).isVisible()).toBe(true)
-  expect(await dialog.getByRole("button", { name: "Choose folder", exact: true }).count()).toBe(0)
+  expect(await dialog.getByRole("button", { name: "Choose another folder", exact: true }).count()).toBe(1)
   expect(
     (await page.evaluate<string[]>("window.fixture.requests")).filter((value) => value.startsWith("rebind:")),
   ).toEqual([])
@@ -493,7 +495,7 @@ test("recovery keeps partial success, blocks duplicate confirmation and selects 
   })
   const dialog = await openRecovery()
   await dialog
-    .getByRole("button", { name: "Confirm and restore", exact: true })
+    .getByRole("button", { name: "Continue using these folders", exact: true })
     .evaluate((button: HTMLButtonElement) => {
       button.click()
       button.click()
@@ -507,7 +509,7 @@ test("recovery keeps partial success, blocks duplicate confirmation and selects 
   expect(await dialog.getByText("Ready", { exact: true }).isVisible()).toBe(true)
   expect(await page.evaluate("window.fixture.selection")).toBeUndefined()
   await patch({ failExtra: false, holdExtra: false })
-  await dialog.getByRole("button", { name: "Confirm and restore", exact: true }).click()
+  await dialog.getByRole("button", { name: "Continue using this folder", exact: true }).click()
   await dialog.waitFor({ state: "detached" })
   expect(await page.evaluate<SessionWorkspaceSelection>("window.fixture.selection")).toEqual({
     mode: "create",
@@ -527,7 +529,7 @@ test("switching projects during recovery cancels the old operation and leaves th
   await open()
   await patch({ available: false, extraAvailable: false, shared: true, holdExtra: true })
   const dialog = await openRecovery()
-  await dialog.getByRole("button", { name: "Confirm and restore", exact: true }).click()
+  await dialog.getByRole("button", { name: "Continue using these folders", exact: true }).click()
   await page.waitForFunction("window.fixture.requests.includes('rebind:extra')")
   await patch({ scopeID: "other-project" })
   await dialog.waitFor({ state: "detached" })
@@ -730,3 +732,12 @@ test("project directory failures stay local and a late connection response canno
   expect(await menu.getByText("projects/main-folder", { exact: true }).count()).toBe(0)
   expect(errors).toEqual([])
 }, 30_000)
+
+test("a replacement Composer controller renders its own restored project draft", async () => {
+  await open(true)
+  await page.evaluate(() =>
+    (window as unknown as { fixture: { replaceController(): void } }).fixture.replaceController(),
+  )
+  expect(await page.getByRole("textbox", { name: "Message", exact: true }).innerText()).toBe("Restored project draft")
+  expect(errors).toEqual([])
+}, 20_000)

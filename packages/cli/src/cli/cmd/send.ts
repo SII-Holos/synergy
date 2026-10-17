@@ -13,7 +13,7 @@ import { readPipedStdin } from "../stdin"
 import { Experiment } from "@ericsanchezok/synergy-harness/config/experiment"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { createLocalClient, type RuntimeClient } from "@ericsanchezok/synergy-local-runtime/client"
-import { openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
+import { createLocalHost, openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 import { createRemoteClient } from "../remote-client"
 import { findRecordingError } from "@ericsanchezok/synergy-harness/session/rollout/error"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -183,7 +183,7 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
           type: "string",
           choices: ["lightloop"],
           describe:
-            "run the message as a Light Loop workflow task: the session enables loop_stop and a reviewer loop, and send exits when the workflow reaches a terminal state",
+            "run the message as a Light Loop workflow task: the executor verifies the full goal and completes it with loop_stop, and send exits when the workflow reaches a terminal state",
         })
     },
     handler: async (args) => {
@@ -555,6 +555,7 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
       const { withScopeContext } = await import("@ericsanchezok/synergy-local-runtime/cli/scope")
       const { Command } = await import("@ericsanchezok/synergy-local-runtime/command/command")
       await using runtime = await runtimeFactory({
+        host: createLocalHost({ entry: "cli-send" }),
         mode: "oneshot",
         experiment,
         migrationOutput: "interactive",

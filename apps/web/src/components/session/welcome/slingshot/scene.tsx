@@ -267,6 +267,7 @@ export default function SlingshotScene(props: WelcomeSceneProps) {
         playing={state().phase === "flying"}
         onAction={act}
         onReset={reset}
+        onReleaseInput={cancel}
         help={i18n._({
           id: "welcome.slingshot.help",
           message:

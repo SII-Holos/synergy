@@ -83,11 +83,11 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       return {
         scope: { bootstrapCore: () => (options.scopeID === "home" || options.scopeID.startsWith("background.")) ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve,done:false})) },
         permission: {list:()=>stamped(pending.get(options.scopeID)?.permissions??[])}, question: {list:()=>stamped(pending.get(options.scopeID)?.questions??[])},
-        event:{replay:()=>new Promise(resolve=>replays.push({key:options.scopeID,resolve,done:false}))},
+        event:{replay:({since})=>new Promise(resolve=>replays.push({key:options.scopeID,since,resolve,done:false}))},
         session:{list:()=>ok({total:0,data:[]}),inbox:()=>ok([])},
       }
     }
-    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true,current:()=>({transports:{projection:"projection-v2"}})},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>stamped({})},
       cortex:{list:()=>ok([])},
@@ -121,7 +121,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
       return {started,dispose,emit,connect,setPending,api:()=>api,
         waitForReplay(key) {return new Promise(resolve=>{const check=()=>{if(replays.some(r=>!r.done&&r.key===key))return resolve();setTimeout(check,5)};check()})},
-        completeReplay(key) {const replay=replays.find(r=>!r.done&&r.key===key);if(!replay)throw new Error("no replay for "+key);replay.done=true;replay.resolve({data:{status:"ok",epoch:"test-epoch",seq:100,events:[]}})},
+        completeReplay(key) {const replay=replays.find(r=>!r.done&&r.key===key);if(!replay)throw new Error("no replay for "+key);replay.done=true;replay.resolve({data:{status:"ok",epoch:"test-epoch",seq:replay.since,events:[]}})},
       resolveEntry(sessionID) {
         return resolveSessionVisualState({
           entry: { id: sessionID },
@@ -591,6 +591,15 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       h.emit("pulse-scope", 1, "cortex.task.created", {
         task: { id: "task-pulse", parentSessionID: "resting-child", status: "running" },
       })
+      const identity = api.cortex.find((task) => task.id === "task-pulse")
+      h.emit("pulse-scope", 2, "cortex.task.completed", {
+        task: { id: "task-pulse", parentSessionID: "resting-child", status: "running", progress: { toolCalls: 1 } },
+      })
+      expect(api.cortex.find((task) => task.id === "task-pulse")).toBe(identity)
+      h.emit("pulse-scope", 3, "cortex.tasks.updated", {
+        tasks: [{ id: "task-pulse", parentSessionID: "resting-child", status: "running", progress: { toolCalls: 2 } }],
+      })
+      expect(api.cortex.find((task) => task.id === "task-pulse")).toBe(identity)
       expect(api.sessionStatus["resting-child"]).toBeUndefined()
       expect(h.resolveEntry("resting-child")).toMatchObject({ tone: "active", pulse: true })
       pulseScope.release()

@@ -53,14 +53,13 @@ await context.run(async () => {
   await fs.mkdir(path.join(workdir, ".synergy"), { recursive: true })
   const enqueueReport = path.join(workdir, "enqueue.json")
 
-  const deliveryKey = "feishu:thread:restart-while-queued:once"
-  const text = "process B must recover this queued channel task after restart"
+  const deliveryKey = "external:thread:restart-while-queued:once"
+  const text = "process B must recover this queued external task after restart"
   const metadata = {
-    source: "channel",
-    channelPush: true,
-    channelReply: true,
-    channelReplyToMessageId: "om_original_feishu_message",
-    replyTo: "oc_thread_original_123",
+    source: "external",
+    replyRequested: true,
+    replyToMessageID: "original-message",
+    replyTo: "original-thread",
   }
 
   function fail(message: string): never {
@@ -81,7 +80,7 @@ await context.run(async () => {
           mode: "task",
           message: {
             role: "user",
-            agent: "synergy",
+            agent: "atlas",
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text }],
             metadata,
@@ -93,7 +92,7 @@ await context.run(async () => {
           mode: "task",
           message: {
             role: "user",
-            agent: "synergy",
+            agent: "atlas",
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text }],
             metadata,
@@ -106,7 +105,7 @@ await context.run(async () => {
         // sessions differently even though their queued state is identical.
         const machine = await Session.create({ scope, title: "restart-while-queued-unattended" })
         await Session.update(machine.id, (draft) => {
-          draft.interaction = { mode: "unattended", source: "channel:test-channel" }
+          draft.interaction = { mode: "unattended", source: "external:test-delivery" }
         })
         const machineDelivery = await SessionInbox.deliverUnique({
           sessionID: machine.id,
@@ -114,7 +113,7 @@ await context.run(async () => {
           mode: "task",
           message: {
             role: "user",
-            agent: "synergy",
+            agent: "atlas",
             model: { providerID: "test", modelID: "test-model" },
             parts: [{ type: "text", text }],
             metadata,

@@ -1,5 +1,5 @@
 import type { Component, JSX } from "solid-js"
-import { SlotRegistry, type SlotEntryBase, type SurfaceEntry } from "../slot-registry"
+import { SlotRegistry, compareSlotEntries, type SlotEntryBase, type SurfaceEntry } from "../slot-registry"
 
 export type WorkbenchPanelSurface = "side" | "bottom"
 export type WorkbenchPanelCardinality = "exclusive" | "singleton" | "multi"
@@ -19,6 +19,7 @@ export interface WorkbenchPanelContentProps {
   panelId: string
   tab: WorkbenchPanelTab
   onRequestClose?: () => void
+  active?: () => boolean
 }
 
 export interface WorkbenchPanelTabInit {
@@ -43,6 +44,9 @@ export interface WorkbenchPanelOpening {
 }
 
 export interface WorkbenchPanelEntry extends SurfaceEntry {
+  moduleKey?: object
+  generation?: string
+  retention?: "pause"
   surface: WorkbenchPanelSurface
   cardinality: WorkbenchPanelCardinality
   requiresSession?: boolean
@@ -71,6 +75,7 @@ export interface WorkbenchPanelEntry extends SurfaceEntry {
     tab: WorkbenchPanelTab,
   ) => Array<{ id: string; label: string; disabled?: boolean; run(): void | Promise<void> }>
   tabIcon?: (tab: WorkbenchPanelTab) => JSX.Element
+  tabDescription?: (tab: WorkbenchPanelTab) => string | undefined
 }
 
 /** Internal slot-backed entry: workbench panels live in one slot. */
@@ -80,6 +85,11 @@ type WorkbenchSlotEntry = SlotEntryBase &
   }
 
 const registry = new SlotRegistry<WorkbenchSlotEntry>()
+let activeNative: SlotRegistry<WorkbenchSlotEntry> | undefined
+const activationListeners = new Set<() => void>()
+const notifyActivation = () => {
+  for (const listener of activationListeners) listener()
+}
 
 /** Strip the internal slot key so callers see the exact public entry shape. */
 function toEntry(entry: WorkbenchSlotEntry): WorkbenchPanelEntry {
@@ -88,16 +98,15 @@ function toEntry(entry: WorkbenchSlotEntry): WorkbenchPanelEntry {
 }
 
 export function registerWorkbenchPanel(entry: WorkbenchPanelEntry): () => void {
-  return registry.register({ ...entry, slot: "workbench.panel" })
+  return registry.register({ ...entry, moduleKey: entry.moduleKey ?? {}, slot: "workbench.panel" })
 }
 
 export function listWorkbenchPanels(surface?: WorkbenchPanelSurface): WorkbenchPanelEntry[] {
-  if (surface) return registry.listAll((e) => e.surface === surface).map(toEntry)
-  return registry.listAll().map(toEntry)
+  return listPanels(activeNative, surface)
 }
 
 export function getWorkbenchPanel(id: string): WorkbenchPanelEntry | undefined {
-  const entry = registry.get(id)
+  const entry = activeNative?.get(id) ?? registry.get(id)
   return entry ? toEntry(entry) : undefined
 }
 
@@ -106,5 +115,54 @@ export function clearWorkbenchPanels(pluginId?: string): void {
 }
 
 export function subscribeWorkbenchPanels(listener: () => void): () => void {
-  return registry.subscribe(listener)
+  const off = registry.subscribe(listener)
+  activationListeners.add(listener)
+  return () => {
+    off()
+    activationListeners.delete(listener)
+  }
+}
+
+function listPanels(native?: SlotRegistry<WorkbenchSlotEntry>, surface?: WorkbenchPanelSurface) {
+  const entries = new Map(registry.listAll().map((entry) => [entry.id, entry]))
+  for (const entry of native?.listAll() ?? []) entries.set(entry.id, entry)
+  return [...entries.values()]
+    .sort(compareSlotEntries)
+    .filter((entry) => !surface || entry.surface === surface)
+    .map(toEntry)
+}
+
+export function createWorkbenchPanelRegistry() {
+  const native = new SlotRegistry<WorkbenchSlotEntry>()
+  return {
+    register(entry: WorkbenchPanelEntry) {
+      return native.register({ ...entry, moduleKey: entry.moduleKey ?? {}, slot: "workbench.panel" })
+    },
+    get(id: string) {
+      const entry = native.get(id) ?? registry.get(id)
+      return entry && toEntry(entry)
+    },
+    list: (surface?: WorkbenchPanelSurface) => listPanels(native, surface),
+    subscribe(listener: () => void) {
+      const local = native.subscribe(listener),
+        global = registry.subscribe(listener)
+      return () => {
+        local()
+        global()
+      }
+    },
+    activate() {
+      activeNative = native
+      const off = native.subscribe(() => {
+        if (activeNative === native) notifyActivation()
+      })
+      notifyActivation()
+      return () => {
+        off()
+        if (activeNative !== native) return
+        activeNative = undefined
+        notifyActivation()
+      }
+    },
+  }
 }

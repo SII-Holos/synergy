@@ -2,10 +2,22 @@ import { describe, expect, test } from "bun:test"
 import {
   ABANDON_HOLD_MS,
   canLongPressAbandon,
+  promptControlError,
   resolvePromptControlState,
 } from "../../../src/components/prompt-input/control-state"
 
 describe("composer primary control", () => {
+  test("unavailable task errors offer a new message without exposing installation details", () => {
+    const error = {
+      name: "SessionExecutionOwnerUnavailableError",
+      data: { message: "This saved task requires a component that is not available. Reinstall its component." },
+    }
+    expect(promptControlError(error)).toEqual({ kind: "unavailable" })
+    expect(promptControlError({ data: { message: "Check your connection and try again." } }).description).toBe(
+      "Check your connection and try again.",
+    )
+  })
+
   test("keeps exactly one meaning per session state", () => {
     expect(resolvePromptControlState({ hasDraft: false, activity: "idle", hasArmedWorkflow: false })).toBe("disabled")
     expect(resolvePromptControlState({ hasDraft: false, activity: "working", hasArmedWorkflow: false })).toBe("pause")

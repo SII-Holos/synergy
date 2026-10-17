@@ -1,13 +1,16 @@
 import { SessionDecisionOutlet } from "./decision-surface"
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, useContext, type JSX } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { DefaultComposer } from "@/plugin/default-composer"
+import { composerPresentation } from "@/components/prompt-input/composer-presentation"
 import type { PluginComponentProps, PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
+import { SessionPromptDockAnchor } from "./workbench-chrome"
 
-export function PromptDock(props: PluginComponentProps<PluginComposerLayoutService>) {
+export function PromptDock(props: PluginComponentProps<PluginComposerLayoutService> & { pending?: JSX.Element }) {
   const layout = props.context
+  const anchor = useContext(SessionPromptDockAnchor)
   let body: HTMLDivElement | undefined
   let retainedFocus: HTMLElement | undefined
   const ready = createMemo((previous: boolean) => {
@@ -32,7 +35,10 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
   createEffect(() => {
     if (layout.ready()) setMounted(true)
   })
-  onCleanup(() => layout.mount(undefined))
+  onCleanup(() => {
+    anchor?.mount(undefined, body)
+    layout.mount(undefined)
+  })
   return (
     <div
       ref={layout.mount}
@@ -48,7 +54,14 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
             </div>
           }
         >
-          <div ref={body} inert={!ready()} aria-busy={!ready() || undefined}>
+          <div
+            ref={(element) => {
+              body = element
+              anchor?.mount(element)
+            }}
+            inert={!ready()}
+            aria-busy={!ready() || undefined}
+          >
             <Show when={!layout.readOnly()} fallback={layout.render("delegation")}>
               <SessionDecisionOutlet />
               <For each={layout.links()}>
@@ -68,7 +81,16 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
                 )}
               </For>
               <div class="relative">
-                <Show when={layout.input()}>{(input) => <DefaultComposer context={{ input: input() }} />}</Show>
+                <div data-prompt-pending>
+                  {props.pending}
+                  {(() => {
+                    const input = layout.input()
+                    return input && composerPresentation(input)?.status?.()
+                  })()}
+                </div>
+                <Show when={layout.input()} keyed>
+                  {(input) => <DefaultComposer context={{ input }} />}
+                </Show>
               </div>
             </Show>
           </div>

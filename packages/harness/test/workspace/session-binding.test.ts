@@ -69,6 +69,9 @@ test("turn admission waits for an in-flight resource selection before reading Se
       workspace: null,
       fn: async () => {
         const session = await Session.create({ environmentID: null })
+        expect(session.workspace).toBeNull()
+        expect(session.workspaceID).toBeNull()
+        expect(await SessionWorkspaceRuntime.homeWorkspace()).toBeNull()
         const entered = Promise.withResolvers<void>(),
           release = Promise.withResolvers<void>()
         const changing = SessionWorkspaceRuntime.withBinding(session.id, async () => {

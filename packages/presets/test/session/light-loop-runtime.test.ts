@@ -6,8 +6,9 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
-import { LightLoopRuntime } from "@ericsanchezok/synergy-workflows/light-loop/runtime"
-import { LightLoopTerminalStore } from "@ericsanchezok/synergy-workflows/light-loop/terminal-hook"
+import { LightLoopRuntime } from "@ericsanchezok/synergy-light-loop/light-loop/runtime"
+import { LightLoopTerminalStore } from "@ericsanchezok/synergy-light-loop/light-loop/terminal-hook"
+import { migrations } from "@ericsanchezok/synergy-light-loop/session-migration"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -21,28 +22,69 @@ afterEach(() =>
   }),
 )
 
-async function createPluginLightLoop(input?: { status?: "completed"; deliveredAt?: number }) {
+async function createPluginLightLoop() {
   const session = await Session.create({})
   await Session.update(session.id, (draft) => {
     draft.workflow = {
       kind: "lightloop",
       instructions: "Finish the plugin-owned task",
-      status: input?.status ?? "running",
-      executionAgent: "plugin.executor",
-      reviewAgent: "plugin.reviewer",
       pluginOwner: {
         pluginId: "test-plugin",
         pluginGeneration: "generation-one",
         scopeId: session.scope.id,
         correlationId: "correlation-one",
       },
-      ...(input?.deliveredAt ? { terminalHookDeliveredAt: input.deliveredAt } : {}),
     }
   })
   return session
 }
 
 describe("LightLoop terminal hook delivery", () => {
+  test("reattach delivers a terminal result created while admitting a cold owner", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await createPluginLightLoop()
+          const stored = await Session.get(session.id)
+          await Storage.write(["sessions", session.scope.id, session.id, "info"], {
+            ...stored,
+            cortex: {
+              taskID: "legacy-task",
+              parentSessionID: "legacy-parent",
+              parentMessageID: "legacy-message",
+              description: "Legacy plugin loop",
+              agent: "legacy-agent",
+              status: "completed",
+              startedAt: 1,
+            },
+            workflow: { ...stored.workflow, stopRequest: { summary: "Pending old review" } },
+          })
+          const get = Session.get
+          using admission = spyOn(Session, "get").mockImplementation(
+            Object.assign(
+              async (id: string) => {
+                if (id === session.id)
+                  await migrations[1].upSession!({ scopeID: session.scope.id, sessionID: id }, () => {})
+                return get(id)
+              },
+              { force: get.force, schema: get.schema },
+            ),
+          )
+          const delivery = mock(async () => ({ status: "delivered" as const, handlerCount: 1 }))
+          ;(Plugin as any).deliverHookForPlugin = delivery
+          await LightLoopRuntime.reattachPluginTimers()
+          expect(delivery).toHaveBeenCalledTimes(1)
+          expect(await LightLoopTerminalStore.get(session)).toMatchObject({
+            status: "failed",
+            error: "legacy_review_requires_restart",
+            hookDeliveredAt: expect.any(Number),
+          })
+        },
+      })
+    }))
+
   test("reattach selects indexed loops and pending hooks without loading unrelated or acknowledged owners", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
@@ -99,7 +141,6 @@ describe("LightLoop terminal hook delivery", () => {
             draft.workflow = {
               kind: "lightloop",
               instructions: "Finish the ordinary task",
-              status: "running",
             }
           })
           const delivery = mock(async () => ({ status: "delivered", handlerCount: 1 }))
@@ -262,25 +303,6 @@ describe("LightLoop terminal hook delivery", () => {
       })
     }))
 
-  test("terminal reconciliation migrates a retained plugin workflow and retries its hook", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const session = await createPluginLightLoop({ status: "completed" })
-          const delivery = mock(async () => ({ status: "delivered" as const, handlerCount: 1 }))
-          ;(Plugin as any).deliverHookForPlugin = delivery
-
-          await LightLoopRuntime.reattachPluginTimers()
-
-          expect(delivery).toHaveBeenCalledTimes(1)
-          expect((await Session.get(session.id)).workflow).toBeUndefined()
-          expect((await LightLoopTerminalStore.get(session))?.hookDeliveredAt).toBeNumber()
-        },
-      })
-    }))
-
   test("reattach retries a stale terminal hook without clearing a later ordinary workflow", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
@@ -301,7 +323,7 @@ describe("LightLoop terminal hook delivery", () => {
             createdAt: Date.now(),
           })
           await Session.update(session.id, (draft) => {
-            draft.workflow = { kind: "lightloop", instructions: "Start a later ordinary task", status: "running" }
+            draft.workflow = { kind: "lightloop", instructions: "Start a later ordinary task" }
           })
           const delivery = mock(async () => ({ status: "delivered" as const, handlerCount: 1 }))
           ;(Plugin as any).deliverHookForPlugin = delivery
@@ -314,7 +336,6 @@ describe("LightLoop terminal hook delivery", () => {
           expect((await Session.get(session.id)).workflow).toEqual({
             kind: "lightloop",
             instructions: "Start a later ordinary task",
-            status: "running",
           })
         },
       })
@@ -340,7 +361,7 @@ describe("LightLoop terminal hook delivery", () => {
             createdAt: Date.now(),
           })
           await Session.update(session.id, (draft) => {
-            draft.workflow = { kind: "lightloop", instructions: "Start a later ordinary task", status: "running" }
+            draft.workflow = { kind: "lightloop", instructions: "Start a later ordinary task" }
           })
           const delivery = mock(async () => ({ status: "delivered" as const, handlerCount: 1 }))
           ;(Plugin as any).deliverHookForPlugin = delivery
@@ -373,7 +394,6 @@ describe("LightLoop terminal hook delivery", () => {
             draft.workflow = {
               kind: "lightloop",
               instructions: "Finish the ordinary task",
-              status: "running",
             }
           })
 
@@ -405,11 +425,11 @@ describe("LightLoop terminal hook delivery", () => {
             draft.workflow = {
               kind: "lightloop",
               instructions: "Already terminal",
-              status: "completed",
             }
           })
+          await LightLoopRuntime.setTerminalStatus(terminal.id, "completed")
           await LightLoopRuntime.failActiveLoop(terminal.id, "boom")
-          expect((await Session.get(terminal.id)).workflow).toMatchObject({ status: "completed" })
+          expect((await LightLoopTerminalStore.get(terminal))?.status).toBe("completed")
         },
       })
     }))

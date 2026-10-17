@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { createRoot } from "solid-js"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import {
   BROWSER_PROTOCOL_VERSION,
+  type BrowserEvent,
+  BrowserEventSchema,
   type BrowserNativePresentationCapabilityResult,
   type BrowserNativePresentationTicketResult,
 } from "@ericsanchezok/synergy-browser-core"
@@ -46,7 +49,9 @@ class MockWebSocket {
   emit(type: string, event: unknown = {}) {
     for (const listener of this.listeners.get(type) ?? []) listener(event)
   }
-  close() {}
+  close() {
+    this.readyState = 3
+  }
 }
 
 function bridgeStub(
@@ -81,12 +86,13 @@ function mountNativeWebSocket() {
   MockWebSocket.instances = []
 }
 
-function mountHandle() {
+function mountHandle(client?: ReturnType<typeof createSynergyClient>) {
   const store = createBrowserStore()
   let disposeRoot: (() => void) | undefined
   const handle = createRoot((dispose) => {
     disposeRoot = dispose
     return createBrowserWebSocket(store, {
+      client,
       sessionID: "ses_1",
       ownerKey: "owner-1",
       routeDirectory: "aG9tZQ",
@@ -95,6 +101,356 @@ function mountHandle() {
   })
   return { store, handle, dispose: () => disposeRoot?.() }
 }
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
+const testPage = {
+  id: "page-1",
+  profileId: "personal",
+  status: "active" as const,
+  url: "https://example.com/one",
+  title: "Initial page",
+  isLoading: false,
+  lastActiveAt: null,
+}
+
+test("activity snapshots restore the current task and older replay cannot overwrite recent viewing", async () => {
+  mountNativeWebSocket()
+  bridge = bridgeStub()
+  const { store, handle, dispose } = mountHandle()
+  try {
+    store.setSession({ epoch: "test", seq: 10 })
+    await sleep(30)
+    const activity = {
+      sessionID: "ses_1",
+      operationID: "recent",
+      pageId: testPage.id,
+      url: testPage.url,
+      kind: "idle" as const,
+      tool: "browser_read",
+      label: "Idle",
+    }
+    handle.applySnapshot(
+      {
+        type: "session.state",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey: "owner-1",
+        status: "active",
+        pages: [testPage],
+        hostStatus: "ready",
+        presentation: null,
+        seq: 12,
+        epoch: "test",
+        agentActivities: [activity],
+      },
+      "test",
+    )
+    MockWebSocket.instances.at(-1)!.emit("message", {
+      data: JSON.stringify({
+        ...activity,
+        kind: "acting",
+        type: "agent.activity",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        seq: 11,
+        epoch: "test",
+      }),
+    })
+    expect(store.agentActivitiesFor("ses_1")).toEqual([activity])
+    expect(store.agentActivitiesFor("another-task")).toEqual([])
+    expect(store.session.seq).toBe(11)
+  } finally {
+    dispose()
+  }
+})
+
+test.each(["updated", "closed", "unrelated"] as const)(
+  "late navigation response preserves %s canonical pages",
+  async (event) => {
+    mountNativeWebSocket()
+    bridge = bridgeStub()
+    const requested = deferred<void>()
+    const reply = deferred<Response>()
+    const client = createSynergyClient({
+      baseUrl: "http://127.0.0.1:4096",
+      fetch: Object.assign(
+        async () => {
+          requested.resolve()
+          return reply.promise
+        },
+        { preconnect: fetch.preconnect },
+      ),
+    })
+    const { store, handle, dispose } = mountHandle(client)
+    try {
+      store.replacePages([{ ...testPage }])
+      await sleep(30)
+      const pending = handle.send({ type: "navigate", pageId: testPage.id, url: "https://example.com/two" })
+      await requested.promise
+      const page = {
+        ...testPage,
+        id: event === "unrelated" ? "page-2" : testPage.id,
+        title: "Committed title",
+        url: "https://example.com/two",
+      }
+      const payload =
+        event === "closed"
+          ? { type: "page.closed", pageId: testPage.id }
+          : { type: event === "unrelated" ? "page.created" : "page.loaded", page }
+      MockWebSocket.instances.at(-1)!.emit("message", {
+        data: JSON.stringify(
+          BrowserEventSchema.parse({
+            ...payload,
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            seq: 1,
+            epoch: "test",
+          }),
+        ),
+      })
+      if (event === "closed") expect(store.session.pages).toHaveLength(0)
+      else expect(store.session.pages.find((item) => item.id === page.id)?.title).toBe("Committed title")
+      reply.resolve(
+        Response.json({
+          type: "control.result",
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          result: {
+            type: "navigation",
+            page: { ...testPage, title: "", url: "https://example.com/two", isLoading: true },
+            settled: true,
+            settleReason: "none",
+            settleElapsedMs: 0,
+            inflightRequests: 1,
+          },
+        }),
+      )
+      await pending
+      if (event === "closed") expect(store.session.pages).toHaveLength(0)
+      else if (event === "updated") expect(store.session.pages).toEqual([page])
+      else expect(store.session.pages).toEqual([testPage, page])
+    } finally {
+      dispose()
+    }
+  },
+)
+
+test.each(["updated", "closed", "suspended", "event-after-reply"] as const)(
+  "late open response preserves %s canonical state",
+  async (event) => {
+    mountNativeWebSocket()
+    bridge = bridgeStub()
+    const requested = deferred<void>()
+    const reply = deferred<Response>()
+    const page = {
+      ...testPage,
+      title: "Canonical title",
+      status: event === "suspended" ? ("suspended" as const) : ("active" as const),
+    }
+    const client = createSynergyClient({
+      baseUrl: "http://127.0.0.1:4096",
+      fetch: Object.assign(
+        async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+          const request = input instanceof Request ? input : new Request(input, init)
+          if (request.method === "GET")
+            return Response.json({
+              type: "session.state",
+              protocolVersion: BROWSER_PROTOCOL_VERSION,
+              ownerKey: "owner-1",
+              pages: event === "closed" ? [] : [page],
+              hostStatus: "ready",
+              presentation: null,
+              seq: 3,
+              epoch: "test",
+            })
+          requested.resolve()
+          return reply.promise
+        },
+        { preconnect: fetch.preconnect },
+      ),
+    })
+    const { store, handle, dispose } = mountHandle(client)
+    try {
+      await sleep(30)
+      const pending = handle.send({ type: "page.open", url: testPage.url })
+      await requested.promise
+      if (event !== "event-after-reply") {
+        const emit = (payload: Record<string, unknown>, seq: number) =>
+          MockWebSocket.instances.at(-1)!.emit("message", {
+            data: JSON.stringify(
+              BrowserEventSchema.parse({ ...payload, protocolVersion: BROWSER_PROTOCOL_VERSION, seq, epoch: "test" }),
+            ),
+          })
+        emit({ type: "page.created", page }, 1)
+        if (event === "closed") emit({ type: "page.closed", pageId: page.id }, 2)
+        if (event === "suspended") emit({ type: "host.status", pageId: page.id, status: "detached" }, 2)
+      }
+      reply.resolve(Response.json({ ...testPage, title: "", isLoading: true }))
+      const opened = await pending
+      expect(store.session.pages).toEqual(event === "closed" ? [] : [page])
+      expect(opened).toEqual(event === "closed" ? undefined : page)
+      if (event === "suspended") expect(store.hostStatuses[page.id]).toBe("detached")
+      if (event === "closed") expect(store.hostStatuses[page.id]).toBeUndefined()
+      if (event === "event-after-reply") {
+        const socket = MockWebSocket.instances.at(-1)!
+        socket.emit("open")
+        socket.readyState = MockWebSocket.OPEN
+        socket.emit("message", {
+          data: JSON.stringify(
+            BrowserEventSchema.parse({
+              type: "page.created",
+              page: testPage,
+              protocolVersion: BROWSER_PROTOCOL_VERSION,
+              seq: 1,
+              epoch: "test",
+            }),
+          ),
+        })
+        expect(store.session.pages).toEqual([page])
+        expect(socket.readyState).toBe(MockWebSocket.OPEN)
+      }
+    } finally {
+      dispose()
+    }
+  },
+)
+
+test.each(["dialog.opened", "filechooser.request", "page.error"] as const)(
+  "an open snapshot preserves pending %s events",
+  async (type) => {
+    mountNativeWebSocket()
+    bridge = bridgeStub()
+    const snapshotRequested = deferred<void>()
+    const client = createSynergyClient({
+      baseUrl: "http://127.0.0.1:4096",
+      fetch: Object.assign(
+        async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+          const request = input instanceof Request ? input : new Request(input, init)
+          if (request.method !== "GET") return Response.json(testPage)
+          snapshotRequested.resolve()
+          return Response.json({
+            ownerKey: "owner-1",
+            pages: [{ ...testPage, isLoading: true }],
+            hostStatus: "ready",
+            seq: 12,
+            epoch: "test",
+          })
+        },
+        { preconnect: fetch.preconnect },
+      ),
+    })
+    const { store, handle, dispose } = mountHandle(client)
+    try {
+      store.setSession({ epoch: "test", seq: 10 })
+      await sleep(30)
+      const pending = handle.send({ type: "page.open", url: testPage.url })
+      await snapshotRequested.promise
+      await sleep(0)
+      expect(store.session.seq).toBe(10)
+      handle.reconnect()
+      await sleep(0)
+      const socket = MockWebSocket.instances.at(-1)!
+      expect(new URL(socket.url).searchParams.get("sinceSeq")).toBe("10")
+      const emit = (payload: Record<string, unknown>, seq: number) =>
+        socket.emit("message", {
+          data: JSON.stringify(
+            BrowserEventSchema.parse({ ...payload, protocolVersion: BROWSER_PROTOCOL_VERSION, seq, epoch: "test" }),
+          ),
+        })
+      emit(
+        {
+          type,
+          pageId: testPage.id,
+          ...(type === "page.error"
+            ? { message: "Earlier navigation failed" }
+            : {
+                requestId: "request-1",
+                ...(type === "dialog.opened"
+                  ? { dialogType: "prompt", message: "Draft", defaultValue: "Keep" }
+                  : { multiple: true, accept: [".txt"] }),
+              }),
+        },
+        11,
+      )
+      emit({ type: "page.loading", pageId: testPage.id, url: testPage.url }, 12)
+      await pending
+      if (type !== "page.error")
+        expect(
+          type === "dialog.opened" ? store.dialogs[testPage.id]?.requestId : store.fileChoosers[testPage.id]?.requestId,
+        ).toBe("request-1")
+      else expect(store.pageErrors[testPage.id]?.message).toBe("Earlier navigation failed")
+      expect(store.session.pages[0]?.isLoading).toBe(true)
+      expect(store.session.seq).toBe(12)
+    } finally {
+      dispose()
+    }
+  },
+)
+
+test.each(["epoch", "sequence"] as const)(
+  "an in-flight HTTP snapshot cannot roll back a newer WebSocket %s",
+  async (change) => {
+    mountNativeWebSocket()
+    bridge = bridgeStub()
+    const requested = deferred<void>()
+    const reply = deferred<Response>()
+    const client = createSynergyClient({
+      baseUrl: "http://127.0.0.1:4096",
+      fetch: Object.assign(
+        async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+          const request = input instanceof Request ? input : new Request(input, init)
+          if (request.method !== "GET") return Response.json(testPage)
+          requested.resolve()
+          return reply.promise
+        },
+        { preconnect: fetch.preconnect },
+      ),
+    })
+    const { store, handle, dispose } = mountHandle(client)
+    try {
+      store.setSession({ epoch: "old", seq: 10 })
+      await sleep(30)
+      const pending = handle.send({ type: "page.open", url: testPage.url })
+      await requested.promise
+      const epoch = change === "epoch" ? "new" : "old"
+      const seq = change === "epoch" ? 1 : 20
+      const current = { ...testPage, id: "page-2", title: "Current generation" }
+      const socket = MockWebSocket.instances.at(-1)!
+      const emit = (payload: Record<string, unknown>) =>
+        socket.emit("message", {
+          data: JSON.stringify(
+            BrowserEventSchema.parse({ protocolVersion: BROWSER_PROTOCOL_VERSION, epoch, ...payload }),
+          ),
+        })
+      emit({
+        type: "session.state",
+        ownerKey: "owner-1",
+        pages: [current],
+        presentation: null,
+        status: "active",
+        hostStatus: "ready",
+        seq,
+      })
+      reply.resolve(
+        Response.json({ ownerKey: "owner-1", pages: [testPage], hostStatus: "failed", epoch: "old", seq: 12 }),
+      )
+      expect(await pending).toBeUndefined()
+      expect(store.session.pages).toEqual([current])
+      expect(store.session.epoch).toBe(epoch)
+      expect(store.session.seq).toBe(seq)
+      expect(store.hostStatuses[current.id]).toBe("ready")
+      expect(store.hostStatuses[testPage.id]).toBeUndefined()
+      emit({ type: "page.loaded", page: { ...current, title: "Subsequent event" }, seq: seq + 1 })
+      expect(store.session.pages[0]?.title).toBe("Subsequent event")
+      expect(store.session.seq).toBe(seq + 1)
+    } finally {
+      dispose()
+    }
+  },
+)
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
@@ -123,7 +479,6 @@ describe("createBrowserWebSocket native reconnect", () => {
     })
     const { store, handle, dispose } = mountHandle()
 
-    void handle.connect()
     await sleep(50)
     expect(store.session.connectionStatus).toBe("failed")
 
@@ -149,7 +504,6 @@ describe("createBrowserWebSocket native reconnect", () => {
     })
     const { store, handle, dispose } = mountHandle()
 
-    void handle.connect()
     await sleep(50)
     expect(capabilityCalls).toBe(1)
     expect(store.session.connectionStatus).toBe("failed")
@@ -170,7 +524,7 @@ test("a replaced socket cannot overwrite the reconnected session", async () => {
   bridge = bridgeStub()
   const { store, handle, dispose } = mountHandle()
   try {
-    await handle.connect()
+    await sleep(30)
     const previous = MockWebSocket.instances[0]!
     previous.emit("open")
     handle.reconnect()
@@ -180,14 +534,21 @@ test("a replaced socket cannot overwrite the reconnected session", async () => {
     current.emit("open")
     previous.emit("close", { code: 1006, reason: "old connection" })
     expect(store.session.connectionStatus).toBe("connected")
-    previous.emit("message", { data: JSON.stringify({ type: "error", code: "stale", message: "obsolete failure" }) })
-    expect(store.browserError()?.message).not.toBe("obsolete failure")
+    previous.emit("message", {
+      data: JSON.stringify({
+        type: "error",
+        code: "stale",
+        message: "obsolete failure",
+        retryable: true,
+      } satisfies BrowserEvent),
+    })
+    expect(store.pageErrors.global).toBeUndefined()
   } finally {
     dispose()
   }
 })
 
-test("background page events preserve selected errors and suspended pages stay detached", async () => {
+test("background page events preserve page errors and suspended pages stay detached", async () => {
   mountNativeWebSocket()
   bridge = bridgeStub()
   const { store, handle, dispose } = mountHandle()
@@ -209,7 +570,7 @@ test("background page events preserve selected errors and suspended pages stay d
       code: "browser_host_disconnected",
       message: "Resume this page",
     })
-    await handle.connect()
+    await sleep(30)
     const socket = MockWebSocket.instances[0]!
     socket.emit("open")
     socket.emit("message", {
@@ -221,8 +582,9 @@ test("background page events preserve selected errors and suspended pages stay d
         page: { ...human, id: "background", status: "active" },
       }),
     })
-    expect(store.pageId()).toBe(human.id)
-    expect(store.browserError()?.message).toBe("Resume this page")
+    expect(store.session.pages.map((page) => page.id)).toEqual([human.id, "background"])
+    expect(store.pageErrors[human.id]?.message).toBe("Resume this page")
+    expect(store.pageErrors.background).toBeUndefined()
     socket.emit("message", {
       data: JSON.stringify({
         type: "host.status",
@@ -232,8 +594,9 @@ test("background page events preserve selected errors and suspended pages stay d
         status: "ready",
       }),
     })
-    expect(store.hostStatus(human.id)).toBe("detached")
-    expect(store.hostStatus("background")).toBe("ready")
+    expect(store.hostStatuses[human.id]).toBe("detached")
+    expect(store.hostStatuses.background).toBe("ready")
+    expect(store.pageErrors[human.id]?.message).toBe("Resume this page")
   } finally {
     dispose()
   }

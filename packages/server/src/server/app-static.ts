@@ -1,4 +1,4 @@
-import type { Hono } from "hono"
+import { Hono, type Context } from "hono"
 import { Server } from "./server"
 import path from "node:path"
 
@@ -44,6 +44,44 @@ async function isFileWithin(appDist: string, candidate: string): Promise<boolean
   return !stat.isDirectory()
 }
 
+async function appDocument(c: Context, directory: string) {
+  const file = Bun.file(path.join(directory, "index.html"))
+  if (!(await file.exists().catch(() => false))) return c.notFound()
+  const html = await file.text()
+  const reqPath = new URL(c.req.url).pathname
+  const routeTag = `<script>window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
+  c.header("Cache-Control", "no-cache")
+  c.header("Content-Security-Policy", Server.spaCsp())
+  const rendered = html.includes("<head>")
+    ? html.replace("<head>", `<head>\n${routeTag}`)
+    : html.includes("</head>")
+      ? html.replace("</head>", `${routeTag}\n</head>`)
+      : routeTag + html
+  return c.body(rendered, { headers: { "Content-Type": "text/html; charset=utf-8" } })
+}
+
+export function appNavigationRoutes(directory: string) {
+  const app = new Hono()
+  for (const route of ["/agenda", "/library", "/kanban", "/performance", "/plugins/marketplace"]) {
+    app.get(route, (c, next) => {
+      c.header("Vary", "Accept, Sec-Fetch-Mode, Sec-Fetch-Dest", { append: true })
+      const mode = c.req.header("sec-fetch-mode")
+      const destination = c.req.header("sec-fetch-dest")
+      if ((mode && mode !== "navigate") || (destination && destination !== "document")) return next()
+      const html = c.req
+        .header("accept")
+        ?.split(",")
+        .some((entry) => {
+          const [type, ...parameters] = entry.trim().split(";")
+          const quality = parameters.find((parameter) => parameter.trim().startsWith("q="))?.split("=")[1]
+          return type.trim() === "text/html" && (quality === undefined || Number(quality) > 0)
+        })
+      return html ? appDocument(c, directory) : next()
+    })
+  }
+  return app
+}
+
 export function mountApp(app: Hono, directory: string) {
   app
     .use("/*", async (c, next) => {
@@ -62,21 +100,5 @@ export function mountApp(app: Hono, directory: string) {
       if (resolved.type === "missing") return c.notFound()
       return next()
     })
-    .get("/*", async (c) => {
-      const file = Bun.file(path.join(directory, "index.html"))
-      if (await file.exists().catch(() => false)) {
-        const html = await file.text()
-        const reqPath = new URL(c.req.url).pathname
-        const routeTag = `<script>window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
-        c.header("Cache-Control", "no-cache")
-        c.header("Content-Security-Policy", Server.spaCsp())
-        const rendered = html.includes("<head>")
-          ? html.replace("<head>", `<head>\n${routeTag}`)
-          : html.includes("</head>")
-            ? html.replace("</head>", `${routeTag}\n</head>`)
-            : routeTag + html
-        return c.body(rendered, { headers: { "Content-Type": "text/html; charset=utf-8" } })
-      }
-      return c.notFound()
-    })
+    .get("/*", (c) => appDocument(c, directory))
 }

@@ -87,11 +87,6 @@
     box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
-.library-search-field:focus-within {
-  background: var(--library-control-bg-hover);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--text-strong) 22%, transparent);
-}
-
 .library-icon-button {
   display: inline-flex;
   width: 1.375rem;
@@ -667,8 +662,6 @@
 .library-card-toggle:focus-visible,
 .library-source-link:focus-visible,
 .library-experience-metrics > summary:focus-visible {
-  outline: 2px solid var(--border-interactive-focus);
-  outline-offset: 3px;
   border-radius: 6px;
 }
 
@@ -732,10 +725,6 @@
 }
 .library-home-result:hover {
   background: var(--surface-raised-base-hover);
-}
-.library-home-result:focus-visible {
-  outline: 2px solid var(--border-interactive-focus);
-  outline-offset: -2px;
 }
 .library-home-result-main {
   display: flex;
@@ -846,11 +835,6 @@
   gap: 4px 12px;
   margin-top: 4px;
 }
-.library-skill-card:focus-visible,
-.library-card-toggle:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
-}
 .library-experience-summary {
   white-space: pre-line;
   overflow-wrap: anywhere;
@@ -920,8 +904,6 @@
 }
 .library-experience-technical > summary:focus-visible,
 .library-experience-metrics > summary:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
   border-radius: 4px;
 }
 @media (max-width: 639px), (pointer: coarse) {

@@ -445,6 +445,14 @@ export namespace EnforcementGate {
       }
 
       // File write operations
+      if (toolName === "apply_patch") {
+        for (const target of FilePatch.paths(args.patch)) {
+          classifyProtectedPathCapability(caps, target, "write", { activeWorkspace, originalCheckout, synergyRoot })
+          classifyPathCapability(caps, target, { ...pathOptions, write: true })
+        }
+        return { capabilities: caps }
+      }
+
       if (
         toolName === "write" ||
         toolName === "edit" ||
@@ -822,8 +830,8 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // LightLoop review tools — session state coordination
-      if (toolName === "loop_stop" || toolName === "light_loop_approve" || toolName === "light_loop_reject") {
+      // Light Loop completion — session state coordination
+      if (toolName === "loop_stop") {
         caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }
@@ -1149,3 +1157,4 @@ export namespace EnforcementGate {
     }
   }
 }
+import { FilePatch } from "@ericsanchezok/synergy-util/file-patch"

@@ -20,7 +20,7 @@ The compaction owner preserves `running`, `failed`, `empty`, and `committed` att
 
 After assistant handoff, the compaction owner settles the entire attempt and applies a fresh native operation deadline. Canonical storage finalization is checked transactionally rather than raced, avoiding late background summary commits. A summary already committed before a propagated remote evidence error or operation timeout stays authoritative without automatic continuation; best-effort remote provider failures still permit continuation. Storage blocking can delay return, and non-cooperative processor terminal writes require restoration after settlement; eliminating that transient window would require conditional writes in the processor/storage owner.
 
-The canonical implementation invariants live in [LLM loop and compaction](../../../architecture/llm-loop.md#compaction); maintenance and verification procedures live in [Integrate an LLM Call](../../../../.synergy/skill/integrate-llm/SKILL.md#preserve-native-local-compaction).
+The canonical implementation invariants live in [LLM loop and compaction](../../../architecture/llm-loop.md#compaction); maintenance and verification procedures live in [Integrate an LLM Call](../../../../.synergy/skill/integrate-llm/references/runtime-context.md#preserve-native-local-compaction).
 
 Provenance: OpenAI Prompt Caching guide, `https://platform.openai.com/docs/guides/prompt-caching`.
 
@@ -37,6 +37,8 @@ Local adaptation: Preserve the originating native request's instructions, model 
 **Blindly resend an overflowing request with a summary suffix.** The suffix and summary output require additional room. Measuring the full fixed envelope and trimming oldest valid history is necessary even though trimming reduces prefix continuity. A context-length failure during summarization still uses the deterministic mechanical fallback; other failures remain explicit.
 
 ## Consequences
+
+The Agent worker handshake uses protocol version 17 for the combined prepared-request suffix and worker-memory fields, so older workers reject the incompatible request before dispatch. Integration retains pressure-driven pruning, versioned runtime context and provider failure evidence.
 
 Native summary input has a single preparation owner and retains the originating request where the context budget permits. Tool disablement is enforced locally even if a provider emits tool events despite `toolChoice: "none"`. Cold compaction avoids a separate conversation generation, and overflow recovery survives processor cleanup without inheriting a disposed turn signal.
 

@@ -7,10 +7,14 @@ export type TranslateSettingsDescriptor = (descriptor: MessageDescriptor) => str
 export function localizeSettingsSection<T extends SettingsSection>(
   section: T,
   translate: TranslateSettingsDescriptor,
+  hasFeature: (id: string) => boolean = () => false,
 ): T {
   if (section.pluginId || !isBuiltinSettingsId(section.id)) return section
   const catalogSection = getBuiltinSettingsSection(section.id)
   if (!catalogSection) return section
+  const fieldAliases = (catalogSection.copy.fieldAliases ?? []).filter(
+    (target) => !target.feature || hasFeature(target.feature),
+  )
 
   return {
     ...section,
@@ -18,9 +22,16 @@ export function localizeSettingsSection<T extends SettingsSection>(
     group: translate(catalogSection.copy.group),
     description: translate(catalogSection.copy.description),
     keywords: [translate(catalogSection.copy.searchTerms)],
-    rowLabels: catalogSection.copy.rowLabels.map(translate),
+    rowLabels: [
+      ...new Set(
+        [
+          ...catalogSection.copy.rowLabels,
+          ...fieldAliases.filter((target) => target.feature).map((target) => target.label),
+        ].map(translate),
+      ),
+    ],
     fieldAliases: Object.fromEntries(
-      (catalogSection.copy.fieldAliases ?? []).map((target) => [
+      fieldAliases.map((target) => [
         translate(target.label),
         translate(target.aliases)
           .split("|")

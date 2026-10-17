@@ -79,6 +79,7 @@ export const BrowserNavigationTool = Tool.define<
             url: params.url,
             profileId: profile.id,
             requestId: BrowserToolHelper.operationID(ctx, "open"),
+            createdBySessionID: ctx.sessionID,
           })
         })
         const state = browser.pages.find((item) => item.id === page.id)!

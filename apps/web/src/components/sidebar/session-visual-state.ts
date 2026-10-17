@@ -5,6 +5,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { NavEntry } from "@/context/layout"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { classifySessionActivity } from "@/utils/session-status"
+import { blueprintLoopFeatureAvailable } from "../note/blueprint-run-session"
 
 /** `circle-pause` has no semantic token yet; the icon catalog lives outside this app. */
 const PAUSED_ICON: IconName = "circle-pause"
@@ -56,6 +57,7 @@ export interface SessionVisualScope {
  */
 export interface SessionVisualInput {
   entry: NavEntry
+  hasFeature?: (id: string) => boolean
   status?: SessionStatus
   waiting?: boolean
   /** Whether this session has a running delegated child task, from the global Cortex index. */
@@ -78,7 +80,7 @@ function primaryVisualState(input: SessionVisualInput): SessionVisualState {
   const childTasksRunning = input.runningChildTasks === true
   const blueprintIcon = getSemanticIcon("blueprint.main")
 
-  if (entry.blueprint?.loopID) {
+  if (entry.blueprint?.loopID && blueprintLoopFeatureAvailable(entry.blueprint, input.hasFeature ?? (() => true))) {
     if (activity === "waiting")
       return {
         icon: blueprintIcon,
@@ -122,7 +124,7 @@ function primaryVisualState(input: SessionVisualInput): SessionVisualState {
     }
   }
 
-  if (entry.workflow?.kind === "lightloop" && entry.workflow.active) {
+  if (entry.workflow?.kind === "lightloop" && entry.workflow.active && (input.hasFeature?.("light-loop") ?? true)) {
     if (activity === "waiting")
       return {
         icon: getSemanticIcon("prompt.lightLoop"),

@@ -1,3 +1,4 @@
+import { useViewActivity } from "@/context/view-residency"
 import { ConversationPresentation } from "@/components/session/conversation-presentation"
 import { useFileRestore } from "@/components/session/file-restore-dialog-loader"
 import { isSessionSubmissionContentReady } from "@/components/session/session-transition-handoff"
@@ -5,6 +6,7 @@ import { submissionPartPage } from "@/context/session-submission-view"
 import { catalogFileWorkspace } from "@/context/file/workspace"
 import { projectEntryCopy } from "@/components/dialog/project-entry-copy"
 import { projectTaskIntent } from "@/components/session/project-task-intent"
+import { createProjectDirectoryResource } from "@/components/session/project-directory-resource"
 import { handleComposerTypingAutofocus } from "@/components/prompt-input/typing-autofocus"
 import { useGlobalSDK } from "@/context/global-sdk"
 import {
@@ -17,6 +19,8 @@ import { NewSessionGreeting } from "@/components/session/session-new-view"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 import { SessionInbox } from "@/components/session/session-inbox"
+import { PendingComposerQueue } from "@/components/session/pending-composer-queue"
+import { editPendingMessage, takePendingMessage } from "@/components/session/conversation-pending"
 import { SubagentSessionFooter } from "@/components/session/subagent-session-footer"
 import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
 import {
@@ -36,19 +40,7 @@ import { PluginPageOutlet } from "@/plugin/shell-outlet"
 import { WorkspaceOutputEffects } from "@/components/workspace/workspace-output-effects"
 import { createPromptInputController } from "@/components/prompt-input/prompt-controller"
 import { SessionDecisionHost } from "@/components/session/decision-surface"
-import {
-  Show,
-  Match,
-  Switch,
-  createMemo,
-  createResource,
-  createEffect,
-  createSignal,
-  on,
-  onCleanup,
-  untrack,
-  type JSX,
-} from "solid-js"
+import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup, untrack, type JSX } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -76,7 +68,8 @@ import { useLayout } from "@/context/layout"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useCommand } from "@/context/command"
-import { useLocation, useNavigate, useParams } from "@solidjs/router"
+import { useNavigate } from "@solidjs/router"
+import { useLocation, useParams } from "@/context/session-route"
 import { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
 import type {
   FileDiff,
@@ -207,6 +200,7 @@ function SessionPageData() {
   const view = useSessionDataView(submission, preparation.ready)
   return (
     <DataProvider
+      hasFeature={data.hasFeature}
       data={data.store}
       view={view()}
       directory={data.directory}
@@ -220,6 +214,7 @@ function SessionPageData() {
 }
 
 function SessionPageContent() {
+  const active = useViewActivity()
   const globalSDK = useGlobalSDK()
   const layout = useLayout()
   const local = useLocal()
@@ -251,9 +246,9 @@ function SessionPageContent() {
 
   createEffect(
     on(
-      () => [params.dir, params.id, sync.data.scopeID] as const,
-      ([dir, id, scopeID], prev) => {
-        if (!id) return
+      () => [params.dir, params.id, sync.data.scopeID, active()] as const,
+      ([dir, id, scopeID, shown], prev) => {
+        if (!id || !shown) return
         navParams({ dir, from: prev?.[1], to: id, scopeID })
       },
     ),
@@ -280,17 +275,51 @@ function SessionPageContent() {
     navMark({ dir: params.dir, to: id, name: "storage:file-view-ready" })
   })
 
+  let presented = false
   createEffect(() => {
     const id = params.id
     if (!id) return
-    if (!hasMessageWindowSnapshot(dataView().messagesFor(id), sync.data.messageWindow[id])) return
+    if (!active() || !hasMessageWindowSnapshot(dataView().messagesFor(id), sync.data.messageWindow[id])) return
     navMark({ dir: params.dir, to: id, name: "session:data-ready" })
     if (!prompt.ready()) return
     const dir = params.dir
-    const frame = requestAnimationFrame(() => {
-      if (params.id === id && params.dir === dir) navMark({ dir, to: id, name: "session:interactive" })
+    let frame: number | undefined
+    let painted = false
+    const measure = () => {
+      if (frame !== undefined || painted) return
+      frame = requestAnimationFrame(() => {
+        frame = undefined
+        if (
+          !active() ||
+          params.id !== id ||
+          params.dir !== dir ||
+          !scroller?.isConnected ||
+          !scroller.clientHeight ||
+          !inputRef?.isConnected
+        )
+          return
+        const content = [
+          ...scroller.querySelectorAll<HTMLElement>('[data-component="text-part"], [data-component="tool-part"]'),
+        ].some((element) => element.offsetHeight > 0 && !!element.textContent?.trim())
+        if (dataView().messagesFor(id).length && !content) return
+        painted = true
+        if (presented) navMark({ dir, to: id, name: "session:cached-present" })
+        presented = true
+        navMark({ dir, to: id, name: "session:first-body-painted" })
+        frame = requestAnimationFrame(() => {
+          frame = undefined
+          if (active() && inputRef?.isConnected && scroller?.clientHeight)
+            navMark({ dir, to: id, name: "session:interactive" })
+        })
+      })
+    }
+    const observer = new MutationObserver(measure)
+    if (scroller) observer.observe(scroller, { childList: true, subtree: true, characterData: true })
+    measure()
+    onCleanup(() => {
+      observer.disconnect()
+      if (frame !== undefined) cancelAnimationFrame(frame)
     })
-    onCleanup(() => cancelAnimationFrame(frame))
   })
 
   const isDesktop = () => layout.isDesktop()
@@ -310,7 +339,7 @@ function SessionPageContent() {
     delayedMessageLoad: undefined as { sessionID: string; generation: number } | undefined,
   })
 
-  const info = createMemo(() => (params.id && preparation.ready() ? sync.session.get(params.id) : undefined))
+  const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const reviewCount = createMemo(() => info()?.summary?.files ?? 0)
   const rollback = createMemo(() => info()?.history?.rollback)
   const [pendingRollbackDialogKey, setPendingRollbackDialogKey] = createSignal<string>()
@@ -992,6 +1021,69 @@ function SessionPageContent() {
     await sync.session.refresh(item.sessionID)
   }
 
+  const editPending = async (item: SessionInboxItem) => {
+    const client = sdk.client
+    const owner = sessionKey()
+    const binding = prompt.capture()
+    const eligible = () =>
+      active() &&
+      sessionKey() === owner &&
+      sdk.client === client &&
+      binding.isCurrent() &&
+      params.id === item.sessionID &&
+      !rollbackActive() &&
+      !sessionMeta().isReadOnly &&
+      !composer()?.input.submitting() &&
+      (item.mode !== "task" || item.status === "failed" || rootMessages().length > 0)
+    const removedItem = async () => {
+      const { data } = await client.session.inboxRemoved({ sessionID: item.sessionID }, { throwOnError: true })
+      return data?.find((entry) => entry.id === item.id)
+    }
+    const requeue = async () => {
+      await client.session.inboxRestore({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
+    }
+    try {
+      const result = await editPendingMessage({
+        item,
+        directory: sdk.directory,
+        draft: binding.draft,
+        eligible,
+        take: () =>
+          takePendingMessage({
+            removed: removedItem,
+            eligible,
+            restore: requeue,
+            remove: async () => {
+              await client.session.inboxRemove({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
+            },
+            unavailable: () => new Error(i18n._(S.convEditPendingUnavailable)),
+          }),
+        requeue,
+      })
+      if (result !== "edited" && sessionKey() === owner) {
+        showToast({
+          type: "warning",
+          description: i18n._(
+            result === "draft-not-empty"
+              ? S.convEditPendingDraft
+              : result === "draft-changed"
+                ? S.convEditPendingChanged
+                : S.convEditPendingUnavailable,
+          ),
+        })
+      }
+      if (result === "edited" && eligible()) {
+        composer()?.input.setMode("normal")
+        queueMicrotask(() => {
+          if (eligible()) inputRef?.focus({ preventScroll: true })
+        })
+      }
+      await sync.session.refresh(item.sessionID)
+    } finally {
+      binding.release()
+    }
+  }
+
   const timeline = createMemo(() => {
     const turns = renderedConversationUserMessages() as Message[]
     const firstID = renderedUserMessages()[0]?.id ?? turns[0]?.id
@@ -1012,22 +1104,10 @@ function SessionPageContent() {
     return mergeTimelineMessages([...turns, ...mailbox, ...actionCommands])
   }, emptyTimeline)
 
-  const [projectDirectories, { refetch: refreshProjectDirectories, mutate: updateProjectDirectories }] = createResource(
-    () =>
+  const [projectDirectories, { refetch: refreshProjectDirectories, mutate: updateProjectDirectories }] =
+    createProjectDirectoryResource(() =>
       !sdk.isHome && globalSDK.capabilities.has("workbench") ? { client: sdk.client, scopeID: sdk.scopeID } : false,
-    async ({ client, scopeID }) => {
-      try {
-        return {
-          client,
-          scopeID,
-          data: (await client.project.directories({ scopeID }, { throwOnError: true })).data,
-          error: "",
-        }
-      } catch (error) {
-        return { client, scopeID, data: undefined, error: error instanceof Error ? error.message : String(error) }
-      }
-    },
-  )
+    )
   const projectDirectorySnapshot = () => {
     const snapshot = projectDirectories.latest
     return snapshot?.client === sdk.client && snapshot.scopeID === sdk.scopeID ? snapshot : undefined
@@ -1149,7 +1229,7 @@ function SessionPageContent() {
     on(
       () =>
         sessionSyncWatchKey({
-          sessionID: params.id,
+          sessionID: active() ? params.id : undefined,
           connected: sdk.connected(),
           ready: sync.ready && preparation.ready(),
           reconnectVersion: sync.reconnectVersion,
@@ -1159,12 +1239,8 @@ function SessionPageContent() {
       (current, prev) => {
         const [id] = current
         const prevId = prev?.[0]
-        if (prevId && prevId !== id) {
-          hydratedSessions.delete(prevId)
-          initializedSessions.delete(prevId)
-        }
         // Protect the viewed session's buckets from LRU eviction.
-        sync.markActiveSession(id)
+        if (active()) sync.markActiveSession(id)
         if (!id || !shouldRunSessionSync(current, prev)) return
         const historyChanged = prevId === id && (prev?.[4] !== current[4] || prev?.[5] !== current[5])
         void sync.session
@@ -1203,6 +1279,7 @@ function SessionPageContent() {
   const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
 
   createEffect(() => {
+    if (!active()) return
     const session = currentSession()
     const id = params.id
     if (!session || !id) return
@@ -1229,6 +1306,7 @@ function SessionPageContent() {
   })
 
   createEffect(() => {
+    if (!active()) return
     const session = currentSession()
     let title: string
     if (isHomeScope(sdk.scopeKey)) {
@@ -1240,7 +1318,7 @@ function SessionPageContent() {
   })
 
   onCleanup(() => {
-    document.title = i18n._(AP.sessionTitleApp.id)
+    if (active()) document.title = i18n._(AP.sessionTitleApp.id)
   })
 
   createEffect(
@@ -1253,27 +1331,30 @@ function SessionPageContent() {
     ),
   )
 
-  useSessionCommands({
-    command,
-    sdk,
-    sync,
-    local,
-    dialog,
-    terminal,
-    layout,
-    prompt,
-    navigate,
-    routeParams: params as unknown as { dir: string; id?: string },
-    info,
-    status,
-    activeMessage,
-    visibleUserMessages,
-    userMessages,
-    setActiveMessage,
-    navigateMessageByOffset,
-    isWorking: () => isWorkingStatus(status()),
-    onRewind: openRewindConfirm,
-    locateMessage,
+  createEffect(() => {
+    if (!active()) return
+    useSessionCommands({
+      command,
+      sdk,
+      sync,
+      local,
+      dialog,
+      terminal,
+      layout,
+      prompt,
+      navigate,
+      routeParams: params as unknown as { dir: string; id?: string },
+      info,
+      status,
+      activeMessage,
+      visibleUserMessages,
+      userMessages,
+      setActiveMessage,
+      navigateMessageByOffset,
+      isWorking: () => isWorkingStatus(status()),
+      onRewind: openRewindConfirm,
+      locateMessage,
+    })
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -1292,8 +1373,9 @@ function SessionPageContent() {
   }
 
   const autoScroll = createAutoScroll({
+    enabled: active,
     motionTarget: () =>
-      initialScrollSettled() === params.id
+      initialScrollSettled() === params.id && hydratedConversation() === conversationSessionID()
         ? (scroller?.querySelector<HTMLElement>("[data-conversation-motion]") ?? undefined)
         : undefined,
     working: isWorking,
@@ -1326,12 +1408,16 @@ function SessionPageContent() {
   let initScrollFrame: number | undefined
   let historyScrollFrame: number | undefined
   const [initialScrollSettled, setInitialScrollSettled] = createSignal<string>()
+  const [hydratedConversation, setHydratedConversation] = createSignal<string>()
+  createEffect(() => {
+    if (!active()) setHydratedConversation(undefined)
+  })
   const [presentedSession, setPresentedSession] = createSignal<string>()
   let scrollView: ReturnType<typeof layout.view> | undefined
   let scrollSession: string | undefined
   let scrollWasReady = false
   const saveReadingPosition = () => {
-    if (!scroller || !scrollWasReady) return
+    if (!active() || !scroller || !scrollWasReady) return
     const following = !autoScroll.userScrolled()
     scrollView?.conversation.set({
       following,
@@ -1343,7 +1429,7 @@ function SessionPageContent() {
     const saved = scrollView?.conversation.get()
     if (saved && !saved.following && saved.position && !window.location.hash) {
       restoreConversationReadingPosition(scroller, saved.position)
-      scroller.dispatchEvent(new Event("conversation-reading-restored"))
+      scroller.dispatchEvent(new Event("conversation-location-reset"))
       autoScroll.handleInteraction()
       setScrolledUp(true)
     }
@@ -1365,6 +1451,7 @@ function SessionPageContent() {
     scrollWasReady = false
     scroller?.removeEventListener("wheel", releaseHistoryLocation)
     scroller?.removeEventListener("keydown", releaseHistoryLocation)
+    if (scroller !== el) setHydratedConversation(undefined)
     scroller = el
     el?.addEventListener("wheel", releaseHistoryLocation, { passive: true })
     el?.addEventListener("keydown", releaseHistoryLocation)
@@ -1376,7 +1463,7 @@ function SessionPageContent() {
     historyScrollFrame = requestAnimationFrame(() => {
       historyScrollFrame = requestAnimationFrame(() => {
         historyScrollFrame = undefined
-        fn()
+        if (active()) fn()
       })
     })
   }
@@ -1406,6 +1493,7 @@ function SessionPageContent() {
   const returnToLatestMessages = async () => {
     const id = params.id
     if (!id) return
+    scroller?.dispatchEvent(new Event("conversation-location-reset"))
     const intent = autoScroll.interactionVersion()
     try {
       await sync.session.history.returnLatest(id)
@@ -1451,7 +1539,7 @@ function SessionPageContent() {
   // spans the actual return-to-latest load.
   createBottomRecoveryTrigger(
     {
-      sessionID: () => params.id,
+      sessionID: () => (active() ? params.id : undefined),
       scrolledUp,
       mode: historyMode,
       tailMissingLatest: historyTailMissingLatest,
@@ -1475,6 +1563,7 @@ function SessionPageContent() {
   // otherwise shift the viewport.
   const MAX_RENDERED_TURNS = 40
   createEffect(() => {
+    if (!active()) return
     const roots = visibleUserMessages()
     const len = roots?.length ?? 0
     const el = scroller
@@ -1497,9 +1586,9 @@ function SessionPageContent() {
 
     // A focused/hash-linked message that was trimmed away is no longer
     // reachable in the DOM; clear it so scrollSpy/activeMessage fall back.
-    const active = store.messageId
-    if (active) {
-      const index = roots.findIndex((m) => m.id === active)
+    const activeMessageID = store.messageId
+    if (activeMessageID) {
+      const index = roots.findIndex((m) => m.id === activeMessageID)
       if (index !== -1 && index < nextStart) {
         setStore("messageId", undefined)
         clearHash()
@@ -1544,25 +1633,18 @@ function SessionPageContent() {
   )
 
   const dockHeight = createPromptDockHeight((next) => {
-    if (next === store.promptHeight) return
-
-    const el = scroller
-    const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 : false
+    if (!active() || next === store.promptHeight) return
 
     setStore("promptHeight", next)
-
-    if (stick && el) {
-      requestAnimationFrame(() => {
-        el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
-      })
-    }
-  })
+  }, active)
 
   const updateHash = (id: string) => {
+    if (!active()) return
     replaceSessionHistoryUrl(window.history, `#${anchor(id)}`)
   }
 
   const clearHash = () => {
+    if (!active()) return
     setHistoryLocationPinned(false)
     if (!window.location.hash) return
     replaceSessionHistoryUrl(window.history, window.location.pathname + window.location.search)
@@ -1641,12 +1723,17 @@ function SessionPageContent() {
   }
   createEffect(
     on(
-      () => [params.id, messagesReady()] as const,
-      ([sessionID, ready], previous) => {
+      () => [params.id, messagesReady(), active()] as const,
+      ([sessionID, ready, visible], previous) => {
         if (sessionID && previous?.[0] !== sessionID) initializedSessions.delete(sessionID)
         if (initScrollFrame !== undefined) {
           cancelAnimationFrame(initScrollFrame)
           initScrollFrame = undefined
+        }
+
+        if (!visible) {
+          if (sessionID && initialScrollSettled() !== sessionID) initializedSessions.delete(sessionID)
+          return
         }
 
         // Re-arm: a chain cancelled by a readiness flip must be able to run
@@ -1681,16 +1768,16 @@ function SessionPageContent() {
                   setHistoryLocationPinned(true)
                   const locate = messageLocator
                   let found = await locate(saved.position.messageID, "auto", saved.position.partID).catch(() => false)
-                  if (params.id !== sessionID || messageLocator !== locate) return
+                  if (!active() || params.id !== sessionID || messageLocator !== locate) return
                   if (!found && saved.position.partID)
                     found = await locate(saved.position.messageID, "auto").catch(() => false)
-                  if (params.id !== sessionID || messageLocator !== locate) return
+                  if (!active() || params.id !== sessionID || messageLocator !== locate) return
                   if (!found) {
                     const nearest =
                       rootMessages().find((message) => message.id >= saved.position!.messageID) ?? rootMessages().at(-1)
                     if (nearest) found = await locate(nearest.id, "auto").catch(() => false)
                   }
-                  if (params.id !== sessionID || messageLocator !== locate) return
+                  if (!active() || params.id !== sessionID || messageLocator !== locate) return
                   if (found && scroller) {
                     const target = scroller
                     const deadline = performance.now() + 3000
@@ -1699,22 +1786,23 @@ function SessionPageContent() {
                       performance.now() < deadline
                     ) {
                       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-                      if (params.id !== sessionID || messageLocator !== locate || scroller !== target) return
+                      if (!active() || params.id !== sessionID || messageLocator !== locate || scroller !== target)
+                        return
                     }
                     restoreConversationReadingPosition(target, saved.position)
-                    scroller.dispatchEvent(new Event("conversation-reading-restored"))
+                    scroller.dispatchEvent(new Event("conversation-location-reset"))
                     autoScroll.handleInteraction()
                     setScrolledUp(true)
                     setInitialScrollSettled(sessionID)
                     return
                   }
                 }
-                if (params.id !== sessionID) return
+                if (!active() || params.id !== sessionID) return
                 autoScroll.forceScrollToBottom({ untilInteraction: true })
                 setInitialScrollSettled(sessionID)
               }
               void restore().catch(() => {
-                if (params.id !== sessionID) return
+                if (!active() || params.id !== sessionID) return
                 autoScroll.forceScrollToBottom({ untilInteraction: true })
                 setInitialScrollSettled(sessionID)
               })
@@ -1734,7 +1822,7 @@ function SessionPageContent() {
             if (match) {
               if (messageLocator) {
                 void locateMessage(match[1]).finally(() => {
-                  if (params.id === sessionID) setInitialScrollSettled(sessionID)
+                  if (active() && params.id === sessionID) setInitialScrollSettled(sessionID)
                 })
                 return
               }
@@ -1763,6 +1851,7 @@ function SessionPageContent() {
   )
 
   createEffect(() => {
+    if (!active()) return
     document.addEventListener("keydown", handleKeyDown)
     onCleanup(() => document.removeEventListener("keydown", handleKeyDown))
   })
@@ -1781,17 +1870,17 @@ function SessionPageContent() {
       .trim()
 
   createEffect(() => {
-    if (!prompt.ready()) return
+    if (!active() || !prompt.ready()) return
     handoff.prompt = previewPrompt()
   })
 
   createEffect(() => {
-    if (!terminal.ready()) return
+    if (!active() || !terminal.ready()) return
     handoff.terminals = terminal.all().map((t) => t.title)
   })
 
   createEffect(() => {
-    if (!file.ready()) return
+    if (!active() || !file.ready()) return
     handoff.files = Object.fromEntries(
       Array.from(file.openPaths()).map((path) => [path, file.view.selectedLines(path) ?? null] as const),
     )
@@ -1812,7 +1901,7 @@ function SessionPageContent() {
   const [priorityControl, setPriorityControl] = createSignal<JSX.Element>()
   const composerReady = createMemo((ready: boolean) => ready || prompt.ready(), false)
   const composer = createMemo(() =>
-    composerReady()
+    active() && composerReady()
       ? untrack(() =>
           createPromptInputController({
             ref: (element) => {
@@ -1959,7 +2048,7 @@ function SessionPageContent() {
             ),
       loadWindow: async (messageID, partID) => {
         setHistoryLocationPinned(true)
-        autoScroll.handleInteraction()
+        autoScroll.handleNavigation()
         setStore("turnStart", 0)
         return sync.session.history.locate(params.id!, messageID, partID)
       },
@@ -2016,6 +2105,9 @@ function SessionPageContent() {
     },
     get compactReasoning() {
       return () => sync.data.config.compactReasoning === true
+    },
+    get preferWorkBrief() {
+      return () => sync.data.config.preferWorkBrief === true
     },
     get turnStart() {
       return store.turnStart
@@ -2266,6 +2358,9 @@ function SessionPageContent() {
               <SessionConversation
                 context={conversation}
                 onAdmitted={admittedConversation}
+                onHydrated={(id) => {
+                  if (id === conversationSessionID()) setHydratedConversation(id)
+                }}
                 initialScrollSettled={() =>
                   !!submissionDraft()?.message ||
                   !params.id ||
@@ -2351,7 +2446,25 @@ function SessionPageContent() {
         </div>
       </ConversationPresentation>
     ),
-    composer: () => <PromptDock context={composerLayout} />,
+    composer: () => (
+      <Show when={active()}>
+        <PromptDock
+          context={composerLayout}
+          pending={
+            <PendingComposerQueue
+              identity={sessionKey()}
+              items={pendingTimeline()}
+              rollbackActive={rollbackActive()}
+              hasCanonicalRoot={rootMessages().length > 0}
+              serverUrl={sdk.url}
+              onGuide={guidePending}
+              onRemove={removePending}
+              onEdit={editPending}
+            />
+          }
+        />
+      </Show>
+    ),
     "workbench.side": () => (
       <>
         <Show when={sideWorkspaceMounts().desktop}>

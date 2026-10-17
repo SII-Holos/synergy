@@ -3,7 +3,6 @@ import { Session } from "../session"
 import z from "zod"
 import { ToolDiscovery } from "./discovery"
 import { ToolExposure } from "./exposure"
-import { ToolMcpSource } from "./mcp-source"
 import { Tool } from "./tool"
 
 const parameters = z
@@ -11,7 +10,7 @@ const parameters = z
     groups: z
       .array(z.string())
       .optional()
-      .describe("Tool group IDs to expand, such as browser, agenda, session, note, memory."),
+      .describe("Currently available group IDs to expand. Use search_tools to discover their names."),
     tools: z.array(z.string()).optional().describe("Search-only individual tool IDs to activate."),
     reason: z.string().optional().describe("Brief reason this capability is needed."),
   })
@@ -27,31 +26,16 @@ interface ExpandToolsIssues {
 }
 
 export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => {
-  const mcpCatalog = await Promise.resolve(ToolMcpSource.get()?.deferredGroupCatalog())
-    .then((catalog) => catalog ?? { totalTools: 0, servers: [] })
-    .catch(() => ({
-      totalTools: 0,
-      servers: [],
-    }))
-  const mcpExposure = await ToolMcpSource.get()?.exposureConfiguration()
-  const foldedServers = mcpCatalog.servers.filter(
-    (server) => !(mcpExposure?.expandByDefault(server.serverName) ?? false),
-  )
-  const mcpSection =
-    foldedServers.length > 0 ? ["Connected MCP groups:", ToolExposure.mcpGroupTable(foldedServers)].join("\n") : ""
   return {
     description: [
-      "Expand deferred groups or activate search-only tools for this session. Visibility persists across turns, restore and compaction until the session ends or expansion state is cleared. This does not call the tools or bypass permissions, agent policy, sandboxing, user settings or runtime availability.",
-      "Known built-in groups:",
-      ToolExposure.groupTable(),
-      ...(mcpSection ? [mcpSection] : []),
-      "For a known domain, expand its group directly. If the name is uncertain, use search_tools first, then expand its group or activate the returned search-only tool. Use the tools listed in the result; other tools may remain hidden by policy, settings or availability.",
-    ].join("\n\n"),
+      "Expand deferred groups or activate search-only tools for this session, persisting through turns, restore and compaction until cleared or the session ends. Expansion does not execute tools or bypass permissions, agent policy, sandboxing, user settings or runtime availability.",
+      "Expand known groups directly; use search_tools if the ID is uncertain. Call only tools listed in the result with their returned schemas; other tools may remain unavailable.",
+    ].join("\n"),
     parameters,
     formatValidationError(error) {
       return [
         `The expand_tools tool was called with invalid arguments: ${error.message}`,
-        'Call expand_tools with at least one group or tool, for example {"groups":["browser"],"reason":"verify the local UI"}.',
+        "Call expand_tools with at least one available group or tool returned by search_tools.",
       ].join("\n")
     },
     async execute(params: z.infer<typeof parameters>, ctx) {

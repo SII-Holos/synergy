@@ -12,6 +12,8 @@ The parent stops forwarding stdin EOF once the worker reports whole-tree or stre
 
 Live readers still receive the byte-counted stdin EOF. Transport failures before completion remain observable and cannot be converted into successful dispatch. Existing native ownership and cancellation boundaries are unchanged.
 
+The parent acknowledges output drainage only after both local output consumers finish and the worker's `streams-drained` phase is delivered. A local empty-output EOF can precede those control frames; acknowledging it alone lets the worker close before the parent knows queued stdin controls are obsolete. The acknowledgement is emitted once, preserving ordinary control errors and formal exit authority.
+
 ## Alternatives considered
 
 **Ignore every broken-pipe error.** Rejected because a control failure during execution must retain its uncertainty and failure semantics.
@@ -23,3 +25,5 @@ Live readers still receive the byte-counted stdin EOF. Transport failures before
 ## Consequences
 
 Fast native commands preserve their output and formal completion without issuing input controls to a completed tree. The regression uses a real worker, delays the final drain acknowledgement, delivers a queued stdin EOF and injects a broken pipe if the obsolete notification is sent. It verifies output bytes, exit status and released coordination claims. Existing tests retain early control errors and unread-input/output drainage coverage.
+
+A second real-worker regression holds completion-phase delivery after output consumers finish, delivers stdin EOF, then releases the phase. It requires no premature acknowledgement, one eventual acknowledgement, preserved output and exit status, and released native ownership.

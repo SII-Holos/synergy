@@ -39,6 +39,7 @@ beforeAll(async () => {
       sdkStubPath,
       `
         export const SDKProvider = (props) => props.children
+        export const useGlobalSDK = () => ({ capabilities: { has: () => false } })
         export const useSDK = () => ({
           connected: () => true,
           url: "http://fixture",
@@ -70,9 +71,10 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "main.tsx"),
       `
-        import { createComponent, createSignal, onCleanup } from "solid-js"
+        import { createComponent, createSignal, onCleanup, Show } from "solid-js"
+        import { RetainedSessionViews } from "@/components/session/retained-session-views"
+        import { useViewActivity } from "@/context/view-residency"
         import "@ericsanchezok/synergy-ui/styles"
-        import "/@fs/${path.resolve(import.meta.dir, "../../../src/components/session/session-inbox.css")}"
         import { SessionDecisionProvider, createSessionDecisionState, useSessionDecision } from "@/context/session-decision"
         import { QuestionSnapshotGate } from "@/context/question-snapshot"
         import { useSDK } from "@/context/sdk"
@@ -249,6 +251,24 @@ beforeAll(async () => {
           </>
         }
 
+        function RetainedDecisionView(props) {
+          const active = useViewActivity()
+          return <SessionDecisionHost sessionId={props.owner.sessionID}>
+            <h1>{props.owner.scopeID}/{props.owner.sessionID}</h1>
+            <Show when={active()}><SessionDecisionOutlet /><textarea aria-label="Current composer" /></Show>
+          </SessionDecisionHost>
+        }
+        function RetainedDecisionCase() {
+          const [selected, select] = createSignal("s1")
+          const [selectedScope, selectScope] = createSignal(scopeID)
+          window.selectResident = (id, scope = scopeID) => { selectScope(scope); select(id) }
+          window.clearQuestions = () => setQuestions({})
+          return <RetainedSessionViews
+            owner={{ server: "fixture", scopeID: selectedScope(), sessionID: selected(), generation: "1" }}
+            render={owner => <RetainedDecisionView owner={owner} />}
+          />
+        }
+
         if (mode === "legacy") render(() => <Router><Route path="/:dir/session/:id" component={() => <DirectoryLayout><CachedPermissionCard /></DirectoryLayout>} /></Router>, document.querySelector("#root"))
         else render(
           () =>
@@ -268,6 +288,7 @@ beforeAll(async () => {
                           onNavigateToSession: (id) => { window.navigatedSession = id },
                           get children() {
                             return createComponent(SessionDecisionProvider, { value: decisions, get children() {
+                            if (new URLSearchParams(location.search).has("resident")) return <RetainedDecisionCase />
                             return createComponent(SessionDecisionHost, {
                               sessionId: "s1",
                               get children() {
@@ -275,7 +296,7 @@ beforeAll(async () => {
                                 if (new URLSearchParams(location.search).has("dock")) return <div style={{"container-type":"inline-size"}}><div class="session-prompt-dock-content" style={{position:"fixed",bottom:0,width:"100%"}}>
                                   <div style={{height:"44px",flex:"none"}}>Progress</div>
                                   <SessionDecisionOutlet />
-                                  <div data-fixture-composer style={{height:"158px",flex:"none",position:"relative"}}>Composer<button aria-label="Inbox" class="session-inbox-anchor" style={{width:"36px",height:"36px"}}>Inbox</button></div>
+                                  <div data-fixture-composer style={{height:"158px",flex:"none"}}>Composer</div>
                                   <div style={{height:"32px",flex:"none"}}>Status</div>
                                 </div></div>
                                 return new URLSearchParams(location.search).has("outlet")
@@ -322,6 +343,7 @@ beforeAll(async () => {
     aliases: Object.entries({
       "@/context/locale": localeStubPath,
       "@/context/sdk": sdkStubPath,
+      "@/context/global-sdk": sdkStubPath,
       "@/context/session-data-view": viewStubPath,
       "@/context/global-sync": path.join(fixtureDirectory, "sync-stub.ts"),
       "@/context/sync": path.join(fixtureDirectory, "scope-sync-stub.ts"),
@@ -381,7 +403,60 @@ interface DecisionWindow extends Window {
   addQuestion(): void
   checkFails: boolean
   navigatedSession?: string
+  selectResident(id: string, scope?: string): void
+  clearQuestions(): void
 }
+
+for (const mode of ["question", "permission"] as const) {
+  test(`retained ${mode} stays with its owner across retained Session and Scope keys`, async () => {
+    await page.goto(`${baseUrl}?mode=${mode}&resident`)
+    const action =
+      mode === "question"
+        ? page.getByRole("button", { name: /Five PRs/ })
+        : page.getByRole("button", { name: "Allow once", exact: true })
+    await action.waitFor()
+    if (mode === "question") await page.getByRole("textbox").first().fill("Keep this answer")
+    for (const scope of ["scope-one", "scope-two"]) {
+      await page.evaluate((scope) => (window as unknown as DecisionWindow).selectResident("s2", scope), scope)
+      await page.getByRole("heading", { name: `${scope}/s2`, exact: true }).waitFor()
+      expect(await action.isVisible()).toBe(false)
+      expect(await page.locator("[data-session-decision-stack]").count()).toBe(0)
+      const composer = page.getByRole("textbox", { name: "Current composer" })
+      await composer.fill("Current task")
+      await composer.press("Enter")
+      expect(await page.evaluate(() => (window as unknown as DecisionWindow).decisionCalls)).toEqual([])
+    }
+    await page.evaluate(() => (window as unknown as DecisionWindow).selectResident("s1"))
+    await action.waitFor()
+    if (mode === "question") expect(await page.getByRole("textbox").first().inputValue()).toBe("Keep this answer")
+    await action.click()
+    expect(await page.evaluate(() => (window as unknown as DecisionWindow).decisionCalls)).toEqual([
+      mode === "question" ? { requestID: "q1", answers: [["Five PRs"]] } : { requestID: "p1", reply: "once" },
+    ])
+    expect(pageErrors).toEqual([])
+  })
+}
+
+test("a late question remains pending without appearing over another retained Session", async () => {
+  await page.goto(`${baseUrl}?mode=question&resident`)
+  await page.getByRole("button", { name: /Five PRs/ }).waitFor()
+  await page.evaluate(() => {
+    const fixture = window as unknown as DecisionWindow
+    fixture.clearQuestions()
+    fixture.selectResident("s2")
+  })
+  await page.getByRole("heading", { name: "scope-one/s2", exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as DecisionWindow).setQuestion("q-late"))
+  expect(await page.locator("[data-session-decision-stack]").count()).toBe(0)
+  await page.evaluate(() => (window as unknown as DecisionWindow).selectResident("s1"))
+  const choice = page.getByRole("button", { name: /Five PRs/ })
+  await choice.waitFor()
+  await choice.click()
+  expect(await page.evaluate(() => (window as unknown as DecisionWindow).decisionCalls)).toEqual([
+    { requestID: "q-late", answers: [["Five PRs"]] },
+  ])
+  expect(pageErrors).toEqual([])
+})
 
 test("DataProvider replies use the coordinator when a cached permission outlives a temporary empty index", async () => {
   await page.goto(`${baseUrl}c2NvcGUtb25l/session/s1?mode=legacy`)
@@ -574,6 +649,80 @@ test("permission details show the complete operation when the tool message is no
       .getByText("/temporary/fixture/approved-file.txt", { exact: true })
       .isVisible(),
   ).toBe(true)
+})
+
+test.each(["question", "permission"])("%s actions align with the card edge across pane widths", async (mode) => {
+  await page.goto(`${baseUrl}?mode=${mode}&dock`)
+  const action = page.getByRole("button", { name: mode === "question" ? "Send" : "Allow once", exact: true })
+  await action.waitFor()
+  if (mode === "question") await page.getByRole("textbox").fill("Keep the answer in this card")
+  const measurements = []
+  for (const width of [375, 800, 1280]) {
+    await page.setViewportSize({ width, height: 700 })
+    measurements.push(
+      await action.evaluate((node) => {
+        const card = node.closest(".decision-card")!
+        const headerAction = card.querySelector(".decision-header > button:last-child")!
+        const rect = node.getBoundingClientRect()
+        return {
+          width: innerWidth,
+          rightGap: card.getBoundingClientRect().right - rect.right,
+          headerGap: card.getBoundingClientRect().right - headerAction.getBoundingClientRect().right,
+          overflow: document.documentElement.scrollWidth > innerWidth,
+          hit: document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest("button") === node,
+        }
+      }),
+    )
+  }
+  for (const measurement of measurements) {
+    expect(measurement, `Action alignment at ${measurement.width}px`).toEqual({
+      ...measurement,
+      rightGap: expect.closeTo(measurement.headerGap, 0),
+      overflow: false,
+      hit: true,
+    })
+  }
+  expect(pageErrors).toEqual([])
+})
+
+test.each([false, true])("header contents stay vertically centered with touch=%s", async (hasTouch) => {
+  const headerPage = await browser.newPage({ viewport: { width: 375, height: 700 }, hasTouch })
+  headerPage.on("pageerror", (error) => pageErrors.push(String(error)))
+  try {
+    await headerPage.goto(`${baseUrl}?mode=question&dock`)
+    await headerPage.getByRole("textbox").waitFor()
+    const measurements = []
+    for (const collapsed of [false, true]) {
+      if (collapsed) await headerPage.getByRole("button", { name: "Collapse request", exact: true }).click()
+      measurements.push(
+        await headerPage.locator(".decision-header").evaluate((header) => {
+          const center = (element: Element) => {
+            const rect = element.getBoundingClientRect()
+            return rect.top + rect.height / 2
+          }
+          const collapse = header.querySelector(":scope > button:last-child")!
+          return {
+            collapsed: header.closest(".decision-card")!.getAttribute("data-collapsed"),
+            icon: center(header.querySelector('[data-component="icon"]')!),
+            title: center(header.querySelector(".decision-title")!),
+            more: center(header.querySelector('[aria-label="More actions"]')!),
+            action: center(collapse),
+          }
+        }),
+      )
+    }
+    for (const measurement of measurements) {
+      expect(measurement, `Header centers when collapsed=${measurement.collapsed}`).toEqual({
+        ...measurement,
+        icon: expect.closeTo(measurement.action, 0),
+        title: expect.closeTo(measurement.action, 0),
+        more: expect.closeTo(measurement.action, 0),
+      })
+    }
+    expect(pageErrors).toEqual([])
+  } finally {
+    await headerPage.close()
+  }
 })
 
 test("the inline request shrinks above the Composer without hiding its action", async () => {

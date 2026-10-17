@@ -16,6 +16,9 @@ import {
   type CodexResponseItem,
 } from "../../src/provider/codex-compaction"
 import { Log } from "../../src/util/log"
+import { APICallError } from "ai"
+import { SessionRetry } from "../../src/session/retry"
+import { MessageV2 } from "../../src/session/message-v2"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -160,6 +163,31 @@ describe("codex-compaction parseRemoteCompactionEvents", () => {
   test("throws on transport error events", () =>
     runtime.run(() => {
       expect(() => parseRemoteCompactionEvents([{ type: "error", message: "network" }])).toThrow(/network/)
+    }))
+
+  test("preserves terminal classification and retry advice for remote compaction failures", () =>
+    runtime.run(() => {
+      for (const code of ["server_is_overloaded", "usage_limit_reached"]) {
+        const failure = { code, message: "Provider unavailable", headers: { "Retry-After": "3" } }
+        for (const event of [
+          { type: "error", error: failure },
+          { type: "response.failed", response: { error: failure } },
+        ]) {
+          let caught: unknown
+          try {
+            parseRemoteCompactionEvents([event])
+          } catch (error) {
+            caught = error
+          }
+          expect(APICallError.isInstance(caught)).toBe(true)
+          const result = MessageV2.fromError(caught, { providerID: "openai-codex" })
+          expect(result).toMatchObject({
+            name: "APIError",
+            data: { isRetryable: code === "server_is_overloaded", responseHeaders: { "retry-after": "3" } },
+          })
+          expect(Boolean(SessionRetry.retryable(result))).toBe(code === "server_is_overloaded")
+        }
+      }
     }))
 
   test("throws when the stream never completes", () =>

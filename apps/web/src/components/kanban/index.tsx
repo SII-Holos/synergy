@@ -1,3 +1,4 @@
+import { runtimeFeatureAvailable } from "@/components/runtime-features"
 import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
 import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
 import { AppPanel } from "@/components/app-panel"
@@ -73,6 +74,7 @@ export function KanbanPanel() {
   // page (activity display mode + compact reasoning from the global config).
   const activityDisplay = createMemo(() => resolveActivityDisplay(globalSync.data.config.activityDisplay))
   const compactReasoning = () => globalSync.data.config.compactReasoning === true
+  const preferWorkBrief = () => globalSync.data.config.preferWorkBrief === true
 
   // Pane capacity follows the active layout: grid shows exactly cols × rows,
   // focus keeps the fixed board cap (main pane + scrollable rail).
@@ -234,6 +236,11 @@ export function KanbanPanel() {
 
   const setWorkflowFor = (pane: BoardPane) => async (kind: BoardWorkflowKind) => {
     if (pane.kind !== "live") return
+    const current = globalSync
+      .peekScopeState(pane.scopeKey)?.[0]
+      ?.session?.find((session) => session.id === pane.sessionID)?.workflow?.kind
+    if (!runtimeFeatureAvailable("workflow", kind === "none" ? (current ?? "none") : kind, globalSDK.capabilities.has))
+      return
     const workflowSetInput: WorkflowSetInput = kind === "lattice" ? { kind, mode: "auto" } : { kind }
     await clientFor(pane).workflow.session.set({
       id: pane.sessionID,
@@ -300,6 +307,7 @@ export function KanbanPanel() {
         compact={variant === "rail"}
         activityDisplay={activityDisplay}
         compactReasoning={compactReasoning}
+        preferWorkBrief={preferWorkBrief}
         loadState={() => loadStateFor(pane())()}
         onRetry={() => retryPane(pane())()}
         onSend={(text, options) => sendToPane(pane())(text, options)}

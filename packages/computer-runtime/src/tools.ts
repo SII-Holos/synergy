@@ -11,6 +11,7 @@ import {
 } from "@ericsanchezok/synergy-computer-protocol"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import { ToolExposure } from "@ericsanchezok/synergy-harness/tool/exposure"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -130,5 +131,14 @@ export function registerComputerTools() {
 
   if (instanceState.registered) return
   instanceState.registered = true
+  ToolExposure.registerGroups("computer-runtime", [
+    {
+      id: "computer",
+      title: "Computer",
+      description:
+        "Find, observe and interact with native application windows through local Synergy Desktop. Requires a native Environment and Full Access.",
+      tools: ["computer_apps", "computer_observe", "computer_action"],
+    },
+  ])
   ToolRegistry.registerToolProvider("computer", () => [ComputerAppsTool, ComputerObserveTool, ComputerActionTool])
 }

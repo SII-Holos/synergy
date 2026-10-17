@@ -1,3 +1,4 @@
+import { useParams } from "@/context/session-route"
 import { Show, batch, createEffect, createResource, untrack, on, onCleanup } from "solid-js"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { useBrowserCatalog, type BrowserCatalog } from "./browser-catalog"
@@ -40,6 +41,7 @@ export function BrowserWorkbenchSync(props: { route: BrowserWorkbenchRoute }) {
 }
 function SyncState(props: { catalog: BrowserCatalog; knownPageIds: ReadonlySet<string> }) {
   const workbench = useWorkbenchPanels()
+  const params = useParams()
   let knownPageIds = props.knownPageIds
   let previousSessionKey = workbench.sessionKey()
   createEffect(
@@ -47,7 +49,13 @@ function SyncState(props: { catalog: BrowserCatalog; knownPageIds: ReadonlySet<s
       () =>
         [
           workbench.sessionKey(),
-          props.catalog.store.session.pages.map((page) => ({ id: page.id, title: page.title, url: page.url })),
+          props.catalog.store.session.pages.map((page) => ({
+            id: page.id,
+            title: page.title,
+            url: page.url,
+            openerId: page.openerId,
+            createdBySessionID: page.createdBySessionID,
+          })),
           workbench.surface("side").hasOpening(),
         ] as const,
       ([sessionKey, pages, hasOpening]) => {
@@ -77,6 +85,7 @@ function SyncState(props: { catalog: BrowserCatalog; knownPageIds: ReadonlySet<s
           pages: visiblePages,
           route: props.catalog.route,
           knownPageIds,
+          sessionID: params.id,
         })
         knownPageIds = new Set(pages.map((page) => page.id))
         if (next.tabs === tabs && next.active === active) return

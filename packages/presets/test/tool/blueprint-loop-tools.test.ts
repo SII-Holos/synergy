@@ -1,17 +1,17 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
-import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
-import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
+import { AgendaStore } from "@ericsanchezok/synergy-agenda/agenda/store"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
-import { BlueprintLoopReviewAccess } from "@ericsanchezok/synergy-workflows/blueprint/review-access"
-import { BlueprintContinuationPolicy } from "@ericsanchezok/synergy-workflows/blueprint/continuation"
+import { BlueprintLoopReviewAccess } from "@ericsanchezok/synergy-blueprint/blueprint/review-access"
+import { BlueprintContinuationPolicy } from "@ericsanchezok/synergy-blueprint/blueprint/continuation"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
-import { BlueprintLoopApproveTool } from "@ericsanchezok/synergy-workflows/blueprint/tools/blueprint-loop-approve"
-import { BlueprintLoopRejectTool } from "@ericsanchezok/synergy-workflows/blueprint/tools/blueprint-loop-reject"
-import { BlueprintLoopStopTool } from "@ericsanchezok/synergy-workflows/blueprint/tools/blueprint-loop-stop"
+import { BlueprintLoopApproveTool } from "@ericsanchezok/synergy-blueprint/blueprint/tools/blueprint-loop-approve"
+import { BlueprintLoopRejectTool } from "@ericsanchezok/synergy-blueprint/blueprint/tools/blueprint-loop-reject"
+import { BlueprintLoopStopTool } from "@ericsanchezok/synergy-blueprint/blueprint/tools/blueprint-loop-stop"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 // Product domains register tools and the agenda guard via the L4 manifest
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
@@ -147,10 +147,7 @@ async function requestReview(input?: Parameters<typeof createRunningLoop>[0]) {
   const tool = await BlueprintLoopStopTool.init()
   const result = await tool.execute(
     {
-      summary: "All Blueprint requirements are implemented.",
-      completed: ["Implemented the requested behavior"],
-      evidence: ["Focused tests pass"],
-      remaining: [],
+      summary: "All Blueprint requirements are implemented. Focused tests pass.",
     },
     ctx(running.session.id),
   )
@@ -191,10 +188,7 @@ describe("blueprint_loop_stop", () => {
           const tool = await BlueprintLoopStopTool.init()
           const result = await tool.execute(
             {
-              summary: "All Blueprint requirements are implemented.",
-              completed: ["Implemented the requested behavior"],
-              evidence: ["Focused tests pass"],
-              remaining: [],
+              summary: "All Blueprint requirements are implemented. Focused tests pass.",
             },
             ctx(session.id),
           )
@@ -206,46 +200,21 @@ describe("blueprint_loop_stop", () => {
             reviewStarted: false,
             requiredAgentAction: "end_turn",
           })
-          expect(JSON.parse(result.output)).toMatchObject({
-            ok: true,
-            code: "BLUEPRINT_LOOP_REVIEW_QUEUED",
-            review: {
-              requested: true,
-              started: false,
-              startsAfterAssistantTurn: true,
-            },
-            requiredAgentAction: {
-              kind: "end_turn",
-            },
-          })
-          expect(result.output).toContain("Do not call another tool")
-          expect(result.output).toContain("future Lattice Pathway Step")
+          expect(result.output).toContain("Do not call tools")
           expect(launches).toHaveLength(0)
 
           const duplicateBeforeReview = await tool.execute(
             { summary: "Duplicate request before the execution turn ends." },
             ctx(session.id),
           )
-          expect(JSON.parse(duplicateBeforeReview.output)).toMatchObject({
-            ok: true,
-            code: "BLUEPRINT_LOOP_REVIEW_ALREADY_QUEUED",
-            duplicate: true,
-            review: {
-              requested: true,
-              started: false,
-              startsAfterAssistantTurn: true,
-            },
-            requiredAgentAction: { kind: "end_turn" },
-          })
           expect(launches).toHaveLength(0)
 
           expect(updated.status).toBe("running")
           expect(updated.auditSessionID).toBeUndefined()
           expect(updated.auditTaskID).toBeUndefined()
           expect((updated as any).stopRequest).toMatchObject({
-            summary: "All Blueprint requirements are implemented.",
-            completed: ["Implemented the requested behavior"],
-            evidence: ["Focused tests pass"],
+            summary: "All Blueprint requirements are implemented. Focused tests pass.",
+
             requesterSessionID: session.id,
           })
 
@@ -256,13 +225,11 @@ describe("blueprint_loop_stop", () => {
           expect(launches[0].parentSessionID).toBe(session.id)
           expect(launches[0].notifyParentOnComplete).toBe(false)
           expect(launches[0].visibility).toBe("visible")
-          expect(launches[0].prompt).toContain(`Session ID: ${session.id}`)
+          expect(launches[0].prompt).toContain(`execution session ${session.id}`)
           expect(launches[0].prompt).toContain("Do not change the public CLI contract.")
           expect(launches[0].prompt).toContain("blueprint_loop_approve")
           expect(launches[0].prompt).toContain("blueprint_loop_reject")
-          expect(launches[0].prompt).toContain("Change Scope, boundaries, and non-goals")
-          expect(launches[0].prompt).toContain("future Lattice Pathway steps")
-          expect(launches[0].prompt).toContain("first successful blueprint_loop_stop")
+          expect(launches[0].prompt).toContain("after this stop request")
           // Audit launch receives exactly persisted auditTools, no execution-only submit tool
           expect(launches[0].tools).toEqual({
             plugin__truthward__context_query: true,
@@ -273,7 +240,12 @@ describe("blueprint_loop_stop", () => {
           expect(reviewing.status).toBe("auditing")
           expect(reviewing.auditTaskID).toBeDefined()
           const reviewSession = await Session.get(reviewing.auditSessionID!)
-          expect(reviewSession.blueprint).toEqual({ loopID: loop.id, loopRole: "audit", phase: "auditing" })
+          expect(reviewSession.blueprint).toEqual({
+            loopID: loop.id,
+            loopRole: "audit",
+            phase: "auditing",
+            source: "lattice",
+          })
         },
       })
     }))
@@ -290,18 +262,7 @@ describe("blueprint_loop_stop", () => {
 
           expect(launches).toHaveLength(1)
           expect(result.metadata.reviewSessionID).toBe(reviewSessionID)
-          expect(JSON.parse(result.output)).toMatchObject({
-            ok: true,
-            code: "BLUEPRINT_LOOP_REVIEW_ALREADY_STARTED",
-            review: {
-              requested: true,
-              started: true,
-            },
-            requiredAgentAction: {
-              kind: "end_turn",
-            },
-          })
-          expect(result.output).toContain("Do not call tools to inspect")
+          expect(result.output).toContain("Do not call tools")
         },
       })
     }))
@@ -395,7 +356,7 @@ describe("blueprint_loop_approve", () => {
 
           const tool = await BlueprintLoopApproveTool.init()
           const result = await tool.execute(
-            { sessionID: session.id, summary: "All acceptance criteria are verified." },
+            { summary: "All acceptance criteria are verified." },
             ctx(reviewSessionID, "supervisor"),
           )
 
@@ -426,9 +387,9 @@ describe("blueprint_loop_approve", () => {
         fn: async () => {
           const { session } = await requestReview()
           const tool = await BlueprintLoopApproveTool.init()
-          await expect(
-            tool.execute({ sessionID: session.id, summary: "approved" }, ctx(session.id, "supervisor")),
-          ).rejects.toThrow("Only the recorded reviewer session may approve this BlueprintLoop review")
+          await expect(tool.execute({ summary: "approved" }, ctx(session.id, "supervisor"))).rejects.toThrow(
+            "Only the recorded reviewer session may approve this BlueprintLoop review",
+          )
         },
       })
     }))
@@ -450,7 +411,7 @@ describe("blueprint_loop_approve", () => {
 
           const approve = await BlueprintLoopApproveTool.init()
           const result = await approve.execute(
-            { sessionID: session.id, summary: "All requirements verified" },
+            { summary: "All requirements verified" },
             ctx(reviewSessionID, "supervisor"),
           )
 
@@ -479,11 +440,7 @@ describe("blueprint_loop_reject", () => {
           const tool = await BlueprintLoopRejectTool.init()
           const result = await tool.execute(
             {
-              sessionID: session.id,
               reason: "One acceptance criterion is not verified.",
-              completed: "Core implementation is correct.",
-              remaining: "The CLI contract test is missing. BLOCKING",
-              instructions: "Add and run the CLI contract test.",
             },
             ctx(reviewSessionID, "supervisor"),
           )
@@ -492,7 +449,7 @@ describe("blueprint_loop_reject", () => {
           expect(updated.status).toBe("running")
           expect(updated.audit?.attempts).toBe(1)
           expect(updated.audit?.lastReason).toBe("One acceptance criterion is not verified.")
-          expect(updated.auditSessionID).toBeUndefined()
+          expect(updated.auditSessionID).toBe(reviewSessionID)
           expect(result.metadata.loopRejected).toBe(true)
           expect(deliveries).toHaveLength(1)
           expect(deliveries[0].mail.metadata).toMatchObject({
@@ -520,10 +477,7 @@ describe("blueprint_loop_reject", () => {
           const reject = await BlueprintLoopRejectTool.init()
           const result = await reject.execute(
             {
-              sessionID: session.id,
               reason: "Acceptance evidence is incomplete.",
-              remaining: "Add the missing verification. BLOCKING",
-              instructions: "Run and record the missing verification.",
             },
             ctx(reviewSessionID, "supervisor"),
           )
@@ -549,10 +503,7 @@ describe("blueprint_loop_reject", () => {
           await expect(
             tool.execute(
               {
-                sessionID: session.id,
                 reason: "missing evidence",
-                remaining: "Verification is missing. BLOCKING",
-                instructions: "Run the required checks.",
               },
               ctx(unrelated.id, "supervisor"),
             ),

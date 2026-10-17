@@ -38,11 +38,6 @@
 .context-dashboard button:disabled {
   cursor: default;
 }
-.context-dashboard button:focus-visible,
-.context-dashboard input:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 3px;
-}
 .context-dashboard-toolbar {
   display: flex;
   align-items: center;
@@ -1041,8 +1036,38 @@
   font-size: 13px;
   font-weight: 550;
 }
-.context-usage-stats .context-ring strong {
-  font-size: 24px;
+.context-usage-basis {
+  margin-block: 8px 12px;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.context-ring[data-fit="true"] > div > strong {
+  position: absolute;
+  top: 43%;
+  transform: translateY(-50%);
+}
+.context-ring[data-fit="true"] > div > span {
+  position: absolute;
+  top: 55%;
+  line-height: 1.2;
+}
+.context-ring[data-fit="true"] strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.context-ring .context-ring-measure {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: clip;
+  visibility: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.context-ring .context-ring-measure strong {
+  display: inline-block;
+  font-size: 18px;
 }
 .context-source-caption {
   display: flex;
@@ -1071,9 +1096,6 @@
     grid-template-columns: 80px minmax(0, 1fr);
     gap: 10px;
   }
-  .context-usage-stats .context-ring strong {
-    font-size: 21px;
-  }
   .context-section-heading > [data-component="menu-field"] {
     max-width: 100%;
   }
@@ -1093,9 +1115,6 @@
   gap: 16px;
   margin-bottom: 16px;
 }
-.context-timing-body .context-ring strong {
-  font-size: 24px;
-}
 .context-timing .context-timing-legend > div {
   display: flex;
   align-items: baseline;
@@ -1113,9 +1132,6 @@
   .context-timing .context-timing-legend dd {
     margin-top: 3px;
     margin-left: 13px;
-  }
-  .context-timing-body .context-ring strong {
-    font-size: 21px;
   }
 }
 

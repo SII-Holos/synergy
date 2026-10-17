@@ -11,6 +11,7 @@ const ToolState = Owner.extend({
   kind: z.literal("tool").default("tool"),
   partID: z.string().min(1),
   callID: z.string().optional(),
+  requiredFeatures: z.array(z.string()).optional(),
 })
 const State = z.union([ToolState, Owner.extend({ kind: z.enum(["agent-delivery", "compaction"]) })])
 export type ExecutionDetailState = z.infer<typeof State>
@@ -32,4 +33,9 @@ export function executionDetailSelection(state: Extract<ExecutionDetailState, { 
     partID: state.partID,
     ...(state.callID ? { callID: state.callID } : {}),
   }
+}
+
+export function executionDetailAvailable(value: unknown, hasFeature: (id: string) => boolean): boolean {
+  const parsed = State.safeParse(value)
+  return !parsed.success || parsed.data.kind !== "tool" || (parsed.data.requiredFeatures ?? []).every(hasFeature)
 }

@@ -214,6 +214,40 @@ function makeCtx(messages: any[]): any {
 // ===========================================================================
 
 describe("GitHealth.invalidate() — cache clearing via inject()", () => {
+  test("a pending refresh retains the confirmed report without an unavailable transition", () =>
+    runtime.run(async () => {
+      const repo = makeRepo()
+      try {
+        await gitInit(repo.path)
+        await gitEmptyCommit(repo.path, "initial")
+        await $`git checkout --detach`.cwd(repo.path).quiet()
+        await GitHealth.check(repo.path)
+        const confirmed = GitHealth.observeCached(repo.path)
+        expect(confirmed.state).toBe("present")
+        GitHealth.invalidate(repo.path)
+        expect(GitHealth.lastReport()).toBeDefined()
+        expect(GitHealth.observeCached(repo.path).state).toBe("pending")
+        await GitHealth.refresh(repo.path)
+        expect(GitHealth.observeCached(repo.path)).toEqual(confirmed)
+      } finally {
+        repo.cleanup()
+      }
+    }))
+
+  test("a failed scan cannot clear a previously confirmed warning", () =>
+    runtime.run(async () => {
+      const repo = makeRepo()
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path, "initial")
+      await $`git checkout --detach`.cwd(repo.path).quiet()
+      await GitHealth.check(repo.path)
+      repo.cleanup()
+      GitHealth.invalidate(repo.path)
+      await GitHealth.refresh(repo.path)
+      expect(GitHealth.observeCached(repo.path).state).toBe("unavailable")
+      expect(GitHealth.lastReport()).toBeDefined()
+    }))
+
   test("invalidate clears lastReport after inject() populated it", () =>
     runtime.run(async () => {
       const repo = makeRepo()

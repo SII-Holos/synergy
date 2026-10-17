@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint"
 import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
@@ -268,14 +268,14 @@ describe("session workspace binding", () => {
               await Worktree.enter({ sessionID: session.id, target: worktree.id, force: true })
 
               const entered = await Session.get(session.id)
-              expect(entered.blueprint).toEqual({ loopID: loop.id })
+              expect(entered.blueprint).toEqual({ loopID: loop.id, source: "user" })
               expect(entered.workflow).toEqual({ kind: "plan" })
               expect(entered.workspace?.type).toBe("git_worktree")
               expect(entered.workspace?.path).toBe(worktree.path)
 
               await Worktree.leave(session.id)
               const left = await Session.get(session.id)
-              expect(left.blueprint).toEqual({ loopID: loop.id })
+              expect(left.blueprint).toEqual({ loopID: loop.id, source: "user" })
               expect(left.workflow).toEqual({ kind: "plan" })
               expect(left.workspace?.type).toBe("main")
             } finally {

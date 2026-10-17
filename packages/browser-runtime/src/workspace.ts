@@ -47,6 +47,7 @@ export namespace BrowserWorkspace {
       ownerKey: BrowserOwner.key(owner),
       status: session.status,
       pages: session.pages,
+      agentActivities: session.agentActivities,
       presentation,
       hostStatus: BrowserBroker.ready("native") ? "ready" : "detached",
       ...BrowserEvent.watermark(owner),

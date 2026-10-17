@@ -8,7 +8,7 @@ Workspace `build` commands compile dependency modules. CLI and Presets modules u
 
 ## Requirements and Preparation
 
-The root manifest pins Bun `1.4.2`. Install that version, then run:
+The root manifest pins Bun `1.4.2`. Development commands validate both the running Bun and any `BUN_BIN` override before installation, builds or startup. Preparation does not change the global runtime selection. With mise, select the installed version using `mise use --global bun@1.4.2`, or run a single command using `mise exec bun@1.4.2 -- bun dev prepare`. Restart existing development processes after selecting a different version. Then run:
 
 ```bash
 bun dev prepare
@@ -69,6 +69,8 @@ A managed server that exits before becoming healthy advances to the next candida
 The development orchestrator tags each spawned command so shutdown can recover descendant process groups after an intermediate package wrapper exits. Managed servers arm cross-platform parent-process liveness monitoring before startup work can report healthy.
 
 ## Developing Synergy with Synergy
+
+The Agent receives the [hosting Runtime identity](../architecture/llm-loop.md#prompt-assembly) separately from its Session Workspace and selected Environment. It includes the launch entry, actual backend listener, Home/data root and source revision captured at launch. `bun dev web`, external Desktop, managed Desktop and source `send` register their owning entrypoints; `--attach` retains the existing backend's identity. Web/Vite ports do not describe the backend listener. Source edits and later Git commits do not rewrite a running instance's launch snapshot.
 
 Do not restart or stop the Synergy instance carrying your current session. Run the source checkout against an isolated home and explicit alternate ports:
 
@@ -155,7 +157,7 @@ bun run quality:quick
 bun run quality
 ```
 
-`verify local --test <path>` runs selected behavior tests with fresh coverage before the local static cluster. `verify plan` explains the complete working-tree CI scope against `origin/dev`; `verify coverage --package <path>` checks a complete package. Reports under `.artifacts/verify/` distinguish local results from pending CI verification.
+`verify local --test <path>` validates the selection and passes the local static cluster before running selected behavior tests with fresh coverage. Static failures stop before test execution. `verify plan` explains the complete working-tree CI scope against `origin/dev`; `verify coverage --package <path>` checks a complete package. Reports under `.artifacts/verify/` distinguish local results from pending CI verification.
 
 `quality:quick` runs only the local static cluster: format, lint, Skill/package-guide/test-layout checks, strict localization contract, typecheck, monorepo consistency, and package validation. `quality` adds all Turbo tests. The pre-push hook checks the Bun version and runs format, lint, typecheck, monorepo, documentation and decision checks. Identical local static inputs may reuse successful checks for one day; CI executes independently.
 

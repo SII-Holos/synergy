@@ -87,17 +87,16 @@ describe("fresh-process restart-while-queued recovery", () => {
         const outputB = path.join(workdir, "recover.json")
         try {
           // Process A: a real interactive session plus an unattended one, each
-          // with a durable queued channel task carrying a deterministic delivery
+          // with a durable queued external task carrying a deterministic delivery
           // key; enqueue twice to prove dedup; exit without draining the inbox.
           const a = await runWorker(fixture, home, workdir, outputA, "enqueue", packageRoot)
           expect(a.report.queued).toBe(true)
           expect(a.report.itemCount).toBe(1)
-          expect(a.report.itemDeliveryKey).toBe("feishu:thread:restart-while-queued:once")
+          expect(a.report.itemDeliveryKey).toBe("external:thread:restart-while-queued:once")
           expect(a.report.itemMetadata).toMatchObject({
-            source: "channel",
-            channelPush: true,
-            channelReply: true,
-            channelReplyToMessageId: "om_original_feishu_message",
+            source: "external",
+            replyRequested: true,
+            replyToMessageID: "original-message",
           })
           expect(a.report.rootMessages).toBe(0)
           expect(a.report.sessionID).toBeTruthy()
@@ -108,14 +107,14 @@ describe("fresh-process restart-while-queued recovery", () => {
           const b = await runWorker(fixture, home, workdir, outputB, "recover", packageRoot)
           expect(b.report.sessionID).toBe(a.report.sessionID)
 
-          // The queued work survives the restart with its identity and channel
+          // The queued work survives the restart with its identity and delivery
           // correlation intact. Nothing materialized it, because startup no
           // longer resumes work on the user's behalf.
           expect(b.report.queuedItems).toBe(1)
-          expect(b.report.queuedDeliveryKeys).toEqual(["feishu:thread:restart-while-queued:once"])
+          expect(b.report.queuedDeliveryKeys).toEqual(["external:thread:restart-while-queued:once"])
           expect(b.report.queuedMetadata).toMatchObject({
-            channelReplyToMessageId: "om_original_feishu_message",
-            replyTo: "oc_thread_original_123",
+            replyToMessageID: "original-message",
+            replyTo: "original-thread",
           })
           expect(b.report.rootMessages).toBe(0)
 

@@ -1,13 +1,15 @@
 import { resolveSessionReference } from "@/utils/session-reference"
 import { type Accessor, Setter, batch, onCleanup, startTransition } from "solid-js"
 import { produce, reconcile, type SetStoreFunction } from "solid-js/store"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useNavigate } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { createSynergyClient, type Message, type Part } from "@ericsanchezok/synergy-sdk/client"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useLocal } from "@/context/local"
 import { thinkingSelection } from "@/context/prompt/model-selection"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useSDK } from "@/context/sdk"
 import { useServer } from "@/context/server"
 import { useSync } from "@/context/sync"
@@ -71,6 +73,7 @@ import { createNewSessionRecoveryActions, type NewSessionRecovery } from "@/comp
 import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
+import { blueprintLoopFeatureAvailable } from "../note/blueprint-run-session"
 import { reconcileMessage, removeMessageFromWindow, type MessageWindowState } from "@/context/session-message-window"
 import { clearConversationContent } from "@/context/conversation-content-state"
 import { partSummaryPageState } from "@/context/part-summary-loader"
@@ -130,6 +133,7 @@ type PromptSubmitInput = {
 export function usePromptSubmit(input: PromptSubmitInput) {
   const navigate = useNavigate()
   const sdk = useSDK()
+  const { capabilities } = useGlobalSDK()
   const server = useServer()
   const sync = useSync()
   const globalSync = useGlobalSync()
@@ -147,6 +151,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const binding = promptContext.capture()
     const prompt = binding.draft
     const initialSessionId = params.id
+    const selection = capabilities.current()
     let releaseSubmit: (() => void) | undefined
     let preparation: ReturnType<typeof sessionTransition.prepareDraft> | undefined
     try {
@@ -268,6 +273,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         return
       }
       if (submitIntent === "blocked") {
+        if (blueprintSlot && input.working()) {
+          showToast({ type: "warning", title: i18n._(PI.sessionRunning), description: i18n._(PI.attachWaitRun) })
+          return
+        }
         if (input.pendingLightLoop()) {
           showToast({
             type: "warning",
@@ -680,7 +689,24 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       const failSessionSetup = (sessionID: string, title: string, message: string) => {
         failCreatedSessionSetup(sessionID, title, message)
       }
+      const featureCurrent = (feature: string) =>
+        capabilities.current() === selection &&
+        capabilities.has(feature) &&
+        (feature !== "blueprint" ||
+          blueprintSlot?.type !== "loop" ||
+          blueprintLoopFeatureAvailable(blueprintSlot, capabilities.has))
+      const stopIfFeatureChanged = (feature: string) => {
+        if (featureCurrent(feature)) return false
+        restoreInput({ focus: false })
+        if (newSessionRecovery) sessionTransition.setRecovery(currentScopeKey, newSessionRecovery)
+        return true
+      }
       if (blueprintSlot && (session.workflow?.kind === "plan" || session.workflow?.kind === "lightloop")) {
+        if (
+          stopIfFeatureChanged("blueprint") ||
+          stopIfFeatureChanged(session.workflow.kind === "plan" ? "blueprint" : "light-loop")
+        )
+          return
         const sessionID = session.id
         const fallbackSession = session
         const workflowName = session.workflow.kind === "plan" ? "Plan" : "Light Loop"
@@ -704,6 +730,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (!session) return
       }
       if (!blueprintSlot && armedPlan && !armedLattice && !armedLightLoop && session.workflow?.kind !== "plan") {
+        if (stopIfFeatureChanged("blueprint")) return
         const sessionID = session.id
         const fallbackSession = session
         session = await client.workflow.session
@@ -722,6 +749,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (!session) return
       }
       if (armedLattice && session.workflow?.kind !== "lattice") {
+        if (stopIfFeatureChanged("lattice")) return
         const sessionID = session.id
         const fallbackSession = session
         session = await client.workflow.session
@@ -748,6 +776,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       }
       let enabledLightLoopForSubmit: { sessionID: string } | undefined
       if (!blueprintSlot && armedLightLoop && !armedLattice && session.workflow?.kind !== "lightloop") {
+        if (stopIfFeatureChanged("light-loop")) return
         const sessionID = session.id
         const fallbackSession = session
         session = await client.workflow.session
@@ -772,6 +801,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (!session) return
       }
       if (armedBoss && !blueprintSlot && session.workflow?.kind !== "boss") {
+        if (stopIfFeatureChanged("boss")) return
         const sessionID = session.id
         const fallbackSession = session
         session = await client.workflow.session
@@ -792,6 +822,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           })
         if (!session) return
       }
+      if ((armedPlan || blueprintSlot) && stopIfFeatureChanged("blueprint")) return
+      if (armedLightLoop && stopIfFeatureChanged("light-loop")) return
+      if (armedLattice && stopIfFeatureChanged("lattice")) return
+      if (armedBoss && stopIfFeatureChanged("boss")) return
       const activeSession = session!
 
       const model = selectedModel
@@ -812,7 +846,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       }
 
       const rollbackLightLoopForSubmit = async () => {
-        if (!enabledLightLoopForSubmit) return
+        if (!enabledLightLoopForSubmit || !featureCurrent("light-loop")) return
         await client.workflow.session
           .set({
             id: enabledLightLoopForSubmit.sessionID,
@@ -856,6 +890,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       }
 
       if (blueprintSlot && mode === "normal") {
+        if (stopIfFeatureChanged("blueprint")) return
         input.setBlueprintLoading(true)
         let createdLoopID: string | undefined
         try {
@@ -880,10 +915,13 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             loopID = blueprintSlot.loopID
           }
 
+          if (stopIfFeatureChanged("blueprint")) return
           clearInput()
           await sdk.client.blueprint.loop.start({ id: loopID, userPrompt: userText || undefined })
+          if (stopIfFeatureChanged("blueprint")) return
           finishNewSessionTransition()
         } catch (err) {
+          if (stopIfFeatureChanged("blueprint")) return
           const message = errorMessage(err)
           if (createdLoopID) {
             await sdk.client.blueprint.loop.cancel({ id: createdLoopID }).catch(() => undefined)

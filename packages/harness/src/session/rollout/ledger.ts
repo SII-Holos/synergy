@@ -519,6 +519,24 @@ export namespace RolloutLedger {
     })
   }
 
+  export async function updateContextEstimate(
+    owner: Owner,
+    runID: string,
+    callID: string,
+    contextEstimate: NonNullable<RolloutSchema.CallRecord["contextEstimate"]>,
+  ) {
+    using lock = await writeLock(owner, runID)
+    const current = await getCall(owner, runID, callID)
+    if (
+      current.contextEstimate ||
+      current.model.providerID !== contextEstimate.providerID ||
+      current.model.modelID !== contextEstimate.modelID
+    )
+      return
+    const updated = RolloutSchema.CallRecord.parse({ ...current, contextEstimate })
+    await RolloutJournal.write(owner, [...root(owner, runID), "calls", callID], updated)
+  }
+
   export async function checkpointCall(
     owner: Owner,
     runID: string,

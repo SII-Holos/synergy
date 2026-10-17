@@ -4,18 +4,18 @@ Bun/TypeScript monorepo rules. Read the nearest package `AGENTS.md` before editi
 
 ## Work from Current Evidence
 
-- Verify the implementation, tests, schemas, generated contracts, and current CLI before changing code or docs.
+- Verify implementation, tests, schemas, generated contracts and CLI before editing.
 - Use `Scope` for workspace resolution/context and `Library` for the knowledge subsystem. Keep retired names inside `docs/migrations/` or `docs/research/` only.
 - Start architecture work at [docs/README.md](docs/README.md), then read only the relevant document.
-- Inspect adjacent domains before assuming a directory boundary.
+- Inspect adjacent domains before assuming ownership.
 - Keep a nearest `AGENTS.md` in every workspace package; update it when that package's ownership, public boundary, or verification commands change.
-- Fix the root cause with a focused change; preserve unrelated user work and avoid opportunistic cleanup.
+- Fix root causes; preserve unrelated work and avoid opportunistic cleanup.
 
 The project-local `architecture` skill provides the code-tracing workflow and links canonical documents instead of duplicating them.
 
 ## Protect Checkouts and Runtimes
 
-The primary checkout, pre-existing checkouts, and active Synergy runtime may be shared by concurrent sessions.
+Checkouts and active Synergy runtimes may be shared.
 
 - Inspect `git status`, the current branch, and the worktree list before editing or performing Git operations. Direct edits in the current checkout are allowed; preserve unrelated dirty and untracked files.
 - Do not run `git checkout`/`git switch` or rebase a shared checkout unless the user explicitly requests it; these change state observed by every session using that directory.
@@ -96,9 +96,10 @@ Do not create compatibility paths that violate those contracts. In particular:
 
 ## Tool, Agent, and Plugin Changes
 
+- Design Agent-facing prompts, tools, context and results for effective decisions. Preserve constraints, uncertainty and recovery; remove internal narration and duplicate rules. Follow [agent-facing design](.synergy/skill/integrate-llm/references/agent-facing-design.md).
 - Load `add-tool`, `add-agent`, or `add-cli-command` for their complete implementation and verification workflows.
 - A first-party tool requires backend registration, taxonomy, and all Web presentation/classifier registrations described by `add-tool`.
-- Built-in primary agents are Atlas (`general`), Forge (`coding`), and Pico (`lightweight`); use Harness `agent/primary-identity`. Visibility masks and delegation groups define subagent catalogs. BlueprintLoop and Light Loop reviewers stay host-selected; Workbench-enabled sessions show their recorded Cortex tasks in Task details; minimal servers retain installed Cortex interfaces.
+- Primary agents: Atlas (`general`), Forge (`coding`), Pico (`lightweight`); use Harness `agent/primary-identity`. Visibility masks and delegation groups define subagent catalogs. BlueprintLoop reviewers stay host-selected; Light Loop uses self-check. Workbench shows recorded Cortex tasks in Task details; minimal servers retain Cortex interfaces.
 - Plugins use the public definition, generated manifest, capability-gated Host Services, process runtime, operation/event/hook, approval, and trusted UI contracts in [Plugin documentation](docs/plugins/README.md). Do not import private runtime modules into plugins.
 
 ## Testing and Quality

@@ -13,13 +13,12 @@
 }
 .decision-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   padding: 12px 12px 8px;
   flex: none;
 }
 .decision-header > [data-component="icon"] {
-  margin-top: 3px;
   color: var(--icon-weak-base);
   flex: none;
 }
@@ -79,10 +78,6 @@
   &:hover {
     background: var(--workbench-control-bg-hover, var(--surface-inset-base-hover));
     color: var(--text-base);
-  }
-  &:focus-visible {
-    outline: 2px solid var(--border-interactive-base);
-    outline-offset: 2px;
   }
   &:disabled {
     cursor: default;
@@ -259,10 +254,4 @@
 [data-session-decision-outlet] > div,
 [data-session-decision-outlet] [data-session-decision-host] {
   flex: 1 1 auto;
-}
-@container (max-width: 56rem) {
-  .session-prompt-dock-content .decision-footer {
-    /* Keep actions clear of the Composer inbox in its compact placement. */
-    padding-inline-end: 7.5rem;
-  }
 }

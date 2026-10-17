@@ -1,3 +1,4 @@
+import { useGlobalSDK } from "@/context/global-sdk"
 import { KanbanReorderMenu, type KanbanReorderAction } from "./reorder-menu"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { translateDescriptor } from "@/locales/translate"
@@ -84,6 +85,7 @@ export function KanbanPane(props: {
   compact?: boolean
   activityDisplay: () => ActivityDisplayMode
   compactReasoning: () => boolean
+  preferWorkBrief?: () => boolean
   loadState?: () => BoardPaneLoadState | undefined
   onRetry?: () => void
   onSend: (text: string, options?: { agent?: string }) => Promise<void>
@@ -93,6 +95,7 @@ export function KanbanPane(props: {
   const { _, i18n } = useLingui()
   const { fmt } = useLocale()
   const globalSync = useGlobalSync()
+  const globalSDK = useGlobalSDK()
   const runtime = createSessionDataRuntime(globalSync)
   const [scrolledUp, setScrolledUp] = createSignal(false)
 
@@ -338,6 +341,7 @@ export function KanbanPane(props: {
             }
           >
             <DataProvider
+              hasFeature={globalSDK.capabilities.has}
               data={props.data}
               runtime={runtime}
               directory={liveSession()?.workspace?.path ?? null}
@@ -385,6 +389,7 @@ export function KanbanPane(props: {
                         lastUserMessageID={lastRoot()?.id}
                         activityDisplay={props.activityDisplay()}
                         compactReasoning={props.compactReasoning()}
+                        preferWorkBrief={props.preferWorkBrief?.()}
                         classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full" }}
                       />,
                     )

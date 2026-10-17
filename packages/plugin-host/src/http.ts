@@ -8,6 +8,7 @@ import { Hono } from "hono"
 export function registerHttp() {
   Server.registerContributions(
     {
+      features: ["plugin-host"],
       routes: {
         "scoped-after-assets": new Hono()
           .route("/plugin", PluginRoute())

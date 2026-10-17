@@ -108,6 +108,48 @@ function turn(user: MessageV2.WithParts, assistants: MessageV2.WithParts[]): Tur
 // ---------------------------------------------------------------------------
 
 describe("TurnDigest.summarizeTurn", () => {
+  test("retains a complete experience trajectory across hidden advisory observations", () => {
+    const root = userMsg("u1", [textPart("Inspect and fix the calculation")])
+    const advisory = (id: string) => {
+      const message = userMsg(id, [{ ...textPart("Historical advisory state"), origin: "system" }])
+      if (message.info.role !== "user") throw new Error("Expected a user-role observation")
+      message.info = {
+        ...message.info,
+        isRoot: false,
+        rootID: root.info.id,
+        visible: false,
+        includeInContext: true,
+        origin: { type: "system", detail: "runtime-context" },
+      }
+      return message
+    }
+    const inspected = assistantMsg("u1", [completedTool("read", "Read the calculation")])
+    const completed = assistantMsg("u1", [textPart("Fixed and verified the calculation")])
+    completed.info.id = "ast_completed"
+    const next = userMsg("u2", [textPart("A separate task")])
+    const nextReply = assistantMsg("u2", [textPart("Unrelated output")])
+    const messages = [root, advisory("context_1"), inspected, advisory("context_2"), completed, next, nextReply]
+    const session: Session.Info = {
+      id: "ses_1",
+      title: "Inspect calculation",
+      version: "1",
+      scope: { type: "home", id: "home", local: null },
+      workspace: null,
+      tags: [],
+      completionNotice: { unread: false, unreadCount: 0, silent: false },
+      time: { created: 1, updated: 2 },
+    }
+
+    const extracted = TurnDigest.extractSingle(session, messages, root.info.id)
+
+    expect(extracted).toBeDefined()
+    expect(extracted?.turn.assistants).toEqual([inspected, completed])
+    expect(TurnDigest.summarizeTurn(extracted!.turn, messages)).toEqual({
+      user: "Inspect and fix the calculation",
+      assistant: "[Tool: read] Read the calculation\nFixed and verified the calculation",
+    })
+  })
+
   test("extracts user text and assistant text from a simple turn", () => {
     const u = userMsg("u1", [textPart("What is 1+1?")])
     const a = assistantMsg("u1", [textPart("The answer is 2.")])

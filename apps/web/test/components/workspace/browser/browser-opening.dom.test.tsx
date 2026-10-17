@@ -1,3 +1,4 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
@@ -7,6 +8,7 @@ import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
 import tailwindcss from "@tailwindcss/vite"
 import { lingui } from "@lingui/vite-plugin"
+import type { BrowserAgentActivity } from "@ericsanchezok/synergy-browser-core"
 import type { WorkbenchPanelTab } from "../../../../src/plugin/registries/workbench-panel-registry"
 
 let directory: string
@@ -26,13 +28,17 @@ interface Fixture extends Window {
     close(id: string): Promise<void>
     dataRequests: Array<{ pageId: string; action: { type: string } }>
     collapse(): void
-    session(): void
+    session(id?: string): void
     scope(): void
     tabs(): WorkbenchPanelTab[]
     saved(): WorkbenchPanelTab[]
     active(): string | undefined
-    publish(pages: Array<{ id: string; title: string; url: string }>): void
+    publish(
+      pages: Array<{ id: string; title: string; url: string; openerId?: string; createdBySessionID?: string }>,
+    ): void
     opened(): boolean
+    activity(activity: BrowserAgentActivity): void
+    counts(): { requests: number; connections: number }
     attempts: string[]
     cancelled: string[]
   }
@@ -53,6 +59,8 @@ beforeAll(async () => {
     export const i18n=setupI18n({locale:"en",messages:{en:messages}})
     export const useLocale=() => ({i18n})
     export const useConfirm=() => ({ask:async () => true})
+    const selection={features:["browser"]}
+    export const useGlobalSDK=() => ({capabilities:{current:() => selection,has:id => selection.features.includes(id)}})
     const surfaces=new Map()
     export function surface(key,name) {
       const id=key+":"+name
@@ -75,26 +83,31 @@ beforeAll(async () => {
     import {WorkbenchPanelsProvider,useWorkbenchPanels} from ${JSON.stringify(`/@fs/${source}/context/workbench/index.tsx`)}
     import {WorkbenchSurface} from ${JSON.stringify(`/@fs/${source}/components/workspace/workbench-surface.tsx`)}
     import {BrowserPreparingPanel} from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-preparing.tsx`)}
-    import {BrowserCatalogProvider} from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-catalog.tsx`)}
+    import {BrowserTabIcon,browserTabActivity,browserTabDescription} from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-tab.tsx`)}
+    import {useParams} from "@/context/session-route"
+    import {BrowserCatalogProvider,useBrowserCatalog} from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-catalog.tsx`)}
     import {BrowserWorkbenchSync} from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-workbench-sync.tsx`)}
     import {registerWorkbenchPanel} from ${JSON.stringify(`/@fs/${source}/plugin/registries/workbench-panel-registry.ts`)}
     import {i18n,surface} from "./services"
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
-    window.pages=[];window.dataRequests=[]
+    window.pages=[];window.dataRequests=[];window.requests=0;window.connections=0
+    const browserRoute={mode:"scope",scopeID:"home",path_directory:"home"}
+    const activity=tab => browserTabActivity(useBrowserCatalog().peek(browserRoute),tab.resourceId,useParams().id)
     const attempts=[],cancelled=[],pending=[]
     const create=(_init,operation) => new Promise((resolve,reject) => {
       attempts.push(operation?.requestId ?? "unbound")
       pending.push({resolve,reject,operation,index:attempts.length})
     })
     registerWorkbenchPanel({id:"resource-home",label:"New tab",icon:"file",surface:"side",cardinality:"multi",launchable:false,component:() => <div>Resources</div>})
-    registerWorkbenchPanel({id:"browser",label:"Browser",icon:"globe",surface:"side",cardinality:"multi",title:tab => tab.title ?? "Browser",createTab:create,restoreTab:operation => create(undefined,operation),openingComponent:props => <BrowserPreparingPanel tab={props.tab} />,loader:async () => ({default:() => <div><input aria-label="Ready browser" /></div>})})
+    registerWorkbenchPanel({id:"browser",label:"Browser",icon:"globe",surface:"side",cardinality:"multi",title:tab => tab.title ?? "Browser",tabIcon:tab => <BrowserTabIcon activity={activity(tab)} />,tabDescription:tab => browserTabDescription(i18n,activity(tab)),createTab:create,restoreTab:operation => create(undefined,operation),openingComponent:props => <BrowserPreparingPanel tab={props.tab} />,loader:async () => ({default:() => <div><input aria-label="Ready browser" /></div>})})
     function Harness() {
       const workbench=useWorkbenchPanels(),navigate=useNavigate()
       window.fixture={attempts,cancelled,dataRequests:window.dataRequests,
+        activity:item => window.store.applyAgentActivity(item), counts:() => ({requests:window.requests,connections:window.connections}),
         finish:() => {const item=pending.shift();const init={resourceId:item.index===1 ? "page-one" : "page-"+item.index,title:"Ready browser"};window.pages.push({id:init.resourceId,title:init.title,url:"about:blank",status:"active",profileId:"personal"});item.operation?.onCancel(() => {cancelled.push(init.resourceId)});item.resolve(init)},
         fail:structured => pending.shift().reject(structured ? {code:"browser_native_ticket_rejected",message:"Desktop ticket unavailable",retryable:true} : new Error("Browser unavailable")),
-        open:forceNew => workbench.openPanel("browser",{forceNew}),close:id => workbench.closeTab(id),collapse:() => workbench.surface("side").close(),session:() => navigate("/home/session/other"),scope:() => navigate("/other"),
+        open:forceNew => workbench.openPanel("browser",{forceNew}),close:id => workbench.closeTab(id),collapse:() => workbench.surface("side").close(),session:(id="other") => navigate("/home/session/"+id),scope:() => navigate("/other"),
         publish:pages => {window.pages=pages.map(page => ({status:"active",profileId:"personal",...page}));window.deliverPages(window.pages)},tabs:() => workbench.surface("side").tabs(),saved:() => surface(workbench.sessionKey(),"side").tabs(),active:() => workbench.surface("side").active(),opened:() => workbench.surface("side").opened()
       }
       return <div style="height:600px"><button onClick={() => workbench.surface("side").toggle()}>Workspace</button><button onClick={() => workbench.openPanel("resource-home")}>Other resource</button><WorkbenchSurface surface="side" />{location.search==="?sync" && <BrowserWorkbenchSync route={{mode:"scope",scopeID:"home",path_directory:"home"}} />}</div>
@@ -105,7 +118,7 @@ beforeAll(async () => {
   )
   await Bun.write(
     path.join(directory, "sdk.ts"),
-    `export const useSDK=() => ({url:"http://fixture.test",scopeID:"home",client:{browser:{session:async () => ({data:{ownerKey:"scope:home:scope",pages:window.pages,seq:window.pages.length,epoch:"one",hostStatus:"ready",presentation:{kind:"native",protocolVersion:5,capabilities:{native:true},reason:"desktop-local"}}})}}})`,
+    `export const useSDK=() => ({url:"http://fixture.test",scopeID:"home",client:{browser:{session:async () => (window.requests++,{data:{ownerKey:"scope:home:scope",pages:window.pages,seq:window.pages.length,epoch:"one",hostStatus:"ready",presentation:{kind:"native",protocolVersion:${BROWSER_PROTOCOL_VERSION},capabilities:{native:true},reason:"desktop-local"}}})}}})`,
   )
   await Bun.write(
     path.join(directory, "platform.ts"),
@@ -113,7 +126,7 @@ beforeAll(async () => {
   )
   await Bun.write(
     path.join(directory, "transport.ts"),
-    `export const createBrowserWebSocket=store => {store._setSend(() => {});window.deliverPages=pages => store.replacePages(pages); return {}}`,
+    `export const createBrowserWebSocket=store => {window.connections++;window.store=store;store._setSend(() => {});window.deliverPages=pages => store.replacePages(pages); return {applySnapshot:snapshot => store.replacePages(snapshot.pages)}}`,
   )
   server = await createServer({
     configFile: false,
@@ -122,7 +135,7 @@ beforeAll(async () => {
     plugins: [solidPlugin(), tailwindcss(), ...lingui()],
     resolve: {
       alias: [
-        { find: /^@\/context\/(layout|locale)$/, replacement: path.join(directory, "services.ts") },
+        { find: /^@\/context\/(layout|locale|global-sdk)$/, replacement: path.join(directory, "services.ts") },
         { find: "../layout", replacement: path.join(directory, "services.ts") },
         { find: "@/context/sdk", replacement: path.join(directory, "sdk.ts") },
         { find: "@/context/platform", replacement: path.join(directory, "platform.ts") },
@@ -196,7 +209,8 @@ test("catalog events before the open response cannot duplicate the preparing tab
   await page.evaluate(() =>
     (window as unknown as Fixture).fixture.publish([
       { id: "page-one", title: "Created", url: "about:blank" },
-      { id: "popup", title: "Popup", url: "https://example.test" },
+      { id: "popup", openerId: "page-one", title: "Popup", url: "https://example.test" },
+      { id: "background", title: "Another task", url: "https://example.org" },
     ]),
   )
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs())).toHaveLength(1)
@@ -207,6 +221,49 @@ test("catalog events before the open response cannot duplicate the preparing tab
     ["page-one", "popup"],
   )
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.active())).toBe(id)
+  expect(errors).toEqual([])
+})
+
+test("each task keeps its opened Browser tabs and selection while sharing the page catalog", async () => {
+  await page.goto(`${url}?sync`, { timeout: 30_000 })
+  await page.waitForFunction(() => typeof (window as unknown as { deliverPages?: unknown }).deliverPages === "function")
+  await page.getByRole("button", { name: "Workspace", exact: true }).click()
+  await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
+  await page.waitForFunction(() => (window as unknown as Fixture).fixture.saved().length === 1)
+  const first = await page.evaluate(() => (window as unknown as Fixture).fixture.active())
+  await page.evaluate(() => {
+    const fixture = (window as unknown as Fixture).fixture
+    fixture.publish([{ id: "page-one", title: "First task", url: "https://example.com" }])
+    fixture.session()
+  })
+  await page.waitForFunction(() => (window as unknown as Fixture).fixture.tabs().length === 0)
+  await page.getByRole("button", { name: "Workspace", exact: true }).click()
+  await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
+  await page.waitForFunction(() => (window as unknown as Fixture).fixture.saved().length === 1)
+  const second = await page.evaluate(() => (window as unknown as Fixture).fixture.active())
+  await page.evaluate(() =>
+    (window as unknown as Fixture).fixture.publish([
+      { id: "page-one", title: "First task updated", url: "https://example.com/next" },
+      { id: "page-2", title: "Second task", url: "https://example.org" },
+      { id: "popup", openerId: "page-one", title: "First popup", url: "https://example.com/login" },
+    ]),
+  )
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs().map((tab) => tab.resourceId))).toEqual(
+    ["page-2"],
+  )
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.active())).toBe(second)
+  await page.evaluate(() => (window as unknown as Fixture).fixture.session("one"))
+  await page.getByRole("tab", { name: "First popup", exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs().map((tab) => tab.resourceId))).toEqual(
+    ["page-one", "popup"],
+  )
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.active())).toBe(first)
+  await page.evaluate(() => (window as unknown as Fixture).fixture.session())
+  await page.getByRole("tab", { name: "Second task", exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs().map((tab) => tab.resourceId))).toEqual(
+    ["page-2"],
+  )
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.active())).toBe(second)
   expect(errors).toEqual([])
 })
 
@@ -236,13 +293,19 @@ test("a failed opening retains its single tab when catalog events arrive before 
   await page.evaluate(() => (window as unknown as Fixture).fixture.fail())
   await page.getByRole("alert").waitFor()
   await page.evaluate(() =>
-    (window as unknown as Fixture).fixture.publish([{ id: "popup", title: "Popup", url: "https://example.test" }]),
+    (window as unknown as Fixture).fixture.publish([
+      { id: "popup", openerId: "page-2", title: "Popup", url: "https://example.test" },
+      { id: "background", title: "Another task", url: "https://example.org" },
+    ]),
   )
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs())).toHaveLength(1)
   await page.getByRole("button", { name: "Retry", exact: true }).click()
   await page.waitForFunction(() => (window as unknown as Fixture).fixture.attempts.length === 2)
   await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
   await page.waitForFunction(() => (window as unknown as Fixture).fixture.saved().length === 2)
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs().map((tab) => tab.resourceId))).toEqual(
+    ["page-2", "popup"],
+  )
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.active())).toBe(id)
   expect(errors).toEqual([])
 })
@@ -281,6 +344,8 @@ test("collapse and reopen share the pending page and a late result cannot reopen
 })
 
 test("closing a pending tab discards its late page while changing Session only abandons presentation", async () => {
+  await page.goto(`${url}?sync`, { timeout: 30_000 })
+  await page.waitForFunction(() => typeof (window as unknown as { deliverPages?: unknown }).deliverPages === "function")
   await page.getByRole("button", { name: "Workspace", exact: true }).click()
   await page.getByRole("button", { name: "Close Browser", exact: true }).click()
   await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
@@ -290,6 +355,9 @@ test("closing a pending tab discards its late page while changing Session only a
   await page.getByRole("tab", { name: "Browser", exact: true }).waitFor()
   await page.evaluate(() => (window as unknown as Fixture).fixture.session())
   await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
+  await page.evaluate(() =>
+    (window as unknown as Fixture).fixture.publish([{ id: "page-2", title: "Late page", url: "about:blank" }]),
+  )
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.tabs())).toEqual([])
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.cancelled)).toEqual(["page-one"])
   expect(errors).toEqual([])
@@ -367,5 +435,107 @@ test("changing Scope ends pending import preparation immediately and ignores its
   await page.getByRole("alert").filter({ hasText: "The browser target changed or closed" }).waitFor()
   await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.dataRequests)).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test("Agent activity decorates existing peer tabs without requests, selection changes or layout movement", async () => {
+  await page.goto(`${url}?sync`)
+  await page.waitForFunction(() => typeof (window as unknown as { deliverPages?: unknown }).deliverPages === "function")
+  await page.evaluate(() =>
+    (window as unknown as Fixture).fixture.publish([
+      { id: "one", title: "First page", url: "https://example.test/one", createdBySessionID: "one" },
+      { id: "two", title: "Second page", url: "https://example.test/two", createdBySessionID: "one" },
+      { id: "peer", title: "Peer page", url: "https://example.test/peer", createdBySessionID: "other" },
+    ]),
+  )
+  await page.getByRole("button", { name: "Other resource", exact: true }).click()
+  const first = page.getByRole("tab", { name: "First page", exact: true })
+  const second = page.getByRole("tab", { name: "Second page", exact: true })
+  await first.waitFor()
+  await first.click()
+  await page.getByRole("textbox", { name: "Ready browser", exact: true }).waitFor()
+  const before = await first.boundingBox()
+  const selected = await page.evaluate(() => (window as unknown as Fixture).fixture.active())
+  await page.evaluate(() => {
+    const f = (window as unknown as Fixture).fixture
+    f.activity({
+      sessionID: "one",
+      operationID: "read",
+      pageId: "one",
+      url: "https://example.test/one",
+      kind: "reading",
+      tool: "browser_read",
+      label: "Reading",
+    })
+    f.activity({
+      sessionID: "one",
+      operationID: "act",
+      pageId: "two",
+      url: "https://example.test/two",
+      kind: "acting",
+      tool: "browser_action",
+      label: "Acting",
+    })
+    f.activity({
+      sessionID: "other",
+      operationID: "peer",
+      pageId: "one",
+      url: "https://example.test/one",
+      kind: "acting",
+      tool: "browser_action",
+      label: "Acting",
+    })
+  })
+  await first.getByRole("img", { name: "Agent viewing", exact: true }).waitFor()
+  await second.getByRole("img", { name: "Agent operating", exact: true }).waitFor()
+  expect(await first.getAttribute("aria-description")).toBe("Agent viewing")
+  expect(await first.getAttribute("title")).toBe("First page — Agent viewing")
+  expect(await first.boundingBox()).toEqual(before)
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.active())).toBe(selected)
+  expect(await first.locator(".browser-tab-icon").evaluate((el) => getComputedStyle(el).animationName)).toBe(
+    "browser-agent-attention",
+  )
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  expect(await first.locator(".browser-tab-icon").evaluate((el) => getComputedStyle(el).animationName)).toBe("none")
+  await page.evaluate(() => {
+    const f = (window as unknown as Fixture).fixture
+    f.activity({
+      sessionID: "one",
+      operationID: "read",
+      pageId: "one",
+      url: "https://example.test/one",
+      kind: "idle",
+      tool: "browser_read",
+      label: "Idle",
+    })
+    f.activity({
+      sessionID: "one",
+      operationID: "act",
+      pageId: "two",
+      url: "https://example.test/two",
+      kind: "idle",
+      completed: false,
+      tool: "browser_action",
+      label: "Idle",
+    })
+  })
+  await first.getByRole("img", { name: "Agent last viewed", exact: true }).waitFor()
+  expect(await second.locator("[data-browser-agent-kind]").count()).toBe(0)
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  expect(await first.locator(".browser-tab-icon").evaluate((el) => getComputedStyle(el).animationName)).toBe("none")
+  await page.evaluate(() => (window as unknown as Fixture).fixture.session("other"))
+  await page.getByRole("button", { name: "Other resource", exact: true }).click()
+  await page.getByRole("tab", { name: "Peer page", exact: true }).waitFor()
+  expect(await page.locator("[data-browser-agent-kind]").count()).toBe(0)
+  await page.evaluate(() => (window as unknown as Fixture).fixture.session("one"))
+  await first.getByRole("img", { name: "Agent last viewed", exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.active())).toBe(selected)
+  expect(await page.evaluate(() => (window as unknown as Fixture).fixture.counts())).toEqual({
+    requests: 1,
+    connections: 1,
+  })
+  await page.evaluate(() => (window as unknown as Fixture).fixture.publish([]))
+  await first.waitFor({ state: "hidden" })
+  expect(await page.locator("[data-browser-agent-kind]").count()).toBe(0)
   expect(errors).toEqual([])
 })

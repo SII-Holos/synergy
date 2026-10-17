@@ -7,6 +7,7 @@ import { Truncate } from "../tool/truncation"
 
 import { createBuiltinInternalAgents } from "./builtin-internal"
 import { AgentBuiltins } from "./builtins"
+import { AgentPermissionContributions } from "./permission-contributions"
 import { createBuiltinLegacySubagents } from "./builtin-legacy-subagents"
 import { createBuiltinPrimaryAgents } from "./builtin-primary"
 import { createBuiltinMaxSubagents } from "./builtin-max-subagents"
@@ -14,8 +15,6 @@ import { AgentCall } from "./call"
 import { buildGeneralPrompt } from "./prompt/general/builder"
 import { buildCodingPrompt } from "./prompt/coding/builder"
 import { buildLightweightPrompt } from "./prompt/lightweight/builder"
-import { buildSupervisorPrompt } from "./prompt/supervisor/builder"
-import { buildLightLoopReviewerPrompt } from "./prompt/lightloop-reviewer/builder"
 
 import { PermissionNext } from "../permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
@@ -191,8 +190,6 @@ export namespace Agent {
 
   const state = ScopedState.create(async () => {
     const cfg = await Config.current()
-    const evolutionActive =
-      ((cfg as any).library?.memory?.enabled ?? true) && (cfg as any).library?.experience?.encode !== false
     const role = (r: ModelRoleType) => Provider.resolveRoleModelSync(cfg, r)
 
     const defaults = PermissionNext.fromConfig({
@@ -223,7 +220,7 @@ export namespace Agent {
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
 
-    const builtinContext = { defaults, user, role, evolutionActive }
+    const builtinContext = { defaults, user: [], role }
     const result: Record<string, Info> = {
       ...(AgentBuiltins.enabled("primary") ? createBuiltinPrimaryAgents(builtinContext) : {}),
       ...(AgentBuiltins.enabled("legacy") ? createBuiltinLegacySubagents(builtinContext) : {}),
@@ -231,8 +228,25 @@ export namespace Agent {
       ...(AgentBuiltins.enabled("internal") ? createBuiltinInternalAgents(builtinContext) : {}),
       ...AgentBuiltins.collect(builtinContext),
     }
-    for (const item of Object.values(result)) {
+    const identities = new WeakMap<Info, AgentPermissionContributions.Identity>()
+    const configuredPermissions = new WeakMap<Info, PermissionNext.Ruleset>()
+    for (const [registrationKey, item] of Object.entries(result)) {
       item.source ??= "builtin"
+      const owner = AgentBuiltins.owner(item) ?? "harness"
+      const identity = {
+        registrationKey,
+        owner,
+        source: item.source,
+        subagentProfile: AgentBuiltins.profile(item),
+        primaryRole:
+          owner === "harness"
+            ? PrimaryAgentIdentity.roles.find((role) => PrimaryAgentIdentity.names[role] === registrationKey)
+            : undefined,
+      }
+      identities.set(item, identity)
+      configuredPermissions.set(item, user)
+      await AgentPermissionContributions.apply(item, identity, "base")
+      item.permission = PermissionNext.merge(item.permission, user)
     }
 
     for (const [key, value] of Object.entries(cfg.agent ?? {})) {
@@ -245,11 +259,18 @@ export namespace Agent {
         item = result[key] = {
           name: key,
           mode: "all",
-          permission: PermissionNext.merge(defaults, user),
+          permission: defaults,
           options: {},
           native: false,
           source: "config",
         }
+      if (!identities.has(item)) {
+        const identity = { registrationKey: key, owner: "config", source: "config" as const }
+        identities.set(item, identity)
+        configuredPermissions.set(item, user)
+        await AgentPermissionContributions.apply(item, identity, "base")
+        item.permission = PermissionNext.merge(item.permission, user)
+      }
       if (value.modelRole) {
         item.modelRole = value.modelRole
         item.model = role(value.modelRole)
@@ -272,7 +293,9 @@ export namespace Agent {
       item.color = value.color ?? item.color
       item.steps = value.steps ?? item.steps
       item.options = mergeDeep(item.options, value.options ?? {})
-      item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
+      const permissions = PermissionNext.fromConfig(value.permission ?? {})
+      configuredPermissions.set(item, PermissionNext.merge(configuredPermissions.get(item) ?? [], permissions))
+      item.permission = PermissionNext.merge(item.permission, permissions)
       item.defaultVariant = value.defaultVariant ?? item.defaultVariant
       if (value.controlProfile !== undefined) item.controlProfile = value.controlProfile as Agent.Info["controlProfile"]
     }
@@ -293,7 +316,7 @@ export namespace Agent {
         description: agent.description,
         prompt: agent.prompt,
         mode: agent.mode ?? "all",
-        permission: PermissionNext.merge(defaults, user, PermissionNext.fromConfig(agent.permission ?? {})),
+        permission: defaults,
         options: {},
         native: false,
         source: "plugin",
@@ -309,6 +332,12 @@ export namespace Agent {
         delegationGroups: agent.delegationGroups,
         color: agent.color,
       }
+      const identity = { registrationKey: agent.name, owner: agent.pluginId, source: "plugin" as const }
+      identities.set(registered, identity)
+      await AgentPermissionContributions.apply(registered, identity, "base")
+      const permissions = PermissionNext.merge(user, PermissionNext.fromConfig(agent.permission ?? {}))
+      configuredPermissions.set(registered, permissions)
+      registered.permission = PermissionNext.merge(registered.permission, permissions)
       result[agent.name] = registered
       pluginOwners.set(registered, {
         pluginId: agent.pluginId,
@@ -316,25 +345,9 @@ export namespace Agent {
       })
     }
 
-    for (const [name, item] of Object.entries(result)) {
-      // Skip agents that explicitly deny memory_write/memory_edit (e.g. coding primary).
-      // The blanket allow-patch uses PermissionNext.merge() which appends rules, and
-      // PermissionNext.evaluate() uses findLast() — so this patch would silently
-      // override any explicit "deny" configured in the agent's own permission builder.
-      const hasExplicitMemoryDeny = item.permission.some(
-        (r) => (r.permission === "memory_write" || r.permission === "memory_edit") && r.action === "deny",
-      )
-      if (hasExplicitMemoryDeny) continue
-
-      if (item.mode === "primary" && item.hidden !== true) {
-        item.permission = PermissionNext.merge(
-          item.permission,
-          PermissionNext.fromConfig({
-            memory_write: "allow",
-            memory_edit: "allow",
-          }),
-        )
-      }
+    for (const item of Object.values(result)) {
+      await AgentPermissionContributions.apply(item, identities.get(item)!)
+      item.permission = PermissionNext.merge(item.permission, configuredPermissions.get(item) ?? [])
     }
 
     // Ensure Truncate.directory() is allowed unless explicitly configured
@@ -383,25 +396,20 @@ export namespace Agent {
       }
     }
 
-    const agentInfos = Object.values(result).map((agent) => ({
-      name: agent.name,
-      description: agent.description ?? "",
-      mode: agent.mode,
-      hidden: agent.hidden,
-      visibleTo: agent.visibleTo,
-      delegationGroups: agent.delegationGroups,
-    }))
-    if (result[PrimaryAgentIdentity.names.general])
+    AgentBuiltins.buildPrompts(
+      result,
+      new Set(
+        Object.entries(cfg.agent ?? {})
+          .filter(([, value]) => value.prompt !== undefined)
+          .map(([key]) => key),
+      ),
+    )
+    if (result[PrimaryAgentIdentity.names.general] && !cfg.agent?.[PrimaryAgentIdentity.names.general]?.prompt)
       result[PrimaryAgentIdentity.names.general].prompt = buildGeneralPrompt()
-    if (result[PrimaryAgentIdentity.names.coding])
+    if (result[PrimaryAgentIdentity.names.coding] && !cfg.agent?.[PrimaryAgentIdentity.names.coding]?.prompt)
       result[PrimaryAgentIdentity.names.coding].prompt = buildCodingPrompt()
-    if (result[PrimaryAgentIdentity.names.lightweight])
+    if (result[PrimaryAgentIdentity.names.lightweight] && !cfg.agent?.[PrimaryAgentIdentity.names.lightweight]?.prompt)
       result[PrimaryAgentIdentity.names.lightweight].prompt = buildLightweightPrompt()
-    if (result.supervisor) result.supervisor.prompt = buildSupervisorPrompt(agentInfos)
-    if (result["lightloop-reviewer"]) {
-      result["lightloop-reviewer"].prompt = buildLightLoopReviewerPrompt(agentInfos)
-    }
-
     // Cross-agent reference lint: visibleTo entries that match no agent name
     // or declared delegation group silently restrict nothing — surface them
     // so a typo does not hide behind an agent that is never visible.
@@ -445,14 +453,13 @@ export namespace Agent {
 
   export async function list() {
     const cfg = await Config.current()
-    return pipe(
-      await state(),
-      values(),
-      sortBy([
-        (x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === PrimaryAgentIdentity.names.general),
-        "desc",
-      ]),
-    )
+    const agents = await state()
+    const configured = cfg.default_agent ? agents[cfg.default_agent] : undefined
+    const preferred =
+      configured && configured.mode !== "subagent" && !configured.hidden
+        ? configured.name
+        : PrimaryAgentIdentity.names.lightweight
+    return pipe(agents, values(), sortBy([(x) => x.name === preferred, "desc"]))
   }
 
   export async function modelRoleSummaries(): Promise<ModelRoleSummary[]> {
@@ -535,7 +542,7 @@ export namespace Agent {
       log.warn(`${reason}; falling back`)
     }
     const fallback =
-      agents.find((agent) => agent.name === PrimaryAgentIdentity.names.general && eligible(agent)) ??
+      agents.find((agent) => agent.name === PrimaryAgentIdentity.names.lightweight && eligible(agent)) ??
       agents.find(eligible)
     if (!fallback)
       throw new Error("No visible primary agent is available. Enable a primary agent in the agents configuration.")

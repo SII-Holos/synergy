@@ -187,3 +187,35 @@ test("a newer foreign edit remains a conflict after the older save response", as
   expect(document.conflict()?.remote.title).toBe("Other editor")
   document.dispose()
 })
+
+test("capability loss suspends writes and late responses without discarding the draft", async () => {
+  let writes = 0
+  let release!: (value: NoteInfo) => void
+  let persisted: unknown
+  const document = createNoteDocumentController({
+    id: "one",
+    persist: (value) => (persisted = value),
+    update: async (patch) => {
+      writes++
+      if (writes === 1) return new Promise<NoteInfo>((resolve) => (release = resolve))
+      return { ...note("one", 3), title: patch.title! }
+    },
+  })
+  document.ingest(note())
+  document.edit("title", "Keep after uninstall")
+  const saving = document.flush()
+  await Promise.resolve()
+  document.setAvailable(false)
+  release({ ...note("one", 2), title: "Keep after uninstall" })
+  expect(await saving).toBe(false)
+  expect(document.dirty().title).toBeGreaterThan(0)
+  expect(await document.flush()).toBe(false)
+  expect(writes).toBe(1)
+  expect(persisted).toMatchObject({ title: "Keep after uninstall" })
+  document.setAvailable(true)
+  document.ingest({ ...note("one", 2), title: "Keep after uninstall" })
+  expect(document.conflict()).not.toBeNull()
+  expect(await document.overwriteRemote()).toBe(true)
+  expect(writes).toBe(2)
+  document.dispose()
+})

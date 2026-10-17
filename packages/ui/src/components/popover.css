@@ -105,6 +105,92 @@
   }
 }
 
+[data-component="popover-content"]:has([data-component="resource-preview"]) {
+  width: min(350px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: min(560px, var(--kb-popper-content-available-height, calc(100dvh - 24px)));
+  overflow: hidden;
+}
+
+[data-component="resource-preview"] {
+  display: flex;
+  flex-direction: column;
+  max-height: min(534px, calc(var(--kb-popper-content-available-height, 100dvh - 24px) - 26px));
+  color: var(--text-base);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+
+  header,
+  footer,
+  [data-slot="resource-preview-source"] {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  header {
+    justify-content: space-between;
+  }
+  header,
+  h3,
+  footer,
+  [data-slot="resource-preview-target"] {
+    flex-shrink: 0;
+  }
+  [data-slot="resource-preview-details"] {
+    min-height: 0;
+    overflow: auto;
+  }
+  footer {
+    margin-top: 12px;
+  }
+  footer > :first-child {
+    margin-inline-end: auto;
+  }
+  [data-reference-icon] {
+    color: var(--text-interactive-base);
+  }
+  [data-component="file-icon"] {
+    width: 18px;
+    height: 18px;
+  }
+  h3 {
+    color: var(--text-strong);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    margin: 8px 0;
+    max-height: 3em;
+    overflow: auto;
+  }
+  p {
+    margin: 8px 0;
+  }
+  [data-slot="resource-preview-path"],
+  [data-slot="resource-preview-meta"],
+  [data-slot="resource-preview-target"] {
+    color: var(--text-weak);
+    font-size: var(--font-size-small);
+  }
+  [data-slot="resource-preview-target"] {
+    display: block;
+    margin-top: 8px;
+    max-height: 4.5em;
+    overflow: auto;
+  }
+  pre {
+    white-space: pre-wrap;
+    font-family: var(--font-family-mono);
+    margin: 12px 0;
+    max-height: min(180px, 25dvh);
+    overflow: auto;
+  }
+  button:focus-visible {
+    background: var(--surface-raised-base);
+  }
+}
+
 @media (pointer: coarse) {
   [data-component="popover-content"][data-variant="menu"] [data-slot="list-item"] {
     min-height: 44px;

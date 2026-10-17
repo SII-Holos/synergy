@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { BrowserUserCommandSchema } from "@ericsanchezok/synergy-browser-core"
+import { BROWSER_PROTOCOL_VERSION, BrowserUserCommandSchema } from "@ericsanchezok/synergy-browser-core"
 import {
   browserControlCommandFromMessage,
   shouldResumeBrowserSession,
@@ -91,6 +91,12 @@ describe("browserControlCommandFromMessage", () => {
       source: "user",
       url: "www.google.com",
     })
+    expect(browserControlCommandFromMessage({ type: "input.resize", mode: "fit", width: 800, height: 600 })).toEqual({
+      type: "setViewport",
+      mode: "fit",
+      width: 800,
+      height: 600,
+    })
     const fileChooser = browserControlCommandFromMessage({
       type: "filechooser.select",
       requestId: "chooser-1",
@@ -109,7 +115,7 @@ describe("browserControlCommandFromMessage", () => {
 describe("Browser session bootstrap", () => {
   const state = {
     type: "session.state" as const,
-    protocolVersion: 5 as const,
+    protocolVersion: BROWSER_PROTOCOL_VERSION,
     ownerKey: "owner-1",
     status: "active" as const,
     pages: [

@@ -6,7 +6,6 @@
   padding: 0 12px 6px;
   pointer-events: auto;
   color: var(--text-base);
-  animation: progress-enter 180ms ease-out both;
 }
 .session-progress-island-header {
   display: flex;
@@ -29,11 +28,6 @@
 .session-progress-island-header:hover {
   color: var(--text-base);
   background: var(--workbench-row-bg-hover);
-}
-.session-progress-island-header:focus-visible,
-.session-progress-island-tab:focus-visible {
-  outline: 2px solid var(--border-interactive-base);
-  outline-offset: 2px;
 }
 .session-progress-island-title {
   min-width: 0;
@@ -104,10 +98,6 @@
 .session-progress-island-close:hover {
   background: var(--workbench-row-bg-hover);
   color: var(--text-base);
-}
-.session-progress-island-close:focus-visible {
-  outline: 2px solid var(--border-interactive-base);
-  outline-offset: 2px;
 }
 .session-progress-island[data-expanded="true"] {
   z-index: 50;
@@ -236,14 +226,6 @@
 .session-progress-island[data-exiting="true"] {
   animation: progress-exit 180ms ease-in both;
   pointer-events: none;
-}
-@keyframes progress-enter {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 @keyframes progress-exit {
   from {

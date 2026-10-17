@@ -4,12 +4,26 @@ import path from "path"
 import fs from "fs/promises"
 import { AgentConfig } from "../../src/agent/config-crud"
 import { Agent } from "../../src/agent/agent"
+import { AgentBuiltins } from "../../src/agent/builtins"
 import { Config } from "../../src/config/config"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({
+  register() {
+    AgentBuiltins.register("fixture", () => ({
+      "hidden-primary-fixture": {
+        name: "hidden-primary-fixture",
+        mode: "primary",
+        hidden: true,
+        native: true,
+        permission: [],
+        options: {},
+      },
+    }))
+  },
+})
 
 let originalAgentsConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
 
@@ -450,7 +464,7 @@ describe("AgentConfig.setDefault", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          await expect(AgentConfig.setDefault("boss-synergy")).rejects.toThrow(/hidden/i)
+          await expect(AgentConfig.setDefault("hidden-primary-fixture")).rejects.toThrow(/hidden/i)
         },
       })
     }))
@@ -524,56 +538,72 @@ describe("AgentConfig.remove", () => {
 })
 
 describe("Agent.defaultAgent fallback", () => {
-  test("falls back to synergy with a warning when default_agent points to a nonexistent agent", () =>
+  test("falls back to the lightweight primary when default_agent points to a nonexistent agent", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ config: { default_agent: "ghost-agent" } })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          expect(await Agent.defaultAgent()).toBe(PrimaryAgentIdentity.names.general)
+          expect(await Agent.defaultAgent()).toBe(PrimaryAgentIdentity.names.lightweight)
+          expect((await Agent.list()).find((agent) => agent.mode !== "subagent" && !agent.hidden)?.name).toBe(
+            PrimaryAgentIdentity.names.lightweight,
+          )
         },
       })
     }))
 
-  test("falls back to synergy when default_agent points to a subagent-only agent", () =>
+  test("falls back to the lightweight primary when default_agent points to a subagent-only agent", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ config: { default_agent: "developer" } })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          expect(await Agent.defaultAgent()).toBe(PrimaryAgentIdentity.names.general)
+          expect(await Agent.defaultAgent()).toBe(PrimaryAgentIdentity.names.lightweight)
+          expect((await Agent.list()).find((agent) => agent.mode !== "subagent" && !agent.hidden)?.name).toBe(
+            PrimaryAgentIdentity.names.lightweight,
+          )
         },
       })
     }))
 
-  test("falls back to synergy when default_agent points to a hidden agent", () =>
+  test("falls back to the lightweight primary when default_agent points to a hidden agent", () =>
     runtime.run(async () => {
-      await using tmp = await tmpdir({ config: { default_agent: "boss-synergy" } })
+      await using tmp = await tmpdir({ config: { default_agent: "hidden-primary-fixture" } })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          expect(await Agent.defaultAgent()).toBe(PrimaryAgentIdentity.names.general)
+          expect(await Agent.defaultAgent()).toBe(PrimaryAgentIdentity.names.lightweight)
+          expect((await Agent.list()).find((agent) => agent.mode !== "subagent" && !agent.hidden)?.name).toBe(
+            PrimaryAgentIdentity.names.lightweight,
+          )
         },
       })
     }))
 
-  test("falls back to another available primary when synergy itself is disabled", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({
-        config: {
-          agent: { synergy: { disable: true } },
-        },
-      })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const resolved = await Agent.defaultAgent()
-          expect(resolved).not.toBe(PrimaryAgentIdentity.names.general)
-          expect(await Agent.get(resolved)).toBeDefined()
-          expect((await Agent.get(resolved))?.mode).not.toBe("subagent")
-        },
-      })
-    }))
+  test.each([{ disable: true }, { hidden: true }, { mode: "subagent" as const }])(
+    "falls back to another available primary when the lightweight primary is not selectable: %j",
+    (override) =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          config: {
+            agent: { [PrimaryAgentIdentity.names.lightweight]: override },
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const resolved = await Agent.defaultAgent()
+            expect(resolved).not.toBe(PrimaryAgentIdentity.names.lightweight)
+            expect(await Agent.get(resolved)).toBeDefined()
+            expect((await Agent.get(resolved))?.mode).not.toBe("subagent")
+            expect((await Agent.get(resolved))?.hidden).not.toBe(true)
+            expect((await Agent.list()).find((agent) => agent.mode !== "subagent" && !agent.hidden)?.name).toBe(
+              resolved,
+            )
+          },
+        })
+      }),
+  )
 
   test("returns a configured custom primary agent as default", () =>
     runtime.run(async () => {

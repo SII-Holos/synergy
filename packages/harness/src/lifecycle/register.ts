@@ -1,3 +1,4 @@
+import { registerCoreEvents } from "../bus/register"
 import { WorkspaceOperations } from "../workspace/operations"
 import { registerConfigMigrations } from "../config/migration"
 import { registerScopeMigrations } from "../scope/migration"
@@ -9,7 +10,6 @@ import { registerSummaryJob } from "../session/summary"
 import { registerTitleJob } from "../session/title"
 import { registerLoopSignals } from "../session/loop-signals"
 import { SessionCompaction } from "../session/compaction"
-import { registerSearchFailureAnalyzer } from "../tool/search-guard"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { RuntimeContext } from "./context"
 import { UsageMigration } from "../usage/migration"
@@ -24,6 +24,7 @@ const registration = RuntimeContext.state(() => ({ complete: false }))
 export function registerHarness() {
   const state = registration()
   if (state.complete) return
+  registerCoreEvents()
   registerConfigMigrations()
   registerScopeMigrations()
   registerSessionMigrations()
@@ -41,7 +42,6 @@ export function registerHarness() {
   registerTitleJob()
   registerLoopSignals()
   SessionCompaction.registerJobs()
-  registerSearchFailureAnalyzer()
   ObservabilityMetrics.register()
   state.complete = true
 }

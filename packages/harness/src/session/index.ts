@@ -112,6 +112,10 @@ export namespace Session {
   export type Info = InfoType
   export type StatusInfo = StatusInfoType
 
+  export function publicInfo(info: Info): Info {
+    return Info.parse(structuredClone(info))
+  }
+
   export const EndpointScopeMismatchError = NamedError.create(
     "SessionEndpointScopeMismatchError",
     z.object({
@@ -224,7 +228,13 @@ export namespace Session {
       page.entries.sort((a, b) => b.updated - a.updated || b.id.localeCompare(a.id))
       nav.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id))
       await tx.write(["sessions_page_index", scopeID], page)
-      await tx.write(["session_nav_v2", scopeID], { version: 1, scopeID, updatedAt: Date.now(), entries: nav })
+      await tx.write(["session_nav_v2", scopeID], {
+        version: 1,
+        composition: SessionSchemaRegistry.projectionKey(),
+        scopeID,
+        updatedAt: Date.now(),
+        entries: nav,
+      })
       for (const [parentID, child] of children) {
         sortChildIndexEntries(child.entries)
         await tx.write(["session_child_index", scopeID, parentID], child)
@@ -518,7 +528,7 @@ export namespace Session {
   ) {
     const instanceState = runtimeState()
 
-    const info = await withRuntimeInfo(session)
+    const info = publicInfo(await withRuntimeInfo(session))
     const key = publishCompareKey(info)
     const now = Date.now()
     const prev = instanceState.lastPublish.get(session.id)
@@ -586,7 +596,9 @@ export namespace Session {
               ? input.workspace
               : parent?.scope.id === scope.id
                 ? parent.workspace
-                : ScopeContext.defaultWorkspace(scope),
+                : scope.type === "home"
+                  ? await SessionWorkspaceRuntime.homeWorkspace()
+                  : ScopeContext.defaultWorkspace(scope),
             scope.id,
           )
     if (workspace) {
@@ -796,6 +808,7 @@ export namespace Session {
             ...(msg.info.role === "assistant" ? { accounting: MessageV2.copyAccounting(msg.info, "inherited") } : {}),
             sessionID,
             id: messageMap.get(msg.info.id)!,
+            ...(msg.info.rootID ? { rootID: messageMap.get(msg.info.rootID) ?? msg.info.rootID } : {}),
             ...("parentID" in msg.info && typeof msg.info.parentID === "string"
               ? { parentID: messageMap.get(msg.info.parentID) ?? msg.info.parentID }
               : {}),
@@ -1613,7 +1626,10 @@ export namespace Session {
           SessionManager.forgetSession(id)
           SessionMessageCache.disable(id)
         })
-        await ScopeContext.provide({ scope, fn: () => Bus.publish(SessionEvent.Deleted, { info: session }) })
+        await ScopeContext.provide({
+          scope,
+          fn: () => Bus.publish(SessionEvent.Deleted, { info: publicInfo(session) }),
+        })
         removed.push(session)
       }
       await removeTree(sessionID)
@@ -1725,6 +1741,11 @@ export namespace Session {
         StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)),
         (draft) => {
           if (draft.role !== "assistant") throw new Error("Context Usage can only be attached to assistant messages")
+          if (
+            input.contextUsage.callID &&
+            (draft.accounting?.kind !== "rollout" || draft.accounting.callIDs.at(-1) !== input.contextUsage.callID)
+          )
+            return
           draft.contextUsage = input.contextUsage
         },
       )

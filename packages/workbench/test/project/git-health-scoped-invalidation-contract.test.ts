@@ -19,7 +19,8 @@
 // not installed in worktrees).
 // ---------------------------------------------------------------------------
 
-import { describe, expect, test, beforeAll } from "bun:test"
+import { describe, expect, test, beforeAll, spyOn } from "bun:test"
+import fs from "node:fs"
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import os from "node:os"
@@ -91,6 +92,51 @@ async function gitEmptyCommit(dir: string, message = "test commit"): Promise<voi
 // ===========================================================================
 
 describe("GitHealth.invalidate — scoped vs global contract", () => {
+  gitHealthTest("a root invalidation fences an in-flight cold scan from a subdirectory", async () => {
+    const repo = makeRepo()
+    const realRepo = fs.realpathSync(repo.path)
+    const originalStat = fs.promises.lstat.bind(fs.promises)
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    let captured = false
+    const delayed = spyOn(fs.promises, "lstat").mockImplementation((async (
+      ...args: Parameters<typeof fs.promises.lstat>
+    ) => {
+      const result = await originalStat(...args)
+      if (String(args[0]) === join(realRepo, "sample.bin") && !captured) {
+        captured = true
+        entered.resolve()
+        await release.promise
+      }
+      return result
+    }) as typeof fs.promises.lstat)
+    try {
+      await gitInit(repo.path)
+      await gitEmptyCommit(repo.path)
+      mkdirSync(join(repo.path, "sub"))
+      writeFileSync(join(repo.path, "sample.bin"), "small")
+      await $`git add sample.bin`.cwd(repo.path).quiet()
+      const scan = GitHealth.refresh(join(repo.path, "sub"))
+      await Promise.race([
+        entered.promise,
+        scan.then(() => {
+          throw new Error("Scan completed before the file probe")
+        }),
+      ])
+      writeFileSync(join(repo.path, "sample.bin"), Buffer.alloc(11 * 1024 * 1024))
+      GitHealth.invalidate(realRepo)
+      release.resolve()
+      const issues = await scan
+      expect(issues.some((issue) => issue.dimension === "large_files")).toBe(true)
+      expect(GitHealth.observeCached(realRepo).state).toBe("present")
+    } finally {
+      release.resolve()
+      delayed.mockRestore()
+      repo.cleanup()
+      GitHealth.invalidate()
+    }
+  })
+
   gitHealthTest(
     "invalidate(cwd) clears only the specified directory's cache; other dirs survive",
     async () => {

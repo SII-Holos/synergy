@@ -35,6 +35,54 @@ const model: Provider.Model = {
   release_date: "2026-01-01",
 }
 const originalLanguage = Provider.getLanguage
+
+test.each(["server_is_overloaded", "server_overloaded", "service_unavailable_error", "slow_down"])(
+  "classifies the Responses transient code %s",
+  (code) => {
+    for (const error of [
+      { code, message: "temporarily unavailable" },
+      { type: "error", error: { code, message: "temporarily unavailable" } },
+      new Error(JSON.stringify({ type: "response.failed", response: { error: { code } } })),
+    ]) {
+      expect(providerRetryable(error)).toBe(true)
+    }
+  },
+)
+
+test.each([
+  "Our servers are currently overloaded. Please try again later.",
+  "Selected model is at capacity. Please try a different model.",
+])("recognizes the message-only subscription failure: %s", (message) => {
+  expect(providerRetryable(new Error(message))).toBe(true)
+  expect(providerRetryable(`Error: ${message}`)).toBe(true)
+  expect(providerRetryable(new Error(`Unrecognized failure: ${message}`))).toBeUndefined()
+  expect(providerRetryable(Object.assign(new Error(message), { statusCode: 401 }))).toBe(false)
+})
+
+test.each([
+  "usage_limit_reached",
+  "usage_not_included",
+  "credit_balance_exhausted",
+  "organization_spend_limit_exceeded",
+  "project_spend_limit_exceeded",
+  "context_length_exceeded",
+  "invalid_prompt",
+  "cyber_policy",
+  "bio_policy",
+  "misalignment_policy_violation",
+])("keeps %s terminal despite HTTP 429, a transient type and retry hints", (code) => {
+  const error = new APICallError({
+    url: "https://provider.invalid",
+    requestBodyValues: {},
+    message: "Our servers are currently overloaded. Please try again later.",
+    statusCode: 429,
+    responseHeaders: { "retry-after": "1" },
+    responseBody: JSON.stringify({ error: { code, type: "server_error" } }),
+    isRetryable: true,
+  })
+  expect(providerRetryable(error)).toBe(false)
+})
+
 afterEach(
   runtime.bind(() => {
     Provider.getLanguage = originalLanguage
