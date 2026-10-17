@@ -2,6 +2,7 @@ import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/prima
 import { afterAll, beforeAll, describe, expect, test, mock, spyOn } from "bun:test"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionProcessor } from "@ericsanchezok/synergy-harness/test/support/internals"
 import { PromptBudgeter } from "@ericsanchezok/synergy-harness/test/internal/session/prompt-budgeter"
 import { ToolResolver } from "@ericsanchezok/synergy-harness/test/support/internals"
@@ -16,6 +17,8 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionCompaction } from "@ericsanchezok/synergy-harness/test/internal/session/compaction"
+import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
+import { TimeoutConfig } from "@ericsanchezok/synergy-harness/util/timeout-config"
 import { Embedding } from "@ericsanchezok/synergy-library/vector/embedding"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
 import { CodexProvider } from "@ericsanchezok/synergy-harness/provider/codex"
@@ -182,6 +185,33 @@ async function filterNewestFirst(messages: MessageV2.WithParts[]) {
   )
 }
 
+function compactionDeadline() {
+  const invokeMs = 12_345
+  const realTimeout = globalThis.setTimeout
+  let expire: (() => void) | undefined
+  const timer = spyOn(globalThis, "setTimeout").mockImplementation(
+    new Proxy(realTimeout, {
+      apply(target, receiver, args) {
+        if (args[1] === invokeMs) {
+          expire = () => args[0]()
+          return Reflect.apply(target, receiver, [() => {}, invokeMs])
+        }
+        return Reflect.apply(target, receiver, args)
+      },
+    }) as typeof setTimeout,
+  )
+  return {
+    invokeMs,
+    expire() {
+      expect(expire).toBeDefined()
+      expire!()
+    },
+    [Symbol.dispose]() {
+      timer.mockRestore()
+    },
+  }
+}
+
 async function runCompactionProcessCase(input: {
   providerID?: string
   replayModelID?: string
@@ -192,6 +222,25 @@ async function runCompactionProcessCase(input: {
   thrownError?: Error
   variant?: string
   modelLimit?: { context: number; output: number }
+  native?: boolean
+  abort?: AbortController
+  toolOutput?: boolean
+  historyText?: string
+  cold?: boolean
+  invokeMs?: number
+  beforePrepare?: (request: AgentTurn.Input) => Promise<void>
+  beforeCompacting?: () => Promise<void>
+  afterProcess?: () => Promise<void>
+  beforeProcessorCreate?: () => void
+  onProcessorSettled?: () => void
+  preparedMessages?: AgentTurn.Input["messages"]
+  beforeSummaryCommit?: () => Promise<void>
+  afterSummaryCommit?: () => void
+  beforeHistoryTransform?: (signal?: AbortSignal) => Promise<void>
+  assistantMessageID?: string
+  beforeProcess?: () => void
+  beforeAttemptWrite?: (message: MessageV2.Assistant) => Promise<void>
+  beforeProviderLookup?: () => void
 }) {
   await using tmp = await tmpdir({ git: true })
   const scope = await tmp.scope()
@@ -203,6 +252,21 @@ async function runCompactionProcessCase(input: {
   const originalProcessorCreate = SessionProcessor.create
   const originalPluginTrigger = Plugin.trigger
   const originalUpdateMessage = Session.updateMessage
+  const originalResolveTimeout = TimeoutConfig.resolve
+  const prepared: NonNullable<AgentTurn.Input["prepared"]> = {
+    system: ["stable final system"],
+    baseSystemLength: 1,
+    provider: { options: {}, timeouts: { ttfbMs: 1_000, idleMs: false, wallMs: false } },
+    params: { options: { reasoningEffort: "high" } },
+  }
+  using prepare = spyOn(AgentTurn, "prepare").mockImplementation(async (request) => {
+    await input.beforePrepare?.(request)
+    return { ...request, messages: input.preparedMessages ?? request.messages, prepared }
+  })
+  using timeout = spyOn(TimeoutConfig, "resolve").mockImplementation(async () => {
+    const config = await originalResolveTimeout()
+    return { ...config, invokeMs: input.invokeMs ?? config.invokeMs }
+  })
 
   let initialSummary: boolean | undefined
   let initialIncludeInContext: boolean | undefined
@@ -210,6 +274,7 @@ async function runCompactionProcessCase(input: {
   const attemptStates: Array<unknown> = []
   let processUserVariant: string | undefined
   let processMaxOutputTokens: number | undefined
+  let processInput: SessionProcessor.ProcessInput | undefined
 
   try {
     ;(Provider.getModel as any) = mock(async (providerID: string, modelID: string) => ({
@@ -217,36 +282,53 @@ async function runCompactionProcessCase(input: {
       providerID,
       id: modelID,
     }))
-    ;(Provider.getProvider as any) = mock(async (providerID: string) => ({
-      profileID:
-        providerID === CodexProvider.PROVIDER_ID || providerID === "codex-work"
-          ? CodexProvider.PROVIDER_ID
-          : "test-provider",
-    }))
+    ;(Provider.getProvider as any) = mock(async (providerID: string) => {
+      input.beforeProviderLookup?.()
+      return {
+        profileID:
+          providerID === CodexProvider.PROVIDER_ID || providerID === "codex-work"
+            ? CodexProvider.PROVIDER_ID
+            : "test-provider",
+      }
+    })
     ;(Agent.get as any) = mock(async () => primaryAgent())
     ;(Agent.getAvailableModel as any) = mock(async () => ({
       providerID: "test-provider",
       modelID: "test-model",
     }))
-    ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
+    ;(Plugin.trigger as any) = mock(
+      async (name: string, _context: unknown, value: unknown, options?: { signal?: AbortSignal }) => {
+        if (name === "experimental.session.compacting") await input.beforeCompacting?.()
+        if (name === "experimental.chat.messages.transform") await input.beforeHistoryTransform?.(options?.signal)
+        return value
+      },
+    )
     ;(Session.updateMessage as any) = mock(async (message: MessageV2.Info) => {
       if (message.role === "assistant" && message.mode === "compaction") {
         attemptStates.push(message.metadata?.compactionAttempt)
       }
-      return await originalUpdateMessage(message)
+      if (message.role === "assistant" && message.mode === "compaction" && message.summary) {
+        await input.beforeSummaryCommit?.()
+      }
+      if (message.role === "assistant" && message.mode === "compaction") await input.beforeAttemptWrite?.(message)
+      const persisted = await originalUpdateMessage(message)
+      if (message.role === "assistant" && message.mode === "compaction" && message.summary) input.afterSummaryCommit?.()
+      return persisted
     })
     ;(SessionProcessor.create as any) = mock((processorInput: Parameters<typeof SessionProcessor.create>[0]) => {
       initialSummary = processorInput.assistantMessage.summary
       initialIncludeInContext = processorInput.assistantMessage.includeInContext
       initialVisible = processorInput.assistantMessage.visible
+      input.beforeProcessorCreate?.()
       return {
         message: processorInput.assistantMessage,
         partFromToolCall: () => undefined,
         modelInputFromToolCall: () => undefined,
         trackExecution: () => {},
-        process: mock(async (processInput: SessionProcessor.ProcessInput) => {
-          processUserVariant = processInput.user.variant
-          processMaxOutputTokens = processInput.maxOutputTokens
+        process: mock(async (request: SessionProcessor.ProcessInput) => {
+          processInput = request
+          processUserVariant = request.user.variant
+          processMaxOutputTokens = request.maxOutputTokens
           await input.beforeLocal?.()
           if (input.thrownError) throw input.thrownError
           if (input.text) {
@@ -260,10 +342,29 @@ async function runCompactionProcessCase(input: {
               time: { start: now, end: now },
             })
           }
+          if (input.toolOutput) {
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              messageID: processorInput.assistantMessage.id,
+              sessionID: processorInput.sessionID,
+              type: "tool",
+              tool: "fixture_tool",
+              callID: "forbidden_call",
+              state: {
+                status: "completed",
+                input: {},
+                output: "prohibited",
+                title: "Forbidden",
+                metadata: {},
+                time: { start: 0, end: 1 },
+              },
+            })
+          }
           if (input.error) processorInput.assistantMessage.error = input.error
           else processorInput.assistantMessage.finish = "stop"
           processorInput.assistantMessage.time.completed = Date.now()
           await Session.updateMessage(processorInput.assistantMessage)
+          input.onProcessorSettled?.()
           return "stop" as const
         }),
       }
@@ -282,12 +383,13 @@ async function runCompactionProcessCase(input: {
           time: { created: Date.now() },
           ...(input.variant ? { variant: input.variant } : {}),
         })
+        if (user.role !== "user") throw new Error("Expected a user message")
         await Session.updatePart({
           id: Identifier.ascending("part"),
           messageID: user.id,
           sessionID: session.id,
           type: "text",
-          text: "Continue this task after compaction.",
+          text: input.historyText ?? "Continue this task after compaction.",
         })
         await Session.updatePart({
           id: Identifier.ascending("part"),
@@ -297,20 +399,47 @@ async function runCompactionProcessCase(input: {
           auto: input.auto ?? false,
         })
 
+        if (input.assistantMessageID) {
+          await originalUpdateMessage(
+            testAssistant({
+              id: input.assistantMessageID,
+              sessionID: session.id,
+              parentID: user.id,
+              created: Date.now(),
+            }).info,
+          )
+        }
         const before = await Session.messages({ sessionID: session.id })
         let result: Awaited<ReturnType<typeof SessionCompaction.process>> | undefined
         let thrown: unknown
+        input.beforeProcess?.()
         try {
           result = await SessionCompaction.process({
             parentID: user.id,
             messages: before,
             sessionID: session.id,
-            abort: new AbortController().signal,
+            abort: input.abort?.signal ?? new AbortController().signal,
             auto: input.auto ?? false,
+            assistantMessageID: input.assistantMessageID,
+            request: input.native
+              ? {
+                  user,
+                  model: await Provider.getModel(user.model.providerID, user.model.modelID),
+                  agent: await Agent.get(user.agent),
+                  system: ["stable system"],
+                  systemCacheBreakpoint: 1,
+                  lateSystem: ["runtime context"],
+                  messages: MessageV2.toModelMessage(before),
+                  toolDefinitions: [{ id: "fixture_tool", description: "Fixture", inputSchema: { type: "object" } }],
+                  activeToolIDs: ["fixture_tool"],
+                  ...(input.cold ? {} : { prepared }),
+                }
+              : undefined,
           })
         } catch (error) {
           thrown = error
         }
+        await input.afterProcess?.()
         const after = await Session.messages({ sessionID: session.id })
         const attempt = after.find(
           (message): message is MessageV2.WithParts & { info: MessageV2.Assistant } =>
@@ -346,7 +475,9 @@ async function runCompactionProcessCase(input: {
           initialVisible,
           processUserVariant,
           processMaxOutputTokens,
+          processInput,
           attemptStates,
+          prepareCalls: prepare.mock.calls,
         }
       },
     })
@@ -1391,6 +1522,314 @@ describe.serial("SessionInvoke preflight compaction", () => {
       expect(observed.processUserVariant).toBeUndefined()
     }))
 
+  test("native compaction retains the task variant and schemas without execution callbacks", () =>
+    runtime.run(async () => {
+      const observed = await runCompactionProcessCase({ native: true, variant: "high", text: "Native summary" })
+      expect(observed.processUserVariant).toBe("high")
+      expect(observed.processInput).toMatchObject({
+        toolChoice: "none",
+        executionTools: {},
+        executorKinds: {},
+        activeToolIDs: ["fixture_tool"],
+        systemCacheBreakpoint: 1,
+        lateSystem: ["runtime context"],
+        prepared: { params: { options: { reasoningEffort: "high" } } },
+      })
+      expect(observed.processInput?.toolDefinitions.map((definition) => definition.id)).toEqual(["fixture_tool"])
+      expect(observed.processInput?.promptSuffix).toContain("Write the compaction continuation summary now.")
+      expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "committed" })
+      expect(observed.prepareCalls).toHaveLength(0)
+    }))
+
+  test("persists compacting hook failures on the handed-off compaction attempt", () =>
+    runtime.run(async () => {
+      const error = new Error("compacting hook failed")
+      const assistantMessageID = Identifier.ascending("message")
+      const observed = await runCompactionProcessCase({
+        native: true,
+        auto: true,
+        assistantMessageID,
+        beforeCompacting: async () => {
+          throw error
+        },
+      })
+      expect(observed.thrown).toBe(error)
+      expect(observed.processInput).toBeUndefined()
+      expect(observed.attempt.info).toMatchObject({
+        id: assistantMessageID,
+        agent: "compaction",
+        mode: "compaction",
+        parentID: observed.root.info.id,
+        rootID: observed.root.info.id,
+        finish: "error",
+        visible: true,
+        includeInContext: false,
+        metadata: { compactionAttempt: { state: "failed" } },
+      })
+      expect(observed.attempt.info.time.completed).toBeNumber()
+      expect(observed.attempt.info.summary).toBeUndefined()
+      expect(observed.attemptStates).toEqual([{ state: "running" }, { state: "failed" }])
+      expect(observed.messages).toHaveLength(2)
+    }))
+
+  for (const stage of ["budget", "processor creation"] as const) {
+    test(`settles native compaction ${stage} failures without dispatch or continuation`, () =>
+      runtime.run(async () => {
+        const error = new Error(`${stage} failed`)
+        using measure = spyOn(PromptBudgeter, "measure")
+        if (stage === "budget") measure.mockRejectedValue(error)
+        const observed = await runCompactionProcessCase({
+          native: true,
+          auto: true,
+          beforeProcessorCreate:
+            stage === "processor creation"
+              ? () => {
+                  throw error
+                }
+              : undefined,
+        })
+        expect(observed.thrown).toBe(error)
+        expect(observed.processInput).toBeUndefined()
+        expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
+        expect(observed.attemptStates).toEqual([{ state: "running" }, { state: "failed" }])
+        expect(observed.messages).toHaveLength(2)
+      }))
+  }
+
+  for (const stage of ["session lookup", "attempt persistence", "provider lookup"] as const) {
+    test(`owns a handed-off native compaction failure during ${stage}`, () =>
+      runtime.run(async () => {
+        const error = new Error(`${stage} failed`)
+        const assistantMessageID = Identifier.ascending("message")
+        using sessionLookup = spyOn(SessionManager, "requireSession")
+        let shouldRejectWrite = true
+        const observed = await runCompactionProcessCase({
+          native: true,
+          auto: true,
+          assistantMessageID,
+          beforeProcess: () => {
+            if (stage === "session lookup") sessionLookup.mockRejectedValueOnce(error)
+          },
+          beforeProviderLookup:
+            stage === "provider lookup"
+              ? () => {
+                  throw error
+                }
+              : undefined,
+          beforeAttemptWrite: async () => {
+            if (stage === "attempt persistence" && shouldRejectWrite) {
+              shouldRejectWrite = false
+              throw error
+            }
+          },
+        })
+        expect(observed.thrown).toBe(error)
+        expect(observed.processInput).toBeUndefined()
+        expect(observed.attempt.info).toMatchObject({
+          id: assistantMessageID,
+          agent: "compaction",
+          mode: "compaction",
+          finish: "error",
+          includeInContext: false,
+          metadata: { compactionAttempt: { state: "failed" } },
+        })
+        expect(observed.messages).toHaveLength(2)
+      }))
+  }
+
+  test("prepares a cold native request exactly once inside the compaction owner", () =>
+    runtime.run(async () => {
+      const observed = await runCompactionProcessCase({
+        native: true,
+        cold: true,
+        text: "Cold summary",
+        preparedMessages: [{ role: "user", content: "materialized history" }],
+      })
+      expect(observed.prepareCalls).toHaveLength(1)
+      expect(observed.prepareCalls[0][0]).toMatchObject({
+        toolChoice: "none",
+        sessionID: observed.root.info.sessionID,
+      })
+      expect(observed.processInput?.prepared?.system).toEqual(["stable final system"])
+      expect(observed.processInput?.messages).toEqual([{ role: "user", content: "materialized history" }])
+      expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "committed" })
+    }))
+
+  for (const stage of ["preparation", "compacting hook"] as const) {
+    test(`bounds a non-cooperative native ${stage} and rejects its late completion`, () =>
+      runtime.run(async () => {
+        const release = Promise.withResolvers<void>()
+        using deadline = compactionDeadline()
+        try {
+          const observed = await runCompactionProcessCase({
+            native: true,
+            cold: stage === "preparation",
+            auto: true,
+            invokeMs: deadline.invokeMs,
+            text: "Late summary must not commit",
+            beforePrepare:
+              stage === "preparation"
+                ? () => {
+                    deadline.expire()
+                    return release.promise
+                  }
+                : undefined,
+            beforeCompacting:
+              stage === "compacting hook"
+                ? () => {
+                    deadline.expire()
+                    return release.promise
+                  }
+                : undefined,
+            afterProcess: async () => {
+              release.resolve()
+              await Bun.sleep(0)
+            },
+          })
+          expect(observed.thrown).toMatchObject({ name: "AbortError" })
+          expect(String(observed.thrown)).toContain(`timed out after ${deadline.invokeMs}ms`)
+          expect(observed.processInput).toBeUndefined()
+          expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
+          expect(observed.attempt.info.finish).toBe("error")
+          expect(observed.attempt.info.summary).toBeUndefined()
+          expect(observed.attempt.info.includeInContext).toBe(false)
+          expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
+          expect(observed.messages).toHaveLength(2)
+          if (stage === "preparation") expect(observed.prepareCalls[0][0].abort.aborted).toBe(true)
+        } finally {
+          release.resolve()
+        }
+      }))
+  }
+
+  test("restores the failed deadline attempt after a non-cooperative processor writes late", () =>
+    runtime.run(async () => {
+      const release = Promise.withResolvers<void>()
+      const settled = Promise.withResolvers<void>()
+      using deadline = compactionDeadline()
+      try {
+        const observed = await runCompactionProcessCase({
+          native: true,
+          auto: true,
+          invokeMs: deadline.invokeMs,
+          text: "Late processor output",
+          beforeLocal: () => {
+            deadline.expire()
+            return release.promise
+          },
+          onProcessorSettled: () => settled.resolve(),
+          afterProcess: async () => {
+            release.resolve()
+            await settled.promise
+            await Bun.sleep(0)
+          },
+        })
+        expect(observed.thrown).toMatchObject({ name: "AbortError" })
+        expect(observed.processInput?.abort.aborted).toBe(true)
+        expect(observed.attempt.info).toMatchObject({
+          finish: "error",
+          metadata: { compactionAttempt: { state: "failed" } },
+          includeInContext: false,
+        })
+        expect(observed.attempt.info.summary).toBeUndefined()
+        expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
+        expect(observed.messages).toHaveLength(2)
+      } finally {
+        release.resolve()
+      }
+    }))
+
+  test("propagates session cancellation through a hanging native hook with invoke deadline disabled", () =>
+    runtime.run(async () => {
+      const abort = new AbortController()
+      const release = Promise.withResolvers<void>()
+      const observed = await runCompactionProcessCase({
+        native: true,
+        auto: true,
+        invokeMs: 0,
+        abort,
+        beforeCompacting: async () => {
+          abort.abort(new DOMException("Session cancelled", "AbortError"))
+          await release.promise
+        },
+        afterProcess: async () => {
+          release.resolve()
+          await Bun.sleep(0)
+        },
+      })
+      expect(observed.result).toBe("stop")
+      expect(observed.processInput).toBeUndefined()
+      expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
+      expect(observed.messages).toHaveLength(2)
+    }))
+
+  test("disables the native invoke deadline at zero", () =>
+    runtime.run(async () => {
+      const observed = await runCompactionProcessCase({
+        native: true,
+        auto: true,
+        invokeMs: 0,
+        beforeCompacting: () => Bun.sleep(25),
+        text: "Summary with no deadline",
+      })
+      expect(observed.thrown).toBeUndefined()
+      expect(observed.result).toBe("continue")
+      expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "committed" })
+    }))
+
+  test("does not commit a native summary when its final storage write crosses the deadline", () =>
+    runtime.run(async () => {
+      using deadline = compactionDeadline()
+      const observed = await runCompactionProcessCase({
+        native: true,
+        auto: true,
+        invokeMs: deadline.invokeMs,
+        text: "Summary that misses finalization deadline",
+        beforeSummaryCommit: async () => deadline.expire(),
+      })
+      expect(observed.thrown).toMatchObject({ name: "AbortError" })
+      expect(observed.attempt.info.finish).toBe("error")
+      expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
+      expect(observed.attempt.info.summary).toBeUndefined()
+      expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
+      expect(observed.messages).toHaveLength(2)
+    }))
+
+  for (const scenario of ["cancelled", "tool output"] as const) {
+    test(`does not commit native compaction with ${scenario}`, () =>
+      runtime.run(async () => {
+        const abort = new AbortController()
+        const observed = await runCompactionProcessCase({
+          native: true,
+          auto: true,
+          abort,
+          text: "Unusable summary",
+          toolOutput: scenario === "tool output",
+          beforeLocal: scenario === "cancelled" ? async () => abort.abort() : undefined,
+        })
+        expect(observed.result).toBe("stop")
+        expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
+        expect(observed.attempt.info.summary).toBeUndefined()
+        expect(observed.attempt.info.includeInContext).toBe(false)
+        expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
+        expect(observed.messages.some((message) => message.info.role === "user" && !message.info.isRoot)).toBe(false)
+      }))
+  }
+
+  test("uses mechanical recovery without a provider call when retained history cannot fit", () =>
+    runtime.run(async () => {
+      const observed = await runCompactionProcessCase({
+        native: true,
+        modelLimit: { context: 16_000, output: 8_192 },
+        historyText: "oversized recent message ".repeat(10_000),
+      })
+      expect(observed.processInput).toBeUndefined()
+      expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "committed" })
+      expect(observed.attempt.parts).toEqual(
+        expect.arrayContaining([expect.objectContaining({ type: "compaction_recovery", mechanical: true })]),
+      )
+    }))
+
   test("bounds compaction output instead of requesting the model long-output maximum", () =>
     runtime.run(async () => {
       const observed = await runCompactionProcessCase({ text: "## Goal\n\nContinue the implementation." })
@@ -1647,6 +2086,120 @@ describe("remote compaction rollout", () => {
       expect(observed.calls[0].status).toBe("cancelled")
     }))
 
+  test("cancels a hanging remote history transform without dispatching a late provider call", () =>
+    runtime.run(async () => {
+      using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
+      using deadline = compactionDeadline()
+      using remote = spyOn(CodexProvider, "requestRemoteCompactionV2")
+      const started = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      let released = false
+      let returnedBeforeRelease = false
+      let hookSignal: AbortSignal | undefined
+      const rescue = setTimeout(() => {
+        released = true
+        release.resolve()
+      }, 1_000)
+      try {
+        const observed = await runCompactionProcessCase({
+          native: true,
+          auto: true,
+          invokeMs: deadline.invokeMs,
+          providerID: CodexProvider.PROVIDER_ID,
+          beforeHistoryTransform: (signal) => {
+            hookSignal = signal
+            started.resolve()
+            return release.promise
+          },
+          beforeLocal: () => started.promise,
+          text: "Committed before remote preparation cancellation",
+          afterSummaryCommit: () => setTimeout(() => deadline.expire(), 0),
+          afterProcess: async () => {
+            returnedBeforeRelease = !released
+            release.resolve()
+            await Bun.sleep(0)
+          },
+        })
+        expect(returnedBeforeRelease).toBe(true)
+        expect(observed.thrown).toMatchObject({ name: "AbortError" })
+        expect(hookSignal?.aborted).toBe(true)
+        expect(remote).not.toHaveBeenCalled()
+        expect(observed.calls).toHaveLength(0)
+        expect(observed.attempt.info).toMatchObject({
+          summary: true,
+          includeInContext: true,
+          metadata: { compactionAttempt: { state: "committed" } },
+        })
+        expect(observed.messages).toHaveLength(2)
+      } finally {
+        clearTimeout(rescue)
+        release.resolve()
+      }
+    }))
+
+  test("keeps the committed summary but omits continuation when the operation deadline expires waiting for remote work", () =>
+    runtime.run(async () => {
+      using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
+      using deadline = compactionDeadline()
+      const started = Promise.withResolvers<void>()
+      let isDrained = false
+      using remote = spyOn(CodexProvider, "requestRemoteCompactionV2").mockImplementation(async (request) => {
+        started.resolve()
+        try {
+          await new Promise<never>((_resolve, reject) => {
+            if (request.signal?.aborted) return reject(request.signal.reason)
+            request.signal?.addEventListener("abort", () => reject(request.signal?.reason), { once: true })
+          })
+          throw new Error("unreachable")
+        } finally {
+          isDrained = true
+        }
+      })
+      const observed = await runCompactionProcessCase({
+        native: true,
+        auto: true,
+        invokeMs: deadline.invokeMs,
+        providerID: CodexProvider.PROVIDER_ID,
+        beforeLocal: () => started.promise,
+        text: "Authoritative committed summary",
+        afterSummaryCommit: () => setTimeout(() => deadline.expire(), 0),
+      })
+      expect(observed.thrown).toMatchObject({ name: "AbortError" })
+      expect(String(observed.thrown)).toContain(`timed out after ${deadline.invokeMs}ms`)
+      expect(isDrained).toBe(true)
+      expect(observed.calls[0].status).toBe("cancelled")
+      expect(observed.attempt.info).toMatchObject({
+        summary: true,
+        finish: "stop",
+        includeInContext: true,
+        metadata: { compactionAttempt: { state: "committed" } },
+      })
+      expect(observed.attempt.info.error).toBeUndefined()
+      expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(true)
+      expect(observed.messages).toHaveLength(2)
+    }))
+
+  test("keeps a committed local summary when optional remote provider work fails", () =>
+    runtime.run(async () => {
+      using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
+      using remote = spyOn(CodexProvider, "requestRemoteCompactionV2").mockRejectedValue(
+        new Error("remote unavailable"),
+      )
+      const observed = await runCompactionProcessCase({
+        native: true,
+        auto: true,
+        providerID: CodexProvider.PROVIDER_ID,
+        text: "Authoritative local summary",
+      })
+      expect(observed.thrown).toBeUndefined()
+      expect(observed.result).toBe("continue")
+      expect(observed.attempt.info.summary).toBe(true)
+      expect(observed.attempt.info.error).toBeUndefined()
+      expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "committed" })
+      expect(observed.attempt.info.metadata?.remoteCompaction).toBeUndefined()
+      expect(observed.messages).toHaveLength(3)
+    }))
+
   test("does not downgrade a remote recording failure to optional metadata", () =>
     runtime.run(async () => {
       using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
@@ -1659,6 +2212,9 @@ describe("remote compaction rollout", () => {
       expect(write).toHaveBeenCalled()
       expect(remote).not.toHaveBeenCalled()
       expect(observed.result).toBeUndefined()
+      expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "committed" })
+      expect(observed.attempt.info.summary).toBe(true)
+      expect(observed.attempt.info.finish).toBe("stop")
     }))
 })
 

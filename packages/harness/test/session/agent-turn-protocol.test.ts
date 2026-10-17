@@ -328,6 +328,46 @@ describe("AgentTurnProtocol", () => {
     expect(AgentTurnProtocol.deserializeTurn(payload)).toEqual(envelope)
   })
 
+  test("round-trips tool-free suffix turns without reordering the tool catalog", () => {
+    const envelope: AgentTurnProtocol.TurnEnvelope = {
+      scope: { type: "home", id: "home", local: null },
+      workspace: null,
+      input: {
+        user: { id: "msg_user" },
+        sessionID: "ses_test",
+        model: { id: "model", providerID: "provider" },
+        agent: { name: "synergy" },
+        system: ["stable system"],
+        lateSystem: ["volatile advisory context"],
+        messages: [{ role: "user", content: "conversation to summarize" }],
+        promptSuffix: "Summarize this conversation without calling tools.",
+        toolChoice: "none",
+        toolDefinitions: [
+          { id: "write", description: "Write a file", inputSchema: { type: "object", properties: {} } },
+          { id: "read", description: "Read a file", inputSchema: { type: "object", properties: {} } },
+        ],
+        activeToolIDs: ["write", "read"],
+        prepared: {
+          system: ["stable system"],
+          baseSystemLength: 1,
+          provider: {
+            options: {},
+            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false },
+          },
+          params: { options: {} },
+        },
+      },
+    }
+
+    expect(AgentTurnProtocol.TurnInputSchema.parse(envelope.input)).toEqual(envelope.input)
+    const restored = AgentTurnProtocol.deserializeTurn(AgentTurnProtocol.serializeTurn(envelope))
+
+    expect(restored).toEqual(envelope)
+    expect(restored.input.toolChoice).toBe("none")
+    expect(restored.input.promptSuffix).toBe("Summarize this conversation without calling tools.")
+    expect(restored.input.toolDefinitions.map((definition) => definition.id)).toEqual(["write", "read"])
+  })
+
   test("keeps Context Usage provenance and drafts out of the Agent worker protocol", () => {
     const input = {
       user: { id: "msg_user" },
@@ -701,27 +741,34 @@ describe("AgentTurnProtocol", () => {
   })
 
   test("rejects executable or undeclared Control Plane fields", () => {
-    expect(
-      AgentTurnProtocol.TurnInputSchema.safeParse({
-        user: { id: "msg_user" },
-        sessionID: "ses_test",
-        model: { id: "model", providerID: "provider" },
-        agent: { name: "synergy" },
+    const input = {
+      user: { id: "msg_user" },
+      sessionID: "ses_test",
+      model: { id: "model", providerID: "provider" },
+      agent: { name: "synergy" },
+      system: [],
+      messages: [],
+      promptSuffix: "Summarize without calling tools.",
+      toolChoice: "none" as const,
+      toolDefinitions: [],
+      prepared: {
         system: [],
-        messages: [],
-        toolDefinitions: [],
-        executionTools: { bash: { execute() {} } },
-        prepared: {
-          system: [],
-          baseSystemLength: 0,
-          provider: {
-            options: {},
-            timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
-          },
-          params: { options: {} },
+        baseSystemLength: 0,
+        provider: {
+          options: {},
+          timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
         },
-      }).success,
-    ).toBe(false)
+        params: { options: {} },
+      },
+    }
+
+    expect(AgentTurnProtocol.TurnInputSchema.parse(input)).toEqual(input)
+    for (const invalid of [
+      { ...input, executionTools: { bash: { execute() {} } } },
+      { ...input, onPhase: () => {} },
+    ]) {
+      expect(AgentTurnProtocol.TurnInputSchema.safeParse(invalid).success).toBe(false)
+    }
   })
 
   test("round-trips worker metric rows through the metrics frame", () => {

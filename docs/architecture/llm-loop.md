@@ -57,13 +57,13 @@ This order is the scheduling contract. Delivery sources must choose the correct 
 One model step performs the following work:
 
 1. Load the session, effective messages, root parts, last terminal assistant, and current model limits.
-2. Detect loop signals and run pre-LLM jobs.
+2. Detect loop signals and run pre-LLM jobs; defer a native agent's pending compaction to normal request preparation.
 3. Resolve the root agent and model, including external-agent routing where configured.
 4. Persist the assistant and await Runtime-registered domain model preparation with its exact assistant/root identities and cancellation signal. A failed observation settles the assistant with an error before model dispatch. Resolve tool definitions, system context, Cortex context, Library recall, environment context, and Agenda reminders in parallel where independent.
 5. Project workflow-wrapped messages without mutating stored user text.
 6. Build and measure the provider prompt.
-7. Under soft-budget pressure or hard overflow, synchronously prune eligible old outputs and remeasure; trigger compaction instead of calling the model if pressure remains.
-8. Resolve a serializable model-facing tool catalog separately from Control Plane execution callbacks.
+7. Under soft-budget pressure or hard overflow, synchronously prune eligible old outputs and remeasure. For pending native compaction or an automatic budget trigger, prepare the same request through `AgentTurn.prepare()` and summarize directly instead of sending a conversation turn.
+8. Otherwise, resolve a serializable model-facing tool catalog separately from Control Plane execution callbacks.
 9. Queue the provider turn on `AgentTurn`, consume its bounded event frames, and persist one assistant message. Delta batches are bounded by 32 KiB and flush after 16 milliseconds for text/reasoning or 250 milliseconds for tool input, preserving serial delivery and acknowledgement backpressure. Partial tool input is presentation data; execution still requires the completed call.
 10. Release the model executor slot, dispatch generation-aware ToolTasks, authorize each operation in the Control Plane before physical execution, and settle results.
 11. Run post-LLM jobs, persist terminal state, and decide whether another model call is needed.
@@ -98,7 +98,7 @@ Model capability metadata from catalogs such as models.dev describes what a mode
 
 When a third-party transport case returns no automatic variants, a configured `role_variant` such as `max` is applied only if the resolved model exposes a same-named variant; otherwise the provider receives no generated option and uses its server-side reasoning default. User-defined model `variants` are merged after automatic defaults and can add or override named variants for individual models.
 
-A sessionless or internal lightweight call may reuse a source root user envelope for context and attribution, but `small: true` never consumes that envelope's variant or thinking selection. Compaction clears both fields on its transient envelope. Those calls keep their own target-model options.
+A sessionless or internal lightweight call may reuse a source root user envelope for context and attribution, but `small: true` never consumes that envelope's variant or thinking selection. The dedicated compaction path for external-agent adapters clears both fields on its transient envelope because it selects its own model. Native local compaction retains the originating request's execution settings.
 
 Catalog reasoning controls retain effort values, toggle support and budget bounds. Explicit provider-default strips Synergy reasoning overrides after model, agent and ordinary parameter-hook merging; Off emits a concrete transport-supported disable option. A shared SDK alone does not establish Off support. DeepSeek compatible requests use `thinking.type` independently of `reasoning_effort`; Gemini budgets respect catalog bounds. Explicit invalid choices fail without substituting another level. Custom configured variants retain their option objects.
 
@@ -274,26 +274,39 @@ Compaction can be requested explicitly or injected automatically when:
 
 The request is a `compaction` part attached to root `R`. Pending requests are counted against completed compaction summaries for that same root, so a long task can compact more than once without endlessly reprocessing one request. A measured hard overflow receives at most one automatic compaction attempt for that root before the next provider turn; if the compacted prompt still leaves no response space, the loop terminates locally with the actionable context-budget error.
 
+For native agents, `SessionInvoke` defers a pending request until ordinary request preparation has resolved the selected model, context, projected history, and tool availability. Explicit and automatic budget-triggered compaction call the summary owner directly at that point. A cold manual or automatic compaction does not send a separate conversation turn before the summary call.
+
+For a recognized provider context-length failure, `SessionInvoke` captures the prepared request before processor cleanup. `SessionCompaction.captureRequest()` owns independent arrays for system, late-system, messages, ordered tool definitions, active IDs, and prepared system content, so releasing the failed processor's arrays cannot erase summary input. The processor's model-stream settlement releases this snapshot on success or non-context failure before tool authorization and execution; only context-overflow recovery retains it. Recovery summarizes this captured request directly and binds the new call to the session lease's abort signal rather than the disposed turn signal.
+
 ### Summary generation
 
-The compaction job:
+Native local compaction uses the original agent, model, user envelope, model-selection snapshot, ordered native tool definitions, active tool IDs, system cache breakpoint, late-system context, and projected history. Cold requests run `AgentTurn.prepare()` once inside the compaction owner to materialize attachments and resolve final system/parameter hooks and provider preparation; provider-overflow requests reuse that prepared snapshot without repeating hooks. The compaction instruction is a final user suffix appended by `LLM.promptMessages()` after the complete provider-specific layout, including late-user runtime context when present. See the [stable-prefix decision](../decisions/implemented/architecture/2026-10-11-stable-prefix-local-compaction.md) for rationale and alternatives.
 
-1. resolves the dedicated `compaction` agent and its available model, falling back to the root model;
-2. projects the current effective history with no tools;
-3. trims oldest summary input so the history, compaction prompt, a bounded summary output, and tokenizer margin fit the compaction model's context window, advancing the cut past any tool results whose assistant tool calls were omitted; the summarization call requests at most 32,000 output tokens (the model's configured output when smaller), and that output budget plus the margin is what the history trim reserves;
-4. persists a hidden compaction attempt with `includeInContext = false` and `metadata.compactionAttempt.state = "running"` so streamed output remains auditable without affecting later prompts;
-5. asks only for a structured continuation summary;
-6. records provider or processor failures as terminal `failed` attempts with a sanitized serialized error, `visible = true`, and `includeInContext = false`; provider response headers and bodies are not retained on this visible audit record, while empty output becomes `empty` and stays hidden outside model context;
-7. after a non-empty summary is complete, writes a `compaction_recovery` part and commits the assistant with attempt state `committed`, `summary = true`, `visible = true`, `includeInContext = true`, `parentID = R.id`, and `rootID = R.id`;
-8. publishes `session.compacted` only after that commit.
+The summary invocation retains tool schemas in `tools` with `toolChoice: "none"`. It carries no execution callbacks: `executionTools` and `executorKinds` are empty. `SessionProcessor` rejects `tool-input-start` and `tool-call` events before deferred expansion, authorization, or ToolTask scheduling. Retaining a schema never grants permission to execute it.
 
-The `summary` flag is the context-boundary commit marker, not an in-progress placeholder. The attempt state is the presentation lifecycle: `running` survives the processor's terminal checkpoint until the compaction owner resolves it to `committed`, `failed`, or `empty`. Failed attempts are visible terminal audit records but remain excluded from model context; empty attempts stay hidden. Neither failed nor empty attempts fulfill the request or establish a filtering or pruning boundary.
+The compaction owner:
 
-The compaction agent cannot use tools or continue the user's task. Its built-in permission layer denies every tool subject to normal configuration precedence, while the invocation independently passes an empty tool set so no configured permission can equip the compaction model with tools. Its prompt requires observed facts, completed work, current state, next steps, constraints, and relevant files without inventing progress.
+1. budgets history against the complete fixed envelope: prepared system instructions, late-system context, active tool schemas, summary suffix, a bounded summary output, and tokenizer margin;
+2. when needed, trims oldest history and advances the cut past orphaned tool results; reserves at most 32,000 output tokens, or the model's configured output limit when smaller, and verifies the retained history still fits before sending;
+3. persists a hidden compaction attempt with `includeInContext = false` and `metadata.compactionAttempt.state = "running"` so streamed output remains auditable without affecting later prompts;
+4. makes a local summary call that asks only for a Markdown continuation summary containing observed facts, completed work, current state, next steps, constraints, and relevant files, without continuing the task or inventing progress;
+5. records provider or processor failures as terminal `failed` attempts with a sanitized serialized error, `visible = true`, and `includeInContext = false`; provider response headers and bodies are not retained on this visible audit record, while empty output becomes `empty` and stays hidden outside model context;
+6. after a non-empty summary is complete, writes a `compaction_recovery` part and commits the assistant with attempt state `committed`, `summary = true`, `visible = true`, `includeInContext = true`, `parentID = R.id`, and `rootID = R.id`;
+7. publishes `session.compacted` only after that commit.
 
-The compaction call may reuse root `R` as its ephemeral user envelope for task identity, but it clears `R.variant` before preparing the dedicated compaction model. The persisted root remains unchanged, while the compaction model uses its own normal provider options without validating or applying a variant owned by a different model execution.
+A successful local attempt uses one summary call, with `usageRole: "compaction"` independent of the original agent's name. The `summary` flag is the context-boundary commit marker, not an in-progress placeholder. The attempt state is the presentation lifecycle: `running` survives the processor's terminal checkpoint until the compaction owner resolves it to `committed`, `failed`, or `empty`. Failed attempts are visible terminal audit records but remain excluded from model context; empty attempts stay hidden. Neither failed nor empty attempts fulfill the request or establish a filtering or pruning boundary.
 
-If the summarization call itself exceeds context, Synergy writes a deterministic mechanical fallback and commits it through the same boundary. Other compaction-model failures remain explicit failures.
+After assistant handoff, the compaction owner settles initialization, preparation, hook, budget, and processor failures without letting the ordinary processor overwrite the attempt. Native operations have a fresh `timeout.invoke_sec` deadline combined with session cancellation; zero disables only the timeout. Preparation, hooks, model execution, optional remote waiting, and continuation use this signal. Summary and continuation storage transactions check it before and after their writes and roll back if cancelled. Storage finalization is not raced, so a non-cooperative database operation can delay return. A non-cooperative processor's terminal fields are restored after its late settlement while preserving usage/accounting.
+
+If the local summary has already committed when optional remote evidence settlement raises a propagated error or exceeds the native deadline, that summary remains authoritative, remote work is cancelled and drained, and no automatic continuation is created. Best-effort remote provider failures return no artifact and permit local continuation. An uncommitted timeout remains a failed attempt, never a summary boundary.
+
+Remote preparation receives its child cancellation signal and is raced only before provider dispatch. Late history-transform completion cannot start a provider request after cancellation. Once canonical remote rollout recording begins, its accounting and evidence settlement is drained rather than abandoned by a race.
+
+External-agent adapters cannot supply a native prepared prompt snapshot. Their dedicated compaction path resolves the registered `compaction` agent and its available model, falling back to the root model, projects effective history with an empty tool catalog, and clears both `variant` and `thinking` on its ephemeral user envelope. The persisted root is unchanged. The dedicated agent remains registered for this path.
+
+If retained history cannot fit the complete summary envelope, or the summarization call itself exceeds context, Synergy writes a deterministic mechanical fallback and commits it through the same boundary. Other compaction-model failures remain explicit failures.
+
+Optional Codex remote compaction is controlled by `compaction.codexRemote`, defaults off, and does not replace the authoritative local summary. Its concurrent track and attachment lifecycle remain separate from native local prompt reuse. Preserved request content is intended to retain prefix-reuse eligibility; it does not establish a provider cache hit or latency, token-cost, or performance savings.
 
 ### Anchor and continuation
 
