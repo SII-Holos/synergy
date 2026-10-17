@@ -11,7 +11,7 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".loop-status-"))
   await Bun.write(
     path.join(directory, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><html><body><div id="root"></div><script type="module" src="/main.tsx"></script></body></html>',
   )
   await Bun.write(
     path.join(directory, "locale.ts"),
@@ -147,6 +147,8 @@ test("keyboard opens review reasons, live updates retain the dialog, and Escape 
   await page.keyboard.press("Enter")
   const dialog = page.getByRole("dialog")
   await dialog.waitFor({ state: "visible" })
+  await page.waitForFunction(() => document.querySelector('[role="dialog"]')?.contains(document.activeElement))
+  expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true)
   expect(await dialog.innerText()).toContain("Missing cancellation coverage")
   const original = await dialog.elementHandle()
   await page.evaluate(() => (window as unknown as { fixture: { set(stage: string): void } }).fixture.set("auditing"))

@@ -10,6 +10,7 @@ export const testOptions = {
     "test/components/iframe-focus.browser.test.ts",
     "test/components/review-viewer.dom.test.ts",
     "test/components/message-readers.render.test.ts",
+    "test/components/setting-row.render.test.ts",
     "test/components/execution-completion.dom.test.ts",
     "test/components/tool/computer-tool-renders.test.tsx",
     "test/components/tool/worktree-tool-presentation.test.tsx",
@@ -62,6 +63,7 @@ export const testOptions = {
   browserOnly: [
     "test/solid-ordered-rows.test.ts",
     "test/components/message-readers.render.test.ts",
+    "test/components/setting-row.render.test.ts",
     "test/components/tool/worktree-tool-presentation.test.tsx",
     "test/components/render-html.test.ts",
     "test/context/render.test.ts",
