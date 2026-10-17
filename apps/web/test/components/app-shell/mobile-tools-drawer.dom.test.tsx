@@ -31,7 +31,8 @@ beforeAll(async () => {
     import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
     import { MobileToolsDrawer } from ${JSON.stringify(`/@fs/${source}/components/app-shell/mobile-tools-drawer.tsx`)}
     import { Router } from "@solidjs/router"
-    import { setOpen } from "@/context/layout"
+    import { setOpen, setFeatures } from "@/context/layout"
+    window.setFeatures = setFeatures
     import { messages as en } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
@@ -45,7 +46,12 @@ beforeAll(async () => {
   )
   await Bun.write(
     path.join(directory, "layout.ts"),
-    `import {createSignal} from "solid-js"; const [open,setOpen]=createSignal(false); export {setOpen}; export const useLayout=()=>({rightSidebar:{opened:open,hide:()=>setOpen(false)}})`,
+    `import {createSignal} from "solid-js";
+    const [open,setOpen]=createSignal(false);
+    const [features,setFeatures]=createSignal(["workbench","agenda","library","plugin-host"]);
+    export {setOpen,setFeatures};
+    export const useGlobalSDK=()=>({capabilities:{has:id=>features()?.includes(id)??false}});
+    export const useLayout=()=>({rightSidebar:{opened:open,hide:()=>setOpen(false)}})`,
   )
   await Bun.write(
     path.join(directory, "settings.tsx"),
@@ -58,6 +64,7 @@ beforeAll(async () => {
     plugins: [solidPlugin(), tailwindcss(), ...lingui()],
     resolve: {
       alias: [
+        { find: "@/context/global-sdk", replacement: path.join(directory, "layout.ts") },
         { find: "@/context/layout", replacement: path.join(directory, "layout.ts") },
         { find: "@/components/settings", replacement: path.join(directory, "settings.tsx") },
         { find: "@", replacement: source },
@@ -123,4 +130,24 @@ test("widening the window closes the mobile modal and restores background access
   await page.getByRole("dialog").waitFor({ state: "detached" })
   expect(await page.getByRole("button", { name: "Background action" }).count()).toBe(1)
   await page.setViewportSize({ width: 375, height: 812 })
+})
+
+test("mobile navigation hides unconfirmed and removed features while preserving independent Agenda", async () => {
+  await page.goto(baseUrl)
+  await page.getByRole("button", { name: "Open tools" }).click()
+  await page.getByRole("button", { name: "Kanban", exact: true }).waitFor()
+  const setFeatures = async (features: string[] | undefined) =>
+    page.evaluate((value) => {
+      ;(window as unknown as { setFeatures(features: string[] | undefined): void }).setFeatures(value)
+    }, features)
+  await setFeatures(undefined)
+  for (const label of ["Kanban", "Agenda", "Library", "Performance", "Plugins"])
+    expect(await page.getByRole("button", { name: label, exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Settings", exact: true }).count()).toBe(1)
+  await setFeatures(["agenda"])
+  expect(await page.getByRole("button", { name: "Agenda", exact: true }).count()).toBe(1)
+  expect(await page.getByRole("button", { name: "Library", exact: true }).count()).toBe(0)
+  await setFeatures([])
+  expect(await page.getByRole("button", { name: "Agenda", exact: true }).count()).toBe(0)
+  expect(errors).toEqual([])
 })

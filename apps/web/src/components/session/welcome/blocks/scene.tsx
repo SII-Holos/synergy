@@ -157,6 +157,7 @@ export default function BlocksScene(props: WelcomeSceneProps) {
         playing={state().phase === "playing" || state().phase === "clearing"}
         onAction={start}
         onReset={reset}
+        onReleaseInput={cancel}
         help={i18n._({
           id: "welcome.blocks.help",
           message:
@@ -197,7 +198,6 @@ export default function BlocksScene(props: WelcomeSceneProps) {
               )
             if (e.key === "ArrowDown") setState((s) => controlBlocks(s, { soft: false }))
           }}
-          onBlur={cancel}
           onPointerMove={(e) => {
             if (!props.active()) return
             const point = canvas.point(e)

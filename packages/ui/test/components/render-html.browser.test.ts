@@ -59,6 +59,40 @@ async function visual(html: string, title = "Evidence at a glance") {
 }
 const frame = () => page.locator('[data-component="render-html"] iframe').first()
 
+test("embedded keyboard focus preserves structural surfaces and marks action controls", async () => {
+  try {
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme })
+      await visual(
+        `<input aria-label="Draft"><div role="dialog" tabindex="0">Dialog</div><div role="tabpanel" tabindex="0">Panel</div><pre tabindex="0">Preview</pre><canvas tabindex="0" aria-label="Canvas"></canvas><button>Action</button><div role="button" tabindex="0">Custom action</div>`,
+      )
+      const content = page.frameLocator('[data-component="render-html"] iframe')
+      for (const forcedColors of ["none", "active"] as const) {
+        await page.emulateMedia({ forcedColors })
+        for (const target of await content.locator("[tabindex], button").all()) {
+          await content.getByRole("textbox", { name: "Draft" }).focus()
+          await page.keyboard.press("ArrowLeft")
+          const read = () =>
+            target.evaluate((el) => {
+              const style = el.ownerDocument.defaultView!.getComputedStyle(el)
+              return { background: style.background, color: style.color }
+            })
+          const resting = await read()
+          await target.focus()
+          expect(
+            await target.evaluate((el) => el.ownerDocument.activeElement === el && el.matches(":focus-visible")),
+          ).toBe(true)
+          if (await target.evaluate((el) => el.matches('button, [role="button"]')))
+            expect(await read()).not.toEqual(resting)
+          else expect(await read()).toEqual(resting)
+        }
+      }
+    }
+  } finally {
+    await page.emulateMedia({ colorScheme: "light", forcedColors: "none" })
+  }
+})
+
 type RenderStreamState = {
   status: "pending" | "generating" | "running" | "completed" | "error"
   raw?: string

@@ -101,6 +101,7 @@ export async function browserFixtureInput(recipe: Recipe, repositoryPath = repos
     "apps/web/test/support/fixture-cache.ts",
   ])
     await add(path.join(repositoryRoot, file))
+  await tree(path.join(repositoryRoot, "patches"), "patches")
   await tree(path.join(repositoryRoot, "apps/web/test/fixtures"), "fixtures")
   await tree(recipe.root, "fixture")
   return hash.digest("hex")

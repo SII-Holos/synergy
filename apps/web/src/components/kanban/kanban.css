@@ -64,8 +64,8 @@
 .kanban-add-btn {
   font-size: var(--font-size-small);
   color: var(--text-weak);
-  background: var(--surface-base);
-  border: 1px solid var(--border-base);
+  background: transparent;
+  border: 0;
   border-radius: 8px;
   padding: 6px 14px;
   cursor: pointer;
@@ -73,7 +73,7 @@
 
 .kanban-add-btn:hover {
   color: var(--text-strong);
-  border-color: var(--border-strong-base);
+  background: color-mix(in srgb, var(--text-strong) 7%, transparent);
 }
 
 .kanban-body {
@@ -118,6 +118,13 @@
 
 .kanban-grid-select {
   min-width: 56px;
+}
+
+.kanban-grid-select,
+.kanban-composer-chip {
+  --menu-field-control-bg: transparent;
+  --menu-field-control-bg-hover: color-mix(in srgb, var(--text-strong) 7%, transparent);
+  box-shadow: none;
 }
 
 .kanban-grid-menu {
@@ -268,14 +275,10 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--surface-base);
+  background: var(--input-base);
   border: 1px solid var(--border-base);
   border-radius: 12px;
   overflow: hidden;
-}
-
-.kanban-pane:focus-within {
-  border-color: var(--border-strong-base);
 }
 
 .kanban-pane-head {
@@ -284,42 +287,8 @@
   gap: 8px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border-base);
-  background: var(--surface-base-hover);
+  background: var(--input-base);
   flex: none;
-}
-
-/* Head status tint (data-status set by the pane's resolved visual state).
- * One color-mix formula serves both modes: the status strong seed is vivid
- * in light and dark, so mixing a low percentage into the resting head
- * surface keeps the pane readable while the tint stays clearly distinct. */
-.kanban-pane-head[data-status="working"] {
-  background: color-mix(in srgb, var(--surface-warning-strong) 16%, var(--surface-base-hover));
-  border-bottom-color: color-mix(in srgb, var(--border-warning-base) 60%, transparent);
-}
-
-.kanban-pane-head[data-status="completed"] {
-  background: color-mix(in srgb, var(--surface-success-strong) 16%, var(--surface-base-hover));
-  border-bottom-color: color-mix(in srgb, var(--border-success-base) 60%, transparent);
-}
-
-.kanban-pane-head[data-status="waiting"] {
-  background: color-mix(in srgb, var(--surface-info-strong) 16%, var(--surface-base-hover));
-  border-bottom-color: color-mix(in srgb, var(--border-info-base) 60%, transparent);
-}
-
-/* Keep the leading status dot on the same semantic as the head tint; the
- * legacy per-tone dot colors would contradict the bar (e.g. a green dot on
- * an orange working head). */
-.kanban-pane-head[data-status="working"] .kanban-dot {
-  background: var(--surface-warning-strong);
-}
-
-.kanban-pane-head[data-status="completed"] .kanban-dot {
-  background: var(--surface-success-strong);
-}
-
-.kanban-pane-head[data-status="waiting"] .kanban-dot {
-  background: var(--surface-info-strong);
 }
 
 .kanban-dot {
@@ -479,23 +448,13 @@
   color: var(--text-weak);
 }
 
-.kanban-pane-activate:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: -2px;
-}
-
 .kanban-pane-action:hover {
   color: var(--text-strong);
-  background: var(--surface-base-interactive-active);
+  background: color-mix(in srgb, var(--text-strong) 7%, transparent);
 }
 
 .kanban-pane-action[data-active] {
-  background: var(--surface-base-active);
   color: var(--text-strong);
-}
-
-.kanban-pane-action[data-active]:hover {
-  background: var(--surface-base-interactive-active);
 }
 
 .kanban-pane-grip {
@@ -514,7 +473,7 @@
 
 .kanban-pane-grip:hover {
   color: var(--text-strong);
-  background: var(--surface-base-interactive-active);
+  background: color-mix(in srgb, var(--text-strong) 7%, transparent);
 }
 
 .kanban-pane-grip[data-locked] {
@@ -554,28 +513,30 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-top: 1px solid var(--border-base);
-  background: var(--surface-base);
+  background: var(--input-base);
   flex: none;
 }
 
 .kanban-pane-composer-toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 6px;
-  flex-wrap: wrap;
 }
 
-.kanban-pane-composer-input-row {
+.kanban-pane-composer-choices {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .kanban-composer-chip {
   gap: 6px;
-  padding: 0 10px;
+  padding: 0 8px;
   max-width: 160px;
 }
 
@@ -624,50 +585,31 @@
 }
 
 .kanban-pane-input {
-  flex: 1;
+  width: 100%;
   min-width: 0;
+  min-height: 40px;
   font-size: var(--font-size-small);
   color: var(--text-strong);
-  background: var(--surface-base-hover);
-  border: 1px solid var(--border-base);
-  border-radius: 8px;
-  padding: 6px 10px;
+  background: transparent;
+  border: 0;
+  padding: 8px 4px;
   outline: none;
-}
-
-.kanban-pane-input:focus {
-  border-color: var(--border-strong-base);
 }
 
 .kanban-pane-input::placeholder {
   color: var(--text-weaker);
 }
 
-.kanban-pane-send {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  color: var(--text-strong);
-  cursor: pointer;
-}
-
-.kanban-pane-send:hover:not(:disabled) {
-  background: var(--surface-base-interactive-active);
-}
-
-.kanban-pane-send:disabled {
-  color: var(--text-weaker);
-  cursor: default;
+[data-component="icon-button"].kanban-pane-send {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  box-shadow: none;
 }
 
 .kanban-pane[data-compact] .kanban-pane-input {
   font-size: var(--font-size-x-small);
-  padding: 4px 8px;
+  padding: 8px 4px;
 }
 
 .kanban-pane[data-compact] .kanban-pane-head {
@@ -689,8 +631,6 @@
 }
 
 .kanban-focus-promote:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
   border-radius: 12px;
 }
 

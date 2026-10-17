@@ -11,12 +11,18 @@ type StreamEvent =
   | { type: "reasoning-end"; id: string }
 
 describe("AgentStreamEventCoalescer", () => {
-  test.each(["text-delta", "reasoning-delta"] as const)(
+  test.each(["text-delta", "reasoning-delta", "tool-input-delta"] as const)(
     "delivers a held %s before the producer resumes",
     async (type) => {
       const resume = Promise.withResolvers<void>()
-      const event: StreamEvent = { type, id: "text_held", text: "visible prefix" }
-      const end: StreamEvent = { type: type === "text-delta" ? "text-end" : "reasoning-end", id: "text_held" }
+      const event: StreamEvent =
+        type === "tool-input-delta"
+          ? { type, id: "call_held", delta: '{"ui":{"nodes":[' }
+          : { type, id: "call_held", text: "visible prefix" }
+      const end: StreamEvent = {
+        type: type === "tool-input-delta" ? "tool-input-end" : type === "text-delta" ? "text-end" : "reasoning-end",
+        id: "call_held",
+      }
       const source = (async function* () {
         yield event
         await resume.promise
@@ -29,7 +35,7 @@ describe("AgentStreamEventCoalescer", () => {
         const delivered = await Promise.race([
           first,
           new Promise<undefined>((resolve) => {
-            timer = setTimeout(() => resolve(undefined), 250)
+            timer = setTimeout(() => resolve(undefined), 750)
           }),
         ])
         expect(delivered).toEqual({ done: false, value: [event] })
@@ -94,15 +100,21 @@ describe("AgentStreamEventCoalescer", () => {
     await expect(new AgentStreamEventCoalescer<StreamEvent>().batches(source).next()).rejects.toBe(failure)
   })
 
-  test("flushes the final delta at normal end without waiting for another event", async () => {
-    const event: StreamEvent = { type: "text-delta", id: "text_1", text: "complete" }
-    const source = (async function* () {
-      yield event
-    })()
-    const emitted: StreamEvent[] = []
-    for await (const batch of new AgentStreamEventCoalescer<StreamEvent>().batches(source)) emitted.push(...batch)
-    expect(emitted).toEqual([event])
-  })
+  test.each(["text-delta", "reasoning-delta", "tool-input-delta"] as const)(
+    "flushes the final %s at normal end without waiting for another event",
+    async (type) => {
+      const event: StreamEvent =
+        type === "tool-input-delta"
+          ? { type, id: "call_1", delta: '{"ui":{"nodes":[]}}' }
+          : { type, id: "text_1", text: "complete" }
+      const source = (async function* () {
+        yield event
+      })()
+      const emitted: StreamEvent[] = []
+      for await (const batch of new AgentStreamEventCoalescer<StreamEvent>().batches(source)) emitted.push(...batch)
+      expect(emitted).toEqual([event])
+    },
+  )
 
   test("coalesces thousands of tool-input deltas for one call into one bounded frame", () => {
     const coalescer = new AgentStreamEventCoalescer<StreamEvent>()

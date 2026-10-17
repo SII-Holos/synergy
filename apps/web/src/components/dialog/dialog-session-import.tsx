@@ -1,5 +1,6 @@
 import { createSignal, Show } from "solid-js"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useNavigate } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"

@@ -37,7 +37,6 @@ import {
   DesktopWindowChrome,
   MobileDrawer,
   MobileToolsDrawer,
-  ModelUnavailableBanner,
   desktopWindowNativeChromeActive,
 } from "@/components/app-shell"
 import { DialogCreateProject } from "@/components/dialog/dialog-create-project"
@@ -359,7 +358,7 @@ export default function Layout(props: ParentProps) {
       })
     }
 
-    return commands
+    return commands.filter((entry) => entry.id !== "project.create" || globalSDK.capabilities.has("workbench"))
   })
 
   function connectProvider() {
@@ -402,6 +401,7 @@ export default function Layout(props: ParentProps) {
     if (nav && scopeID) navigateToProject(scopeID)
   }
   function createProject() {
+    if (!globalSDK.capabilities.has("workbench")) return
     dialog.show(() => (
       <DialogCreateProject
         onCreated={async (id, url) => {
@@ -483,10 +483,7 @@ function LayoutContent(
       <MobileToolsDrawer />
       <DesktopWindowChrome />
       <DesktopNativeTitlebar />
-      <div class="app-shell-notices">
-        <ModelUnavailableBanner />
-        <ConnectionBanner />
-      </div>
+      <ConnectionBanner />
       <SkinRoot>
         <ShellOutlet
           onBuiltinMount={() => {

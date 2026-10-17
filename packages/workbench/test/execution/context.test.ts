@@ -1,4 +1,5 @@
-import { afterAll, expect, test } from "bun:test"
+import { afterAll, expect, spyOn, test } from "bun:test"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Hono } from "hono"
 import { generateSpecs } from "hono-openapi"
 import { testRuntime } from "../support/runtime"
@@ -16,6 +17,19 @@ import { reconcileContextUsage } from "@ericsanchezok/synergy-harness/context"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const app = new Hono().route("/session", ExecutionRoute())
+
+test("context history reads only its session metadata without building descendant message trees", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      await Session.create({ parentID: session.id, title: "Unrelated child history" })
+      using messages = spyOn(MessageV2, "stream")
+      using children = spyOn(Session, "children")
+      const page = await ExecutionService.contextHistory(session.id, { limit: 30 })
+      expect(page.sessionID).toBe(session.id)
+      expect(messages).not.toHaveBeenCalled()
+      expect(children).not.toHaveBeenCalled()
+    }),
+  ))
 
 test("formal attribution retains its call identity when an assistant contains a later retry", () =>
   runtime.run(() =>
@@ -96,15 +110,21 @@ test("running request estimates stay out of accounting and calibrate with provid
     }),
   ))
 
-test("execution updates deliver classification while the model and tool cleanup are still open", () =>
+test("execution projections deliver live classification without repeating unchanged contexts", () =>
   runtime.run(() =>
     fixture(async ({ session, rootID, call }) => {
-      await ExecutionService.contextHistory(session.id, { limit: 30 })
+      await ExecutionService.summary(session.id)
       const draft = Promise.withResolvers<ReturnType<typeof contextDraft>>()
       const delivered = Promise.withResolvers<void>()
+      const unchanged = Promise.withResolvers<ExecutionSchema.ContextSnapshot[]>()
+      let classified = false
       let callID = ""
       const unsubscribe = Bus.subscribeGlobal(ExecutionSchema.Updated, (event) => {
         if (event.properties.sessionID !== session.id) return
+        if (classified) {
+          unchanged.resolve(event.properties.contextUpserts ?? [])
+          return
+        }
         const snapshot = event.properties.contextUpserts?.find((entry) => entry.callID === callID && entry.estimate)
         if (!snapshot) return
         expect(snapshot.status).toBe("running")
@@ -128,7 +148,8 @@ test("execution updates deliver classification while the model and tool cleanup 
         }),
       )
       callID = stream.rollout!.callID
-      const timer = setTimeout(
+      const release = ExecutionService.subscribe(session.id)
+      let timer = setTimeout(
         () => delivered.reject(new Error("Classification update missing during model execution")),
         3000,
       )
@@ -139,9 +160,17 @@ test("execution updates deliver classification while the model and tool cleanup 
           await app.request(`/session/${session.id}/execution/context/snapshots/${callID}`)
         ).json()
         expect(snapshot.estimate.categories.userMessages.estimatedTokens).toBe(80)
+        clearTimeout(timer)
+        timer = setTimeout(() => unchanged.reject(new Error("Unchanged context update missing")), 3000)
+        classified = true
+        await Session.update(session.id, (info) => {
+          info.title = "Same context, updated session"
+        })
+        expect(await unchanged.promise).toEqual([])
       } finally {
         clearTimeout(timer)
         unsubscribe()
+        release()
         await stream.dispose()
       }
     }),

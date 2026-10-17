@@ -1,9 +1,9 @@
 import { describe, expect, spyOn, test } from "bun:test"
-import { BlueprintLoopService, BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
+import { BlueprintLoopService, BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
-import { LatticeMachine } from "@ericsanchezok/synergy-workflows/lattice/machine"
-import { LatticeRunService } from "@ericsanchezok/synergy-workflows/lattice/run-service"
-import { LatticeStore } from "@ericsanchezok/synergy-workflows/lattice/store"
+import { LatticeMachine } from "@ericsanchezok/synergy-lattice/lattice/machine"
+import { LatticeRunService } from "@ericsanchezok/synergy-lattice/lattice/run-service"
+import { LatticeStore } from "@ericsanchezok/synergy-lattice/lattice/store"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -120,31 +120,6 @@ describe("WorkflowSessionService", () => {
           await SessionManager.release(lease!, { requestNextWork: false })
           SessionManager.unregisterRuntime(session.id)
         }
-      })
-    }))
-
-  test("rejects instruction updates while Light Loop review is pending", () =>
-    runtime.run(async () => {
-      await withScope(async () => {
-        const session = await Session.create({})
-        await WorkflowSessionService.startLightloop(session.id, "Original task")
-        await Session.update(session.id, (draft) => {
-          if (draft.workflow?.kind !== "lightloop") return
-          draft.workflow.stopRequest = {
-            summary: "Ready for review",
-            requestedAt: Date.now(),
-            requesterSessionID: session.id,
-            requesterMessageID: "msg_request",
-            reviewTaskID: "ctx_review",
-            reviewSessionID: "ses_review",
-          }
-        })
-
-        await expect(WorkflowSessionService.updateLightloopInstructions(session.id, "Revised task")).rejects.toThrow(
-          "review is pending",
-        )
-        const unchanged = await Session.get(session.id)
-        expect(unchanged.workflow?.kind === "lightloop" && unchanged.workflow.instructions).toBe("Original task")
       })
     }))
 

@@ -2,7 +2,7 @@ import type { NavEntry } from "@/context/layout"
 
 export type LightLoopControlState =
   | { mode: "editable"; reason: "editable" }
-  | { mode: "readOnly"; reason: "inactive" | "reviewPending" | "working" }
+  | { mode: "readOnly"; reason: "inactive" | "working" }
 
 /** Whether the backend reports this session's Light Loop as still active. The
  * terminal status set lives only in the backend; a navigation entry carries its
@@ -32,13 +32,8 @@ export function resolveLightLoopActivity(input: {
   return isActiveLightLoopNavEntry(input.entry)
 }
 
-export function resolveLightLoopControlState(input: {
-  active: boolean
-  working: boolean
-  reviewPending: boolean
-}): LightLoopControlState {
+export function resolveLightLoopControlState(input: { active: boolean; working: boolean }): LightLoopControlState {
   if (!input.active) return { mode: "readOnly", reason: "inactive" }
-  if (input.reviewPending) return { mode: "readOnly", reason: "reviewPending" }
   if (input.working) return { mode: "readOnly", reason: "working" }
   return { mode: "editable", reason: "editable" }
 }

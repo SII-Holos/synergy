@@ -34,114 +34,43 @@ function markdownText(content: unknown) {
 }
 
 describe("note_write", () => {
-  test("uses explicit note fields at the agent boundary", async () => {
-    const tool = await NoteWriteTool.init()
-    expect(tool.parameters.safeParse({ noteTitle: "Setup", noteContent: "Read me." }).success).toBe(true)
-    expect(tool.parameters.safeParse({ title: "Setup", content: "Read me." }).success).toBe(false)
-  })
-
-  test("does not expose or persist a model-selected Blueprint default agent", () =>
+  test("create, append and replace expose escaped references while preserving resource metadata", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir()
       const scope = (await Scope.fromDirectory(tmp.path)).scope
-
       await ScopeContext.provide({
         scope,
         fn: async () => {
-          const session = await Session.create({})
-          await Session.update(session.id, (draft) => {
-            draft.workflow = { kind: "lattice", runID: "ltr_test", mode: "auto" }
+          const title = "A [draft] *bold* `code` <tag> &copy; \\ path\nNext"
+          const created = await execute({ noteTitle: title, noteContent: "First" })
+          const id = String(created.metadata.id)
+          const line =
+            "Reference: [A \\[draft\\] \\*bold\\* \\`code\\` \\<tag\\> &amp;copy; \\\\ path Next](note://" + id + ")"
+          expect(created.output.split("\n")).toContain(line)
+          expect(created.metadata).toEqual({
+            id,
+            action: "create",
+            title,
+            kind: "note",
+            scopeID: scope.id,
+            truncated: false,
           })
-          const tool = await NoteWriteTool.init()
-          const schema = z.toJSONSchema(tool.parameters) as { properties?: Record<string, unknown> }
-
-          expect(schema.properties).not.toHaveProperty("defaultAgent")
-
-          const legacyInput = {
-            mode: "create",
-            noteTitle: "Model-authored Blueprint",
-            noteContent: "Execute the current Step.",
-            kind: "blueprint",
-            defaultAgent: "implementation-engineer",
-            scope: "current",
-          } as unknown as Parameters<typeof tool.execute>[0]
-          const result = await tool.execute(legacyInput, ctx(session.id))
-
-          const note = await NoteStore.get(scope.id, result.metadata.id as string)
-          expect(note.blueprint?.defaultAgent).toBeUndefined()
-
-          const existing = await NoteStore.create({
-            title: "User-configured Blueprint",
-            content: NoteMarkdown.fromMarkdown("Original"),
-            kind: "blueprint",
-            blueprint: { defaultAgent: "developer" },
-          })
-          await tool.execute(
-            {
-              mode: "replace",
-              noteId: existing.id,
-              noteContent: "Updated",
-              scope: "current",
-            },
-            ctx(session.id),
-          )
-
-          const updated = await NoteStore.get(scope.id, existing.id)
-          expect(updated.blueprint?.defaultAgent).toBe("developer")
+          for (const mode of ["append", "replace"]) {
+            const result = await execute({ noteId: id, noteContent: "Next", mode })
+            expect(result.output.split("\n")).toContain(line)
+            expect(result.metadata).toEqual({ id, action: mode, title, kind: "note", truncated: false })
+          }
+          const invalid = await execute({ mode: "replace", noteContent: "No ID" })
+          expect(invalid.output).not.toContain("note://")
         },
       })
     }))
 
-  test("does not expose or persist a model-selected Blueprint audit agent", () =>
+  test("uses explicit note fields at the agent boundary", () =>
     runtime.run(async () => {
-      await using tmp = await tmpdir()
-      const scope = (await Scope.fromDirectory(tmp.path)).scope
-
-      await ScopeContext.provide({
-        scope,
-        fn: async () => {
-          const session = await Session.create({})
-          await Session.update(session.id, (draft) => {
-            draft.workflow = { kind: "lattice", runID: "ltr_test", mode: "auto" }
-          })
-          const tool = await NoteWriteTool.init()
-          const schema = z.toJSONSchema(tool.parameters) as { properties?: Record<string, unknown> }
-
-          expect(schema.properties).not.toHaveProperty("auditAgent")
-
-          const legacyInput = {
-            mode: "create",
-            noteTitle: "Model-authored Blueprint",
-            noteContent: "Execute the current Step.",
-            kind: "blueprint",
-            auditAgent: "reviewer",
-            scope: "current",
-          } as unknown as Parameters<typeof tool.execute>[0]
-          const result = await tool.execute(legacyInput, ctx(session.id))
-
-          const note = await NoteStore.get(scope.id, result.metadata.id as string)
-          expect(note.blueprint?.auditAgent).toBeUndefined()
-
-          const existing = await NoteStore.create({
-            title: "Legacy-configured Blueprint",
-            content: NoteMarkdown.fromMarkdown("Original"),
-            kind: "blueprint",
-            blueprint: { auditAgent: "reviewer" },
-          })
-          await tool.execute(
-            {
-              mode: "replace",
-              noteId: existing.id,
-              noteContent: "Updated",
-              scope: "current",
-            },
-            ctx(session.id),
-          )
-
-          const updated = await NoteStore.get(scope.id, existing.id)
-          expect(updated.blueprint?.auditAgent).toBe("reviewer")
-        },
-      })
+      const tool = await NoteWriteTool.init()
+      expect(tool.parameters.safeParse({ noteTitle: "Setup", noteContent: "Read me." }).success).toBe(true)
+      expect(tool.parameters.safeParse({ title: "Setup", content: "Read me." }).success).toBe(false)
     }))
 
   test("replace overwrites the latest note content as a stable full-document write", () =>

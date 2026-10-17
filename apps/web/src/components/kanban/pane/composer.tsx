@@ -1,8 +1,10 @@
+import { runtimeFeatureAvailable } from "@/components/runtime-features"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { Show, createMemo, createSignal } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
 import type { AgentSummary, Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -53,6 +55,7 @@ export function KanbanPaneComposer(props: {
   onUpdateProfile: (profile: ControlProfileId) => Promise<void>
   onSetWorkflow: (kind: BoardWorkflowKind) => Promise<void>
 }) {
+  const { capabilities } = useGlobalSDK()
   const { _ } = useLingui()
   const { controller, i18n } = useLocale()
   const translateModeCopy = (descriptor: MessageDescriptor) => {
@@ -71,7 +74,15 @@ export function KanbanPaneComposer(props: {
   const [actionError, setActionError] = createSignal<string>()
 
   const profile = createMemo<ControlProfileId>(() => props.session?.controlProfile ?? "guarded")
-  const workflow = createMemo<BoardWorkflowKind>(() => workflowKindOf(props.session))
+  const workflow = createMemo<BoardWorkflowKind>(() => {
+    const kind = workflowKindOf(props.session)
+    return runtimeFeatureAvailable("workflow", kind, capabilities.has) ? kind : "none"
+  })
+  const workflows = createMemo(() =>
+    (["none", "plan", "lattice", "boss"] as BoardWorkflowKind[]).filter((kind) =>
+      runtimeFeatureAvailable("workflow", kind, capabilities.has),
+    ),
+  )
   const profileVisual = createMemo(() => permissionModeVisual(profile()))
   const visibleAgents = createMemo(() => props.agents.filter((a) => !a.hidden && a.mode !== "subagent"))
   const currentAgent = createMemo(() => agent() ?? visibleAgents()[0]?.name ?? _(kanbanPage.composerDefaultAgent))
@@ -111,74 +122,78 @@ export function KanbanPaneComposer(props: {
   }
 
   return (
-    <div class="kanban-pane-composer">
+    <form
+      class="kanban-pane-composer"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void submitDraft()
+      }}
+    >
+      <input
+        class="kanban-pane-input"
+        type="text"
+        value={draft()}
+        placeholder={_(kanbanPage.sendPlaceholder)}
+        aria-label={_({ id: "app.kanban.messageLabel", message: "Message this session" })}
+        disabled={sending()}
+        onInput={(event) => setDraft(event.currentTarget.value)}
+      />
       <div class="kanban-pane-composer-toolbar">
-        <Show when={visibleAgents().length > 0}>
+        <div class="kanban-pane-composer-choices">
+          <Show when={visibleAgents().length > 0}>
+            <MenuField
+              ariaLabel={_(kanbanPage.composerAgent)}
+              icon={getSemanticIcon("agents.main")}
+              triggerClass="menu-field-trigger kanban-composer-chip"
+              value={currentAgent()}
+              options={visibleAgents().map((item) => ({ value: item.name, label: item.name }))}
+              onChange={setAgent}
+            />
+          </Show>
           <MenuField
-            ariaLabel={_(kanbanPage.composerAgent)}
-            icon={getSemanticIcon("agents.main")}
+            ariaLabel={_(kanbanPage.composerPermission)}
+            icon={getSemanticIcon(profileVisual().icon)}
             triggerClass="menu-field-trigger kanban-composer-chip"
-            value={currentAgent()}
-            options={visibleAgents().map((item) => ({ value: item.name, label: item.name }))}
-            onChange={setAgent}
+            triggerLabel={translateModeCopy(profileVisual().shortLabel)}
+            value={profile()}
+            disabled={switchingProfile()}
+            options={PERMISSION_MODES.map((item) => ({ value: item.id, label: translateModeCopy(item.label) }))}
+            onChange={(id) => {
+              if (switchingProfile()) return
+              setSwitchingProfile(true)
+              void run(() => props.onUpdateProfile(id)).finally(() => setSwitchingProfile(false))
+            }}
           />
-        </Show>
-        <MenuField
-          ariaLabel={_(kanbanPage.composerPermission)}
-          icon={getSemanticIcon(profileVisual().icon)}
-          triggerClass="menu-field-trigger kanban-composer-chip"
-          triggerLabel={translateModeCopy(profileVisual().shortLabel)}
-          value={profile()}
-          disabled={switchingProfile()}
-          options={PERMISSION_MODES.map((item) => ({ value: item.id, label: translateModeCopy(item.label) }))}
-          onChange={(id) => {
-            if (switchingProfile()) return
-            setSwitchingProfile(true)
-            void run(() => props.onUpdateProfile(id)).finally(() => setSwitchingProfile(false))
-          }}
-        />
-        <MenuField
-          ariaLabel={_(kanbanPage.composerWorkflow)}
-          icon={getSemanticIcon("cortex.main")}
-          triggerClass="menu-field-trigger kanban-composer-chip"
-          value={workflow()}
-          options={(["none", "plan", "lattice", "boss"] as BoardWorkflowKind[]).map((kind) => ({
-            value: kind,
-            label: workflowLabel(kind, _),
-          }))}
-          onChange={(kind) => void run(() => props.onSetWorkflow(kind))}
-        />
-      </div>
-      <form
-        class="kanban-pane-composer-input-row"
-        onSubmit={(event) => {
-          event.preventDefault()
-          void submitDraft()
-        }}
-      >
-        <input
-          class="kanban-pane-input"
-          type="text"
-          value={draft()}
-          placeholder={_(kanbanPage.sendPlaceholder)}
-          aria-label={_({ id: "app.kanban.messageLabel", message: "Message this session" })}
-          disabled={sending()}
-          onInput={(event) => setDraft(event.currentTarget.value)}
-        />
-        <button
+          <Show when={workflows().length > 1}>
+            <MenuField
+              ariaLabel={_(kanbanPage.composerWorkflow)}
+              icon={getSemanticIcon("cortex.main")}
+              triggerClass="menu-field-trigger kanban-composer-chip"
+              value={workflow()}
+              options={workflows().map((kind) => ({
+                value: kind,
+                label: workflowLabel(kind, _),
+              }))}
+              onChange={(kind) =>
+                runtimeFeatureAvailable("workflow", kind, capabilities.has) && void run(() => props.onSetWorkflow(kind))
+              }
+            />
+          </Show>
+        </div>
+        <IconButton
           class="kanban-pane-send"
           type="submit"
+          variant="primary"
+          icon={getSemanticIcon("prompt.submitArrow")}
           aria-label={_({ id: "app.kanban.sendLabel", message: "Send message" })}
           disabled={sending() || !draft().trim()}
-        >
-          <Icon name={getSemanticIcon("prompt.send")} size="small" />
-        </button>
-      </form>
+        />
+      </div>
       <Show when={actionError()}>
         <p class="kanban-composer-error app-panel-caption" role="alert">
           {actionError()}
         </p>
       </Show>
-    </div>
+    </form>
   )
 }

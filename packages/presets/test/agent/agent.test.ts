@@ -855,21 +855,25 @@ test("developer agent denies skills by default", () =>
     })
   }))
 
-test("Agent.defaultAgent() with default_agent config returns configured agent", () =>
-  runtime.run(async () => {
-    await using tmp = await tmpdir({
-      config: {
-        default_agent: PrimaryAgentIdentity.names.coding,
-      },
-    })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const defaultAgent = await Agent.defaultAgent()
-        expect(defaultAgent).toBe(PrimaryAgentIdentity.names.coding)
-      },
-    })
-  }))
+test.each([PrimaryAgentIdentity.names.general, PrimaryAgentIdentity.names.coding])(
+  "Agent.defaultAgent() retains the configured primary %s",
+  (configured) =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        config: {
+          default_agent: configured,
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const defaultAgent = await Agent.defaultAgent()
+          expect(defaultAgent).toBe(configured)
+          expect((await Agent.list())[0].name).toBe(configured)
+        },
+      })
+    }),
+)
 
 test("Agent.defaultAgent() with custom default_agent returns configured custom agent", () =>
   runtime.run(async () => {
@@ -897,6 +901,7 @@ test("Agent.list() sorts configured default_agent first", () =>
     await using tmp = await tmpdir({
       config: {
         default_agent: "scribe",
+        agent: { scribe: { mode: "primary" } },
       },
     })
     await ScopeContext.provide({
@@ -909,7 +914,7 @@ test("Agent.list() sorts configured default_agent first", () =>
     })
   }))
 
-test("Agent.list() sorts the general primary first when no default_agent configured", () =>
+test("Agent.list() sorts the lightweight primary first when no default_agent configured", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
@@ -917,7 +922,7 @@ test("Agent.list() sorts the general primary first when no default_agent configu
       fn: async () => {
         const agents = await Agent.list()
         const firstAgent = agents[0]
-        expect(firstAgent.name).toBe(PrimaryAgentIdentity.names.general)
+        expect(firstAgent.name).toBe(PrimaryAgentIdentity.names.lightweight)
       },
     })
   }))

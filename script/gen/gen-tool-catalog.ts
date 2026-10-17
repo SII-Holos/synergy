@@ -252,8 +252,7 @@ async function parseToolFile(
 
   let parameters: Array<{ name: string; type: string | null; description: string | null; optional: boolean }> = []
   const identifier = body.match(/parameters\s*:\s*(\w+)\s*,/)?.[1]
-  const importedSchema = identifier && source.match(new RegExp(`import\\s*\\{[^}]*\\b${identifier}\\b[^}]*\\}\\s*from`))
-  if (importedSchema && identifier) {
+  if (identifier && identifier !== "z") {
     parameters = await schemaFields(file, identifier)
   } else if (/parameters\s*,/.test(body)) {
     const moduleParams = source.match(/const\s+parameters\s*=\s*z[\s\S]*?\.object\(\{/)

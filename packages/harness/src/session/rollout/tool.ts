@@ -26,7 +26,8 @@ export namespace RolloutTool {
     const current = context.tryUse()
     if (!current) throw new Error("Tool evidence has no execution owner")
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      await SecretMask.transformResult(value as Record<string, unknown>, RolloutContext.current()?.signal)
+      // Recording a settled effect must survive cancellation; detection retains its own bounded timeout.
+      await SecretMask.transformResult(value as Record<string, unknown>)
     }
     await current.capture(value)
   }

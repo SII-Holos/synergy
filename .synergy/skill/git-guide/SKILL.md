@@ -5,44 +5,15 @@ description: Safely inspect Synergy git history, create or reuse task worktrees 
 
 # Git Guide for Synergy Development
 
-## Establish a Safe Checkout
+Inspect status, current branch and worktree ownership before editing or any Git mutation. Direct edits are allowed; preserve unrelated dirty and untracked files. Reuse an existing task worktree when it owns the branch. Do not switch or rebase a shared or pre-existing checkout without the user's explicit request. Do not stash, reset or clean shared work to move your changes.
 
-Before editing or staging, run:
+Stage, commit, push, create a PR or mutate external systems only when the user requests that action. Do not use destructive Git commands, force pushes or hook bypasses without explicit authority and a reviewed recovery plan. Amend only your own unpushed task commit when requested or a hook modified intended content; never rewrite someone else's work.
 
-```bash
-git status --short --branch
-git worktree list --porcelain
-git remote show origin
-git log --oneline -8
+Every agent-created commit ends with:
+
+```text
+Co-authored-by: synergy-agent <299070056+synergy-agent@users.noreply.github.com>
 ```
-
-Classify the current checkout before changing files:
-
-- Direct edits are allowed in the current checkout. Preserve unrelated dirty and untracked files regardless of whether it is the primary checkout or a worktree.
-- Continue in a task-owned worktree when it already owns the correct branch, and reuse it for later changes to that branch.
-- Treat primary, shared, and otherwise pre-existing checkouts as potentially concurrent. Do not switch branches or rebase them unless the user explicitly requests that operation.
-- A user may create or use a topic branch directly in the primary checkout. Use a task-owned worktree when concurrent work needs branch or file isolation, not as a prerequisite for every change.
-
-Branch switches and rebases change repository state observed by every session sharing a checkout. Before an explicitly requested switch or rebase, inspect the branch and dirty state and stop if unrelated concurrent work makes the operation unsafe.
-
-When isolation is useful and no matching worktree exists, create a topic branch and worktree from the verified development base. By default, put task worktrees under the repository checkout's project-local `.synergy/worktrees/` directory with a short filesystem-safe task slug:
-
-```bash
-REPO_ROOT=$(git rev-parse --show-toplevel)
-WORKTREE_ROOT="$REPO_ROOT/.synergy/worktrees"
-TASK_SLUG=<short-task-slug>
-
-mkdir -p "$WORKTREE_ROOT"
-git worktree add -b synergy/<topic> "$WORKTREE_ROOT/$TASK_SLUG" origin/dev
-```
-
-This is `<repository>/.synergy/worktrees/<task-slug>`, not the installation or runtime home under `SYNERGY_HOME`. Use a different worktree location only when the user explicitly requests it. If the default path is unavailable, stop and ask rather than silently creating the worktree elsewhere.
-
-`copyIgnored` setup entries must be relative paths with unused destinations; their bytes and tree identity are checked before atomic publication. Use an explicit setup command for intentional replacement of existing checkout files.
-
-Worktrees are optional branch- and file-isolation tools, not something to recreate for every edit or every feature. One task branch should keep using its existing worktree. After entering it, inspect status again; do not assume it is clean.
-
-If task changes already exist in a shared checkout, do not stash, reset, clean, or switch that checkout to move them. Create a new task worktree and deliberately migrate only task-owned changes, leaving unrelated and untracked user work untouched.
 
 ## Protect Branches and Scope
 
@@ -52,29 +23,7 @@ If task changes already exist in a shared checkout, do not stash, reset, clean, 
 - Inspect `git status` before editing, staging, committing, rebasing, or publishing.
 - Preserve unrelated dirty and untracked files. Stage only explicit files owned by the current task.
 
-## Make a Focused Commit
-
-Commit, stage, push, or create a PR only when the user requests that action.
-
-1. Review `git diff`, `git diff --stat`, and untracked files.
-2. Iterate with the narrow behavior tests; before publication run `bun run verify local --test <repository-relative-test>` with the relevant tests. Use `verify coverage --package` for coverage-policy, instrumentation or substantial coverage removal. Static receipts let pre-push reuse unchanged successful deterministic checks; CI never consumes those receipts.
-3. Stage explicit task paths. Never stage secrets, local config, logs, traces, diagnostics, runtime data, or unrelated user work.
-4. Re-read `git diff --cached`.
-5. Write a concise conventional commit using an imperative summary. Allowed types follow repository convention: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `perf:`, and `chore:`.
-6. Explain what and why in an optional body, not a step-by-step account of how.
-7. End every agent-created commit with the exact co-author footer:
-
-```text
-<type>: <imperative summary>
-
-<optional body — what and why, not how>
-
-Co-authored-by: synergy-agent <299070056+synergy-agent@users.noreply.github.com>
-```
-
-Do not amend a commit unless it was created in this task, has not been pushed, and the user requested amendment or a hook modified the intended content. Never rewrite someone else's work.
-
-### Keep internal data out of outbound text
+## Keep Internal Data Out of Outbound Text
 
 Never expose the following in a commit message, pull-request body, issue/PR comment, or review:
 
@@ -89,96 +38,16 @@ Never expose the following in a commit message, pull-request body, issue/PR comm
 
 Project-relative source paths such as `packages/local-runtime/src/tools/read.ts` are allowed. Redact or summarize sensitive evidence before it enters any outbound GitHub surface.
 
-## Push and Open a PR
+## Read the Relevant Procedure
 
-1. Confirm the current branch is a non-protected topic branch and inspect the exact push target. Publication does not require a worktree.
-2. Push only the topic branch; never push `dev` or `main` directly.
-3. Open the pull request against `dev`.
-4. Use project-relative paths and redacted evidence in the PR body.
-5. State the summary and exact test commands. Do not claim checks that were not run.
-6. Check automated feedback against the current head and base. Review edits to existing PR comments as well as newly created comments; filtering only by creation time can hide the latest review result.
-7. When the change implements a BlueprintLoop, state that loop's final status and audit conclusion in the body. An executor's own "done" is not an audit result: the loop counts as accepted only once `blueprint_loop_approve` settled it, and a loop left in `auditing`, failed, or rejected without a fresh audit is reported as unaccepted rather than described as complete.
-8. Use a reviewed Note as the file input when outbound content requires user editing:
+Before performing a listed operation, read its reference. Routine status/diff inspection does not require unrelated procedures.
 
-```bash
-git commit -F /synergy/note/<note-id>
-gh pr create --body-file /synergy/note/<note-id>
-gh issue comment <number> --body-file /synergy/note/<note-id>
-```
-
-Do not interpolate Note contents into a shell command or pass them to an option that executes the file as code.
-
-Commit coherent verified units when authorized, and finish generation and self-review before pushing the next candidate. Inspect `verify plan` and its `fullTriggers` before publication. After a CI failure, inspect all completed diagnostics and gather causal corrections before another push; avoid a separate full CI cycle for each related symptom. Retry infrastructure failures at the same SHA; a product correction requires new SHA-bound evidence. Do not rerun passing checks without changed inputs or an unresolved concern.
-
-A required check can also fail for reasons that belong to the runner rather than the change: the local artifact build needs `docker`, and a hosted job can fail before it compiles anything. Distinguish the two before treating a red gate as evidence about the code, but do not merge past it either — re-run until green. A check that cannot be made green is a blocker to report to the user, not a condition to waive.
-
-The `autonomous` profile permits ordinary topic-branch and pull-request publication from either the primary checkout or a worktree. Protected-branch pushes and broader remote mutations remain `shell_remote_write` and are denied. This capability boundary does not replace the user's authorization to publish.
-
-## GitHub CLI Permission Matrix
-
-The permission system classifies `gh` commands before applying the active control profile. The table shows the base profile decision before user rules, approval cache, SmartAllow, GitHub authorization, or ordinary runtime failures.
-
-| Command                              | Capability             | Guarded | Autonomous | Full Access |
-| ------------------------------------ | ---------------------- | ------- | ---------- | ----------- |
-| `gh pr view/list/status/checks/diff` | `shell`                | ⚠️ ask  | ✅ allow   | ✅ allow    |
-| `gh pr create`                       | `shell_remote_publish` | ⚠️ ask  | ✅ allow   | ✅ allow    |
-| `gh pr comment` / `gh pr review`     | `shell_remote_publish` | ⚠️ ask  | ✅ allow   | ✅ allow    |
-| `gh pr edit` / `gh pr ready`         | `shell_remote_write`   | ⚠️ ask  | ❌ deny    | ✅ allow    |
-| `gh issue view/list/status`          | `shell`                | ⚠️ ask  | ✅ allow   | ✅ allow    |
-| `gh issue create/comment`            | `shell_remote_publish` | ⚠️ ask  | ✅ allow   | ✅ allow    |
-| `gh issue edit/close/reopen`         | `shell_remote_write`   | ⚠️ ask  | ❌ deny    | ✅ allow    |
-| `gh pr merge/close/reopen`           | `shell_destructive`    | ⚠️ ask  | ❌ deny    | ✅ allow    |
-| `gh api <endpoint>` (GET, no fields) | `shell`                | ⚠️ ask  | ✅ allow   | ✅ allow    |
-| `gh api -X GET` / `-X HEAD`          | `shell`                | ⚠️ ask  | ✅ allow   | ✅ allow    |
-| `gh api -f/-F/--input` (auto-POST)   | `shell_remote_write`   | ⚠️ ask  | ❌ deny    | ✅ allow    |
-| `gh api -X POST/PATCH/PUT/DELETE`    | `shell_remote_write`   | ⚠️ ask  | ❌ deny    | ✅ allow    |
-| `gh api graphql` (mutation possible) | `shell_remote_write`   | ⚠️ ask  | ❌ deny    | ✅ allow    |
-
-Read-only `gh` commands sit at the `shell` risk floor rather than a read-only tier: there is no `shell_read` capability, because a shell command string carries no precise input for the gate to reason about. Every `gh` command also carries `network_request`. Under `guarded`, `network_request` alone is allowed but `shell` is a medium capability outside the allowed set, so the combination asks; `autonomous` allows both. Use the table as the base profile decision — it is not the resolved one.
-
-Checkout type does not change ordinary `shell_remote_publish` into `shell_remote_write`. Unknown write-capable `gh` subcommands default to `shell_remote_write`. Full Access silently allows permission-system capabilities but does not override task authorization, protected-branch rules, GitHub permissions, validation failures, or network/runtime errors.
-
-## Bash tool GitHub CLI credential injection
-
-When a bash tool invocation contains a `gh` command and no `GH_TOKEN` or `GITHUB_TOKEN` is already present in the child environment, the local backend injects the managed GitHub credential (from `GH_TOKEN`/`GITHUB_TOKEN` env or the Synergy auth store) as `GH_TOKEN` in the child process environment.
-
-Behavior:
-
-- The token is passed through the environment only — it never appears in the
-  command string, argv, or process listings.
-- Injection applies to any invocation that contains at least one `gh` command,
-  including mixed, chained, and piped commands (`echo ok; gh api user`, `gh repo view owner/repo | head`).
-- The injected `GH_TOKEN` is inherited by every process in the invocation —
-  any command can read it via `$GH_TOKEN`. An explicit `GH_TOKEN=...` prefix assignment or `export GH_TOKEN=...` earlier in the command takes precedence; use `env -u GH_TOKEN <cmd>` to clear it for a single command. An explicit `GITHUB_TOKEN=...` does not override the injected `GH_TOKEN`, because gh prefers `GH_TOKEN`.
-- When no Synergy GitHub credential is connected, the invocation runs without injection or an output notice. The CLI can use its own stored login; the macOS sandbox permits the native Keychain service lookup described in [Execution boundaries](../../../docs/architecture/execution-boundaries.md#sandbox-enforcement).
-- If a credential is injected, telemetry emits `bash.github.token.injected`;
-  if injection is skipped, `bash.github.token.skipped` records the reason.
-
-For a host login that fails only inside the macOS sandbox, inspect injection metadata and correlate the reproduction with kernel `mach-lookup` denials for `com.apple.SecurityServer`, including the CLI's credential-helper subprocess. The Bash denial collector filters out Mach lookups and selects the direct child PID, so an empty collected denial is not evidence that native auth succeeded. Keep credential output discarded; use [Find logs](../find-logs/SKILL.md) for isolated reproduction and redacted evidence.
-
-## Maintain Repository Automation
-
-Oryn configuration and labels follow [the operations guide](../../../docs/operations/oryn.md). Keep executable workflow/policy and validation selection on a trusted revision, use separate read/publication App tokens, and keep model credentials out of validation. Update the immutable runtime pin, label catalog and validation graph together when their contracts change. Verify `bun test --config /dev/null test/script/oryn-validation.test.ts` and `bun run workflow:check`, then perform a manual preflight and selected live review. A successful preflight does not establish model or publication success. Bind each item publisher to the producing upload artifact ID and verify full-run, execution-only and publication-only retry behavior. After a runtime receipt-contract upgrade, start a fresh workflow; historical reruns retain their original runtime and plan. For report submission changes, run the Oryn real Core report smoke alongside existing provider/failure smokes before updating the pin.
-
-For CI planning/input changes, follow [CI operations](../../../docs/operations/ci.md). Keep revision reads inside the operation-owned snapshot and memoize compact source facts, not ASTs or global results. Run `bun test --config /dev/null test/script/ci-revision.test.ts test/script/ci-plan-inputs.test.ts test/script/ci-inputs.test.ts test/script/ci-catalog.test.ts test/script/dep-analyze.test.ts`, then the preparation planner case with `bun test --config /dev/null test/script/ci-preparation.test.ts --test-name-pattern 'a profile-only Web plan'`, and run the CI tsconfig directly after installing only testing workspace dependencies. Verify real inventory, batch, blob and parse counts in an isolated instrumented process; keep fixed result/digest oracles independent of the readers. Protocol failure must reject the plan, not become empty source or full selection. Do not widen fixture/planner budgets or infer truncation from a timeout without observing malformed bytes.
-
-## Rebase or Recover
-
-Do not rebase a shared or pre-existing checkout unless the user explicitly requests it. Before any rebase, confirm the branch and dirty state; stop on conflicts, preserve both owners' intent, and rerun affected tests. Do not use `reset --hard`, checkout-based file destruction, force push, or hook bypass without explicit user authority and a reviewed recovery plan.
-
-## Read History
-
-Use read-only archaeology freely:
-
-```bash
-git log -S "symbol" --oneline --all
-git log -G "pattern" --oneline --all
-git blame -- <relative-path>
-git show <commit>
-git diff <base>...<head>
-```
-
-Tie conclusions to the current implementation; history explains intent but does not override present behavior.
+| Operation                                                                                 | Required reference                               |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Create/reuse/move a worktree, branch isolation, rebase/recovery or history investigation  | [Worktrees and history](references/worktrees.md) |
+| Stage/commit, prepare/publish/review a PR, or handle checks                               | [Commits and PRs](references/commits-and-prs.md) |
+| Change gh capability classification, troubleshoot credentials or sandboxed authentication | [GitHub CLI](references/github-cli.md)           |
+| Change Oryn workflows, CI planning/inputs, publication retries or runtime pins            | [Automation and CI](references/automation-ci.md) |
 
 ## Handoff
 

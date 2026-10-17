@@ -1,3 +1,5 @@
+import { SessionExecutionOwners } from "./execution-owners"
+import { independentExecutionInfo } from "./types"
 import { SessionPauseRecovery } from "./pause-recovery"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import z from "zod"
@@ -22,7 +24,7 @@ import { ScopeContext } from "../scope/context"
 import { MessageV2 } from "./message-v2"
 import { Session } from "."
 import { Attachment } from "../attachment"
-import { lastModel, type InvokeInput } from "./input"
+import { lastModel, resolveUserAgent as resolveInputAgent, type InvokeInput } from "./input"
 import type { Info } from "./types"
 import type { SessionManager } from "./manager"
 import { SessionHistory } from "./history"
@@ -30,6 +32,7 @@ import { SessionUserMessageMaterialization } from "./user-message-materializatio
 import { SessionRootVariant } from "./root-variant"
 import { SessionInputProgress } from "./input-progress"
 import { AttachmentPreparationError } from "./input-attachment"
+import { prepareSessionMigrations } from "../migration"
 
 export namespace SessionInbox {
   const log = Log.create({ service: "session.inbox" })
@@ -204,6 +207,7 @@ export namespace SessionInbox {
     revision: number
     input?: InvokeInput
     admission?: "idle_no_reply"
+    execution?: MessageV2.RootExecution
   }
 
   async function readSession(sessionID: string): Promise<Info> {
@@ -267,6 +271,26 @@ export namespace SessionInbox {
   async function writeItem(item: StoredItem, preserveCreated = false): Promise<StoredItem> {
     return Storage.transaction(async () => {
       item = normalizeStored(item)
+      if (item.revision === 0 && item.mode === "task" && item.message?.role === "user") {
+        const session = await readSession(item.sessionID)
+        const execution = await SessionExecutionOwners.admitTask(session, item.message)
+        const agent =
+          execution && item.message.agent === undefined
+            ? item.input
+              ? await resolveInputAgent(item.input, session, true)
+              : await resolveUserAgent(item.sessionID, item.message, session, true)
+            : undefined
+        item = {
+          ...item,
+          execution,
+          ...(agent
+            ? {
+                message: { ...item.message, agent: agent.name },
+                ...(item.input ? { input: { ...item.input, agent: agent.name } } : {}),
+              }
+            : {}),
+        }
+      }
       item = { ...item, revision: item.revision + 1 }
       {
         if (!preserveCreated) {
@@ -368,24 +392,39 @@ export namespace SessionInbox {
     return origin ? MessageV2.originRenders(origin) : false
   }
 
+  async function resolveUserAgent(
+    sessionID: string,
+    payload: NonNullable<StoredItem["message"]>,
+    session: Info | undefined,
+    independent = false,
+  ) {
+    let agentName = payload.agent ?? session?.agentOverride
+    if (!agentName) {
+      const current = session ?? (await Session.get(sessionID))
+      const messages = await SessionHistory.effectiveMessageInfos(current)
+      const latest = messages.findLast((message) => message.role === "user")
+      if (latest?.role === "user") agentName = latest.agent
+    }
+
+    let agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
+    if (!agent && independent && payload.agent === undefined) agent = await Agent.get(await Agent.defaultAgent())
+    if (!agent) throw new Error(`Agent not found: ${agentName}`)
+    return agent
+  }
+
   async function resolveUserRuntime(
     sessionID: string,
     payload: NonNullable<StoredItem["message"]>,
+    root?: MessageV2.User,
   ): Promise<{ agent: Agent.Info; model: { providerID: string; modelID: string } }> {
     const session = await Session.get(sessionID).catch(() => undefined)
-    let agentName = payload.agent ?? session?.agentOverride
-    if (!agentName) {
-      const messages = await SessionHistory.modelMessages({ sessionID })
-      for (let index = messages.length - 1; index >= 0; index--) {
-        const msg = messages[index]
-        if (msg.info.role !== "user") continue
-        agentName = (msg.info as MessageV2.User).agent
-        break
-      }
-    }
-
-    const agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
-    if (!agent) throw new Error(`Agent not found: ${agentName}`)
+    const agent = await resolveUserAgent(
+      sessionID,
+      root && MessageV2.isIndependentRoot(root) && payload.agent === undefined
+        ? { ...payload, agent: root.agent }
+        : payload,
+      session,
+    )
     const inheritedModel = await lastModel(sessionID).catch(() => undefined)
     const model =
       payload.model ??
@@ -425,7 +464,7 @@ export namespace SessionInbox {
    * owners without traversing empty historical inboxes.
    */
   export async function listRunnableSessions(scopeID?: string): Promise<string[]> {
-    const candidates = new Map<string, string>()
+    const candidates = new Map<string, { scope: string; items: StoredItem[] }>()
     let after: string[] | undefined
     for (;;) {
       const keys = await Storage.queryKeys({ kind: "inbox", scopeID, after, limit: 256 })
@@ -434,8 +473,14 @@ export namespace SessionInbox {
         const item = items[i]
         if (!item?.id) continue
         const normalized = normalizeStored(item)
-        if ((normalized.mode === "task" || normalized.admission === "idle_no_reply") && normalized.status !== "failed")
-          candidates.set(keys[i][2], keys[i][1])
+        if (
+          (normalized.mode === "task" || normalized.admission === "idle_no_reply") &&
+          normalized.status !== "failed"
+        ) {
+          const candidate = candidates.get(keys[i][2]) ?? { scope: keys[i][1], items: [] }
+          candidate.items.push(normalized)
+          candidates.set(keys[i][2], candidate)
+        }
       }
       if (keys.length < 256) break
       after = keys.at(-1)
@@ -445,11 +490,24 @@ export namespace SessionInbox {
     for (let offset = 0; offset < entries.length; offset += 256) {
       const batch = entries.slice(offset, offset + 256)
       const infos = await readRecoveryBatch<Info>(
-        batch.map(([sessionID, scope]) =>
+        batch.map(([sessionID, { scope }]) =>
           StoragePath.sessionInfo(Identifier.asScopeID(scope), Identifier.asSessionID(sessionID)),
         ),
       )
-      for (const info of infos) if (info?.time && !info.time.archived) result.push(info.id)
+      for (const info of infos) {
+        if (!info?.time || info.time.archived) continue
+        try {
+          const session = await readSession(info.id)
+          for (const item of candidates.get(info.id)!.items) {
+            if (!(await itemAvailable(session, item))) continue
+            result.push(info.id)
+            break
+          }
+        } catch (error) {
+          if (!(error instanceof Storage.NotFoundError) && !(error instanceof StorageIntegrityError)) throw error
+          log.warn("startup inbox discovery skipped an unreadable owner", { sessionID: info.id, error })
+        }
+      }
     }
     return result.sort()
   }
@@ -479,7 +537,36 @@ export namespace SessionInbox {
   }
 
   export async function list(sessionID: string): Promise<Item[]> {
-    return (await listStored(sessionID)).map(publicItem)
+    return (await availableItems(sessionID, await listStored(sessionID))).map(publicItem)
+  }
+
+  async function itemAvailable(session: Info, item: StoredItem): Promise<boolean> {
+    let context = session
+    if (item.mode === "task") {
+      if (item.execution?.kind === "independent" && item.message && MessageV2.isHumanInput(item.message))
+        context = independentExecutionInfo(session)
+    } else {
+      const root = await SessionExecutionOwners.latestRoot(session.id)
+      if (MessageV2.isIndependentRoot(root) && item.message && MessageV2.requiredOwners(item.message).length)
+        return false
+      context = SessionExecutionOwners.forRoot(session, root)
+    }
+    if (item.message) {
+      if (!(await SessionExecutionOwners.allowsMessage(context, item.message))) return false
+    }
+    return SessionExecutionOwners.allowsSession(context)
+  }
+
+  async function availableItems(sessionID: string, items: StoredItem[]): Promise<StoredItem[]> {
+    if (!items.length) return []
+    const session = await readSession(sessionID)
+    const allowed = await Promise.all(items.map((item) => itemAvailable(session, item)))
+    return items.filter((_, index) => allowed[index])
+  }
+
+  export async function hasUnavailableItem(sessionID: string): Promise<boolean> {
+    const stored = await listStored(sessionID)
+    return (await availableItems(sessionID, stored)).length !== stored.length
   }
 
   export async function getStored(sessionID: string, itemID: string): Promise<StoredItem> {
@@ -563,6 +650,10 @@ export namespace SessionInbox {
   })
 
   async function persistDelivery(item: StoredItem) {
+    if (item.message?.role === "assistant") {
+      const session = await readSession(item.sessionID)
+      await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+    }
     return Storage.transaction(async () => {
       const stored = await writeItem(item)
       if (stored.message?.role === "assistant") await materializeItem(stored, await latestRootID(stored.sessionID))
@@ -789,10 +880,15 @@ export namespace SessionInbox {
     }
   }
 
-  export async function enqueueMail(input: { sessionID: string; mail: SessionManager.SessionMail }): Promise<Item> {
+  export async function enqueueMail(input: {
+    sessionID: string
+    mail: SessionManager.SessionMail
+    mode?: "task" | "steer"
+  }): Promise<Item> {
     const itemID = Identifier.ascending("inbox")
     const ids = { itemID, messageID: Identifier.ascending("message"), orderKey: itemID }
-    return publicItem(await writeItem(mailItem(input, ids)))
+    const item = mailItem(input, ids)
+    return publicItem(await writeItem(input.mode ? { ...item, mode: input.mode } : item))
   }
 
   export async function enqueueMailUnique(input: {
@@ -827,12 +923,25 @@ export namespace SessionInbox {
     return item
   }
 
+  async function prepareMutation(input: { sessionID: string; itemID: string }) {
+    if (Storage.inTransaction()) {
+      const item = await getStored(input.sessionID, input.itemID).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return
+        throw error
+      })
+      if (item?.mode !== "task" || item.status === "failed") return
+    }
+    const session = await readSession(input.sessionID)
+    await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+  }
+
   /**
    * Guide: flip mode task↔steer.
    * A task item becomes steer (joins next model call).
    * A steer item becomes task (queues for after-turn).
    */
   export async function guide(input: { sessionID: string; itemID: string }): Promise<Item> {
+    await prepareMutation(input)
     return Storage.transaction(async () => {
       const item = await assertMutable(input)
       if (item.mode === "context") return publicItem(item)
@@ -875,6 +984,7 @@ export namespace SessionInbox {
   }
 
   export async function removeForRestore(input: { sessionID: string; itemID: string }): Promise<void> {
+    await prepareMutation(input)
     await Storage.transaction(async () => {
       const session = await readSession(input.sessionID)
       const scopeID = Identifier.asScopeID(session.scope.id)
@@ -933,7 +1043,8 @@ export namespace SessionInbox {
   }
 
   export async function drainReady(sessionID: string): Promise<StoredItem[]> {
-    return drainWhere(sessionID, () => true)
+    const available = new Set((await peekReady(sessionID)).map((item) => item.id))
+    return drainWhere(sessionID, (item) => available.has(item.id))
   }
 
   /**
@@ -943,7 +1054,10 @@ export namespace SessionInbox {
    */
   export async function peekReady(sessionID: string, excludeIDs?: Set<string>): Promise<StoredItem[]> {
     const items = await listStored(sessionID)
-    const ready = items.filter((item) => !excludeIDs || !excludeIDs.has(item.id))
+    const ready = await availableItems(
+      sessionID,
+      items.filter((item) => !excludeIDs || !excludeIDs.has(item.id)),
+    )
     return sortItems(ready)
   }
 
@@ -959,7 +1073,7 @@ export namespace SessionInbox {
   // --- Mode-based drains ---
 
   export async function peekSteer(sessionID: string): Promise<StoredItem[]> {
-    return (await listStored(sessionID)).filter((item) => item.mode === "steer" && item.status !== "failed")
+    return (await peekReady(sessionID)).filter((item) => item.mode === "steer" && item.status !== "failed")
   }
 
   export async function peekIdleNoReply(sessionID: string) {
@@ -967,14 +1081,15 @@ export namespace SessionInbox {
   }
 
   export async function peekContext(sessionID: string): Promise<StoredItem[]> {
-    return (await listStored(sessionID)).filter(
+    return (await peekReady(sessionID)).filter(
       (item) => item.mode === "context" && item.message?.role === "user" && item.status !== "failed",
     )
   }
 
   export async function peekTask(sessionID: string): Promise<StoredItem | undefined> {
-    const items = await listStored(sessionID)
-    return items.find((item) => item.mode === "task" && item.status !== "failed")
+    const items = (await peekReady(sessionID)).filter((item) => item.mode === "task" && item.status !== "failed")
+    const root = await SessionExecutionOwners.latestRoot(sessionID)
+    return (root && items.find((item) => item.execution?.previousRootID === root.id)) || items[0]
   }
 
   export async function fenceQueuedWork(
@@ -1031,6 +1146,7 @@ export namespace SessionInbox {
     rootID?: string,
     options?: { guiding?: boolean },
   ): Promise<MessageV2.WithParts | undefined> {
+    if (!(await itemAvailable(await readSession(item.sessionID), item))) return undefined
     try {
       return await SessionInputProgress.run(
         { sessionID: item.sessionID, messageID: item.messageID, itemID: item.id },
@@ -1120,11 +1236,16 @@ export namespace SessionInbox {
           },
           rootID,
           commitOptions,
+          item.execution ?? null,
         )
       }
 
       const origin = payload.origin ?? { type: "user" as const }
-      const runtime = await resolveUserRuntime(item.sessionID, payload)
+      const runtime = await resolveUserRuntime(
+        item.sessionID,
+        payload,
+        !isRoot ? await SessionExecutionOwners.latestRoot(item.sessionID) : undefined,
+      )
       const selected = (await Session.get(item.sessionID)).modelSelection?.selected
       const thinking = isRoot
         ? (payload.thinking ??
@@ -1172,6 +1293,7 @@ export namespace SessionInbox {
         agent: runtime.agent.name,
         model: runtime.model,
         isRoot,
+        ...(isRoot && item.execution ? { execution: item.execution } : {}),
         ...(resolvedRootID ? { rootID: resolvedRootID } : {}),
         visible: payload.visible,
         origin,

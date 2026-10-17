@@ -5,9 +5,7 @@ export function registerToolGroup() {
       id: "browser",
       title: "Browser",
       description:
-        "Interactive browser automation, page inspection, screenshots, downloads, console and network diagnostics.",
-      whenToExpand:
-        "Expand when a task needs a real browser: JS-heavy sites, localhost UI verification, screenshots, clicking, typing, page state inspection, or browser debugging.",
+        "Inspect and interact with real browser pages, including JavaScript-heavy sites and localhost UI verification. Capture screenshots and downloads, click or type, and diagnose console, network and page state.",
       tools: [
         "browser_annotate",
         "browser_navigation",

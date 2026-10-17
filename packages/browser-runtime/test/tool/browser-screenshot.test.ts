@@ -11,7 +11,6 @@ const PNG_DATA_URL =
 
 const originalResolvePage = BrowserToolHelper.resolvePage
 const originalExecute = BrowserToolHelper.execute
-const originalWithActivity = BrowserToolHelper.withActivity
 
 beforeEach(() =>
   runtime.run(() => {
@@ -25,7 +24,6 @@ beforeEach(() =>
         width: 1,
         height: 1,
       }) as never
-    BrowserToolHelper.withActivity = async (_ctx, _page, _kind, _tool, _label, fn) => fn()
   }),
 )
 
@@ -33,7 +31,6 @@ afterEach(() =>
   runtime.run(() => {
     BrowserToolHelper.resolvePage = originalResolvePage
     BrowserToolHelper.execute = originalExecute
-    BrowserToolHelper.withActivity = originalWithActivity
   }),
 )
 

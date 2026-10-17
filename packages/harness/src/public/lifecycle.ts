@@ -7,6 +7,6 @@ export {
 } from "../lifecycle/runtime"
 export { readRuntimeStats } from "../lifecycle/stats"
 export { ScopeStartup } from "../scope/startup"
-export type { RuntimeHost } from "../lifecycle/context"
+export type { RuntimeHost, RuntimeLaunch } from "../lifecycle/context"
 export { registerHarness } from "../lifecycle/register"
 export { RuntimeComponents, type RuntimeComponent } from "../lifecycle/components"

@@ -5,8 +5,9 @@ Knowledge storage, memory and experience retrieval, embedding, encoding, Chronic
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Own compiled embedding build plugins, ONNX shims and asset staging in `script/`; product packaging consumes the explicit script exports. Keep payload runtime paths stable and verify the compiled standalone probes.
 - Own configuration schemas, normalization, reference checks and secret handling in `src/config-schema.ts`; consumers use its typed reader and the host composes its registration.
+- Own historical knowledge configuration conversions in `src/config-migration.ts` through the Library migration registrar. Shared receipts never replace the selected owner's catch-up; preserve unknown categories and fields through storage parsing, public projection, merge and replacement writes.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
-- Own Anima daily scheduling policy in `AnimaSchedule.create()`. Its named Agenda host interface is supplied by product composition; Library must not import Workflows to obtain the scheduler.
+- Own knowledge storage and retrieval settings. Anima owns its scheduling configuration and daily Agenda seeding in its independent package; Library must not import its scheduler or activate Agenda.
 - Tests live under test/ and use isolated homes through the testing support package.
 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.

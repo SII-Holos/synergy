@@ -14,6 +14,7 @@ File restoration receipts live below each Session’s `file_restore` namespace i
 | `installations/selection-v1.json`                         | Initial installation selection retained by the versioned bootstrap migration               |
 | `installations/activated/`, `installations/sources/`      | Plugin activation receipts and immutable local package source archives                     |
 | `config/`                                                 | Global domain configuration, agents, commands, skills and instructions                     |
+| `workspaces/home/`                                        | Persistent shared default working files for new local Home sessions                        |
 | `data/storage/`                                           | Agent database bootstrap identity, SQLite database, migration backups and transfer records |
 | `data/auth/`                                              | Provider, Holos, MCP and other account credentials                                         |
 | `data/library.db`                                         | Library's independently owned SQLite knowledge database                                    |

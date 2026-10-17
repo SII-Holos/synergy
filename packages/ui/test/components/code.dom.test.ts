@@ -53,6 +53,10 @@ export class File {
   setSelectedLines(): void {}
   cleanUp(): void {}
 }
+export class FileDiff {
+  constructor() { throw new Error("Code rendering must not construct a diff") }
+}
+export function parsePatchFiles() { throw new Error("Code rendering must not parse a patch") }
 `
 
 const FAKE_WORKER = `export function getWorkerPool() { return undefined }`

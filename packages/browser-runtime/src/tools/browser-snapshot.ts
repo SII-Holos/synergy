@@ -20,33 +20,27 @@ export const BrowserSnapshotTool = Tool.define("browser_snapshot", {
     .strict(),
   async execute({ pageId, ...params }, ctx) {
     const page = await BrowserToolHelper.resolvePage(ctx, pageId)
-    return BrowserToolHelper.withActivity(
-      ctx,
-      page,
-      "reading",
-      "browser_snapshot",
-      "Reading page structure",
-      async () => {
-        const result = await BrowserToolHelper.execute(ctx, pageId, {
-          type: "snapshot",
-          query: params.query,
-          maxNodes: params.maxNodes,
-        })
-        if (result.type !== "snapshot") throw new Error("Browser snapshot returned an unexpected result.")
-        const formatted = formatSnapshotText(result.elements, params)
-        return {
-          title: `Snapshot of ${page.url || page.title || "page"}`,
-          output: `snapshotId: ${result.snapshotId}\n${formatted.output}`,
-          metadata: {
-            pageId: page.id,
-            url: page.url,
-            snapshotId: result.snapshotId,
-            elementsCount: result.elements.length,
-            truncated: result.truncated || formatted.truncated,
-            outputTruncated: formatted.truncated,
-          },
-        }
+
+    const result = await BrowserToolHelper.execute(ctx, pageId, {
+      type: "snapshot",
+      query: params.query,
+      maxNodes: params.maxNodes,
+    })
+    if (result.type !== "snapshot") throw new Error("Browser snapshot returned an unexpected result.")
+    const formatted = formatSnapshotText(result.elements, params)
+    return {
+      title: `Snapshot of ${page.url || page.title || "page"}`,
+      output: [result.userChanges, `snapshotId: ${result.snapshotId}\n${formatted.output}`]
+        .filter(Boolean)
+        .join("\n\n"),
+      metadata: {
+        pageId: page.id,
+        url: page.url,
+        snapshotId: result.snapshotId,
+        elementsCount: result.elements.length,
+        truncated: result.truncated || formatted.truncated,
+        outputTruncated: formatted.truncated,
       },
-    )
+    }
   },
 })

@@ -37,6 +37,16 @@ function loopEntry(active: boolean = true): NavEntry {
 }
 
 describe("resolveSessionVisualState", () => {
+  test("removed Blueprint sources lose dedicated history glyphs without hiding the ordinary conversation", () => {
+    const session = blueprintEntry({ source: "lattice", loopRole: "audit" })
+    const hidden = resolveSessionVisualState({ entry: session, hasFeature: (id) => id === "blueprint" })
+    expect(hidden.tone).toBe("default")
+    const restored = resolveSessionVisualState({
+      entry: session,
+      hasFeature: (id) => ["blueprint", "lattice"].includes(id),
+    })
+    expect(restored.tone).toBe("blueprint-audit")
+  })
   test("shows running state for busy sessions", () => {
     const visual = resolveSessionVisualState({ entry: entry(), status: { type: "busy" } })
 

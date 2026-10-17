@@ -1,3 +1,3 @@
-Retrieve the full content of one or more memories by their IDs. Returns the title, content, and timestamp for each memory.
+Retrieve the full content of one or more memories by their IDs. Returns the title, content, category, recall mode, creation time and numeric `updatedAt` for each memory. Pass `updatedAt` as `expectedUpdatedAt` to `memory_edit` when revising a read entry.
 
 Use this after `memory_search` to read the full details of relevant memories.

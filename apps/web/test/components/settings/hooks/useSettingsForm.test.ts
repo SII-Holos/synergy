@@ -7,6 +7,29 @@ import {
   readLegacyQuickSwitcherPreferences,
 } from "../../../../src/components/settings/hooks/useSettingsForm"
 import { defaultSettingsState } from "../../../../src/components/settings/types"
+import { buildPatch } from "../../../../src/components/settings/hooks/useConfigPatch"
+
+test("refreshing a saved file group does not create an unrelated default Agent override", () => {
+  const cfg: Config = { fileToolGroup: "hashline" }
+  const [state, setSettings] = createStore(defaultSettingsState("enter"))
+  ensureInit({
+    cfg,
+    setName: "global",
+    refreshing: () => false,
+    initialized: () => false,
+    initializedForSet: undefined,
+    sendShortcut: () => "enter",
+    colorScheme: () => "system",
+    setSettings,
+    setInitialized() {},
+    originalMcpsRef: { current: {} },
+    availableAgents: [{ name: TEST_AGENT_NAME, mode: "primary", options: {}, permission: [] }],
+  })
+  expect(state.agents.fileToolGroup).toBe("hashline")
+  const patch = buildPatch({ cfg, state, originalMcps: {} })
+  expect(patch).not.toHaveProperty("fileToolGroup")
+  expect(patch).not.toHaveProperty("default_agent")
+})
 
 describe("settings form legacy quick switcher migration", () => {
   test("reads current quick switcher preferences from the legacy localStorage key", () => {

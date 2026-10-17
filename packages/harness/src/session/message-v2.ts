@@ -1,4 +1,5 @@
 import { upgradeAccessRecord } from "../migration/import"
+import { prepareSessionMigrations } from "../migration"
 import {
   AttachmentPresentation as SharedAttachmentPresentation,
   attachmentPurpose,
@@ -8,6 +9,7 @@ import { markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-as
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { ToolIntent } from "./tool-intent"
+import { RuntimeContextMetadata } from "./runtime-context-schema"
 import { ToolActivityEvidence } from "./activity-evidence"
 import { RuntimeContext } from "../lifecycle/context"
 import { ModelSelection } from "./model-selection-schema"
@@ -525,9 +527,20 @@ export namespace MessageV2 {
     referenceContext: ResourceReference.Context.optional(),
   })
 
+  export const RootExecution = z
+    .object({
+      version: z.literal(1),
+      kind: z.literal("independent"),
+      previousRootID: Identifier.schema("message").optional(),
+    })
+    .strict()
+    .meta({ ref: "RootExecution" })
+  export type RootExecution = z.infer<typeof RootExecution>
+
   export const User = Base.extend({
     role: z.literal("user"),
     isRoot: z.boolean().optional(),
+    execution: RootExecution.optional(),
     time: z.object({
       created: z.number(),
     }),
@@ -890,10 +903,28 @@ export namespace MessageV2 {
         subscription: z.number().int().optional(),
         checkpointEpoch: z.string().optional(),
         checkpointSeq: z.number().int().optional(),
+        stream: z
+          .object({ id: z.string(), revision: z.number().int().nonnegative(), offset: z.number().int().nonnegative() })
+          .optional(),
         content: z
           .discriminatedUnion("kind", [
             z.object({ kind: z.literal("checkpoint"), part: Part }),
+            z.object({ kind: z.literal("reference"), checkpoint: z.string().uuid() }),
+            z.object({
+              kind: z.literal("anchor"),
+              streamID: z.string(),
+              revision: z.number().int().nonnegative(),
+              offset: z.number().int().nonnegative(),
+              part: z.union([TextPart.omit({ text: true }), ReasoningPart.omit({ text: true })]),
+            }),
             z.object({ kind: z.literal("delta"), baseVersion: z.string(), delta: z.string() }),
+            z.object({
+              kind: z.literal("append"),
+              streamID: z.string(),
+              revision: z.number().int().nonnegative(),
+              offset: z.number().int().nonnegative(),
+              delta: z.string(),
+            }),
           ])
           .optional(),
       }),
@@ -914,6 +945,34 @@ export namespace MessageV2 {
     parts: z.array(Part),
   })
   export type WithParts = z.infer<typeof WithParts>
+
+  export function copyForTransform(messages: WithParts[]): WithParts[] {
+    const copies = new WeakMap<object, object>()
+    function copy<T>(value: T): T {
+      // Share immutable strings: native deep cloning copies large tool outputs on every step.
+      if (value === null || typeof value !== "object") return value
+      const existing = copies.get(value)
+      if (existing) return existing as T
+      const prototype = Object.getPrototypeOf(value)
+      if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+        const result = structuredClone(value)
+        copies.set(value, result)
+        return result
+      }
+      const result: object = Array.isArray(value) ? new Array(value.length) : Object.create(prototype)
+      copies.set(value, result)
+      for (const [key, item] of Object.entries(value)) {
+        Object.defineProperty(result, key, {
+          value: copy(item),
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        })
+      }
+      return result as T
+    }
+    return copy(messages)
+  }
 
   export function extractText(parts: Part[], options?: { includeSynthetic?: boolean; maxLength?: number }): string {
     const texts: string[] = []
@@ -999,6 +1058,54 @@ export namespace MessageV2 {
     if (metadata.channelPush || metadata.mailbox) return { type: "channel" }
     if (sessionID?.trim()) return { type: "agent", sessionID }
     return { type: "user" }
+  }
+
+  export interface OwnerInput {
+    origin?: OriginUser
+    metadata?: Record<string, unknown>
+  }
+
+  export function requiredOwners(input: OwnerInput): string[] {
+    const declared = input.metadata?.requiredOwners
+    const owners = new Set<string>(
+      declared === undefined
+        ? []
+        : Array.isArray(declared)
+          ? declared.map((owner) => (typeof owner === "string" && owner.trim() ? owner : ""))
+          : [""],
+    )
+    const origins = [input.origin, originFromMetadata(input.metadata)]
+    for (const origin of origins) {
+      if (origin?.type === "agenda") owners.add("agenda")
+      if (origin?.type === "blueprint") owners.add("blueprint")
+      if (origin?.type === "channel") owners.add("channels")
+      if (origin?.type === "plugin") owners.add("plugin-host")
+    }
+    const source = input.metadata?.source
+    if (typeof source === "string") {
+      if (source.startsWith("blueprint_loop_")) owners.add("blueprint")
+      if (source.startsWith("light_loop_")) owners.add("light-loop")
+      if (source === "lattice" || source.startsWith("lattice_")) owners.add("lattice")
+    }
+    return [...owners].sort()
+  }
+
+  export function isHumanInput(input: OwnerInput): boolean {
+    return (input.origin ?? originFromMetadata(input.metadata)).type === "user" && requiredOwners(input).length === 0
+  }
+
+  export function isIndependentRoot(input: Info | undefined): boolean {
+    return input?.role === "user" && input.isRoot === true && input.execution?.kind === "independent"
+  }
+
+  export function executionMessages(messages: WithParts[], root: User): WithParts[] {
+    if (!isIndependentRoot(root)) return messages
+    return messages.flatMap((message) => {
+      if (message.info.role !== "user" || message.info.isRoot || !requiredOwners(message.info).length) return [message]
+      const parts = message.parts.filter((part) => !isSystemPart(part))
+      if (parts.length === message.parts.length) return [message]
+      return parts.length ? [{ ...message, parts }] : []
+    })
   }
 
   /** Whether an origin renders as a visible chip when its message is non-root. */
@@ -1177,6 +1284,7 @@ export namespace MessageV2 {
     selector?: string[]
     range?: { start: number; end: number }
     precision?: "source" | "role"
+    segments?: Array<{ source: string; start: number; end: number }>
   }
 
   export interface ModelMessageProvenance {
@@ -1406,7 +1514,31 @@ export namespace MessageV2 {
               isSystemPart(part) ? "injectedContext" : "userMessages",
               part.text,
               part,
+              msg.info.origin?.type === "system" && msg.info.origin.detail === "runtime-context"
+                ? "runtime-context"
+                : undefined,
             )
+            if (
+              msg.info.origin?.type === "system" &&
+              msg.info.origin.detail === "runtime-context" &&
+              isSystemPart(part)
+            ) {
+              const metadata = RuntimeContextMetadata.parse(msg.info.metadata?.runtimeContext)
+              const segments: NonNullable<ModelMessageContribution["segments"]> = []
+              let cursor = 0
+              for (const source of metadata.sources) {
+                if (!RuntimeContextMetadata.verified(source, part.text) || !source.range || source.range.start < cursor)
+                  continue
+                if (source.range.start > cursor)
+                  segments.push({ source: "runtime-context", start: cursor, end: source.range.start })
+                segments.push({ source: source.id, ...source.range })
+                cursor = source.range.end
+              }
+              if (cursor < part.text.length)
+                segments.push({ source: "runtime-context", start: cursor, end: part.text.length })
+              const contribution = provenance.categories.injectedContext.at(-1)
+              if (contribution) contribution.segments = segments
+            }
           }
           if (part.type === "attachment") {
             appendAttachmentModelParts(userMessage.parts, part, provenance, { keptHashes, includeLocalPath: true })
@@ -1913,6 +2045,8 @@ export namespace MessageV2 {
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
 
+      if (!input.scopeID) await prepareSessionMigrations({ scopeID, sessionID })
+
       for await (const info of readNewestInfos({ scopeID, sessionID })) {
         yield {
           info,
@@ -1939,6 +2073,7 @@ export namespace MessageV2 {
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
       const messageID = input.messageID as Identifier.MessageID
+      if (!input.scopeID) await prepareSessionMigrations({ scopeID, sessionID })
       const results: MessageV2.Part[] = []
       for await (const record of Storage.records<MessageV2.Part>({ kind: "part", scopeID, sessionID, messageID })) {
         results.push(upgradeAccessRecord(record.key, record.value))
@@ -1986,6 +2121,7 @@ export namespace MessageV2 {
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
       const messageID = input.messageID as Identifier.MessageID
+      if (!input.scopeID) await prepareSessionMigrations({ scopeID, sessionID })
       const info = canonicalMessage(
         upgradeAccessRecord(
           StoragePath.messageInfo(scopeID, sessionID, messageID),
@@ -2145,6 +2281,7 @@ export namespace MessageV2 {
             // try to extract common error message fields
             const errMsg = body.message || body.error || body.error?.message
             if (errMsg && typeof errMsg === "string") {
+              if (errMsg === msg) return msg
               return `${msg}: ${errMsg}`
             }
           } catch {}

@@ -8,19 +8,19 @@ import { BrowserNewTab } from "./browser-new-tab"
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { createEffect, createMemo, createResource, createSignal, lazy, Show, on, untrack, onCleanup } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, lazy, Show, onCleanup } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { BrowserStoreProvider } from "./browser-store"
 import { useBrowserCatalog, type BrowserCatalog } from "./browser-catalog"
 import { AddressBar } from "./address-bar"
 import { BrowserSurface } from "./browser-surface"
-import { AgentAssistant } from "./agent-assistant"
 import { AnnotationInput } from "./annotation-input"
 import { browserDebug } from "./browser-debug"
 import { useSDK } from "@/context/sdk"
 import { usePlatform } from "@/context/platform"
 import { useWorkbenchPanels } from "@/context/workbench"
+import { useViewActivity } from "@/context/view-residency"
 import { browserPageTab, browserWorkbenchRoute, type BrowserWorkbenchRoute } from "./browser-workbench-model"
 import { createBrowserCommandId } from "./browser-command"
 import { normalizeBrowserError } from "./browser-error"
@@ -49,6 +49,8 @@ export function BrowserPanel(props: { tab: WorkbenchPanelTab }) {
         path_directory: params.dir ?? sdk.scopeID ?? sdk.scopeKey,
         scopeID: sdk.scopeID,
       },
+    undefined,
+    { equals: (left, right) => JSON.stringify(left) === JSON.stringify(right) },
   )
   const [initial, { refetch }] = createResource(route, async (input) => {
     const clientPresentation = await resolveBrowserClientPresentation({
@@ -84,12 +86,26 @@ function BrowserPanelInner(props: {
   clientPresentation: BrowserClientPresentationMode
   tab: WorkbenchPanelTab
 }) {
-  const browser = props.catalog.store
+  const active = useViewActivity()
   const dialog = useDialog(),
     workbench = useWorkbenchPanels(),
     sdk = useSDK(),
     platform = usePlatform()
   const params = useParams()
+  const boundSession = workbench.sessionKey()
+  const browser = props.catalog.store.forPage(
+    () => props.tab.resourceId,
+    (id) => {
+      const page = props.catalog.store.session.pages.find((page) => page.id === id)
+      if (!page || !workbench.isCurrent(boundSession)) return
+      void workbench.openPanel("browser", {
+        init: browserPageTab(page, props.catalog.route),
+        activate: active(),
+        canCommit: () => workbench.isCurrent(boundSession),
+      })
+    },
+    () => params.id,
+  )
   const { _ } = useLingui()
   const route = props.catalog.route
   const draft = useBrowserDraft(() => params.id)
@@ -105,25 +121,6 @@ function BrowserPanelInner(props: {
     if (!page || !platform.browserNative?.dataAction) return
     dialog.show(() => <BrowserDataDialog ownerKey={ownerKey} pageId={page.id} url={page.url} section={section} />)
   }
-  if (props.tab.resourceId) browser.setSession("selectedPageId", props.tab.resourceId)
-
-  createEffect(
-    on(
-      browser.pageId,
-      (id) => {
-        if (!id || id === props.tab.resourceId) return
-        const page = browser.session.pages.find((page) => page.id === id)
-        if (!page || workbench.surface("side").active() !== props.tab.id) return
-        untrack(
-          () =>
-            void workbench.openPanel("browser", {
-              init: browserPageTab(page, route),
-            }),
-        )
-      },
-      { defer: true },
-    ),
-  )
 
   const [handledNavigationNonce, setHandledNavigationNonce] = createSignal<number | undefined>(undefined)
   createEffect(() => {
@@ -152,9 +149,7 @@ function BrowserPanelInner(props: {
       })
   }
 
-  const page = createMemo(() =>
-    !props.tab.resourceId || browser.pageId() === props.tab.resourceId ? browser.page() : null,
-  )
+  const page = browser.page
 
   const showDevPanel = () => browser.devPanel() !== "closed"
   const [recent, setRecent] = createSignal<Array<{ url: string; title: string; time: number }>>([])
@@ -371,7 +366,32 @@ function BrowserPanelInner(props: {
             </Button>
           </div>
         </Show>
-        <div class="browser-content relative flex-1" aria-busy={recovering()}>
+        <Show when={browser.browserError()}>
+          {(error) => (
+            <div
+              role="status"
+              class="flex shrink-0 items-center gap-2 border-b border-border-weak-base bg-surface-raised-base px-3 py-2 text-12 text-text-strong"
+            >
+              <span class="font-medium">{error().severity === "critical" ? _(B.unavailable.id) : _(B.issue.id)}</span>
+              <span class="min-w-0 flex-1 break-words text-text-weak">{error().message}</span>
+              <Show
+                when={
+                  error().code?.startsWith("browser_native_") &&
+                  browser.hostStatus() !== "failed" &&
+                  platform.browserNative
+                }
+              >
+                <Button size="small" disabled={recovering()} onClick={retryNative}>
+                  <Trans id={B.retry.id} message={B.retry.message} />
+                </Button>
+              </Show>
+              <Button size="small" variant="ghost" onClick={() => browser.setBrowserError(null)}>
+                <Trans id={B.dismiss.id} message={B.dismiss.message} />
+              </Button>
+            </div>
+          )}
+        </Show>
+        <div class="browser-content relative min-h-0 flex-1" aria-busy={recovering()}>
           <Show
             when={showDevPanel()}
             fallback={
@@ -400,7 +420,6 @@ function BrowserPanelInner(props: {
               </div>
             </div>
           </Show>
-          <AgentAssistant />
           <Show when={showAnnotation()}>
             {(() => {
               const target = browser.annotationTarget()!

@@ -190,6 +190,7 @@ const builtinIconNames = [
   "pen",
   "pen-line",
   "pencil",
+  "pencil-line",
   "pin",
   "pin-off",
   "plus",

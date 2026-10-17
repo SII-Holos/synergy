@@ -1,7 +1,9 @@
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import { isBareUrlBoundary } from "@ericsanchezok/synergy-util/markdown-link"
 import * as smd from "streaming-markdown"
 import { createMarkdownStreamMotion } from "./markdown-stream-motion"
 import { createMarkdownStreamSource, type MarkdownStreamLayout } from "./markdown-stream-source"
+import { createMarkdownLinkStream } from "./markdown-stream-links"
 import type { MarkdownDocument } from "../context/markdown-document"
 
 const allowedProtocols = new Set(["http:", "https:", "mailto:", "tel:"])
@@ -27,6 +29,7 @@ function createSafeRenderer(
     add_token(data, type, start) {
       renderer.add_token(data, type)
       const node = data.nodes[data.index]
+      if (type === smd.RAW_URL) node?.setAttribute("data-resource-bare", "pending")
       if (node && start !== undefined && start >= 0) source.token(node, start)
     },
     add_text(data, text, spans) {
@@ -80,6 +83,8 @@ function createSafeRenderer(
       smd.default_set_attr(data, type, value)
       if (type !== smd.HREF) return
       data.nodes[data.index]?.setAttribute("rel", "noopener noreferrer")
+      if (data.nodes[data.index]?.getAttribute("data-resource-bare") === "pending")
+        data.nodes[data.index]?.setAttribute("data-resource-bare", "true")
     },
   }
 }
@@ -100,6 +105,7 @@ export function createMarkdownStreamController(root: HTMLElement): MarkdownStrea
   let motion: ReturnType<typeof createMarkdownStreamMotion>
   let source: ReturnType<typeof createMarkdownStreamSource>
   let renderer: ReturnType<typeof createSafeRenderer>
+  let links: ReturnType<typeof createMarkdownLinkStream>
 
   const reset = () => {
     motion?.dispose()
@@ -108,6 +114,7 @@ export function createMarkdownStreamController(root: HTMLElement): MarkdownStrea
     root.replaceChildren()
     renderer = createSafeRenderer(root, motion, source)
     parser = smd.parser(renderer)
+    links = createMarkdownLinkStream(parser)
     offset = 0
     ended = false
   }
@@ -122,8 +129,37 @@ export function createMarkdownStreamController(root: HTMLElement): MarkdownStrea
       hasUpdate = true
       key = nextKey
       const delta = snapshot.slice(offset)
+      const previous = offset ? snapshot[offset - 1] : ""
       offset = snapshot.length
-      smd.parser_write(parser, delta)
+      let from = 0
+      for (let index = 0; index < delta.length; index++) {
+        if (!isBareUrlBoundary(delta[index])) continue
+        links.write(delta.slice(from, index), offset - delta.length + from, from ? delta[from - 1] : previous)
+        if (parser.token === smd.RAW_URL) {
+          renderer.set_attr(renderer.data, smd.HREF, parser.pending)
+          renderer.end_token(renderer.data)
+          parser.token = parser.tokens[--parser.len]
+          parser.pending = ""
+        }
+        links.write(delta[index], offset - delta.length + index, index ? delta[index - 1] : previous)
+        if (
+          parser.pending === delta[index] &&
+          ![
+            smd.LINK,
+            smd.IMAGE,
+            smd.CODE_INLINE,
+            smd.CODE_BLOCK,
+            smd.CODE_FENCE,
+            smd.EQUATION_BLOCK,
+            smd.EQUATION_INLINE,
+          ].some((type) => type === parser.token)
+        ) {
+          renderer.add_text(renderer.data, parser.pending, [{ source: offset - delta.length + index, length: 1 }])
+          parser.pending = ""
+        }
+        from = index + 1
+      }
+      links.write(delta.slice(from), offset - delta.length + from, from ? delta[from - 1] : previous)
       motion.play()
     },
     end() {
@@ -131,6 +167,7 @@ export function createMarkdownStreamController(root: HTMLElement): MarkdownStrea
       ended = true
       motion.begin(false)
       try {
+        links.end()
         smd.parser_end(parser)
       } catch {
         return

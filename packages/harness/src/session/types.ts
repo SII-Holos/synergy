@@ -315,8 +315,21 @@ const BaseInfo = z.preprocess(
   }),
 )
 
-export const Info = BaseInfo.in.pipe(SessionSchemaRegistry.compose(BaseInfo.out)).meta({ ref: "Session" })
+export const Info = z
+  .preprocess(
+    (input) => SessionSchemaRegistry.projectInput(BaseInfo.in.parse(input)),
+    SessionSchemaRegistry.compose(BaseInfo.out),
+  )
+  .meta({ ref: "Session" })
 export type Info = z.infer<typeof Info>
+
+export function independentExecutionInfo(input: Info): Info {
+  return Object.fromEntries(
+    Object.keys(BaseInfo.out.shape)
+      .filter((key) => key !== "workflow" && Object.hasOwn(input, key))
+      .map((key) => [key, input[key as keyof Info]]),
+  ) as Info
+}
 
 export const PersistedInfo = BaseInfo.in.pipe(BaseInfo.out.omit({ workflow: true }).passthrough())
 export type PersistedInfo = z.infer<typeof PersistedInfo>

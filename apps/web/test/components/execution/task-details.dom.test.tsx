@@ -48,7 +48,7 @@ beforeAll(async () => {
       return {data:{sessionID:q.sessionID,items:items.slice(start,start+q.limit),count:Math.min(q.limit,items.length-start),total:items.length,offset:start,limit:q.limit,hasMore:start+q.limit<items.length,hasActiveAgenda:true}}
     },inboxRemoved:async(q,options)=>{(window.removedRequests??=[]).push(options.signal);window.removedReads=(window.removedReads||0)+1;if(window.removedDelay)await new Promise(r=>setTimeout(r,window.removedDelay));return {data:removed}},inboxGuide:async(q)=>{window.guided=q.itemID},inboxRetry:async(q)=>{window.retried=q.itemID},inboxRemove:async(q)=>{const item=data.inbox.root.find(i=>i.id===q.itemID);removed.push(item);setData("inbox","root",data.inbox.root.filter(i=>i.id!==q.itemID));return {data:item}},inboxRestore:async(q)=>{const i=removed.findIndex(i=>i.id===q.itemID);setData("inbox","root",[...data.inbox.root,removed.splice(i,1)[0]]);return {data:true}}},cortex:{cancel:async(q)=>{window.cancelledTask=q.taskID;return {data:true}}}}}
     const [executionState,setExecutionState]=createStore({summary,error:undefined})
-    export const useExecution=()=>({advance:()=>0,connected:()=>true,state:executionState,available:()=>!location.search.includes("minimal"),refresh:async()=>{window.refreshed=true},open:async(runID,nodeID)=>{window.openedNode=nodeID||"all"}})
+    export const useExecution=()=>({retain() {}, advance:()=>0,connected:()=>true,state:executionState,available:()=>!location.search.includes("minimal"),refresh:async()=>{window.refreshed=true},open:async(runID,nodeID)=>{window.openedNode=nodeID||"all"}})
     export const useParams=()=>({id:"root"})
     export const useSDK=()=>sdk
     export const useSync=()=>({data,session:{get:()=>session,refresh:async()=>{}}})
@@ -71,6 +71,7 @@ beforeAll(async () => {
     import {I18nProvider} from "@lingui/solid"
     import {DialogProvider} from "@ericsanchezok/synergy-ui/context/dialog"
     import {MarkedProvider} from "@ericsanchezok/synergy-ui/context/marked"
+    import {ThemeProvider} from "@ericsanchezok/synergy-ui/theme"
     import {Toast} from "@ericsanchezok/synergy-ui/toast"
     import {messages as en} from ${JSON.stringify(`${source}/locales/en/messages.po?lingui`)}
     import {messages as zh} from ${JSON.stringify(`${source}/locales/zh-CN/messages.po?lingui`)}
@@ -79,7 +80,7 @@ beforeAll(async () => {
     Object.defineProperty(navigator,"clipboard",{value:{writeText:async(text)=>{window.copiedPath=text}}})
     const i18n=setupI18n({locale:"en",messages:{en,"zh-CN":zh}})
     window.selectLocale=(locale)=>i18n.activate(locale)
-    render(()=><I18nProvider i18n={i18n}><MarkedProvider><Suspense fallback={<p>App loading</p>}><DialogProvider><main style="display:flex;justify-content:flex-end;padding:16px"><SessionTaskDetails hasCanonicalRoot/><Toast.Region/></main></DialogProvider></Suspense></MarkedProvider></I18nProvider>,document.getElementById("root"))
+    render(()=><ThemeProvider><I18nProvider i18n={i18n}><MarkedProvider><Suspense fallback={<p>App loading</p>}><DialogProvider><main style="display:flex;justify-content:flex-end;padding:16px"><SessionTaskDetails hasCanonicalRoot/><Toast.Region/></main></DialogProvider></Suspense></MarkedProvider></I18nProvider></ThemeProvider>,document.getElementById("root"))
   `,
   )
   const services = path.join(directory, "services.ts")
@@ -334,37 +335,32 @@ test("stats failure leaves independent resources and inbox usable", async () => 
   expect(errors).toEqual([])
 })
 
-test("focused row tooltips keep their viewport coordinates across narrow resizing", async () => {
-  await page.locator(".execution-task-row .execution-row-main").first().focus()
-  await page.locator('[data-component="tooltip"]').last().waitFor()
-  await page.setViewportSize({ width: 375, height: 667 })
-  await page.evaluate(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-  )
-  const tooltip = page.locator('[data-component="tooltip"]').last()
-  const box = (await tooltip.boundingBox())!
-  expect(box.x).toBeGreaterThanOrEqual(0)
-  expect(box.x + box.width).toBeLessThanOrEqual(375)
-  expect(box.y + box.height).toBeLessThanOrEqual(667)
-  expect(errors).toEqual([])
-})
-
-test("a focused row tooltip cannot remain outside a shortened viewport", async () => {
-  await page.locator(".execution-task-row .execution-row-main").first().focus()
-  await page.locator('[data-component="tooltip"]').last().waitFor()
-  await page.setViewportSize({ width: 320, height: 420 })
-  await page.evaluate(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-  )
-  const tooltip = page.locator('[data-component="tooltip"]').last()
-  if (await tooltip.isVisible()) {
-    const box = (await tooltip.boundingBox())!
-    expect(box.x).toBeGreaterThanOrEqual(0)
-    expect(box.x + box.width).toBeLessThanOrEqual(320)
-    expect(box.y + box.height).toBeLessThanOrEqual(420)
-  }
-  expect(errors).toEqual([])
-})
+for (const width of [480, 375]) {
+  test("compact task details disclose on click without hover or focus popups at " + width + "px", async () => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.evaluate(() => Reflect.get(window, "updateUsage")({ context: { ratio: 0.85, stale: false } }))
+    for (const selector of [
+      ".execution-location-heading",
+      ".execution-compact-status",
+      ".execution-compact-metric[aria-label^='Context']",
+      ".execution-task-row .execution-row-main",
+      ".execution-agenda-row .execution-row-main",
+      ".execution-inbox-row .execution-row-main",
+    ]) {
+      const target = page.locator(selector).first()
+      await target.hover()
+      await page.waitForTimeout(500)
+      expect(await page.locator('[data-component="tooltip"]:visible').count()).toBe(0)
+      await target.focus()
+      expect(await page.locator('[data-component="tooltip"]:visible').count()).toBe(0)
+    }
+    expect(await page.locator(".execution-popover [title]").count()).toBe(0)
+    await page.locator(".execution-task-row .execution-row-main").first().click()
+    expect(await page.evaluate(() => Reflect.get(window, "openedNode"))).toBe("node-0")
+    expect(await page.locator(".execution-popover").isVisible()).toBe(false)
+    expect(errors).toEqual([])
+  })
+}
 
 test("inbox detail keeps contextual messages read-only and removal has a recoverable history", async () => {
   const context = page.locator(".execution-inbox-row[data-mode='context']")
@@ -372,7 +368,14 @@ test("inbox detail keeps contextual messages read-only and removal has a recover
   const row = page.locator(".execution-inbox-row[data-mode='task']").first()
   await row.locator(".execution-row-main").click()
   await page.getByText("Full inbox message 0", { exact: true }).waitFor()
+  expect(await page.locator(".session-inbox-row-tooltip").getByRole("button").count()).toBe(0)
+  await row.getByRole("button", { name: "Send now", exact: true }).click()
+  expect(await page.evaluate(() => Reflect.get(window, "guided"))).toBe("inbox-0")
+  await page.locator(".session-inbox-row-tooltip").waitFor({ state: "hidden" })
+  await row.locator(".execution-row-main").click()
+  await page.getByText("Full inbox message 0", { exact: true }).waitFor()
   await page.keyboard.press("Escape")
+  await page.waitForFunction(() => document.activeElement?.classList.contains("execution-row-main"))
   await row.locator(".execution-row-main").focus()
   await row.getByRole("button", { name: "Remove message", exact: true }).click()
   await page.waitForFunction(() => document.querySelectorAll(".execution-inbox-row").length === 6)
@@ -386,6 +389,37 @@ test("inbox detail keeps contextual messages read-only and removal has a recover
   await page.waitForFunction(() => document.querySelectorAll(".execution-inbox-row").length === 7)
   expect(errors).toEqual([])
 })
+
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`inbox actions have distinct hover, press and keyboard feedback in ${colorScheme} mode`, async () => {
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
+    const row = page.locator(".execution-inbox-row[data-mode='task']").first()
+    const trigger = row.locator(".execution-row-main")
+    await trigger.hover()
+    const before = await trigger.boundingBox()
+    for (const button of await row.locator(".execution-row-actions button").all()) {
+      await button.hover()
+      const hover = await button.evaluate((element) => ({
+        background: getComputedStyle(element).backgroundColor,
+        row: getComputedStyle(element.closest(".execution-inbox-row")!).backgroundColor,
+      }))
+      expect(hover.background).not.toBe("rgba(0, 0, 0, 0)")
+      expect(hover.background).not.toBe(hover.row)
+      await page.mouse.down()
+      expect(await button.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(hover.background)
+      await trigger.hover()
+      await page.mouse.up()
+    }
+    await trigger.focus()
+    await page.keyboard.press("Tab")
+    const guide = row.getByRole("button", { name: "Send now", exact: true })
+    expect(await guide.evaluate((element) => element === document.activeElement)).toBe(true)
+    expect(await guide.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("none")
+    expect(await guide.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)")
+    expect(await trigger.boundingBox()).toEqual(before)
+    expect(errors).toEqual([])
+  })
+}
 
 test("scheduled task details stay visible during history loading and remain usable after the popover closes", async () => {
   await page.evaluate(() => {
@@ -424,6 +458,13 @@ test("an inbox detail stays within the viewport when opened after narrow resizin
   expect(box.x).toBeGreaterThanOrEqual(8)
   expect(box.x + box.width).toBeLessThanOrEqual(367)
   expect(box.y + box.height).toBeLessThanOrEqual(659)
+  const content = await detail.locator(".session-inbox-detail").evaluate((element) => ({
+    bounds: element.getBoundingClientRect().toJSON(),
+    fits: element.scrollWidth <= element.clientWidth,
+  }))
+  expect(content.bounds.x).toBeGreaterThanOrEqual(box.x)
+  expect(content.bounds.right).toBeLessThanOrEqual(box.x + box.width)
+  expect(content.fits).toBe(true)
   await page.keyboard.press("Escape")
   expect(await page.locator(".execution-popover").isVisible()).toBe(true)
   expect(errors).toEqual([])

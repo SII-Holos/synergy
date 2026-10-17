@@ -27,7 +27,19 @@ export const workspaceCopy = {
       "Create a separate Workspace from the last saved files. Unsaved changes remain on the original. Destination storage profile:",
   },
   register: { id: "workspace.dialog.register", message: "Add directory" },
-  reload: { id: "workspace.dialog.reload", message: "Reload" },
+  reload: { id: "workspace.dialog.reload", message: "Refresh list" },
+  repair: { id: "workspace.dialog.repair", message: "Reconnect directory" },
+  otherCopies: { id: "workspace.dialog.otherCopies", message: "Show worktrees ({count})" },
+  hideCopies: { id: "workspace.dialog.hideCopies", message: "Hide worktrees" },
+  refreshHint: {
+    id: "workspace.dialog.refreshHint",
+    message: "Refreshes the directory list without changing any bindings.",
+  },
+  confirmBinding: {
+    id: "workspace.dialog.confirmBinding",
+    message:
+      "Use this directory for all sessions sharing these files?\n{path}\n{count, plural, one {# listed task will use this location.} other {# listed tasks will use this location.}} Existing files stay in place.",
+  },
   loading: { id: "workspace.dialog.loading", message: "Loading directories…" },
   empty: {
     id: "workspace.dialog.empty",
@@ -42,19 +54,19 @@ export const workspaceCopy = {
   },
   saveSharing: { id: "workspace.dialog.saveSharing", message: "Save sharing" },
   sharingEmpty: { id: "workspace.dialog.sharingEmpty", message: "Add another Workspace to share write access." },
-  rebind: { id: "workspace.dialog.rebind", message: "Change local binding" },
+  rebind: { id: "workspace.dialog.rebind", message: "Change local directory" },
   rebindDescription: {
     id: "workspace.dialog.rebindDescription",
-    message: "All sessions using this Workspace will use the new directory. Existing files stay in place.",
+    message: "All sessions sharing these files will use the new directory. Existing files stay in place.",
   },
   rebindPath: { id: "workspace.dialog.rebindPath", message: "New local directory" },
   pick: { id: "workspace.dialog.pick", message: "Browse" },
-  applyBinding: { id: "workspace.dialog.applyBinding", message: "Rebind Workspace" },
+  applyBinding: { id: "workspace.dialog.applyBinding", message: "Confirm directory" },
   choose: { id: "workspace.dialog.choose", message: "Use this directory" },
   cancel: { id: "workspace.dialog.cancel", message: "Cancel" },
   failed: {
     id: "workspace.dialog.failed",
-    message: "The Workspace could not be updated. Reload to review its current state.",
+    message: "The directory could not be updated. Review the error and try again.",
   },
   busy: {
     id: "workspace.dialog.busy",

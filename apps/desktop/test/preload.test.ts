@@ -1,3 +1,4 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { describe, expect, test } from "bun:test"
 import { electronMockState, registerElectronMock } from "./electron-mock"
 
@@ -234,11 +235,13 @@ describe("desktop preload bridge", () => {
 
     nativeListener!.wrapped(null, {
       type: "native.loaded",
-      protocolVersion: 5,
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
       pageId: "p1",
       url: "https://example.com",
     })
-    expect(events).toEqual([{ type: "native.loaded", protocolVersion: 5, pageId: "p1", url: "https://example.com" }])
+    expect(events).toEqual([
+      { type: "native.loaded", protocolVersion: BROWSER_PROTOCOL_VERSION, pageId: "p1", url: "https://example.com" },
+    ])
   })
 
   test("routes browser native control invocations", async () => {

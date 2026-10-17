@@ -163,7 +163,7 @@ export function createProviderRoute(contributions: Hono = new Hono()) {
       "/connections/:providerID",
       describeRoute({
         summary: "Update provider account connection",
-        description: "Update the name, endpoint, or enabled state of a managed provider account connection.",
+        description: "Update the name, endpoint, or enabled state of an existing provider account connection.",
         operationId: "provider.connection.update",
         responses: {
           200: {

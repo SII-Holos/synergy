@@ -153,11 +153,6 @@
           background: var(--surface-raised-base-active);
           color: var(--text-primary);
         }
-
-        &:focus-visible {
-          outline: 2px solid var(--border-focus);
-          outline-offset: 2px;
-        }
       }
 
       [data-slot="image-preview-body"] {
@@ -255,9 +250,6 @@
         }
 
         &:focus-visible {
-          outline: 2px solid var(--border-focus);
-          outline-offset: 2px;
-
           [data-slot="icon-svg"] {
             color: var(--text-primary);
           }

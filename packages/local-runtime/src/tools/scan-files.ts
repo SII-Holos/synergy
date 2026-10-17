@@ -112,12 +112,6 @@ export const ScanFilesTool = Tool.define(
     }),
     async execute(params, ctx) {
       if (!params.pattern) throw new Error("pattern is required")
-      await ctx.ask({
-        permission: "scan_files",
-        patterns: [params.pattern],
-        metadata: { pattern: params.pattern, path: params.path, include: params.include, globs: params.globs },
-      })
-
       const searchPath = params.path ? resolveFilePath(params.path) : FileView.directory()
       const perFileLimit = normalizePositiveInt(params.perFileLimit, DEFAULT_PER_FILE_LIMIT, SINGLE_FILE_PER_FILE_LIMIT)
       const limitFiles = normalizePositiveInt(params.limitFiles, DEFAULT_FILE_LIMIT, DEFAULT_FILE_LIMIT)
@@ -173,6 +167,11 @@ export const ScanFilesTool = Tool.define(
         }
       }
 
+      await ctx.ask({
+        permission: "scan_files",
+        patterns: byFile.size ? [...byFile.keys()].map((file) => resolveFilePath(file)) : [searchPath],
+        metadata: { pattern: params.pattern, path: params.path, include: params.include, globs: params.globs },
+      })
       if (observedMatches === 0 && !truncatedReason)
         return {
           title: params.pattern,
@@ -283,5 +282,5 @@ export const ScanFilesTool = Tool.define(
       }
     },
   },
-  { requiresWorkspace: true, activityKind: "search" },
+  { requiresWorkspace: true, fileToolGroups: ["hashline"], activityKind: "search" },
 )

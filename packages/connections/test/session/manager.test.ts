@@ -8,7 +8,7 @@ import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { Channel } from "@ericsanchezok/synergy-connections/channel"
+import { Channel } from "@ericsanchezok/synergy-channels/channel"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 import { afterAll as afterRuntimeTests } from "bun:test"

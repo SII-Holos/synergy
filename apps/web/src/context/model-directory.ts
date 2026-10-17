@@ -33,3 +33,17 @@ export function mergeModelDirectory(
     })),
   }
 }
+
+export function mergeProviderSelection(current: ProviderSnapshot, incoming: ProviderSnapshot): ProviderSnapshot {
+  if (!current.version || current.version !== incoming.version || incoming.complete !== false) return incoming
+  const providers = new Map(current.all.map((provider) => [provider.id, provider]))
+  return {
+    ...incoming,
+    complete: current.complete ?? incoming.complete,
+    resolvedModels: [...new Set([...(current.resolvedModels ?? []), ...(incoming.resolvedModels ?? [])])],
+    all: incoming.all.map((provider) => ({
+      ...provider,
+      models: { ...providers.get(provider.id)?.models, ...provider.models },
+    })),
+  }
+}

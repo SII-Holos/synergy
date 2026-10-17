@@ -2,7 +2,6 @@ import { executionDuration } from "@ericsanchezok/synergy-ui/execution-completio
 import { Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { ExecutionSummary } from "@ericsanchezok/synergy-sdk/client"
-import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -59,11 +58,9 @@ export function CompactExecutionOverview(props: { summary: ExecutionSummary; now
     new Intl.NumberFormat(i18n().locale, { style: "percent", maximumFractionDigits: 0 }).format(context() ?? 0)
   return (
     <section class="execution-compact-metrics" aria-label={_(E.overview)}>
-      <Tooltip value={_(E[props.summary.status])} hideWhenDetached>
-        <span tabindex="0" class="execution-compact-status">
-          <TaskStatusIcon status={props.summary.status} />
-        </span>
-      </Tooltip>
+      <span class="execution-compact-status">
+        <TaskStatusIcon status={props.summary.status} />
+      </span>
       <div class="execution-compact-values">
         <Show when={props.summary.elapsedMs != null}>
           <span class="execution-compact-metric" aria-label={`${_(E.elapsed)}: ${elapsed()}`}>
@@ -100,12 +97,10 @@ export function CompactExecutionOverview(props: { summary: ExecutionSummary; now
           </Popover>
         </Show>
         <Show when={context() != null}>
-          <Tooltip value={_(E.context)} hideWhenDetached>
-            <span class="execution-compact-metric" tabindex="0" aria-label={`${_(E.context)}: ${contextText()}`}>
-              <Icon name={getSemanticIcon("session.context")} size="small" />
-              <span>{contextText()}</span>
-            </span>
-          </Tooltip>
+          <span class="execution-compact-metric" aria-label={`${_(E.context)}: ${contextText()}`}>
+            <Icon name={getSemanticIcon("session.context")} size="small" />
+            <span>{contextText()}</span>
+          </span>
         </Show>
       </div>
       <ExecutionPerformance summary={props.summary} />

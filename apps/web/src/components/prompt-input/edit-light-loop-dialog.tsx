@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Show, type Accessor } from "solid-js"
+import { createMemo, createSignal, onCleanup, Show, type Accessor } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
@@ -13,18 +13,18 @@ export function EditLightLoopDialog(props: {
   instructions: string
   active: Accessor<boolean>
   working: Accessor<boolean>
-  reviewPending: Accessor<boolean>
   onSave: (instructions: string) => Promise<void>
 }) {
   const dialog = useDialog()
   const { i18n } = useLocale()
   const [instructions, setInstructions] = createSignal(props.instructions)
   const [saving, setSaving] = createSignal(false)
+  let disposed = false
+  onCleanup(() => (disposed = true))
   const state = createMemo(() =>
     resolveLightLoopControlState({
       active: props.active(),
       working: props.working(),
-      reviewPending: props.reviewPending(),
     }),
   )
   const value = () => instructions().trim()
@@ -34,8 +34,6 @@ export function EditLightLoopDialog(props: {
     switch (state().reason) {
       case "inactive":
         return i18n._(PI.lightLoopTaskInactive)
-      case "reviewPending":
-        return i18n._(PI.lightLoopTaskReviewPending)
       case "working":
         return i18n._(PI.lightLoopTaskWorking)
       case "editable":
@@ -48,6 +46,7 @@ export function EditLightLoopDialog(props: {
     setSaving(true)
     try {
       await props.onSave(value())
+      if (disposed || !props.active()) return
       showToast({
         type: "info",
         title: i18n._(PI.lightLoopTaskUpdated),
@@ -55,6 +54,7 @@ export function EditLightLoopDialog(props: {
       })
       dialog.close()
     } catch (error) {
+      if (disposed || !props.active()) return
       showToast({
         type: "error",
         title: i18n._(PI.lightLoopTaskUpdateFailed),
@@ -66,7 +66,11 @@ export function EditLightLoopDialog(props: {
   }
 
   return (
-    <Dialog title={i18n._(PI.lightLoopTaskDialogTitle)} size="form">
+    <Dialog
+      title={i18n._(PI.lightLoopTaskDialogTitle)}
+      size="form"
+      onEscapeKeyDown={(event) => event.stopPropagation()}
+    >
       <div data-slot="dialog-form">
         <TextField
           label={i18n._(PI.lightLoopTaskLabel)}
@@ -76,7 +80,7 @@ export function EditLightLoopDialog(props: {
           rows={7}
           autofocus={state().mode === "editable"}
           readOnly={state().mode === "readOnly"}
-          description={stateDescription()}
+          description={state().mode === "readOnly" ? stateDescription() : undefined}
         />
         <div data-slot="dialog-actions">
           <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>

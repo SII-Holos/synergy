@@ -2,6 +2,7 @@ import { expect, spyOn, test } from "bun:test"
 import { RolloutTool } from "@ericsanchezok/synergy-harness/session/rollout/tool"
 import { RolloutArtifact } from "@ericsanchezok/synergy-harness/session/rollout/artifact"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { RolloutContext } from "@ericsanchezok/synergy-harness/session/rollout/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -57,6 +58,35 @@ test("failed tool intent prevents the side effect", () =>
     expect(executed).toBe(false)
     expect(write).toHaveBeenCalled()
     expect((await RolloutLedger.getRun(args.owner, args.runID)).recording).toBe("failed")
+  }))
+
+test("cancellation retains the structured partial effect result before finalizing the ledger", () =>
+  runtime.run(async () => {
+    const args = { ...input(), tool: "apply_patch" }
+    const abort = new AbortController()
+    await expect(
+      RolloutContext.provide({ owner: args.owner, runID: args.runID, signal: abort.signal }, () =>
+        RolloutTool.execute(args, async () => {
+          abort.abort()
+          await RolloutTool.capture({
+            output: "Patch partial. committed: one.txt; not_started: two.txt",
+            metadata: {
+              outcome: "partial",
+              sections: [
+                { source: "one.txt", state: "committed" },
+                { source: "two.txt", state: "not_started" },
+              ],
+            },
+          })
+          throw new DOMException("Patch cancelled after one commit", "AbortError")
+        }),
+      ),
+    ).rejects.toThrow("Patch cancelled")
+    const [tool] = await RolloutLedger.tools(args.owner, args.runID)
+    expect(tool.status).toBe("interrupted")
+    expect(await read(args.owner, tool.rawResult!.id)).toMatchObject({
+      metadata: { outcome: "partial", sections: [{ state: "committed" }, { state: "not_started" }] },
+    })
   }))
 
 test("bash records stdout and stderr before its bounded display buffer", () =>

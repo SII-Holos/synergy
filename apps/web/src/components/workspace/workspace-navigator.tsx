@@ -16,6 +16,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { OverlayLayerProvider } from "@ericsanchezok/synergy-ui/context/overlay-layer"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { workspaceNavigatorWidth } from "@/context/layout/workspace"
+import { useViewActivity } from "@/context/view-residency"
 import { workspaceTabStops } from "./focus"
 import "./workspace-navigator.css"
 
@@ -32,6 +33,7 @@ export function WorkspaceNavigator(
     id?: string
     label: string
     header?: boolean
+    empty?: boolean
     open: boolean
     width: number
     onResize: (width: number) => void
@@ -42,6 +44,7 @@ export function WorkspaceNavigator(
 ) {
   const lingui = useLingui()
   const dialogs = useDialog()
+  const active = useViewActivity()
   const [width, setWidth] = createSignal(0)
   const [drawerOpen, setDrawerOpen] = createSignal(false)
   const [frame, setFrame] = createSignal<HTMLElement>()
@@ -57,7 +60,7 @@ export function WorkspaceNavigator(
   const closeDrawer = () => setDrawerOpen(false)
   props.onReady?.({
     id,
-    opened: () => props.open && width() > 0 && (!presentation().drawer || drawerOpen()),
+    opened: () => props.open && width() > 0 && (!presentation().drawer || props.empty || drawerOpen()),
     closeDrawer,
     close: () => (presentation().drawer ? closeDrawer() : props.onClose()),
     toggle() {
@@ -74,7 +77,7 @@ export function WorkspaceNavigator(
     },
   })
   createEffect(() => {
-    if (!presentation().drawer || !props.open) closeDrawer()
+    if (!presentation().drawer || !props.open || props.empty) closeDrawer()
   })
   createEffect(() => {
     if (drawerOpen()) measureLayout()
@@ -85,45 +88,54 @@ export function WorkspaceNavigator(
     const content = anchor.parentElement!
     setFrame(content)
     measureLayout = () => {
+      if (!active() || resource.getClientRects().length === 0) return
       setWidth(Number(resource.dataset.workspaceWidth) || resource.getBoundingClientRect().width)
     }
-    const observer = new ResizeObserver(measureLayout)
-    observer.observe(resource)
-    if (content !== resource) observer.observe(content)
-    window.addEventListener("resize", measureLayout)
-    measureLayout()
-    onCleanup(() => {
-      observer.disconnect()
-      window.removeEventListener("resize", measureLayout)
+    createEffect(() => {
+      if (!active()) {
+        closeDrawer()
+        return
+      }
+      const observer = new ResizeObserver(measureLayout)
+      observer.observe(resource)
+      if (content !== resource) observer.observe(content)
+      window.addEventListener("resize", measureLayout)
+      measureLayout()
+      onCleanup(() => {
+        observer.disconnect()
+        window.removeEventListener("resize", measureLayout)
+      })
     })
   })
   return (
     <>
       <span ref={anchor} hidden />
-      <Show when={props.open && width() > 0 && !presentation().drawer}>
+      <Show when={props.open && width() > 0 && (!presentation().drawer || props.empty)}>
         <aside
           id={id}
           class="workspace-navigator"
           data-workspace-navigation
-          style={{ width: `${presentation().width}px` }}
+          style={{ width: `${props.empty && presentation().drawer ? width() : presentation().width}px` }}
           aria-label={props.label}
         >
           {props.children}
-          <ResizeHandle
-            direction="horizontal"
-            edge="end"
-            size={presentation().width}
-            min={208}
-            max={Math.min(420, width() - 280)}
-            aria-label={lingui._({ id: "workspace.navigation.resize", message: "Resize navigation" })}
-            onResize={props.onResize}
-            onCollapse={props.onClose}
-            collapseThreshold={180}
-          />
+          <Show when={!presentation().drawer}>
+            <ResizeHandle
+              direction="horizontal"
+              edge="end"
+              size={presentation().width}
+              min={208}
+              max={Math.min(420, width() - 280)}
+              aria-label={lingui._({ id: "workspace.navigation.resize", message: "Resize navigation" })}
+              onResize={props.onResize}
+              onCollapse={props.onClose}
+              collapseThreshold={180}
+            />
+          </Show>
         </aside>
       </Show>
       <Dialog
-        open={drawerOpen() && props.open && width() > 0 && presentation().drawer}
+        open={!props.empty && drawerOpen() && props.open && width() > 0 && presentation().drawer}
         modal={false}
         onOpenChange={(open) => {
           if (!open) closeDrawer()

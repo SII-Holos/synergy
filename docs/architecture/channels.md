@@ -4,6 +4,27 @@
 
 The Channel domain adapts external accounts into Synergy-owned Scope and Session behavior. Providers own remote protocol details; Channel core owns target identity, account lifecycle, managed Project ownership, task routing, diagnostics, and integration with the durable Session inbox.
 
+`channels` owns the provider-neutral runtime and requires only Local Runtime. Provider and neighboring account domains are independent packages:
+
+| Component        | Required product capabilities | Owned behavior                                                          |
+| ---------------- | ----------------------------- | ----------------------------------------------------------------------- |
+| `channel-feishu` | Channels                      | Feishu transport, account schema, setup, tools and SVG rendering assets |
+| `github`         | Local Runtime                 | GitHub credentials and connected account configuration                  |
+| `channel-github` | Channels, GitHub              | Repository event polling, Channel ingress and dispatch agents           |
+| `holos`          | Local Runtime                 | Holos identity, contacts, native tunnel, profiles and CLI assets        |
+| `channel-clarus` | Channels, Holos, Agenda       | Clarus provider, task operations, account provisioning and deadlines    |
+| `email`          | Local Runtime                 | Email accounts, credentials, service, tools and HTTP routes             |
+
+`connectionComponents()` in `packages/connections` is an assembly facade returning these independent factories, including Channels. Its pure compatibility exports do not register providers. Channels registers only explicitly selected provider schemas, CLI setup choices, factories and tools. Holos account configuration invokes Clarus provisioning only when `channel-clarus` has registered its hook. The `boss-feishu` and `github-agenda` bridges own the respective cross-domain behavior and declare both sides as requirements. The named `channel-blueprint`, `channel-light-loop` and `channel-lattice` bridges explicitly register `/blueprint` (`/plan`), `/lightloop` and `/lattice` with `ChannelCommand`. A registered workflow descriptor alone does not expose a Channel command or help entry. Full composition selects all three; standalone Channels selects none.
+
+An unloaded provider has no transports, reconnect loops, tools, HTTP features, settings schema or CLI setup choice. Retained account configuration and managed resource data are preserved for reinstallation. Public resolved configuration exposes selected provider records only; editing one selected provider must preserve stored records belonging to unloaded providers. Runtime registration, shutdown and failed startup are isolated to the selected instance.
+
+Email keeps each SMTP pool and its idle timer inside the owning Runtime. Successful sends renew the idle deadline; credential changes and transport failures discard that pool. Component disposal closes the pool and cancels its timer, with idempotent cleanup that leaves other Runtimes connected.
+
+Channels and Holos startup status polling belongs to its Runtime. Completion, timeout and disposal cancel both the poll and its deadline. A cancelled status request returns no rows and cannot install subscriptions after Scope disposal.
+
+Holos registers its own configuration catchup. Core retains historical migration receipts without converting `channel.holos` or removing retired Holos settings. The selected Holos owner converts known fields from legacy monolithic or Channel domain files, preserves unknown fields, and publishes the destination before removing the converted source fields. Existing destination settings take precedence, including changes made after an earlier uninstall.
+
 Providers report typed ingress facts through `ChannelHost` and may support one or both ingress families:
 
 - Conversation ingress translates remote messages into endpoint Sessions through `host.conversations.receive()`. Matching provider capabilities may supply replies, proactive pushes, media, reactions, and streaming.
@@ -83,6 +104,8 @@ Providers receive an account-bound `ChannelHost` rather than direct Scope or Ses
 
 Conversation ingress separates durable acceptance from execution. `host.conversations.receive()` returns an acceptance result whose `execution` Promise owns streaming and generation. A provider lane waits only until Channel core has resolved the endpoint Session and either reserved its loop lease or durably written the request to `SessionInbox`; it tracks accepted execution separately for bounded account drain. Feishu serializes this acceptance by its existing conversation key, preserving same-topic order and different-topic parallelism without creating a provider-owned durable queue.
 
+`StreamingSession.close()` owns terminal delivery and may use a provider's cached answer or fallback. `closeWithoutDelivery()` is a separate required resource-finalization operation: it stops streaming without rendering cached/terminal content or sending a fallback reply. Channel core uses it when post-invoke history is unavailable and cannot safely classify a terminal. Feishu only closes streaming-mode settings with an empty summary; it does not retract progress already streamed. A live writer may finish its already-captured snapshot, but a render waiting for pacing must recheck admission before capturing content. Cleanup shares the session's single-flight close promise, and core releases foreground ownership and subscriptions even when the provider rejects cleanup.
+
 `host.projects` owns:
 
 - idempotent ensure of active or paused managed Projects;
@@ -107,7 +130,7 @@ Exact assignment replay reuses the Session and delivery key. Clarus assignment d
 
 ## Native Clarus Task Flow
 
-Clarus account configuration lives in the Channel domain and uses the active Holos agent credentials. Holos login provisions a disabled matching account, and the Holos migration runner backfills that account for existing active identities. The configured account ID must equal the active Holos agent ID. Server startup registers and starts Channels before it initializes Holos, allowing borrowed providers to install their transport observers first; while the Agent Tunnel is still connecting or reconnecting, the Clarus account remains in `waiting_for_transport` until the matching authenticated transport becomes ready.
+Clarus account configuration lives in the Channel domain and uses the active Holos agent credentials. When Clarus is selected, its account hook provisions a disabled matching account after Holos login, and its migration backfills existing active identities while retaining the historical Holos migration receipt. The configured account ID must equal the active Holos agent ID. Server startup registers and starts Channels before it initializes Holos, allowing borrowed providers to install their transport observers first; while the Agent Tunnel is still connecting or reconnecting, the Clarus account remains in `waiting_for_transport` until the matching authenticated transport becomes ready.
 
 On connect or manual refresh, Clarus:
 
@@ -174,6 +197,9 @@ Feishu keeps unsupported image-format adaptation inside the provider boundary. O
 - Conversation providers release their ingress lane only after durable acceptance, track background execution through account drain, and use `SessionInbox` as the sole durable busy-session queue.
 - Durable outbound state is written before send, and ambiguous dispatch is never retried automatically.
 - Foreground conversation replies are delivered exactly once: while a streaming card owns a root's terminal reply, the outbound bridge skips that root; after delivery the bridge persists `channelOutboundSent` so queued, recovered, or late metadata updates never re-deliver the same answer.
+- Foreground and recovered terminals share `delivery-plan.ts` and `delivery.ts`. Plans classify each terminal and its generation segment from one operation-local target-turn body read. `SessionHistory.turnInfos()` enumerates terminals and rechecks markers and effective-history membership under the root delivery lock without hydrating bodies. Ordinary terminals on either side of a reaction retain independent delivery, attachment deduplication and response-card registration. Cancellation releases temporary plans; disposing the outbound bridge cancels pending reads before dispatch.
+- The selected Feishu component owns reaction-only tool availability and the post-model termination job; Agent workers use the same registration entry point. Unselected providers contribute neither tools nor jobs.
+- A reaction-only terminal (Feishu, opted-in non-streaming accounts) is exclusive: its intent belongs to the selected terminal assistant, targets the user's own inbound message rather than the reply anchor, and posts nothing on either delivery path. A durable root-scoped attempt precedes the provider effect; delivered, failed, or ambiguous attempts are never automatically repeated. Repeated intent-bearing terminals stay silent, but root-level idempotency markers do not suppress ordinary answers in either order with reaction-only steers. Foreground delivery processes all newly completed terminals owned by its root even if a later queued root fails, rather than using the inbox drain's last result. Error or paused assistants cannot become successful reaction terminals; uncertain provider outcomes never append an ERROR reaction.
 - Remote archive preserves local Scope data but blocks new Task delivery.
 - An expired assignment creates no Session or assignment binding; an archived owning Session blocks replay without replacement.
 - Deadline guidance is hidden Session context, not a visible user prompt.

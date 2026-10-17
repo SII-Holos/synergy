@@ -1,7 +1,17 @@
 import path from "node:path"
 import fs from "node:fs/promises"
 import matter from "gray-matter"
-import { applyEdits, modify, parse, parseTree, type Edit, type Node, type ParseError } from "jsonc-parser"
+import {
+  applyEdits,
+  findNodeAtLocation,
+  getNodeValue,
+  modify,
+  parse,
+  parseTree,
+  type Edit,
+  type Node,
+  type ParseError,
+} from "jsonc-parser"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { PrimaryAgentUpgrade } from "../agent/primary-identity-upgrade"
 import { upgradeImportedConfig } from "../migration/import"
@@ -9,8 +19,13 @@ import { ConfigMarkdown } from "./markdown"
 import { Global } from "../global"
 import { Flag } from "../flag/flag"
 import { Storage } from "../storage/storage"
+import { ConfigDomain } from "./domain"
 
 export namespace ConfigReferenceMigration {
+  interface Options {
+    relocateKeys?: readonly string[]
+    transform?: (filepath: string) => Promise<unknown>
+  }
   function keyEdits(node: Node | undefined, after: unknown): Edit[] {
     if (node?.type === "array" && Array.isArray(after))
       return (node.children ?? []).flatMap((child, index) => keyEdits(child, after[index]))
@@ -50,7 +65,42 @@ export namespace ConfigReferenceMigration {
     })
   }
 
-  export async function file(filepath: string) {
+  function render(raw: string, after: Record<string, unknown>) {
+    let text = applyEdits(raw, keyEdits(parseTree(raw), after))
+    const keyed = PrimaryAgentUpgrade.record(parse(text))!
+    for (const edit of edits(keyed, after)) {
+      text = applyEdits(
+        text,
+        modify(text, edit.path, edit.value, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
+      )
+    }
+    return text
+  }
+
+  function mergeProperty(target: string, source: string, property: Node, prefix: string[] = []): string {
+    const [key, value] = property.children!
+    const location = [...prefix, key.value as string]
+    const existing = findNodeAtLocation(parseTree(target)!, location)
+    if (existing) {
+      if (existing.type !== "object" || value.type !== "object") return target
+      for (const child of value.children ?? []) target = mergeProperty(target, source, child, location)
+      return target
+    }
+    const inserted = applyEdits(
+      target,
+      modify(target, location, getNodeValue(value), { formattingOptions: { tabSize: 2, insertSpaces: true } }),
+    )
+    const destination = findNodeAtLocation(parseTree(inserted)!, location)!.parent!
+    return applyEdits(inserted, [
+      {
+        offset: destination.offset,
+        length: destination.length,
+        content: source.slice(property.offset, property.offset + property.length),
+      },
+    ])
+  }
+
+  export async function file(filepath: string, options: Options = {}) {
     const raw = await Bun.file(filepath)
       .text()
       .catch((error: NodeJS.ErrnoException) => {
@@ -62,13 +112,34 @@ export namespace ConfigReferenceMigration {
     const before = PrimaryAgentUpgrade.record(parse(raw, errors, { allowTrailingComma: true }))
     if (!before || errors.length) return
     const after = upgradeImportedConfig(before)
-    let text = applyEdits(raw, keyEdits(parseTree(raw), after))
-    const keyed = PrimaryAgentUpgrade.record(parse(text))!
-    for (const edit of edits(keyed, after)) {
-      text = applyEdits(
-        text,
-        modify(text, edit.path, edit.value, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
-      )
+    const source = render(raw, after)
+    let text = source
+    const owner = ConfigDomain.domainForFile(filepath)
+    if (owner || path.basename(path.dirname(filepath)) === "synergy.d") {
+      for (const [key, value] of Object.entries(after)) {
+        if (JSON.stringify(before[key]) === JSON.stringify(value) && !options.relocateKeys?.includes(key)) continue
+        const targetOwner = ConfigDomain.domainForKey(key)
+        if (!targetOwner || targetOwner.id === owner?.id) continue
+        const target = path.join(path.dirname(filepath), targetOwner.filename)
+        const targetRaw = await Bun.file(target)
+          .text()
+          .catch((error: NodeJS.ErrnoException) => {
+            if (error.code === "ENOENT") return "{}"
+            throw error
+          })
+        const targetErrors: ParseError[] = []
+        const stored = PrimaryAgentUpgrade.record(parse(targetRaw, targetErrors, { allowTrailingComma: true }))
+        if (!stored || targetErrors.length)
+          throw new Error(`Cannot migrate configuration into invalid domain ${targetOwner.id}`)
+        const property = findNodeAtLocation(parseTree(source)!, [key])!.parent!
+        const updated = mergeProperty(targetRaw, source, property)
+        // Publish the destination first so an interrupted move can retry without losing the source.
+        if (updated !== targetRaw) await AtomicFile.writeFileAtomic(target, updated, { private: true, durable: true })
+        text = applyEdits(
+          text,
+          modify(text, [key], undefined, { formattingOptions: { tabSize: 2, insertSpaces: true } }),
+        )
+      }
     }
     if (text !== raw) await AtomicFile.writeFileAtomic(filepath, text, { private: true, durable: true })
   }
@@ -131,7 +202,8 @@ export namespace ConfigReferenceMigration {
     PrimaryAgentUpgrade.keys(permission?.task)
   }
 
-  export async function directory(root: string) {
+  export async function directory(root: string, options: Options = {}) {
+    const transform = options.transform ?? ((filepath: string) => file(filepath, options))
     const exists = await fs.stat(root).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return undefined
       throw error
@@ -139,7 +211,7 @@ export namespace ConfigReferenceMigration {
     if (!exists?.isDirectory()) return
     for (const pattern of ["synergy.{json,jsonc}", "synergy.d/*.{json,jsonc}"]) {
       for await (const relative of new Bun.Glob(pattern).scan({ cwd: root, onlyFiles: true, followSymlinks: true }))
-        await file(path.join(root, relative))
+        await transform(path.join(root, relative))
     }
     for await (const relative of new Bun.Glob("{agent,agents,command,commands}/**/*.md").scan({
       cwd: root,
@@ -150,7 +222,8 @@ export namespace ConfigReferenceMigration {
     }
   }
 
-  export async function up(progress: (current: number, total: number) => void) {
+  export async function up(progress: (current: number, total: number) => void, options: Options = {}) {
+    const transform = options.transform ?? ((filepath: string) => file(filepath, options))
     const roots = new Set([Global.Path.config])
     const addProject = (directory: string) => {
       for (let current = path.resolve(directory); ; current = path.dirname(current)) {
@@ -170,11 +243,11 @@ export namespace ConfigReferenceMigration {
     if (Flag.SYNERGY_CONFIG_DIR) roots.add(Flag.SYNERGY_CONFIG_DIR)
     let done = 0
     for (const root of roots) {
-      await directory(root)
+      await directory(root, options)
       if (path.basename(root) === ".synergy")
-        for (const name of ["synergy.json", "synergy.jsonc"]) await file(path.join(path.dirname(root), name))
+        for (const name of ["synergy.json", "synergy.jsonc"]) await transform(path.join(path.dirname(root), name))
       progress(++done, roots.size)
     }
-    if (Flag.SYNERGY_CONFIG) await file(Flag.SYNERGY_CONFIG)
+    if (Flag.SYNERGY_CONFIG) await transform(Flag.SYNERGY_CONFIG)
   }
 }

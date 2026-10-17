@@ -38,11 +38,6 @@
 .context-dashboard button:disabled {
   cursor: default;
 }
-.context-dashboard button:focus-visible,
-.context-dashboard input:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 3px;
-}
 .context-dashboard-toolbar {
   display: flex;
   align-items: center;
@@ -1041,8 +1036,11 @@
   font-size: 13px;
   font-weight: 550;
 }
-.context-usage-stats .context-ring strong {
-  font-size: 18px;
+.context-usage-basis {
+  margin-block: 8px 12px;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .context-ring[data-fit="true"] > div > strong {
   position: absolute;
@@ -1052,6 +1050,7 @@
 .context-ring[data-fit="true"] > div > span {
   position: absolute;
   top: 55%;
+  line-height: 1.2;
 }
 .context-ring[data-fit="true"] strong {
   font-variant-numeric: tabular-nums;
@@ -1116,9 +1115,6 @@
   gap: 16px;
   margin-bottom: 16px;
 }
-.context-timing-body .context-ring strong {
-  font-size: 24px;
-}
 .context-timing .context-timing-legend > div {
   display: flex;
   align-items: baseline;
@@ -1136,9 +1132,6 @@
   .context-timing .context-timing-legend dd {
     margin-top: 3px;
     margin-left: 13px;
-  }
-  .context-timing-body .context-ring strong {
-    font-size: 21px;
   }
 }
 

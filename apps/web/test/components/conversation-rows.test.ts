@@ -10,6 +10,44 @@ const parts = Array.from(
     ({ id: `p${index.toString().padStart(4, "0")}`, messageID: "reply", type: "tool" }) as SessionPartSummary,
 )
 
+test("background summary validation does not split or close an already known continuous activity", () => {
+  const messages = Array.from({ length: 24 }, (_, i) => ({ ...reply, id: `reply-${i}` }))
+  const accepted = new Set<string>()
+  const input = {
+    timeline: [root],
+    messagesFor: () => messages,
+    summaries: (id: string) =>
+      id === root.id
+        ? []
+        : [
+            {
+              ...parts[0],
+              id: `${id}-tool`,
+              messageID: id,
+              tool: "bash",
+              display: "activity" as const,
+              status: "completed",
+              content: { version: "v1", bytes: 64 },
+            },
+          ],
+    page: (id: string) => (id === root.id || accepted.has(id) ? { hasMore: false } : undefined),
+    process: () => ({ open: true, working: true }),
+    activity: (block: { active: boolean }) => block.active,
+  }
+  let rows = buildConversationRows(input)
+  const identity = rows.find((row) => row.kind === "activity")?.key
+  if (!identity) throw new Error("Expected an initial activity group")
+  for (const message of messages) {
+    const activities = rows.filter((row) => row.kind === "activity")
+    expect(activities).toHaveLength(1)
+    expect(activities[0].key).toBe(identity)
+    expect(activities[0].activity.open).toBe(true)
+    expect(activities[0].activity.parts).toHaveLength(messages.length)
+    accepted.add(message.id)
+    rows = buildConversationRows({ ...input, previous: rows })
+  }
+})
+
 test("ordinary tool deliverables keep their original position outside collapsed process history", () => {
   const content: SessionPartSummary[] = [
     { ...parts[0], id: "inspect", tool: "read", display: "activity", attachments: { evidence: 1, deliverable: 0 } },
@@ -80,6 +118,32 @@ test("hidden media summaries leave no virtual row before a resumed result", () =
       "resumed",
       "answer",
     ])
+  }
+})
+
+test("hidden context messages never reserve rows or read body summaries", () => {
+  const hidden = {
+    ...root,
+    id: "context",
+    isRoot: false,
+    visible: false,
+    origin: { type: "system", detail: "runtime-context" },
+  } as Message
+  for (const page of [undefined, { hasMore: true }, { hasMore: false }]) {
+    const reads: string[] = []
+    const input = {
+      timeline: [root],
+      summaries: (id: string) => {
+        reads.push(id)
+        return id === hidden.id ? [{ ...parts[0], id: "context-text", messageID: id, type: "text" }] : []
+      },
+      page: (id: string) => (id === hidden.id ? page : { hasMore: false }),
+      process: () => ({ open: true, working: true }),
+    }
+    const before = buildConversationRows({ ...input, messagesFor: () => [reply] })
+    const after = buildConversationRows({ ...input, previous: before, messagesFor: () => [hidden, reply] })
+    expect(after.map((row) => row.key)).toEqual(before.map((row) => row.key))
+    expect(reads).not.toContain(hidden.id)
   }
 })
 

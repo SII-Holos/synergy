@@ -1,10 +1,24 @@
+import { loopCopy } from "../prompt-input/loop-status-copy"
+import { useViewActivity } from "@/context/view-residency"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { resourceMenuKeyDown } from "../workspace/resource-menu"
 import { List } from "@ericsanchezok/synergy-ui/list"
-import { createMemo, createResource, createSignal, For, Show, createEffect, on, onCleanup, onMount } from "solid-js"
-import { useParams } from "@solidjs/router"
+import {
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  Show,
+  createEffect,
+  on,
+  onCleanup,
+  onMount,
+  untrack,
+} from "solid-js"
+import { useParams } from "@/context/session-route"
 import type { Editor } from "@tiptap/core"
+import { NodeSelection } from "@tiptap/pm/state"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -43,6 +57,8 @@ import {
   blueprintExecutionAgentOptions,
   blueprintExecutionAgentPatch,
   blueprintExecutionControlProfile,
+  blueprintLoopFeatureAvailable,
+  blueprintRunHistory,
   blueprintSessionWorkspaceSelection,
   canCreateBlueprintWorktree,
   canRunBlueprintInCurrentSession,
@@ -53,7 +69,6 @@ import {
 import {
   hasDirtyFields,
   isNoteNotFoundError,
-  patchBlueprintLoops,
   patchNoteGroups,
   patchNoteGroupsMany,
   removeNotesFromGroups,
@@ -61,8 +76,12 @@ import {
 } from "@/components/note/note-sync"
 import { note as N, panels as P } from "@/locales/messages"
 import { useNoteDocuments } from "./documents"
+import { createBlueprintLoopsResource } from "./blueprint-loops"
 import { WorkspaceNavigator, type WorkspaceNavigatorController } from "../workspace/workspace-navigator"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { CopyIconButton } from "@ericsanchezok/synergy-ui/clipboard"
+import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import "./panel.css"
 
 type LoopStatus = BlueprintLoopInfo["status"]
@@ -83,12 +102,7 @@ function isBlueprintNote(note: { kind?: string; blueprint?: unknown }) {
 }
 
 function getLoopLabel(lingui: ReturnType<typeof useLingui>, status: LoopStatus) {
-  if (status === "armed") return lingui._({ id: N.runQueued.id, message: N.runQueued.message })
-  if (status === "running") return lingui._({ id: N.running.id, message: N.running.message })
-  if (status === "auditing") return lingui._({ id: N.reviewing.id, message: N.reviewing.message })
-  if (status === "completed") return lingui._({ id: N.completed.id, message: N.completed.message })
-  if (status === "failed") return lingui._({ id: N.failed.id, message: N.failed.message })
-  return lingui._({ id: N.cancelled.id, message: N.cancelled.message })
+  return lingui._(loopCopy[status === "armed" ? "bound" : status])
 }
 
 function getLoopTone(status: LoopStatus): BlueprintVisualState["tone"] {
@@ -123,12 +137,14 @@ function getBlueprintVisualState(
     }
   }
   const latest = loops[0]
-  if (latest?.status === "failed") {
+  if (latest && ["completed", "failed", "cancelled"].includes(latest.status)) {
     return {
-      label: lingui._({ id: N.runFailed.id, message: N.runFailed.message }),
-      detail: lingui._({ id: N.lastRunFailed.id, message: N.lastRunFailed.message }),
-      tone: "failed",
-      icon: getSemanticIcon("state.error"),
+      label: getLoopLabel(lingui, latest.status),
+      detail: getRunModeLabel(lingui, latest.runMode),
+      tone: getLoopTone(latest.status),
+      icon: getSemanticIcon(
+        latest.status === "failed" ? "state.error" : latest.status === "completed" ? "state.success" : "blueprint.main",
+      ),
     }
   }
   return {
@@ -137,14 +153,6 @@ function getBlueprintVisualState(
     tone: "idle",
     icon: getSemanticIcon("blueprint.main"),
   }
-}
-
-function getRunCount(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []) {
-  return note.blueprint?.runCount ?? loops.length
-}
-
-function getBlueprintActivityTime(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []) {
-  return note.blueprint?.lastRunAt ?? loops[0]?.time.updated ?? note.time.updated
 }
 
 function attachNoteDragData(e: DragEvent, note: NoteCardInfo) {
@@ -188,10 +196,10 @@ function NoteCard(props: {
   onClick: (newTab?: boolean) => void
   selecting?: boolean
   selected?: boolean
+  current?: boolean
   onToggleSelect?: (id: string, shiftKey?: boolean) => void
   lingui: ReturnType<typeof useLingui>
 }) {
-  const { fmt } = useLocale()
   const blueprint = () => isBlueprintNote(props.note)
   const state = () => getBlueprintVisualState(props.lingui, props.note, props.loops ?? [])
   const title = () => props.note.title || props.lingui._(N.untitled)
@@ -199,8 +207,9 @@ function NoteCard(props: {
     <button
       type="button"
       class="note-resource-row"
-      classList={{ "note-resource-row--blueprint": blueprint() }}
       title={title()}
+      aria-label={title()}
+      aria-current={props.current ? "page" : undefined}
       aria-pressed={props.selecting ? (props.selected ?? false) : undefined}
       draggable={!props.selecting}
       onDragStart={(event) => {
@@ -225,9 +234,6 @@ function NoteCard(props: {
       />
       <span class="note-navigation-copy">
         <span>{title()}</span>
-        <Show when={blueprint()}>
-          <small>{state().label}</small>
-        </Show>
         <Show when={props.originName}>
           <span class="sr-only">
             {props.lingui._({
@@ -238,12 +244,14 @@ function NoteCard(props: {
           </span>
         </Show>
       </span>
+      <Show when={blueprint() && state().tone !== "idle"}>
+        <span class="note-navigation-status" title={state().label} aria-label={state().label}>
+          <Icon name={state().icon} size="small" />
+        </span>
+      </Show>
       <Show when={props.note.pinned}>
         <Icon name={getSemanticIcon("notes.pin")} size="small" />
       </Show>
-      <time class="note-resource-time" dateTime={new Date(props.note.time.updated).toISOString()}>
-        {relativeTime(fmt, props.note.time.updated)}
-      </time>
     </button>
   )
 }
@@ -347,6 +355,12 @@ function RunMenu(props: {
     if (!option?.available) return
     setSelectedAgentName(option.name)
     setLevel("model")
+  }
+
+  function executionAgentDescription(option: BlueprintExecutionAgentOption) {
+    if (!option.available) return `${option.name} · ${lingui._(N.agentUnavailable)}`
+    const description = getAgentVisual(option.name).description
+    return description ? translateDescriptor(description, lingui) : (option.description ?? option.name)
   }
 
   function selectModelOption(option: ModelOption | undefined) {
@@ -491,10 +505,6 @@ function RunMenu(props: {
           </div>
         </div>
         <div class="note-run-model-body">
-          <div class="note-run-model-copy">
-            <span class="note-run-model-label">{lingui._(N.executionAgent)}</span>
-            <span class="note-run-model-description">{lingui._(N.executionAgentChooseHelp)}</span>
-          </div>
           <List<BlueprintExecutionAgentOption>
             class="settings-model-picker-list note-run-agent-list"
             search={{ placeholder: lingui._(N.searchAgents), autofocus: true }}
@@ -510,11 +520,7 @@ function RunMenu(props: {
                 <span class="settings-model-option-title">
                   {translateDescriptor(getAgentVisual(option.name).label, lingui)}
                 </span>
-                <span class="settings-model-option-detail">
-                  {option.available
-                    ? (option.description ?? option.name)
-                    : `${option.name} · ${lingui._(N.agentUnavailable)}`}
-                </span>
+                <span class="settings-model-option-detail">{executionAgentDescription(option)}</span>
               </div>
             )}
           </List>
@@ -628,7 +634,8 @@ function ScopeSection(props: {
   loopsByNote: Map<string, BlueprintLoopInfo[]>
   onToggle: () => void
   onOpenNote: (id: string, newTab?: boolean) => void
-  onCreateNote: () => void
+  selectedNoteId?: string | null
+  selectedNoteDir?: string | null
   scopeLookup: Map<string, { name: string; directory: string }>
   selecting?: boolean
   selectedNotes?: Set<string>
@@ -647,14 +654,6 @@ function ScopeSection(props: {
           <span>{props.group.name}</span>
           <small>{props.group.notes.length}</small>
         </button>
-        <Show when={!props.group.archived}>
-          <IconButton
-            icon={getSemanticIcon("action.add")}
-            variant="ghost"
-            onClick={props.onCreateNote}
-            aria-label={props.lingui._(N.newNote)}
-          />
-        </Show>
       </div>
       <Show when={props.expanded}>
         <Show
@@ -665,6 +664,7 @@ function ScopeSection(props: {
             {(note) => (
               <NoteCard
                 note={note}
+                current={props.selectedNoteId === note.id && props.selectedNoteDir === props.group.directory}
                 originName={originName(note)}
                 loops={props.loopsByNote.get(note.id) ?? []}
                 onClick={(newTab) => props.onOpenNote(note.id, newTab)}
@@ -684,8 +684,10 @@ function ScopeSection(props: {
 const NOTES_LIST_RESOURCE = "notes:list"
 
 export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
+  const active = useViewActivity()
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const reconnect = createMemo((version: number) => (active() ? globalSync.reconnectVersion() : version), 0)
   const params = useParams()
   const directory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
   const lingui = useLingui()
@@ -707,6 +709,8 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   const [batchBusy, setBatchBusy] = createSignal(false)
   const [showArchived, setShowArchived] = createSignal(false)
   const [listOptionsOpen, setListOptionsOpen] = createSignal(false)
+  const [newNoteOpen, setNewNoteOpen] = createSignal(false)
+  let host!: HTMLDivElement
 
   const currentScopeID = createMemo(() => {
     const dir = directory()
@@ -727,7 +731,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   })
 
   const [rawGroups, { refetch, mutate: mutateRawGroups }] = createResource(
-    () => ({ dir: directory(), reconnect: globalSync.reconnectVersion(), showArchived: showArchived() }),
+    () => ({ dir: directory(), reconnect: reconnect(), showArchived: showArchived() }),
     async ({ dir, showArchived }) => {
       if (!dir) return []
       if (showArchived) {
@@ -762,23 +766,20 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     },
   )
 
-  const [loops, { mutate: mutateLoops }] = createResource(
-    () => ({ dir: directory(), reconnect: globalSync.reconnectVersion() }),
-    async ({ dir }) => {
-      if (!dir) return [] as BlueprintLoopInfo[]
-      try {
-        const result = await sdk.client.blueprint.loop.list({ scopeID: dir })
-        return [...((result.data ?? []) as BlueprintLoopInfo[])].sort((a, b) => b.time.updated - a.time.updated)
-      } catch (error) {
-        console.error("Failed to load blueprint loops", error)
-        return [] as BlueprintLoopInfo[]
-      }
+  const loopResource = createBlueprintLoopsResource({
+    scopeID: currentScopeID,
+    capabilities: sdk.capabilities.current,
+    active,
+    reconnect,
+    async list(scopeID, signal) {
+      const result = await sdk.client.blueprint.loop.list({ scopeID }, { signal })
+      return result.data ?? []
     },
-  )
+  })
 
   const loopsByNote = createMemo(() => {
     const map = new Map<string, BlueprintLoopInfo[]>()
-    for (const loop of loops() ?? []) {
+    for (const loop of loopResource.loops()) {
       const items = map.get(loop.noteID) ?? []
       items.push(loop)
       map.set(loop.noteID, items)
@@ -797,9 +798,6 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     )
   }
 
-  const updateLoop = (loop: BlueprintLoopInfo) => {
-    mutateLoops(patchBlueprintLoops(loops() ?? [], loop, currentScopeID()))
-  }
   const unsubNoteListEvents = sdk.event.listen((entry: { details: SynergyEvent }) => {
     const event = entry.details
     if (event.type === "note.created") {
@@ -837,7 +835,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
       return
     }
     if (event.type === "blueprint_loop.created" || event.type === "blueprint_loop.updated") {
-      updateLoop(event.properties.loop)
+      loopResource.update(event.properties.loop)
     }
   })
   onCleanup(() => {
@@ -849,6 +847,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     let blueprints = 0
     for (const g of rawGroups() ?? []) {
       for (const n of g.notes) {
+        if (isBlueprintNote(n) && !sdk.capabilities.has("blueprint")) continue
         total += 1
         if (isBlueprintNote(n)) blueprints += 1
       }
@@ -877,7 +876,9 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
         const isCurrent = g.scopeID === curID
         const deregistered = g.scopeType === "project" && !meta && !isCurrent
         const groupDirectory = meta?.directory ?? (g.scopeID === "home" ? "home" : isCurrent ? (directory() ?? "") : "")
-        let notes: NoteCardInfo[] = [...g.notes]
+        let notes: NoteCardInfo[] = g.notes.filter(
+          (note) => sdk.capabilities.has("blueprint") || !isBlueprintNote(note),
+        )
         if (q) {
           notes = notes.filter((n) => {
             if (n.title.toLowerCase().includes(q)) return true
@@ -956,23 +957,25 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   })
 
   const visibleNotes = createMemo(() => displayGroups().reduce((sum, g) => sum + g.notes.length, 0))
-  const filterOptions = createMemo(() => [
-    {
-      value: "all" as const,
-      label: lingui._({ id: N.filterAll.id, message: N.filterAll.message }),
-      count: noteStats().total,
-    },
-    {
-      value: "note" as const,
-      label: lingui._({ id: N.filterNotes.id, message: N.filterNotes.message }),
-      count: noteStats().notes,
-    },
-    {
-      value: "blueprint" as const,
-      label: lingui._({ id: N.filterBlueprints.id, message: N.filterBlueprints.message }),
-      count: noteStats().blueprints,
-    },
-  ])
+  const filterOptions = createMemo(() =>
+    [
+      {
+        value: "all" as const,
+        label: lingui._({ id: N.filterAll.id, message: N.filterAll.message }),
+        count: noteStats().total,
+      },
+      {
+        value: "note" as const,
+        label: lingui._({ id: N.filterNotes.id, message: N.filterNotes.message }),
+        count: noteStats().notes,
+      },
+      {
+        value: "blueprint" as const,
+        label: lingui._({ id: N.filterBlueprints.id, message: N.filterBlueprints.message }),
+        count: noteStats().blueprints,
+      },
+    ].filter((item) => item.value !== "blueprint" || sdk.capabilities.has("blueprint")),
+  )
 
   function isExpanded(scopeID: string, isCurrent: boolean) {
     const state = expandedState()[scopeID]
@@ -1153,400 +1156,333 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   }
 
   createEffect(() => {
-    if (!selecting()) return
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") cancelSelecting()
+    if (!active() || !selecting()) return
+    function onKey(event: KeyboardEvent) {
+      if (!active() || event.defaultPrevented || event.isComposing || !host.contains(document.activeElement)) return
+      if (event.key === "Escape") cancelSelecting()
     }
     window.addEventListener("keydown", onKey)
     onCleanup(() => window.removeEventListener("keydown", onKey))
   })
 
   return (
-    <div class="flex flex-col h-full bg-background-base relative">
+    <div ref={host} class="flex flex-col h-full bg-background-base relative">
       <style>{TIPTAP_STYLES}</style>
 
-      <Show when={view() === "list"}>
-        <div class="flex flex-col h-full">
-          <div class="note-workspace-toolbar">
-            <span class="note-workspace-owner">{lingui._(P.notes)}</span>
-            <IconButton
-              icon={getSemanticIcon("action.add")}
-              variant="ghost"
-              onClick={() => void createNoteInScope(directory() ?? HOME_SCOPE_KEY)}
-              aria-label={lingui._(N.newNote)}
-            />
-            <Popover
-              open={listOptionsOpen()}
-              onOpenChange={setListOptionsOpen}
-              placement="bottom-end"
-              class="note-toolbar-popover"
-              triggerAs={(triggerProps) => (
-                <IconButton
-                  {...triggerProps}
-                  icon={getSemanticIcon("action.more")}
-                  variant="ghost"
-                  aria-label={lingui._({ id: "note.list.options", message: "Notes list options" })}
-                  aria-haspopup="menu"
-                />
-              )}
-            >
-              <div class="note-toolbar-menu" role="menu" onKeyDown={resourceMenuKeyDown}>
-                <For each={filterOptions()}>
-                  {(option) => (
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={kindFilter() === option.value}
-                      onClick={() => {
-                        setKindFilter(option.value)
-                        setListOptionsOpen(false)
-                      }}
-                    >
-                      <span>{option.label}</span>
-                      <small>{option.count}</small>
-                    </button>
-                  )}
-                </For>
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  aria-checked={showArchived()}
-                  onClick={() => {
-                    setShowArchived((value) => !value)
-                    setListOptionsOpen(false)
-                  }}
-                >
-                  <Icon name={getSemanticIcon("notes.archive")} size="small" />
-                  <span>{lingui._(showArchived() ? N.showActive : N.showArchived)}</span>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={selecting()}
-                  onClick={() => {
-                    setSelecting(true)
-                    setListOptionsOpen(false)
-                  }}
-                >
-                  <Icon name={getSemanticIcon("notes.select")} size="small" />
-                  <span>{lingui._(N.selectNotes)}</span>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    void refetch()
-                    setListOptionsOpen(false)
-                  }}
-                >
-                  <Icon name={getSemanticIcon("action.refresh")} size="small" />
-                  <span>{lingui._(N.refresh)}</span>
-                </button>
-              </div>
-            </Popover>
-          </div>
-          <div class="note-list-search">
-            <Icon name={getSemanticIcon("notes.search")} size="small" />
-            <input
-              type="search"
-              aria-label={lingui._(N.searchNotes)}
-              placeholder={lingui._(N.searchNotes)}
-              value={search()}
-              onInput={(event) => setSearch(event.currentTarget.value)}
-            />
-            <Show when={search()}>
-              <IconButton
-                icon={getSemanticIcon("action.close")}
-                variant="ghost"
-                aria-label={lingui._(N.clearSearch)}
-                onClick={() => setSearch("")}
-              />
-            </Show>
-          </div>
-          <Show when={kindFilter() !== "all" || showArchived()}>
-            <div class="note-list-filter-status">
-              <span>
-                {filterOptions().find((option) => option.value === kindFilter())?.label}
-                {showArchived() ? ` · ${lingui._({ id: "note.scope.archived", message: "Archived" })}` : ""}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setKindFilter("all")
-                  setShowArchived(false)
-                }}
+      <div class="note-workspace-editor-layout">
+        <WorkspaceNavigator
+          label={lingui._(P.notes)}
+          open={view() === "list" || navigation.state.open}
+          empty={view() === "list"}
+          width={navigation.state.width}
+          onResize={navigation.setWidth}
+          onReady={setNavigator}
+          onOpen={() => navigation.setOpen(true)}
+          onClose={() => navigation.setOpen(false)}
+        >
+          <div class="note-navigation-content">
+            <div class="note-workspace-toolbar">
+              <span class="note-workspace-owner">{lingui._(P.notes)}</span>
+              <Popover
+                open={newNoteOpen()}
+                onOpenChange={setNewNoteOpen}
+                placement="bottom-end"
+                class="note-toolbar-popover"
+                triggerAs={(triggerProps) => (
+                  <IconButton
+                    {...triggerProps}
+                    icon={getSemanticIcon("action.add")}
+                    variant="ghost"
+                    aria-label={lingui._(N.newNote)}
+                    aria-haspopup="menu"
+                  />
+                )}
               >
-                {lingui._({ id: "note.list.clearFilters", message: "Clear filters" })}
-              </button>
-            </div>
-          </Show>
-
-          <Show when={selecting()}>
-            <div class="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 library-inner-surface">
-              <div class="flex min-w-0 items-center gap-2">
-                <span class="text-12-medium text-text-base">
-                  {selectedNotes().size} / {visibleNotes()}{" "}
-                  {lingui._({ id: N.selected.id, message: N.selected.message })}
-                </span>
-                <Show when={selectedNotes().size < visibleNotes()}>
-                  <button
-                    type="button"
-                    class="rounded-full px-2.5 py-1 text-11-medium text-text-base ring-1 ring-inset ring-border-base/35 transition-colors hover:bg-surface-raised-base-hover"
-                    onClick={() => {
-                      const all = new Set<string>()
-                      for (const g of displayGroups()) {
-                        for (const n of g.notes) all.add(n.id)
-                      }
-                      setSelectedNotes(all)
-                    }}
-                  >
-                    {lingui._({ id: N.selectAll.id, message: N.selectAll.message })}
-                  </button>
-                </Show>
-              </div>
-              <div class="flex items-center gap-1.5">
-                <Show when={selectedNotes().size > 0}>
-                  <Show
-                    when={displayGroups().some((g) => g.archived)}
-                    fallback={
-                      <button
-                        type="button"
-                        class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all text-text-diff-delete-base ring-text-diff-delete-base/15 hover:bg-text-diff-delete-base/8"
-                        onClick={batchArchive}
-                        disabled={batchBusy()}
-                      >
-                        <Show when={!batchBusy()} fallback={<Spinner class="size-3" />}>
-                          {lingui._({ id: N.archive.id, message: N.archive.message })} ({selectedNotes().size})
-                        </Show>
-                      </button>
-                    }
-                  >
-                    <>
-                      <button
-                        type="button"
-                        class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all hover:bg-surface-raised-base-hover text-text-base ring-border-base/35"
-                        onClick={batchUnarchive}
-                        disabled={batchBusy()}
-                      >
-                        {lingui._({ id: N.restore.id, message: N.restore.message })} ({selectedNotes().size})
-                      </button>
-                      <button
-                        type="button"
-                        class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all text-text-diff-delete-base ring-text-diff-delete-base/15 hover:bg-text-diff-delete-base/8"
-                        onClick={batchDelete}
-                        disabled={batchBusy()}
-                      >
-                        {lingui._({ id: N.deletePermanently.id, message: N.deletePermanently.message })} (
-                        {selectedNotes().size})
-                      </button>
-                    </>
-                  </Show>
-                </Show>
-                <button
-                  type="button"
-                  class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
-                  onClick={cancelSelecting}
+                <div
+                  class="note-toolbar-menu"
+                  role="menu"
+                  aria-label={lingui._(N.newNote)}
+                  onKeyDown={resourceMenuKeyDown}
                 >
-                  {lingui._({ id: N.cancel.id, message: N.cancel.message })}
-                </button>
-              </div>
-            </div>
-          </Show>
-
-          <div class="flex-1 min-h-0 overflow-y-auto px-4 pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <Show when={rawGroups.error}>
-              <div role="alert" class="note-document-error">
-                <span>{requestErrorMessage(rawGroups.error)}</span>
-                <button type="button" onClick={() => void refetch()}>
-                  {lingui._({ id: "note.document.retry", message: "Retry" })}
-                </button>
-              </div>
-            </Show>
-            <Show when={rawGroups.loading}>
-              <div class="py-4">
-                <NoteCardSkeleton />
-                <NoteCardSkeleton />
-                <NoteCardSkeleton />
-              </div>
-            </Show>
-            <Show when={!rawGroups.loading && !rawGroups.error}>
-              <Show
-                when={displayGroups().length > 0}
-                fallback={
-                  <div class="flex flex-col items-center justify-center py-16 gap-3">
-                    <Icon name={getSemanticIcon("notes.main")} size="large" class="text-icon-weak-base" />
-                    <div class="text-14-medium text-text-weak">
-                      {lingui._({ id: N.noNotesFound.id, message: N.noNotesFound.message })}
-                    </div>
-                  </div>
-                }
-              >
-                <div class="flex flex-col">
-                  <For each={displayGroups()}>
-                    {(group) => (
-                      <ScopeSection
-                        lingui={lingui}
-                        group={group}
-                        expanded={isExpanded(group.scopeID, group.isCurrent)}
-                        loopsByNote={loopsByNote()}
-                        onToggle={() => toggleExpanded(group.scopeID, group.isCurrent)}
-                        onOpenNote={(id, newTab) => openNote(id, group.directory, newTab)}
-                        onCreateNote={() => createNoteInScope(group.directory)}
-                        scopeLookup={scopeLookup()}
-                        selecting={selecting()}
-                        selectedNotes={selectedNotes()}
-                        onToggleSelect={toggleSelect}
-                      />
-                    )}
-                  </For>
-                </div>
-              </Show>
-            </Show>
-          </div>
-        </div>
-      </Show>
-
-      <Show when={view() === "editor" && selectedNoteId()}>
-        {(_resource) => (
-          <div class="note-workspace-editor-layout">
-            <WorkspaceNavigator
-              label={lingui._(P.notes)}
-              open={navigation.state.open}
-              width={navigation.state.width}
-              onResize={navigation.setWidth}
-              onReady={setNavigator}
-              onOpen={() => navigation.setOpen(true)}
-              onClose={() => navigation.setOpen(false)}
-            >
-              <div class="note-navigation-search">
-                <input
-                  type="search"
-                  aria-label={lingui._({ id: N.searchNotes.id, message: N.searchNotes.message })}
-                  placeholder={lingui._({ id: N.searchNotes.id, message: N.searchNotes.message })}
-                  value={search()}
-                  onInput={(event) => setSearch(event.currentTarget.value)}
-                />
-                <IconButton
-                  icon={getSemanticIcon("action.add")}
-                  variant="ghost"
-                  onClick={() => void createNoteInScope(directory() ?? HOME_SCOPE_KEY)}
-                  aria-label={lingui._({ id: N.newNote.id, message: N.newNote.message })}
-                />
-              </div>
-              <div class="note-navigation-list">
-                <Show when={rawGroups.error}>
-                  <div role="alert" class="note-navigation-message">
-                    {requestErrorMessage(rawGroups.error)}
-                    <button type="button" onClick={() => void refetch()}>
-                      {lingui._({ id: N.refresh.id, message: N.refresh.message })}
-                    </button>
-                  </div>
-                </Show>
-                <Show when={rawGroups.loading}>
-                  <Spinner class="size-4" />
-                </Show>
-                <For
-                  each={displayGroups()}
-                  fallback={
-                    <Show when={!rawGroups.loading && !rawGroups.error}>
-                      <div class="note-navigation-message">
-                        {lingui._({ id: N.noNotesFound.id, message: N.noNotesFound.message })}
-                      </div>
-                    </Show>
-                  }
-                >
-                  {(group) => (
-                    <section>
+                  <For each={[...scopeLookup().values()]}>
+                    {(scope) => (
                       <button
                         type="button"
-                        class="note-navigation-group"
-                        aria-expanded={isExpanded(group.scopeID, group.isCurrent)}
-                        onClick={() => toggleExpanded(group.scopeID, group.isCurrent)}
+                        role="menuitem"
+                        onClick={() => {
+                          setNewNoteOpen(false)
+                          void createNoteInScope(scope.directory)
+                        }}
                       >
                         <Icon
                           name={getSemanticIcon(
-                            isExpanded(group.scopeID, group.isCurrent) ? "navigation.collapse" : "navigation.expand",
+                            scope.directory === HOME_SCOPE_KEY ? "navigation.home" : "project.main",
                           )}
                           size="small"
                         />
-                        <span>{group.name}</span>
+                        <span>{scope.name}</span>
                       </button>
-                      <Show when={isExpanded(group.scopeID, group.isCurrent)}>
-                        <For each={group.notes}>
-                          {(item) => (
-                            <div
-                              class="note-navigation-row"
-                              classList={{ "note-navigation-row--blueprint": isBlueprintNote(item) }}
-                            >
-                              <button
-                                type="button"
-                                class="note-navigation-document"
-                                aria-current={
-                                  selectedNoteId() === item.id && selectedNoteDir() === group.directory
-                                    ? "page"
-                                    : undefined
-                                }
-                                title={item.title}
-                                draggable
-                                onDragStart={(event) => attachNoteDragData(event, item)}
-                                onClick={() => void openNote(item.id, group.directory)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                                    event.preventDefault()
-                                    void openNote(item.id, group.directory, true)
-                                  }
-                                }}
-                              >
-                                <Icon
-                                  name={getSemanticIcon(isBlueprintNote(item) ? "blueprint.main" : "notes.main")}
-                                  size="small"
-                                />
-                                <span class="note-navigation-copy">
-                                  <span>
-                                    {item.title || lingui._({ id: N.untitled.id, message: N.untitled.message })}
-                                  </span>
-                                  <Show when={isBlueprintNote(item)}>
-                                    <small>
-                                      {getBlueprintVisualState(lingui, item, loopsByNote().get(item.id)).label}
-                                    </small>
-                                  </Show>
-                                </span>
-                              </button>
-                              <IconButton
-                                icon={getSemanticIcon("action.open")}
-                                variant="ghost"
-                                onClick={() => void openNote(item.id, group.directory, true)}
-                                aria-label={lingui._({ id: "workspace.document.newTab", message: "Open in new tab" })}
-                              />
-                            </div>
-                          )}
-                        </For>
-                      </Show>
-                    </section>
-                  )}
-                </For>
-              </div>
-            </WorkspaceNavigator>
-            <Show when={JSON.stringify([selectedNoteDir(), selectedNoteId()])} keyed>
-              {(_resource) => (
-                <NoteEditor
-                  id={selectedNoteId()!}
-                  directory={selectedNoteDir() ?? directory() ?? "home"}
-                  onBack={() => navigator()?.toggle()}
-                  navigationOpen={navigator()?.opened}
-                  navigationId={navigator()?.id}
-                  onDelete={() => {
-                    if (props.tab) void workbench.closeTab(props.tab.id)
-                    else showNoteList()
-                  }}
-                  loops={loopsByNote().get(selectedNoteId()!) ?? []}
-                  tab={props.tab}
+                    )}
+                  </For>
+                </div>
+              </Popover>
+              <Popover
+                open={listOptionsOpen()}
+                onOpenChange={setListOptionsOpen}
+                placement="bottom-end"
+                class="note-toolbar-popover"
+                triggerAs={(triggerProps) => (
+                  <IconButton
+                    {...triggerProps}
+                    icon={getSemanticIcon("action.more")}
+                    variant="ghost"
+                    aria-label={lingui._({ id: "note.list.options", message: "Notes list options" })}
+                    aria-haspopup="menu"
+                  />
+                )}
+              >
+                <div class="note-toolbar-menu" role="menu" onKeyDown={resourceMenuKeyDown}>
+                  <For each={filterOptions()}>
+                    {(option) => (
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={kindFilter() === option.value}
+                        onClick={() => {
+                          setKindFilter(option.value)
+                          setListOptionsOpen(false)
+                        }}
+                      >
+                        <span>{option.label}</span>
+                        <small>{option.count}</small>
+                      </button>
+                    )}
+                  </For>
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={showArchived()}
+                    onClick={() => {
+                      setShowArchived((value) => !value)
+                      setListOptionsOpen(false)
+                    }}
+                  >
+                    <Icon name={getSemanticIcon("notes.archive")} size="small" />
+                    <span>{lingui._(showArchived() ? N.showActive : N.showArchived)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={selecting()}
+                    onClick={() => {
+                      setSelecting(true)
+                      setListOptionsOpen(false)
+                    }}
+                  >
+                    <Icon name={getSemanticIcon("notes.select")} size="small" />
+                    <span>{lingui._(N.selectNotes)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      void refetch()
+                      setListOptionsOpen(false)
+                    }}
+                  >
+                    <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                    <span>{lingui._(N.refresh)}</span>
+                  </button>
+                </div>
+              </Popover>
+            </div>
+            <div class="note-list-search">
+              <Icon name={getSemanticIcon("notes.search")} size="small" />
+              <input
+                type="search"
+                aria-label={lingui._(N.searchNotes)}
+                placeholder={lingui._(N.searchNotes)}
+                value={search()}
+                onInput={(event) => setSearch(event.currentTarget.value)}
+              />
+              <Show when={search()}>
+                <IconButton
+                  icon={getSemanticIcon("action.close")}
+                  variant="ghost"
+                  aria-label={lingui._(N.clearSearch)}
+                  onClick={() => setSearch("")}
                 />
-              )}
+              </Show>
+            </div>
+            <Show when={kindFilter() !== "all" || showArchived()}>
+              <div class="note-list-filter-status">
+                <span>
+                  {filterOptions().find((option) => option.value === kindFilter())?.label}
+                  {showArchived() ? ` · ${lingui._({ id: "note.scope.archived", message: "Archived" })}` : ""}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setKindFilter("all")
+                    setShowArchived(false)
+                  }}
+                >
+                  {lingui._({ id: "note.list.clearFilters", message: "Clear filters" })}
+                </button>
+              </div>
             </Show>
+
+            <Show when={selecting()}>
+              <div class="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 library-inner-surface">
+                <div class="flex min-w-0 items-center gap-2">
+                  <span class="text-12-medium text-text-base">
+                    {selectedNotes().size} / {visibleNotes()}{" "}
+                    {lingui._({ id: N.selected.id, message: N.selected.message })}
+                  </span>
+                  <Show when={selectedNotes().size < visibleNotes()}>
+                    <button
+                      type="button"
+                      class="rounded-full px-2.5 py-1 text-11-medium text-text-base ring-1 ring-inset ring-border-base/35 transition-colors hover:bg-surface-raised-base-hover"
+                      onClick={() => {
+                        const all = new Set<string>()
+                        for (const g of displayGroups()) {
+                          for (const n of g.notes) all.add(n.id)
+                        }
+                        setSelectedNotes(all)
+                      }}
+                    >
+                      {lingui._({ id: N.selectAll.id, message: N.selectAll.message })}
+                    </button>
+                  </Show>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <Show when={selectedNotes().size > 0}>
+                    <Show
+                      when={displayGroups().some((g) => g.archived)}
+                      fallback={
+                        <button
+                          type="button"
+                          class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all text-text-diff-delete-base ring-text-diff-delete-base/15 hover:bg-text-diff-delete-base/8"
+                          onClick={batchArchive}
+                          disabled={batchBusy()}
+                        >
+                          <Show when={!batchBusy()} fallback={<Spinner class="size-3" />}>
+                            {lingui._({ id: N.archive.id, message: N.archive.message })} ({selectedNotes().size})
+                          </Show>
+                        </button>
+                      }
+                    >
+                      <>
+                        <button
+                          type="button"
+                          class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all hover:bg-surface-raised-base-hover text-text-base ring-border-base/35"
+                          onClick={batchUnarchive}
+                          disabled={batchBusy()}
+                        >
+                          {lingui._({ id: N.restore.id, message: N.restore.message })} ({selectedNotes().size})
+                        </button>
+                        <button
+                          type="button"
+                          class="flex items-center gap-1 rounded-full px-3 py-1.5 text-11-medium ring-1 ring-inset transition-all text-text-diff-delete-base ring-text-diff-delete-base/15 hover:bg-text-diff-delete-base/8"
+                          onClick={batchDelete}
+                          disabled={batchBusy()}
+                        >
+                          {lingui._({ id: N.deletePermanently.id, message: N.deletePermanently.message })} (
+                          {selectedNotes().size})
+                        </button>
+                      </>
+                    </Show>
+                  </Show>
+                  <button
+                    type="button"
+                    class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+                    onClick={cancelSelecting}
+                  >
+                    {lingui._({ id: N.cancel.id, message: N.cancel.message })}
+                  </button>
+                </div>
+              </div>
+            </Show>
+
+            <div class="note-navigation-list">
+              <Show when={rawGroups.error}>
+                <div role="alert" class="note-document-error">
+                  <span>{requestErrorMessage(rawGroups.error)}</span>
+                  <button type="button" onClick={() => void refetch()}>
+                    {lingui._({ id: "note.document.retry", message: "Retry" })}
+                  </button>
+                </div>
+              </Show>
+              <Show when={rawGroups.loading}>
+                <div class="py-4">
+                  <NoteCardSkeleton />
+                  <NoteCardSkeleton />
+                  <NoteCardSkeleton />
+                </div>
+              </Show>
+              <Show when={!rawGroups.loading && !rawGroups.error}>
+                <Show
+                  when={displayGroups().length > 0}
+                  fallback={
+                    <div class="flex flex-col items-center justify-center py-16 gap-3">
+                      <Icon name={getSemanticIcon("notes.main")} size="large" class="text-icon-weak-base" />
+                      <div class="text-14-medium text-text-weak">
+                        {lingui._({ id: N.noNotesFound.id, message: N.noNotesFound.message })}
+                      </div>
+                    </div>
+                  }
+                >
+                  <div class="flex flex-col">
+                    <For each={displayGroups()}>
+                      {(group) => (
+                        <ScopeSection
+                          lingui={lingui}
+                          group={group}
+                          expanded={isExpanded(group.scopeID, group.isCurrent)}
+                          loopsByNote={loopsByNote()}
+                          onToggle={() => toggleExpanded(group.scopeID, group.isCurrent)}
+                          onOpenNote={(id, newTab) => openNote(id, group.directory, newTab)}
+                          selectedNoteId={selectedNoteId()}
+                          selectedNoteDir={selectedNoteDir()}
+                          scopeLookup={scopeLookup()}
+                          selecting={selecting()}
+                          selectedNotes={selectedNotes()}
+                          onToggleSelect={toggleSelect}
+                        />
+                      )}
+                    </For>
+                  </div>
+                </Show>
+              </Show>
+            </div>
           </div>
-        )}
-      </Show>
+        </WorkspaceNavigator>
+        <Show when={view() === "list"}>
+          <div class="note-workspace-empty">
+            <Icon name={getSemanticIcon("notes.main")} size="large" />
+            <span>{lingui._({ id: "note.navigation.choose", message: "Select a note to read or edit" })}</span>
+          </div>
+        </Show>
+        <Show when={view() === "editor" && selectedNoteId()}>
+          <Show when={JSON.stringify([selectedNoteDir(), selectedNoteId()])} keyed>
+            {(_resource) => (
+              <NoteEditor
+                id={selectedNoteId()!}
+                directory={selectedNoteDir() ?? directory() ?? "home"}
+                onBack={() => navigator()?.toggle()}
+                navigationOpen={navigator()?.opened}
+                navigationId={navigator()?.id}
+                onDelete={() => {
+                  if (props.tab) void workbench.closeTab(props.tab.id)
+                  else showNoteList()
+                }}
+                loops={loopsByNote().get(selectedNoteId()!) ?? []}
+                tab={props.tab}
+              />
+            )}
+          </Show>
+        </Show>
+      </div>
     </div>
   )
 }
@@ -1561,6 +1497,7 @@ function NoteEditor(props: {
   onDelete: () => void
   tab?: WorkbenchPanelTab
 }) {
+  const active = useViewActivity()
   const noteID = props.id
   const scopeID = props.directory
   const tab = props.tab ? { ...props.tab } : undefined
@@ -1568,6 +1505,7 @@ function NoteEditor(props: {
   const client = sdk.client
   const serverURL = sdk.url
   const globalSync = useGlobalSync()
+  const reconnect = createMemo((version: number) => (active() ? globalSync.reconnectVersion() : version), 0)
   const sync = useSync()
   const data = useData()
   const platform = usePlatform()
@@ -1578,7 +1516,7 @@ function NoteEditor(props: {
   const lingui = useLingui()
 
   const [note, { refetch }] = createResource(
-    () => ({ id: noteID, dir: directory(), reconnect: globalSync.reconnectVersion() }),
+    () => ({ id: noteID, dir: directory(), reconnect: reconnect() }),
     async ({ id, dir }) => {
       if (!dir) return null
       const result = await client.note.get({ id, scopeID: dir })
@@ -1597,6 +1535,7 @@ function NoteEditor(props: {
   })
   const isCurrent = () =>
     !disposed &&
+    sdk.capabilities.has("note") &&
     sessionKey === workbench.sessionKey() &&
     (!tab ||
       workbench
@@ -1606,6 +1545,25 @@ function NoteEditor(props: {
           (item) =>
             item.id === tab.id && item.panelId === "notes" && item.resourceId === noteID && item.source === scopeID,
         ))
+  const currentTab = () =>
+    tab &&
+    workbench
+      .surface("side")
+      .tabs()
+      .find(
+        (item) =>
+          item.id === tab.id && item.panelId === "notes" && item.resourceId === noteID && item.source === scopeID,
+      )
+  createEffect(() => {
+    const value = note()
+    if (!tab || !value) return
+    const kind = value.kind ?? "note"
+    const live = currentTab()
+    if (!live) return
+    const state = live.state && typeof live.state === "object" ? live.state : {}
+    if ("kind" in state && state.kind === kind) return
+    untrack(() => workbench.updateTab(tab.id, { state: { ...state, kind } }))
+  })
   const baseNote = doc.base
   const title = doc.title
   const tags = doc.tags
@@ -1613,6 +1571,8 @@ function NoteEditor(props: {
   const conflict = doc.conflict
   const [tagInput, setTagInput] = createSignal("")
   const [editor, setEditor] = createSignal<Editor>()
+  const [selectedBlockId, setSelectedBlockId] = createSignal<string>()
+  const [referenceUnavailable, setReferenceUnavailable] = createSignal(false)
   const [convertingBlueprint, setConvertingBlueprint] = createSignal(false)
   const [runningBlueprint, setRunningBlueprint] = createSignal(false)
   const [showRunMenu, setShowRunMenu] = createSignal(false)
@@ -1635,7 +1595,9 @@ function NoteEditor(props: {
       scopes: blueprintScopes(),
     }),
   )
-  const noteLoops = createMemo(() => props.loops ?? [])
+  const noteLoops = createMemo(() =>
+    (props.loops ?? []).filter((loop) => blueprintLoopFeatureAvailable(loop, sdk.capabilities.has)),
+  )
   const blueprintState = createMemo(() => {
     const base = baseNote()
     if (!base) return null
@@ -1644,7 +1606,11 @@ function NoteEditor(props: {
   const activeBlueprintRun = createMemo(() => {
     const base = baseNote()
     if (!base) return undefined
-    return activeBlueprintLoop(base, noteLoops())
+    return activeBlueprintLoop(base, noteLoops(), sdk.capabilities.has)
+  })
+  const blueprintHistory = createMemo(() => {
+    const base = baseNote()
+    return base ? blueprintRunHistory(base, noteLoops(), sdk.capabilities.has) : undefined
   })
 
   const flushSave = doc.flush
@@ -1654,12 +1620,31 @@ function NoteEditor(props: {
     setEditor(instance)
   }
 
+  function handlePositionChange() {
+    doc.persist()
+    const instance = editor()
+    if (!instance || instance.isDestroyed) return
+    const selection = instance.state.selection
+    let blockId: string | undefined
+    if (!selection.empty || instance.isFocused) {
+      if (selection instanceof NodeSelection && typeof selection.node.attrs.blockId === "string")
+        blockId = selection.node.attrs.blockId
+      for (let depth = selection.$from.depth; depth > 0 && !blockId; depth--) {
+        const node = selection.$from.node(depth)
+        if (selection.to > selection.$from.end(depth)) continue
+        if (typeof node.attrs.blockId === "string") blockId = node.attrs.blockId
+      }
+    }
+    setSelectedBlockId(blockId)
+  }
+
   createEffect(() => {
     const incoming = note()
     if (incoming) doc.ingest(incoming)
     if (note.error && isNoteNotFoundError(note.error)) doc.markDeleted()
   })
   createEffect(() => {
+    if (!active()) return
     const instance = editor()
     const content = doc.content()
     if (!instance || instance.isDestroyed || !shouldReplaceEditorContent(instance.getJSON(), content)) return
@@ -1667,6 +1652,49 @@ function NoteEditor(props: {
     instance.commands.setContent(content as Parameters<Editor["commands"]["setContent"]>[0], { emitUpdate: false })
     const size = instance.state.doc.content.size
     instance.commands.setTextSelection({ from: Math.min(selection.from, size), to: Math.min(selection.to, size) })
+  })
+  createEffect(() => {
+    if (!active() || !isCurrent()) return
+    const instance = editor()
+    const state = currentTab()?.state
+    if (!instance || instance.isDestroyed || !state || typeof state !== "object") return
+    if (!("referenceNavigation" in state) || typeof state.referenceNavigation !== "string") return
+    const sequence = state.referenceNavigation
+    if (doc.view.referenceNavigation === sequence) return
+    const location = "referenceLocation" in state ? state.referenceLocation : undefined
+    const frame = requestAnimationFrame(() => {
+      if (!active() || !isCurrent() || instance.isDestroyed) return
+      doc.view.referenceNavigation = sequence
+      setReferenceUnavailable(false)
+      if (location !== undefined) {
+        const parsed = ResourceReference.Location.safeParse(location)
+        let element: Element | undefined
+        if (parsed.success && parsed.data.kind === "heading") {
+          const blockId = parsed.data.id
+          instance.state.doc.descendants((node, position) => {
+            if (element || node.attrs.blockId !== blockId) return
+            const target = instance.view.nodeDOM(position)
+            if (target instanceof Element) element = target
+          })
+        }
+        if (element) element.scrollIntoView({ block: "start", inline: "nearest", behavior: "instant" })
+        else setReferenceUnavailable(true)
+      }
+      const liveState = currentTab()?.state
+      if (
+        !tab ||
+        !liveState ||
+        typeof liveState !== "object" ||
+        !("referenceNavigation" in liveState) ||
+        liveState.referenceNavigation !== sequence
+      )
+        return
+      const nextState: Record<string, unknown> = { ...liveState }
+      delete nextState.referenceLocation
+      delete nextState.referenceNavigation
+      workbench.updateTab(tab.id, { state: nextState })
+    })
+    onCleanup(() => cancelAnimationFrame(frame))
   })
   createEffect(() => {
     if (!tab || !noteLoaded()) return
@@ -1713,10 +1741,6 @@ function NoteEditor(props: {
   async function uploadFile(file: File): Promise<string> {
     const res = await client.asset.upload({ file })
     return assetHttpUrl(serverURL, res.data as { id?: string; url?: string } | undefined)
-  }
-
-  function onTitleInput(e: InputEvent & { currentTarget: HTMLInputElement }) {
-    doc.edit("title", e.currentTarget.value)
   }
 
   async function togglePin() {
@@ -1766,7 +1790,7 @@ function NoteEditor(props: {
   }
 
   async function convertToBlueprint() {
-    if (isBlueprint() || convertingBlueprint()) return
+    if (!sdk.capabilities.has("blueprint") || isBlueprint() || convertingBlueprint()) return
     setConvertingBlueprint(true)
     try {
       await saveMetadata((base) => ({ kind: "blueprint", blueprint: {}, expectedVersion: base.version }))
@@ -1775,9 +1799,13 @@ function NoteEditor(props: {
     }
   }
   async function convertToNote() {
-    if (!isBlueprint() || convertingBlueprint()) return
+    if (!sdk.capabilities.has("blueprint") || !isBlueprint() || convertingBlueprint()) return
     const base = baseNote()
-    if (!base || base.blueprint?.activeLoopID || noteLoops().some((loop) => isActiveBlueprintLoopStatus(loop.status)))
+    if (
+      !base ||
+      blueprintHistory()?.activeLoopID ||
+      noteLoops().some((loop) => isActiveBlueprintLoopStatus(loop.status))
+    )
       return
     setConvertingBlueprint(true)
     try {
@@ -1788,6 +1816,7 @@ function NoteEditor(props: {
   }
 
   function openBlueprintSession(sessionID: string) {
+    if (activeBlueprintRun()?.sessionID !== sessionID) return
     data.navigateToSession?.(sessionID)
   }
 
@@ -1835,11 +1864,13 @@ function NoteEditor(props: {
     model?: { providerID: string; modelID: string },
   ) {
     const dir = directory()
-    if (!dir || runningBlueprint()) return
-    if (!(await flushSave())) return
+    if (!sdk.capabilities.has("blueprint") || !dir || runningBlueprint()) return
+    const selection = sdk.capabilities.current()
+    const current = () => isCurrent() && sdk.capabilities.current() === selection && sdk.capabilities.has("blueprint")
+    if (!(await flushSave()) || !current()) return
     let base = baseNote()
     if (!base || !isBlueprint()) return
-    const activeLoop = activeBlueprintLoop(base, noteLoops())
+    const activeLoop = activeBlueprintLoop(base, noteLoops(), sdk.capabilities.has)
     if (activeLoop) {
       alert("This Blueprint already has an active run. Finish or cancel it before starting another run.")
       return
@@ -1851,13 +1882,13 @@ function NoteEditor(props: {
     try {
       if (base.blueprint?.defaultAgent !== executionAgent) {
         const saved = await saveMetadata((current) => blueprintExecutionAgentPatch(current, executionAgent))
-        if (!saved) return
+        if (!saved || !current()) return
         base = baseNote()
         if (!base) return
       }
 
       target = await createExecutionSession(mode, dir)
-      if (!target) return
+      if (!target || !current()) return
       const loop = await client.blueprint.loop
         .create({
           scopeID: dir,
@@ -1875,9 +1906,11 @@ function NoteEditor(props: {
         .then((result) => result.data)
       if (!loop?.id) throw new Error("Failed to create BlueprintLoop")
       createdLoopID = loop.id
+      if (!current() || !blueprintLoopFeatureAvailable(loop, sdk.capabilities.has)) return
       await client.blueprint.loop.start({ id: loop.id, scopeID: dir })
       setShowRunMenu(false)
     } catch (error) {
+      if (!current()) return
       if (createdLoopID) {
         await client.blueprint.loop.cancel({ id: createdLoopID, scopeID: dir }).catch(() => undefined)
       }
@@ -1970,12 +2003,25 @@ function NoteEditor(props: {
                     ? lingui._({ id: "note.document.unsaved", message: "Unsaved changes" })
                     : lingui._({ id: "note.document.saved", message: "Saved" })}
           </span>
-          <Show when={isBlueprint()}>
+          <CopyIconButton
+            text={() =>
+              ResourceReference.format({
+                kind: "note",
+                id: noteID,
+                ...(selectedBlockId() ? { location: { kind: "heading", id: selectedBlockId()! } } : {}),
+              })
+            }
+            copyLabel={lingui._({ id: "note.reference.copy", message: "Copy reference" })}
+            disabled={!noteLoaded()}
+            variant="ghost"
+            onPointerDown={(event: PointerEvent) => event.preventDefault()}
+          />
+          <Show when={sdk.capabilities.has("blueprint") && isBlueprint()}>
             <button
               type="button"
               class="flex items-center gap-1 rounded-full px-2.5 py-1 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
               onClick={handleRunBlueprint}
-              disabled={runningBlueprint()}
+              disabled={runningBlueprint() || !!activeBlueprintRun()}
             >
               <Icon name={getSemanticIcon("prompt.blueprintStart")} size="small" class="size-3" />
               {lingui._({ id: N.run.id, message: N.run.message })}
@@ -1986,16 +2032,26 @@ function NoteEditor(props: {
             onOpenChange={setMoreOpen}
             placement="bottom-end"
             class="note-toolbar-popover"
+            contentProps={{ "aria-label": lingui._({ id: "note.document.more", message: "Note options" }) }}
             triggerAs={(triggerProps) => (
               <IconButton
                 {...triggerProps}
                 icon={getSemanticIcon("action.more")}
                 variant="ghost"
                 aria-label={lingui._({ id: "note.document.more", message: "Note options" })}
-                aria-haspopup="menu"
+                aria-haspopup="dialog"
               />
             )}
           >
+            <div class="note-toolbar-name">
+              <TextField
+                label={lingui._({ id: "note.document.title", message: "Note title" })}
+                value={title()}
+                placeholder={lingui._(N.untitled)}
+                onChange={(value) => doc.edit("title", value)}
+                disabled={!noteLoaded()}
+              />
+            </div>
             <div class="note-toolbar-menu" role="menu" onKeyDown={resourceMenuKeyDown}>
               <For
                 each={[
@@ -2014,12 +2070,16 @@ function NoteEditor(props: {
                     icon: getSemanticIcon("notes.pin"),
                     run: togglePin,
                   },
-                  {
-                    label: lingui._(isBlueprint() ? N.convertToNote : N.convertToBlueprint),
-                    icon: getSemanticIcon("blueprint.main"),
-                    disabled: convertingBlueprint(),
-                    run: isBlueprint() ? convertToNote : convertToBlueprint,
-                  },
+                  ...(sdk.capabilities.has("blueprint")
+                    ? [
+                        {
+                          label: lingui._(isBlueprint() ? N.convertToNote : N.convertToBlueprint),
+                          icon: getSemanticIcon("blueprint.main"),
+                          disabled: convertingBlueprint(),
+                          run: isBlueprint() ? convertToNote : convertToBlueprint,
+                        },
+                      ]
+                    : []),
                   ...(baseNote()?.global !== undefined
                     ? [
                         {
@@ -2099,8 +2159,8 @@ function NoteEditor(props: {
           </div>
         </Show>
 
-        <Show when={isBlueprint()}>
-          <div class="flex items-center gap-2 border-t border-border-weaker-base/40 px-4 py-1.5">
+        <Show when={sdk.capabilities.has("blueprint") && isBlueprint()}>
+          <div class="flex flex-wrap items-center gap-2 border-t border-border-weaker-base/40 px-4 py-1.5">
             <Show when={blueprintState()}>
               <span class={`note-blueprint-state note-blueprint-state--${blueprintState()!.tone}`}>
                 <Icon name={blueprintState()!.icon} size="small" class="size-3" />
@@ -2109,23 +2169,23 @@ function NoteEditor(props: {
               <span class="text-11-regular text-text-weak">{blueprintState()!.detail}</span>
               <span class="h-3 w-px bg-border-weaker-base" />
               <span class="text-11-regular text-text-weak">
-                {getRunCount(baseNote()!, noteLoops()) > 0
+                {(blueprintHistory()?.count ?? 0) > 0
                   ? lingui._({
                       id: N.runsCount.id,
                       message: N.runsCount.message,
-                      values: { count: getRunCount(baseNote()!, noteLoops()) },
+                      values: { count: blueprintHistory()!.count },
                     })
                   : "No runs yet"}
               </span>
               <span class="text-11-regular text-text-weak">
                 {lingui._({ id: N.lastActivity.id, message: N.lastActivity.message })}{" "}
-                {relativeTime(fmt, getBlueprintActivityTime(baseNote()!, noteLoops()))}
+                {relativeTime(fmt, blueprintHistory()!.updated)}
               </span>
               <Show when={baseNote()!.blueprint?.defaultAgent}>
                 <span class="h-3 w-px bg-border-weaker-base" />
                 <span class="text-11-regular text-text-weak">{baseNote()!.blueprint!.defaultAgent}</span>
               </Show>
-              <Show when={activeBlueprintRun()?.sessionID} keyed>
+              <Show when={activeBlueprintRun()?.sessionID ?? noteLoops()[0]?.sessionID} keyed>
                 {(sessionID) => (
                   <>
                     <span class="h-3 w-px bg-border-weaker-base" />
@@ -2145,6 +2205,14 @@ function NoteEditor(props: {
         </Show>
       </div>
 
+      <Show when={referenceUnavailable()}>
+        <div class="note-document-error" role="status">
+          {lingui._({
+            id: "note.reference.unavailable",
+            message: "This location is no longer available in this note.",
+          })}
+        </div>
+      </Show>
       <Show when={doc.backupUnavailable() && hasDirtyFields(doc.dirty())}>
         <div class="note-document-error" role="alert">
           <span>
@@ -2192,22 +2260,11 @@ function NoteEditor(props: {
 
       <Show when={noteLoaded()}>
         <div class="flex min-h-0 flex-1 flex-col">
-          <div class="note-document-heading">
-            <input
-              type="text"
-              class="w-full border-none bg-transparent text-16-medium text-text-strong outline-none placeholder:text-text-weaker"
-              placeholder={lingui._({ id: N.untitled.id, message: N.untitled.message })}
-              aria-label={lingui._({ id: "note.document.title", message: "Note title" })}
-              value={title()}
-              onInput={onTitleInput}
-            />
-          </div>
-
           <div class="note-document-body">
             <DocumentEditorCore
               content={doc.content()}
               retained={doc.view}
-              onPositionChange={doc.persist}
+              onPositionChange={handlePositionChange}
               onUpdate={() => {
                 const instance = editor()
                 if (instance) doc.edit("content", instance.getJSON())

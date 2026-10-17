@@ -34,6 +34,9 @@ export interface ObservabilityBrowserMetricBatch {
     transferSize?: number
     encodedBodySize?: number
     decodedBodySize?: number
+    requestStart?: number
+    responseStart?: number
+    responseEnd?: number
   }>
   longTasks?: Array<{ startTime: number; duration: number; attribution?: string }>
 }
@@ -64,6 +67,10 @@ export namespace ObservabilityBrowserMetrics {
         "session:params",
         "session:data-ready",
         "session:interactive",
+        "session:cached-present",
+        "session:first-body-painted",
+        "session:response-complete",
+        "session:validation-complete",
         "session:first-turn-mounted",
         "storage:prompt-ready",
         "storage:terminal-ready",
@@ -143,6 +150,19 @@ export namespace ObservabilityBrowserMetrics {
           name: ObservabilityRedaction.routePath(entry.name),
           initiatorType: safeDimension(entry.initiatorType) ?? "unknown",
           transferSize: entry.transferSize ?? 0,
+          ...(entry.requestStart &&
+          entry.responseStart &&
+          entry.responseEnd &&
+          entry.requestStart >= entry.startTime &&
+          entry.responseStart >= entry.requestStart &&
+          entry.responseEnd >= entry.responseStart &&
+          entry.responseEnd <= entry.startTime + entry.duration + 1
+            ? {
+                preRequestMs: entry.requestStart - entry.startTime,
+                firstByteMs: entry.responseStart - entry.requestStart,
+                transferMs: entry.responseEnd - entry.responseStart,
+              }
+            : {}),
           ...pageLabels(page),
         },
         sessionID: page.sessionID,

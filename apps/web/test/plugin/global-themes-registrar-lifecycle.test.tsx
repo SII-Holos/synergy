@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { createRoot, createSignal } from "solid-js"
 import type { PluginContribution } from "../../src/plugin/api"
 import type { PluginUIAssets } from "../../src/plugin/ui-assets"
@@ -11,6 +11,9 @@ import type { PluginThemeDefinition } from "@ericsanchezok/synergy-ui/theme"
 // registry itself is real.
 const [dir, setDir] = createSignal("/first")
 const [pluginList, setPluginList] = createSignal<PluginContribution[]>([])
+const [selection, setSelection] = createSignal<{ features: string[] }>()
+let requests = 0
+let fetchContributions: () => Promise<PluginContribution[]> = async () => []
 
 mock.module("@solidjs/router", () => ({
   useParams: () => ({
@@ -20,7 +23,10 @@ mock.module("@solidjs/router", () => ({
   }),
 }))
 mock.module("../../src/context/global-sdk", () => ({
-  useGlobalSDK: () => ({ event: { listen: () => () => {} } }),
+  useGlobalSDK: () => ({
+    event: { listen: () => () => {} },
+    capabilities: { has: (feature: string) => selection()?.features.includes(feature) ?? false, current: selection },
+  }),
 }))
 mock.module("../../src/context/server", () => ({
   useServer: () => ({ url: "http://registrar.local" }),
@@ -29,7 +35,10 @@ mock.module("../../src/plugin/host", () => ({
   usePluginHost: () => ({ plugins: pluginList }),
 }))
 mock.module("../../src/plugin/api", () => ({
-  fetchGlobalThemeContributions: async () => [],
+  fetchGlobalThemeContributions: async () => {
+    requests++
+    return fetchContributions()
+  },
 }))
 mock.module("../../src/plugin/ui-assets", () => ({
   loadPluginUIAssets: async () => currentAssets,
@@ -62,6 +71,15 @@ function assetsWith(themes: PluginThemeDefinition[]): PluginUIAssets {
 }
 
 let currentAssets: PluginUIAssets = assetsWith([SKIN_A])
+
+beforeEach(() => {
+  requests = 0
+  fetchContributions = async () => []
+  setSelection({ features: ["plugin-host"] })
+  setPluginList([])
+  setDir("/first")
+  currentAssets = assetsWith([SKIN_A])
+})
 
 afterEach(() => {
   theme.replacePluginThemes([], { ready: false })
@@ -122,4 +140,33 @@ describe("GlobalPluginThemesRegistrar ownership lifecycle", () => {
 
     dispose()
   })
+})
+
+test("unknown and removed plugin hosts make no requests and discard a late theme generation", async () => {
+  setSelection(undefined)
+  let complete!: (value: PluginContribution[]) => void
+  fetchContributions = () =>
+    new Promise((resolve) => {
+      complete = resolve
+    })
+  let dispose = () => {}
+  createRoot((rootDispose) => {
+    dispose = rootDispose
+    GlobalPluginThemesRegistrar()
+  })
+  await Bun.sleep(10)
+  expect(requests).toBe(0)
+  expect(theme.getPluginTheme("plugin-a:skin")).toBeUndefined()
+
+  setSelection({ features: ["plugin-host"] })
+  await Bun.sleep(10)
+  expect(requests).toBe(1)
+  setSelection(undefined)
+  setSelection({ features: [] })
+  complete([])
+  await Bun.sleep(10)
+  expect(requests).toBe(1)
+  expect(theme.getPluginTheme("plugin-a:skin")).toBeUndefined()
+  expect(theme.isPluginThemeRegistryReady()).toBe(false)
+  dispose()
 })

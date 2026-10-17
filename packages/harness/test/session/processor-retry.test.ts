@@ -68,7 +68,9 @@ async function run(
     | "reasoning-only"
     | "tools"
     | "tools-stop"
+    | "tools-preview"
     | "length",
+  failure?: Error,
 ) {
   await using tmp = await tmpdir({ git: true })
   return ScopeContext.provide({
@@ -106,6 +108,8 @@ async function run(
       let calls = 0
       let effects = 0
       let disposed = 0
+      let preview: string | undefined
+      let previewEffects = 0
       spyOn(SessionRetry, "delay").mockReturnValue(0)
       if (mode === "cancel")
         spyOn(SessionRetry, "sleep").mockImplementation(async () => {
@@ -148,8 +152,20 @@ async function run(
                 yield { type: "finish" as const }
                 return
               }
-              if (mode === "tools" || mode === "tools-stop") {
+              if (mode === "tools" || mode === "tools-stop" || mode === "tools-preview") {
                 yield { type: "start-step" as const }
+                if (mode === "tools-preview") {
+                  const raw = JSON.stringify({ attempt, label: "x".repeat(60) })
+                  yield { type: "tool-input-start" as const, id: `call-${attempt}`, toolName: "probe" }
+                  yield { type: "tool-input-delta" as const, id: `call-${attempt}`, delta: raw.slice(0, 30) }
+                  yield { type: "tool-input-delta" as const, id: `call-${attempt}`, delta: raw.slice(30, 60) }
+                  const current = await MessageV2.get({ sessionID: session.id, messageID: assistant.id })
+                  const part = current.parts.find((part) => part.type === "tool")
+                  preview = part?.type === "tool" && part.state.status === "generating" ? part.state.raw : undefined
+                  previewEffects = effects
+                  yield { type: "tool-input-delta" as const, id: `call-${attempt}`, delta: raw.slice(60) }
+                  yield { type: "tool-input-end" as const, id: `call-${attempt}` }
+                }
                 yield {
                   type: "tool-call" as const,
                   toolCallId: `call-${attempt}`,
@@ -194,9 +210,10 @@ async function run(
                 yield {
                   type: "error" as const,
                   error:
-                    mode === "tls"
+                    failure ??
+                    (mode === "tls"
                       ? new Error("unknown certificate verification error")
-                      : Object.assign(new TypeError("getaddrinfo ETIMEOUT example.invalid"), { code: "ETIMEOUT" }),
+                      : Object.assign(new TypeError("getaddrinfo ETIMEOUT example.invalid"), { code: "ETIMEOUT" })),
                 }
               }
             })(),
@@ -214,7 +231,7 @@ async function run(
           const result = await dispatch(input)
           if (!failed) {
             failed = true
-            throw Object.assign(new Error("post-dispatch failure"), { code: "ECONNRESET" })
+            throw failure ?? Object.assign(new Error("post-dispatch failure"), { code: "ECONNRESET" })
           }
           return result
         })
@@ -255,11 +272,23 @@ async function run(
         calls,
         effects,
         disposed,
+        preview,
+        previewEffects,
         message: await MessageV2.get({ sessionID: session.id, messageID: assistant.id }),
       }
     },
   })
 }
+
+test(
+  "small tool-input deltas publish accumulated progress before any execution",
+  runtime.bind(async () => {
+    const result = await run("tools-preview")
+    expect(result.preview).toBe(JSON.stringify({ attempt: 1, label: "x".repeat(60) }).slice(0, 60))
+    expect(result.previewEffects).toBe(0)
+    expect(result.effects).toBe(1)
+  }),
+)
 
 test(
   "a failed provider stream cannot execute its proposed tool, and recovery executes once",
@@ -297,6 +326,41 @@ test(
     expect(result.message.info).toMatchObject({ finish: "error", error: { name: "APIError" } })
   }),
 )
+
+test.each([
+  "Our servers are currently overloaded. Please try again later.",
+  "Selected model is at capacity. Please try a different model.",
+])("subscription overload recovers without executing failed proposals: %s", (message) =>
+  runtime.run(async () => {
+    const result = await run("stream", new Error(message))
+    expect(result.calls).toBe(2)
+    expect(result.effects).toBe(1)
+    expect(result.disposed).toBe(2)
+    expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
+      "valid answer",
+    ])
+    expect(result.recordedCalls.map((call) => call.status)).toEqual(["failed", "completed"])
+    expect(JSON.stringify(MessageV2.projectModelMessages([result.message]).messages)).not.toContain("discard this")
+  }),
+)
+
+test("subscription capacity errors respect exhaustion, cancellation and the tool-dispatch boundary", () =>
+  runtime.run(async () => {
+    const failure = new Error("Selected model is at capacity. Please try a different model.")
+    const exhausted = await run("exhausted", failure)
+    expect(exhausted.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
+    expect(exhausted.effects).toBe(0)
+    expect(exhausted.disposed).toBe(exhausted.calls)
+    expect(exhausted.message.info).toMatchObject({ finish: "error", error: { name: "APIError" } })
+    const cancelled = await run("cancel", failure)
+    expect(cancelled.calls).toBe(1)
+    expect(cancelled.effects).toBe(0)
+    expect(cancelled.message.info).toMatchObject({ finish: "error", error: { name: "MessageAbortedError" } })
+    const dispatched = await run("dispatch", failure)
+    expect(dispatched.calls).toBe(1)
+    expect(dispatched.effects).toBe(1)
+    expect(dispatched.message.info).toMatchObject({ finish: "error" })
+  }))
 
 test(
   "retry removes incomplete content from persisted history and the next model context",

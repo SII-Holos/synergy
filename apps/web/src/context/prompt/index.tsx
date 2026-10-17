@@ -2,7 +2,7 @@ import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-ref
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { batch, createEffect, createMemo, createRoot, onCleanup } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import type { FileSelection } from "@/context/file"
 import { Persist, persisted } from "@/utils/persist"
 import type { createDraftSessionIndex } from "./draft-index"

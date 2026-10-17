@@ -1,0 +1,14 @@
+{
+  "extends": "@tsconfig/bun/tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": [],
+    "noUncheckedIndexedAccess": false,
+    "customConditions": ["browser"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*", "test/**/*", "script/**/*", "scripts/**/*", "parsers-config.ts"],
+  "exclude": ["dist", "node_modules", ".turbo"]
+}

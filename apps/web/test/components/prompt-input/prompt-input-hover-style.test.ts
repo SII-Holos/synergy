@@ -37,7 +37,7 @@ afterAll(async () => {
 })
 
 describe("prompt input hover feedback", () => {
-  test("does not light up the whole shell on hover; focus owns that feedback", async () => {
+  test("keeps the shell background unchanged on hover", async () => {
     const shell = page.locator(".prompt-input-shell")
     const before = await shell.evaluate((element) => getComputedStyle(element).backgroundColor)
     await shell.hover()

@@ -25,6 +25,8 @@ Prepare durable fixtures before starting a short runtime deadline; for Cortex ti
 
 For persisted cooldowns and retry deadlines, advance a controlled clock at the failure-response boundary and verify both the recorded timestamp and the exact policy duration. Cover second boundaries explicitly; an upper bound derived before asynchronous work must not replace the time at which the policy applies. Restore the clock even when an assertion fails.
 
+Live elapsed-time labels can advance across asynchronous browser or native IPC reads. Validate their format and compare before/after durations for monotonicity; reserve exact elapsed values for a controlled clock. Do not freeze a live clock's expected text or hide the boundary with retries.
+
 When compressing wall timers around a controlled monotonic clock, advance only the deliberately expired requests. Keep the simulated budget valid while a healthy native worker replies, and delay that reply beyond a compressed timer tick to verify re-arming without extra timeout evidence. Separate unrelated production-host acceptance scenarios into fresh fixtures with their own bounded deadlines; retain the original history size, throttling and assertions.
 
 For worktree lifecycle changes, exercise concurrent name selection after admission, setup descendants, unregistered directory users, active-turn selection/removal, cancellation and deferred unlock. Verify concurrent tools in sibling and shared Workspaces while real unrestricted commands are still active. Test LSP continuity, exact formatter preconditions, save conflicts after response loss and stale checkpoint recovery without replay.
@@ -54,6 +56,8 @@ For non-blocking and ordering contracts, hold the downstream operation behind an
 A native readiness wait must also observe operation settlement: preserve early failures, report completion before readiness, and close its observer before cancelling and draining the owned operation. Publish readiness payloads atomically and validate positive PIDs before liveness checks: file existence can precede its write, and an empty payload coerces to process group zero. Test supervisor startup failure with a real early-exiting launcher; retain bounded stderr and exit identity, and prove that the target command did not run and its unactivated claim was released. Intentionally suspended native cancellation fixtures must reserve cleanup time within their existing test budget; the framework's hard timeout can kill the supervisor before its completion receipt is written.
 
 Also inject a supervisor error after command activation and let the real root exit normally. A drainage promise and exit code zero cannot replace the process error channel; callers must preserve that error while still draining ownership before returning.
+
+Exercise control-frame delivery independently from output-pipe drainage. Hold a real worker's completion phase while its local output consumers finish, deliver late stdin EOF, then release the phase; verify ordered acknowledgement, preserved output and formal exit, and released claims. Local pipe EOF alone cannot authorize worker shutdown.
 
 Separately exercise a real child closing stdin while unread input is queued, then emitting more stdout and stderr. Input rejection must reach the input stream without terminating the command; require its actual exit, complete output bytes and released claim. Keep output and control transport failures fatal.
 

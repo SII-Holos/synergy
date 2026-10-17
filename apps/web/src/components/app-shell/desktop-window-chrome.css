@@ -71,11 +71,6 @@
   background: var(--surface-hover-base);
 }
 
-.desktop-window-chrome__control:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--text-strong) 18%, transparent);
-  outline-offset: -2px;
-}
-
 .desktop-window-chrome__control--close:hover,
 .desktop-window-chrome__control--close:focus-visible {
   color: var(--text-on-critical-strong);

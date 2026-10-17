@@ -16,6 +16,8 @@ The `environment` host entries own durable allocation and operation identities. 
 
 Hosts supply immutable environment and paths, composition, and storage ownership to `RuntimeHandle.open()`. Imports have no registration side effects. Enter work with `handle.run()` or capture callbacks with `handle.bind()`; await `close()` or use `await using`. Multiple handles can coexist in one process. See [Runtime and Scope](../../docs/architecture/runtime-and-scope.md) for lifecycle and workspace semantics.
 
+Optional configuration owners register their public `shape` through `ConfigExtensions`. Aggregate fields can also provide a tolerant `storedShape` and a `project` callback that hides unavailable child records. Global and project edits retain hidden stored fields, including replacement writes; clients and execution only receive selected owners. Reinstalling an owner restores its configuration from the retained domain files.
+
 Hosts with a different file delivery mechanism register `AttachmentDelivery` guidance during composition. The selected response instructions and execution-tool instructions replace the default immutable-attachment guidance together, and remain isolated to that Runtime. This changes model instructions only: the host must also supply the matching delivery tools and authorization. Without a registration, the existing attachment behavior and guidance remain unchanged.
 
 The public `/usage` entry exposes retained accounting, typed queries, clear/rebuild operations, and explicit host lifecycle/transfer integration. Its [accounting contract](../../docs/architecture/usage-accounting.md) is independent of transcript and archive retention.

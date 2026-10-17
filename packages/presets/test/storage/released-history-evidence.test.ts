@@ -66,10 +66,12 @@ test.each(["text", "tool", "recovery"] as const)(
     }
     const harness = new URL("../../../harness/src/", import.meta.url).pathname
     const registration = new URL("../../src/registration.ts", import.meta.url).pathname
+    const localHost = new URL("../../../local-runtime/src/host.ts", import.meta.url).pathname
     const script = `
     const { registerFullPreset } = await import(${JSON.stringify(registration)});
+    const { createLocalHost } = await import(${JSON.stringify(localHost)});
     const { RuntimeContext } = await import(${JSON.stringify(path.join(harness, "lifecycle/context.ts"))});
-    const runtime = RuntimeContext.create({ home: process.env.SYNERGY_HOME, root: ${JSON.stringify(path.join(tmp.path, ".synergy"))}, env: { ...process.env } });
+    const runtime = RuntimeContext.create(createLocalHost({ home: process.env.SYNERGY_HOME, root: ${JSON.stringify(path.join(tmp.path, ".synergy"))}, env: { ...process.env } }));
     await runtime.run(async () => {
     registerFullPreset();
     const { StorageMaintenance } = await import(${JSON.stringify(path.join(harness, "storage/maintenance.ts"))});

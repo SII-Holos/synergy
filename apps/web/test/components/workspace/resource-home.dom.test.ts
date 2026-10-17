@@ -28,6 +28,11 @@ interface ResourceHomeWindow extends Window {
     remove(id: string): void
     session(present: boolean): void
     tabs(): WorkbenchPanelTab[]
+    saved(): WorkbenchPanelTab[]
+    features(features: string[] | undefined): void
+    restore(tabs: WorkbenchPanelTab[]): void
+    draft(tabID: string): void
+    followTitle(tabID: string): string[]
     open(panelId: string): Promise<void>
     close(tabId: string): Promise<void>
     active(): string | undefined
@@ -49,12 +54,16 @@ beforeAll(async () => {
   await Bun.write(
     path.join(directory, "services.ts"),
     `
-    import { createSignal } from "solid-js"
+    import { createMemo, createSignal } from "solid-js"
     import { setupI18n } from "@lingui/core"
     import { messages as en } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     export const i18n = setupI18n({ locale: "en", messages: { en } })
     export const useLocale = () => ({ i18n })
     export const useConfirm = () => ({ ask: async () => true })
+    const [features, setFeatures] = createSignal(["note", "workbench", "lattice", "boss", "browser", "blueprint"])
+    const selection = createMemo(() => features() ? { features: features() } : undefined)
+    export { setFeatures }
+    export const useGlobalSDK = () => ({ capabilities: { current: selection, has: id => selection()?.features.includes(id) ?? false } })
     const surfaces = new Map()
     function surface(key, name) {
       const identity = key + ":" + name
@@ -79,6 +88,7 @@ beforeAll(async () => {
     path.join(directory, "main.tsx"),
     `
     import { render } from "solid-js/web"
+    import { createEffect, createRoot } from "solid-js"
     import { I18nProvider } from "@lingui/solid"
     import { MemoryRouter, Route, createMemoryHistory, useNavigate } from "@solidjs/router"
     import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -87,7 +97,7 @@ beforeAll(async () => {
     import { ResourceHome } from ${JSON.stringify(`/@fs/${source}/components/workspace/resource-home.tsx`)}
     import { WorkbenchSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/workbench-surface.tsx`)}
     import { registerWorkbenchPanel } from ${JSON.stringify(`/@fs/${source}/plugin/registries/workbench-panel-registry.ts`)}
-    import { i18n } from "./services"
+    import { i18n, setFeatures, useLayout } from "./services"
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
     const created = [], loaded = []
@@ -106,6 +116,7 @@ beforeAll(async () => {
     register({ id: "lattice", label: "Lattice", icon: getSemanticIcon("prompt.lattice"), order: 13, cardinality: "singleton", requiresSession: true })
     register({ id: "file", label: "Files", order: 14 })
     register({ id: "boss", label: "Boss", icon: getSemanticIcon("prompt.boss"), order: 15, cardinality: "singleton", requiresSession: true })
+    register({ id: "execution-detail", label: "Execution", launchable: false })
     register({ id: "attachment", label: "Attachment", launchable: false })
     register({ id: "terminal", label: "Terminal", surface: "bottom" })
     function Fixture() {
@@ -116,6 +127,14 @@ beforeAll(async () => {
       window.fixture = { register, remove: id => disposers.get(id)?.(), created, loaded,
         session: present => navigate("/home/session" + (present ? "/task" : "")),
         tabs: () => workbench.surface("side").tabs(),
+        saved: () => workbench.surface("side").savedTabs(), features: setFeatures,
+        restore: tabs => useLayout().surface(workbench.sessionKey(), "side").setTabs(tabs),
+        draft: tabID => workbench.updateTab(tabID, { dirty: true, state: { title: "Retained draft" } }),
+        followTitle: tabID => { const calls = []; createRoot(dispose => createEffect(() => {
+          const title = workbench.surface("side").tabs().find(tab => tab.id === tabID)?.title;
+          calls.push(title); if (calls.length > 3) { dispose(); return }
+          workbench.updateTab(tabID, { title });
+        })); return calls },
         active: () => workbench.surface("side").active(),
         opened: () => workbench.surface("side").opened(),
         closing, protect: tabId => workbench.beforeClose(tabId, () => { closing.push(tabId); return new Promise(resolve => { settleClose = resolve }) }),
@@ -150,7 +169,7 @@ beforeAll(async () => {
     ],
     resolve: {
       alias: [
-        { find: /^@\/context\/(layout|locale)$/, replacement: path.join(directory, "services.ts") },
+        { find: /^@\/context\/(layout|locale|global-sdk)$/, replacement: path.join(directory, "services.ts") },
         { find: "@/components/dialog/confirm-dialog", replacement: path.join(directory, "services.ts") },
         { find: "@", replacement: source },
       ],
@@ -465,3 +484,130 @@ for (const colorScheme of ["light", "dark"] as const) {
     }
   })
 }
+
+test("capability revalidation hides resource controls while retaining native content and saved drafts", async () => {
+  await cards().getByText("Files", { exact: true }).click()
+  await page.getByText("Files content", { exact: true }).waitFor()
+  await page.evaluate(async () => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    await fixture.open("notes")
+    fixture.draft(fixture.active()!)
+  })
+  await page.getByText("Notes content", { exact: true }).waitFor()
+  const original = await page.getByText("Notes content", { exact: true }).elementHandle()
+  const saved = await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.features(undefined))
+  await page.getByText("Notes content", { exact: true }).waitFor({ state: "hidden" })
+  expect(await original!.evaluate((element) => element.isConnected && !!element.closest("[inert]"))).toBe(true)
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["Files"])
+  expect(await menuLabels()).toEqual(["Files"])
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(saved)
+  expect(await page.getByText("This panel is unavailable.", { exact: true }).count()).toBe(0)
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.features(["note"]))
+  await page.getByText("Notes content", { exact: true }).waitFor()
+  expect(
+    await page
+      .getByText("Notes content", { exact: true })
+      .evaluate((element, previous) => element === previous, original),
+  ).toBe(true)
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["Files", "Notes"])
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(saved)
+})
+
+test("unknown capabilities pause the sole resource and confirmed removal disposes its instance", async () => {
+  await cards().getByText("Notes", { exact: true }).click()
+  const content = page.getByText("Notes content", { exact: true })
+  await content.waitFor()
+  const original = await content.elementHandle()
+  const saved = await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())
+  const active = await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())
+  await page.evaluate(() => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    fixture.features(undefined)
+    fixture.remove("notes")
+  })
+  await content.waitFor({ state: "hidden" })
+  expect(await original!.evaluate((element) => element.isConnected && !!element.closest("[inert]"))).toBe(true)
+  expect(await page.getByRole("tab").count()).toBe(0)
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(saved)
+  await page.evaluate(() => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    fixture.register({ id: "notes", label: "Notes" })
+    fixture.features(["note"])
+  })
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())).toBe(active)
+  await content.waitFor()
+  expect(await content.evaluate((element, previous) => element === previous, original)).toBe(true)
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(saved)
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.features([]))
+  await content.waitFor({ state: "detached" })
+  expect(await original!.evaluate((element) => element.isConnected)).toBe(false)
+  await page.getByRole("tab", { name: "New tab", exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved())).toEqual(
+    expect.arrayContaining(saved),
+  )
+})
+
+test("unknown capabilities allow an empty core surface and preserve explicit user selection", async () => {
+  await page.evaluate(() => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    fixture.features(undefined)
+    fixture.restore([])
+  })
+  await page.getByRole("tab", { name: "New tab", exact: true }).waitFor()
+  expect(await cards().allTextContents()).toEqual(["Files"])
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.features(["note"]))
+  await cards().getByText("Notes", { exact: true }).click()
+  await page.getByText("Notes content", { exact: true }).waitFor()
+  await page.evaluate(async () => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    fixture.features(undefined)
+    await fixture.open("file")
+  })
+  await page.getByText("Files content", { exact: true }).waitFor()
+  const active = await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.features(["note"]))
+  expect(await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.active())).toBe(active)
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["Notes", "Files"])
+  await page.getByText("Files content", { exact: true }).waitFor()
+})
+
+test("a restored resource can publish its unchanged title without a reactive update loop", async () => {
+  await cards().getByText("Notes", { exact: true }).click()
+  await page.getByText("Notes content", { exact: true }).waitFor()
+  const calls = await page.evaluate(() => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    return fixture.followTitle(fixture.active()!)
+  })
+  expect(calls).toEqual(["Notes"])
+  expect(errors).toEqual([])
+})
+
+test("restored optional execution tabs disappear without erasing their saved identity or ordinary tools", async () => {
+  await page.evaluate(() => {
+    const f = (window as unknown as ResourceHomeWindow).fixture
+    const owner = {
+      server: "http://fixture",
+      scope: "home",
+      sessionID: "task",
+      messageID: "message",
+      partID: "part",
+      kind: "tool",
+    }
+    f.restore([
+      { id: "note-detail", panelId: "execution-detail", state: { ...owner, requiredFeatures: ["note"] } },
+      { id: "ordinary-detail", panelId: "execution-detail", state: { ...owner, requiredFeatures: [] } },
+    ])
+    f.features([])
+  })
+  expect(
+    await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs().map((tab) => tab.id)),
+  ).toEqual(["ordinary-detail"])
+  expect(
+    await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.saved().map((tab) => tab.id)),
+  ).toEqual(["note-detail", "ordinary-detail"])
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.features(["note"]))
+  expect(
+    await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs().map((tab) => tab.id)),
+  ).toEqual(["note-detail", "ordinary-detail"])
+})

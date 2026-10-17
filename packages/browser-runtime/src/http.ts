@@ -6,6 +6,7 @@ import { Hono } from "hono"
 export function registerHttp() {
   Server.registerContributions(
     {
+      features: ["browser"],
       routes: { "scoped-after-assets": new Hono().route("", BrowserRoute()) },
       configureOrigins: configureBrowserViewerOrigins,
     },

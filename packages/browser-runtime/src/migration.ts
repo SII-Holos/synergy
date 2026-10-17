@@ -122,7 +122,7 @@ export namespace BrowserMigration {
     const page = pageFromState(state)
     const profile = page ? await BrowserProfiles.legacyDigest(digest) : null
     return BrowserStorage.validate({
-      version: 5,
+      version: BrowserStorage.CURRENT_VERSION,
       timestamp: typeof state.timestamp === "number" ? state.timestamp : Date.now(),
       pages: page && profile ? [{ ...page, profileId: profile.id, isLoading: false, status: "suspended" }] : [],
       annotations: annotationsFromState(state),
@@ -148,7 +148,12 @@ export namespace BrowserMigration {
 
   export async function run(owner: BrowserOwner.Info): Promise<Result> {
     const current = BrowserStorage.keyForOwner(owner)
-    if (await readState(current)) return { ownerKey: BrowserOwner.key(owner), changed: false, version: 5 }
+    if (await readState(current))
+      return {
+        ownerKey: BrowserOwner.key(owner),
+        changed: await upgradePageAttribution(current),
+        version: BrowserStorage.CURRENT_VERSION,
+      }
     const v4 = ["browser", "sessions-v4", BrowserOwner.storageID(owner)]
     if (await readState(v4)) return migrateRecord(owner, v4)
     return migrateRecord(owner, legacyStateKey(owner))
@@ -176,6 +181,27 @@ export namespace BrowserMigration {
       progress?.(++current, keys.length)
     }
     if (!keys.length) progress?.(0, 0)
+    await upgradePageAttributions()
+  }
+
+  async function upgradePageAttribution(key: string[]): Promise<boolean> {
+    return Storage.transaction(async () => {
+      const state = await readState(key)
+      if (!state || state.version === BrowserStorage.CURRENT_VERSION) return false
+      if (state.version !== 5) throw new Error("Unsupported Browser page storage version")
+      await Storage.write(key, BrowserStorage.validate({ ...state, version: BrowserStorage.CURRENT_VERSION }))
+      return true
+    })
+  }
+
+  export async function upgradePageAttributions(progress?: (current: number, total: number) => void) {
+    const keys = await Storage.list(["browser", "sessions-v5"])
+    let current = 0
+    for (const key of keys) {
+      await upgradePageAttribution(key)
+      progress?.(++current, keys.length)
+    }
+    if (!keys.length) progress?.(0, 0)
   }
 }
 
@@ -194,6 +220,17 @@ export const migrations: Migration[] = [
     domain: "browser",
     async up(progress) {
       await BrowserMigration.runAll(progress)
+    },
+  },
+  {
+    id: "20261014-browser-page-creation-session-v6",
+    description: "Preserve page creation Session attribution without guessing historical ownership",
+    domain: "browser",
+    execution: "startup",
+    emptyInput: [["browser", "sessions-v5"]],
+    dependsOn: ["20260929-browser-pages-and-identities-v5"],
+    async up(progress) {
+      await BrowserMigration.upgradePageAttributions(progress)
     },
   },
 ]

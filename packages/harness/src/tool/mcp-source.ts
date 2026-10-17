@@ -1,9 +1,10 @@
 import { RuntimeContext } from "../lifecycle/context"
 import type { Tool, JSONSchema7 } from "ai"
+import type { ToolExposure } from "./exposure"
 
 /**
  * P9 tool execution context (MCP half): the L1 tool domain reads MCP tool
- * entries and deferred-group metadata through this registry instead of
+ * entries and presentation through this registry instead of
  * importing the mcp product domain. The L4 product manifest registers the
  * concrete source.
  */
@@ -15,11 +16,11 @@ export namespace ToolMcpSource {
     requiresWorkspace?: boolean
     tool: Tool
     inputSchema: JSONSchema7
-  }
-
-  export interface DeferredGroupCatalog {
-    totalTools: number
-    servers: Array<{ serverName: string; toolNames: string[] }>
+    presentation?: {
+      title?: string
+      description?: string
+      exposure: ToolExposure.Info
+    }
   }
 
   export interface Result {
@@ -32,9 +33,8 @@ export namespace ToolMcpSource {
   export interface Source {
     exposureConfiguration(): Promise<{ expandByDefault(serverName: string): boolean }>
     normalizeResult(result: unknown): Result
-    toolEntries(): Promise<Entry[]>
+    toolEntries(options?: { audience: "model" }): Promise<Entry[]>
     toolCallTimeout(toolName: string): number | undefined
-    deferredGroupCatalog(): Promise<DeferredGroupCatalog>
   }
 
   const runtimeState = RuntimeContext.state(() => ({

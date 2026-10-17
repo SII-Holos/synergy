@@ -20,6 +20,77 @@ const ctx = {
 }
 
 describe("tool.file_search", () => {
+  test("authorizes actual result paths before capturing search evidence", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "private.txt"), "needle\n")
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await FileSearchTool.init()
+          let captured = false
+          for (const mode of ["hybrid", "content", "paths"] as const) {
+            await expect(
+              tool.execute(
+                { mode, query: mode === "paths" ? "*.txt" : "needle" },
+                {
+                  ...ctx,
+                  async ask(request) {
+                    if (request.patterns.includes(path.join(tmp.path, "private.txt"))) throw new Error("path denied")
+                  },
+                  async recordActivity(capture) {
+                    captured = true
+                    return { kind: capture.kind }
+                  },
+                },
+              ),
+            ).rejects.toThrow("path denied")
+          }
+          expect(captured).toBe(false)
+        },
+      })
+    }))
+  test("precise modes retain exact syntax, ordering, Unicode columns and continuation", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "b.ts"), "界needle42\nneedle9\n")
+          await Bun.write(path.join(dir, "a.ts"), "needle1\n")
+          await Bun.write(path.join(dir, "ignore.txt"), "needle3\n")
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await FileSearchTool.init()
+          const paths = await tool.execute({ mode: "paths", query: "*.ts", limit: 1 }, ctx)
+          expect(paths.metadata.count).toBe(1)
+          expect(paths.output).toContain("a.ts")
+          expect(paths.metadata.nextOffset).toBe(1)
+          const second = await tool.execute({ mode: "paths", query: "*.ts", limit: 1, offset: 1 }, ctx)
+          expect(second.output).toContain("b.ts")
+          expect(second.metadata.nextOffset).toBeUndefined()
+          const content = await tool.execute(
+            { mode: "content", syntax: "regex", query: "needle[0-9]+", include: "*.ts", limit: 2 },
+            ctx,
+          )
+          expect(content.output).toContain("a.ts:1:1")
+          expect(content.output).toContain("b.ts:1:2")
+          expect(content.metadata.nextOffset).toBe(2)
+          expect(content.metadata.pathCount).toBe(0)
+          await expect(tool.execute({ query: "x", syntax: "regex" }, ctx)).rejects.toThrow()
+          await expect(tool.execute({ mode: "paths", query: "*", syntax: "literal" }, ctx)).rejects.toThrow()
+          const empty = path.join(tmp.path, "empty")
+          await fs.mkdir(empty)
+          await expect(
+            tool.execute({ mode: "content", syntax: "regex", query: "[", path: empty }, ctx),
+          ).rejects.toThrow(/regex|parse/i)
+        },
+      })
+    }))
   test("captures only displayed hits and distinguishes path and content evidence", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({

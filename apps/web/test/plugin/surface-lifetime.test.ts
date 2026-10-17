@@ -1,6 +1,23 @@
 import { expect, test } from "bun:test"
 import { createPluginSurfaceLifetime } from "../../src/plugin/surface-lifetime"
 
+test("retained plugin activity pauses and resumes without disposing its domain lifetime", () => {
+  const errors: unknown[] = []
+  const lifetime = createPluginSurfaceLifetime((error) => errors.push(error))
+  const activity: boolean[] = []
+  lifetime.context.onActivity!((active) => activity.push(active))
+  lifetime.setActive(false)
+  lifetime.setActive(false)
+  expect(lifetime.context.active!()).toBe(false)
+  expect(lifetime.context.signal.aborted).toBe(false)
+  lifetime.setActive(true)
+  lifetime.dispose()
+  lifetime.setActive(true)
+  expect(activity).toEqual([true, false, true, false])
+  expect(lifetime.context.signal.aborted).toBe(true)
+  expect(errors).toEqual([])
+})
+
 test("releases owned resources once in reverse order and aborts pending work", () => {
   const errors: unknown[] = []
   const lifetime = createPluginSurfaceLifetime((error) => errors.push(error))

@@ -7,6 +7,39 @@ import { ensureInit } from "../../../../src/components/settings/hooks/useSetting
 import { defaultSettingsState } from "../../../../src/components/settings/types"
 
 describe("settings config patch", () => {
+  test("file group draft defaults to patch and saves independently of default Agent", () => {
+    const state = defaultSettingsState("enter")
+    expect(state.agents.fileToolGroup).toBe("patch")
+    expect(buildPatch({ cfg: {}, state, originalMcps: {} })).not.toHaveProperty("fileToolGroup")
+    state.agents.fileToolGroup = "hashline"
+    const patch = buildPatch({ cfg: {}, state, originalMcps: {} })
+    expect(patch.fileToolGroup).toBe("hashline")
+    expect(patch).not.toHaveProperty("agent")
+    expect(patch).not.toHaveProperty("default_agent")
+  })
+  test("autonomous routines are loaded from and saved to their Anima owner", () => {
+    const cfg = { anima: { enabled: false } } as Config
+    const [state, setSettings] = createStore(defaultSettingsState("enter"))
+    ensureInit({
+      cfg,
+      setName: "global",
+      initialized: () => false,
+      initializedForSet: undefined,
+      refreshing: () => false,
+      sendShortcut: () => "enter",
+      colorScheme: () => "system",
+      setSettings,
+      setInitialized: () => {},
+      originalMcpsRef: { current: {} },
+      builtinMcps: [],
+    })
+    expect(state.library.autonomy).toBe("false")
+    setSettings("library", "autonomy", "true")
+    const patch = buildPatch({ cfg, state, originalMcps: {} })
+    expect(patch.anima).toEqual({ enabled: true })
+    expect(patch).not.toHaveProperty("library")
+    expect(buildPatch({ cfg, state, originalMcps: {}, hasFeature: () => false })).not.toHaveProperty("anima")
+  })
   test("tool description preference defaults off and saves both toggle directions", () => {
     for (const saved of [undefined, true, false]) {
       const cfg = saved === undefined ? {} : { preferWorkBrief: saved }

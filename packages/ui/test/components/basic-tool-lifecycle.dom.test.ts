@@ -39,6 +39,10 @@ export class File {
   setSelectedLines(): void {}
   cleanUp(): void { state.cleaned++ }
 }
+export class FileDiff {
+  constructor() { throw new Error("Plain tool previews must not construct a diff") }
+}
+export function parsePatchFiles() { throw new Error("Plain tool previews have no structured patch") }
 `
 
 const FAKE_WORKER = `export function getWorkerPool() { return undefined }`
@@ -51,7 +55,7 @@ export const styleVariables = {}
 `
 
 beforeAll(async () => {
-  fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".code-dom-fixture-"))
+  fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".basic-tool-lifecycle-"))
   const uiRoot = path.resolve(import.meta.dir, "../..")
   const codePath = path.join(uiRoot, "src/components/code.tsx")
 
@@ -216,14 +220,15 @@ describe("tool result demand and previews", () => {
     expect(blocks.length).toBe(2)
     for (const block of blocks) expect(block.textContent!.length).toBeLessThan(8192)
     expect(blocks[0]!.textContent!.split("\n").length).toBe(80)
-    expect(document.querySelectorAll("#preview-host [data-slot=diff-preview-line]").length).toBe(80)
+    expect(blocks[1]!.textContent!.split("\n").length).toBe(80)
+    expect(document.querySelector("#preview-host [data-slot=tool-patch-number]")).toBeNull()
     const buttons = document.querySelectorAll<HTMLButtonElement>("#preview-host button")
     expect(buttons[0]!.textContent).toBe("Open current file")
-    expect(buttons[1]!.textContent).toBe("Open in Review")
+    expect(buttons[1]!.getAttribute("aria-label")).toBe("Open in Review")
     expect(document.querySelector("#large-code pre")!.textContent!.length).toBe(100000)
     harness.locale("zh-CN")
     expect(buttons[0]!.textContent).toBe("打开当前文件")
-    expect(buttons[1]!.textContent).toBe("在审阅中打开")
+    expect(buttons[1]!.getAttribute("aria-label")).toBe("在审阅中打开")
     buttons[0]!.click()
     buttons[1]!.click()
     expect(harness.requests()).toEqual([

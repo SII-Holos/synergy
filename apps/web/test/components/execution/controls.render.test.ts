@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, test } from "bun:test"
+import { afterAll, afterEach, expect, mock, test } from "bun:test"
 import { plugin } from "bun"
 import { transformAsync } from "@babel/core"
 import { setupI18n } from "@lingui/core"
@@ -29,7 +29,16 @@ await plugin({
 })
 
 const i18n = setupI18n({ locale: "en", messages: { en: {} } })
-mock.module("@lingui/solid", () => ({ useLingui: () => ({ _: i18n._.bind(i18n), i18n: () => i18n }) }))
+const fonts = Object.getOwnPropertyDescriptor(document, "fonts")
+Object.defineProperty(document, "fonts", {
+  configurable: true,
+  value: Object.assign(new EventTarget(), { ready: Promise.resolve() }),
+})
+afterAll(() => {
+  if (fonts) Object.defineProperty(document, "fonts", fonts)
+  else Reflect.deleteProperty(document, "fonts")
+})
+const { I18nProvider } = await import("@lingui/solid")
 mock.module("@ericsanchezok/synergy-ui/context/dialog", () => ({ useDialog: () => ({ show: () => {} }) }))
 mock.module("../../../src/context/locale", () => ({ useLocale: () => ({ i18n }) }))
 mock.module("../../../src/components/dialog/dialog-workspace", () => ({ DialogWorkspace: () => null }))
@@ -73,6 +82,7 @@ const pending: Array<{
 }> = []
 type Notice = { properties: { sessionID: string; revision: number; summary: ExecutionSummary } }
 const listeners = new Set<(notice: Notice) => void>()
+const views = new Set<object>()
 const opened: Array<{ id: string; options: unknown }> = []
 const savedTabs: Array<{ state: Record<string, unknown> }> = []
 const sourceReads: Array<{
@@ -88,7 +98,15 @@ mock.module("@solidjs/router", () => ({
   }),
 }))
 mock.module("../../../src/context/global-sdk", () => ({
-  useGlobalSDK: () => ({ capabilities: { has: (capability: string) => capability !== "workflows" && enabled() } }),
+  useGlobalSDK: () => ({
+    capabilities: { has: (capability: string) => capability !== "workflows" && enabled() },
+    content: {
+      view: (interest: object) => {
+        views.add(interest)
+        return () => views.delete(interest)
+      },
+    },
+  }),
 }))
 mock.module("../../../src/context/workbench", () => ({
   useWorkbenchPanels: () => ({
@@ -100,6 +118,7 @@ mock.module("../../../src/context/workbench", () => ({
 mock.module("../../../src/composables/use-navigate-to-session", () => ({ useNavigateToSession: () => () => {} }))
 mock.module("../../../src/context/sdk", () => ({
   useSDK: () => ({
+    scopeID: "project",
     connected,
     event: {
       on: (_type: string, listener: (notice: Notice) => void) => {
@@ -297,10 +316,16 @@ function mount(view: () => JSX.Element = () => null) {
   document.body.append(root)
   const dispose = render(
     () =>
-      createComponent(ExecutionProvider, {
+      createComponent(I18nProvider, {
+        i18n,
         get children() {
-          execution = useExecution()
-          return view()
+          return createComponent(ExecutionProvider, {
+            get children() {
+              execution = useExecution()
+              execution.retain()
+              return view()
+            },
+          })
         },
       }),
     root,
@@ -322,6 +347,7 @@ const emit = (value: ExecutionSummary) => {
 afterEach(() => {
   for (const dispose of disposals.splice(0)) dispose()
   expect(listeners.size).toBe(0)
+  expect(views.size).toBe(0)
   pending.length = 0
   opened.length = 0
   setSessionID("root")
@@ -686,8 +712,9 @@ test("workspace identity copies its current path, rejects stale branch reads and
     const identity = document.querySelector<HTMLButtonElement>(".execution-location-heading")!
     identity.focus()
     await flush()
-    expect(document.querySelector('[data-component="tooltip"]')?.textContent).toContain("current-branch")
-    expect(document.querySelector('[data-component="tooltip"]')?.textContent).not.toContain("stale-branch")
+    expect(document.querySelector('[data-component="tooltip"]')).toBeNull()
+    expect(identity.getAttribute("aria-description")).toContain("current-branch")
+    expect(identity.getAttribute("aria-description")).not.toContain("stale-branch")
     identity.click()
     await flush()
     expect(copied).toEqual(["/next"])

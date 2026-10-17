@@ -23,6 +23,7 @@ export async function checkInstalledComposition(
         execution: { agentWorkerMinIdle: 0 },
         pluginMarketplace: { enabled: false },
         boss: { enabled: false },
+        anima: { enabled: false },
       }),
     }
     async function run(command: string[], overrides: Record<string, string> = {}) {
@@ -81,6 +82,55 @@ export async function checkInstalledComposition(
       await cli("remove", "lsp", "server")
       assert.deepEqual((await list()).map((pkg) => pkg.id).sort(), [])
       console.log("PASS installed CLI: independent component update/removal returns to core")
+
+      await cli("install", "agenda", "light-loop", "email", "channels", "workbench", "--trust-host-code")
+      const leaves = await list()
+      for (const id of ["agenda", "light-loop", "email", "channels", "workbench"])
+        assert.ok(leaves.some((pkg) => pkg.id === id && pkg.explicit))
+      for (const id of ["note", "library", "blueprint", "browser-runtime", "mcp"])
+        assert.ok(!leaves.some((pkg) => pkg.id === id), `Independent leaves unexpectedly selected ${id}`)
+      await cli("remove", "agenda", "light-loop", "email", "channels", "workbench")
+      assert.deepEqual(
+        (await list()).map((pkg) => pkg.id),
+        [],
+      )
+      console.log("PASS installed CLI: independent scheduling, review, messages and statistics without Note/Library")
+
+      await cli("install", "note", "server", "--trust-host-code")
+      const managedNote = (action: string, enabled: boolean) =>
+        run(["node", "managed-runtime.mjs"], {
+          SYNERGY_FIXTURE_COMPONENTS: JSON.stringify({ server: version, ...(enabled ? { note: version } : {}) }),
+          SYNERGY_FIXTURE_NOTE: action,
+        })
+      console.log((await managedNote("create", true)).trim())
+      await cli("remove", "note")
+      console.log((await managedNote("absent", false)).trim())
+      await cli("install", "note", "--trust-host-code")
+      console.log((await managedNote("restore", true)).trim())
+      await cli("remove", "note", "server")
+      assert.deepEqual(
+        (await list()).map((pkg) => pkg.id),
+        [],
+      )
+
+      for (const preset of ["workflows", "connections"]) {
+        await cli("install", preset, "--trust-host-code")
+        const selected = await list()
+        assert.ok(selected.some((pkg) => pkg.id === preset && pkg.explicit))
+        for (const id of preset === "workflows"
+          ? ["agenda", "light-loop", "blueprint", "lattice", "boss", "anima"]
+          : ["channels", "channel-feishu", "channel-github", "channel-clarus", "holos", "email"])
+          assert.ok(
+            selected.some((pkg) => pkg.id === id),
+            `${preset} is missing ${id}`,
+          )
+        await cli("remove", preset)
+        assert.deepEqual(
+          (await list()).map((pkg) => pkg.id),
+          [],
+        )
+      }
+      console.log("PASS installed CLI: complete Workflows/Connections presets expand and prune explicitly")
     }
 
     if (scenario === "all" || scenario === "company") {

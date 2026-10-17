@@ -1,15 +1,15 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { describe, expect, test } from "bun:test"
 import { mock } from "bun:test"
-import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
-import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
+import { AgendaStore } from "@ericsanchezok/synergy-agenda/agenda/store"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
-import { AgendaDelivery } from "@ericsanchezok/synergy-workflows/agenda/delivery"
+import { AgendaDelivery } from "@ericsanchezok/synergy-agenda/agenda/delivery"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -599,6 +599,14 @@ describe("SessionInbox", () => {
         scope,
         fn: async () => {
           const session = await Session.create({})
+          const item = await AgendaStore.create({
+            title: "Daily check",
+            prompt: "check status",
+            triggers: [],
+            silent: false,
+            createdBy: "agent",
+            sessionID: session.id,
+          })
           const originalLoop = SessionInvoke.loop
           let loopSessionID: string | undefined
           ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
@@ -608,17 +616,9 @@ describe("SessionInbox", () => {
           try {
             await AgendaDelivery.deliver({
               sessionID: "ses_agenda_run",
-              deliveryKey: "agenda:ag_test:manual:1",
+              deliveryKey: `agenda:${item.id}:manual:1`,
               lastMessage: "agenda completed",
-              item: {
-                id: "ag_test",
-                status: "done",
-                title: "Daily check",
-                origin: { scope, sessionID: session.id },
-                triggers: [],
-                prompt: "check status",
-                silent: false,
-              } as any,
+              item,
             })
 
             const items = await SessionInbox.list(session.id)
@@ -634,7 +634,7 @@ describe("SessionInbox", () => {
         },
       })
     }))
-  test("agenda delivery tells a Light Loop how to clean up and request review", () =>
+  test("agenda delivery requires a verified Light Loop outcome and released wakeups before completion", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
@@ -671,7 +671,11 @@ describe("SessionInbox", () => {
             expect(prompt?.type).toBe("text")
             if (prompt?.type === "text") {
               expect(prompt.text).toContain("Light Loop")
-              expect(prompt.text).toContain(`agenda_cancel(id="${item.id}")`)
+              expect(prompt.text).toContain(item.id)
+              expect(prompt.text).toContain("cancel the remaining wakeups")
+              expect(prompt.text).toContain("complete task is finished and verified")
+              expect(prompt.text).toContain("complete the task through loop_stop")
+              expect(prompt.text).toContain("Do not complete while an Agenda watch still holds continuation")
               expect(prompt.text).toContain("loop_stop")
               expect(prompt.text).not.toContain("blueprint_loop_stop")
               expect(prompt.text).not.toContain("Ignore cleanup")
@@ -726,7 +730,9 @@ describe("SessionInbox", () => {
             expect(prompt?.type).toBe("text")
             if (prompt?.type === "text") {
               expect(prompt.text).toContain(`BlueprintLoop ${loop.id}`)
-              expect(prompt.text).toContain(`agenda_cancel(id="${item.id}")`)
+              expect(prompt.text).toContain(item.id)
+              expect(prompt.text).toContain("cancel the remaining wakeups")
+              expect(prompt.text).toContain("Do not request audit while an Agenda watch still holds continuation")
               expect(prompt.text).toContain("blueprint_loop_stop")
             }
           } finally {

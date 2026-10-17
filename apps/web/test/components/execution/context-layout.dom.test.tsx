@@ -43,6 +43,8 @@ beforeAll(async () => {
     import { ContextDashboardLayout } from ${JSON.stringify(path.join(source, "context-dashboard-layout.tsx"))}
     import { ContextComposition } from ${JSON.stringify(path.join(source, "context-composition.tsx"))}
     import { ContextRing } from ${JSON.stringify(path.join(source, "context-ring.tsx"))}
+    import { ContextUsageStats } from ${JSON.stringify(path.join(source, "context-usage-stats.tsx"))}
+    import { ContextTiming } from ${JSON.stringify(path.join(source, "context-timing.tsx"))}
     import { ContextBrowser } from ${JSON.stringify(path.join(source, "context-browser.tsx"))}
     import { ContextHistoryChart } from ${JSON.stringify(path.join(source, "context-chart.tsx"))}
     import { createExecutionContext } from ${JSON.stringify(path.resolve(source, "../../context/execution-context.ts"))}
@@ -54,6 +56,14 @@ beforeAll(async () => {
     const i18n=setupI18n({locale:"en",messages:{en:{"context.dashboard.historical":["Context for request ",["number"]]}}})
     const [ring,setRing]=createSignal({value:"≥ 826.1万",alternatives:["≥ 826万"],accessible:"≥ 8,261,000"})
     Object.assign(window,{setRing})
+    function Metrics(){
+      const measured=known=>({known,unknown:0,total:known})
+      const [tokens,setTokens]=createSignal({input:measured(1000),uncached:measured(200),cacheRead:measured(800),cacheWrite:{known:0,unknown:1,total:null},output:measured(200),reasoning:measured(50),total:measured(1200)})
+      const [duration,setDuration]=createSignal(118000)
+      const summary=()=>({accounting:{calls:2,attempts:2,tokens:tokens()},cost:{state:"recorded",reported:[],estimates:[],missing:0,equivalent:null},cache:{ratio:0.8},elapsedMs:duration(),elapsedActive:false,latency:{ttft:{totalMs:duration()/4,samples:1},generation:{totalMs:duration()/4,samples:1}},tools:[{durationMs:duration()/2,timedSamples:1}],rates:{generation:{value:null}},outcomes:{retries:0}})
+      Object.assign(window,{setTokens,setDuration})
+      return <div class="context-dashboard"><ContextUsageStats summary={summary()} now={0}/><ContextTiming summary={summary()}/></div>
+    }
     function Live(){
       const [selected,setSelected]=createSignal("");const [category,setCategory]=createSignal("")
       let receive;let revision=1
@@ -78,14 +88,14 @@ beforeAll(async () => {
       events={<section class="context-events"><h2>Events</h2></section>}
       activity={<section class="context-activity"><h2>Task activity</h2></section>}
     /></div></div>
-    render(()=><I18nProvider i18n={i18n}><Router><Route path="/" component={Layout}/><Route path="/session/:id" component={Live}/></Router></I18nProvider>, document.getElementById("root"))
+    render(()=><I18nProvider i18n={i18n}><Router><Route path="/" component={Layout}/><Route path="/metrics" component={Metrics}/><Route path="/session/:id" component={Live}/></Router></I18nProvider>, document.getElementById("root"))
   `,
   )
   const options = {
     configFile: false,
     logLevel: "error",
     root: directory,
-    resolve: { alias: { "@/context/sdk": path.join(directory, "sdk.ts") } },
+    resolve: { alias: { "@/context/sdk": path.join(directory, "sdk.ts"), "@": path.resolve(source, "../..") } },
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
     build: {
       outDir: path.join(directory, "dist"),
@@ -194,6 +204,106 @@ test("live classification retains chart nodes, disclosures, source bodies and fo
   await page.locator(".context-history-bar").first().click()
   await send("third", 3, 40)
   expect(await page.locator(".context-source-caption strong").textContent()).toContain("1")
+})
+
+test("known token components remain visible with incomplete usage and never double-count reasoning", async () => {
+  await page.goto(new URL("metrics", server.resolvedUrls!.local[0]!).href)
+  const arcs = page.locator(".context-usage-stats circle:not(.context-ring-track)")
+  const values = () =>
+    arcs.evaluateAll((nodes) => nodes.map((node) => Number(node.getAttribute("stroke-dasharray")!.split(" ")[0])))
+  expect((await values()).reduce((sum, value) => sum + value, 0)).toBeCloseTo(100)
+  expect(await arcs.count()).toBe(4)
+  const update = (values: Record<string, { known: number; unknown: number; total: number | null }>) =>
+    page.evaluate((values) => (window as unknown as { setTokens: (value: unknown) => void }).setTokens(values), values)
+  const unknown = { known: 0, unknown: 1, total: null }
+  const exact = (known: number) => ({ known, unknown: 0, total: known })
+  await update({
+    input: exact(1000),
+    uncached: exact(200),
+    cacheRead: unknown,
+    cacheWrite: unknown,
+    output: exact(200),
+    reasoning: exact(50),
+    total: exact(1200),
+  })
+  expect((await values()).reduce((sum, value) => sum + value, 0)).toBeCloseTo(100 / 3)
+  expect(await page.locator(".context-usage-stats").textContent()).toContain("unclassified")
+  await update({
+    input: { ...unknown, known: 1000 },
+    uncached: { ...unknown, known: 200 },
+    cacheRead: { ...unknown, known: 800 },
+    cacheWrite: unknown,
+    output: { ...unknown, known: 200 },
+    reasoning: { ...unknown, known: 50 },
+    total: { ...unknown, known: 500 },
+  })
+  expect((await values()).reduce((sum, value) => sum + value, 0)).toBeCloseTo(100)
+  expect(await arcs.count()).toBe(3)
+  expect(await page.locator(".context-usage-stats .context-ring").getAttribute("aria-label")).toContain("≥ 500")
+  await update(
+    Object.fromEntries(
+      ["input", "uncached", "cacheRead", "cacheWrite", "output", "reasoning", "total"].map((key) => [key, unknown]),
+    ),
+  )
+  expect(await arcs.count()).toBe(0)
+  expect(await page.locator(".context-usage-stats .context-ring").getAttribute("aria-label")).toContain("—")
+  await update(
+    Object.fromEntries(
+      ["input", "uncached", "cacheRead", "cacheWrite", "output", "reasoning", "total"].map((key) => [key, exact(0)]),
+    ),
+  )
+  expect(await arcs.count()).toBe(0)
+  expect(await page.locator(".context-usage-stats .context-ring").getAttribute("aria-label")).toContain(": 0")
+})
+
+test("recorded durations use the token ring type scale and fit long values without overflow", async () => {
+  await page.goto(new URL("metrics", server.resolvedUrls!.local[0]!).href)
+  for (const width of [375, 1280]) {
+    await page.setViewportSize({ width, height: 900 })
+    for (const duration of [118000, 3600000000]) {
+      await page.evaluate(
+        (duration) => (window as unknown as { setDuration(value: number): void }).setDuration(duration),
+        duration,
+      )
+      await page.waitForTimeout(50)
+      const result = await page.locator(".context-timing .context-ring").evaluate((ring) => {
+        const text = ring.querySelector("div > strong")!
+        const bounds = ring.getBoundingClientRect(),
+          rect = text.getBoundingClientRect()
+        const radius = (bounds.width * 62) / 160,
+          cx = bounds.x + bounds.width / 2,
+          cy = bounds.y + bounds.height / 2
+        return {
+          size: parseFloat(getComputedStyle(text).fontSize),
+          inside: [rect.left, rect.right].every((x) =>
+            [rect.top, rect.bottom].every((y) => Math.hypot(x - cx, y - cy) <= radius + 1),
+          ),
+        }
+      })
+      expect(result.inside).toBe(true)
+      expect(result.size).toBeLessThanOrEqual(18)
+      expect(result.size).toBeGreaterThanOrEqual(12)
+      const captions = await page.locator(".context-ring").evaluateAll((rings) =>
+        rings.map((ring) => {
+          const bounds = ring.getBoundingClientRect(),
+            caption = ring.querySelector("div > span")!.getBoundingClientRect()
+          const radius = (bounds.width * 62) / 160,
+            cx = bounds.x + bounds.width / 2,
+            cy = bounds.y + bounds.height / 2
+          return {
+            text: ring.querySelector("div > span")!.textContent,
+            diameter: bounds.width,
+            width: caption.width,
+            height: caption.height,
+            inside: [caption.left, caption.right].every((x) =>
+              [caption.top, caption.bottom].every((y) => Math.hypot(x - cx, y - cy) <= radius + 1),
+            ),
+          }
+        }),
+      )
+      for (const caption of captions) expect(caption, JSON.stringify(caption)).toMatchObject({ inside: true })
+    }
+  }
 })
 
 test("cumulative token values fit real 108px and 80px rings across fonts, themes and zoom", async () => {

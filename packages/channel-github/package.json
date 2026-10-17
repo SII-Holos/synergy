@@ -1,0 +1,78 @@
+{
+  "name": "@ericsanchezok/synergy-channel-github",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./agents": "./src/agents.ts",
+    "./channel/prompts/github-channel-agent.txt": "./src/channel/prompts/github-channel-agent.txt",
+    "./channel/provider/github": "./src/channel/provider/github/index.ts",
+    "./channel/provider/github/api": "./src/channel/provider/github/api.ts",
+    "./channel/provider/github/gate": "./src/channel/provider/github/gate.ts",
+    "./channel/provider/github/poll": "./src/channel/provider/github/poll.ts",
+    "./channel/provider/github/reactions": "./src/channel/provider/github/reactions.ts",
+    "./channel/provider/github/record": "./src/channel/provider/github/record.ts",
+    "./channel/provider/github/synthesizer": "./src/channel/provider/github/synthesizer.ts",
+    "./channel/provider/github/workspace": "./src/channel/provider/github/workspace.ts",
+    "./channel/tools/github-deliver-fix": "./src/channel/tools/github-deliver-fix.ts",
+    "./cli/setup": "./src/cli/setup.ts",
+    "./component": "./src/component.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./http": "./src/http.ts",
+    "./tool-policy": "./src/tool-policy.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/channel-github",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "1.0.0-alpha.1",
+    "@ericsanchezok/synergy-channels": "workspace:*",
+    "@ericsanchezok/synergy-github": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "channel-github",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "channelGithub",
+    "requires": {
+      "channels": "1.1.26",
+      "github": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-channels": "1.1.26",
+      "@ericsanchezok/synergy-github": "1.1.26"
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}

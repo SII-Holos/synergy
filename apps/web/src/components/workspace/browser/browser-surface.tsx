@@ -2,7 +2,7 @@ import { BrowserPageDialog } from "./page-dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { createEffect, onCleanup, onMount, Show } from "solid-js"
+import { Show } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import { usePlatform } from "@/context/platform"
 import { useBrowser } from "./browser-store"
@@ -10,8 +10,6 @@ import { browser as B } from "@/locales/messages"
 import { NativeBrowserSurface } from "./native-browser-surface"
 import { shouldShowBrowserPresentationSurface } from "./browser-presentation"
 
-const MIN_FIT_VIEWPORT_WIDTH = 320
-const MIN_FIT_VIEWPORT_HEIGHT = 240
 const MAX_UPLOAD_FILE_BYTES = 25 * 1024 * 1024
 const MAX_UPLOAD_REQUEST_BYTES = 50 * 1024 * 1024
 const MAX_UPLOAD_FILES = 20
@@ -35,9 +33,6 @@ export function BrowserSurface(props: {
 }) {
   let wrapperRef: HTMLDivElement | undefined
   let fileInputRef: HTMLInputElement | undefined
-  let pendingFitFrame: number | undefined
-  let lastFitViewportKey = ""
-
   const browser = useBrowser()
   const platform = usePlatform()
   const lingui = useLingui()
@@ -45,56 +40,6 @@ export function BrowserSurface(props: {
   const container = () => wrapperRef
   const nativePresentation = () => browser.presentation()?.kind === "native" && platform.browserNative
   const nativeRecoveryAvailable = () => props.clientPresentation === "native" && Boolean(platform.browserNative)
-
-  function fitViewportSize() {
-    if (!wrapperRef) return null
-    const rect = wrapperRef.getBoundingClientRect()
-    const width = Math.max(MIN_FIT_VIEWPORT_WIDTH, Math.round(rect.width))
-    const height = Math.max(MIN_FIT_VIEWPORT_HEIGHT, Math.round(rect.height))
-    if (width <= 0 || height <= 0) return null
-    return { width, height }
-  }
-
-  function applyFitViewport() {
-    pendingFitFrame = undefined
-    if (browser.viewportMode() !== "fit") {
-      lastFitViewportKey = ""
-      return
-    }
-
-    const size = fitViewportSize()
-    if (!size) return
-
-    const pageId = browser.pageId() ?? "active"
-    const key = `${pageId}:${browser.page()?.status}:${size.width}x${size.height}`
-    if (key === lastFitViewportKey) return
-    lastFitViewportKey = key
-    browser.setViewport(size.width, size.height, { mode: "fit" })
-  }
-
-  function scheduleFitViewport() {
-    if (pendingFitFrame !== undefined) return
-    pendingFitFrame = requestAnimationFrame(applyFitViewport)
-  }
-
-  createEffect(() => {
-    browser.viewportMode()
-    browser.pageId()
-    browser.page()?.status
-    browser.hostStatus()
-    scheduleFitViewport()
-  })
-
-  onMount(() => {
-    if (!wrapperRef) return
-    const observer = new ResizeObserver(scheduleFitViewport)
-    observer.observe(wrapperRef)
-    scheduleFitViewport()
-    onCleanup(() => {
-      observer.disconnect()
-      if (pendingFitFrame !== undefined) cancelAnimationFrame(pendingFitFrame)
-    })
-  })
 
   async function chooseFiles(files: FileList | null) {
     const request = browser.fileChooserRequest()
@@ -207,38 +152,6 @@ export function BrowserSurface(props: {
         <Show when={nativePresentation()}>
           <NativeBrowserSurface container={container} ownerKey={props.ownerKey} />
         </Show>
-      </Show>
-
-      <Show when={browser.browserError()}>
-        {(error) => (
-          <div class="absolute left-3 right-3 top-3 z-40 rounded-md border border-border-weak-base bg-surface-raised-stronger-non-alpha px-3 py-2 text-12 text-text-strong shadow-sm">
-            <div class="flex items-center gap-2">
-              <span class="font-medium">
-                {error().severity === "critical" ? lingui._(B.unavailable.id) : lingui._(B.issue.id)}
-              </span>
-              <span class="min-w-0 flex-1 truncate text-text-weak">{error().message}</span>
-              <Show
-                when={
-                  error().code?.startsWith("browser_native_") &&
-                  browser.hostStatus() !== "failed" &&
-                  nativeRecoveryAvailable() &&
-                  props.onRetryNative
-                }
-              >
-                <Button size="small" variant="primary" onClick={() => props.onRetryNative?.()}>
-                  <Trans id={B.retry.id} message={B.retry.message} />
-                </Button>
-              </Show>
-              <button
-                type="button"
-                class="text-text-weaker hover:text-text-base"
-                onClick={() => browser.setBrowserError(null)}
-              >
-                <Trans id={B.dismiss.id} message={B.dismiss.message} />
-              </button>
-            </div>
-          </div>
-        )}
       </Show>
 
       <Show when={browser.fileChooserRequest()}>

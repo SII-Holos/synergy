@@ -13,7 +13,12 @@ afterEach(async () => {
 })
 
 describe("Electron Browser Host broker contract", () => {
-  for (const fixture of ["browser-native-page-pool", "browser-multi-page", "browser-native-import"])
+  for (const fixture of [
+    "browser-native-page-pool",
+    "browser-multi-page",
+    "browser-native-import",
+    "browser-profile-data",
+  ])
     runtimeTest(
       `validates native browser contract: ${fixture}`,
       async () => {

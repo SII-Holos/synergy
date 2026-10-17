@@ -31,7 +31,6 @@ export function WelcomeStage(props: {
   const { i18n } = useLocale()
   const reducedMotion = createMediaQuery("(prefers-reduced-motion: reduce)")
   const [paused, setPaused] = createSignal(reducedMotion())
-  const [editing, setEditing] = createSignal(false)
   const [visible, setVisible] = createSignal(document.visibilityState !== "hidden")
   const [intersecting, setIntersecting] = createSignal(true)
   const [expanded, setExpanded] = createSignal(false)
@@ -41,41 +40,14 @@ export function WelcomeStage(props: {
   )
   let root!: HTMLDivElement
   const [pane, setPane] = createSignal<Element>()
-  const interact = () => {
-    setPaused(false)
-    setEditing(false)
-  }
-  const gameActive = () => !paused() && !editing() && visible() && intersecting() && !expanded() && !props.blocked
+  const interact = () => setPaused(false)
+  const gameActive = () => !paused() && visible() && intersecting() && !expanded() && !props.blocked
   createEffect(() => {
     if (reducedMotion()) setPaused(true)
   })
   onMount(() => {
     const visibility = () => setVisible(document.visibilityState !== "hidden")
-    const input = (event: Event) => {
-      if (event.target instanceof Element && event.target.closest('[data-component="prompt-input"]')) setEditing(true)
-    }
-    let keyboardNavigation = false
-    const navigation = (event: KeyboardEvent) => {
-      keyboardNavigation = event.key === "Tab"
-    }
-    const focus = (event: FocusEvent) => {
-      if (keyboardNavigation && event.target instanceof Node && !root.contains(event.target)) setEditing(true)
-    }
-    const outside = (event: Event) => {
-      keyboardNavigation = false
-      if (
-        !(event.target instanceof Element) ||
-        !root.contains(event.target) ||
-        !event.target.closest(".welcome-game-canvas, .welcome-game-status")
-      )
-        setEditing(true)
-    }
-    document.addEventListener("keydown", navigation, true)
-    document.addEventListener("focusin", focus, true)
-    document.addEventListener("pointerdown", outside, true)
     document.addEventListener("visibilitychange", visibility)
-    document.addEventListener("input", input, true)
-    document.addEventListener("compositionstart", input, true)
     let observed: Element | undefined
     const observer = new IntersectionObserver((entries) => {
       const entry = entries.find((item) => item.target === observed)
@@ -98,12 +70,7 @@ export function WelcomeStage(props: {
     if (pane) mutation.observe(pane, { subtree: true, attributes: true, attributeFilter: ["data-expanded"] })
     measureExpanded()
     onCleanup(() => {
-      document.removeEventListener("keydown", navigation, true)
-      document.removeEventListener("focusin", focus, true)
-      document.removeEventListener("pointerdown", outside, true)
       document.removeEventListener("visibilitychange", visibility)
-      document.removeEventListener("input", input, true)
-      document.removeEventListener("compositionstart", input, true)
       observer.disconnect()
       visualChanges.disconnect()
       mutation.disconnect()

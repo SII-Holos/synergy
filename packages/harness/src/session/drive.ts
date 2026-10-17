@@ -1,3 +1,4 @@
+import { SessionExecutionOwners } from "./execution-owners"
 import { RuntimeContext } from "../lifecycle/context"
 import { Log } from "../util/log"
 import { ContinuationKernel } from "./continuation-kernel"
@@ -75,14 +76,17 @@ export namespace SessionDrive {
   async function arbitrate(sessionID: string, reason: string, force: boolean): Promise<boolean> {
     if (SessionManager.isRunning(sessionID)) return false
     if (await isPaused(sessionID)) return false
+    if (await SessionInbox.hasRunnableItem(sessionID)) return true
     if (!force) {
-      if (await SessionInbox.hasRunnableItem(sessionID)) return true
       const proposal = await ContinuationKernel.propose(sessionID)
       if (!proposal) return false
       if (proposal.kind === "handled") return true
       return deliver(sessionID, reason, proposal)
     }
-    return true
+    const session = await SessionManager.getSession(sessionID)
+    if (!session) return false
+    await SessionExecutionOwners.assertResume(session)
+    return !!(await SessionInbox.latestRootID(sessionID))
   }
 
   async function deliver(

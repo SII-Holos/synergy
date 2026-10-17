@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, on, Show, Suspense, onCleanup } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"

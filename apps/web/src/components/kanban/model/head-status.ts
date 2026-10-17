@@ -4,9 +4,9 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { kanbanPage } from "@/locales/messages"
 
 /**
- * Head-status tint for a Kanban pane, derived from the session's resolved
+ * Header status for a Kanban pane, derived from the session's resolved
  * visual state (the same resolution the sidebar rows use) plus the raw
- * session status. Working and waiting win over the completed tint so a pane
+ * session status. Working and waiting win over completion so a pane
  * that is both active and finished reads as what it is doing now, and
  * "waiting for the user" always outranks "busy" because it demands attention.
  */

@@ -1,11 +1,12 @@
 import { formatLocalDateTime } from "@ericsanchezok/synergy-harness/util/time-format"
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
-import { NoteStore } from ".."
+import { NoteDocumentKinds, NoteStore } from ".."
 import { NoteMarkdown } from ".."
 import { NoteDocument } from ".."
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import DESCRIPTION from "./note-read.txt"
+import { noteReferenceLine } from "./note-reference"
 
 const MAX_IDS = 10
 const MAX_LINES = 2000
@@ -69,22 +70,11 @@ export const NoteReadTool = Tool.define(
           const global = note.global ? "yes" : "no"
           const updated = formatLocalDateTime(note.time.updated)
           const kind = note.kind ?? "note"
-          const blueprintLines =
-            kind === "blueprint"
-              ? [
-                  `blueprintDescription: ${note.blueprint?.description ?? "none"}`,
-                  `Default Agent: ${note.blueprint?.defaultAgent ?? "none"}`,
-                  `Audit Agent: supervisor`,
-                  `Active Loop: ${note.blueprint?.activeLoopID ?? "none"}`,
-                  `Run Count: ${note.blueprint?.runCount ?? 0}`,
-                  `Last Run: ${note.blueprint?.lastRunAt ? formatLocalDateTime(note.blueprint.lastRunAt) : "never"}`,
-                ]
-              : []
-
           const header = [
             `[${id}] ${note.title}`,
+            noteReferenceLine(note.id, note.title),
             `Kind: ${kind}`,
-            ...blueprintLines,
+            ...NoteDocumentKinds.details(note),
             `Version: ${note.version}`,
             ...(params.includeHashes ? [`DocHash: ${docHash}`] : []),
             `Tags: ${tags}`,

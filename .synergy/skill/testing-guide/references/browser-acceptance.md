@@ -13,11 +13,15 @@ Use the isolated provider and synthetic-data workflow in `develop-synergy` for t
 
 CI `package:check` builds its own package closure and runs on the separate contracts runner. Keep rebuilding gates apart from suites consuming workspace `dist`; isolated Homes do not isolate the checkout's compiled files.
 
+Electron fixtures that await renderer animations must keep their test WebContents unthrottled when another application can occlude the window. A visible native window can still have a hidden document with paused animation time. Diagnose that state before changing production animation behavior or extending a deadline.
+
 Keep validation for private source-only test packages in `typecheck`. Declare `build` only when the package emits the distribution consumed by preparation.
 
 ## Local Joint Acceptance
 
 Identify the intended foreground provider request independently of streaming: title and other auxiliary calls can also stream, and journal enumeration is not request chronology. Test both request orders and reject a missing first attachment body even when a later tool response contains its content.
+
+Publish a captured request's bytes and journal entry together before forwarding upstream. Auxiliary requests may begin while an observer enumerates the journal; hold the request-body write in a deterministic regression and require every visible entry to have readable bytes. Preserve unknown accounting for already published incomplete or corrupt records instead of ignoring evidence failures.
 
 For streaming navigation acceptance, give foreground and auxiliary fixture calls distinct model identities. Hold the foreground continuation until an unfinished reply is visible before and after navigation. A provider callback alone does not prove delivery through worker batching, persistence and rendering. Disable the fixture server's idle timeout when the test deliberately holds a stream; retain bounded test deadlines and release the stream during cleanup. Deadline-based batching tests must withhold the next event, then verify prefix delivery, bounded pending reads, terminal ordering and iterator cleanup.
 

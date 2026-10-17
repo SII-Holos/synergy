@@ -155,7 +155,13 @@ render(
         <ResourceOpenProvider value={resourceController}>
           <MarkedProvider>
             <DiffComponentProvider component={EmptyDiff}>
-              <DataProvider data={data} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
+              <DataProvider
+                hasFeature={(id) => ["media", "mcp"].includes(id)}
+                data={data}
+                runtime={runtime}
+                directory="/workspace"
+                serverUrl="http://localhost"
+              >
                 <ConversationMotionProvider takeArrival={(id) => partArrivals.delete(id)}>
                   <For each={segmented() ? ["header", "first", "second", "answer", "footer"] : [`whole-${mount()}`]}>
                     {(segment) => (
@@ -288,6 +294,10 @@ globalThis.__chronologyHarness = {
   },
   remount: () => setMount((value) => value + 1),
   setFollowing,
+  newText: (id: string) => {
+    partArrivals.add(id)
+    setData("part", assistantID, (parts) => [...parts, { ...answerPart, id, text: "New live answer." }])
+  },
   fastTool: () => {
     partArrivals.add("tool-fast")
     setData("part", assistantID, (parts) => [

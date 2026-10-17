@@ -3,7 +3,7 @@ import { useSDK } from "@/context/sdk"
 import { ErrorCard } from "@ericsanchezok/synergy-ui/error-card"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Show, createMemo, createResource, createSignal, onCleanup } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { useLingui } from "@lingui/solid"
 import { SessionReviewTab } from "@/components/session"
 import { useLayout } from "@/context/layout"
@@ -77,7 +77,7 @@ function ToolReviewContent(props: WorkbenchPanelContentProps) {
           view={view}
           diffStyle={layout.review.diffStyle()}
           onDiffStyleChange={layout.review.setDiffStyle}
-          selectedFile={() => rows()[0]?.file}
+          selectedFile={() => props.tab.resourceId || rows()[0]?.file}
           onViewFile={(path) => void file.openWorkspaceFile(path)}
         />
       )}

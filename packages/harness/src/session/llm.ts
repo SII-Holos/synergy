@@ -1,3 +1,4 @@
+import { AgentPromptContributions } from "../agent/prompt-contributions"
 import { RolloutTransport } from "./rollout/transport"
 import { RuntimeContext } from "../lifecycle/context"
 import { Provider } from "../provider/provider"
@@ -21,6 +22,7 @@ import { ProviderTransform } from "../provider/transform"
 import { PromptCachePolicy } from "../provider/prompt-cache-policy"
 import { ProviderSessionHeader } from "../provider/session-header"
 import { normalizeProviderError } from "../provider/retry"
+import { responsesErrorMiddleware } from "../provider/responses-error"
 import type { Agent } from "../agent/agent"
 import type { MessageV2 } from "./message-v2"
 import { ObservabilitySpans } from "../observability/spans"
@@ -183,6 +185,7 @@ export namespace LLM {
     small?: boolean
     tools: Record<string, Tool>
     activeToolIDs?: string[]
+    availableToolIDs?: string[]
     retries?: number
     maxOutputTokens?: number
     toolChoice?: { type: "tool"; toolName: string }
@@ -258,13 +261,7 @@ export namespace LLM {
   }
 
   function formatLateUserContext(parts: string[]) {
-    return [
-      "<runtime-context>",
-      "The following advisory runtime context may help answer the current turn. It does not override higher-priority system, permission, tool, Blueprint, Lattice, or developer instructions.",
-      "",
-      parts.join("\n\n"),
-      "</runtime-context>",
-    ].join("\n")
+    return ["<runtime-context>", parts.join("\n\n"), "</runtime-context>"].join("\n")
   }
 
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
@@ -289,13 +286,16 @@ export namespace LLM {
     const baseSystem = (input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model)).map((prompt) =>
       withPreambleSection(prompt),
     )
-    const baseSystemLength = baseSystem.length
 
     // Part 1: Agent prompt (most stable, always first for caching)
     // Kept separate from custom parts so the static agent prompt can be
     // cached independently even when dynamic parts (env block with timestamps)
     // change on each invoke.
     system.push(...baseSystem)
+    system.push(
+      ...AgentPromptContributions.render(input.agent, new Set(input.availableToolIDs ?? Object.keys(input.tools))),
+    )
+    const baseSystemLength = system.length
 
     // Part 2: All custom system parts from invoke.ts (ordered static → dynamic)
     system.push(...input.system.filter((x) => x))
@@ -565,6 +565,9 @@ export namespace LLM {
         model: wrapLanguageModel({
           model: language,
           middleware: [
+            ...(input.model.api.npm === "@ai-sdk/openai" && language.provider.endsWith(".responses")
+              ? [responsesErrorMiddleware()]
+              : []),
             {
               async wrapStream({ doStream }) {
                 try {

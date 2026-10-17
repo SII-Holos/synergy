@@ -24,7 +24,11 @@ export function ProjectMenuContent(props: {
   const { _ } = useLingui()
   const sync = useGlobalSync()
   const sdk = useGlobalSDK()
-  const owner = createMemo(() => ({ client: sdk.client, url: sdk.url, ids: sync.data.scope.map((scope) => scope.id) }))
+  const owner = createMemo(() => ({
+    client: sdk.client,
+    url: sdk.url,
+    ids: sdk.capabilities.has("workbench") ? sync.data.scope.map((scope) => scope.id) : [],
+  }))
   const initialLocations: {
     owner: ReturnType<typeof owner> | undefined
     values: Record<string, string | undefined>
@@ -159,11 +163,13 @@ export function ProjectMenuContent(props: {
         </span>
       </button>
       <div class="project-menu-footer">
-        <button type="button" class="project-flow-row" disabled={pending()} onClick={props.onCreate}>
-          <Icon name={getSemanticIcon("workspace.add")} size="small" />
-          {_(entry.create)}
-        </button>
-        <Show when={props.onSettings}>
+        <Show when={sdk.capabilities.has("workbench")}>
+          <button type="button" class="project-flow-row" disabled={pending()} onClick={props.onCreate}>
+            <Icon name={getSemanticIcon("workspace.add")} size="small" />
+            {_(entry.create)}
+          </button>
+        </Show>
+        <Show when={sdk.capabilities.has("workbench") && props.onSettings}>
           <button type="button" class="project-flow-row" onClick={props.onSettings}>
             {_(entry.settings)}
           </button>

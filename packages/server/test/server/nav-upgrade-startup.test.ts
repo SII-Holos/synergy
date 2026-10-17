@@ -23,6 +23,7 @@ test("normal startup restores historical navigation and global search after an e
       })
       await Storage.write(StoragePath.sessionInfo(Identifier.asScopeID("home"), Identifier.asSessionID(session.id)), {
         ...session,
+        workspaceID: undefined,
         scope: { type: "home", id: "home", directory: tmp.path, worktree: tmp.path, sandboxes: [] },
         workspace: { type: "main", path: tmp.path, scopeID: "home" },
         time: { created: 100, updated: 200 },
@@ -45,9 +46,11 @@ test("normal startup restores historical navigation and global search after an e
         tracking["20260921-session-nav-tags"] = 1
         delete tracking["20260922-session-nav-workspace-binding"]
       })
-      const response = await Server.App().request("/global/session")
-      expect(response.status).toBe(200)
-      expect(await response.json()).toMatchObject({ total: 0, data: [] })
+      expect(
+        await Storage.read<Record<string, unknown>>(StoragePath.sessionNavIndex(Identifier.asScopeID("home"))),
+      ).toMatchObject({
+        entries: [],
+      })
       return session.id
     })
   } finally {

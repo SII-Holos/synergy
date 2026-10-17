@@ -34,11 +34,6 @@ export const S = {
   convPending: { id: "session.conversation.pending", message: "Pending\u2026" },
   convLoadEarlier: { id: "session.conversation.loadEarlier", message: "Load earlier messages" },
   convLoadingEarlier: { id: "session.conversation.loadingEarlier", message: "Loading earlier messages..." },
-  convReturnLatest: { id: "session.conversation.returnLatest", message: "Return to latest" },
-  convNewMessagesReturnLatest: {
-    id: "session.conversation.newMessagesReturnLatest",
-    message: "New messages — Return to latest",
-  },
   convPausedTooltip: {
     id: "session.conversation.pausedTooltip",
     message: "Delivery paused during rollback. Will resume on redo or new task.",
@@ -47,7 +42,23 @@ export const S = {
   convMoveToQueue: { id: "session.conversation.moveToQueue", message: "Move back to queue" },
   convGuideRun: { id: "session.conversation.guideRun", message: "Guide current run" },
   convRemovePending: { id: "session.conversation.removePending", message: "Remove pending message" },
-  convWithdraw: { id: "session.conversation.withdraw", message: "Withdraw" },
+  convEditPending: { id: "session.conversation.editPending", message: "Edit message" },
+  convEditPendingFailed: {
+    id: "session.conversation.editPendingFailed",
+    message: "The queued message could not be moved to the composer. Its saved content is preserved.",
+  },
+  convEditPendingDraft: {
+    id: "session.conversation.editPendingDraft",
+    message: "Send or clear the current draft before editing a queued message.",
+  },
+  convEditPendingChanged: {
+    id: "session.conversation.editPendingChanged",
+    message: "The draft changed while editing was prepared. Your draft is unchanged and the message remains queued.",
+  },
+  convEditPendingUnavailable: {
+    id: "session.conversation.editPendingUnavailable",
+    message: "This message is no longer available for editing. Refresh the conversation and try again.",
+  },
 
   // conversation.tsx — pending timeline tooltips (these mirror the conv descriptors above
   // but the checker sees the raw strings in title attributes)
@@ -253,6 +264,10 @@ export const S = {
   progressNeedsAttentionBlocked: {
     id: "session.progress.needsAttentionBlocked",
     message: "Needs attention · {count, plural, one {# blocked} other {# blocked}}",
+  },
+  progressNeedsAttentionMixed: {
+    id: "session.progress.needsAttentionMixed",
+    message: "Needs attention · {failed} failed, {blocked} blocked",
   },
   progressReady: { id: "session.progress.ready", message: "Ready · {fraction}" },
   progressWorkingLabel: {
@@ -463,6 +478,8 @@ export const S = {
 export function describeProgress(snapshot: ProgressIslandSnapshot, i18n: I18n): string {
   if (snapshot.status === "hidden") return i18n._(S.progressSessionLabel)
   if (snapshot.status === "complete") return i18n._({ ...S.progressCompleteAria, values: { count: snapshot.total } })
+  if (snapshot.failed > 0 && snapshot.blocked > 0)
+    return i18n._({ ...S.progressNeedsAttentionMixed, values: { failed: snapshot.failed, blocked: snapshot.blocked } })
   if (snapshot.tone === "failed") return i18n._({ ...S.progressAttentionAria, values: { count: snapshot.failed } })
   if (snapshot.tone === "blocked") return i18n._({ ...S.progressBlockedAria, values: { count: snapshot.blocked } })
   return i18n._({ ...S.progressActiveAria, values: { completed: snapshot.completed, total: snapshot.total } })
@@ -480,6 +497,8 @@ export function formatProgressLabel(
   if (snapshot.status === "hidden") return ""
   if (snapshot.status === "complete" && snapshot.total === 0) return i18n._(S.progressEnded)
   if (snapshot.status === "complete") return i18n._({ ...S.progressDone, values: { count: snapshot.total } })
+  if (snapshot.failed > 0 && snapshot.blocked > 0)
+    return i18n._({ ...S.progressNeedsAttentionMixed, values: { failed: snapshot.failed, blocked: snapshot.blocked } })
   if (snapshot.tone === "failed") return i18n._({ ...S.progressNeedsAttention, values: { count: snapshot.failed } })
   if (snapshot.tone === "blocked")
     return i18n._({ ...S.progressNeedsAttentionBlocked, values: { count: snapshot.blocked } })

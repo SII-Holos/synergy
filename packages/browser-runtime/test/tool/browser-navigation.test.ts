@@ -12,7 +12,6 @@ const originalWithTask = BrowserToolHelper.withTask
 const originalResolveOwner = BrowserToolHelper.resolveOwner
 const originalResolvePage = BrowserToolHelper.resolvePage
 const originalExecute = BrowserToolHelper.execute
-const originalWithActivity = BrowserToolHelper.withActivity
 const originalGetOrCreateSession = BrowserToolHelper.getOrCreateSession
 
 beforeEach(() =>
@@ -29,9 +28,9 @@ beforeEach(() =>
     BrowserToolHelper.getOrCreateSession = async () =>
       ({
         status: "active",
+        getPage: () => ({ id: "page-test", url: "https://example.com/", title: "Example" }),
         page: { id: "page-test", url: "https://example.com/", title: "Example", loading: false, lastActiveAt: null },
       }) as never
-    BrowserToolHelper.withActivity = async (_ctx, _page, _kind, _tool, _label, fn) => fn()
   }),
 )
 
@@ -41,7 +40,6 @@ afterEach(() =>
     BrowserToolHelper.resolveOwner = originalResolveOwner
     BrowserToolHelper.resolvePage = originalResolvePage
     BrowserToolHelper.execute = originalExecute
-    BrowserToolHelper.withActivity = originalWithActivity
     BrowserToolHelper.getOrCreateSession = originalGetOrCreateSession
   }),
 )
@@ -87,7 +85,8 @@ describe("tool.browser_navigation", () => {
           },
         }
       }
-      BrowserToolHelper.getOrCreateSession = async () => ({ status: "active", page: targetPage }) as never
+      BrowserToolHelper.getOrCreateSession = async () =>
+        ({ status: "active", page: targetPage, getPage: () => targetPage }) as never
       await ScopeContext.provide({
         scope: { id: "scope-test", name: "test", directory: "/tmp" } as never,
         fn: async () => {

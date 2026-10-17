@@ -28,6 +28,8 @@ Harness 拥有协议、逻辑证据和执行门禁；Local Runtime 通过显式�
 
 ## Consequences
 
+Both metadata access upgrades and per-owner historical preparation enter the central trusted migration context, allowing retained source history to remain readable after cutover. Business transactions still validate existing migration receipts without starting or joining upgrades, and ordinary Session mutations remain fenced. The HTTP regression removes an upgrade receipt from a frozen source, verifies history reads recover, and verifies mutation remains blocked.
+
 用户可以选择任意已连接且兼容的目标 Host，不需要固定常驻协调服务器。没有长期的多设备 Workspace 副本；空间开销发生在迁移期间，成功后清理两端临时 ZIP，保留目标 Workspace 和源端只读历史。源 Workspace 的用户文件保留，由用户自行管理。
 
 第一版传输一个普通交互根 Session，要求相同平台、版本和组件组合，至多一个独立原生目录 Workspace。子 Session 树、工作流、无人值守入口、原生 Browser/Computer 状态、不确定工具效果、活跃 Environment 操作、共享或挂载 Workspace、关联 Git worktree 与多 Workspace 文件历史会拒绝迁移。两端必须在线；单个迁移 ZIP 上限为 64 MiB，更大的 Workspace 需要后续的流式传输能力。

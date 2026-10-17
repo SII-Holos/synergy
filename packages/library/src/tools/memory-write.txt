@@ -15,7 +15,7 @@ Persist a piece of knowledge as long-term memory. Provide a concise title, conte
 - `general` — Anything valuable that does not fit above
 
 `recallMode` answers **how this memory should be used later**:
-- `always` — Inject every session; reserve for durable identity and interaction rules
+- `always` — Inject every session; reserve for durable identity, interaction, consent, authorization, privacy, and representation rules
 - `contextual` — Auto-retrieve only when semantically relevant
 - `search_only` — Never auto-inject; only surface via explicit `memory_search`
 
@@ -25,6 +25,6 @@ Guidelines:
 - Use `personal` with `search_only` for lifestyle details like food, hobbies, or casual likes
 - Be highly selective with `always`; these should stay few and consolidated
 - Prefer `memory_edit` over `memory_write` when a similar durable memory already exists
-- When in doubt, choose a narrower category and a less aggressive recall mode
+- When in doubt, choose a narrower category and a less aggressive recall mode; do not demote clear session-wide identity, language, or trust rules merely to reduce context
 
 If similar memories already exist, the tool may return them instead of writing and suggest `memory_edit` to update an existing memory rather than creating a duplicate.

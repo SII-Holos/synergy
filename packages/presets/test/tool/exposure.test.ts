@@ -3,9 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { jsonSchema } from "ai"
 import z from "zod"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
-import { createBuiltinMaxSubagents } from "@ericsanchezok/synergy-harness/test/internal/agent/builtin-max-subagents"
-import { createBuiltinLegacySubagents } from "@ericsanchezok/synergy-harness/test/internal/agent/builtin-legacy-subagents"
-import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint"
 import { MCP } from "@ericsanchezok/synergy-mcp"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -72,13 +70,6 @@ const allowAllAgent: Agent.Info = {
   mode: "primary",
   permission: PermissionNext.fromConfig({ "*": "allow" }),
   options: {},
-}
-
-const builtinCtx = {
-  defaults: [],
-  user: [],
-  role: () => undefined,
-  evolutionActive: false,
 }
 
 async function definitionIDs(
@@ -389,7 +380,8 @@ describe("tool exposure", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const agent = createBuiltinMaxSubagents(builtinCtx)["code-cartographer"]
+          const agent = await Agent.get("code-cartographer")
+          expect(agent).toBeDefined()
           const session = await Session.create({})
           let ids = await definitionIDs(session, { agent })
 
@@ -686,7 +678,8 @@ describe("tool exposure", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const agent = createBuiltinMaxSubagents(builtinCtx)["code-cartographer"]
+          const agent = await Agent.get("code-cartographer")
+          expect(agent).toBeDefined()
           const session = await Session.create({})
           const userTools = { "*": false, search_tools: true, expand_tools: true, note_read: true }
           const resolved = await ToolResolver.resolveWithAvailability({
@@ -813,7 +806,8 @@ describe("tool exposure", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const agent = createBuiltinMaxSubagents(builtinCtx)["code-cartographer"]
+            const agent = await Agent.get("code-cartographer")
+            expect(agent).toBeDefined()
             const session = await Session.create({})
             const search = await SearchToolsTool.init({ agent })
             const searchResult = await search.execute({ query: "no-match", limit: 8 }, toolContext(session.id))
@@ -850,17 +844,23 @@ describe("tool exposure", () => {
 
           const ids = await definitionIDs(await Session.get(session.id))
           expect(ids.has("bash")).toBe(true)
-          expect(ids.has("edit")).toBe(true)
-          expect(ids.has("write")).toBe(true)
+          expect(ids.has("read")).toBe(true)
+          expect(ids.has("apply_patch")).toBe(true)
+          expect(ids.has("edit")).toBe(false)
+          expect(ids.has("write")).toBe(false)
           expect(ids.has("process")).toBe(true)
           expect(ids.has("attach")).toBe(false)
-          expect(ids.has("render")).toBe(true)
+          expect(ids.has("render")).toBe(false)
           expect(ids.has("search_tools")).toBe(true)
           expect(ids.has("expand_tools")).toBe(true)
           expect(ids.has("note_read")).toBe(true)
           expect(ids.has("note_write")).toBe(true)
           expect(ids.has("memory_get")).toBe(false)
           expect(ids.has("agenda_list")).toBe(false)
+          const expand = await ExpandToolsTool.init({ agent: allowAllAgent })
+          const expanded = await expand.execute({ groups: ["visuals"] }, toolContext(session.id))
+          expect(expanded.metadata.availableRequestedTools).toEqual(["render"])
+          expect((await definitionIDs(await Session.get(session.id))).has("render")).toBe(true)
         },
       })
     }))
@@ -970,86 +970,24 @@ describe("tool exposure", () => {
       })
     }))
 
-  test("LightLoop primary and recorded reviewer sessions expose the correct review tools", () =>
+  test("Light Loop exposes direct completion without reviewer tools", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const parent = await Session.create({})
-          await Session.update(parent.id, (draft) => {
-            draft.workflow = { kind: "lightloop", instructions: "Finish the feature" }
-          })
-          const primarySession = await Session.get(parent.id)
-
-          let availability = await ToolResolver.availability({
+          const session = await Session.create({ workflow: { kind: "lightloop", instructions: "Finish the goal" } })
+          const availability = await ToolResolver.availability({
             agent: allowAllAgent,
             model,
-            sessionID: primarySession.id,
-            session: primarySession,
+            sessionID: session.id,
+            session,
             includeMCP: false,
           })
           expect(availability.visible.some((def) => def.id === "loop_stop")).toBe(true)
-          expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(false)
-          expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(false)
-          expect(availability.diagnostics.get("light_loop_approve")?.code).toBe("permission_denied")
-          expect(availability.diagnostics.get("light_loop_reject")?.code).toBe("permission_denied")
-
-          const child = await Session.create({
-            parentID: parent.id,
-            cortex: {
-              taskID: "cortex-lightloop-review",
-              parentSessionID: parent.id,
-              parentMessageID: "msg_parent",
-              description: "Review LightLoop",
-              agent: "lightloop-reviewer",
-              executionRole: "delegated_subagent",
-              startedAt: Date.now(),
-              status: "running",
-            },
-          })
-          await Session.update(parent.id, (draft) => {
-            if (draft.workflow?.kind !== "lightloop") throw new Error("expected lightloop")
-            draft.workflow.stopRequest = {
-              summary: "done",
-              requestedAt: Date.now(),
-              requesterSessionID: parent.id,
-              requesterMessageID: "msg_parent",
-              reviewSessionID: child.id,
-              reviewTaskID: "ctx_review",
-            }
-          })
-
-          const reviewerAgent = {
-            ...allowAllAgent,
-            name: "lightloop-reviewer",
-            mode: "subagent" as const,
-          }
-          const reviewerSession = await Session.get(child.id)
-          availability = await ToolResolver.availability({
-            agent: reviewerAgent,
-            model,
-            sessionID: reviewerSession.id,
-            session: reviewerSession,
-            includeMCP: false,
-          })
-          expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(true)
-          expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(true)
-          expect(availability.visible.some((def) => def.id === "loop_stop")).toBe(false)
-
-          await Session.update(child.id, (draft) => {
-            if (!draft.cortex) throw new Error("expected cortex child")
-            draft.cortex.agent = "implementation-engineer"
-          })
-          availability = await ToolResolver.availability({
-            agent: reviewerAgent,
-            model,
-            sessionID: child.id,
-            session: await Session.get(child.id),
-            includeMCP: false,
-          })
-          expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(false)
-          expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(false)
+          const ids = (await ToolRegistry.tools("test-provider")).map((tool) => tool.id)
+          expect(ids).not.toContain("light_loop_approve")
+          expect(ids).not.toContain("light_loop_reject")
         },
       })
     }))
@@ -1072,12 +1010,8 @@ describe("tool exposure", () => {
             draft.blueprint = { loopID: loop.id, loopRole: "execution" }
           })
 
-          const executionAgents = {
-            developer: createBuiltinLegacySubagents(builtinCtx).developer,
-            "implementation-engineer": createBuiltinMaxSubagents(builtinCtx)["implementation-engineer"],
-            "refactoring-engineer": createBuiltinMaxSubagents(builtinCtx)["refactoring-engineer"],
-          }
-          for (const [name, agent] of Object.entries(executionAgents)) {
+          for (const name of ["developer", "implementation-engineer", "refactoring-engineer"]) {
+            const agent = await Agent.get(name)
             if (!agent) throw new Error(`missing ${name}`)
             const executionAvailability = await ToolResolver.availability({
               agent,
@@ -1112,13 +1046,19 @@ describe("tool exposure", () => {
           await Session.update(reviewer.id, (draft) => {
             draft.blueprint = { loopID: loop.id, loopRole: "audit" }
           })
+          await BlueprintLoopStore.recordStopRequest(ScopeContext.current.scope.id, loop.id, {
+            summary: "Ready",
+            requestedAt: Date.now(),
+            requesterSessionID: execution.id,
+            requesterMessageID: "msg_parent",
+          })
           await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
             status: "auditing",
             auditSessionID: reviewer.id,
-            auditTaskID: "ctx_review",
+            auditTaskID: "cortex-blueprint-review",
           })
 
-          const reviewerAgent = createBuiltinMaxSubagents(builtinCtx)["security-reviewer"]
+          const reviewerAgent = await Agent.get("security-reviewer")
           if (!reviewerAgent) throw new Error("missing security-reviewer")
           availability = await ToolResolver.availability({
             agent: reviewerAgent,
@@ -1160,61 +1100,6 @@ describe("tool exposure", () => {
       })
     }))
 
-  test("LightLoop review tools stay diagnostically denied outside the recorded reviewer session", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const parent = await Session.create({})
-          await Session.update(parent.id, (draft) => {
-            draft.workflow = {
-              kind: "lightloop",
-              instructions: "Finish the feature",
-              stopRequest: {
-                summary: "done",
-                requestedAt: Date.now(),
-                requesterSessionID: parent.id,
-                requesterMessageID: "msg_parent",
-                reviewSessionID: "ses_other_reviewer",
-                reviewTaskID: "ctx_review",
-              },
-            }
-          })
-          const child = await Session.create({
-            parentID: parent.id,
-            cortex: {
-              taskID: "cortex-unrecorded-lightloop-review",
-              parentSessionID: parent.id,
-              parentMessageID: "msg_parent",
-              description: "Review LightLoop",
-              agent: "lightloop-reviewer",
-              executionRole: "delegated_subagent",
-              startedAt: Date.now(),
-              status: "running",
-            },
-          })
-          const reviewerAgent = {
-            ...allowAllAgent,
-            name: "lightloop-reviewer",
-            mode: "subagent" as const,
-          }
-
-          const availability = await ToolResolver.availability({
-            agent: reviewerAgent,
-            model,
-            sessionID: child.id,
-            session: await Session.get(child.id),
-            includeMCP: false,
-          })
-          expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(false)
-          expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(false)
-          expect(availability.diagnostics.get("light_loop_approve")?.code).toBe("permission_denied")
-          expect(availability.diagnostics.get("light_loop_reject")?.code).toBe("permission_denied")
-        },
-      })
-    }))
-
   test("recursive coordinator agents resolve task tools while ordinary subagents do not", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
@@ -1222,11 +1107,10 @@ describe("tool exposure", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
-          const agents = createBuiltinMaxSubagents(builtinCtx)
           const recursiveTools = ["task", "task_list", "task_output", "task_cancel", "dagwrite", "dagread", "dagpatch"]
 
-          for (const name of ["supervisor", "lightloop-reviewer"]) {
-            const agent = agents[name]
+          for (const name of ["supervisor"]) {
+            const agent = await Agent.get(name)
             if (!agent) throw new Error(`missing ${name}`)
             const availability = await ToolResolver.availability({
               agent,
@@ -1243,7 +1127,7 @@ describe("tool exposure", () => {
             expect(task?.description).toContain("implementation-engineer")
           }
 
-          const ordinary = agents["implementation-engineer"]
+          const ordinary = await Agent.get("implementation-engineer")
           if (!ordinary) throw new Error("missing implementation-engineer")
           const availability = await ToolResolver.availability({
             agent: ordinary,
@@ -1325,8 +1209,10 @@ describe("tool exposure", () => {
           })
 
           expect(resolved.activeToolIDs).toContain("bash")
-          expect(resolved.activeToolIDs).toContain("edit")
-          expect(resolved.executionTools.edit).toBeDefined()
+          expect(resolved.activeToolIDs).toContain("apply_patch")
+          expect(resolved.executionTools.apply_patch).toBeDefined()
+          expect(resolved.activeToolIDs).not.toContain("edit")
+          expect(resolved.executionTools.edit).toBeUndefined()
         },
       })
     }))

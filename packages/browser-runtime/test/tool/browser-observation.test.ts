@@ -29,7 +29,6 @@ const original = {
   getPage: BrowserToolHelper.getPage,
   resolvePage: BrowserToolHelper.resolvePage,
   execute: BrowserToolHelper.execute,
-  withActivity: BrowserToolHelper.withActivity,
 }
 const context = {
   sessionID: "ses_observation",
@@ -51,7 +50,6 @@ beforeEach(() =>
       commands.push(command)
       return response
     }
-    BrowserToolHelper.withActivity = async (_ctx, _page, _kind, _tool, _label, run) => run()
   }),
 )
 afterEach(() => runtime.run(() => Object.assign(BrowserToolHelper, original)))

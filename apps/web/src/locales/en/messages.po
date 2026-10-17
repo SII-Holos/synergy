@@ -247,10 +247,6 @@ msgid "app.agenda.action.submittedHint"
 msgstr "Check History for the execution result."
 
 #. js-lingui-explicit-id
-msgid "app.agenda.activity.description"
-msgstr "Review actual executions, results and related sessions, newest first."
-
-#. js-lingui-explicit-id
 msgid "app.agenda.activity.loaded"
 msgstr "{shown} of {total} executions loaded"
 
@@ -329,10 +325,6 @@ msgid "app.agenda.arrangements.count"
 msgstr "{count, plural, one {# upcoming trigger} other {# upcoming triggers}}"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.arrangements.description"
-msgstr "See when your enabled tasks are expected to run. Select a date to change the displayed range."
-
-#. js-lingui-explicit-id
 msgid "app.agenda.arrangements.empty"
 msgstr "No upcoming arrangements in this range"
 
@@ -363,10 +355,6 @@ msgstr "This period is in the past. History contains actual executions."
 #. js-lingui-explicit-id
 msgid "app.agenda.arrangements.predicted"
 msgstr "Expected trigger times · {timezone}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.arrangements.relative"
-msgstr "Some interval or delayed tasks depend on activation and execution times; only their known next trigger is shown."
 
 #. js-lingui-explicit-id
 msgid "app.agenda.arrangements.weekRange"
@@ -906,14 +894,6 @@ msgid "app.agenda.runStatus.skipped"
 msgstr "Skipped"
 
 #. js-lingui-explicit-id
-msgid "app.agenda.scope.all"
-msgstr "All Scopes"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.scope.filter"
-msgstr "Scope"
-
-#. js-lingui-explicit-id
 msgid "app.agenda.search.clear"
 msgstr "Clear search"
 
@@ -952,10 +932,6 @@ msgstr "Finished"
 #. js-lingui-explicit-id
 msgid "app.agenda.tasks.count"
 msgstr "{count, plural, one {# task} other {# tasks}}"
-
-#. js-lingui-explicit-id
-msgid "app.agenda.tasks.description"
-msgstr "Manage all task rules, including manual, event-triggered, disabled and archived tasks."
 
 #. js-lingui-explicit-id
 msgid "app.agenda.tasks.empty"
@@ -1603,11 +1579,7 @@ msgstr "Recently opened"
 
 #. ── Agent ──
 msgid "app.browser.agent.activity"
-msgstr "Agent {kind} {host}"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.agent.follow"
-msgstr "Follow"
+msgstr "{kind, select, acting {Agent operating} reading {Agent viewing} other {Agent last viewed}}"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.annotation.color"
@@ -2833,11 +2805,6 @@ msgstr "The Synergy server is not responding right now. The state of running tas
 msgid "app.fatalError.connection.title"
 msgstr "Could not reach the server"
 
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.initialization.description"
-msgstr "A configuration, provider, or setup error prevented Synergy from starting."
-
 #. ── pages/fatal-error.tsx ───────────────────────────────────────────
 msgid "app.fatalError.initialization.title"
 msgstr "Synergy could not finish starting"
@@ -2851,19 +2818,9 @@ msgstr "Reloading this page will not stop any tasks already running on the serve
 msgid "app.fatalError.renderer.title"
 msgstr "The interface encountered a problem"
 
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.scope.description"
-msgstr "The workspace could not be loaded. This may be temporary or due to a configuration issue."
-
 #. ── pages/fatal-error.tsx ───────────────────────────────────────────
 msgid "app.fatalError.scope.title"
 msgstr "Could not load this project"
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.fatalError.summaryLabel"
-msgstr "Summary"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
@@ -3759,10 +3716,6 @@ msgstr "Assumptions"
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.blueprintDetails"
 msgstr "Blueprint details"
-
-#. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintDetailsHint"
-msgstr "Objectives, acceptance criteria, assumptions, and execution attempts"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.blueprintVersion"
@@ -5192,6 +5145,21 @@ msgstr "Library"
 #. js-lingui-explicit-id
 msgid "app.library.views"
 msgstr "Library views"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.checkConnection"
+msgstr "Check model connection"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.configure"
+msgstr "Configure model"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.unavailable"
+msgstr "No models available"
 
 #. js-lingui-explicit-id
 msgid "app.name.synergy"
@@ -8338,12 +8306,20 @@ msgid "app.rawMessages.title"
 msgstr "Raw messages"
 
 #. js-lingui-explicit-id
+msgid "app.reference.browserUnavailable"
+msgstr "The in-app browser is unavailable. Retry or open this link in your system browser."
+
+#. js-lingui-explicit-id
 msgid "app.reference.chooseWorkspace"
 msgstr "Choose the reference’s workspace"
 
 #. js-lingui-explicit-id
 msgid "app.reference.copy"
 msgstr "Copy reference"
+
+#. js-lingui-explicit-id
+msgid "app.reference.fileSource"
+msgstr "Workspace file"
 
 #. js-lingui-explicit-id
 msgid "app.reference.invalid"
@@ -8354,12 +8330,40 @@ msgid "app.reference.locationUnavailable"
 msgstr "The requested position is outside the available content. Showing the nearest position."
 
 #. js-lingui-explicit-id
+msgid "app.reference.noteLocationUnavailable"
+msgstr "This location no longer exists."
+
+#. js-lingui-explicit-id
+msgid "app.reference.noteSource"
+msgstr "Note"
+
+#. js-lingui-explicit-id
 msgid "app.reference.noWorkspace"
 msgstr "The source workspace is unavailable. Choose a workspace to open this reference."
 
 #. js-lingui-explicit-id
+msgid "app.reference.open"
+msgstr "Open reference"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openBrowser"
+msgstr "Open in Browser"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openExternal"
+msgstr "Open in system browser"
+
+#. js-lingui-explicit-id
 msgid "app.reference.openFailed"
 msgstr "Couldn’t open reference"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openFile"
+msgstr "Open in Files"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openNote"
+msgstr "Open in Notes"
 
 #. js-lingui-explicit-id
 msgid "app.reference.outsideWorkspace"
@@ -8368,6 +8372,14 @@ msgstr "This path is outside the reference’s workspace."
 #. js-lingui-explicit-id
 msgid "app.reference.pageUnavailable"
 msgstr "The requested page is outside this document. Showing the last page."
+
+#. js-lingui-explicit-id
+msgid "app.reference.previewSignIn"
+msgstr "Open this page to view content that requires sign-in."
+
+#. js-lingui-explicit-id
+msgid "app.reference.previewUnavailable"
+msgstr "A preview isn’t available. You can still open the reference."
 
 #. js-lingui-explicit-id
 msgid "app.reference.searchWorkspace"
@@ -8791,11 +8803,6 @@ msgstr "Tools"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.shell.modelConfigCmd"
-msgstr "synergy config"
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.action.connect"
 msgstr "Connect a provider"
 
@@ -8807,17 +8814,17 @@ msgstr "Review providers"
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.needsAttention"
-msgstr "A connected provider needs attention before its models can run."
+msgstr "Check your provider’s connection or usage limits to continue."
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.notConfigured"
-msgstr "No AI provider is connected. Connect one to choose a model, or run {cmd} in your terminal."
+msgstr "Connect a provider to start a conversation."
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.restricted"
-msgstr "No model is available to select. Check that a connected provider is enabled and offers models."
+msgstr "No model is available. Enable a provider and check its model list."
 
 #. js-lingui-explicit-id
 msgid "app.shell.window.maximize"
@@ -9062,6 +9069,14 @@ msgstr "Settings"
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.menu.usage"
 msgstr "Usage"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.navigation.failed"
+msgstr "Unable to load conversations and projects."
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.navigation.retry"
+msgstr "Retry"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.newSession"
@@ -10501,7 +10516,7 @@ msgstr "Error"
 msgid "brand.logo.alt"
 msgstr "Holos"
 
-#. js-lingui-explicit-id
+#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
 msgid "brand.workbench.synergy"
 msgstr "Synergy workspace"
 
@@ -11688,6 +11703,10 @@ msgstr "Input tokens"
 #. js-lingui-explicit-id
 msgid "context.dashboard.items"
 msgstr "{count} items"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.knownTokenCategories"
+msgstr "Known token categories only; gray shows unclassified usage."
 
 #. js-lingui-explicit-id
 msgid "context.dashboard.latest"
@@ -13142,12 +13161,24 @@ msgid "note.list.options"
 msgstr "Notes list options"
 
 #. js-lingui-explicit-id
+msgid "note.navigation.choose"
+msgstr "Select a note to read or edit"
+
+#. js-lingui-explicit-id
 msgid "note.navigation.hide"
 msgstr "Hide notes list"
 
 #. js-lingui-explicit-id
 msgid "note.navigation.show"
 msgstr "Show notes list"
+
+#. js-lingui-explicit-id
+msgid "note.reference.copy"
+msgstr "Copy reference"
+
+#. js-lingui-explicit-id
+msgid "note.reference.unavailable"
+msgstr "This location is no longer available in this note."
 
 #. js-lingui-explicit-id
 msgid "note.scope.archived"
@@ -13227,7 +13258,11 @@ msgstr "Checked {time}"
 
 #. js-lingui-explicit-id
 msgid "project.entry.chooseFolder"
-msgstr "Choose folder"
+msgstr "Choose another folder"
+
+#. js-lingui-explicit-id
+msgid "project.entry.chooseFolderFailed"
+msgstr "Could not choose a folder. Try again."
 
 #. js-lingui-explicit-id
 msgid "project.entry.chooseFolders"
@@ -13310,6 +13345,10 @@ msgid "project.entry.folderActions"
 msgstr "Folder actions"
 
 #. js-lingui-explicit-id
+msgid "project.entry.folderChanged"
+msgstr "The folder at this location has changed since it was added to the project."
+
+#. js-lingui-explicit-id
 msgid "project.entry.folderImpact"
 msgstr "The main folder applies to new tasks. Other folders are shared with existing tasks; disk files will not be moved or deleted."
 
@@ -13324,6 +13363,10 @@ msgstr "Folders"
 #. js-lingui-explicit-id
 msgid "project.entry.folderUnbound"
 msgstr "This folder is unavailable on this computer. Choose its location here."
+
+#. js-lingui-explicit-id
+msgid "project.entry.folderUnverified"
+msgstr "Synergy cannot verify that this is the folder added to the project."
 
 #. js-lingui-explicit-id
 msgid "project.entry.loading"
@@ -13378,12 +13421,16 @@ msgid "project.entry.originalMain"
 msgstr "Previous main folder"
 
 #. js-lingui-explicit-id
+msgid "project.entry.partialSave"
+msgstr "Some changes were saved: {sections}. Save again to retry the remaining changes."
+
+#. js-lingui-explicit-id
 msgid "project.entry.recoverAction"
-msgstr "Confirm and restore"
+msgstr "Continue using this folder"
 
 #. js-lingui-explicit-id
 msgid "project.entry.recoverDescription"
-msgstr "Confirm the folders you want to use. This also restores access for tasks using these folders."
+msgstr "No task will start automatically. Existing tasks keep their recorded locations."
 
 #. js-lingui-explicit-id
 msgid "project.entry.recovered"
@@ -13394,16 +13441,24 @@ msgid "project.entry.recoverFailed"
 msgstr "Could not restore all project folders. Restored folders are kept; retry the remaining folders."
 
 #. js-lingui-explicit-id
+msgid "project.entry.recoverFoldersAction"
+msgstr "Continue using these folders"
+
+#. js-lingui-explicit-id
 msgid "project.entry.recovering"
 msgstr "Restoring…"
 
 #. js-lingui-explicit-id
 msgid "project.entry.recoverTitle"
-msgstr "Confirm project folders"
+msgstr "Restore project folders"
 
 #. js-lingui-explicit-id
 msgid "project.entry.recoverUnavailable"
 msgstr "A project folder is unavailable. Review its location in project settings."
+
+#. js-lingui-explicit-id
+msgid "project.entry.refreshSavedFailed"
+msgstr "Changes were saved, but the updated settings could not be loaded. Save again to retry."
 
 #. js-lingui-explicit-id
 msgid "project.entry.remove"
@@ -13412,6 +13467,10 @@ msgstr "Remove"
 #. js-lingui-explicit-id
 msgid "project.entry.retry"
 msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "project.entry.selectedFolder"
+msgstr "Selected folder"
 
 #. js-lingui-explicit-id
 msgid "project.entry.setMain"
@@ -13448,6 +13507,10 @@ msgstr "Use Worktree"
 #. js-lingui-explicit-id
 msgid "project.entry.using"
 msgstr "{count} linked tasks"
+
+#. js-lingui-explicit-id
+msgid "project.entry.worktreeRequiresGit"
+msgstr "Worktree needs a Git folder. Choose Main folder or select a Git main folder before saving."
 
 #. js-lingui-explicit-id
 msgid "project.entry.worktrees"
@@ -13891,6 +13954,13 @@ msgstr "Resume from the breakpoint"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.control.continueUnavailable"
+msgstr "This task cannot continue. Send a new message."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.control.disabledHint"
 msgstr "Write a message to send"
 
@@ -14245,7 +14315,7 @@ msgstr "Changes apply from the next model step."
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.inactive"
-msgstr "Light Loop is no longer active. Close this dialog to continue."
+msgstr "This Light Loop has ended."
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14253,13 +14323,6 @@ msgstr "Light Loop is no longer active. Close this dialog to continue."
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.label"
 msgstr "Task description"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.lightLoop.taskDialog.reviewPending"
-msgstr "Completion review is pending. Stop or finish the review before changing the task."
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14287,7 +14350,7 @@ msgstr "Light Loop task"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.working"
-msgstr "The session is running. Stop it or wait until it is idle before changing the task."
+msgstr "Pause to edit the goal."
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14402,6 +14465,102 @@ msgstr "Editor view"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.loopReady"
 msgstr "Loop ready"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.auditing"
+msgstr "In review"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.bound"
+msgstr "Bound"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancel"
+msgstr "Cancel loop"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.completed"
+msgstr "Review passed"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.details"
+msgstr "Loop details"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.edit"
+msgstr "Edit goal"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failure"
+msgstr "Failure reason"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.iterationExhausted"
+msgstr "Review limit reached"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.lightCompleted"
+msgstr "Completed"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.openNote"
+msgstr "Open Blueprint"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.paused"
+msgstr "Paused"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.pending"
+msgstr "Send a task to start"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.ready"
+msgstr "Ready to run"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reason"
+msgstr "Review feedback"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.resolving"
+msgstr "Checking result"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.result"
+msgstr "Result"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reviewer"
+msgstr "Open review session"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.rework"
+msgstr "Changes requested"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.timedOut"
+msgstr "Time limit reached"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.unavailable"
+msgstr "Status unavailable"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -17054,6 +17213,26 @@ msgid "session.content.syncHint"
 msgstr "This content is still updating. Try again in a moment."
 
 #. js-lingui-explicit-id
+msgid "session.conversation.editPending"
+msgstr "Edit message"
+
+#. js-lingui-explicit-id
+msgid "session.conversation.editPendingChanged"
+msgstr "The draft changed while editing was prepared. Your draft is unchanged and the message remains queued."
+
+#. js-lingui-explicit-id
+msgid "session.conversation.editPendingDraft"
+msgstr "Send or clear the current draft before editing a queued message."
+
+#. js-lingui-explicit-id
+msgid "session.conversation.editPendingFailed"
+msgstr "The queued message could not be moved to the composer. Its saved content is preserved."
+
+#. js-lingui-explicit-id
+msgid "session.conversation.editPendingUnavailable"
+msgstr "This message is no longer available for editing. Refresh the conversation and try again."
+
+#. js-lingui-explicit-id
 msgid "session.conversation.guide"
 msgstr "Guide"
 
@@ -17086,10 +17265,6 @@ msgid "session.conversation.moveToQueueTitle"
 msgstr "Move back to queue"
 
 #. js-lingui-explicit-id
-msgid "session.conversation.newMessagesReturnLatest"
-msgstr "New messages — Return to latest"
-
-#. js-lingui-explicit-id
 msgid "session.conversation.paused"
 msgstr "Paused"
 
@@ -17116,14 +17291,6 @@ msgstr "Remove pending message"
 #. conversation.tsx
 msgid "session.conversation.renderEarlier"
 msgstr "Render earlier messages"
-
-#. js-lingui-explicit-id
-msgid "session.conversation.returnLatest"
-msgstr "Return to latest"
-
-#. js-lingui-explicit-id
-msgid "session.conversation.withdraw"
-msgstr "Withdraw"
 
 #. js-lingui-explicit-id
 msgid "session.decision.collapse"
@@ -17226,6 +17393,10 @@ msgid "session.execution.copyLoaded"
 msgstr "Copy loaded output"
 
 #. js-lingui-explicit-id
+msgid "session.execution.copyMetadata"
+msgstr "Copy execution details"
+
+#. js-lingui-explicit-id
 msgid "session.execution.copyOutput"
 msgstr "Copy tool output"
 
@@ -17300,6 +17471,10 @@ msgstr "Unable to load execution details."
 #. js-lingui-explicit-id
 msgid "session.execution.loading"
 msgstr "Loading tool result…"
+
+#. js-lingui-explicit-id
+msgid "session.execution.metadata"
+msgstr "Execution details"
 
 #. js-lingui-explicit-id
 msgid "session.execution.noDiagnostics"
@@ -17967,6 +18142,10 @@ msgstr "Needs attention · {count, plural, one {# failed} other {# failed}}"
 #. js-lingui-explicit-id
 msgid "session.progress.needsAttentionBlocked"
 msgstr "Needs attention · {count, plural, one {# blocked} other {# blocked}}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttentionMixed"
+msgstr "Needs attention · {failed} failed, {blocked} blocked"
 
 #. js-lingui-explicit-id
 msgid "session.progress.noActivePlan"
@@ -19129,6 +19308,62 @@ msgid "settings.archivedSessions.you"
 msgstr "You: {text}"
 
 #. js-lingui-explicit-id
+msgid "settings.browser.chooseProfile"
+msgstr "Choose an enabled persistent browser profile."
+
+#. js-lingui-explicit-id
+msgid "settings.browser.contextExpired"
+msgstr "Browser data access changed. Close this dialog and reopen it to retry."
+
+#. js-lingui-explicit-id
+msgid "settings.browser.data"
+msgstr "Browser data"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.action"
+msgstr "Import"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.hint"
+msgstr "Import passwords and cookies from supported browsers."
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.label"
+msgstr "Import browser data"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.hint"
+msgstr "View and delete logins saved or imported in the in-app browser."
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.label"
+msgstr "Manage saved passwords"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.section"
+msgstr "Passwords and autofill"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.preparing"
+msgstr "Preparing browser data…"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.target"
+msgstr "Browser profile"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.title"
+msgstr "In-app browser"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.unavailable"
+msgstr "Browser data is unavailable. Retry."
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.account.description"
 msgstr "Holos agent identities and local account controls."
 
@@ -19163,6 +19398,18 @@ msgstr "Boss Mode"
 #. js-lingui-explicit-id
 msgid "settings.catalog.boss.searchTerms"
 msgstr "boss | task | project | assistant | feishu"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.description"
+msgstr "Import browser data and manage saved passwords on this device."
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.label"
+msgstr "Browser"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.searchTerms"
+msgstr "browser | passwords | autofill | cookies | import | saved logins"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
@@ -19333,8 +19580,12 @@ msgid "settings.catalog.import.searchTerms"
 msgstr "import | config"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.learning.autonomy.searchTerms"
+msgstr "anima | autonomy | automatic | routines"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.learning.description"
-msgstr "Library learning and autonomy controls."
+msgstr "Library learning controls."
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.label"
@@ -19342,7 +19593,7 @@ msgstr "Learning"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.learning.searchTerms"
-msgstr "library | learning | autonomy"
+msgstr "library | learning"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.lsp.description"
@@ -21493,24 +21744,12 @@ msgid "settings.library.learning.autonomyRow.title"
 msgstr "Autonomous routines"
 
 #. js-lingui-explicit-id
-msgid "settings.library.learning.capture.desc"
-msgstr "Allow knowledge capture and background reflection."
-
-#. js-lingui-explicit-id
-msgid "settings.library.learning.capture.title"
-msgstr "Capture"
-
-#. js-lingui-explicit-id
 msgid "settings.library.learning.learnRow.desc"
 msgstr "Create and curate memories from useful conversation context."
 
 #. js-lingui-explicit-id
 msgid "settings.library.learning.learnRow.title"
 msgstr "Allow learning"
-
-#. js-lingui-explicit-id
-msgid "settings.library.learning.page.desc"
-msgstr "Decide how Synergy captures and maintains library knowledge."
 
 #. ---------- page / section descriptors ----------
 msgid "settings.library.learning.page.title"
@@ -22821,6 +23060,10 @@ msgid "settings.productUpdate.web.versionMismatch"
 msgstr "Web client {appVersion} is running with server {serverVersion}."
 
 #. js-lingui-explicit-id
+msgid "settings.providers.account.actions"
+msgstr "Account actions"
+
+#. js-lingui-explicit-id
 msgid "settings.providers.account.add"
 msgstr "Add another account"
 
@@ -22833,20 +23076,20 @@ msgid "settings.providers.account.cancel"
 msgstr "Cancel"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.connectAnother"
-msgstr "Connect another account"
+msgid "settings.providers.account.credentials"
+msgstr "Credentials"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.connectAnother.description"
-msgstr "Give this account an optional remark, then choose how to connect. Interrupted connections can be continued from your account list."
+msgid "settings.providers.account.discard.description"
+msgstr "Your account changes have not been saved."
+
+#. js-lingui-explicit-id
+msgid "settings.providers.account.discardSetup"
+msgstr "This account has not been connected."
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.edit"
 msgstr "Edit account"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.edit.title"
-msgstr "Edit provider account"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.enabled"
@@ -22865,20 +23108,8 @@ msgid "settings.providers.account.endpoint.placeholder"
 msgstr "https://api.example.com/v1"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.account.finishSetup"
-msgstr "Account added. Finish connecting below, or continue later from your account list."
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.manage"
-msgstr "Manage account"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.name"
-msgstr "Account name"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.account.name.placeholder"
-msgstr "Work account"
+msgid "settings.providers.account.keepEditing"
+msgstr "Keep editing"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.account.numbered"
@@ -22973,10 +23204,6 @@ msgid "settings.providers.connectAction"
 msgstr "Connect"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.connected"
-msgstr "Connected"
-
-#. js-lingui-explicit-id
 msgid "settings.providers.connection.refreshFailed"
 msgstr "Connection saved. Could not refresh the account."
 
@@ -22991,10 +23218,6 @@ msgstr "Add a service to start choosing models."
 #. js-lingui-explicit-id
 msgid "settings.providers.empty.title"
 msgstr "No connected services"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.immediate"
-msgstr "Account actions take effect immediately. You can leave Settings without saving them again."
 
 #. js-lingui-explicit-id
 msgid "settings.providers.method.apiKey"
@@ -23041,20 +23264,12 @@ msgid "settings.providers.modelCount"
 msgstr "{count, plural, one {# model} other {# models}}"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.needsAttention"
-msgstr "Needs attention"
-
-#. js-lingui-explicit-id
 msgid "settings.providers.noMatch"
 msgstr "No providers match this search."
 
 #. js-lingui-explicit-id
 msgid "settings.providers.other"
 msgstr "Other"
-
-#. js-lingui-explicit-id
-msgid "settings.providers.page.description"
-msgstr "Connect model providers and manage runtime availability."
 
 #. js-lingui-explicit-id
 msgid "settings.providers.page.title"
@@ -23067,10 +23282,6 @@ msgstr "Recommended"
 #. js-lingui-explicit-id
 msgid "settings.providers.search.placeholder"
 msgstr "Search providers..."
-
-#. js-lingui-explicit-id
-msgid "settings.providers.selectHint"
-msgstr "Select a provider to connect it."
 
 #. js-lingui-explicit-id
 msgid "settings.providers.service.anthropic"
@@ -23241,16 +23452,8 @@ msgid "settings.runtime.boss.conversation.open"
 msgstr "Task entry"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.desc"
-msgstr "Coordinate tasks and projects from one entry point."
-
-#. js-lingui-explicit-id
 msgid "settings.runtime.boss.enable"
 msgstr "Enable Boss Mode"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.enabled.desc"
-msgstr "Feishu messages also go to the corresponding task entry."
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.name"
@@ -23275,10 +23478,6 @@ msgstr "Open"
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.busy"
 msgstr "Opening…"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.boss.openSession.desc"
-msgstr "Created on first use."
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.boss.openSession.failed"
@@ -23431,6 +23630,26 @@ msgstr "Prune old tool outputs during compaction"
 #. js-lingui-explicit-id
 msgid "settings.runtime.compaction.prune.title"
 msgstr "Prune Tool Output"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.description"
+msgstr "One file interface for local agents, independent of agent and model. Permissions still apply. Project configuration overrides this global setting. Tools: {members}"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.hashline"
+msgstr "Line-anchored editing"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.patch"
+msgstr "Patch editing"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.replace"
+msgstr "Text replacement"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.title"
+msgstr "File read/write tool group"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.managedByEnv"
@@ -25245,6 +25464,58 @@ msgid "tool.misc.warnings"
 msgstr "Warnings"
 
 #. js-lingui-explicit-id
+msgid "tool.patch.applied"
+msgstr "Applied"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.committed"
+msgstr "Applied"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.delete"
+msgstr "Delete"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.move"
+msgstr "Move"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.noChange"
+msgstr "No changes"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.notStarted"
+msgstr "Not attempted"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.partial"
+msgstr "Partially applied"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.rejected"
+msgstr "Rejected"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unknown"
+msgstr "Unknown effect"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unresolved"
+msgstr "Outcome unconfirmed"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unsaved"
+msgstr "Durability unconfirmed"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.write"
+msgstr "Write"
+
+#. js-lingui-explicit-id
 msgid "tool.render.busy"
 msgstr "Wait for the current visual action to finish."
 
@@ -25441,6 +25712,10 @@ msgid "tool.title.answer-question"
 msgstr "Answer Question"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.apply-patch"
+msgstr "Apply patch"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.approve-blueprint-loop"
 msgstr "Approve BlueprintLoop"
 
@@ -25509,6 +25784,10 @@ msgid "tool.title.channel-push"
 msgstr "Push to channel"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.channel-reaction-only"
+msgstr "Reply with reaction only"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
 msgstr "Manage research claims"
 
@@ -25523,6 +25802,10 @@ msgstr "Submit Clarus Result"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.compact-session"
 msgstr "Compact Session"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.complete-light-loop"
+msgstr "Complete Light Loop"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.control-session"
@@ -25883,10 +26166,6 @@ msgstr "Render content"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.request-blueprint-review"
 msgstr "Request Blueprint Review"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.request-review"
-msgstr "Request Review"
 
 #. Research
 msgid "tool.title.research-init"
@@ -26460,6 +26739,34 @@ msgstr "Generation failed"
 msgid "ui.mediaGeneration.generating"
 msgstr "Generating media"
 
+#. js-lingui-explicit-id
+msgid "ui.resource.close"
+msgstr "Close preview"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.copy"
+msgstr "Copy link"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.external"
+msgstr "Open in system browser"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.loading"
+msgstr "Loading preview…"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.open"
+msgstr "Open"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.preview"
+msgstr "Preview reference"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.unavailable"
+msgstr "Preview unavailable"
+
 #. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
 msgid "ui.review.after"
 msgstr "after"
@@ -26574,7 +26881,7 @@ msgstr "Click to continue"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.keyboardHelp"
-msgstr "Escape pauses. R restarts. Clicking outside pauses the game."
+msgstr "Escape pauses. R restarts. Play continues when you move focus away."
 
 #. js-lingui-explicit-id
 msgid "welcome.common.loading"
@@ -26758,7 +27065,7 @@ msgstr "Collapse workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.applyBinding"
-msgstr "Rebind Workspace"
+msgstr "Confirm directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.back"
@@ -26783,6 +27090,10 @@ msgstr "Use this directory"
 #. js-lingui-explicit-id
 msgid "workspace.dialog.close"
 msgstr "Close"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.confirmBinding"
+msgstr "Use this directory for all sessions sharing these files?\n{path}\n{count, plural, one {# listed task will use this location.} other {# listed tasks will use this location.}} Existing files stay in place."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.create"
@@ -26810,7 +27121,11 @@ msgstr "No matching directories."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.failed"
-msgstr "The Workspace could not be updated. Reload to review its current state."
+msgstr "The directory could not be updated. Review the error and try again."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.hideCopies"
+msgstr "Hide worktrees"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.loading"
@@ -26833,16 +27148,20 @@ msgid "workspace.dialog.none"
 msgstr "No Workspace"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.otherCopies"
+msgstr "Show worktrees ({count})"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.pick"
 msgstr "Browse"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebind"
-msgstr "Change local binding"
+msgstr "Change local directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebindDescription"
-msgstr "All sessions using this Workspace will use the new directory. Existing files stay in place."
+msgstr "All sessions sharing these files will use the new directory. Existing files stay in place."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebindPath"
@@ -26861,12 +27180,20 @@ msgid "workspace.dialog.recovery"
 msgstr "The previous directory is unavailable. Choose a directory."
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.refreshHint"
+msgstr "Refreshes the directory list without changing any bindings."
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "Add directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.reload"
-msgstr "Reload"
+msgstr "Refresh list"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.repair"
+msgstr "Reconnect directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.saveSharing"

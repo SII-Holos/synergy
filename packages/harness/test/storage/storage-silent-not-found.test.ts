@@ -22,7 +22,7 @@ afterEach(() =>
 )
 
 describe("storage silent NotFound reads", () => {
-  test("expected missing reads raise no issue but still record the error metric", () =>
+  test("expected missing reads count as missing without error telemetry", () =>
     runtime.run(async () => {
       const key = ["storage-silent", Math.random().toString(36).slice(2), "missing"]
 
@@ -36,7 +36,9 @@ describe("storage silent NotFound reads", () => {
         since: 0,
         names: ["storage.operation.error"],
       })
-      expect(errorRows.length).toBeGreaterThan(0)
+      expect(errorRows).toHaveLength(0)
+      const counts = ObservabilityStore.queryMetrics({ since: 0, names: ["storage.operation.count"] })
+      expect(counts.some((row) => JSON.parse(row.labels_json).status === "missing")).toBe(true)
     }))
 
   test("unexpected missing reads still raise the storage issue", () =>

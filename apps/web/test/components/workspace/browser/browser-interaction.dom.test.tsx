@@ -64,18 +64,21 @@ beforeAll(async () => {
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
     const i18n = setupI18n({locale:"en",messages:{en:messages}})
-    const store = createBrowserStore()
-    store.replacePages([{id:"page-one",profileId:"personal",status:"active",url:"about:blank",title:"Test",isLoading:false,lastActiveAt:null}])
-    store.setHostStatus("page-one", "ready")
-    store.setPresentation({kind:"native",protocolVersion:4,capabilities:{native:true},reason:"desktop-local"})
-    store._setSend(command => window.commands.push(command))
+    const browserCatalog = createBrowserStore()
+    const store = browserCatalog.forPage(() => "page-one", () => {})
+    browserCatalog.replacePages([{id:"page-one",profileId:"personal",status:"active",url:"about:blank",title:"Test",isLoading:false,lastActiveAt:null}])
+    browserCatalog.setHostStatus("page-one", "ready")
+    browserCatalog.setPresentation({kind:"native",protocolVersion:4,capabilities:{native:true},reason:"desktop-local"})
+    browserCatalog._setSend(command => { window.commands.push(command) })
     window.browserFixture = store
     window.pageStateReplies = []
     function App() {
       let container
       const dialog = useDialog()
-      const [recent,setRecent] = createSignal([])
+      const [recent,setRecent] = createSignal(window.initialRecent ?? [])
       window.setRecent = setRecent
+      const [addressMounted,setAddressMounted] = createSignal(true)
+      window.setAddressMounted = setAddressMounted
       const [newTab,setNewTab] = createSignal(false)
       window.setNewTab = setNewTab
       const [request,setRequest] = createSignal()
@@ -86,7 +89,7 @@ beforeAll(async () => {
         <button onClick={() => dialog.show(() => <BrowserDataDialog ownerKey="owner-one" pageId="page-one" url="https://example.test/login" section="passwords" />)}>Open passwords</button>
         <button onClick={() => dialog.show(() => <BrowserResultDialog initial={{type:"capture", dataUrl:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4xkAAAAASUVORK5CYII=",width:100,height:100,url:"https://example.test/page",title:"Capture",capturedAt:1}} recapture={async () => {throw new Error("Unused")}} attach={async (file,text) => {window.captureResult = {name:file.name,type:file.type,text}}} />)}>Open screenshot</button>
         <div class="browser-workspace" style="height:500px">
-          <AddressBar recent={recent} onExternal={() => window.commands.push({type:"external"})} onPageAction={async action => {window.commands.push(action);if(action.type === "state" && window.holdPageState) return await new Promise(resolve => window.pageStateReplies.push(resolve));if(action.type === "zoom") return {type:"zoom",factor:action.factor};return {type:"state",back:false,forward:false,zoom:1}}} activeUrl={() => store.page()?.url ?? ""} isLoading={() => false} hasPage={() => true} onNavigate={url => window.commands.push({type:"navigate",url})} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} />
+          <Show when={addressMounted()}><AddressBar recent={recent} onExternal={() => window.commands.push({type:"external"})} onPageAction={async action => {window.commands.push(action);if(action.type === "state" && window.holdPageState) return await new Promise(resolve => window.pageStateReplies.push(resolve));if(action.type === "zoom") return {type:"zoom",factor:action.factor};return {type:"state",back:false,forward:false,zoom:1}}} activeUrl={() => store.page()?.url ?? ""} isLoading={() => false} hasPage={() => true} onNavigate={url => window.commands.push({type:"navigate",url})} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} /></Show>
           <div ref={container} style="position:relative;height:400px"><NativeBrowserSurface container={() => container} ownerKey="owner-one" /></div>
         </div>
         <Show when={newTab()}><div class="browser-workspace" style="height:360px"><BrowserNewTab onNavigate={url => window.commands.push({type:"navigate",url})} onImport={() => dialog.show(() => <BrowserImportDialog ownerKey="owner-one" pageId="page-one" />)} /></div></Show>
@@ -137,7 +140,9 @@ type Fixture = Window & {
   pageStateReplies: Array<(state: { type: "state"; back: boolean; forward: boolean; zoom: number }) => void>
   captureResult?: { name: string; type: string; text: string }
   commands: Array<{ accept?: boolean; promptText?: string; type?: string; url?: string }>
+  initialRecent?: Array<{ url: string; title: string }>
   setRecent(entries: Array<{ url: string; title: string }>): void
+  setAddressMounted(value: boolean): void
   setNewTab(value: boolean): void
   attachments: Array<{ pageId: string; visible: boolean }>
   detachments: unknown[]
@@ -145,6 +150,7 @@ type Fixture = Window & {
   browserFixture: {
     replacePages(pages: unknown[]): void
     setHostStatus(id: string, status: string): void
+    browserError(): { message: string } | null
     setBrowserError(error: unknown): void
     setAnnotationTarget(target: unknown): void
   }
@@ -227,6 +233,68 @@ test("external navigation stays inside the address field and follows the current
   )
   expect(await external.isDisabled()).toBe(true)
 })
+
+test.each(["cached", "delayed"] as const)(
+  "address autofocus keeps %s history closed until explicit interaction",
+  async (arrival) => {
+    const entries = [
+      { url: "https://example.test/one", title: "One" },
+      { url: "https://example.test/two", title: "Two" },
+    ]
+    if (arrival === "cached")
+      await page.addInitScript((entries) => {
+        ;(window as unknown as Fixture).initialRecent = entries
+      }, entries)
+    await page.goto(url)
+    const address = page.getByRole("combobox", { name: "Enter URL or search", exact: true })
+    await address.waitFor()
+    expect(await address.evaluate((node) => document.activeElement === node)).toBe(true)
+    if (arrival === "delayed")
+      await page.evaluate((entries) => (window as unknown as Fixture).setRecent(entries), entries)
+    expect(await address.inputValue()).toBe("")
+    expect(await address.getAttribute("aria-expanded")).toBe("false")
+    expect(await page.getByRole("listbox").count()).toBe(0)
+
+    await address.click()
+    await page.getByRole("listbox").waitFor()
+    expect(await page.getByRole("option").count()).toBe(2)
+    await address.press("Escape")
+    expect(await page.getByRole("listbox").count()).toBe(0)
+    expect(await address.evaluate((node) => document.activeElement === node)).toBe(true)
+
+    await address.click()
+    await page.getByRole("listbox").waitFor()
+    await page.getByRole("button", { name: "Browser options", exact: true }).focus()
+    await address.focus()
+    expect(await address.getAttribute("aria-expanded")).toBe("false")
+    await address.press("ArrowDown")
+    expect(
+      await page
+        .getByRole("option", { name: "One https://example.test/one", exact: true })
+        .getAttribute("aria-selected"),
+    ).toBe("true")
+    await address.press("Escape")
+    await address.pressSequentially("Two")
+    expect(await page.getByRole("option").count()).toBe(1)
+    expect(await page.getByRole("option", { name: "Two https://example.test/two", exact: true }).count()).toBe(1)
+    await address.press("Escape")
+
+    const modifier = await page.evaluate(() => (navigator.platform.includes("Mac") ? "Meta" : "Control"))
+    await address.press(`${modifier}+l`)
+    await page.getByRole("listbox").waitFor()
+    expect(await address.evaluate((node) => document.activeElement === node)).toBe(true)
+    await page.evaluate(() => (window as unknown as Fixture).setAddressMounted(false))
+    await address.waitFor({ state: "hidden" })
+    await page.evaluate(() => (window as unknown as Fixture).setAddressMounted(true))
+    await address.waitFor()
+    expect(await address.evaluate((node) => document.activeElement === node)).toBe(true)
+    expect(await address.getAttribute("aria-expanded")).toBe("false")
+    expect(await page.getByRole("listbox").count()).toBe(0)
+    expect(
+      await page.evaluate(() => (window as unknown as Fixture).commands.filter((action) => action.type === "navigate")),
+    ).toEqual([])
+  },
+)
 
 test("recent addresses can be selected from the keyboard and Escape keeps the address focus", async () => {
   await page.goto(url)
@@ -427,21 +495,21 @@ test("shared Browser menu returns focus on Escape and native view resumes only a
   await page.getByText("Developer tools", { exact: true }).click()
   await page.getByRole("switch").waitFor()
   expect(await page.evaluate(() => (window as unknown as Fixture).attachments.at(-1)?.visible)).toBe(false)
-  await page.evaluate(() =>
-    (window as unknown as Fixture).browserFixture.setBrowserError({ severity: "error", message: "Test error" }),
-  )
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.browserFixture.setBrowserError({ severity: "error", message: "Test error" })
+    fixture.browserFixture.setAnnotationTarget({ displayX: 20, displayY: 20, pageX: 20, pageY: 20 })
+  })
   await page.getByRole("switch").press("Escape")
   await page.getByRole("switch").waitFor({ state: "hidden" })
   expect(await menu.evaluate((node) => document.activeElement === node)).toBe(true)
   expect(await page.evaluate(() => (window as unknown as Fixture).attachments.at(-1)?.visible)).toBe(false)
-  await page.evaluate(() => (window as unknown as Fixture).browserFixture.setBrowserError(null))
-  await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === true)
-  await page.evaluate(() =>
-    (window as unknown as Fixture).browserFixture.setAnnotationTarget({ displayX: 20, displayY: 20 }),
-  )
-  await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === false)
   await page.evaluate(() => (window as unknown as Fixture).browserFixture.setAnnotationTarget(null))
   await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === true)
+  expect(await page.evaluate(() => (window as unknown as Fixture).browserFixture.browserError()?.message)).toBe(
+    "Test error",
+  )
+  await page.evaluate(() => (window as unknown as Fixture).browserFixture.setBrowserError(null))
   expect(await page.evaluate(() => (window as unknown as Fixture).detachments.length)).toBe(0)
   expect(
     await page.evaluate(() => [...new Set((window as unknown as Fixture).attachments.map((x) => x.pageId))]),

@@ -143,10 +143,6 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
       outline: none;
     }
 
-    .startup-chrome__control:focus-visible {
-      box-shadow: inset 0 0 0 2px var(--startup-focus-ring);
-    }
-
     .startup-chrome__control--close:hover,
     .startup-chrome__control--close:focus-visible {
       color: var(--startup-critical-text);

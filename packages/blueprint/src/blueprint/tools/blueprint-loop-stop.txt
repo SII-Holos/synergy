@@ -1,0 +1,1 @@
+Request independent final review after checking the complete Blueprint, user instructions and results. Summarize the outcome, key checks and limitations briefly; reference detailed reports. After success, end the turn without further tools or changes. Review results arrive in this session. Lattice execution stays within its current Step.

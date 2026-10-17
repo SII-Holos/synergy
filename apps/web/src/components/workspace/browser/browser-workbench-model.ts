@@ -55,9 +55,10 @@ export function browserPageTab(
 export function reconcileBrowserTabs(input: {
   tabs: WorkbenchPanelTab[]
   active: string | undefined
-  pages: Array<{ id: string; title: string; url: string }>
+  pages: Array<{ id: string; title: string; url: string; openerId?: string; createdBySessionID?: string }>
   route: BrowserWorkbenchRoute
   knownPageIds?: ReadonlySet<string>
+  sessionID?: string
 }) {
   const belongs = (tab: WorkbenchPanelTab) => {
     if (tab.panelId !== "browser") return false
@@ -66,7 +67,24 @@ export function reconcileBrowserTabs(input: {
   }
   const byId = new Map(input.pages.map((page) => [page.id, page]))
   const represented = new Set(input.tabs.filter(belongs).map((tab) => tab.resourceId))
-  const remaining = input.pages.filter((page) => !represented.has(page.id))
+  const roots = new Set([
+    ...represented,
+    ...input.pages
+      .filter((page) => input.sessionID && page.createdBySessionID === input.sessionID)
+      .map((page) => page.id),
+  ])
+  const remaining = input.pages.filter((page) => {
+    if (represented.has(page.id)) return false
+    if (input.route.mode === "session" || (input.sessionID && page.createdBySessionID === input.sessionID)) return true
+    const visited = new Set<string>()
+    let openerId = page.openerId
+    while (openerId && !visited.has(openerId)) {
+      if (roots.has(openerId)) return true
+      visited.add(openerId)
+      openerId = byId.get(openerId)?.openerId
+    }
+    return false
+  })
   const tabs = input.tabs.flatMap((tab) => {
     if (!belongs(tab)) return [tab]
     const page = tab.resourceId ? byId.get(tab.resourceId) : remaining.shift()
@@ -102,9 +120,10 @@ export function reconcileBrowserTabs(input: {
     ]
   })
   tabs.push(...remaining.map((page) => browserPageTab(page, input.route)))
-  const active = tabs.some((tab) => tab.id === input.active)
-    ? input.active
-    : (tabs[Math.max(0, input.tabs.findIndex((tab) => tab.id === input.active) - 1)]?.id ?? tabs[0]?.id)
+  const active =
+    input.active === undefined || tabs.some((tab) => tab.id === input.active)
+      ? input.active
+      : (tabs[Math.max(0, input.tabs.findIndex((tab) => tab.id === input.active) - 1)]?.id ?? tabs[0]?.id)
   return {
     tabs:
       tabs.length === input.tabs.length && tabs.every((tab, index) => tab === input.tabs[index]) ? input.tabs : tabs,

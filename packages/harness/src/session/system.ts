@@ -12,6 +12,8 @@ import { SessionEndpoint } from "./endpoint"
 import PROMPT_FALLBACK from "./prompt/fallback.txt"
 import type { Provider } from "../provider/provider"
 import { InstructionFiles } from "./instruction-files"
+import { RuntimeContext, type RuntimeLaunch } from "../lifecycle/context"
+import { peekRuntimeListener } from "../util/runtime-endpoint"
 
 export namespace SystemPrompt {
   export function provider(_model: Provider.Model) {
@@ -20,6 +22,57 @@ export namespace SystemPrompt {
 
   const endpointLabels: Record<string, string> = {
     feishu: "Feishu (Lark)",
+  }
+
+  const launchLabels: Record<RuntimeLaunch["entry"], readonly [string, string]> = {
+    "dev-server": ["bun dev server", "source development orchestrator"],
+    "dev-web": ["bun dev web", "source development orchestrator"],
+    "dev-desktop": ["bun dev desktop (external-server mode)", "source development orchestrator"],
+    "dev-desktop-managed": ["bun dev desktop --managed", "Desktop managed server"],
+    "dev-send": ["bun dev send", "one-shot CLI task"],
+    "desktop-managed": ["Desktop managed server", "Desktop managed server"],
+    daemon: ["synergy start", "platform background service"],
+    "cli-server": ["synergy server", "foreground CLI server"],
+    "cli-send": ["synergy send", "one-shot CLI task"],
+    embedded: ["embedded Runtime", "embedding host"],
+  }
+
+  export function runtime(): string {
+    const instance = RuntimeContext.current()
+    const { host } = instance
+    const launch = host.launch
+    const listener = peekRuntimeListener()
+    const label = launch ? launchLabels[launch.entry] : undefined
+    const hostname = listener?.hostname === "0.0.0.0" || listener?.hostname === "::" ? "127.0.0.1" : listener?.hostname
+    const backend =
+      listener && hostname
+        ? new URL(`http://${hostname.includes(":") ? `[${hostname}]` : hostname}:${listener.port}`).origin
+        : undefined
+    const lines = [
+      "  Role: Synergy backend carrying the current conversation; not the Session Workspace or selected execution Environment.",
+      `  Instance ID: ${instance.id}`,
+      `  Runtime started: ${new Date(instance.startedAt).toISOString()}`,
+      `  Runtime mode: ${instance.mode}`,
+      `  Launch entry: ${label?.[0] ?? "unknown (not supplied by the host)"}`,
+      `  Lifecycle owner: ${label?.[1] ?? "unknown (not supplied by the host)"}`,
+      `  Distribution: ${launch?.distribution ?? "unknown"}`,
+      `  Version: ${launch?.version ?? "unknown"}`,
+      `  Channel: ${launch?.channel ?? "unknown"}`,
+      `  Runtime home: ${host.home}`,
+      `  Data root: ${host.root}`,
+      `  Backend URL: ${backend ?? "none (this Runtime has no HTTP listener)"}`,
+    ]
+    if (listener) {
+      lines.push(`  Listener bind: ${listener.hostname}:${listener.port}`)
+      lines.push(`  Listener generation: ${listener.generation}`)
+    }
+    if (launch?.sourceCheckout) lines.push(`  Runtime source checkout: ${launch.sourceCheckout}`)
+    if (launch?.revision) lines.push(`  Revision at launch: ${launch.revision}`)
+    lines.push(
+      "  Runtime identity is independent of the files being edited. An attached Web/Desktop client does not change this backend's launch entry.",
+      "  Do not stop, restart, signal, or reuse this Runtime's Home while it carries the current task. Develop Synergy in a separate Home with explicit alternate ports.",
+    )
+    return ["<synergy-runtime>", ...lines, "</synergy-runtime>"].join("\n")
   }
 
   export async function environment(options?: {
@@ -46,10 +99,14 @@ export namespace SystemPrompt {
       `  Today's date: ${formatLocalDate(Date.now())}`,
     ]
 
-    const writeRoots = await Scope.Root.executionRoots(scope, workspace).catch((error) => {
+    const writeRoots = await Scope.Root.executionRoots(scope, workspace).catch(async (error) => {
       if (!WorkspaceCatalog.Unavailable.isInstance(error)) throw error
+      const [failedWorkspace] = await WorkspaceCatalog.readMany([error.data.workspaceID])
+      const failedPath = failedWorkspace?.scopeID === scope.id ? failedWorkspace.binding.path : undefined
+      const failedRole = error.data.workspaceID === workspace?.id ? "Selected Workspace" : "Shared writable Workspace"
       envLines.push(
-        "  Workspace files: unavailable. API-only work remains available; file operations require recovery.",
+        "  Workspace write-root validation: failed. API-only work remains available; operations requiring these roots remain blocked until recovery.",
+        `  ${failedRole}: ${error.data.workspaceID}${failedPath ? ` (path: ${failedPath})` : ""}. Reason: ${error.data.reason ? `${error.data.reason}: ` : ""}${error.data.message}`,
       )
       return []
     })

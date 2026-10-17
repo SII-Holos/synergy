@@ -61,7 +61,7 @@ export namespace Cortex {
 
   const PROMPT_COMPACT_DELAY_MS = 30 * 1000
   const TASK_CLEANUP_DELAY_MS = 5 * 60 * 1000
-  const PROGRESS_UPDATE_EVENT_DELAY_MS = 200
+  const PROGRESS_UPDATE_EVENT_DELAY_MS = 1000
   const EXTERNAL_TASK_RESULT_CHAR_LIMIT = 120_000
   const EXTERNAL_TASK_RESULT_HEAD_CHARS = 20_000
   const DEFAULT_SUBAGENT_BLOCKED_TOOLS = [
@@ -488,6 +488,9 @@ export namespace Cortex {
   }
 
   function publishVisibleTasksUpdate(): void {
+    const instanceState = runtimeState()
+    if (instanceState.progressUpdateTimer) clearTimeout(instanceState.progressUpdateTimer)
+    instanceState.progressUpdateTimer = undefined
     track("", Bus.publish(Event.TasksUpdated, { tasks: listVisible() }))
   }
 

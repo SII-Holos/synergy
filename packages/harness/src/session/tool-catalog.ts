@@ -10,7 +10,7 @@ export namespace ToolCatalog {
 
   export function modelTools(definitions: readonly Definition[]): Record<string, AITool> {
     const result: Record<string, AITool> = {}
-    for (const definition of definitions) {
+    for (const definition of definitions.toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
       result[definition.id] = tool({
         id: definition.id as never,
         description: definition.description,

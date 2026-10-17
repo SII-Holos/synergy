@@ -30,22 +30,14 @@ export const BrowserConsoleTool = Tool.define("browser_console", {
     }),
   async execute({ pageId, entryId, ...params }, ctx) {
     const browserPage = await BrowserToolHelper.resolvePage(ctx, pageId)
-    return BrowserToolHelper.withActivity(
-      ctx,
-      browserPage,
-      "reading",
-      "browser_console",
-      `${params.action} console`,
-      async () => {
-        const result = await BrowserToolHelper.execute(ctx, pageId, { type: "console", ...params, id: entryId })
-        if (result.type !== "data") throw new Error("Browser console returned an unexpected result.")
-        const formatted = formatBrowserJSON(browserAgentRecord(result.data, "entryId", "entries"))
-        return {
-          title: `Browser console: ${params.action}`,
-          output: formatted.output,
-          metadata: { pageId: browserPage.id, action: params.action, outputTruncated: formatted.truncated },
-        }
-      },
-    )
+
+    const result = await BrowserToolHelper.execute(ctx, pageId, { type: "console", ...params, id: entryId })
+    if (result.type !== "data") throw new Error("Browser console returned an unexpected result.")
+    const formatted = formatBrowserJSON(browserAgentRecord(result.data, "entryId", "entries"))
+    return {
+      title: `Browser console: ${params.action}`,
+      output: formatted.output,
+      metadata: { pageId: browserPage.id, action: params.action, outputTruncated: formatted.truncated },
+    }
   },
 })

@@ -57,7 +57,13 @@ export function SessionProgressPanel(props: {
   const activeTab = () => (mode() === "dag" ? "dag" : mode() === "todo" ? "todo" : tab())
   const dagSummary = createMemo(() => computeDagSummary(dag()))
   const todoSummary = createMemo(() => computeTodoSummary(todo()))
-  const snapshot = createMemo(() => computeProgressIslandSnapshot(activeTab(), dagSummary(), todoSummary()))
+  const needsAttention = createMemo(
+    () => !!view().sessionFor(props.sessionID) && (dagSummary().failed > 0 || dagSummary().blocked > 0),
+  )
+  const snapshot = createMemo(() =>
+    computeProgressIslandSnapshot(needsAttention() ? "dag" : activeTab(), dagSummary(), todoSummary()),
+  )
+  const viewSummary = () => (activeTab() === "dag" ? dagSummary() : todoSummary())
   const activeLabel = () =>
     activeTab() === "todo"
       ? todo().find((item) => item.status === "in_progress")?.content
@@ -100,8 +106,15 @@ export function SessionProgressPanel(props: {
       waiting,
     })
     const currentMode = mode()
-    const known = sync.ready && !!session && sdk.connected() && (!!runtimeStatus || !!session.working || waiting)
+    const attention = needsAttention()
+    const known = sync.ready && !!session && sdk.connected()
     untrack(() => {
+      if (attention) {
+        observedActivity = true
+        cancelEnd()
+        setPhase("visible")
+        return
+      }
       if (!known) {
         cancelEnd()
         if (phase() === "ending" || phase() === "exiting") setPhase("visible")
@@ -151,24 +164,25 @@ export function SessionProgressPanel(props: {
     cancelEnd()
   })
   return (
-    <Show when={phase() !== "hidden" && mode() !== "none"}>
+    <Show when={(needsAttention() || phase() !== "hidden") && mode() !== "none"}>
       <div
         ref={root}
         class="relative w-full"
         hidden={props.suppressed}
-        inert={props.suppressed || phase() === "exiting"}
+        inert={props.suppressed || (phase() === "exiting" && !needsAttention())}
         aria-hidden={props.suppressed}
       >
         <SessionProgressIsland
           mode={mode() as "dag" | "todo" | "both"}
           snapshot={snapshot()}
+          viewSummary={viewSummary()}
           activeLabel={activeLabel()}
           activeTab={activeTab()}
           expanded={expanded()}
           onExpandedChange={setExpanded}
           onTabChange={setTab}
           class={props.class}
-          exiting={phase() === "exiting"}
+          exiting={phase() === "exiting" && !needsAttention()}
           anchor={props.anchor}
           onPanelMount={(element) => {
             panel = element

@@ -18,16 +18,16 @@ describe("release runtime artifact contract", () => {
   test("requires the filesystem-backed SVG raster runtime, fallback fonts, and license metadata", () => {
     expect(requiredRuntimeArtifactPaths("synergy-linux-x64")).toEqual(
       expect.arrayContaining([
-        "runtime/node_modules/@ericsanchezok/synergy-connections/dist/lib/resvg-wasm/index_bg.wasm",
-        "runtime/node_modules/@ericsanchezok/synergy-connections/dist/lib/resvg-wasm/LICENSE-MPL-2.0.txt",
-        "runtime/node_modules/@ericsanchezok/synergy-connections/dist/lib/resvg-wasm/THIRD_PARTY_NOTICES.txt",
-        "runtime/node_modules/@ericsanchezok/synergy-connections/dist/lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2",
-        "runtime/node_modules/@ericsanchezok/synergy-connections/dist/lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2",
-        "runtime/node_modules/@ericsanchezok/synergy-connections/dist/lib/resvg-wasm/fonts/LICENSE-OFL-1.1.txt",
+        "runtime/node_modules/@ericsanchezok/synergy-channel-feishu/dist/lib/resvg-wasm/index_bg.wasm",
+        "runtime/node_modules/@ericsanchezok/synergy-channel-feishu/dist/lib/resvg-wasm/LICENSE-MPL-2.0.txt",
+        "runtime/node_modules/@ericsanchezok/synergy-channel-feishu/dist/lib/resvg-wasm/THIRD_PARTY_NOTICES.txt",
+        "runtime/node_modules/@ericsanchezok/synergy-channel-feishu/dist/lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2",
+        "runtime/node_modules/@ericsanchezok/synergy-channel-feishu/dist/lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2",
+        "runtime/node_modules/@ericsanchezok/synergy-channel-feishu/dist/lib/resvg-wasm/fonts/LICENSE-OFL-1.1.txt",
       ]),
     )
     expect(requiredRuntimeArtifactPaths("synergy-darwin-arm64")).toContain(
-      "runtime/node_modules/@ericsanchezok/synergy-connections/dist/lib/resvg-wasm/index_bg.wasm",
+      "runtime/node_modules/@ericsanchezok/synergy-channel-feishu/dist/lib/resvg-wasm/index_bg.wasm",
     )
   })
 

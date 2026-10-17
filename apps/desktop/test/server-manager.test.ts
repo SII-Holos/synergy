@@ -61,8 +61,24 @@ describe("desktop server manager", () => {
       SYNERGY_DESKTOP_CHANNEL: "stable",
       SYNERGY_DESKTOP_PARENT_PID: "42",
       SYNERGY_DESKTOP_STARTUP_PROGRESS: "1",
+      SYNERGY_RUNTIME_ENTRY: "desktop-managed",
       SYNERGY_DESKTOP_BROWSER: "1",
     })
+  })
+
+  test("registers Desktop ownership without confusing a dev-channel installation with source development", () => {
+    const installed = buildManagedServerEnv(
+      { SYNERGY_DESKTOP_CHANNEL: "dev", SYNERGY_RUNTIME_ENTRY: "dev-web" },
+      null,
+      { channel: "dev", parentPid: 42, cwd: "/Users/example" },
+    )
+    expect(installed.SYNERGY_RUNTIME_ENTRY).toBe("desktop-managed")
+    const source = buildManagedServerEnv({ SYNERGY_RUNTIME_ENTRY: "dev-desktop-managed" }, null, {
+      channel: "dev",
+      parentPid: 42,
+      cwd: "/Users/example",
+    })
+    expect(source.SYNERGY_RUNTIME_ENTRY).toBe("dev-desktop-managed")
   })
 
   test("uses the normalized PATH even when every inherited entry is rejected", () => {

@@ -143,7 +143,7 @@ An authorization decision combines several sources without treating them as inte
 - preauthorized session actions cover narrowly declared workflow operations
 - SmartAllow can remove eligible false-positive asks or soft denials
 
-Explicit denials and hard boundaries are not bypassed by preauthorization. Deny rules win over allow rules when both match.
+Explicit denials and hard boundaries are not bypassed by preauthorization. Saved user/session rules retain deny precedence for every tool, including files. Agent/config permissions match both the semantic `read`/`edit` key and the concrete tool ID in existing layer order; the last matching configuration rule wins for each actual path. A saved denial cannot be overridden by a later saved allow. Search results authorize their file paths before exposing content or read evidence. A synthetic wildcard must not override a later exact-path allow. Mandatory external access confirmation and profile boundaries still apply.
 
 A multi-target permission request evaluates every target before creating a pending approval. Any denied target rejects the complete request without emitting an approval event, regardless of target order or mandatory-confirmation metadata. Otherwise, targets requiring confirmation share one pending request; its cancellation and reply apply to the complete target list.
 
@@ -249,6 +249,8 @@ macOS Bash uses an independent launchd job and resource coalition. The passive n
 Native process input uses bounded forwarding and a declared final byte count. The worker ends child stdin only after every declared byte's destination write has completed; socket reception alone cannot authorize EOF. Failed destination writes close upstream input. See the [input drainage decision](../decisions/implemented/bug-fix/2026-09-27-drain-owned-process-input-before-eof.md).
 
 Once the worker confirms whole-tree drainage, the parent stops forwarding queued stdin EOF controls because no input reader remains. Output drainage and the formal completion record still own release; pre-completion transport failures remain errors. See [input completion after tree drainage](../decisions/implemented/bug-fix/2026-10-01-native-input-completion-after-tree-drain.md).
+
+The final drain acknowledgement requires both local output-consumer completion and delivery of the worker's stream-drain phase. Empty output must not let that acknowledgement overtake the phase that disables late stdin controls.
 
 After the native worker acknowledges exit, a control-channel `ECONNRESET` or `EPIPE` preserves the reported exit and finite output. The same failures before acknowledgement remain execution errors; stdin closure is handled separately. See [acknowledged native exit](../decisions/implemented/bug-fix/2026-09-30-preserve-acknowledged-native-exit.md).
 

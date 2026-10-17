@@ -234,5 +234,5 @@ export const ResolveConflictsTool = Tool.define(
       )
     },
   },
-  { requiresWorkspace: true, activityKind: "file-change" },
+  { requiresWorkspace: true, fileToolGroups: ["hashline"], activityKind: "file-change" },
 )

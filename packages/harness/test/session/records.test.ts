@@ -93,8 +93,19 @@ test("lists more Workspace-backed child sessions than storage admission capacity
     })
     expect(await Session.children(seed.id)).toHaveLength(records.length)
     expect(transferReads).toBe(1)
+  }, "child")
+}, 30_000)
+
+test("pages more Workspace-backed child sessions than storage admission capacity", async () => {
+  await withRecords(async ({ seed, records }) => {
+    let transferReads = 0
+    const readTransfers = Storage.readMany
+    using _readMany = spyOn(Storage, "readMany").mockImplementation(async function <T>(keys: string[][]) {
+      if (keys.some((key) => key[0] === "session_transfer_out")) transferReads++
+      return readTransfers<T>(keys)
+    })
     expect((await Session.childPage({ parentID: seed.id })).items).toHaveLength(records.length)
-    expect(transferReads).toBe(2)
+    expect(transferReads).toBe(1)
   }, "child")
 }, 30_000)
 

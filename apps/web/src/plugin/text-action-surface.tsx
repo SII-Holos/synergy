@@ -383,14 +383,14 @@ export function PluginTextActionSurface() {
       <div class="flex gap-2">
         <button
           type="button"
-          class="rounded-md border border-border-base px-3 py-2 text-13-medium text-text-strong hover:bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus"
+          class="rounded-md border border-border-base px-3 py-2 text-13-medium text-text-strong hover:bg-surface-base"
           onClick={() => void run(props.value.action, props.value.snapshot, props.value.anchor)}
         >
           {i18n._(PII.retry)}
         </button>
         <button
           type="button"
-          class="rounded-md px-3 py-2 text-13-medium text-text-weak hover:bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus"
+          class="rounded-md px-3 py-2 text-13-medium text-text-weak hover:bg-surface-base"
           onClick={() =>
             setState({
               kind: "menu",
@@ -444,7 +444,7 @@ export function PluginTextActionSurface() {
                 <button
                   type="button"
                   aria-label={i18n._(PII.close)}
-                  class="flex size-8 shrink-0 items-center justify-center rounded-md text-16-regular text-text-weak hover:bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus"
+                  class="flex size-8 shrink-0 items-center justify-center rounded-md text-16-regular text-text-weak hover:bg-surface-base"
                   onClick={() => close(true)}
                 >
                   ×
@@ -456,7 +456,7 @@ export function PluginTextActionSurface() {
                 <button
                   type="button"
                   role="menuitem"
-                  class="flex min-h-8 w-full rounded-md px-2.5 py-1.5 text-left text-13-regular text-text-strong hover:bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus max-sm:min-h-11"
+                  class="flex min-h-8 w-full rounded-md px-2.5 py-1.5 text-left text-13-regular text-text-strong hover:bg-surface-base max-sm:min-h-11"
                   onClick={() => void nativeAction("copy")}
                 >
                   {i18n._(PII.copy)}
@@ -467,7 +467,7 @@ export function PluginTextActionSurface() {
                       <button
                         type="button"
                         role="menuitem"
-                        class="flex min-h-8 w-full rounded-md px-2.5 py-1.5 text-left text-13-regular text-text-strong hover:bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus max-sm:min-h-11"
+                        class="flex min-h-8 w-full rounded-md px-2.5 py-1.5 text-left text-13-regular text-text-strong hover:bg-surface-base max-sm:min-h-11"
                         onClick={() => void nativeAction(kind)}
                       >
                         {i18n._(kind === "cut" ? PII.cut : kind === "paste" ? PII.paste : PII.selectAll)}
@@ -485,7 +485,7 @@ export function PluginTextActionSurface() {
                           <button
                             type="button"
                             role="menuitem"
-                            class="flex min-h-8 w-full items-center rounded-md px-2.5 py-1.5 text-left text-13-regular text-text-strong hover:bg-surface-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-border-focus max-sm:min-h-11"
+                            class="flex min-h-8 w-full items-center rounded-md px-2.5 py-1.5 text-left text-13-regular text-text-strong hover:bg-surface-base max-sm:min-h-11"
                             onClick={() =>
                               current().kind === "menu" && void run(item, current().snapshot, current().anchor)
                             }

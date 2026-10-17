@@ -5,7 +5,7 @@ description: Turn a broad "find things to simplify" request into evidence-backed
 
 # Finding Synergy Simplifications
 
-This skill helps turn a broad "find things to simplify" request into evidence-backed decision records that remove or collapse existing surface area. It is guidance, not a checklist: follow the code, keep judgment active, and prefer a few well-proven candidates over a pile of thin guesses.
+This is guidance, not a checklist: follow the code, keep judgment active, and prefer a few well-proven candidates over a pile of thin guesses.
 
 ## Start With Repo Context
 

@@ -1,0 +1,108 @@
+{
+  "name": "@ericsanchezok/synergy-blueprint",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./agent-contributions": "./src/agent-contributions.ts",
+    "./agents": "./src/agents.ts",
+    "./blueprint": "./src/blueprint/index.ts",
+    "./blueprint/continuation": "./src/blueprint/continuation.ts",
+    "./blueprint/deadline": "./src/blueprint/deadline.ts",
+    "./blueprint/error": "./src/blueprint/error.ts",
+    "./blueprint/event": "./src/blueprint/event.ts",
+    "./blueprint/loop-runtime": "./src/blueprint/loop-runtime.ts",
+    "./blueprint/loop-store": "./src/blueprint/loop-store.ts",
+    "./blueprint/migration": "./src/blueprint/migration.ts",
+    "./blueprint/prompt": "./src/blueprint/prompt.ts",
+    "./blueprint/register": "./src/blueprint/register.ts",
+    "./blueprint/review-access": "./src/blueprint/review-access.ts",
+    "./blueprint/routes/blueprint": "./src/blueprint/routes/blueprint.ts",
+    "./blueprint/service": "./src/blueprint/service.ts",
+    "./blueprint/session-state": "./src/blueprint/session-state.ts",
+    "./blueprint/source": "./src/blueprint/source.ts",
+    "./blueprint/terminal-hook": "./src/blueprint/terminal-hook.ts",
+    "./blueprint/tool-access": "./src/blueprint/tool-access.ts",
+    "./blueprint/tools/blueprint-loop-approve": "./src/blueprint/tools/blueprint-loop-approve.ts",
+    "./blueprint/tools/blueprint-loop-approve.txt": "./src/blueprint/tools/blueprint-loop-approve.txt",
+    "./blueprint/tools/blueprint-loop-reject": "./src/blueprint/tools/blueprint-loop-reject.ts",
+    "./blueprint/tools/blueprint-loop-reject.txt": "./src/blueprint/tools/blueprint-loop-reject.txt",
+    "./blueprint/tools/blueprint-loop-stop": "./src/blueprint/tools/blueprint-loop-stop.ts",
+    "./blueprint/tools/blueprint-loop-stop.txt": "./src/blueprint/tools/blueprint-loop-stop.txt",
+    "./blueprint/types": "./src/blueprint/types.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts",
+    "./note-kind": "./src/note-kind.ts",
+    "./note-migration": "./src/note-migration.ts",
+    "./note-policy": "./src/note-policy.ts",
+    "./prompts/supervisor/base.txt": "./src/prompts/supervisor/base.txt",
+    "./prompts/supervisor/builder": "./src/prompts/supervisor/builder.ts",
+    "./session-access": "./src/session-access.ts",
+    "./session-contract": "./src/session-contract.ts",
+    "./session-migration": "./src/session-migration.ts",
+    "./session-schema": "./src/session-schema.ts",
+    "./session/blueprint-state": "./src/session/blueprint-state.ts",
+    "./session/prompt/plan.txt": "./src/session/prompt/plan.txt",
+    "./session/recovery": "./src/session/recovery.ts",
+    "./session/register": "./src/session/register.ts",
+    "./session/workflow": "./src/session/workflow.ts",
+    "./superplan": "./src/superplan/index.ts",
+    "./superplan/event": "./src/superplan/event.ts",
+    "./superplan/session-env": "./src/superplan/session-env.ts",
+    "./superplan/store": "./src/superplan/store.ts",
+    "./superplan/types": "./src/superplan/types.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/blueprint",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-note": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "blueprint",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "blueprint",
+    "requires": {
+      "local-runtime": "1.1.26",
+      "note": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-note": "1.1.26"
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  }
+}

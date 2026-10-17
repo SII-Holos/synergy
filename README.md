@@ -33,7 +33,11 @@
 
 AI agent work often outlives a single conversation. Synergy treats it as durable workspace state. A task can move between Web, Desktop, CLI, background execution, and specialist agents while preserving its project, history, files, tools, and operating context.
 
-Choose **Atlas** for general assistance, **Forge** for coding, or **Pico** for lightweight work. Their CLI names are `atlas`, `forge`, and `pico`; for example, `synergy send --agent forge "Fix the failing test"`. Existing configurations and conversations [upgrade automatically](docs/migrations/primary-agent-identities.md).
+Choose **Atlas** for general assistance, **Forge** for coding, or **Pico** for lightweight work. Pico is the initial default when no Agent is selected or configured. Their CLI names are `atlas`, `forge`, and `pico`; for example, `synergy send --agent forge "Fix the failing test"`. Existing configurations and conversations [upgrade automatically](docs/migrations/primary-agent-identities.md).
+
+Use Plan to prepare a Blueprint with detail proportional to the task. Light Loop keeps working until the executor verifies the complete goal; BlueprintLoop adds independent final acceptance and preserves reviewer context through rework.
+
+Local Agents share the scoped file interface, with patch editing as the default. Choose the [file read/write tool group](docs/reference/configuration-layout.md#file-readwrite-tool-group) independently of Agent and model; existing permissions still apply. Configurations that previously selected an interface through permission rules should set this group explicitly.
 
 Historical conversations prepare when opened. Full history import and usage rebuilds require an explicit request; [storage admission](docs/architecture/agent-storage.md) documents upgrade and recovery behavior.
 
@@ -47,7 +51,7 @@ Synergy runs as a standalone local workspace. Connecting a Holos agent adds acco
 - **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside Desktop browser pages with saved website logins without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
 - **Compute starts when needed** — Select native or Docker execution independently of durable Workspace files. API-only work allocates no container; local, S3 and OSS object stores preserve files across compute reclamation. See [resource configuration](docs/reference/configuration-layout.md).
 - **Knowledge compounds** — Retain reusable memory and learned experience in Library while authoring Notes and Blueprints as durable documents.
-- **Visual results stay interactive** — Explore charts, simulations, calendars and variants in the conversation, retain parameters, review changes with the agent and export interactive HTML. See [visual results](docs/architecture/visual-results.md).
+- **Visual results stay interactive** — Stream native controls and metrics, explore charts, simulations, calendars and variants in the conversation, retain parameters, review changes with the agent and export interactive HTML. See [visual results](docs/architecture/visual-results.md).
 - **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins and Channels while keeping local ownership of projects and data.
 
 Read the [product overview](docs/product/overview.md) for the complete product model, including Lattice Pathways, Agenda, Channels, Library, Holos, and extension boundaries.
@@ -143,7 +147,7 @@ Upgrade with `synergy upgrade`, or install a specific version by passing `--vers
 
 `synergy uninstall` keeps its existing defaults and removes data, cache, config, and state unless you pass `--keep-data` or `--keep-config`. To remove only one installation channel while preserving shared data, cache, config, and state, run `synergy uninstall --installation-only --method <channel>`; standalone removal deletes only installer-owned files under `~/.synergy/` and the exact shell PATH entries the installer wrote.
 
-The built-in Browser is Desktop-local and uses Electron's bundled Chromium, with peer workbench page tabs and reusable website logins; separate and temporary profiles live in Browser settings. CLI and Web use search, fetch and MCP integrations. macOS Desktop also supports native application Computer Use in Full Access mode, with independently checked Accessibility and Screen Recording permissions. Native observations report image quality and action availability; coordinate actions require a verified image submitted to the selecting model request. Computer Use prefers background delivery. The agent can explicitly request foreground observation or input when needed; actions never automatically escalate or replay, and a fresh observation verifies the result. See [Native Computer Use](docs/architecture/computer-use.md).
+The built-in Browser is Desktop-local and uses Electron's bundled Chromium, with per-session workbench page tabs and reusable website logins; separate and temporary profiles live in Browser settings. CLI and Web use search, fetch and MCP integrations. macOS Desktop also supports native application Computer Use in Full Access mode, with independently checked Accessibility and Screen Recording permissions. Native observations report image quality and action availability; coordinate actions require a verified image submitted to the selecting model request. Computer Use prefers background delivery. The agent can explicitly request foreground observation or input when needed; actions never automatically escalate or replay, and a fresh observation verifies the result. See [Native Computer Use](docs/architecture/computer-use.md).
 
 Holos is optional. Connect an agent from the Web account surface or run `synergy holos login`.
 
@@ -201,7 +205,7 @@ synergy install web
 synergy install desktop
 ```
 
-The existing `@ericsanchezok/synergy` distribution and Desktop installer retain the complete product by default. Use `synergy install`, `list`, `update` and `remove` to manage optional packages. Components, process plugins, company presets and native applications share package discovery while retaining distinct trust and capability approval. See [installation commands](docs/reference/packages.md#installation-commands) for sources, unattended approval and recovery.
+The existing `@ericsanchezok/synergy` distribution and Desktop installer retain the complete product by default. Use `synergy install`, `list`, `update` and `remove` to manage optional packages. Agenda, Light Loop, Channels, Email and other leaf capabilities can be selected independently. Unselected capabilities contribute no UI, model guidance or callable API; their data is retained for reinstall. `workflows` and `connections` select complete declarative presets. Components, process plugins, company presets and native applications share package discovery while retaining distinct trust and capability approval. See [installation commands](docs/reference/packages.md#installation-commands) for sources, unattended approval and recovery.
 
 Local performance experiments use the [benchmark workspace](benchmark/README.md): independent harness/model matrices, frozen inputs, native rollout evidence and paired reports. Task solving, reference execution and verification each have a fixed three-hour budget. Run `bun bench run benchmark/configs/local24-boyue.yaml` after configuring its model endpoint and credential reference. Formal tasks start directly in unattended sessions. Adaptive working-set reservations keep independent cells running within live resource limits; reports retain per-task failures and unknown usage. The local-24 preset uses GLM 5.3 Flash with explicit low reasoning.
 

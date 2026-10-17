@@ -7,6 +7,7 @@ for (const target of ["process", ...(process.platform === "win32" ? [] : ["group
     test(`local send drains ${target} ${signal} in its owning Scope and retains accounting`, async () => {
       const isolation = await createIsolatedTestEnv()
       const started = Promise.withResolvers<void>()
+      const prompts: string[] = []
       const server = Bun.serve({
         hostname: "127.0.0.1",
         port: 0,
@@ -21,6 +22,7 @@ for (const target of ["process", ...(process.platform === "win32" ? [] : ["group
               choices: [{ index: 0, message: { role: "assistant", content: "Fixture" }, finish_reason: "stop" }],
               usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 },
             })
+          prompts.push(JSON.stringify(input.messages))
           return new Response(
             new ReadableStream({
               start(controller) {
@@ -93,6 +95,13 @@ for (const target of ["process", ...(process.platform === "win32" ? [] : ["group
             throw new Error(`Send exited before provider stream: ${code}\n${await errors}\n${await output}`)
           }),
         ])
+        expect(prompts).toHaveLength(1)
+        expect(prompts[0]).toContain("<synergy-runtime>")
+        expect(prompts[0]).toContain("Launch entry: synergy send")
+        expect(prompts[0]).toContain("Runtime mode: oneshot")
+        expect(prompts[0]).toContain(`Runtime home: ${isolation.env.SYNERGY_TEST_HOME}`)
+        expect(prompts[0]).toContain("Backend URL: none (this Runtime has no HTTP listener)")
+        expect(prompts[0]).not.toContain(`Backend URL: ${server.url.origin}`)
         if (target === "group") process.kill(-child.pid, signal)
         else child.kill(signal)
         const [code, stdout, stderr] = await Promise.all([child.exited, output, errors])

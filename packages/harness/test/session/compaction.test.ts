@@ -1,5 +1,5 @@
 import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
-import { describe, expect, mock, test } from "bun:test"
+import { describe, expect, mock, spyOn, test } from "bun:test"
 import { Token } from "../../src/util/token"
 import { Log } from "../../src/util/log"
 import { Session } from "../../src/session"
@@ -987,6 +987,11 @@ describe("session.compaction.selectPartsToPrune", () => {
         id,
         role: "user",
         sessionID: "test-session",
+        rootID: id,
+        isRoot: true,
+        visible: true,
+        includeInContext: true,
+        origin: { type: "user" },
         time: { created: now },
         agent: PrimaryAgentIdentity.names.general,
         model: { providerID: "test", modelID: "test-model" },
@@ -1082,15 +1087,10 @@ describe("session.compaction.selectPartsToPrune", () => {
       expect(result).toHaveLength(0)
     }))
 
-  test("protects recent turns from pruning", () =>
+  test("protects the two most recent task roots from pruning", () =>
     runtime.run(() => {
-      // The most recent 2 user turns are protected — only older parts are
-      // candidates for pruning.
       const bigOutput = "x".repeat(50_000 * 4) // ~50K tokens
 
-      // Layout: [u0, a0(big old tool), u1, a1(big recent tool), u2, a2(small)]
-      // countRecentTurns(msgs, 2) returns index 2 (u1) as the boundary.
-      // Scan range: msgIndex 1 down to 0 → only a0 is scanned.
       const msgs: MessageV2.WithParts[] = [
         userMsg("u0"),
         assistantMsg("a0", [toolPart({ id: "old-tool", output: bigOutput })]),
@@ -1106,6 +1106,37 @@ describe("session.compaction.selectPartsToPrune", () => {
       // "recent-tool" (within the protected zone) should not appear.
       expect(result.some((p) => p.id === "old-tool")).toBe(true)
       expect(result.some((p) => p.id === "recent-tool")).toBe(false)
+    }))
+
+  test("completion notices and steer input do not age the current task's evidence", () =>
+    runtime.run(() => {
+      const root = userMsg("root")
+      const continuation = (id: string, cortex: boolean): MessageV2.WithParts => {
+        const message = userMsg(id)
+        if (message.info.role !== "user") throw new Error("expected user fixture")
+        message.info.rootID = root.info.id
+        message.info.isRoot = false
+        if (cortex) message.info.origin = { type: "cortex", taskID: id }
+        return message
+      }
+      const evidence = toolPart({ id: "current-evidence", output: "x".repeat(300_000) })
+      const messages = [
+        root,
+        assistantMsg("work", [evidence]),
+        continuation("completion-a", true),
+        continuation("completion-b", true),
+        continuation("steer", false),
+      ]
+
+      expect(SessionCompaction.selectPartsToPrune(messages)).toEqual([])
+      expect(
+        SessionCompaction.selectPartsToPrune([...messages, userMsg("next-task"), assistantMsg("next-work", [])]),
+      ).toEqual([])
+      expect(
+        SessionCompaction.selectPartsToPrune([...messages, userMsg("next-task"), userMsg("third-task")]).map(
+          (part) => part.id,
+        ),
+      ).toEqual([evidence.id])
     }))
 
   test("skips protected tools like skill", () =>
@@ -1187,6 +1218,32 @@ describe("session.compaction.selectPartsToPrune", () => {
       if (persisted?.type === "tool" && persisted.state.status === "completed") {
         expect(persisted.state.output).toBe("x".repeat(300_000))
         expect(persisted.state.time.compacted).toBeNumber()
+      }
+    }))
+
+  test("cancels pruning before writes when configuration preparation is interrupted", () =>
+    runtime.run(async () => {
+      const controller = new AbortController()
+      const oldPart = toolPart({ id: "old-tool", output: "x".repeat(300_000) })
+      const originalConfigCurrent = Config.current
+      const update = spyOn(Session, "updatePart")
+      Config.current = mock(async () => {
+        controller.abort(new DOMException("Stopped", "AbortError"))
+        return { compaction: {} }
+      }) as typeof Config.current
+      try {
+        await expect(
+          SessionCompaction.prune({
+            sessionID: "test-session",
+            messages: [userMsg("old"), assistantMsg("work", [oldPart]), userMsg("previous"), userMsg("current")],
+            abort: controller.signal,
+          }),
+        ).rejects.toMatchObject({ name: "AbortError" })
+        expect(update).not.toHaveBeenCalled()
+        expect(oldPart.state.status === "completed" && oldPart.state.time.compacted).toBeUndefined()
+      } finally {
+        Config.current = originalConfigCurrent
+        update.mockRestore()
       }
     }))
 })

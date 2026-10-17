@@ -25,6 +25,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   create_file: d("tool.title.create-file", "Create File"),
   multiedit: d("tool.title.multi-edit", "Edit file in multiple places"),
   patch: d("tool.title.patch", "Apply patch"),
+  apply_patch: d("tool.title.apply-patch", "Apply patch"),
   look_at: d("tool.title.look-at", "Analyze file"),
   scan_document: d("tool.title.read-document", "Read Document"),
 
@@ -50,7 +51,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   question: d("tool.title.questions", "Ask questions"),
   question_timed_out: d("tool.title.question-timed-out", "Question Timed Out"),
   question_no_response: d("tool.title.question-no-response", "No response received"),
-  loop_stop: d("tool.title.request-review", "Request Review"),
+  loop_stop: d("tool.title.complete-light-loop", "Complete Light Loop"),
   light_loop_approve: d("tool.title.approve-light-loop", "Approve Light Loop"),
   light_loop_reject: d("tool.title.reject-light-loop", "Reject Light Loop"),
   blueprint_loop_stop: d("tool.title.request-blueprint-review", "Request Blueprint Review"),
@@ -125,6 +126,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   generate_image: d("tool.title.generate-image", "Generate Image"),
   edit_image: d("tool.title.edit-image", "Edit Image"),
   response_card: d("tool.title.response-card", "Prepare response card"),
+  channel_reaction_only: d("tool.title.channel-reaction-only", "Reply with reaction only"),
   speak: d("tool.title.speak", "Speak"),
 
   // Platform

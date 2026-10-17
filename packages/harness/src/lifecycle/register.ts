@@ -1,4 +1,5 @@
 import { SessionTransferGate } from "../session/transfer-gate"
+import { registerCoreEvents } from "../bus/register"
 import { WorkspaceOperations } from "../workspace/operations"
 import { registerConfigMigrations } from "../config/migration"
 import { registerScopeMigrations } from "../scope/migration"
@@ -24,6 +25,7 @@ const registration = RuntimeContext.state(() => ({ complete: false }))
 export function registerHarness() {
   const state = registration()
   if (state.complete) return
+  registerCoreEvents()
   registerConfigMigrations()
   registerScopeMigrations()
   registerSessionMigrations()

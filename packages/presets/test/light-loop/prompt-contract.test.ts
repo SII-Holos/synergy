@@ -8,16 +8,11 @@ import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
 describe("lightloop user-message wrapper contract", () => {
-  test("primary and custom wrappers preserve request boundaries and workflow instructions", () =>
+  test("primary and custom projections preserve the user request without repeating workflow instructions", () =>
     runtime.run(() => {
       for (const agent of [TEST_AGENT_NAME, ...Object.values(PrimaryAgentIdentity.names)]) {
         const wrapper = WorkflowUserWrapper.build(agent, "lightloop", "ship the importer")!
-        expect(wrapper.startsWith("<lightloop-user-request>\n")).toBe(true)
-        expect(wrapper.endsWith("\n</lightloop-user-request>")).toBe(true)
-        expect(wrapper.split("ship the importer")).toHaveLength(2)
-        expect(wrapper).toContain("loop_stop()")
-        if (agent === PrimaryAgentIdentity.names.general || agent === PrimaryAgentIdentity.names.coding)
-          expect(wrapper).toContain(agent)
+        expect(wrapper).toBe("ship the importer")
       }
     }))
 

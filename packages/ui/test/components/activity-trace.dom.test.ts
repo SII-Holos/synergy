@@ -9,6 +9,8 @@ const TRANSITION_MS = 180
 const TRANSITION_SETTLE_MS = TRANSITION_MS + 80
 
 interface ActivityDomHarness {
+  setFeatures(features: string[] | undefined): void
+  setLatePartsLoaded(loaded: boolean): void
   setSessionPaused: (paused: boolean) => void
   setBatchPending: (count: number) => void
   setBatchLive: (live: boolean) => void
@@ -33,6 +35,49 @@ async function rendered(selector: string) {
   expect(document.querySelector(selector)).not.toBeNull()
 }
 const reducedMotion = { current: false }
+
+test("partial patches show only observed diffs and keep operation details out of the result", async () => {
+  for (const outcome of ["partial", "unresolved"]) {
+    await rendered(`#patch-${outcome} [data-component="tool-patch-preview"]`)
+    const host = document.getElementById(`patch-${outcome}`)!
+    expect(host.textContent).toContain("source.ts")
+    expect(host.textContent).not.toContain("destination.ts")
+    expect(host.textContent).not.toContain("move failed")
+    expect(host.textContent).not.toContain("move unconfirmed")
+    expect(host.querySelector("[data-phase]")).toBeNull()
+    expect(host.textContent).not.toContain("later.ts")
+    expect(host.textContent).not.toContain("Not created")
+    expect(host.textContent).not.toContain("@@")
+    expect(host.textContent).not.toContain("Stopped after a committed write")
+    expect(host.querySelector('[data-component="tool-output-text"]')).toBeNull()
+    expect(host.textContent).not.toContain("Raw patch ledger")
+    expect(host.textContent).not.toContain("Committed")
+  }
+})
+
+test("successful patches present one result without repeating the model output", async () => {
+  await rendered('#patch-applied [data-component="tool-patch-preview"]')
+  const host = document.getElementById("patch-applied")!
+  expect(host.textContent).toContain("added.ts")
+  expect(host.textContent).not.toContain("Created")
+  expect(host.textContent).not.toContain("@@")
+  expect(host.querySelector('[data-component="diff-patch"]')).not.toBeNull()
+  expect(host.querySelector('[data-component="tool-output-text"]')).toBeNull()
+  expect(host.textContent).not.toContain("Patch applied.")
+})
+
+test("edit and multi-file revise results share file diff cards without operation summaries", async () => {
+  for (const tool of ["edit", "revise_file"]) {
+    await rendered(`#result-${tool} [data-component="tool-patch-preview"]`)
+    const host = document.getElementById(`result-${tool}`)!
+    expect(host.querySelectorAll('[data-component="tool-patch-preview"]').length).toBe(tool === "edit" ? 1 : 2)
+    expect(host.textContent).toContain("example.ts")
+    expect(host.textContent).not.toContain("@@")
+    expect(host.textContent).not.toContain("SWAP")
+    expect(host.textContent).not.toContain("private diagnostic")
+    expect(host.querySelector('[data-component="diff-patch"]')).not.toBeNull()
+  }
+})
 
 function countRoot(): HTMLElement {
   return document.querySelector('#count-host [data-component="animated-activity-count"]') as HTMLElement
@@ -361,7 +406,7 @@ describe("ActivityTrace DOM behavior", () => {
 
   test("tool rows select a result without disclosure semantics", async () => {
     const triggers = stepTriggers()
-    expect(triggers).toHaveLength(8)
+    expect(triggers).toHaveLength(9)
     expect(triggers[0]?.tagName).toBe("BUTTON")
     expect(triggers[0]?.getAttribute("type")).toBe("button")
     expect(triggers[0]?.hasAttribute("aria-expanded")).toBe(false)
@@ -382,7 +427,7 @@ describe("ActivityTrace DOM behavior", () => {
     await wait(0)
 
     const fileStep = document.querySelector('[role="dialog"]')
-    expect(fileStep?.querySelector('[data-component="diff-preview"], [data-component="diff-patch"]')).not.toBeNull()
+    expect(fileStep?.querySelector('[data-component="tool-patch-preview"]')).not.toBeNull()
 
     closeResult()
     await wait(0)
@@ -582,4 +627,88 @@ test("inline approval locks duplicate clicks and keeps a failed response retryab
   harness.finishPermission(false)
   harness.setApproval(false)
   await wait(0)
+})
+
+test("removing a tool capability replaces its historical card with retained generic output", async () => {
+  const selector = '#optional-tool-host [data-component="tool-object-result"]'
+  expect(document.querySelector(selector)).toBeNull()
+  harness.setFeatures(undefined)
+  await rendered(selector)
+  expect(document.querySelector("#optional-tool-host")?.textContent).toContain("Retained historical note text")
+  expect(document.querySelector("#optional-tool-host")?.textContent).not.toContain("Created")
+  expect(document.querySelector("#optional-structured-tool-host")?.textContent).not.toContain("hidden-control-id")
+  harness.setFeatures([])
+  await wait(0)
+  expect(document.querySelector(selector)).not.toBeNull()
+  harness.setFeatures(["note"])
+  await wait(0)
+  expect(document.querySelector(selector)).toBeNull()
+})
+
+test("special workflow bubbles admit late attachment content and preserve it when their source disappears", async () => {
+  const hosts = ["late-blueprint-start", "late-workflow-request", "late-workflow-control"]
+  harness.setFeatures(["blueprint", "lattice"])
+  await wait(0)
+  for (const id of hosts) expect(document.getElementById(id)?.textContent).not.toContain("retained-request.txt")
+  harness.setLatePartsLoaded(true)
+  await wait(0)
+  for (const id of hosts) expect(document.getElementById(id)?.textContent).toContain("retained-request.txt")
+  for (const features of [undefined, ["blueprint"], ["blueprint", "lattice"]]) {
+    harness.setFeatures(features)
+    await wait(0)
+    for (const id of hosts) expect(document.getElementById(id)?.textContent).toContain("retained-request.txt")
+  }
+  harness.setFeatures(["note"])
+})
+
+test("missing workflow owners hide historical badges and control messages while preserving user requests", async () => {
+  harness.setFeatures(["blueprint"])
+  await wait(0)
+  expect(document.querySelector('#optional-workflow-request [data-slot="special-message-badge"]')).not.toBeNull()
+  expect(document.querySelector('#optional-blueprint-control [data-component="special-user-message"]')).not.toBeNull()
+  harness.setFeatures([])
+  await wait(0)
+  expect(document.querySelector('#optional-workflow-request [data-slot="special-message-badge"]')).toBeNull()
+  expect(document.querySelector("#optional-workflow-request")?.textContent).toContain("Keep my original request")
+  expect(document.querySelector("#optional-blueprint-control")?.textContent).toBe("")
+  expect(document.querySelector("#optional-blueprint-start")?.textContent).toContain("Keep my Blueprint request")
+  expect(document.querySelector("#optional-blueprint-start")?.textContent).not.toContain("Internal Blueprint")
+  harness.setFeatures(["note"])
+})
+
+test("removed tool owners hide timeline controls and keep only their ordinary output", async () => {
+  harness.setFeatures(["note"])
+  await wait(0)
+  expect(document.querySelector('#optional-trace-host [data-slot="activity-step-trigger"]')).not.toBeNull()
+  harness.setFeatures([])
+  await wait(0)
+  expect(document.querySelector('#optional-trace-host [data-slot="activity-step-trigger"]')).toBeNull()
+  expect(document.querySelector("#optional-trace-host")?.textContent).not.toContain("Created private Note")
+  expect(document.querySelector("#optional-trace-host")?.textContent).toContain("Retained timeline output")
+  harness.setFeatures(["note"])
+})
+
+test("removing a Blueprint source hides its historical controls while preserving the request and sent attachments", async () => {
+  harness.setFeatures(["blueprint", "lattice"])
+  await rendered('#source-blueprint-control [data-component="special-user-message"]')
+  expect(document.querySelector('#source-blueprint-start [data-slot="special-message-badge"]')).not.toBeNull()
+  expect(document.querySelector("#source-blueprint-start")?.textContent).toContain("retained-request.txt")
+  for (const features of [["blueprint"], undefined, ["lattice"]]) {
+    harness.setFeatures(features)
+    await wait(0)
+    expect(document.querySelector("#source-blueprint-control")?.textContent).toBe("")
+    expect(document.querySelector('#source-blueprint-start [data-slot="special-message-badge"]')).toBeNull()
+    expect(document.querySelector("#source-blueprint-start")?.textContent).toContain("Keep my Blueprint request")
+    expect(document.querySelector("#source-blueprint-start")?.textContent).toContain("retained-request.txt")
+    expect(document.querySelector("#source-blueprint-tool")?.textContent).not.toContain("source-control-id")
+    expect(document.querySelector("#source-blueprint-tool")?.textContent).not.toContain("Lattice Blueprint approved")
+    expect(document.querySelector("#source-blueprint-tool")?.textContent).toContain("retained-request.txt")
+  }
+  harness.setFeatures(["blueprint"])
+  await wait(0)
+  expect(document.querySelector('#optional-blueprint-control [data-component="special-user-message"]')).not.toBeNull()
+  harness.setFeatures(["blueprint", "lattice"])
+  await rendered('#source-blueprint-control [data-component="special-user-message"]')
+  expect(document.querySelector("#source-blueprint-start")?.textContent).toContain("retained-request.txt")
+  harness.setFeatures(["note"])
 })

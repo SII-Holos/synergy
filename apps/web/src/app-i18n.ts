@@ -6,15 +6,15 @@ export const AP = {
   appLoading: { id: "app.shell.loading", message: "Loading…" },
   appModelUnavailableNotConfigured: {
     id: "app.shell.modelUnavailable.notConfigured",
-    message: "No AI provider is connected. Connect one to choose a model, or run {cmd} in your terminal.",
+    message: "Connect a provider to start a conversation.",
   },
   appModelUnavailableNeedsAttention: {
     id: "app.shell.modelUnavailable.needsAttention",
-    message: "A connected provider needs attention before its models can run.",
+    message: "Check your provider’s connection or usage limits to continue.",
   },
   appModelUnavailableRestricted: {
     id: "app.shell.modelUnavailable.restricted",
-    message: "No model is available to select. Check that a connected provider is enabled and offers models.",
+    message: "No model is available. Enable a provider and check its model list.",
   },
   appModelUnavailableConnect: {
     id: "app.shell.modelUnavailable.action.connect",
@@ -24,7 +24,9 @@ export const AP = {
     id: "app.shell.modelUnavailable.action.review",
     message: "Review providers",
   },
-  appModelConfigCmd: { id: "app.shell.modelConfigCmd", message: "synergy config" },
+  appModelConfigure: { id: "app.model.configure", message: "Configure model" },
+  appModelCheckConnection: { id: "app.model.checkConnection", message: "Check model connection" },
+  appModelUnavailable: { id: "app.model.unavailable", message: "No models available" },
 
   // ── entry.tsx ───────────────────────────────────────────────────────
   entryCopyFailed: { id: "app.entry.copyFailed", message: "Copy failed" },
@@ -123,16 +125,7 @@ export const AP = {
       id: "app.fatalError.connection.description",
       message: "The Synergy server is not responding right now. The state of running tasks is unknown.",
     },
-    initialization: {
-      id: "app.fatalError.initialization.description",
-      message: "A configuration, provider, or setup error prevented Synergy from starting.",
-    },
-    scope: {
-      id: "app.fatalError.scope.description",
-      message: "The workspace could not be loaded. This may be temporary or due to a configuration issue.",
-    },
   },
-  fatalErrorSummaryLabel: { id: "app.fatalError.summaryLabel", message: "Summary" },
   fatalErrorAction: {
     "reload-interface": { id: "app.fatalError.action.reloadInterface", message: "Reload interface" },
     "try-again": { id: "app.fatalError.action.tryAgain", message: "Try again" },

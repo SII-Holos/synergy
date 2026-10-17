@@ -47,3 +47,50 @@ test("multiple edits to the same file remain one review row containing every rec
   expect(diffs[0]?.patch).toBe("+first\n+second")
   expect(diffs[0]?.truncated).toBe(true)
 })
+
+test("multi-file revisions open each recorded file diff instead of the synthetic aggregate", () => {
+  const part = toolPart({
+    diff: "synthetic aggregate",
+    filediff: { file: "a.ts, b.ts" },
+    sections: [
+      { path: "a.ts", filediff: { file: "a.ts", preview: "+actual a", additions: 1 } },
+      { path: "b.ts", filediff: { file: "b.ts", preview: "+actual b", additions: 1 } },
+    ],
+  })
+  part.tool = "revise_file"
+  expect(toolReviewDiffs(part).map(({ file, patch }) => ({ file, patch }))).toEqual([
+    { file: "a.ts", patch: "+actual a" },
+    { file: "b.ts", patch: "+actual b" },
+  ])
+})
+
+test("patch review uses observed file identities and excludes unattempted or uncertain effects", () => {
+  const part = toolPart({
+    sections: [
+      {
+        source: "a.ts",
+        destination: "b.ts",
+        state: "failed",
+        observedPath: "a.ts",
+        diff: "+saved",
+        filediff: { file: "a.ts", additions: 1 },
+      },
+      { source: "c.ts", state: "not_started" },
+      { source: "d.ts", destination: "e.ts", state: "unknown", diff: "+planned" },
+    ],
+  })
+  part.tool = "apply_patch"
+  expect(toolReviewDiffs(part, "b.ts")).toEqual([
+    { file: "a.ts", additions: 1, deletions: 0, patch: "+saved", preview: "+saved" },
+  ])
+})
+
+test("historical revisions without per-file evidence retain their saved fallback", () => {
+  const part = toolPart({
+    diff: "legacy diff",
+    filediff: { file: "a.ts" },
+    sections: [{ path: "a.ts", applied: true }],
+  })
+  part.tool = "revise_file"
+  expect(toolReviewDiffs(part)[0]?.patch).toBe("legacy diff")
+})

@@ -33,6 +33,8 @@ import { RolloutContext } from "./rollout/context"
 import { Storage } from "../storage/storage"
 import { StorageBusyError, StorageClosedError } from "../storage/errors"
 import { RolloutLedger } from "./rollout/ledger"
+import { SessionExecutionOwners } from "./execution-owners"
+import { independentExecutionInfo, type Info } from "./types"
 
 const log = Log.create({ service: "session.input" })
 
@@ -172,6 +174,7 @@ export async function createUserMessage(
   input: CreateUserMessageInput,
   rootIDOverride?: string,
   commitOptions?: SessionUserMessageMaterialization.CommitOptions,
+  admittedExecution?: MessageV2.RootExecution | null,
 ) {
   if (input.noReply === true) {
     if (input.experiment) throw new Error("Experiment configuration requires a new root task")
@@ -180,6 +183,10 @@ export async function createUserMessage(
   const { Session } = await import(".")
   const { RolloutLifecycle } = await import("./rollout/lifecycle")
   const session = await Session.get(input.sessionID)
+  const execution =
+    admittedExecution === undefined
+      ? await SessionExecutionOwners.admitTask(session, input)
+      : (admittedExecution ?? undefined)
   const messageID = input.messageID ?? Identifier.ascending("message")
   const runID = rootIDOverride ?? messageID
   try {
@@ -188,7 +195,7 @@ export async function createUserMessage(
     })
     const message = await Experiment.provide(configuration, () =>
       RolloutContext.provide({ owner: RolloutLifecycle.owner(session), runID }, () =>
-        materializeUserMessage({ ...input, messageID }, rootIDOverride, commitOptions),
+        materializeUserMessage({ ...input, messageID }, rootIDOverride, commitOptions, execution),
       ),
     )
     await RolloutLedger.configureRun(RolloutLifecycle.owner(session), runID, configuration)
@@ -213,30 +220,40 @@ export async function createUserMessage(
   }
 }
 
+export async function resolveUserAgent(
+  input: Pick<CreateUserMessageInput, "sessionID" | "agent">,
+  session: Pick<Info, "agentOverride"> | undefined,
+  independent = false,
+) {
+  const { Agent } = await import("../agent/agent")
+  let agentName = input.agent ?? session?.agentOverride
+  if (!agentName) {
+    agentName = (await SessionExecutionOwners.latestRoot(input.sessionID))?.agent
+  }
+  let agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
+  if (!agent && independent && input.agent === undefined) agent = await Agent.get(await Agent.defaultAgent())
+  if (!agent) throw new Error(`Agent not found: ${agentName}`)
+  return agent
+}
+
 async function materializeUserMessage(
   input: CreateUserMessageInput,
   rootIDOverride?: string,
   commitOptions?: SessionUserMessageMaterialization.CommitOptions,
+  execution?: MessageV2.RootExecution,
 ) {
   const { Session } = await import(".")
   const { Agent } = await import("../agent/agent")
-  const session = await Session.get(input.sessionID).catch(() => undefined)
-  let agentName = input.agent ?? session?.agentOverride
-  if (!agentName) {
-    // Inherit the current session agent from the last user message,
-    // so system notifications (cortex completion, agenda delivery, etc.)
-    // don't silently switch the agent to the default.
-    const messages = await effectiveMessages(input.sessionID)
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const item = messages[i]
-      if (isUserAnchor(item)) {
-        agentName = item.info.agent
-        break
-      }
-    }
-  }
-  const agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
-  if (!agent) throw new Error(`Agent not found: ${agentName}`)
+  const storedSession = await Session.get(input.sessionID).catch(() => undefined)
+  const root = input.noReply === true ? await SessionExecutionOwners.latestRoot(input.sessionID) : undefined
+  const independentRoot = root && MessageV2.isIndependentRoot(root) ? root : undefined
+  const independent = execution !== undefined || independentRoot !== undefined
+  const session = storedSession && independent ? independentExecutionInfo(storedSession) : storedSession
+  const agent = await resolveUserAgent(
+    independentRoot && input.agent === undefined ? { ...input, agent: independentRoot.agent } : input,
+    storedSession,
+    independent,
+  )
   const workflowMetadata = WorkflowUserWrapper.metadataForUserMessage({
     session,
     metadata: input.metadata,
@@ -304,6 +321,7 @@ async function materializeUserMessage(
     ...(input.summary?.title ? { summary: { title: input.summary.title, diffs: [] } } : {}),
     origin,
     isRoot,
+    ...(isRoot && execution ? { execution } : {}),
     rootID,
     visible,
     // isRoot/visible/origin carry scheduling & rendering; no noReply/guided flags.

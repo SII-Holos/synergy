@@ -33,7 +33,7 @@ export default function Panel({ context }: PluginComponentProps<PluginWorkbenchS
 | `commands`             | Owned commands, host command execution and menu registrations                                             |
 | `extensions`           | Finite extension metadata and actual outlet rendering                                                     |
 | `overlays`             | Owned dialogs, protected confirmations and notifications                                                  |
-| `lifetime`             | Abort signal and idempotent `onDispose()` registrations                                                   |
+| `lifetime`             | Abort signal, activity access/notifications and idempotent `onDispose()` registrations                    |
 
 Services enforce approved capabilities. Shell layout authority does not grant session mutation, draft writes, command registration, or resource access. Navigation, resource presentation and ordinary overlays require `ui.hostActions`; workbench reads/writes use `workbench.read`/`workbench.write`; session reads, submission and control remain separate capabilities. Operations also enforce their declared UI exposure and backend requirements.
 
@@ -46,6 +46,8 @@ A mounted surface has one plugin generation, server, Scope, optional Session, co
 Import `Button`, `Input`, `Select`, `Tabs`, `Menu`, `Dialog`, `Popover`, `Tooltip`, `FormField`, `SettingRow`, `EmptyState`, `ErrorState`, `Loading`, `Icon` and `HostView` from `@ericsanchezok/synergy-plugin/components`. These resolve to the host's UI implementation and shared Solid runtime. Semantic icons are typed by `@ericsanchezok/synergy-plugin/icons`; locale-sensitive number/date/relative-time/byte formatting is available from `@ericsanchezok/synergy-plugin/format`.
 
 Use `execution.elapsed`, `execution.tokens` and `execution.cost` for task metrics; `inbox.task`, `inbox.steer` and `inbox.context` distinguish queued input, steering and context updates. Use semantic tokens for their declared meaning. For example, `state.cancelled` denotes a cancelled task, while `action.close` denotes dismissing a control.
+
+Content editing uses `action.edit` (`pencil-line`); naming uses `action.rename` (`pencil`). Destructive removal or cancellation uses `action.remove` (`trash-2`) with an accessible label describing the operation.
 
 Surface expansion and contraction use `action.expand` (`maximize-2`, two diagonal outward arrows) and `action.collapse` (`minimize-2`, two diagonal inward arrows). Editors, panels and fullscreen content views share this pair. The stable `composer.expand` and `composer.collapse` tokens retain the same sizing meanings; `window.restore` shares the contraction glyph. These are the only same-meaning glyph aliases. New sizing controls reuse the generic action tokens; disclosure controls retain their navigation semantics.
 
@@ -125,3 +127,9 @@ UI API 6 conversation services may provide optional `content` methods for bounde
 ## Tool invocation intent
 
 The host adds optional `workBrief` to the model-facing schema. Plugin authors declare only native business parameters. The host extracts common intent before execution and passes native arguments unchanged to plugin operations and MCP servers. A third-party `workBrief` field remains native: its schema is wrapped as `{ workBrief, toolInput }` for the model. Definitions and unwrap mappings are frozen per request. Registered result renderers retain precedence; otherwise the read-only result uses structured JSON or text. Common intent never changes permission admission or execution identity.
+
+## Retained workbench presentations
+
+A `ui.workbenchPanel` contribution may declare `retention: "pause"`. The host may retain that instance while another panel or Session is selected. `ctx.lifetime.active?.()` reports activity and `ctx.lifetime.onActivity?.(listener)` reports the initial state and transitions. Pause timers, layout work and detail subscriptions while inactive; resume from domain data on activation. Suspension does not abort the lifetime; eviction, plugin generation replacement or owner disposal does. A retained context keeps its original server/Scope/Session/resource identity. Activity does not grant permission to act for a later route.
+
+Panels without this declaration retain the existing disposal behavior. All panel modules, including concurrent pending imports, are cached by registration/loader generation; a failed import is retryable locally. A successfully loaded module does not re-enter loading during navigation.

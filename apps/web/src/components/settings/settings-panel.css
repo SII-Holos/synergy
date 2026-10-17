@@ -67,9 +67,6 @@
   --workbench-selected-bg: var(--settings-selected-bg);
   --workbench-selected-bg-hover: var(--settings-selected-bg-hover);
   --workbench-border: var(--settings-border);
-  --settings-focus-ring:
-    0 0 0 1px color-mix(in srgb, var(--text-strong) 24%, transparent),
-    0 0 0 3px color-mix(in srgb, var(--text-strong) 7%, transparent);
   --settings-type-page-title-size: 1.5rem;
   --settings-type-page-title-line-height: 1.875rem;
   --settings-type-section-title-size: 0.875rem;
@@ -148,8 +145,6 @@
 }
 
 .settings-panel-root {
-  --shadow-xs-border-select: var(--settings-focus-ring);
-
   height: 100%;
   min-height: 0;
   background: var(--settings-canvas-bg);
@@ -587,12 +582,6 @@
     box-shadow 120ms ease;
 }
 
-.personalize-editor [data-component="input"]:focus-within [data-slot="input-wrapper"] {
-  background: var(--settings-input-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 62%, transparent);
-  box-shadow: var(--settings-focus-ring);
-}
-
 .personalize-editor [data-component="input"][data-invalid] [data-slot="input-wrapper"] {
   border-color: var(--text-base);
 }
@@ -708,7 +697,6 @@
 
 .settings-theme-card:focus-visible {
   outline: none;
-  box-shadow: var(--settings-focus-ring);
 }
 
 .settings-theme-card-active {
@@ -818,7 +806,6 @@
 
 .settings-color-card:focus-visible {
   outline: none;
-  box-shadow: var(--settings-focus-ring);
 }
 
 .settings-color-card-active {
@@ -1088,12 +1075,12 @@
 
 .settings-duration-slider:focus-visible::-webkit-slider-thumb,
 .settings-step-scale-slider:focus-visible::-webkit-slider-thumb {
-  box-shadow: var(--settings-focus-ring);
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 
 .settings-duration-slider:focus-visible::-moz-range-thumb,
 .settings-step-scale-slider:focus-visible::-moz-range-thumb {
-  box-shadow: var(--settings-focus-ring);
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 
 .settings-duration-ticks {
@@ -1297,7 +1284,6 @@
 
 .settings-model-trigger:focus-visible {
   outline: none;
-  box-shadow: var(--settings-focus-ring);
 }
 
 .settings-model-trigger-text {
@@ -1355,10 +1341,6 @@
 
 .settings-model-variant:hover {
   background: var(--settings-input-bg-hover);
-}
-
-.settings-model-variant:focus-visible {
-  box-shadow: var(--settings-focus-ring);
 }
 
 .settings-panel-frame .settings-model-trigger-icon {
@@ -2213,11 +2195,6 @@
     box-shadow 120ms ease;
 }
 
-.settings-integration-shell [data-component="input"]:focus-within [data-slot="input-wrapper"] {
-  border-color: color-mix(in oklch, var(--border-base) 72%, transparent);
-  box-shadow: var(--settings-focus-ring);
-}
-
 .settings-integration-shell [data-slot="input-input"] {
   color: var(--text-strong);
   font-size: var(--settings-type-control-size);
@@ -2498,7 +2475,6 @@
 
 .settings-mcp-summary:focus-visible {
   outline: none;
-  box-shadow: var(--settings-focus-ring);
 }
 
 .settings-mcp-summary-copy {
@@ -2744,12 +2720,6 @@
     background-color 120ms ease,
     border-color 120ms ease,
     box-shadow 120ms ease;
-}
-
-.account-profile-form [data-component="input"]:focus-within [data-slot="input-wrapper"] {
-  background: var(--settings-control-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 62%, transparent);
-  box-shadow: var(--settings-focus-ring);
 }
 
 .account-profile-form [data-slot="input-input"] {
@@ -3059,26 +3029,6 @@
   line-height: var(--settings-type-caption-line-height);
 }
 
-.providers-account-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.providers-account-actions-copy {
-  min-width: 0;
-  color: var(--text-weak);
-  font-size: var(--settings-type-caption-size);
-  line-height: var(--settings-type-caption-line-height);
-}
-
-.providers-immediate-hint {
-  color: var(--text-weak);
-  font-size: var(--settings-type-caption-size);
-  line-height: var(--settings-type-caption-line-height);
-}
-
 .providers-catalog-status {
   display: flex;
   align-items: center;
@@ -3107,7 +3057,6 @@
   background: color-mix(in oklch, var(--icon-warning-base) 12%, var(--settings-card-bg));
 }
 
-.providers-management,
 .providers-advanced {
   min-width: 0;
   color: var(--text-weak);
@@ -3115,7 +3064,6 @@
   line-height: var(--settings-type-control-line-height);
 }
 
-.providers-management > summary,
 .providers-advanced > summary {
   min-height: 32px;
   display: flex;
@@ -3123,79 +3071,55 @@
   padding: 6px 8px;
   border-radius: 6px;
   cursor: pointer;
-  list-style: none;
 }
 
-.providers-management > summary::after,
-.providers-advanced > summary::after {
-  content: "+";
-  margin-inline-start: 8px;
+.providers-advanced > summary {
+  gap: 8px;
 }
 
-.providers-management[open] > summary::after,
-.providers-advanced[open] > summary::after {
-  content: "−";
+.providers-advanced > summary::-webkit-details-marker {
+  display: none;
 }
 
-.providers-management > summary:hover,
+.providers-advanced[open] > summary [data-component="icon"] {
+  transform: rotate(90deg);
+}
+
 .providers-advanced > summary:hover {
   background: var(--settings-control-bg);
   color: var(--text-strong);
-}
-
-.providers-management > summary:focus-visible,
-.providers-advanced > summary:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
-}
-
-.providers-management-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
 }
 
 .providers-account-setup {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding-block-start: 16px;
-  border-top: 1px solid var(--settings-border);
-}
-
-.providers-setup-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 .providers-advanced > [data-component] {
   margin-block-start: 12px;
 }
 
-.provider-account-dialog {
-  --dialog-body-padding: 0;
-}
-
-.provider-account-dialog [data-slot="dialog-form"] {
-  display: flex;
-  flex-direction: column;
-}
-
-.provider-account-dialog-fields {
+.provider-account-editor-fields {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 20px;
 }
 
-.provider-account-dialog-actions {
+.provider-account-editor-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  padding: 14px 20px;
-  border-top: 1px solid var(--dialog-border-weak);
+  flex-wrap: wrap;
+  padding-block-start: 8px;
+}
+
+.providers-credentials-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .providers-auth-warning,
@@ -3276,16 +3200,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.providers-empty-detail {
-  min-height: 300px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: var(--text-weak);
 }
 
 .provider-flow {
@@ -3754,7 +3668,7 @@
 }
 
 .ds-import-file-button:focus-within {
-  box-shadow: var(--shadow-xs-border-select);
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 
 .ds-import-file-button input {
@@ -3791,7 +3705,6 @@
 .ds-import-url-input:focus,
 .ds-import-paste-input:focus {
   outline: none;
-  box-shadow: var(--shadow-xs-border-select);
 }
 
 .ds-import-plan-header {
@@ -4158,9 +4071,8 @@
 
 .settings-search-result:focus-visible,
 .settings-panel-content [data-settings-search-match="true"] {
-  outline: 2px solid var(--border-interactive-focus);
-  outline-offset: -2px;
   border-radius: 8px;
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 
 .settings-panel-close:disabled {
@@ -4443,21 +4355,63 @@
 .providers-connected-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
 }
 .providers-connected-account {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
-  border: 1px solid var(--settings-border);
-  border-radius: 12px;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--settings-border);
   text-align: left;
-  background: var(--settings-panel-bg);
-  transition: background 120ms ease;
 }
-.providers-connected-account:hover {
-  background: var(--settings-panel-bg-hover);
+.providers-connected-open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  min-width: 0;
+  flex: 1;
+  text-align: start;
+  border-radius: 8px;
+}
+.providers-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.providers-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  color: var(--text-weak);
+  border-radius: 6px;
+}
+.providers-more:hover,
+.providers-connected-open:hover {
+  color: var(--text-strong);
+  background: var(--settings-control-bg);
+}
+.providers-connected-copy > span {
+  overflow-wrap: anywhere;
+}
+@container (max-width: 460px) {
+  .providers-connected-account {
+    flex-wrap: wrap;
+  }
+  .providers-connected-open {
+    flex-basis: calc(100% - 8px);
+  }
+  .providers-row-actions {
+    margin-inline-start: auto;
+  }
+  .providers-more {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 .providers-connected-copy {
   display: flex;
@@ -4523,9 +4477,6 @@
   justify-content: space-between;
   border: 0;
   box-shadow: none;
-}
-.settings-panel-frame .menu-field-trigger:focus-visible {
-  box-shadow: var(--settings-focus-ring);
 }
 .settings-panel-frame .menu-field-value {
   flex: 1;
@@ -4699,8 +4650,7 @@
   border-color: var(--border-base);
 }
 .settings-choice:has(:focus-visible) label {
-  outline: 2px solid var(--border-interactive-focus);
-  outline-offset: 2px;
+  background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
 }
 .settings-choice-copy {
   display: flex;

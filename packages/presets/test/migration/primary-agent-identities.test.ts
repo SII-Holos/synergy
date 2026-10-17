@@ -7,6 +7,28 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 test("full composition upgrades owned execution references without rewriting historical content", async () => {
   await using fixture = await compositionFixture()
   await fixture.run(async () => {
+    const note = {
+      id: "note_fixture",
+      title: "Historical Blueprint",
+      kind: "blueprint",
+      pinned: false,
+      global: true,
+      archived: false,
+      tags: [],
+      content: {
+        type: "doc",
+        agent: "synergy-max",
+        content: [
+          {
+            type: "paragraph",
+            attrs: { blockId: "blk_fixture" },
+            content: [{ type: "text", text: "synergy-max" }],
+          },
+        ],
+      },
+      version: 7,
+      time: { created: 1, updated: 2 },
+    }
     const records = [
       {
         key: ["sessions", "home", "ses_fixture", "info"],
@@ -31,14 +53,12 @@ test("full composition upgrades owned execution references without rewriting his
       {
         key: ["notes", "home", "note_fixture"],
         before: {
+          ...note,
           blueprint: { defaultAgent: "synergy-max", auditAgent: "synergy" },
-          content: { agent: "synergy-max" },
-          version: 7,
         },
         after: {
+          ...note,
           blueprint: { defaultAgent: "forge", auditAgent: "atlas" },
-          content: { agent: "synergy-max" },
-          version: 7,
         },
       },
       {
@@ -63,6 +83,18 @@ test("full composition upgrades owned execution references without rewriting his
         },
       },
     ]
+    const retained = [
+      { ...note, id: "note_plain", kind: "note" },
+      { ...note, id: "note_future", kind: "future-owner" },
+    ].map((value) => ({
+      ...value,
+      blueprint: { defaultAgent: "synergy-max", auditAgent: "synergy" },
+    }))
+    for (const before of retained) {
+      const key = ["notes", "home", before.id]
+      expect(upgradeImportedRecord(key, before)).toEqual(before)
+      await Storage.write(key, before)
+    }
     for (const { key, before, after } of records) {
       const imported = upgradeImportedRecord(key, before)
       expect(imported).toEqual(after)
@@ -72,9 +104,16 @@ test("full composition upgrades owned execution references without rewriting his
     await Storage.write(["notes", "home", "_index"], [{ blueprint: { defaultAgent: "synergy-max" } }])
     const migrations = [...MigrationRegistry.list().values()]
       .flat()
-      .filter((migration) => migration.id.endsWith("primary-agent-identities"))
+      .filter(
+        (migration) =>
+          migration.id.endsWith("primary-agent-identities") ||
+          migration.id === "20261012-blueprint-note-owner" ||
+          migration.id === "20261012-light-loop-session-owner",
+      )
     for (const { up } of migrations) await up(() => {})
     for (const { key, after } of records) expect(await Storage.read<Record<string, unknown>>(key)).toEqual(after)
+    for (const before of retained)
+      expect(await Storage.read<Record<string, unknown>>(["notes", "home", before.id])).toEqual(before)
     expect((await Storage.readMany([["notes", "home", "_index"]]))[0]).toBeUndefined()
     const config = {
       default_agent: "synergy",

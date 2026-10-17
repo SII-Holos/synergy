@@ -5,6 +5,7 @@ import net from "node:net"
 import path from "node:path"
 import { randomBytes } from "node:crypto"
 import { RELEASE_CATALOG } from "./release/shared/packages"
+import { assertBunVersion } from "./check-bun-version"
 
 const DEFAULT_SERVER_PORT = 4096
 const DEFAULT_APP_PORT = 3000
@@ -164,6 +165,7 @@ Options:
 
 function serverProcess(input: {
   repoRoot: string
+  entry: "dev-server" | "dev-web" | "dev-desktop"
   launchCwd: string
   bunPath: string
   port: number
@@ -193,6 +195,13 @@ function serverProcess(input: {
     cwd: dirs.product,
     env: {
       SYNERGY_CWD: process.env.SYNERGY_CWD ?? input.launchCwd,
+      SYNERGY_RUNTIME_ENTRY: input.entry,
+      SYNERGY_DAEMON: undefined,
+      SYNERGY_DESKTOP_STARTUP_PROGRESS: undefined,
+      SYNERGY_DESKTOP_PARENT_PID: undefined,
+      SYNERGY_INSTALLATION_PIN: undefined,
+      SYNERGY_INSTALLATION_ROOT: undefined,
+      SYNERGY_LAUNCHER_COMMAND: undefined,
       SYNERGY_DESKTOP_BROWSER: input.desktop ? "1" : undefined,
       SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.browserHostSecret,
       SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET: input.computerHostSecret,
@@ -243,6 +252,13 @@ function desktopProcess(input: {
       process.env.SYNERGY_DESKTOP_USER_DATA_DIR ??
       (process.env.SYNERGY_HOME ? path.resolve(process.env.SYNERGY_HOME, ".synergy/desktop") : undefined),
     SYNERGY_DESKTOP_SERVER_MODE: input.mode,
+    SYNERGY_RUNTIME_ENTRY: input.mode === "managed" ? "dev-desktop-managed" : undefined,
+    SYNERGY_DAEMON: undefined,
+    SYNERGY_DESKTOP_STARTUP_PROGRESS: undefined,
+    SYNERGY_DESKTOP_PARENT_PID: undefined,
+    SYNERGY_INSTALLATION_PIN: undefined,
+    SYNERGY_INSTALLATION_ROOT: undefined,
+    SYNERGY_LAUNCHER_COMMAND: undefined,
     SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.browserHostSecret,
     SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET: input.computerHostSecret,
     SYNERGY_BROWSER_BROKER_SERVER_URL: input.browserServerUrl,
@@ -307,6 +323,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
       processes: [
         serverProcess({
           repoRoot,
+          entry: "dev-server",
           launchCwd,
           bunPath,
           port,
@@ -350,6 +367,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         : [
             serverProcess({
               repoRoot,
+              entry: "dev-web",
               launchCwd,
               bunPath,
               port: serverPort,
@@ -434,6 +452,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         : [
             serverProcess({
               repoRoot,
+              entry: "dev-desktop",
               desktop: true,
               launchCwd,
               bunPath,
@@ -485,7 +504,16 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
           label: "send",
           command: [bunPath, "run", "--conditions=browser", "./src/index.ts", "send", ...parsed.positionals],
           cwd: dirs.product,
-          env: { SYNERGY_CWD: process.env.SYNERGY_CWD ?? launchCwd },
+          env: {
+            SYNERGY_CWD: process.env.SYNERGY_CWD ?? launchCwd,
+            SYNERGY_RUNTIME_ENTRY: "dev-send",
+            SYNERGY_DAEMON: undefined,
+            SYNERGY_DESKTOP_STARTUP_PROGRESS: undefined,
+            SYNERGY_DESKTOP_PARENT_PID: undefined,
+            SYNERGY_INSTALLATION_PIN: undefined,
+            SYNERGY_INSTALLATION_ROOT: undefined,
+            SYNERGY_LAUNCHER_COMMAND: undefined,
+          },
         },
       ],
       requiredPorts: [],
@@ -859,6 +887,10 @@ export async function runDevPlan(plan: DevPlan, options: PlanOptions = {}): Prom
     process.stderr.write(`${plan.message}\n\n${plan.help}`)
     return plan.exitCode
   }
+  await assertBunVersion(
+    options.repoRoot ?? defaultRepoRoot(),
+    options.bunPath ?? process.env.BUN_BIN ?? process.execPath,
+  )
   if (plan.mode === "prepare") {
     return runPrepare(options.repoRoot ?? defaultRepoRoot(), options.bunPath ?? process.env.BUN_BIN ?? process.execPath)
   }

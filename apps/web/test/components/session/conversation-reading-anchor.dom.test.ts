@@ -16,6 +16,10 @@ type Fixture = {
   revisit(): { before: number; after: number; sameNode: boolean; restored: boolean }
   foreignAnchor(): boolean
   offscreenAnchor(): { before?: string; after?: string }
+  contentFailure(): void
+  freezeExtent(): void
+  recoverContent(): void
+  recoverPosition(): { restored: boolean; before: number; after: number }
   facts(): {
     offset: number
     scroll: number
@@ -76,6 +80,21 @@ beforeAll(async () => {
         const current=document.createElement('article');current.dataset.messageId='current';current.dataset.scrollAnchor='current';current.textContent='New visible row';container.prepend(current);
         const after=captureConversationReadingAnchor(container,()=>true)?.owner.dataset.scrollAnchor;
         container.remove();return {before,after};
+      },
+      contentFailure(){
+        const row=marker.parentElement;row.dataset.displayRow='answer';row.removeAttribute('data-scroll-anchor');
+        const body=document.createElement('div');body.dataset.scrollAnchor='answer-body';while(row.firstChild)body.append(row.firstChild);row.append(body);
+        const status=document.createElement('div');status.dataset.messageId='message-answer';status.dataset.rowKind='process';status.textContent='Completed';status.style.height='24px';row.before(status);
+        const error=document.createElement('div');error.dataset.contentError='';error.style.height='58px';error.innerHTML='<p style="margin:0">Could not sync this content</p><p style="margin:0">Retry content</p>';body.before(error);
+        auto.handleInteraction();viewport.scrollTop=error.offsetTop-viewport.offsetTop-40;auto.handleScroll();
+      },
+      freezeExtent(){const content=viewport.firstElementChild;content.style.height=content.getBoundingClientRect().height+'px'},
+      recoverContent(){viewport.querySelector('[data-content-error]').remove()},
+      recoverPosition(){
+        const position=captureConversationReadingPosition(viewport),before=marker.getBoundingClientRect().top-viewport.getBoundingClientRect().top;
+        h.recoverContent();viewport.scrollTop=0;
+        const restored=restoreConversationReadingPosition(viewport,position,true);
+        return {restored,before,after:marker.getBoundingClientRect().top-viewport.getBoundingClientRect().top};
       },
       facts(){return {offset:marker.getBoundingClientRect().top-viewport.getBoundingClientRect().top,scroll:viewport.scrollTop,folded:fold.getBoundingClientRect().height,imageHeight:img.naturalHeight,distance:viewport.scrollHeight-viewport.clientHeight-viewport.scrollTop,userScrolled:auto.userScrolled()}}
     }
@@ -145,6 +164,45 @@ test("detached reading survives workspace reflow, structural animation and a lat
   expect(Math.abs((await facts()).offset - original)).toBeLessThan(1)
   expect(errors).toEqual([])
 }, 30_000)
+
+test("removing a recovered content error preserves the visible body paragraph", async () => {
+  await page.goto(base)
+  await page.getByText("Current reading paragraph", { exact: true }).waitFor()
+  await frames()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.contentFailure())
+  await frames()
+  const before = (await facts()).offset
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.recoverContent())
+  await frames()
+  expect(Math.abs((await facts()).offset - before)).toBeLessThan(1)
+})
+
+test("a reading row resize is compensated while the virtual content extent remains unchanged", async () => {
+  await page.goto(base)
+  await page.getByText("Current reading paragraph", { exact: true }).waitFor()
+  await frames()
+  await page.evaluate(() => {
+    const h = (window as unknown as { fixture: Fixture }).fixture
+    h.contentFailure()
+    h.freezeExtent()
+  })
+  await frames()
+  const before = (await facts()).offset
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.recoverContent())
+  await frames()
+  expect(Math.abs((await facts()).offset - before)).toBeLessThan(1)
+})
+
+test("saved reading positions exclude transient error paragraphs from body block indices", async () => {
+  await page.goto(base)
+  await page.getByText("Current reading paragraph", { exact: true }).waitFor()
+  await frames()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.contentFailure())
+  await frames()
+  const result = await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.recoverPosition())
+  expect(result.restored).toBe(true)
+  expect(Math.abs(result.after - result.before)).toBeLessThan(1)
+})
 
 test("a fallback transcript preserves latest reading through an earlier-message prepend with one resize owner", async () => {
   await page.goto(base)

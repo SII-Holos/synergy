@@ -95,6 +95,7 @@ try {
   await open("home")
   await send("new-session")
   await open(manifest.projectScopeID)
+  await page.getByRole("button", { name: "Workbench Chat", exact: true }).waitFor()
   await page.locator("[data-worktree-task-selector]").click()
   await page.getByRole("button", { name: /新建 Worktree|New Worktree/ }).click()
   const session = await send("new-worktree")

@@ -1,10 +1,9 @@
+import { ApplyPatchTool } from "./tools/apply-patch"
 import { registerLocalToolInputHistory } from "./tool-input-history"
 import { registerToolGroup } from "./tool-group-worktree"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { BashTool } from "./tools/bash"
 import { EditTool } from "./tools/edit"
-import { GlobTool } from "./tools/glob"
-import { GrepTool } from "./tools/grep"
 import { FileSearchTool } from "./tools/file-search"
 import { ReadTool } from "./tools/read"
 import { ViewFileTool } from "./tools/view-file"
@@ -37,8 +36,7 @@ export function registerLocalTools() {
     const tools = [
       BashTool,
       EditTool,
-      GlobTool,
-      GrepTool,
+      ApplyPatchTool,
       FileSearchTool,
       ReadTool,
       ViewFileTool,

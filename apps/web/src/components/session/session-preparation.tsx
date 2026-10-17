@@ -8,7 +8,8 @@ import {
   type Accessor,
   type JSX,
 } from "solid-js"
-import { useParams, useNavigate } from "@solidjs/router"
+import { useNavigate } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import type { StorageSessionPreparation } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -34,7 +35,6 @@ export function SessionPreparation(props: { children: JSX.Element }) {
   const server = useServer()
   const [status, setStatus] = createSignal<{ server: string; value: StorageSessionPreparation }>()
   const [failed, setFailed] = createSignal(false)
-  const [mounted, setMounted] = createSignal(!params.id)
   let retry: (() => Promise<void>) | undefined
   createEffect(() => {
     const url = server.url
@@ -72,9 +72,6 @@ export function SessionPreparation(props: { children: JSX.Element }) {
         ? sdk.sessionPreparation.get(server.url, params.id)
         : undefined
   const ready = () => !params.id || currentStatus()?.state === "ready"
-  createEffect(() => {
-    if (ready()) setMounted(true)
-  })
   return (
     <SessionPreparationContext.Provider
       value={{
@@ -87,9 +84,7 @@ export function SessionPreparation(props: { children: JSX.Element }) {
         },
       }}
     >
-      <Show when={mounted()} fallback={<SessionPreparationNotice />}>
-        {props.children}
-      </Show>
+      {props.children}
     </SessionPreparationContext.Provider>
   )
 }

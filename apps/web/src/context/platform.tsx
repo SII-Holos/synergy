@@ -16,6 +16,9 @@ export type BrowserNativeViewBridge = {
   dataAction?(
     input: import("@ericsanchezok/synergy-browser-core").BrowserDataRequest,
   ): Promise<import("@ericsanchezok/synergy-browser-core").BrowserDataResult>
+  profileDataAction?(
+    input: import("@ericsanchezok/synergy-browser-core").BrowserProfileDataRequest,
+  ): Promise<import("@ericsanchezok/synergy-browser-core").BrowserDataResult>
   pageAction?(
     input: import("@ericsanchezok/synergy-browser-core").BrowserPageActionRequest,
   ): Promise<import("@ericsanchezok/synergy-browser-core").BrowserPageActionResult>

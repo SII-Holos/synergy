@@ -57,6 +57,7 @@ function fakeSession(page: BrowserPageBackend | null): BrowserSession {
       : [],
     status: page ? "active" : "empty",
     annotations: [],
+    agentActivities: [],
     async openPage() {
       return page ?? ({ id: "page-missing", backend: "host" } as BrowserPageBackend)
     },

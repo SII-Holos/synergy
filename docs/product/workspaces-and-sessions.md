@@ -37,6 +37,8 @@ Web and Desktop let users choose a computer connection, project and applicable m
 
 A session belongs to a Scope and references a stable Workspace identity, or has no local files. New-task setup chooses the project's main folder or a Worktree while retaining Scope ownership. The Session keeps its actual binding after the setup strip disappears; new-task folder choices offer confirmation for unavailable project folders, and advanced resource management handles custom binding repair.
 
+New local Home sessions use a shared, persistent working folder separate from configuration and account data; its location follows the [Runtime storage root](../reference/storage-and-paths.md#physical-layout). Selecting another Workspace or no files overrides that default. Existing sessions retain their selections, and files survive session deletion or Runtime restart.
+
 Directory selection and recovery follow the explicit confirmation, draft preservation and flat-list rules in the [Web product contract](../../apps/web/PRODUCT.md#working-directory-selection).
 
 Sessions can share a Workspace. Explicitly changing its local binding updates every referencing Session and requires idle file resources. Imported history remains unavailable for local execution until deliberately rebound. Open file tabs retain the directory version they were opened against, so rebinding cannot silently redirect a pending edit.

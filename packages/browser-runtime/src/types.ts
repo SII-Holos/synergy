@@ -26,24 +26,22 @@ export interface BrowserAnnotationInput {
   pageURL?: string
 }
 
-export interface BrowserAgentActivity {
-  sessionID: string
-  operationID: string
-  pageId: string
-  url: string
-  title?: string
-  kind: "reading" | "acting" | "idle"
-  tool: string
-  label: string
-}
+export type { BrowserAgentActivity } from "@ericsanchezok/synergy-browser-core"
+import type { BrowserAgentActivity } from "@ericsanchezok/synergy-browser-core"
 
 export interface BrowserSession {
   readonly owner: BrowserOwner.Info
   readonly pages: BrowserSessionPage[]
+  readonly agentActivities: BrowserAgentActivity[]
   readonly status: "empty" | "suspended" | "active" | "failed"
   readonly annotations: BrowserAnnotation[]
 
-  openPage(input: { url?: string; profileId?: string; requestId?: string }): Promise<BrowserPageBackend>
+  openPage(input: {
+    url?: string
+    profileId?: string
+    requestId?: string
+    createdBySessionID?: string
+  }): Promise<BrowserPageBackend>
   resumePage(pageId: string): Promise<BrowserPageBackend>
   closePage(pageId: string): Promise<void>
   suspendProfile(profileId: string): Promise<void>

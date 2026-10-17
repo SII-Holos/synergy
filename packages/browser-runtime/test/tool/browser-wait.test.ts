@@ -5,7 +5,6 @@ import { BrowserToolHelper } from "@ericsanchezok/synergy-browser-runtime/tools/
 
 const originalResolvePage = BrowserToolHelper.resolvePage
 const originalExecute = BrowserToolHelper.execute
-const originalWithActivity = BrowserToolHelper.withActivity
 
 beforeEach(() => {
   BrowserToolHelper.resolvePage = async () =>
@@ -18,13 +17,11 @@ beforeEach(() => {
       elapsedMs: 312,
       page: { id: "page-test", url: "https://example.com/", title: "Example", isLoading: false, lastActiveAt: null },
     }) as never
-  BrowserToolHelper.withActivity = async (_ctx, _page, _kind, _tool, _label, fn) => fn()
 })
 
 afterEach(() => {
   BrowserToolHelper.resolvePage = originalResolvePage
   BrowserToolHelper.execute = originalExecute
-  BrowserToolHelper.withActivity = originalWithActivity
 })
 
 function context() {

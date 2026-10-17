@@ -2,7 +2,13 @@ import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presen
 import { attachmentSuppression, markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { useLingui } from "@lingui/solid"
-import { createActivityLabel, processIsWorking, sessionActivityAnimating, sessionActivityLabel } from "./session-status"
+import {
+  createActivityLabel,
+  hasTurnTerminalReply,
+  processIsWorking,
+  sessionActivityAnimating,
+  sessionActivityLabel,
+} from "./session-status"
 import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
 
 import type {
@@ -50,7 +56,7 @@ import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
 import { resolveAttachmentPresentation } from "./attachment-card-utils"
 import { MediaGenerationCard } from "./media-generation-card"
-import { isMediaGenerationToolPart, isToolCardHidden } from "./tool-result-presentation"
+import { isMediaGenerationToolPart, toolFeatureAvailable, isToolCardHidden } from "./tool-result-presentation"
 import { isSpeakTool, noteSpeakPartActive } from "./session-turn-speak-autoplay"
 import "./session-turn.css"
 import "./tool-renders"
@@ -538,10 +544,6 @@ export function collectAssistantMessagesForTurn(messages: MessageType[], userMes
   )
 }
 
-function isTerminalAssistant(message: AssistantMessage): boolean {
-  return !!message.finish && message.finish !== "tool-calls" && message.finish !== "unknown"
-}
-
 export function resolveTurnWorking(input: {
   isLastUserMessage: boolean
   messages: readonly SessionTurnDisplayMessage[]
@@ -550,23 +552,7 @@ export function resolveTurnWorking(input: {
   if (!input.isLastUserMessage) return false
   if (input.sessionStatus?.type === "paused") return false
 
-  let latestUserIndex = -1
-  let lastAssistant: AssistantMessage | undefined
-  for (let index = 0; index < input.messages.length; index++) {
-    const message = input.messages[index]
-    if (message.role === "user") {
-      latestUserIndex = index
-      continue
-    }
-    lastAssistant = message
-  }
-
-  const hasTerminalReply = input.messages.slice(latestUserIndex + 1).some((message) => {
-    return message.role === "assistant" && isTerminalAssistant(message)
-  })
-  if (hasTerminalReply) return false
-
-  if (lastAssistant?.time.completed == null) return !!input.sessionStatus && input.sessionStatus.type !== "idle"
+  if (hasTurnTerminalReply(input.messages)) return false
   return !!input.sessionStatus && input.sessionStatus.type !== "idle"
 }
 
@@ -601,12 +587,18 @@ function TimelineItemDisplay(props: {
   }
   if (props.item.kind === "media") {
     const current = () => props.item as Extract<SessionTurnTimelineItem, { kind: "media" }>
+    const data = useData()
+    const available = () => toolFeatureAvailable(current().part, data.hasFeature)
     createEffect(() => {
       const part = current().part
-      if (isSpeakTool(part.tool) && !["completed", "error"].includes(part.state.status))
+      if (available() && isSpeakTool(part.tool) && !["completed", "error"].includes(part.state.status))
         noteSpeakPartActive(`speak:${part.id}`)
     })
-    return <MediaGenerationCard part={current().part} files={current().files} serverUrl={props.serverUrl} />
+    return (
+      <Show when={available()} fallback={<AttachmentGallery files={current().files} serverUrl={props.serverUrl} />}>
+        <MediaGenerationCard part={current().part} files={current().files} serverUrl={props.serverUrl} />
+      </Show>
+    )
   }
   return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} />
 }
@@ -1772,9 +1764,12 @@ export function SessionTurn(
                                     animate: following,
                                     content: true,
                                     appear: () => {
-                                      const item = current()
+                                      const display = current()
+                                      const item = isAssistantTimelineDisplayItem(display)
+                                        ? displayItemTimelineItem(display)
+                                        : undefined
                                       return (
-                                        item.kind === "part" && item.part.type === "text" && takeArrival(item.part.id)
+                                        item?.kind === "part" && item.part.type === "text" && takeArrival(item.part.id)
                                       )
                                     },
                                   })

@@ -102,6 +102,16 @@ declare global {
   interface Window {
     __setTimeline: (messages: unknown[]) => void
     __enableContent(): void
+    __viewActive(value: boolean): void
+    __partArrival: {
+      add(session: string, partID: string, source?: "live" | "replay" | "discovery"): void
+      peer(): void
+      take(partID: string): boolean
+    }
+    __historyControls: {
+      set(value: { more?: boolean; history?: boolean; pending?: boolean; tail?: boolean }): void
+      returns(): number
+    }
     __virtualExecutionWork: {
       reset(): void
       counts(): { processRootReads: number; projectionRootReads: number }
@@ -110,6 +120,18 @@ declare global {
     __holdExecutions: (options?: ExecutionTransportOptions) => void
     __pendingExecutions: () => number
     __settleExecutions: () => void
+    __taskDetails: {
+      open(): void
+      close(): void
+      settle(failed: boolean): void
+      loading(): boolean
+      requests(): number
+    }
+    __contentRecovery: {
+      version(value: string): void
+      checkpoint(version: string): void
+      reads(): number
+    }
   }
 }
 
@@ -173,9 +195,11 @@ beforeAll(async () => {
       stubPath,
       `
         import { createMemo, createSignal } from "solid-js"
+        import { useConversationMotion } from "@ericsanchezok/synergy-ui/conversation-motion"
         import { ExecutionCompletion } from ${JSON.stringify(`/@fs/${completionPath}`)}
         import { createPartArrivalState } from ${JSON.stringify(`/@fs/${arrivalPath}`)}
         import { createSessionTransitionState } from ${JSON.stringify(`/@fs/${transitionPath}`)}
+        import { createExecutionSummary } from ${JSON.stringify(`/@fs/${path.resolve(import.meta.dir, "../../../src/context/execution-summary.ts")}`)}
         export { draftTransitionKey } from ${JSON.stringify(`/@fs/${transitionPath}`)}
         import { draftTransitionKey } from ${JSON.stringify(`/@fs/${transitionPath}`)}
         import { createStore } from "solid-js/store"
@@ -186,15 +210,18 @@ beforeAll(async () => {
         let mountCount = 0
         ;(window as any).__sessionTurnMounts = () => mountCount
         const [executionAvailable, setExecutionAvailable] = createSignal(true)
+        const [checkpointPending, setCheckpointPending] = createSignal(false)
         const openedExecution: string[] = []
         Object.assign(window, {
           __setExecutionAvailable: setExecutionAvailable,
+          __checkpointPending: setCheckpointPending,
           __openedExecution: openedExecution,
         })
 
         export function SessionTurn(props: any) {
           const [mounted] = createSignal(++mountCount)
           const root = createMemo(() => props.rootMessage)
+          window.__partArrival.take = useConversationMotion()
           return (
             <div data-slot="session-turn-stub" data-message-id={props.messageID} data-mount={mounted()} data-part-count={props.segment?.parts.length} data-execution={props.executionState?.status}>
               <span data-root-text>{root()?.text ?? ""}</span>
@@ -207,10 +234,10 @@ beforeAll(async () => {
           <div data-slot="command-stub">{props.message?.text ?? ""}</div>
         )
         export const MessageSlotOutlet = () => null
-        export const Button = (props: any) => <button type="button">{props.children}</button>
+        export const Button = (props: any) => <button type="button" disabled={props.disabled} onClick={props.onClick}>{props.children}</button>
         export const Icon = () => null
         export const Spinner = () => <span data-spinner />
-        export const IconButton = () => null
+        export const IconButton = (props: { "aria-label"?: string; onClick?: (event: MouseEvent) => void }) => <button type="button" aria-label={props["aria-label"]} onClick={props.onClick} />
         export const getSemanticIcon = () => "circle"
         export const navMark = () => {}
         export const BrowserViewEffects = () => null
@@ -293,7 +320,14 @@ beforeAll(async () => {
           holdExecutions = false
           for (const index of [...pendingExecutions.keys()]) settle(index)
         }
-        const [content, setContent] = createStore({partSummary: {}, part: {}, partVersion: {}})
+        const [content, setContent] = createStore({partSummary: {}, part: {}, partVersion: {}, messageWindow: {}})
+        export const [historyState, setHistoryState] = createStore({more: false, history: false, pending: false, tail: false})
+        let returns = 0
+        export const returnLatest = () => { returns++; window.__historyControls.set({more: false, history: false, pending: false, tail: false}) }
+        window.__historyControls = {
+          set: value => { setHistoryState(value); setContent("messageWindow", session(), {tailMissingLatest: historyState.tail}) },
+          returns: () => returns,
+        }
         window.__executionOwner = {
           hold: window.__holdExecutions, calls: () => calls, settle,
           event: (rootID, sessionID = session(), type = "session.execution.updated") => {
@@ -324,6 +358,7 @@ beforeAll(async () => {
         }
         export const useSDK = () => ({
           get url() { return server() }, get scopeKey() { return scope() }, get client() { return client() }, connected: () => true,
+          content: { pending: checkpointPending },
           event: {on: (type, listener) => {
             if (!listeners.has(type)) listeners.set(type, new Set())
             listeners.get(type).add(listener)
@@ -334,15 +369,44 @@ beforeAll(async () => {
         export const useSync = () => ({data: content})
         export const useSessionPreparation = () => ({ready})
         const partArrival = createPartArrivalState()
-        export const useGlobalSync = () => ({partArrival, peekScopeState: () => undefined, reconnectVersion: recovery, ready: true, scopeRecoveryPending: () => false})
+        window.__partArrival = {
+          add: (id, partID, source = "live") => partArrival.add([server(), scope(), id], partID, {source, render: true, previous: false}),
+          peer: () => partArrival.open([server(), scope(), "ses_peer"]).ready(true),
+          take: () => false,
+        }
+        export const useGlobalSync = () => ({partArrival, peekScopeState: () => [{messageWindow: {[session()]: {}}}], reconnectVersion: recovery, ready: true, scopeRecoveryPending: () => false})
         export const SessionSubmissionStatus = () => null
+        export const createOptimisticSubmissionActivity = () => () => undefined
         const transitions = createSessionTransitionState()
         export const useSessionTransition = () => transitions
         export const submissionForRoot = (_, rootID) => {
           if (rootID === "r32") virtualExecutionWork.processRootReads++
           return undefined
         }
-        export const useExecution = () => ({
+        let executionSummary
+        export function createTaskDetails() {
+          const [visible, setVisible] = createSignal(false)
+          let requests = 0, settle
+          executionSummary = createExecutionSummary({
+            client: createSynergyClient({baseUrl: "http://fixture", fetch: request => {
+              requests++
+              return new Promise((resolve, reject) => {
+                request.signal.addEventListener("abort", () => reject(request.signal.reason), {once: true})
+                settle = failed => resolve(failed ? Response.json({}, {status: 503}) : Response.json({sessionID: session(), revision: requests, clockID: "fixture", sampledAt: requests, rounds: []}))
+              })
+            }}),
+            sessionID: session, available: executionAvailable, connected: () => true,
+            visible, subscribe: () => () => {},
+          })
+          window.__taskDetails = {
+            open() {setVisible(true); void executionSummary.refresh()},
+            close() {setVisible(false)},
+            settle(failed) {settle(failed)},
+            loading: () => executionSummary.state.loading,
+            requests: () => requests,
+          }
+        }
+        export const useExecution = () => ({get state() { return executionSummary.state }, retain() {},
           available: executionAvailable,
           round: () => undefined,
           open: (id: string) => openedExecution.push(id),
@@ -354,20 +418,23 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "main.tsx"),
       `
-        import { batch, createComponent, createSignal, Suspense } from "solid-js"
+        import { batch, createComponent, createSignal, onCleanup, Suspense } from "solid-js"
         import { render } from "solid-js/web"
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
         import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
         import { DataProvider } from "@ericsanchezok/synergy-ui/context/data"
         import { SessionConversation } from ${JSON.stringify(`/@fs/${conversationPath}`)}
+        import { ViewActivityProvider } from "@/context/view-residency"
+        import { createPartMaterializer } from "@/context/part-materializer"
         import ${JSON.stringify(`/@fs/${path.resolve(import.meta.dir, "../../../../../packages/ui/src/styles/theme.css")}`)}
-        import { fixtureSession, setFixtureSession, fixtureMessages, setFixtureMessages, readProjectionPage } from "./stubs"
+        import { fixtureSession, setFixtureSession, fixtureMessages, setFixtureMessages, readProjectionPage, historyState, returnLatest, createTaskDetails } from "./stubs"
         console.info("[conversation-boot] main")
 
         type AnyMsg = { id: string; role: "user" | "assistant"; text?: string }
 
         function App() {
+          createTaskDetails()
           const timeline = fixtureMessages
           const [contentEnabled, setContentEnabled] = createSignal(false)
           const [layoutReady, setLayoutReady] = createSignal(!window.location.search.includes("admission"))
@@ -376,7 +443,24 @@ beforeAll(async () => {
           let holdBody = false
           const pendingBodies: { resolve(): void; reject(error: Error): void }[] = []
           const bodyReleases: string[] = []
+          const hydratedSessions: string[] = []
+          const recoveryMode = window.location.search.includes("content-recovery")
+          const [version, setVersion] = createSignal("one")
+          const [checkpoint, setCheckpoint] = createSignal()
+          let reads = 0
+          const materializer = createPartMaterializer({
+            cached: summary => checkpoint()?.version === summary.content.version ? checkpoint().part : undefined,
+            read: async () => { reads++; throw {name: "SessionDisplayConflict"} },
+            refresh: async summary => summary, wait: async () => {}, apply: () => {}, evict: () => {},
+          })
+          onCleanup(() => materializer.dispose())
+          window.__contentRecovery = {
+            version: setVersion,
+            checkpoint: version => setCheckpoint({version, part: {id:"part-0000",messageID:"delivered",sessionID:sessionID(),type:"text",text:"Delivered body"}}),
+            reads: () => reads,
+          }
           Object.assign(window, {
+            __hydratedSessions: () => [...hydratedSessions],
             __holdBodies: () => { holdBody = true },
             __settleBodies: () => { holdBody = false; for (const entry of pendingBodies.splice(0)) entry.resolve() },
             __failBodies: () => { holdBody = false; for (const entry of pendingBodies.splice(0)) entry.reject(new Error("Fixture content unavailable")) },
@@ -407,10 +491,10 @@ beforeAll(async () => {
             turnMessagesFor: (m: AnyMsg) => [m],
             compactionParentIDs: () => [],
           })
-          return createComponent(SessionConversation, { initialScrollSettled: layoutReady, context: {
+          return createComponent(SessionConversation, { initialScrollSettled: layoutReady, onHydrated: id => hydratedSessions.push(id), context: {
             get content() { return contentEnabled() ? {
-              summaries: id => Array.from({length: id === "huge" ? 1001 : 1}, (_, index) => ({id: "part-"+String(index).padStart(4,"0"),messageID:id,sessionID:sessionID(),type:"text",preview:"",content:{version:"one",bytes:10}})),
-              page: readProjectionPage,load: async () => {},retain: summary => ({ready:holdBody ? new Promise<void>((resolve,reject) => pendingBodies.push({resolve,reject})) : Promise.resolve(),release() {bodyReleases.push(JSON.stringify([summary.sessionID, summary.messageID, summary.id]))}}),
+              summaries: id => Array.from({length: id === "huge" ? 1001 : 1}, (_, index) => ({id: "part-"+String(index).padStart(4,"0"),messageID:id,sessionID:sessionID(),type:"text",preview:"",content:{version:recoveryMode ? version() : "one",bytes:10}})),
+              page: readProjectionPage,load: async () => {},retain: summary => recoveryMode ? materializer.retain(summary) : ({ready:holdBody ? new Promise<void>((resolve,reject) => pendingBodies.push({resolve,reject})) : Promise.resolve(),release() {bodyReleases.push(JSON.stringify([summary.sessionID, summary.messageID, summary.id]))}}),
             } : undefined },
             registerMessageLocator: fn => { locate=fn; return () => { if(locate===fn) locate=undefined } },
             onFirstTurnMounted() {},
@@ -430,11 +514,11 @@ beforeAll(async () => {
             get turnStart() { return 0 },
             get turnBatch() { return 20 },
             get onSetTurnStart() { return () => {} },
-            get historyMore() { return () => false },
+            get historyMore() { return () => historyState.more },
             get historyLoading() { return () => false },
-            get historyMode() { return () => "latest" as const },
-            get historyPendingLatest() { return () => false },
-            get onReturnLatest() { return () => {} },
+            get historyMode() { return () => historyState.history ? "history" : "latest" },
+            get historyPendingLatest() { return () => historyState.pending },
+            get onReturnLatest() { return returnLatest },
             get onLoadMore() { return () => {} },
             get scrolledUp() { return () => scrolledUp },
             get onScrolledUpChange() { return () => {} },
@@ -451,8 +535,10 @@ beforeAll(async () => {
         }
 
         const i18n = setupI18n({locale: "en", messages: {en: {}}})
+        const [active, setActive] = createSignal(true)
+        window.__viewActive = setActive
         console.info("[conversation-boot] render:start")
-        const dispose = render(() => <I18nProvider i18n={i18n}><DataProvider data={{session:[], session_diff:{}, message:{[fixtureSession()]:fixtureMessages()}, part:{}}} directory={null} serverUrl="http://fixture"><DialogProvider><Suspense fallback={<p data-test-loading>Loading conversation</p>}><App /></Suspense></DialogProvider></DataProvider></I18nProvider>, document.querySelector("#root")!)
+        const dispose = render(() => <I18nProvider i18n={i18n}><DataProvider data={{session:[], session_diff:{}, message:{[fixtureSession()]:fixtureMessages()}, part:{}}} directory={null} serverUrl="http://fixture"><DialogProvider><Suspense fallback={<p data-test-loading>Loading conversation</p>}><ViewActivityProvider active={active}><App /></ViewActivityProvider></Suspense></DialogProvider></DataProvider></I18nProvider>, document.querySelector("#root")!)
         window.__executionOwner.dispose = dispose
         console.info("[conversation-boot] render:end")
       `,
@@ -619,6 +705,40 @@ describe("conversation row retention", () => {
       ])
     })
     expect(await page.getByRole("navigation", { name: "Conversation timeline" }).count()).toBe(0)
+  })
+
+  test("uses one floating latest action for pending or unloaded latest history", async () => {
+    await reloadFixture("timeline")
+    await page.evaluate(() => {
+      window.__setTimeline([{ id: "history-root", sessionID: "ses_1", role: "user", time: { created: 1 } }])
+      window.__historyControls.set({ history: true, more: true })
+    })
+    const latest = page.getByRole("button", { name: "Back to latest", exact: true })
+    expect(await page.getByRole("button", { name: "Load earlier messages", exact: true }).count()).toBe(1)
+    expect(await page.getByRole("button", { name: "Return to latest", exact: true }).count()).toBe(0)
+    expect(await latest.count()).toBe(0)
+    for (const missing of [
+      { tail: true, pending: false },
+      { tail: false, pending: true },
+    ]) {
+      await page.evaluate(
+        (missing) => window.__historyControls.set({ history: true, more: false, ...missing }),
+        missing,
+      )
+      await latest.waitFor()
+      expect(await page.getByRole("button", { name: "New messages — Return to latest", exact: true }).count()).toBe(0)
+      expect(
+        await page
+          .locator("[data-conversation-viewport]")
+          .evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop),
+      ).toBeLessThanOrEqual(1)
+      const before = await page.evaluate(() => window.__historyControls.returns())
+      await latest.focus()
+      await latest.press("Enter")
+      expect(await page.evaluate(() => window.__historyControls.returns())).toBe(before + 1)
+      expect(await latest.count()).toBe(0)
+    }
+    expect(pageErrors).toEqual([])
   })
 
   test("keeps rows mounted across message object replacement and propagates updates", async () => {
@@ -822,7 +942,7 @@ async function paintedConversationPixels() {
   }, screenshot)
 }
 
-test("reveals a session only after its mounted bodies and initial scroll settle, then preserves streaming visibility", async () => {
+test("cold admission paints only the settled reading window and never rearms for later content", async () => {
   await page.goto(new URL("?admission", page.url()).href)
   await page.waitForFunction(() => typeof window.__setTimeline === "function")
   await page.addStyleTag({ content: "[data-display-row] { background: rgb(0, 255, 0); min-height: 32px; }" })
@@ -846,14 +966,12 @@ test("reveals a session only after its mounted bodies and initial scroll settle,
   expect(pendingBounds?.width).toBeGreaterThan(0)
   expect(await paintedConversationPixels()).toBe(0)
   await page.evaluate(() => (window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true))
-  await page.evaluate(
-    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
-  )
+  await executionFrames()
   expect(await viewport.getAttribute("aria-hidden")).toBe("true")
   expect(await paintedConversationPixels()).toBe(0)
   await page.evaluate(() => (window as unknown as { __settleBodies(): void }).__settleBodies())
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
-  expect(await viewport.evaluate((element) => element.getAnimations().length)).toBe(1)
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
+  expect(await viewport.evaluate((element) => element.getAnimations().length)).toBe(0)
   await page.emulateMedia({ reducedMotion: "reduce" })
   expect(await viewport.evaluate((element) => getComputedStyle(element).opacity)).toBe("1")
   expect(await viewport.evaluate((element) => element.getAnimations().length)).toBe(0)
@@ -867,7 +985,7 @@ test("reveals a session only after its mounted bodies and initial scroll settle,
       { id: "stream", sessionID: "ses_1", role: "user", text: "streaming", time: { created: 2 } },
     ])
   })
-  expect(await viewport.getAttribute("aria-hidden")).toBe("false")
+  expect(await viewport.getAttribute("aria-hidden")).toBeNull()
   expect(await viewport.evaluate((element) => getComputedStyle(element).opacity)).toBe("1")
   expect(await viewport.evaluate((element) => element.getAnimations().length)).toBe(0)
   expect(await paintedConversationPixels()).toBeGreaterThan(0)
@@ -881,6 +999,7 @@ test("reveals a session only after its mounted bodies and initial scroll settle,
     fixture.__sessionID("ses_2")
     fixture.__setTimeline([{ id: "next", sessionID: "ses_2", role: "user", text: "next", time: { created: 3 } }])
   })
+  await page.locator('[data-display-row="next:user"]').waitFor({ state: "attached" })
   expect(await viewport.getAttribute("aria-hidden")).toBe("true")
   expect(await paintedConversationPixels()).toBe(0)
   await page.evaluate(() => {
@@ -888,7 +1007,76 @@ test("reveals a session only after its mounted bodies and initial scroll settle,
     fixture.__settleBodies()
     fixture.__layoutReady(true)
   })
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
+  expect(pageErrors).toEqual([])
+})
+
+test("task details cannot hold cold conversation admission or resumed hydration while its summary is pending", async () => {
+  await page.goto(new URL("?admission", page.url()).href)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.evaluate(() => {
+    window.__taskDetails.open()
+    window.__holdExecutions()
+    window.__setTimeline([
+      { id: "initial", sessionID: "ses_1", role: "user", text: "Ready transcript", time: { created: 1 } },
+    ])
+    window.__enableContent()
+    ;(window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true)
+  })
+  await page.waitForSelector("[data-display-row]", { state: "attached" })
+  await executionFrames()
+  const viewport = page.locator("[data-conversation-viewport]")
+  expect(await viewport.getAttribute("data-ready")).toBe("false")
+  await page.evaluate(() => window.__settleExecutions())
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]', { timeout: 3000 })
+  expect(await page.evaluate(() => window.__taskDetails.loading())).toBe(true)
+  expect(await viewport.getAttribute("aria-hidden")).toBeNull()
+  const row = page.locator('[data-slot="session-turn-stub"]').first()
+  const mount = await row.getAttribute("data-mount")
+  await page.evaluate(() => {
+    window.__viewActive(false)
+    window.__viewActive(true)
+  })
+  await page.waitForFunction(
+    () => (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions().length === 2,
+  )
+  expect(await page.evaluate(() => window.__taskDetails.loading())).toBe(true)
+  await page.evaluate(() => window.__taskDetails.settle(true))
+  await page.waitForFunction(() => !window.__taskDetails.loading())
+  expect(await row.getAttribute("data-mount")).toBe(mount)
+  expect(await viewport.getAttribute("data-ready")).toBe("true")
+  await page.evaluate(() => window.__taskDetails.open())
+  expect(await page.evaluate(() => window.__taskDetails.loading())).toBe(true)
+  expect(await viewport.getAttribute("data-ready")).toBe("true")
+  await page.evaluate(() => window.__taskDetails.close())
+  await page.waitForFunction(() => !window.__taskDetails.loading())
+  expect(await page.evaluate(() => window.__taskDetails.requests())).toBe(2)
+  expect(await row.getAttribute("data-mount")).toBe(mount)
+  expect(pageErrors).toEqual([])
+})
+
+test("cold admission cannot be starved by continuous live text mutations", async () => {
+  await page.goto(new URL("?admission", page.url()).href)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.evaluate(() => {
+    window.__setTimeline([{ id: "streaming", sessionID: "ses_1", role: "user", time: { created: 1 } }])
+    window.__enableContent()
+  })
+  await page.waitForSelector("[data-display-row]", { state: "attached" })
+  const frames = await page.evaluate(async () => {
+    const surface = document.querySelector("[data-conversation-motion]")!
+    const text = document.createTextNode("Live text")
+    surface.append(text)
+    ;(window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true)
+    const admitted: boolean[] = []
+    for (let frame = 0; frame < 30; frame++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      text.appendData(" next")
+      admitted.push(document.querySelector<HTMLElement>("[data-conversation-viewport]")?.dataset.ready === "true")
+    }
+    return admitted
+  })
+  expect(frames.some(Boolean)).toBe(true)
   expect(pageErrors).toEqual([])
 })
 
@@ -910,11 +1098,102 @@ test("terminal body failures reveal an actionable retry instead of stranding ini
   await page.waitForSelector("[data-display-row]", { state: "attached" })
   expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("true")
   await page.evaluate(() => (window as unknown as { __failBodies(): void }).__failBodies())
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   expect(await page.locator("[data-content-error] button").count()).toBe(1)
+  await page.waitForFunction(() =>
+    (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions().includes("ses_1"),
+  )
   await page.locator("[data-content-error] button").click()
   await page.waitForSelector("[data-content-error]", { state: "detached" })
-  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("false")
+  expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBeNull()
+  expect(pageErrors).toEqual([])
+})
+
+for (const [changed, background] of [
+  [false, false],
+  [true, false],
+  [true, true],
+]) {
+  test(`a ${changed ? "new" : "same"}-version ${background ? "background" : "live"} checkpoint removes the stale retry without remounting readable content`, async () => {
+    await page.goto(new URL("?content-recovery", page.url()).href)
+    await page.waitForFunction(() => typeof window.__setTimeline === "function")
+    await page.evaluate(() => {
+      window.__setTimeline([
+        { id: "delivered", sessionID: "ses_1", role: "user", text: "Delivered body", time: { created: 1 } },
+      ])
+      window.__enableContent()
+    })
+    await page.waitForSelector("[data-content-error]")
+    const row = page.locator('[data-slot="session-turn-stub"][data-message-id="delivered"][data-part-count="1"]')
+    const mount = await row.getAttribute("data-mount")
+    expect(await row.textContent()).toContain("Delivered body")
+    expect(await page.evaluate(() => window.__contentRecovery.reads())).toBe(8)
+    const version = changed ? "terminal" : "one"
+    await page.evaluate((version) => window.__contentRecovery.version(version), version)
+    expect(await page.locator("[data-content-error]").count()).toBe(1)
+    await page.evaluate(() => window.__contentRecovery.checkpoint("obsolete"))
+    expect(await page.locator("[data-content-error]").count()).toBe(1)
+    if (background) await page.evaluate(() => window.__viewActive(false))
+    await page.evaluate((version) => window.__contentRecovery.checkpoint(version), version)
+    if (background) await page.evaluate(() => window.__viewActive(true))
+    await page.waitForSelector("[data-content-error]", { state: "detached", timeout: 3000 })
+    expect(await row.getAttribute("data-mount")).toBe(mount)
+    expect(await row.textContent()).toContain("Delivered body")
+    expect(await page.evaluate(() => window.__contentRecovery.reads())).toBe(8)
+    expect(pageErrors).toEqual([])
+  })
+}
+
+test("cold hydration waits for bodies and Markdown, releases once, and rejects the previous owner", async () => {
+  await page.goto(new URL("?admission", page.url()).href)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      __enableContent(): void
+      __holdBodies(): void
+      __layoutReady(value: boolean): void
+      __setTimeline(messages: unknown[]): void
+    }
+    fixture.__holdBodies()
+    fixture.__setTimeline([{ id: "first", sessionID: "ses_1", role: "user", time: { created: 1 } }])
+    fixture.__enableContent()
+    fixture.__layoutReady(true)
+  })
+  await page.waitForSelector('[data-conversation-viewport][data-ready="false"]', { state: "attached" })
+  await executionFrames()
+  expect(await paintedConversationPixels()).toBe(0)
+  const hydrated = () =>
+    page.evaluate(() => (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions())
+  expect(await hydrated()).toEqual([])
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      __switchSession(id: string, messages: unknown[]): void
+      __layoutReady(value: boolean): void
+    }
+    fixture.__switchSession("ses_2", [{ id: "second", sessionID: "ses_2", role: "user", time: { created: 2 } }])
+    fixture.__layoutReady(true)
+  })
+  await page.locator('[data-display-row="second:user"]').waitFor({ state: "attached" })
+  await page.evaluate(() => {
+    const marker = document.createElement("div")
+    marker.dataset.markdownPending = ""
+    document.querySelector("[data-conversation-motion]")!.append(marker)
+    ;(window as unknown as { __settleBodies(): void }).__settleBodies()
+  })
+  await executionFrames()
+  expect(await hydrated()).toEqual([])
+  await page.evaluate(() => document.querySelector("[data-markdown-pending]")!.remove())
+  await page.waitForFunction(
+    () => (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions().length === 1,
+  )
+  expect(await hydrated()).toEqual(["ses_2"])
+  await page.evaluate(() => {
+    window.__setTimeline([
+      { id: "second", sessionID: "ses_2", role: "user", text: "later growth", time: { created: 2 } },
+    ])
+  })
+  await executionFrames()
+  expect(await hydrated()).toEqual(["ses_2"])
   expect(pageErrors).toEqual([])
 })
 
@@ -931,7 +1210,7 @@ test("session navigation replaces only the transcript owner and releases its bod
     fixture.__enableContent()
     fixture.__layoutReady(true)
   })
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   await page.evaluate(() => {
     Object.assign(window, { priorViewport: document.querySelector("[data-conversation-viewport]") })
     const fixture = window as unknown as {
@@ -959,7 +1238,7 @@ test("session navigation replaces only the transcript owner and releases its bod
   await executionFrames()
   expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("true")
   await page.evaluate(() => (window as unknown as { __settleBodies(): void }).__settleBodies())
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   const mount = await page
     .locator('[data-display-row="second:user"] [data-slot="session-turn-stub"]')
     .getAttribute("data-mount")
@@ -986,7 +1265,7 @@ test("the same session identifier on another connection has an independent viewp
     window.__setTimeline([{ id: "owner", sessionID: "ses_1", role: "user", time: { created: 1 } }])
     ;(window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true)
   })
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   await page.evaluate(() => {
     Object.assign(window, { priorViewport: document.querySelector("[data-conversation-viewport]") })
     const fixture = window as unknown as { __layoutReady(value: boolean): void }
@@ -1002,7 +1281,7 @@ test("the same session identifier on another connection has an independent viewp
   ).toBe(false)
   expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBe("true")
   await page.evaluate(() => (window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true))
-  await page.waitForSelector('[data-conversation-viewport][aria-hidden="false"]')
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
   expect(pageErrors).toEqual([])
 })
 
@@ -1039,6 +1318,93 @@ async function startExecutionOwner(options: ExecutionTransportOptions = {}) {
   await waitExecutionCalls(1)
 }
 
+test("retained activation preserves accepted execution state and refreshes only hidden invalidations", async () => {
+  await startExecutionOwner({ deliverAfterAbort: true })
+  await page.evaluate(() => window.__executionOwner.settle(0, "completed"))
+  await waitExecutionStatus("r69", "completed")
+  const row = page.locator('[data-slot="session-turn-stub"][data-message-id="r69"]')
+  const mount = await row.getAttribute("data-mount")
+  await page.evaluate(() => window.__viewActive(false))
+  await executionFrames()
+  expect(await executionStatus("r69")).toBe("completed")
+  await page.evaluate(() => window.__viewActive(true))
+  await executionFrames()
+  expect(await row.getAttribute("data-mount")).toBe(mount)
+  expect(await executionStatus("r69")).toBe("completed")
+  expect((await executionCalls()).length).toBe(1)
+
+  await page.evaluate(() => {
+    window.__executionOwner.event("r8")
+  })
+  await waitExecutionCalls(2)
+  await page.evaluate(() => {
+    window.__viewActive(false)
+    window.__executionOwner.event("r9")
+    window.__executionOwner.settle(1, "stopped")
+  })
+  await executionFrames()
+  expect((await executionCalls())[1].aborted).toBe(true)
+  expect((await executionCalls()).length).toBe(2)
+  expect(await executionStatus("r8")).toBe("completed")
+  await page.evaluate(() => window.__viewActive(true))
+  await waitExecutionCalls(3)
+  expect((await executionCalls())[2].rootIDs).toEqual(["r8", "r9"])
+  expect(await executionStatus("r8")).toBe("completed")
+  await page.evaluate(() => window.__executionOwner.settle(2, "failed", true))
+  await executionFrames()
+  expect(await executionStatus("r8")).toBe("completed")
+  expect(await executionStatus("r9")).toBe("completed")
+  expect((await executionCalls()).length).toBe(3)
+  expect(pageErrors).toEqual([])
+})
+
+test("retained activation rebinds live arrival ownership without replaying hidden or historical parts", async () => {
+  await page.goto(new URL("/", page.url()).href)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.evaluate(() =>
+    window.__setTimeline([{ id: "arrival", sessionID: "ses_1", role: "user", time: { created: 1 } }]),
+  )
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]')
+  await executionFrames()
+  const take = (id: string) => page.evaluate((id) => window.__partArrival.take(id), id)
+  await page.evaluate(() => window.__partArrival.add("ses_1", "before"))
+  expect(await take("before")).toBe(true)
+  expect(await take("before")).toBe(false)
+  await page.evaluate(() => {
+    window.__partArrival.add("ses_1", "abandoned")
+    window.__viewActive(false)
+    window.__partArrival.peer()
+    window.__partArrival.add("ses_1", "hidden")
+  })
+  await page.evaluate(() => window.__viewActive(true))
+  await executionFrames()
+  await page.evaluate(() => {
+    window.__partArrival.add("ses_1", "returned")
+    window.__partArrival.add("ses_1", "replay", "replay")
+    window.__partArrival.add("ses_1", "snapshot", "discovery")
+  })
+  expect(await take("returned")).toBe(true)
+  for (const id of ["before", "returned", "abandoned", "hidden", "replay", "snapshot"])
+    expect(await take(id)).toBe(false)
+  await page.evaluate(() => {
+    window.__partArrival.add("ses_1", "before-tab-hidden")
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" })
+    window.dispatchEvent(new Event("visibilitychange"))
+    window.__partArrival.add("ses_1", "hidden-tab-mounted")
+    window.__partArrival.add("ses_1", "hidden-tab-unmounted")
+  })
+  expect(await take("hidden-tab-mounted")).toBe(false)
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" })
+    window.dispatchEvent(new Event("visibilitychange"))
+  })
+  for (const id of ["before-tab-hidden", "hidden-tab-mounted", "hidden-tab-unmounted"])
+    expect(await take(id)).toBe(false)
+  await page.evaluate(() => window.__partArrival.add("ses_1", "after-tab-return"))
+  expect(await take("after-tab-return")).toBe(true)
+  expect(pageErrors).toEqual([])
+})
+
 describe("conversation execution request owner", () => {
   test.each(["success", "failure"] as const)(
     "commits a 64-root %s response in one real virtual projection",
@@ -1070,16 +1436,16 @@ describe("conversation execution request owner", () => {
         await executionFrames()
         const counts = await page.evaluate(() => window.__virtualExecutionWork.counts())
         diagnose("virtual-response:work", { outcome, roots: 64, ...counts })
-        expect(counts).toEqual({ processRootReads: 1, projectionRootReads: 1 })
+        expect(counts).toEqual(
+          outcome === "success"
+            ? { processRootReads: 1, projectionRootReads: 1 }
+            : { processRootReads: 0, projectionRootReads: 0 },
+        )
         const rows = page.locator('[data-slot="session-turn-stub"][data-message-id="r69"]')
         expect(await rows.count()).toBeGreaterThan(0)
         expect(
-          await rows.evaluateAll(
-            (elements, outcome) =>
-              elements.every(
-                (element) => element.getAttribute("data-execution") === (outcome === "failure" ? null : "running"),
-              ),
-            outcome,
+          await rows.evaluateAll((elements) =>
+            elements.every((element) => element.getAttribute("data-execution") === "running"),
           ),
         ).toBe(true)
         expect(await page.evaluate(() => window.__pendingExecutions())).toBe(0)
@@ -1366,4 +1732,78 @@ describe("conversation execution request owner", () => {
     expect(await row.getAttribute("data-mount")).toBe(mount)
     expect(pageErrors).toEqual([])
   })
+})
+
+test("warm return retains admission while renewed body and Markdown layout settle", async () => {
+  await page.goto(new URL("?admission", page.url()).href)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.evaluate(() => {
+    const fixture = window as unknown as {
+      __enableContent(): void
+      __layoutReady(value: boolean): void
+    }
+    window.__setTimeline([
+      { id: "first", sessionID: "ses_1", role: "user", text: "Accepted history", time: { created: 1 } },
+    ])
+    fixture.__enableContent()
+    fixture.__layoutReady(true)
+  })
+  const hydrated = () =>
+    page.evaluate(() => (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions().length)
+  await page.waitForFunction(
+    () => (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions().length === 1,
+  )
+  const viewport = await page.locator("[data-conversation-viewport]").elementHandle()
+  await page.evaluate(() => {
+    window.__viewActive(false)
+    ;(window as unknown as { __checkpointPending(value: boolean): void }).__checkpointPending(true)
+    ;(window as unknown as { __holdBodies(): void }).__holdBodies()
+    window.__setTimeline([
+      { id: "first", sessionID: "ses_1", role: "user", text: "Accepted history", time: { created: 1 } },
+      { id: "second", sessionID: "ses_1", role: "user", text: "Background progress", time: { created: 2 } },
+    ])
+    window.__viewActive(true)
+  })
+  await executionFrames()
+  expect(await hydrated()).toBe(1)
+  expect(await viewport!.evaluate((el) => el.isConnected && el.getAttribute("data-ready") === "true")).toBe(true)
+  await page.evaluate(() => {
+    const marker = document.createElement("div")
+    marker.dataset.markdownPending = ""
+    document.querySelector("[data-conversation-motion]")!.append(marker)
+    ;(window as unknown as { __settleBodies(): void }).__settleBodies()
+  })
+  await executionFrames()
+  expect(await hydrated()).toBe(1)
+  await page.evaluate(() => document.querySelector("[data-markdown-pending]")!.remove())
+  await executionFrames()
+  await executionFrames()
+  expect(await hydrated()).toBe(1)
+  await page.evaluate(() =>
+    (window as unknown as { __checkpointPending(value: boolean): void }).__checkpointPending(false),
+  )
+  await executionFrames()
+  await executionFrames()
+  expect(await hydrated()).toBe(2)
+  expect(await viewport!.evaluate((el) => el === document.querySelector("[data-conversation-viewport]"))).toBe(true)
+  await page.evaluate(() => {
+    window.__setTimeline([
+      { id: "first", sessionID: "ses_1", role: "user", text: "Accepted history", time: { created: 1 } },
+      { id: "second", sessionID: "ses_1", role: "user", text: "Live generation continues", time: { created: 2 } },
+    ])
+  })
+  await executionFrames()
+  expect(await hydrated()).toBe(2)
+  await page.evaluate(() => {
+    window.__viewActive(false)
+    window.__viewActive(true)
+    window.__viewActive(false)
+  })
+  await executionFrames()
+  expect(await hydrated()).toBe(2)
+  await page.evaluate(() => window.__viewActive(true))
+  await executionFrames()
+  await executionFrames()
+  expect(await hydrated()).toBe(3)
+  expect(pageErrors).toEqual([])
 })

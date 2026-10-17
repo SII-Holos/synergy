@@ -6,14 +6,13 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { WorkflowInfo, registerSessionSchema } from "../src/session-schema"
+import { WorkflowInfo } from "../src/session-schema"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "./support/runtime"
 const runtime = await testRuntime()
 
 test("owner schema preserves the full API union while persistence retains future workflow state", () =>
   runtime.run(async () => {
-    registerSessionSchema()
     const schema = z.toJSONSchema(WorkflowInfo, { unrepresentable: "any" })
     expect(schema).toMatchObject({ anyOf: expect.any(Array) })
     expect(WorkflowInfo.parse({ kind: "plan" })).toEqual({ kind: "plan" })

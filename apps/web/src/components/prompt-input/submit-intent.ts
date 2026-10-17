@@ -7,7 +7,7 @@ export function resolvePromptSubmitIntent(input: {
 }): PromptSubmitIntent {
   const hasText = input.text.trim().length > 0
   if (input.working && !hasText) return "abort"
-  if (input.hasBlueprintSlot) return "blueprint"
+  if (input.hasBlueprintSlot) return input.working ? "blocked" : "blueprint"
   if (hasText) return "message"
   return "blocked"
 }

@@ -49,7 +49,12 @@ export const useLayout = () => ({
 export const useLocale = () => ({ i18n: useLingui().i18n() })
 export const useConfirm = () => ({ ask: async () => true })
 export const usePluginHost = () => ({ resources: { register: () => () => {} } })
-export const useGlobalSDK = () => ({ capabilities: { has: () => false } })
+const selection = { features: [] }
+export const useGlobalSDK = () => ({
+  url: location.origin,
+  capabilities: { current: () => selection, has: () => false },
+  event: { listen: () => () => {} },
+})
 export const useSDK = () => ({
   url: location.origin,
   scopeKey: "fixture",

@@ -113,5 +113,5 @@ export const WriteTool = Tool.define(
       )
     },
   },
-  { requiresWorkspace: true, activityKind: "file-change" },
+  { requiresWorkspace: true, fileToolGroups: ["replace"], activityKind: "file-change" },
 )

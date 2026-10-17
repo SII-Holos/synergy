@@ -41,6 +41,7 @@ import {
   type RootNavSectionKey,
 } from "./nav"
 import { createDesktopBadgeSync } from "./desktop-badge"
+import { createNavRequest, type NavRequestState } from "./nav-request"
 import { createCompletionNoticeClearer } from "./completion-notice"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { isEphemeralTestWorktree } from "@/utils/ephemeral-test-worktree"
@@ -103,6 +104,7 @@ export interface NavEntry {
   parentID?: string
   blueprint?: {
     loopID?: string
+    source?: string
     loopRole?: "execution" | "audit"
     phase?: "running" | "auditing"
   }
@@ -326,7 +328,23 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       void syncDesktopBadge(unreadCompletionCount())
     })
     const navPending = new Set<string>()
-    const [scopeIndexLoaded, setScopeIndexLoaded] = createSignal(false)
+    const [scopeIndexRequest, setScopeIndexRequest] = createSignal<NavRequestState>({
+      loading: false,
+      loaded: false,
+      error: false,
+    })
+    const [recentRequest, setRecentRequest] = createSignal<NavRequestState>({
+      loading: false,
+      loaded: false,
+      error: false,
+    })
+    const scopeLoader = createNavRequest({ owner: () => globalSdk.client, publish: setScopeIndexRequest })
+    const recentLoader = createNavRequest({ owner: () => globalSdk.client, publish: setRecentRequest })
+    const scopeIndexLoaded = () => scopeIndexRequest().loaded
+    onCleanup(() => {
+      scopeLoader.dispose()
+      recentLoader.dispose()
+    })
 
     const channelProjection = createMemo(() => {
       const index = scopeIndex()
@@ -335,19 +353,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     })
 
     async function loadScopeIndex() {
-      await globalSdk.client.scope.list()
-      try {
-        const res = await globalSdk.client.scope.index()
-        if (res.data) {
-          const next = res.data as ScopeNavEntry[]
+      await scopeLoader.run(
+        async (client, signal) => {
+          await client.scope.list(undefined, { throwOnError: true, signal })
+          return (await client.scope.index(undefined, { throwOnError: true, signal })).data
+        },
+        (data) => {
+          const next = data as ScopeNavEntry[]
           if (!sameScopeIndex(scopeIndex(), next)) setScopeIndex(next)
-        }
-      } catch (err) {
-        console.warn("Failed to load scope index", err)
-        // fall through; supplemental scope discovery will be unavailable until next reconnection
-      } finally {
-        setScopeIndexLoaded(true)
-      }
+        },
+      )
     }
 
     async function loadScopeNav(directory: string, cursor?: NavCursor) {
@@ -489,29 +504,40 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       if (navPending.has(key)) return
       navPending.add(key)
       try {
-        const res = await globalSdk.client.global.nav.recent({
-          parentOnly: true,
-          limit: RECENT_LIMIT,
-          ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
-        })
-        if (!res.data) return
-        const data = res.data
-        setUnreadCompletionCount(data.unreadCompletionCount)
-        if (cursor) {
-          const existing = recentEntries.items
-          const merged = [...existing, ...data.items.filter((e) => !existing.some((x) => x.id === e.id))] as NavEntry[]
-          setRecentEntries(
-            mergeNavListByID(recentEntries, { items: merged, nextCursor: data.nextCursor, total: data.total }),
-          )
-        } else {
-          setRecentEntries(
-            mergeNavListByID(recentEntries, {
-              items: data.items as NavEntry[],
-              nextCursor: data.nextCursor,
-              total: data.total,
-            }),
-          )
-        }
+        await recentLoader.run(
+          async (client, signal) =>
+            (
+              await client.global.nav.recent(
+                {
+                  parentOnly: true,
+                  limit: RECENT_LIMIT,
+                  ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+                },
+                { throwOnError: true, signal },
+              )
+            ).data,
+          (data) => {
+            setUnreadCompletionCount(data.unreadCompletionCount)
+            if (cursor) {
+              const existing = recentEntries.items
+              const merged = [
+                ...existing,
+                ...data.items.filter((e) => !existing.some((x) => x.id === e.id)),
+              ] as NavEntry[]
+              setRecentEntries(
+                mergeNavListByID(recentEntries, { items: merged, nextCursor: data.nextCursor, total: data.total }),
+              )
+            } else {
+              setRecentEntries(
+                mergeNavListByID(recentEntries, {
+                  items: data.items as NavEntry[],
+                  nextCursor: data.nextCursor,
+                  total: data.total,
+                }),
+              )
+            }
+          },
+        )
       } finally {
         navPending.delete(key)
       }
@@ -541,19 +567,27 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       if (navPending.has(key)) return
       navPending.add(key)
       try {
-        const res = await globalSdk.client.global.nav.recent({
-          parentOnly: true,
-          limit: Math.max(RECENT_LIMIT, recentEntries.items.length),
-        })
-        if (!res.data) return
-        const data = res.data
-        setUnreadCompletionCount(data.unreadCompletionCount)
-        setRecentEntries(
-          mergeNavListByID(recentEntries, {
-            items: data.items as NavEntry[],
-            nextCursor: data.nextCursor,
-            total: data.total,
-          }),
+        await recentLoader.run(
+          async (client, signal) =>
+            (
+              await client.global.nav.recent(
+                {
+                  parentOnly: true,
+                  limit: Math.max(RECENT_LIMIT, recentEntries.items.length),
+                },
+                { throwOnError: true, signal },
+              )
+            ).data,
+          (data) => {
+            setUnreadCompletionCount(data.unreadCompletionCount)
+            setRecentEntries(
+              mergeNavListByID(recentEntries, {
+                items: data.items as NavEntry[],
+                nextCursor: data.nextCursor,
+                total: data.total,
+              }),
+            )
+          },
         )
       } finally {
         navPending.delete(key)
@@ -1294,6 +1328,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         navEntries: () => navEntries,
         navEntryForSession,
         scopeIndexLoaded,
+        recentLoaded: () => recentRequest().loaded,
+        loading: () => scopeIndexRequest().loading || recentRequest().loading,
+        error: () => scopeIndexRequest().error || recentRequest().error,
+        retry: () =>
+          Promise.allSettled([
+            loadScopeIndex(),
+            refreshGlobalRecent(),
+            ...ROOT_NAV_SECTION_KEYS.map(refreshRootNavSection),
+          ]),
       },
       scopes: {
         list,

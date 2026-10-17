@@ -1,8 +1,7 @@
 import { createEffect, createMemo, createResource, onCleanup, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import { useParams } from "@solidjs/router"
+import { useParams } from "@/context/session-route"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useSDK } from "@/context/sdk"
@@ -46,7 +45,7 @@ function Details(props: { sessionID: string; hasCanonicalRoot?: boolean; inboxFr
       )}
       context={(active) => <TaskResources sessionID={props.sessionID} active={active()} />}
       agenda={(active, close) => (
-        <Show when={globalSDK.capabilities.has("workflows")}>
+        <Show when={globalSDK.capabilities.has("agenda")}>
           <SessionAgendaWakeIndicator sessionID={props.sessionID} active={active()} onDetailOpened={close} />
         </Show>
       )}
@@ -128,28 +127,23 @@ function TaskResources(props: { sessionID: string; active: boolean }) {
       .filter(Boolean)
       .join("\n")
   return (
-    <Tooltip
-      value={<span class="execution-path-tooltip">{description()}</span>}
-      placement="bottom-start"
-      hideWhenDetached
+    <button
+      type="button"
+      class="execution-location-heading"
+      aria-label={location().path ? _(E.copyPath) : name()}
+      aria-description={description()}
+      aria-disabled={!location().path}
+      data-copy-state={copy.state()}
+      onClick={() => location().path && void copy.copy()}
     >
-      <button
-        type="button"
-        class="execution-location-heading"
-        aria-label={location().path ? _(E.copyPath) : name()}
-        aria-disabled={!location().path}
-        data-copy-state={copy.state()}
-        onClick={() => location().path && void copy.copy()}
-      >
-        <Icon name={getSemanticIcon(location().isolated ? "workspace.worktree" : "workspace.main")} size="small" />
-        <strong>{name()}</strong>
-        <Show when={session()?.workspaceError || location().state === "unavailable"}>
-          <Icon name={getSemanticIcon("state.warning")} size="small" />
-        </Show>
-        <span class="execution-visually-hidden" role="status">
-          {copy.state() === "copied" ? _(E.pathCopied) : ""}
-        </span>
-      </button>
-    </Tooltip>
+      <Icon name={getSemanticIcon(location().isolated ? "workspace.worktree" : "workspace.main")} size="small" />
+      <strong>{name()}</strong>
+      <Show when={session()?.workspaceError || location().state === "unavailable"}>
+        <Icon name={getSemanticIcon("state.warning")} size="small" />
+      </Show>
+      <span class="execution-visually-hidden" role="status">
+        {copy.state() === "copied" ? _(E.pathCopied) : ""}
+      </span>
+    </button>
   )
 }

@@ -19,6 +19,7 @@ import { SessionCompat } from "../session/compat-import"
 import { StorageRetention } from "../storage/retention"
 import { StorageReclamation } from "../storage/format-reclamation"
 import { ConfigExtensions } from "../config/extensions"
+import { ConfigSource } from "../config/source"
 import { registerConfigMigrations } from "../config/migration"
 import { MigrationRegistry } from "../migration/registry"
 import { ensureMigrations, type MigrationReporter, type RunOptions } from "../migration/index"
@@ -122,7 +123,7 @@ export namespace RuntimeHandle {
 
   export async function open(options: OpenOptions) {
     options.startupReporter?.({ phase: "runtime", state: "opening", stage: "initializing" })
-    const instance = RuntimeContext.create(options.host)
+    const instance = RuntimeContext.create(options.host, options.mode)
     return instance.run(async () => {
       let runtime: Awaited<ReturnType<typeof openRuntime>> | undefined
       try {
@@ -174,6 +175,7 @@ export namespace RuntimeHandle {
     }
 
     function closeAdmission() {
+      RuntimeContext.setReady(false)
       ContextUsageEstimator.close()
       SessionManager.closeAdmission()
       AgentTurn.closeAdmission()
@@ -294,6 +296,7 @@ export namespace RuntimeHandle {
       services = options.composition.services?.() ?? {}
       ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
       RuntimeContext.sealComposition()
+      if (ConfigSource.get()) MigrationRegistry.excludeFileConfiguration()
       MigrationRegistry.lock()
       ConfigExtensions.lock()
       await Global.initialize(
@@ -441,6 +444,7 @@ export namespace RuntimeHandle {
         await ScopeContext.provide({ scope: Scope.home(), fn: async () => services.started?.(finalProgress) })
       options.signal?.throwIfAborted()
       phase = "ready"
+      RuntimeContext.setReady(true)
       const boundClose = () => closing ?? instance.run(close)
       return {
         server,

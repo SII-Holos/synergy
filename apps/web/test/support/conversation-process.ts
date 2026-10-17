@@ -7,7 +7,18 @@ import { createBrowserFixture, type BrowserFixture } from "./browser-fixture"
 import type { VListHandle } from "virtua/solid"
 
 type Fixture = {
+  execution(value?: "running" | "completed"): void
+  background(ended: boolean, delayed: boolean): void
+  backlog(count: number, ended: boolean, delayed?: boolean): void
+  backlogPage(index: number): void
+  contentStats(): Record<string, number>
+  select(id: string): void
+  continuation(): void
+  continuationReady(): void
+  runtimeContext(): void
+  runtimeContextReady(): void
   append(id: string, source?: "live" | "replay"): void
+  nextTool(id: string, status?: "pending" | "generating"): void
   remount(): void
   reasoning(text: string, partID?: string): void
 
@@ -21,14 +32,14 @@ type Fixture = {
   prepare(): void
   respond(): void
   phase(value?: {
-    phase: "waiting_model" | "running_tools" | "preparing_files" | "stopping"
+    phase: "waiting_model" | "running_tools" | "preparing_files" | "preparing_context" | "stopping"
     startedAt: number
     rootID?: string
     tool?: { id?: string; count: number }
   }): void
   connected(value: boolean): void
   approval(value: boolean): void
-  stream(): void
+  stream(text?: string): void
   terminal(): void
   complete(): void
   grow(count: number): void
@@ -38,7 +49,7 @@ type Fixture = {
   growReadingParagraph(id: string, count: number): void
   growToolEvidence(id: string): void
   latest(): void
-  prependTurns(count: number): void
+  prependTurns(count: number, more?: boolean): void
   prepend(count: number): void
   delivery(): void
   manualCompaction(): void
@@ -56,7 +67,7 @@ type Fixture = {
   contentReconnect(): void
   contentPageFinish(): void
   contentStale(): void
-  contentPageLoads(): number
+  contentPageLoads(id?: string): number
 }
 declare global {
   interface Window {
@@ -86,10 +97,11 @@ export const observeResizeErrors = (target: Page) =>
 export const fixtureServer = (entry: "index.mjs" | "index.jsx") =>
   createBrowserFixture({
     root: directory,
-    entries: ["index.html", "resize.html"],
+    entries: ["index.html", "resize.html", "keyed.html"],
     aliases: [
       { find: /^virtua\/solid$/, replacement: path.join(directory, `virtualizer-${entry}.ts`) },
       { find: "@/context/execution", replacement: path.join(directory, "execution.ts") },
+      { find: "@", replacement: path.join(app, "src") },
     ],
   })
 export const frames = (target = page) =>
@@ -120,7 +132,7 @@ beforeAll(async () => {
   )
   await Bun.write(
     path.join(directory, "execution.ts"),
-    "export const useExecution=()=>({available:()=>true,round:()=>undefined,open:()=>{}})",
+    "export const useExecution=()=>({retain() {}, available:()=>true,round:()=>undefined,open:()=>{}})",
   )
   await Bun.write(
     path.join(directory, "resize.html"),
@@ -144,6 +156,14 @@ beforeAll(async () => {
       path.join(directory, `virtualizer-${entry}.ts`),
       `export * from ${JSON.stringify(path.join(virtualizer, entry))}`,
     )
+  await Bun.write(
+    path.join(directory, "keyed.html"),
+    '<!doctype html><div id="root"></div><script type="module" src="/keyed.tsx"></script>',
+  )
+  await Bun.write(
+    path.join(directory, "keyed.tsx"),
+    `import ${JSON.stringify(`/@fs/${app}/test/fixtures/conversation/keyed-layout.tsx`)}`,
+  )
   server = await fixtureServer("index.mjs")
   url = server.url
   browser = await chromium.launch({ headless: true })

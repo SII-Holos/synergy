@@ -77,19 +77,21 @@ beforeAll(async () => {
     Bun.write(
       path.join(directory, "main.tsx"),
       `
-      import { onMount } from "solid-js"
+      import { createEffect, createSignal, Show, onMount } from "solid-js"
       import { render } from "solid-js/web"
       import { I18nProvider } from "@lingui/solid"
       import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
       import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
-      import { SessionPreparation, useSessionPreparation } from ${JSON.stringify(`/@fs/${source}/components/session/session-preparation.tsx`)}
+      import { SessionPreparation, SessionPreparationNotice, useSessionPreparation } from ${JSON.stringify(`/@fs/${source}/components/session/session-preparation.tsx`)}
       import { SessionTransitionProvider } from ${JSON.stringify(`/@fs/${source}/context/session-transition.tsx`)}
       import { core, fixture } from "./context"
       window.mounts = 0
       function Transcript() {
         onMount(() => window.mounts++)
         const preparation = useSessionPreparation()
-        return <div data-transcript data-ready={preparation.ready()}>{fixture.id() || "workspace"}</div>
+        const [seen,setSeen] = createSignal(!fixture.id())
+        createEffect(() => { if(preparation.ready()) setSeen(true) })
+        return <><header>Session shell</header><input aria-label="composer" /><nav>Workspace navigation</nav><Show when={seen()} fallback={<SessionPreparationNotice />}><div data-transcript data-ready={preparation.ready()}>{fixture.id() || "workspace"}</div></Show></>
       }
       function Fixture() {
         return <SessionPreparation><Transcript /></SessionPreparation>
@@ -109,6 +111,7 @@ beforeAll(async () => {
         "@/context/server": context,
         "@/context/locale": context,
         "@solidjs/router": context,
+        "@/context/session-route": context,
         "@": source,
       },
     },
@@ -181,10 +184,12 @@ async function open(mode = "pending") {
       throw new Error(`${error.message}\n${errors.join("\n")}`)
     })
   expect(await page.locator("[data-transcript]").count()).toBe(0)
-  expect(await page.evaluate(() => (window as unknown as FixtureWindow).mounts)).toBe(0)
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).mounts)).toBe(1)
+  expect(await page.getByRole("textbox", { name: "composer" }).isEnabled()).toBe(true)
+  expect(await page.getByText("Workspace navigation").isVisible()).toBe(true)
 }
 
-test("preparation gates transcript mounting, updates localized progress and admits only ready history", async () => {
+test("preparation keeps the shell usable, updates local progress and admits only ready history", async () => {
   await open()
   await page.getByText("7 files prepared").waitFor()
   await page.evaluate(() => (window as unknown as FixtureWindow).fixture.locale())

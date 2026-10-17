@@ -41,7 +41,7 @@ describe("SessionNav.buildNavIndex", () => {
         scope,
         fn: async () => {
           const index = await SessionNav.buildNavIndex(scope.id)
-          expect(index.version).toBe(1)
+          expect(index.version).toBe(2)
           expect(index.scopeID).toBe(scope.id)
           expect(index.entries.length).toBeGreaterThanOrEqual(2)
 
@@ -586,10 +586,7 @@ describe("SessionNav updatedAt authority", () => {
 })
 
 describe("SessionNav session identity", () => {
-  // `blueprint` is owned by the workflows product domain, which covers its
-  // projection in the workflow session suite. Registering an owner here would
-  // be process-global and would leak into sibling suites in the same shard, so
-  // this suite covers the identity the harness owns.
+  // Harness-only navigation keeps Workspace identity while omitting unloaded workflow owners.
   async function identitySession(scope: Scope) {
     const directory = path.join(scope.local!.directory, "identity-worktree")
     await fs.mkdir(directory)
@@ -630,7 +627,7 @@ describe("SessionNav session identity", () => {
           expect(rebuilt).toBeDefined()
 
           expect(live!.workspaceType).toBe("git_worktree")
-          expect(live!.workflow).toEqual({ kind: "plan", active: false })
+          expect(live!.workflow).toBeUndefined()
           expect(rebuilt!.workspaceType).toBe(live!.workspaceType)
           expect(rebuilt!.workflow).toEqual(live!.workflow)
 
@@ -656,7 +653,7 @@ describe("SessionNav session identity", () => {
           const renamed = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
           expect(renamed.title).toBe("Identity Session Renamed")
           expect(renamed.workspaceType).toBe("git_worktree")
-          expect(renamed.workflow).toEqual({ kind: "plan", active: false })
+          expect(renamed.workflow).toBeUndefined()
 
           const stored = await Storage.read<ScopeNavIndex>(key)
           expect(SessionNavEntry.safeParse(stored.entries.find((e) => e.id === session.id)).success).toBe(true)
@@ -693,7 +690,7 @@ describe("SessionNav session identity", () => {
 
           const migrated = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)!
           expect(migrated.workspaceType).toBe("git_worktree")
-          expect(migrated.workflow).toEqual({ kind: "plan", active: false })
+          expect(migrated.workflow).toBeUndefined()
 
           await Session.remove(session.id)
         },

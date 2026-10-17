@@ -7,13 +7,13 @@ description: Design, write, run, and diagnose Synergy tests with Bun, temporary 
 
 ## Development Feedback Loop
 
-Start with `bun run verify plan` to inspect the working-tree impact, including uncommitted new files. Iterate with the narrow behavior test. Before publication, run `bun run verify local --test <repository-relative-test>` with every relevant test selected explicitly. The owning executor preserves isolation and browser conditions, runs selected tests with fresh coverage, and checks new measurable source before running static gates. Complete package coverage and platform matrices remain pending CI evidence.
+Start with `bun run verify plan` to inspect the working-tree impact, including uncommitted new files. Iterate with the narrow behavior test. Before publication, run `bun run verify local --test <repository-relative-test>` with every relevant test selected explicitly. The owning executor validates the selection, passes static gates, then runs selected tests with fresh coverage and checks new measurable source. Complete package coverage and platform matrices remain pending CI evidence.
 
 Use `bun run verify coverage --package <workspace>` when changing coverage policy, removing substantial test coverage or changing instrumentation. A focused LCOV report cannot establish package thresholds. Finish generation and self-review before this checkpoint. Collect all causal failures from one CI attempt before making the next focused correction; infrastructure retries retain the same SHA.
 
 ## Avoid concurrent artifact mutation
 
-Never run static gates alongside browser suites or builds in one worktree. Preserve isolated Homes, fresh reports and real Scope fixtures. Raw Harness coverage/parallel commands are unsafe; use the canonical executor.
+Finish or cancel concurrent file writers before final verification. Never run static gates alongside browser suites or builds in one worktree. Reuse passing evidence unless changed inputs invalidate it; preserve isolated Homes, fresh reports and real Scope fixtures. Raw Harness coverage/parallel commands are unsafe; use the canonical executor.
 
 Read [the domain guidance](references/isolation.md#avoid-concurrent-artifact-mutation) when this area is affected.
 
@@ -38,6 +38,10 @@ Use stable primary responsibilities for built-in behavior tests. Keep concrete p
 ## Define the Invariant First
 
 Read [the domain guidance](references/test-design.md#define-the-invariant-first) when this area is affected.
+
+Optional components require behavioral absence, reinstall and interleaved-Runtime tests. Select minimal requirements, import unselected factories, and inspect actual tools, agents, prepared prompts, public schemas, events, service activity and HTTP requests. Write data with the owner installed, remove it and update unrelated configuration, then reinstall and verify retained data and drafts. Exercise delayed installation, interrupted owner migrations, repeated execution and failed startup. Web composition changes include mobile paths and a real same-URL backend restart; packed dependency closures, native workers and managed Node SDK acceptance cover resolution outside the workspace. Source-string assertions cannot prove capability absence. Browser fixtures declare their confirmed features through the host capability context; generic fixtures must not silently grant every optional owner. When moving suites to leaf packages, move their process-isolation rules to the new paths as well.
+
+When migration ownership moves, update historical fixtures to execute the migrations registered by the current composition. Retire unused aggregate migration implementations instead of keeping a parallel upgrade path solely to satisfy old tests. Preserve historical receipt compatibility and assert retained data and repeated execution through the real owners.
 
 ## Choose the Lowest Useful Level
 

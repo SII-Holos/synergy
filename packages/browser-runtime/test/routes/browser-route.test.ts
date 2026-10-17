@@ -59,6 +59,7 @@ function suspended(owner: BrowserOwner.Info): BrowserSession {
       },
     ],
     annotations: [],
+    agentActivities: [],
     async openPage() {
       throw new Error("A read-only route must not create a page.")
     },

@@ -22,7 +22,8 @@ beforeAll(async () => {
     import { createStore } from "solid-js/store"
     export const a = { id: "wsp_a", generation: 1, scopeID: "scope", type: "directory", path: "/a" }
     export const b = { ...a, id: "wsp_b", path: "/b" }
-    const [state, setState] = createStore({ session: { id: "session", workspace: { ...a } }, tabs: [], active: undefined })
+    const [state, setState] = createStore({ session: { id: "session", workspace: { ...a } }, tabs: [], active: undefined, visible: true, secondVisible: false })
+    const statuses = []; const pendingStatuses = []
     const requests = []; const writes = []; const entries = []; const disk = {}; const pending = []; const listeners = new Set(); const writeState = { mode: "conflict", finish: undefined }
     const result = (query) => ({ data: { kind: "text", path: query.path, content: disk[query.workspaceID]?.content ?? query.workspaceID ?? "wsp_a",
       contentVersion: disk[query.workspaceID]?.version ?? "sha256:" + "a".repeat(64),
@@ -40,6 +41,7 @@ beforeAll(async () => {
         copy: async (query) => { entries.push(query); return { data: { path: query.workspaceFileCopyInput.to, node: {} } } },
         move: async (query) => { entries.push(query); return { data: { path: query.workspaceFileMoveInput.to, node: {} } } },
         remove: async (query) => { entries.push(query); return { data: { removed: true, path: query.workspaceFileDeleteInput.path } } },
+        status(query) { statuses.push(query); return new Promise(resolve => pendingStatuses.push(() => resolve({ data: { files: [] } }))) },
         children: async () => ({ data: { children: [], truncated: false } }) } } },
       event: { listen(cb) { listeners.add(cb); return () => listeners.delete(cb) } } })
     export const useSync = () => ({ data: { workspaces: [{id:"wsp_objects",scopeID:"scope",type:"objects",binding:{state:"bound",path:null,generation:1},backend:{provider:"objects"},metadata:{name:"Research"},lifecycle:"active"}], path: { directory: "/a", workspace: a } }, session: { get: () => state.session } })
@@ -51,7 +53,10 @@ beforeAll(async () => {
       updateTab() {} })
     export const Persist = { workspace: (owner, key) => ({ storage: "fixture:" + owner, key }), scopeKey: (...args) => args.join(":"), scoped: () => ({}) }
     export const persisted = (_key, store) => [...store, undefined, () => true]
-    window.fixture = { select(ws) { setState("session", "workspace", ws) }, a, b, requests, writes, entries, disk, state, writeState,
+    window.fixture = { select(ws) { setState("session", "workspace", ws) }, a, b, requests, writes, entries, disk, state, writeState, statuses,
+      visible(value) { setState("visible", value) },
+      switchConsumer() { setState("visible", false); setState("secondVisible", true) },
+      flushStatuses() { pendingStatuses.splice(0).forEach(resolve => resolve()) },
       selectObjects() { setState("session", {workspace: null,workspaceID:"wsp_objects"}) },
       emit(properties) { listeners.forEach(cb => cb({ details: { type: "file.watcher.updated", properties: { workspaceID: a.id, workspaceGeneration: a.generation, ...properties } } })) },
       flush() { pending.splice(0).forEach(resolve => resolve()) },
@@ -67,9 +72,10 @@ beforeAll(async () => {
     path.join(fixture, "main.tsx"),
     `
     import { render } from "solid-js/web"
+    import { ViewActivityProvider } from "@ericsanchezok/synergy-ui/context/view-activity"
     import { FileProvider, useFile } from ${JSON.stringify(`/@fs/${appSrc}/context/file/index.tsx`)}
-    function Probe() { const file = useFile(); window.fixture.file = file; return <output>{file.get("same.txt")?.content?.content || "empty"}</output> }
-    render(() => <FileProvider><Probe /></FileProvider>, document.getElementById("root"))
+    function Probe(props) { const file = useFile(); if(props.second) {window.fixture.second = file;return <span/>} window.fixture.file = file; return <output>{file.get("same.txt")?.content?.content || "empty"}</output> }
+    render(() => <><ViewActivityProvider active={() => window.fixture.state.visible}><FileProvider><Probe /></FileProvider></ViewActivityProvider><ViewActivityProvider active={() => window.fixture.state.secondVisible}><FileProvider><Probe second /></FileProvider></ViewActivityProvider></>, document.getElementById("root"))
   `,
   )
   server = await createServer({
@@ -98,7 +104,7 @@ beforeAll(async () => {
       },
       solid(),
     ],
-    resolve: { alias: { "@/context/locale": stubs, "@": appSrc } },
+    resolve: { alias: { "@/context/session-route": stubs, "@/context/locale": stubs, "@": appSrc } },
     optimizeDeps: { include: ["solid-js", "solid-js/web", "solid-js/store"], noDiscovery: true },
     server: {
       host: "127.0.0.1",
@@ -124,6 +130,50 @@ beforeEach(async () => {
 })
 afterEach(async () => {
   await page?.context().close()
+})
+
+test("file status invalidations retain one in-flight read and one trailing refresh", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    void h.file.explorer.loadChildren("")
+    for (let i = 0; i < 100; i++) h.emit({ file: `changed-${i}.txt`, event: "changed" })
+  })
+  expect(await page.evaluate(() => (window as any).fixture.statuses.length)).toBe(1)
+  await page.evaluate(() => (window as any).fixture.flushStatuses())
+  await page.waitForFunction(() => (window as any).fixture.statuses.length === 2)
+  await page.evaluate(() => (window as any).fixture.flushStatuses())
+  await page.waitForTimeout(600)
+  expect(await page.evaluate(() => (window as any).fixture.statuses.length)).toBe(2)
+  expect(errors).toEqual([])
+})
+
+test("inactive file consumers defer watcher reads until their activity lease returns", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.visible(false)
+    for (let i = 0; i < 100; i++) h.emit({ file: `changed-${i}.txt`, event: "changed" })
+  })
+  await page.waitForTimeout(600)
+  expect(await page.evaluate(() => (window as any).fixture.statuses.length)).toBe(0)
+  await page.evaluate(() => (window as any).fixture.visible(true))
+  await page.waitForFunction(() => (window as any).fixture.statuses.length === 1)
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.flushStatuses()
+    h.select(h.b)
+    h.event(h.a)
+  })
+  await page.waitForTimeout(600)
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).fixture.statuses.filter((item: { workspaceID: string }) => item.workspaceID === "wsp_a").length,
+    ),
+  ).toBe(1)
 })
 
 test("switching Workspaces isolates late reads, cache entries, and watcher invalidation", async () => {
@@ -164,7 +214,13 @@ test("switching Workspaces isolates late reads, cache entries, and watcher inval
   })
   expect(
     await page.evaluate(() => (window as any).fixture.requests.map((q: { workspaceID: string }) => q.workspaceID)),
-  ).toEqual(["wsp_a", "wsp_b", "wsp_b"])
+  ).toEqual(["wsp_a", "wsp_b"])
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.select(h.b)
+    void h.file.load("same.txt")
+  })
+  expect(await page.evaluate(() => (window as any).fixture.requests.length)).toBe(3)
   expect(errors).toEqual([])
 }, 30_000)
 
@@ -458,3 +514,21 @@ test("a stored Workspace opens relative files without a controller directory", a
   ).toEqual(["wsp_objects"])
   expect(errors).toEqual([])
 }, 20_000)
+
+test("retained Session providers share a Workspace status request across a visibility switch", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    h.emit({ file: "changed.txt", event: "changed" })
+    h.switchConsumer()
+    for (let index = 0; index < 100; index++) h.emit({ file: `changed-${index}.txt`, event: "changed" })
+  })
+  expect(await page.evaluate(() => (window as any).fixture.statuses.length)).toBe(1)
+  await page.evaluate(() => (window as any).fixture.flushStatuses())
+  await page.waitForFunction(() => (window as any).fixture.statuses.length === 2)
+  await page.evaluate(() => (window as any).fixture.flushStatuses())
+  await page.waitForTimeout(600)
+  expect(await page.evaluate(() => (window as any).fixture.statuses.length)).toBe(2)
+  expect(errors).toEqual([])
+})

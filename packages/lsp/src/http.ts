@@ -7,6 +7,7 @@ import { resolver } from "hono-openapi"
 export function registerHttp() {
   Server.registerContributions(
     {
+      features: ["lsp"],
       routes: {
         "scoped-integrations": new Hono().get(
           "/lsp",

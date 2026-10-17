@@ -1,4 +1,6 @@
+import { runtimeFeatureAvailable } from "@/components/runtime-features"
 import { WorkbenchPanelsProvider } from "@/context/workbench"
+import { ViewResidencyProvider } from "@/context/view-residency"
 import { NoteDocumentsProvider } from "@/components/note/documents"
 import { WelcomeProvider } from "@/components/session/welcome/context"
 import { PluginPageOutlet } from "./plugin/shell-outlet"
@@ -17,7 +19,7 @@ import { ThemeProvider } from "@ericsanchezok/synergy-ui/theme"
 import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { GlobalSyncProvider } from "@/context/global-sync"
 import { LayoutProvider } from "@/context/layout"
-import { GlobalSDKProvider } from "@/context/global-sdk"
+import { GlobalSDKProvider, useGlobalSDK } from "@/context/global-sdk"
 import { ServerProvider, useServer } from "@/context/server"
 import { NotificationProvider } from "@/context/notification"
 import { CommandProvider } from "@/context/command"
@@ -31,7 +33,7 @@ import { InputProvider } from "@/context/input"
 import { FontPreferenceProvider } from "@/context/font-preference"
 import Layout from "@/pages/layout"
 import { PluginUIRecoveryProvider } from "@/plugin/ui-recovery"
-import DirectoryLayout from "@/pages/directory-layout"
+import SessionRoute from "@/pages/session-route"
 import { FatalErrorPage } from "./pages/fatal-error"
 import {
   PluginComposerSlotBridge,
@@ -64,12 +66,6 @@ function initialRouteWaitsForSessionSurface() {
   if (pathname.includes("/kanban")) return false
   return true
 }
-
-const Session = lazy(async () => {
-  const session = await import("@/pages/session")
-  signalAppSurfaceReady()
-  return session
-})
 
 const Diff = lazy(async () => {
   await ensureSynergyHighlightTheme()
@@ -172,6 +168,22 @@ export function AppInterface() {
   )
 }
 
+function RuntimePage(props: ParentProps<{ navigation: string }>) {
+  const { capabilities } = useGlobalSDK()
+  return (
+    <Show
+      when={runtimeFeatureAvailable("navigation", props.navigation, capabilities.has)}
+      fallback={
+        <Show when={capabilities.current()}>
+          <Navigate href={`/${base64Encode("home")}/session`} />
+        </Show>
+      }
+    >
+      {props.children}
+    </Show>
+  )
+}
+
 function ConnectedApp() {
   const dialog = useDialog()
   const server = useServer()
@@ -227,17 +239,19 @@ function ConnectedApp() {
                                 <GlobalSyncProvider>
                                   <DesktopPowerSync />
                                   <LayoutProvider>
-                                    <WorkbenchPanelsProvider>
-                                      <PluginHostProvider scopeKey={scopeKey}>
-                                        <PluginComposerSlotBridge />
-                                        <PluginThemeConfigBridge />
-                                        <PluginTextInteractionBridge />
-                                        <GlobalPluginThemesRegistrar />
-                                        <NotificationProvider>
-                                          <Layout>{props.children}</Layout>
-                                        </NotificationProvider>
-                                      </PluginHostProvider>
-                                    </WorkbenchPanelsProvider>
+                                    <ViewResidencyProvider>
+                                      <WorkbenchPanelsProvider>
+                                        <PluginHostProvider scopeKey={scopeKey}>
+                                          <PluginComposerSlotBridge />
+                                          <PluginThemeConfigBridge />
+                                          <PluginTextInteractionBridge />
+                                          <GlobalPluginThemesRegistrar />
+                                          <NotificationProvider>
+                                            <Layout>{props.children}</Layout>
+                                          </NotificationProvider>
+                                        </PluginHostProvider>
+                                      </WorkbenchPanelsProvider>
+                                    </ViewResidencyProvider>
                                   </LayoutProvider>
                                 </GlobalSyncProvider>
                               )}
@@ -251,68 +265,77 @@ function ConnectedApp() {
                     <Route
                       path="/agenda"
                       component={() => (
-                        <PluginPageOutlet
-                          page="agenda"
-                          fallback={() => <BuiltinNavigationPage navigationId="agenda" />}
-                        />
+                        <RuntimePage navigation="agenda">
+                          <PluginPageOutlet
+                            page="agenda"
+                            fallback={() => <BuiltinNavigationPage navigationId="agenda" />}
+                          />
+                        </RuntimePage>
                       )}
                     />
                     <Route
                       path="/kanban"
                       component={() => (
-                        <PluginPageOutlet
-                          page="kanban"
-                          fallback={() => <BuiltinNavigationPage navigationId="kanban" />}
-                        />
+                        <RuntimePage navigation="kanban">
+                          <PluginPageOutlet
+                            page="kanban"
+                            fallback={() => <BuiltinNavigationPage navigationId="kanban" />}
+                          />
+                        </RuntimePage>
                       )}
                     />
                     <Route
                       path="/library"
                       component={() => (
-                        <PluginPageOutlet
-                          page="library"
-                          fallback={() => <BuiltinNavigationPage navigationId="library" />}
-                        />
+                        <RuntimePage navigation="library">
+                          <PluginPageOutlet
+                            page="library"
+                            fallback={() => <BuiltinNavigationPage navigationId="library" />}
+                          />
+                        </RuntimePage>
                       )}
                     />
                     <Route
                       path="/performance"
                       component={() => (
-                        <PluginPageOutlet
-                          page="performance"
-                          fallback={() => <BuiltinNavigationPage navigationId="performance" />}
-                        />
+                        <RuntimePage navigation="performance">
+                          <PluginPageOutlet
+                            page="performance"
+                            fallback={() => <BuiltinNavigationPage navigationId="performance" />}
+                          />
+                        </RuntimePage>
                       )}
                     />
                     <Route
                       path="/plugins/marketplace"
                       component={() => (
-                        <PluginPageOutlet
-                          page="plugins"
-                          fallback={() => <BuiltinNavigationPage navigationId="plugins" />}
-                        />
+                        <RuntimePage navigation="plugins">
+                          <PluginPageOutlet
+                            page="plugins"
+                            fallback={() => <BuiltinNavigationPage navigationId="plugins" />}
+                          />
+                        </RuntimePage>
                       )}
                     />
                     <Route
                       path="/plugins/:pluginId/:navigationId"
                       component={() => (
-                        <PluginPageOutlet page="plugin-page" fallback={() => <PluginNavigationPage />} />
+                        <RuntimePage navigation="plugins">
+                          <PluginPageOutlet page="plugin-page" fallback={() => <PluginNavigationPage />} />
+                        </RuntimePage>
                       )}
                     />
                     <Route
                       path="/plugins/:pluginId"
-                      component={() => <PluginPageOutlet page="plugin-detail" fallback={() => <PluginDetailPage />} />}
+                      component={() => (
+                        <RuntimePage navigation="plugins">
+                          <PluginPageOutlet page="plugin-detail" fallback={() => <PluginDetailPage />} />
+                        </RuntimePage>
+                      )}
                     />
-                    <Route path="/:dir" component={DirectoryLayout}>
+                    <Route path="/:dir">
                       <Route path="/" component={() => <Navigate href="session" />} />
-                      <Route
-                        path="/session/:id?"
-                        component={() => (
-                          <Suspense fallback={<Loading />}>
-                            <Session />
-                          </Suspense>
-                        )}
-                      />
+                      <Route path="/session/:id?" component={SessionRoute} />
                     </Route>
                   </Router>
                 </NoteDocumentsProvider>

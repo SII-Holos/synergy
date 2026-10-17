@@ -52,6 +52,11 @@ export function peekRuntimeEndpointGeneration(): string | undefined {
   return instanceState.listener.generation
 }
 
+export function peekRuntimeListener(): Readonly<Listener> | undefined {
+  const listener = runtimeState().listener
+  return listener ? { ...listener } : undefined
+}
+
 export function getRuntimeEndpoint(): RuntimeEndpoint {
   const instanceState = runtimeState()
 

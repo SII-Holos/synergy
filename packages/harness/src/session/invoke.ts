@@ -1,5 +1,7 @@
 import { SessionTransferGate } from "./transfer-gate"
+import { SessionExecutionOwners } from "./execution-owners"
 import { SessionPauseRecovery } from "./pause-recovery"
+import { prepareSessionMigrations } from "../migration"
 import { PrimaryAgentIdentity } from "../agent/primary-identity"
 
 import { ToolIntent } from "./tool-intent"
@@ -21,6 +23,7 @@ import { Log } from "../util/log"
 import { Session } from "."
 import { SessionEvent } from "./event"
 import { Agent } from "../agent/agent"
+import { AgentPermissionContributions } from "../agent/permission-contributions"
 import { Provider } from "../provider/provider"
 import { SessionCompaction } from "./compaction"
 import { Token } from "../util/token"
@@ -428,8 +431,16 @@ export namespace SessionInvoke {
     messages: MessageV2.WithParts[],
     isTopSession: boolean,
     signal: AbortSignal,
+    agent: Agent.Info,
   ): Promise<SessionContextContributions.Collected | undefined> {
-    const input = { sessionID, scopeID, messages, isTopSession, signal }
+    const input = {
+      sessionID,
+      scopeID,
+      messages,
+      isTopSession,
+      signal,
+      agentIdentity: AgentPermissionContributions.identity(agent),
+    }
     if (firstModelPreparation) evictRecallCache(sessionID)
     const [root, model] = await Promise.all([
       firstModelPreparation ? SessionContextContributions.collect(input, "root") : getCachedResult(sessionID),
@@ -467,7 +478,7 @@ export namespace SessionInvoke {
         })
       }
       if (!lease.signal.aborted) {
-        const session = await Session.get(sessionID)
+        const session = await SessionExecutionOwners.currentSession(await Session.get(sessionID))
         const kind = WorkflowKindRegistry.effectiveKind(session.workflow)
         if (kind)
           await WorkflowPromptRegistry.get(kind)
@@ -479,6 +490,11 @@ export namespace SessionInvoke {
       throw error
     } finally {
       const errors: unknown[] = []
+      try {
+        await SessionManager.finishRootSteering(lease)
+      } catch (error) {
+        errors.push(error)
+      }
       SessionManager.setActivity(sessionID, { phase: "waiting_background" }, { generation: lease.generation })
       const paused = lease.signal.aborted && PausedTurnAbort.is(lease.signal.reason)
       const outcome = paused ? undefined : lease.signal.aborted ? "cancelled" : failure ? "failed" : undefined
@@ -556,7 +572,7 @@ export namespace SessionInvoke {
     segments: RolloutSchema.ExecutionSegment[],
   ): Promise<MessageV2.WithParts> {
     ContinuationKernel.init()
-    for (const kind of WorkflowPromptRegistry.kinds()) WorkflowPromptRegistry.get(kind)?.init?.()
+    let workflowInitialized = false
     const abort = lease.signal
 
     // Open the loop-scoped message cache window (#350 D2): while this loop owns
@@ -567,7 +583,11 @@ export namespace SessionInvoke {
       SessionMessageCache.disable(sessionID)
       evictRecallCache(sessionID)
       const finalized = await Promise.allSettled(
-        WorkflowPromptRegistry.kinds().map((kind) => WorkflowPromptRegistry.get(kind)?.finalize?.(sessionID, scopeID)),
+        workflowInitialized
+          ? WorkflowPromptRegistry.kinds().map((kind) =>
+              WorkflowPromptRegistry.get(kind)?.finalize?.(sessionID, scopeID),
+            )
+          : [],
       )
       const errors = finalized.flatMap((result) => (result.status === "rejected" ? [result.reason as unknown] : []))
       if (errors.length) throw errors.find(RolloutRecordingError.isInstance) ?? errors[0]
@@ -584,9 +604,14 @@ export namespace SessionInvoke {
     let parkedTask: { itemID: string; reason: string } | undefined
 
     while (true) {
+      session = await Session.get(sessionID)
       const root = (await SessionHistory.modelMessages({ sessionID })).findLast(
         (message) => message.info.role === "user" && message.info.isRoot === true,
       )
+      const rootAvailable =
+        root &&
+        (await SessionExecutionOwners.allowsMessage(session, root.info)) &&
+        (await SessionExecutionOwners.allowsResume(session))
       const queued = root ? await SessionInbox.peekTask(sessionID) : undefined
       const previousRun =
         root && queued
@@ -597,13 +622,26 @@ export namespace SessionInvoke {
           : undefined
       // Historical roots without execution evidence and finished roots cannot
       // own a newly accepted task's configuration or block its materialization.
-      if (!root || (queued && (!previousRun || ["completed", "failed", "cancelled"].includes(previousRun.status)))) {
+      if (
+        !root ||
+        (queued &&
+          (queued.execution?.previousRootID === root.info.id ||
+            !rootAvailable ||
+            (!previousRun && !MessageV2.isIndependentRoot(root.info)) ||
+            (previousRun && ["completed", "failed", "cancelled"].includes(previousRun.status))))
+      ) {
         // A parked failure stays in the inbox and is skipped by the next peek,
         // so the loop keeps consuming runnable tasks until none remain.
         const result = await SessionInbox.materializeNextTask(sessionID)
         if (result.status === "empty") break
         if (result.status === "failed") parkedTask = { itemID: result.itemID, reason: result.reason }
         continue
+      }
+      if (!rootAvailable) return root
+      session = SessionExecutionOwners.forRoot(session, root.info)
+      if (!MessageV2.isIndependentRoot(root.info) && !workflowInitialized) {
+        for (const kind of WorkflowPromptRegistry.kinds()) WorkflowPromptRegistry.get(kind)?.init?.()
+        workflowInitialized = true
       }
       const configuration = await RolloutLifecycle.configuration(session, root.info.id)
       const next = await Experiment.provide(configuration, () =>
@@ -618,10 +656,13 @@ export namespace SessionInvoke {
                 SessionManager.setActivity(sessionID, { phase: "preparing_context" }, { generation: lease.generation })
                 log.info("loop", { step, sessionID })
                 if (abort.aborted) break
-                session = await Session.get(sessionID)
+                session = SessionExecutionOwners.forRoot(await Session.get(sessionID), root.info)
                 SessionManager.assertExecutionContext(session, "session loop refresh")
                 scopeID = (session.scope as Scope).id
-                let msgs = await effectiveCompactedMessages(sessionID)
+                let msgs = MessageV2.executionMessages(
+                  await effectiveCompactedMessages(sessionID),
+                  root.info as MessageV2.User,
+                )
 
                 // Find R: the latest root user message. R is the anchor for the entire
                 // loop: rootID, model, agent, system, and compaction anchor all derive
@@ -664,6 +705,8 @@ export namespace SessionInvoke {
                 const rollbackActive = (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
 
                 {
+                  using control = await Lock.writeWithSignal(`session-control:${sessionID}`, abort)
+                  if (!control || abort.aborted) break
                   using lock = await Lock.write(`session-rollout:${sessionID}:${R.id}`)
                   // Mode-based drain ①: steer items must be materialized BEFORE needsModelCall
                   // so they can trigger a model call in this iteration. Context items follow
@@ -680,6 +723,7 @@ export namespace SessionInvoke {
                   }
 
                   if (!SessionProgress.needsModelCall(msgs, R.id)) {
+                    SessionManager.closeRootSteering(lease)
                     break
                   }
                   processedRootID = R.id
@@ -918,11 +962,7 @@ export namespace SessionInvoke {
                   toolDisplay: (toolName) => toolDisplayByName.get(toolName),
                 })
 
-                // Shallow structural copy: duplicates message/part references but shares
-                // the heavy string payloads (tool outputs, text content) to avoid the
-                // memory cost of a full deep clone while still isolating msgs from
-                // downstream mutations (reminder wrapping, plugin transforms).
-                let sessionMessages = msgs.map((m) => ({ ...m, parts: [...m.parts] }))
+                let sessionMessages = MessageV2.copyForTransform(msgs)
 
                 // Ephemerally wrap non-root user-origin steer messages with a reminder.
                 // Only user-origin steer (mid-run interruptions) get wrapped; cortex/agenda
@@ -993,7 +1033,9 @@ export namespace SessionInvoke {
                   ]).then(([env, custom]) => [env, custom] as const),
                   buildCortexExecutionContext(sessionID),
                   buildCortexReminder(sessionID),
-                  SessionExecutionContributions.advisory(sessionID, scopeID, lease.signal),
+                  MessageV2.isIndependentRoot(R)
+                    ? Promise.resolve([])
+                    : SessionExecutionContributions.advisory(sessionID, scopeID, lease.signal),
                   recallMemory(
                     firstModelPreparation,
                     sessionID,
@@ -1001,6 +1043,7 @@ export namespace SessionInvoke {
                     sessionMessages.filter((message) => !RuntimeAdvisory.read(message.info)),
                     isTopSession,
                     lease.signal,
+                    agent,
                   ),
                 ]).catch(async (error) => {
                   await completeAssistantWithError({ sessionID, processor, model, error, abort })
@@ -1025,7 +1068,7 @@ export namespace SessionInvoke {
 
                 // Layered system prompt assembly: stable → semi-stable → dynamic
                 // This ordering maximizes prompt caching by keeping static content first.
-                let systemParts: string[] = []
+                let systemParts: string[] = [RuntimeAdvisory.protocol]
                 let systemCacheBreakpoint: number | undefined
                 let lateSystemParts: string[] = [ToolIntent.guidance, AttachmentDelivery.guidance().response]
                 const advisorySources: RuntimeAdvisory.Source[] = [
@@ -1036,6 +1079,9 @@ export namespace SessionInvoke {
                   lateSystemParts.push(text)
                   advisorySources.push(RuntimeAdvisory.present(id, text))
                 }
+
+                // Keep host identity in this advisory slot, outside the stable system cache prefix.
+                appendAdvisory("synergy-runtime", SystemPrompt.runtime())
 
                 // Layer 1: Static — AGENTS.md instructions (stable within session)
                 systemParts.push(...customParts)
@@ -1071,7 +1117,12 @@ export namespace SessionInvoke {
                 const workflowContext = {
                   deliveryMetadata: channelDeliveryMetadata(msgs, lastFinishedIndex),
                   agentName: agent.name,
-                  toolIDs: Object.freeze(toolDefinitions.map((tool) => tool.id)),
+                  toolIDs: Object.freeze([
+                    ...toolDefinitions
+                      .filter((tool) => !toolAvailability.diagnostics.has(tool.id))
+                      .map((tool) => tool.id),
+                    ...toolAvailability.autoExpandable,
+                  ]),
                 }
                 if (session) {
                   const contribution = workflowKind ? WorkflowPromptRegistry.get(workflowKind) : undefined
@@ -1144,15 +1195,20 @@ export namespace SessionInvoke {
                 }
 
                 // Layer 6: Dynamic advisory context — cortex reminders and time context
-                if (cortexReminder) appendAdvisory("cortex", cortexReminder)
+                if (cortexReminder) {
+                  lateSystemParts.push(cortexReminder.text)
+                  advisorySources.push(...cortexReminder.sources)
+                }
 
-                if (step === 1 && lastFinished?.time.completed) {
+                if (
+                  lastFinished?.time.completed &&
+                  (advisoryHistory ? !R.metadata?.runtimeContextTimeRecorded : firstModelPreparation)
+                ) {
                   const elapsed = R.time.created - lastFinished.time.completed
                   if (elapsed > 0) {
-                    appendAdvisory(
-                      "time",
-                      `<time-context>\nTime since your last response: ${formatElapsed(elapsed)}\n</time-context>`,
-                    )
+                    const text = `<time-context>\nThis input arrived at ${new Date(R.time.created).toISOString()}, ${formatElapsed(elapsed)} after the previous completed response. This describes the input arrival, not the current time.\n</time-context>`
+                    lateSystemParts.push(text)
+                    advisorySources.push({ id: "time", kind: "event", state: "present", text })
                   }
                 }
                 const observation = advisoryHistory
@@ -1183,20 +1239,27 @@ export namespace SessionInvoke {
                   baseline: SessionMemoryPressure.currentSnapshot(),
                 })
                 await memoryTurn.stabilizeBeforeProjection()
-                let modelSessionMessages = WorkflowUserWrapper.projectMessages({
-                  messages: sessionMessages,
-                  session,
-                  agent,
-                })
-                const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
-                  maxHistoryImages: jobCtx.compactionMaxHistoryImages,
-                  model: {
-                    providerID: model.providerID,
-                    modelID: model.id,
-                    profileID: producingProvider?.profileID,
-                    apiModelID: model.api.id,
-                  },
-                })
+                function projectHistory() {
+                  const messages = WorkflowUserWrapper.projectMessages({
+                    messages: sessionMessages,
+                    session,
+                    agent,
+                    root: R!,
+                  })
+                  return {
+                    messages,
+                    projection: MessageV2.projectModelMessages(messages, {
+                      maxHistoryImages: jobCtx.compactionMaxHistoryImages,
+                      model: {
+                        providerID: model.providerID,
+                        modelID: model.id,
+                        profileID: producingProvider?.profileID,
+                        apiModelID: model.api.id,
+                      },
+                    }),
+                  }
+                }
+                let { messages: modelSessionMessages, projection: modelProjection } = projectHistory()
                 const { converted, dropped, failed } = modelProjection.sanitization
                 if (converted + dropped + failed > 0) {
                   log.info("model prompt sanitized non-JSON-safe values", {
@@ -1208,7 +1271,7 @@ export namespace SessionInvoke {
                 }
                 const projectedHistoryBytes = LLMTurnMemory.estimateBytes(modelProjection.messages)
                 memoryTurn.projected({ historyAfterBytes: projectedHistoryBytes })
-                let preparedMessages = [
+                const prepareMessages = () => [
                   ...modelProjection.messages,
                   ...(isLastStep
                     ? [
@@ -1219,40 +1282,88 @@ export namespace SessionInvoke {
                       ]
                     : []),
                 ]
+                let preparedMessages = prepareMessages()
 
+                const buildPromptPlan = () =>
+                  PromptBudgeter.buildPlan({
+                    sessionID,
+                    agent: agent.name,
+                    messageID: R!.id,
+                    model,
+                    system: systemParts,
+                    systemCacheBreakpoint,
+                    messages: preparedMessages,
+                    lateSystem: lateSystemParts,
+                    toolDefinitions,
+                  }).catch(async (error) => {
+                    await completeAssistantWithError({ sessionID, processor, model, error, abort })
+                    return undefined
+                  })
                 const promptPlanTimer = log.time("promptBudgeter.buildPlan")
-                let promptPlan = await PromptBudgeter.buildPlan({
-                  sessionID,
-                  agent: agent.name,
-                  messageID: R.id,
-                  model,
-                  system: systemParts,
-                  systemCacheBreakpoint,
-                  messages: preparedMessages,
-                  lateSystem: lateSystemParts,
-                  toolDefinitions,
-                }).catch(async (error) => {
-                  await completeAssistantWithError({ sessionID, processor, model, error, abort })
-                  return undefined
-                })
+                let promptPlan = await buildPromptPlan()
                 promptPlanTimer.stop()
                 if (!promptPlan) break
 
-                const calibration = buildCalibration(msgs, model)
-                const encryptedReasoningTokens = PromptBudgeter.reasoningReplayTokens(modelSessionMessages)
                 const requestedMaxOutputTokens = runtimeState().maxOutputTokensByMessage.get(R.id)
+                const decidePrompt = (calibration?: PromptBudgeter.Calibration) =>
+                  PromptBudgeter.decide(promptPlan!, model.limit, model.id, {
+                    overflowThreshold: jobCtx.compactionOverflowThreshold,
+                    calibration,
+                    maxOutputTokens: requestedMaxOutputTokens,
+                    encryptedReasoningTokens: PromptBudgeter.reasoningReplayTokens(modelSessionMessages),
+                  }).catch(async (error) => {
+                    await completeAssistantWithError({ sessionID, processor, model, error, abort })
+                    return undefined
+                  })
                 const promptDecideTimer = log.time("promptBudgeter.decide")
-                let promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
-                  overflowThreshold: jobCtx.compactionOverflowThreshold,
-                  calibration,
-                  maxOutputTokens: requestedMaxOutputTokens,
-                  encryptedReasoningTokens,
-                }).catch(async (error) => {
-                  await completeAssistantWithError({ sessionID, processor, model, error, abort })
-                  return undefined
-                })
+                let promptDecision = await decidePrompt(buildCalibration(msgs, model))
                 promptDecideTimer.stop()
                 if (!promptDecision) break
+                let promptPruning = SessionCompaction.pruningRevision(msgs)
+
+                // Provenance: docs/decisions/implemented/bug-fix/2026-10-16-pressure-driven-task-safe-pruning.md
+                // Local adaptation: reuse the existing prompt-pressure decision and remeasure after canonical pruning.
+                if (promptDecision.shouldCompact || promptDecision.contextExceeded) {
+                  let pruned: MessageV2.ToolPart[]
+                  try {
+                    pruned = await SessionCompaction.prune({ sessionID, messages: msgs, modelID: model.id, abort })
+                    abort.throwIfAborted()
+                  } catch (error) {
+                    await completeAssistantWithError({ sessionID, processor, model, error, abort })
+                    break
+                  }
+                  if (pruned.length) {
+                    const updated = new Map(pruned.map((part) => [part.id, part]))
+                    msgs = msgs.map((message) => ({
+                      ...message,
+                      parts: message.parts.map((part) => updated.get(part.id) ?? part),
+                    }))
+                    promptPruning = SessionCompaction.pruningRevision(msgs)
+                    sessionMessages = sessionMessages.map((message) => ({
+                      ...message,
+                      parts: message.parts.map((part) => {
+                        const saved = updated.get(part.id)
+                        if (
+                          part.type !== "tool" ||
+                          part.state.status !== "completed" ||
+                          saved?.state.status !== "completed"
+                        )
+                          return part
+                        return {
+                          ...part,
+                          state: { ...part.state, time: { ...part.state.time, compacted: saved.state.time.compacted } },
+                        }
+                      }),
+                    }))
+                    ;({ messages: modelSessionMessages, projection: modelProjection } = projectHistory())
+                    memoryTurn.projected({ historyAfterBytes: LLMTurnMemory.estimateBytes(modelProjection.messages) })
+                    preparedMessages = prepareMessages()
+                    promptPlan = await buildPromptPlan()
+                    if (!promptPlan) break
+                    promptDecision = await decidePrompt()
+                    if (!promptDecision) break
+                  }
+                }
 
                 const shouldInjectCompaction =
                   !jobCtx.compactionAutoDisabled &&
@@ -1339,7 +1450,7 @@ export namespace SessionInvoke {
                     ...envParts.map((text) => ({ text, source: "environment" })),
                     ...advisoryParts.map(({ text, id }) => ({ text, source: id })),
                     ...(cortexExecutionContext ? [{ text: cortexExecutionContext, source: "task" }] : []),
-                    ...(cortexReminder ? [{ text: cortexReminder, source: "task" }] : []),
+                    ...(cortexReminder ? [{ text: cortexReminder.text, source: "task" }] : []),
                     ...(gitHealthBlock ? [{ text: gitHealthBlock, source: "workspace" }] : []),
                   ],
                 })
@@ -1472,6 +1583,7 @@ export namespace SessionInvoke {
                   executionTools: resolvedTools.executionTools,
                   executorKinds: resolvedTools.executorKinds,
                   activeToolIDs: resolvedTools.activeToolIDs,
+                  availableToolIDs: resolvedTools.availableToolIDs,
                   codexReplay,
                   autoExpandable: resolvedTools.autoExpandable,
                   intentBindings: resolvedTools.intentBindings,
@@ -1491,11 +1603,26 @@ export namespace SessionInvoke {
                   lane: session.parentID ? "background" : "interactive",
                 }
                 try {
+                  if (promptPruning) {
+                    processor.message.metadata = { ...processor.message.metadata, promptPruning }
+                  }
                   if (contextMessage) {
+                    const contextRoot = R
+                    const recordsTime = observation?.metadata.sources.some(
+                      (source) => source.id === "time" && source.kind === "event",
+                    )
                     await Storage.transaction(async () => {
                       await Session.updateMessage(contextMessage.info)
                       for (const part of contextMessage.parts) await Session.updatePart(part)
+                      if (recordsTime)
+                        await Session.mergeMessageMetadata({
+                          sessionID,
+                          messageID: contextRoot.id,
+                          metadata: { runtimeContextTimeRecorded: true },
+                        })
                     })
+                    if (recordsTime)
+                      R = { ...contextRoot, metadata: { ...contextRoot.metadata, runtimeContextTimeRecorded: true } }
                   }
                   const currentStreamInput = streamInput
                   const process = () => Promise.race([processor.process(currentStreamInput), deadlinePromise])
@@ -1626,6 +1753,7 @@ export namespace SessionInvoke {
                 continue
               }
 
+              await SessionManager.finishRootSteering(lease)
               if (processedRootID) {
                 if (segment) {
                   const terminal = SessionProgress.findTerminalReply(
@@ -1660,7 +1788,11 @@ export namespace SessionInvoke {
                 // acknowledgement is explicit new work and must survive.
                 const fenceQueuedBefore = SessionManager.fenceQueuedBefore(sessionID)
                 if (fenceQueuedBefore === undefined) {
-                  await SessionInbox.removeByModes(sessionID, ["steer", "context"])
+                  const items = (await SessionInbox.peekReady(sessionID)).filter((item) => item.mode !== "task")
+                  await SessionInbox.commitReady(
+                    sessionID,
+                    items.map((item) => item.id),
+                  )
                 } else {
                   await SessionInbox.removeByModes(sessionID, ["task", "steer", "context"], fenceQueuedBefore)
                 }
@@ -2202,19 +2334,25 @@ export namespace SessionInvoke {
     return parts.join("\n")
   }
 
-  async function buildCortexReminder(sessionID: string): Promise<string | undefined> {
+  async function buildCortexReminder(
+    sessionID: string,
+  ): Promise<{ text: string; sources: RuntimeAdvisory.Source[] } | undefined> {
     const running = await SessionCortexRuntime.runningTaskRows(sessionID)
     if (running.length === 0) return undefined
 
-    const taskList = running
-      .map((t) => {
-        const elapsed = Math.floor((Date.now() - t.startedAt) / 1000)
-        const lastTool = t.lastTool ? ` | last: ${t.lastTool}${t.lastToolStatus ? ` (${t.lastToolStatus})` : ""}` : ""
-        return `- \`${t.id}\` [${elapsed}s] — @${t.agent} — ${t.description} — ${t.health}${lastTool}`
-      })
-      .join("\n")
-
-    return `<cortex-reminder>\n${CORTEX_REMINDER.replace("{{count}}", String(running.length)).replace("{{task_list}}", taskList)}\n</cortex-reminder>`
+    const sources = running
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((task) =>
+        RuntimeAdvisory.present(
+          `cortex:${task.id}`,
+          `<cortex-reminder>\nTask ${task.id} — @${task.agent} — ${task.description}\n${task.health === "stale" ? "No recent progress has been observed. Inspect progress if needed; this does not establish failure." : "Running. Continue independent work without duplicating this task; completion is delivered separately."}\n</cortex-reminder>`,
+        ),
+      )
+    const taskList = sources.map((source) => (source.state === "present" ? source.text : "")).join("\n")
+    return {
+      sources,
+      text: CORTEX_REMINDER.replace("{{count}}", String(running.length)).replace("{{task_list}}", taskList),
+    }
   }
 
   interface ExternalModelInfo {
@@ -2593,7 +2731,7 @@ export namespace SessionInvoke {
    * evidence that the turn was interrupted.
    *
    * Enumerate atomically recorded recovery candidates. Historical Sessions
-   * enter this path on access through their versioned metadata migration.
+   * enter this path when selected through their versioned Session migration.
    */
   export async function reconcilePausedSessions(scopeID?: string): Promise<void> {
     await reconcileInterruptedCortexDelegations(scopeID)
@@ -2608,6 +2746,7 @@ export namespace SessionInvoke {
       const session = await SessionManager.getSession(sessionID)
       if (!session) return
       const owner = { scopeID: session.scope.id, sessionID }
+      await prepareSessionMigrations(owner)
       const revision = await SessionPauseRecovery.request(owner)
       if (!revision) return
       if (await SessionLifecycle.isUnfinished(session)) {
@@ -2716,6 +2855,10 @@ export namespace SessionInvoke {
       }
     }
     if (calibrationIdx < 0 || !calibrationTokens) return undefined
+
+    const anchor = msgs[calibrationIdx].info
+    const pruning = SessionCompaction.pruningRevision(msgs.slice(0, calibrationIdx))
+    if (pruning !== anchor.metadata?.promptPruning) return undefined
 
     const actualInput = ModelLimit.actualInput(calibrationTokens)
     const outputTokens = calibrationTokens.output

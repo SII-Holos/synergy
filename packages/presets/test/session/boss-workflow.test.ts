@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
+import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"

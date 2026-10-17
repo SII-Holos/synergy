@@ -1,6 +1,7 @@
 import { useReferenceContext, useResourceOpen } from "../context/resource-open"
 import { revealMarkdownHeading } from "./markdown-navigation"
 import { observeMarkdownResources } from "./markdown-resources"
+import { MarkdownResourcePreview } from "./resource-preview"
 import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { CODE_COPY_DESC } from "./tool-title-descriptors"
@@ -12,7 +13,16 @@ import {
   markdownRenderEntry,
   type MarkdownRenderEntry,
 } from "./markdown-render"
-import { ComponentProps, createEffect, createResource, createSignal, onCleanup, onMount, splitProps } from "solid-js"
+import {
+  ComponentProps,
+  createEffect,
+  createResource,
+  createSignal,
+  onCleanup,
+  onMount,
+  splitProps,
+  Show,
+} from "solid-js"
 import { render } from "solid-js/web"
 import { MarkdownDocumentView } from "./markdown-document-view"
 import { createMarkdownFallbackDocument } from "../context/markdown-document"
@@ -221,11 +231,15 @@ export function Markdown(
   })
   onMount(() => {
     const update = () => setInteraction((value) => value + 1)
+    const focusout = (event: FocusEvent) => {
+      if (event.relatedTarget instanceof Node && container.contains(event.relatedTarget)) return
+      update()
+    }
     document.addEventListener("selectionchange", update)
-    document.addEventListener("focusout", update)
+    document.addEventListener("focusout", focusout)
     onCleanup(() => {
       document.removeEventListener("selectionchange", update)
-      document.removeEventListener("focusout", update)
+      document.removeEventListener("focusout", focusout)
     })
   })
 
@@ -384,14 +398,26 @@ export function Markdown(
   })
 
   return (
-    <div
-      data-component="markdown"
-      ref={container}
-      classList={{
-        ...(local.classList ?? {}),
-        [local.class ?? ""]: !!local.class,
-      }}
-      {...others}
-    />
+    <>
+      <div
+        data-component="markdown"
+        data-markdown-pending={!local.streaming && html.loading ? "" : undefined}
+        ref={container}
+        classList={{
+          ...(local.classList ?? {}),
+          [local.class ?? ""]: !!local.class,
+        }}
+        {...others}
+      />
+      <Show when={resources}>
+        {(controller) => (
+          <MarkdownResourcePreview
+            root={() => container}
+            resources={controller()}
+            context={() => local.referenceContext ?? referenceContext() ?? { state: "unresolved" }}
+          />
+        )}
+      </Show>
+    </>
   )
 }

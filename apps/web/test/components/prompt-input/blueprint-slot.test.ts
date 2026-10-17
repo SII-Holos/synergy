@@ -47,6 +47,37 @@ describe("prompt blueprint slot display", () => {
     } satisfies BlueprintSlotDisplay)
   })
 
+  test("session and local loop controls require their source owner while user drafts stay available", () => {
+    const hasFeature = (id: string) => id === "blueprint"
+    expect(
+      resolveBlueprintSlotDisplay({
+        sessionLoop: { ...loop(), source: "lattice" },
+        activeLoopID: "bll_active",
+        hasFeature,
+      }),
+    ).toBeNull()
+    const localSlot: BlueprintSlot = {
+      type: "loop",
+      loopID: "plugin-loop",
+      noteID: "note",
+      title: "Plugin",
+      runMode: "current",
+      source: "plugin",
+    }
+    expect(resolveBlueprintSlotDisplay({ localSlot, hasFeature })).toBeNull()
+    expect(
+      resolveBlueprintSlotDisplay({ localSlot, hasFeature: (id) => ["blueprint", "plugin-host"].includes(id) }),
+    ).toBeNull()
+    expect(
+      resolveBlueprintSlotDisplay({
+        localSlot,
+        hasFeature: (id) => ["blueprint", "plugin-host", "plugin-blueprint"].includes(id),
+      })?.slot,
+    ).toEqual(localSlot)
+    const pending: BlueprintSlot = { type: "pending", noteID: "note", title: "Draft", runMode: "current" }
+    expect(resolveBlueprintSlotDisplay({ localSlot: pending, hasFeature })?.slot).toEqual(pending)
+  })
+
   test("local armed slots take priority over a stale session loop", () => {
     const localSlot: BlueprintSlot = {
       type: "pending",
