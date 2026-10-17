@@ -26,7 +26,7 @@ export function setLightLoopAgendaAssertClear(fn: LightLoopAgendaAssertClear): v
 }
 
 const parameters = z.object({
-  summary: z.string().describe("Completed results and concrete verification evidence, including relevant limitations."),
+  summary: z.string().describe("Concise results, key checks, evidence references and remaining limitations."),
 })
 
 export const LoopStopTool = Tool.define("loop_stop", {

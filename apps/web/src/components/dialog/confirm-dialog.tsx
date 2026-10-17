@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js"
+import { createSignal, onCleanup, Show } from "solid-js"
 import type { I18n, MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -140,12 +140,24 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
 
 export function useConfirm() {
   const dialogContext = useDialog()
+  const owned = new Set<string>()
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+    for (const id of owned) dialogContext.close(id)
+    owned.clear()
+  })
 
   function show(options: ConfirmOptions) {
+    if (disposed) {
+      options.onDismiss?.()
+      return
+    }
     let confirmed = false
     let dismissed = false
     let id: string | undefined
     const dismiss = () => {
+      if (id) owned.delete(id)
       if (confirmed || dismissed) return
       dismissed = true
       options.onDismiss?.()
@@ -165,6 +177,7 @@ export function useConfirm() {
       dismiss,
       { protected: true },
     )
+    if (id) owned.add(id)
     return id
   }
 

@@ -72,6 +72,32 @@ describe.serial("performance observability store", () => {
       expect(JSON.stringify(rows)).not.toContain("token=secret")
     }))
 
+  test("resource phases add bounded timing fields to the existing metric row", () =>
+    runtime.run(() => {
+      ObservabilityBrowserMetrics.ingest({
+        sentAt: Date.now(),
+        page: {},
+        metrics: [],
+        resourceEntries: [
+          {
+            name: "/session/example",
+            startTime: 10,
+            duration: 100,
+            requestStart: 30,
+            responseStart: 80,
+            responseEnd: 110,
+          },
+          { name: "/session/cached", startTime: 10, duration: 10, requestStart: 0, responseStart: 0, responseEnd: 20 },
+        ],
+      })
+      ObservabilityStore.flush()
+      const rows = ObservabilityStore.queryMetrics({ since: 0, names: ["frontend.resource.duration"] })
+      expect(rows).toHaveLength(2)
+      const labels = rows.map((row) => JSON.parse(row.labels_json ?? "{}"))
+      expect(labels.find((label) => label.preRequestMs === 20)).toMatchObject({ firstByteMs: 50, transferMs: 30 })
+      expect(labels.filter((label) => label.firstByteMs !== undefined)).toHaveLength(1)
+    }))
+
   test("dashboard summary reports backend latency and frontend vitals", () =>
     runtime.run(async () => {
       const now = Date.now()

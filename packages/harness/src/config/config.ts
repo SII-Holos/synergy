@@ -354,7 +354,7 @@ export namespace Config {
     // These fill undefined values only — user-set values are preserved.
     if (result.snapshot === undefined) result.snapshot = true
     if (result.fileToolGroup === undefined) result.fileToolGroup = "patch"
-    if (result.default_agent === undefined) result.default_agent = PrimaryAgentIdentity.names.general
+    if (result.default_agent === undefined) result.default_agent = PrimaryAgentIdentity.names.lightweight
     if (result.project_doc_fallback_filenames === undefined) result.project_doc_fallback_filenames = []
     if (result.project_doc_max_bytes === undefined) result.project_doc_max_bytes = 32 * 1024
     if (result.question === undefined) result.question = { timeout: 3600 }

@@ -64,7 +64,7 @@ function expectExecutionPrompt(text: string, noteID: string) {
   expect(text).toContain("preserve its requirements, boundaries and acceptance criteria")
   expect(text).toContain("Work directly unless coordination materially helps")
   expect(text).toContain("Verify the delivered outcome with evidence appropriate to the claim")
-  expect(text).toContain("blueprint_loop_stop with results, evidence and limitations in summary")
+  expect(text).toContain("blueprint_loop_stop with concise results, key checks, evidence references and limitations")
   expect(text).toContain("then end the turn")
 }
 

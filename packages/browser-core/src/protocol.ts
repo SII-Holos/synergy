@@ -2,7 +2,7 @@ import z from "zod"
 
 import { BrowserProfileIdSchema } from "./profile.js"
 
-export const BROWSER_PROTOCOL_VERSION = 6 as const
+export const BROWSER_PROTOCOL_VERSION = 7 as const
 export const BROWSER_HOST_INSTALL_TIMEOUT_MS = 120_000
 export const BROWSER_HOST_START_TIMEOUT_MS = 30_000
 export const BROWSER_HOST_WAIT_TIMEOUT_MS = 5_000
@@ -1391,6 +1391,42 @@ export const BrowserHostMessageSchema = z
       })
       .strict(),
     z.object({ type: z.literal("host.registered"), protocolVersion, hostId: nonEmpty }).strict(),
+    z
+      .object({
+        type: z.literal("profile.data.prepare"),
+        protocolVersion,
+        requestId: nonEmpty,
+        contextId: z.string().uuid(),
+        epoch: z.string().uuid(),
+        ownerKey: nonEmpty,
+        expiresAt: z.number().int().positive(),
+        profile: z
+          .object({
+            id: BrowserProfileIdSchema,
+            partition: z.string().min(1).max(250),
+            revision: z.number().int().nonnegative(),
+          })
+          .strict(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("profile.data.release"),
+        protocolVersion,
+        requestId: nonEmpty,
+        contextId: z.string().uuid(),
+        epoch: z.string().uuid(),
+        ownerKey: nonEmpty,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("profile.data.revoke"),
+        protocolVersion,
+        requestId: nonEmpty,
+        profileId: BrowserProfileIdSchema,
+      })
+      .strict(),
     z
       .object({
         type: z.literal("profile.clear"),

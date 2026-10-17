@@ -1,4 +1,4 @@
-import { createSignal, For, onMount, Show } from "solid-js"
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
@@ -12,6 +12,7 @@ import {
 } from "@ericsanchezok/synergy-browser-core"
 import { browser as B } from "@/locales/messages"
 import { BrowserImportDialog } from "./browser-import-entry"
+import type { BrowserImportTarget } from "./browser-import-target"
 
 const M = {
   data: { id: "browser.data.title", message: "Browser data" },
@@ -53,14 +54,24 @@ const M = {
   search: { id: "browser.data.search", message: "Search websites or usernames" },
 }
 
-type Props = {
+type PageProps = {
   ownerKey: string
   pageId: string
   url: string
   section?: "import" | "passwords"
   onNavigate?(url: string): void
 }
-export function BrowserDataDialog(props: Props) {
+type Props =
+  | PageProps
+  | {
+      managementTarget: BrowserImportTarget
+      section: "passwords"
+      ownerKey?: never
+      pageId?: never
+      url?: never
+      onNavigate?: never
+    }
+export function BrowserDataDialog(props: PageProps) {
   if (props.section === "import") return <BrowserImportDialog ownerKey={props.ownerKey} pageId={props.pageId} />
   const { _ } = useLingui()
   return (
@@ -82,16 +93,23 @@ export function BrowserDataSettings(props: Props) {
   const [error, setError] = createSignal("")
   const [notice, setNotice] = createSignal("")
   const [filter, setFilter] = createSignal("")
+  const management = () => ("managementTarget" in props ? props.managementTarget : undefined)
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+  })
   const action = (action: BrowserDataAction) =>
-    platform.browserNative!.dataAction!({
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-      ownerKey: props.ownerKey,
-      pageId: props.pageId,
-      action,
-    })
+    management()
+      ? management()!.action(action)
+      : platform.browserNative!.dataAction!({
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          ownerKey: props.ownerKey!,
+          pageId: props.pageId!,
+          action,
+        })
   const refresh = async () => {
     const next = await action({ type: "state" })
-    if (next.type === "state") setData(next)
+    if (!disposed && next.type === "state") setData(next)
   }
   async function run(work: () => Promise<void>) {
     if (busy()) return
@@ -101,15 +119,25 @@ export function BrowserDataSettings(props: Props) {
     try {
       await work()
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure))
+      if (!disposed) setError(failure instanceof Error ? failure.message : String(failure))
     } finally {
       setBusy(false)
     }
   }
   onMount(() => void run(refresh))
+  createEffect(() => {
+    if (!management() || management()!.current()) return
+    setData(undefined)
+    setError(
+      _({
+        id: "settings.browser.contextExpired",
+        message: "Browser data access changed. Close this dialog and reopen it to retry.",
+      }),
+    )
+  })
   const matchesOrigin = (origin: string) => {
     try {
-      return new URL(props.url).origin === origin
+      return !management() && new URL(props.url!).origin === origin
     } catch {
       return false
     }
@@ -129,12 +157,12 @@ export function BrowserDataSettings(props: Props) {
           {notice()}
         </p>
       </Show>
-      <Show when={props.section !== "passwords"}>
+      <Show when={props.section !== "passwords" && !management()}>
         <Button
           variant="secondary"
           onClick={() =>
             dialog.push(
-              () => <BrowserImportDialog ownerKey={props.ownerKey} pageId={props.pageId} />,
+              () => <BrowserImportDialog ownerKey={props.ownerKey!} pageId={props.pageId!} />,
               () => void run(refresh),
             )
           }
@@ -148,7 +176,9 @@ export function BrowserDataSettings(props: Props) {
       <Show when={props.section !== "import"}>
         <section class="flex flex-col gap-3">
           <h3 class="text-14-medium text-text-strong">{_(M.passwords)}</h3>
-          <p class="text-12 text-text-weak">{_(M.passwordHint)}</p>
+          <Show when={!management()}>
+            <p class="text-12 text-text-weak">{_(M.passwordHint)}</p>
+          </Show>
           <input
             type="search"
             class="rounded-md border border-border-weak-base bg-surface-base px-3 py-2"
@@ -211,32 +241,34 @@ export function BrowserDataSettings(props: Props) {
               </For>
             </div>
           </Show>
-          <Button
-            size="small"
-            variant="secondary"
-            disabled={busy() || !data()?.passwordStorage || !/^https?:/.test(props.url)}
-            onClick={() =>
-              void run(async () => {
-                if (
-                  !(await confirm.ask({
-                    title: _(M.saveConfirm),
-                    description: _(M.saveHint),
-                    confirmLabel: _(M.save),
-                    tone: "neutral",
-                  }))
-                )
-                  return
-                await action({ type: "saveLogin" })
-                setNotice(_(M.saved))
-                await refresh()
-              })
-            }
-          >
-            {_(M.save)}
-          </Button>
+          <Show when={!management()}>
+            <Button
+              size="small"
+              variant="secondary"
+              disabled={busy() || !data()?.passwordStorage || !/^https?:/.test(props.url ?? "")}
+              onClick={() =>
+                void run(async () => {
+                  if (
+                    !(await confirm.ask({
+                      title: _(M.saveConfirm),
+                      description: _(M.saveHint),
+                      confirmLabel: _(M.save),
+                      tone: "neutral",
+                    }))
+                  )
+                    return
+                  await action({ type: "saveLogin" })
+                  setNotice(_(M.saved))
+                  await refresh()
+                })
+              }
+            >
+              {_(M.save)}
+            </Button>
+          </Show>
         </section>
       </Show>
-      <Show when={!props.section}>
+      <Show when={!props.section && !management()}>
         <section class="flex flex-col gap-3 border-t border-border-weak-base pt-4">
           <h3 class="text-14-medium text-text-strong">{_(M.recent)}</h3>
           <p class="text-12 text-text-weak">{_(M.recentHint)}</p>

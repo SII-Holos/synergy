@@ -8306,12 +8306,20 @@ msgid "app.rawMessages.title"
 msgstr "Raw messages"
 
 #. js-lingui-explicit-id
+msgid "app.reference.browserUnavailable"
+msgstr "The in-app browser is unavailable. Retry or open this link in your system browser."
+
+#. js-lingui-explicit-id
 msgid "app.reference.chooseWorkspace"
 msgstr "Choose the reference’s workspace"
 
 #. js-lingui-explicit-id
 msgid "app.reference.copy"
 msgstr "Copy reference"
+
+#. js-lingui-explicit-id
+msgid "app.reference.fileSource"
+msgstr "Workspace file"
 
 #. js-lingui-explicit-id
 msgid "app.reference.invalid"
@@ -8322,12 +8330,40 @@ msgid "app.reference.locationUnavailable"
 msgstr "The requested position is outside the available content. Showing the nearest position."
 
 #. js-lingui-explicit-id
+msgid "app.reference.noteLocationUnavailable"
+msgstr "This location no longer exists."
+
+#. js-lingui-explicit-id
+msgid "app.reference.noteSource"
+msgstr "Note"
+
+#. js-lingui-explicit-id
 msgid "app.reference.noWorkspace"
 msgstr "The source workspace is unavailable. Choose a workspace to open this reference."
 
 #. js-lingui-explicit-id
+msgid "app.reference.open"
+msgstr "Open reference"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openBrowser"
+msgstr "Open in Browser"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openExternal"
+msgstr "Open in system browser"
+
+#. js-lingui-explicit-id
 msgid "app.reference.openFailed"
 msgstr "Couldn’t open reference"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openFile"
+msgstr "Open in Files"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openNote"
+msgstr "Open in Notes"
 
 #. js-lingui-explicit-id
 msgid "app.reference.outsideWorkspace"
@@ -8336,6 +8372,14 @@ msgstr "This path is outside the reference’s workspace."
 #. js-lingui-explicit-id
 msgid "app.reference.pageUnavailable"
 msgstr "The requested page is outside this document. Showing the last page."
+
+#. js-lingui-explicit-id
+msgid "app.reference.previewSignIn"
+msgstr "Open this page to view content that requires sign-in."
+
+#. js-lingui-explicit-id
+msgid "app.reference.previewUnavailable"
+msgstr "A preview isn’t available. You can still open the reference."
 
 #. js-lingui-explicit-id
 msgid "app.reference.searchWorkspace"
@@ -13109,12 +13153,24 @@ msgid "note.list.options"
 msgstr "Notes list options"
 
 #. js-lingui-explicit-id
+msgid "note.navigation.choose"
+msgstr "Select a note to read or edit"
+
+#. js-lingui-explicit-id
 msgid "note.navigation.hide"
 msgstr "Hide notes list"
 
 #. js-lingui-explicit-id
 msgid "note.navigation.show"
 msgstr "Show notes list"
+
+#. js-lingui-explicit-id
+msgid "note.reference.copy"
+msgstr "Copy reference"
+
+#. js-lingui-explicit-id
+msgid "note.reference.unavailable"
+msgstr "This location is no longer available in this note."
 
 #. js-lingui-explicit-id
 msgid "note.scope.archived"
@@ -14457,6 +14513,10 @@ msgstr "Paused"
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.pending"
 msgstr "Send a task to start"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.ready"
+msgstr "Ready to run"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.reason"
@@ -19176,6 +19236,62 @@ msgid "settings.archivedSessions.you"
 msgstr "You: {text}"
 
 #. js-lingui-explicit-id
+msgid "settings.browser.chooseProfile"
+msgstr "Choose an enabled persistent browser profile."
+
+#. js-lingui-explicit-id
+msgid "settings.browser.contextExpired"
+msgstr "Browser data access changed. Close this dialog and reopen it to retry."
+
+#. js-lingui-explicit-id
+msgid "settings.browser.data"
+msgstr "Browser data"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.action"
+msgstr "Import"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.hint"
+msgstr "Import passwords and cookies from supported browsers."
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.label"
+msgstr "Import browser data"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.hint"
+msgstr "View and delete logins saved or imported in the in-app browser."
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.label"
+msgstr "Manage saved passwords"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.section"
+msgstr "Passwords and autofill"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.preparing"
+msgstr "Preparing browser data…"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.target"
+msgstr "Browser profile"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.title"
+msgstr "In-app browser"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.unavailable"
+msgstr "Browser data is unavailable. Retry."
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.account.description"
 msgstr "Holos agent identities and local account controls."
 
@@ -19210,6 +19326,18 @@ msgstr "Boss Mode"
 #. js-lingui-explicit-id
 msgid "settings.catalog.boss.searchTerms"
 msgstr "boss | task | project | assistant | feishu"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.description"
+msgstr "Import browser data and manage saved passwords on this device."
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.label"
+msgstr "Browser"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.searchTerms"
+msgstr "browser | passwords | autofill | cookies | import | saved logins"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
@@ -26538,6 +26666,34 @@ msgstr "Generation failed"
 #. js-lingui-explicit-id
 msgid "ui.mediaGeneration.generating"
 msgstr "Generating media"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.close"
+msgstr "Close preview"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.copy"
+msgstr "Copy link"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.external"
+msgstr "Open in system browser"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.loading"
+msgstr "Loading preview…"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.open"
+msgstr "Open"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.preview"
+msgstr "Preview reference"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.unavailable"
+msgstr "Preview unavailable"
 
 #. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
 msgid "ui.review.after"

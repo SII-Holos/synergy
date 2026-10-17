@@ -79,34 +79,6 @@ beforeAll(async () => {
       `,
     ),
     Bun.write(
-      path.join(fixtureDirectory, "lingui-stub.tsx"),
-      `
-        import type { JSX } from "solid-js"
-        // Minimal Lingui stand-in: this fixture asserts workbench chrome and
-        // click behavior, not i18n rendering. The real @lingui/solid runtime
-        // pulls @messageformat/parser (CJS) through @lingui/message-utils,
-        // whose named import breaks under Vite's dependency pre-bundling in
-        // the Coverage job (no build step, shared .vite cache).
-        export function I18nProvider(props: { children?: JSX.Element }) {
-          return props.children
-        }
-        export function useLingui() {
-          return {
-            _: (descriptor: { id: string; message?: string }) => descriptor.message ?? descriptor.id,
-          }
-        }
-      `,
-    ),
-    Bun.write(
-      path.join(fixtureDirectory, "lingui-core-stub.ts"),
-      `
-        // Minimal @lingui/core stand-in; see lingui-stub.tsx for why.
-        export function setupI18n() {
-          return {}
-        }
-      `,
-    ),
-    Bun.write(
       path.join(fixtureDirectory, "main.tsx"),
       `
         import { createComponent } from "solid-js"
@@ -149,13 +121,6 @@ beforeAll(async () => {
         { find: /^@\/context\/platform$/, replacement: platformStubPath },
         { find: /^@\/context\/sdk$/, replacement: sdkStubPath },
         { find: /^@\/context\/locale$/, replacement: localeStubPath },
-        // The real Lingui runtime pulls @messageformat/parser (CJS) through
-        // @lingui/message-utils; its named `parse` import breaks under Vite's
-        // on-demand dependency optimization in the no-build Coverage job.
-        // The fixture asserts workbench chrome and click behavior, not i18n
-        // rendering, so both Lingui entries resolve to hermetic stubs.
-        { find: "@lingui/solid", replacement: path.join(fixtureDirectory, "lingui-stub.tsx") },
-        { find: "@lingui/core", replacement: path.join(fixtureDirectory, "lingui-core-stub.ts") },
         // The plugin package's exports map serves "import" from its
         // gitignored dist/theme/index.js, which a fresh checkout lacks (the
         // Coverage job runs no build step). Resolve the theme entry to source
@@ -173,7 +138,15 @@ beforeAll(async () => {
     // because sibling Playwright servers share apps/web/node_modules/.vite
     // and invalidate each other's cache.
     optimizeDeps: {
-      include: ["solid-js", "solid-js/web", "solid-js/store", "solid-js/jsx-runtime", "zod"],
+      include: [
+        "solid-js",
+        "solid-js/web",
+        "solid-js/store",
+        "solid-js/jsx-runtime",
+        "@lingui/core",
+        "@lingui/solid",
+        "zod",
+      ],
       noDiscovery: true,
     },
     cacheDir: path.join(fixtureDirectory, ".vite"),

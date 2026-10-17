@@ -90,3 +90,31 @@ test("all primary identities share deferred visuals, computer and online without
     }),
   )
 })
+
+test("new Home sessions expose file tools through their selected default Workspace, not through the Scope", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const agent = (await Agent.get(PrimaryAgentIdentity.names.lightweight))!
+        const session = await Session.create()
+        expect(session.scope.local).toBeNull()
+        expect(session.workspaceID).toStartWith("wsp_")
+        await ScopeContext.provide({
+          scope: session.scope,
+          workspace: session.workspace,
+          fn: async () => {
+            const available = await ToolResolver.availability({ agent, model, session, sessionID: session.id })
+            expect(available.visible.map((tool) => tool.id)).toEqual(
+              expect.arrayContaining(["read", "file_search", "apply_patch", "view_image", "process"]),
+            )
+          },
+        })
+        const none = await Session.create({ workspaceID: null })
+        const empty = await ToolResolver.availability({ agent, model, session: none, sessionID: none.id })
+        expect(empty.visible.map((tool) => tool.id)).not.toContain("read")
+      },
+    }),
+  )
+})

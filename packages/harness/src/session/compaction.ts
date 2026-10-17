@@ -14,7 +14,6 @@ import { Scope } from "../scope"
 import { Agent } from "../agent/agent"
 import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import { Config } from "../config/config"
-import { Turn } from "./turn"
 import { LoopJob } from "./loop-job"
 import type { ModelMessage } from "ai"
 import { SessionHistory } from "./history"
@@ -300,10 +299,6 @@ export namespace SessionCompaction {
     return summary
   }
 
-  // goes backwards through parts until there are 40_000 tokens worth of tool
-  // calls. then erases output of previous tool calls. idea is to throw away old
-  // tool calls that are no longer relevant.
-
   /** Pure scan that returns the completed tool parts eligible for pruning. */
   export function selectPartsToPrune(msgs: MessageV2.WithParts[], modelID?: string): MessageV2.ToolPart[] {
     let total = 0
@@ -313,7 +308,15 @@ export namespace SessionCompaction {
       ? (text: string) => Token.estimateModelSync(modelID, text)
       : (text: string) => Token.estimate(text)
 
-    const protectBoundary = Turn.countRecentTurns(msgs, 2)
+    let protectBoundary = 0
+    let roots = 0
+    for (let index = msgs.length - 1; index >= 0; index--) {
+      const info = msgs[index].info
+      if (info.role !== "user" || !info.isRoot || !MessageV2.isPromptVisible(msgs[index])) continue
+      if (++roots < 2) continue
+      protectBoundary = index
+      break
+    }
 
     loop: for (let msgIndex = protectBoundary - 1; msgIndex >= 0; msgIndex--) {
       const msg = msgs[msgIndex]
@@ -337,16 +340,28 @@ export namespace SessionCompaction {
     return pruned > PRUNE_MINIMUM ? toPrune : []
   }
 
+  export function pruningRevision(messages: MessageV2.WithParts[]): string | undefined {
+    const parts = messages.flatMap((message) =>
+      message.parts.flatMap((part) =>
+        part.type === "tool" && part.state.status === "completed" && part.state.time.compacted
+          ? [[part.id, part.state.time.compacted] as const]
+          : [],
+      ),
+    )
+    if (!parts.length) return
+    return new Bun.CryptoHasher("sha256").update(JSON.stringify(parts)).digest("hex")
+  }
+
   export async function prune(input: {
     sessionID: string
     messages: MessageV2.WithParts[]
     modelID?: string
     abort?: AbortSignal
-  }) {
+  }): Promise<MessageV2.ToolPart[]> {
     input.abort?.throwIfAborted()
     const config = await Config.current()
     input.abort?.throwIfAborted()
-    if (config.compaction?.prune === false) return
+    if (config.compaction?.prune === false) return []
     log.info("pruning")
     const toPrune = selectPartsToPrune(input.messages, input.modelID)
 
@@ -357,7 +372,7 @@ export namespace SessionCompaction {
       )
       const compacted = Date.now()
       input.abort?.throwIfAborted()
-      await Promise.all(
+      const updated = await Promise.all(
         completed.map((part) =>
           Session.updatePart({
             ...part,
@@ -369,7 +384,9 @@ export namespace SessionCompaction {
         ),
       )
       log.info("pruned", { count: completed.length })
+      return updated.filter((part): part is MessageV2.ToolPart => part.type === "tool")
     }
+    return []
   }
 
   const ANCHOR_OPEN = "<anchor>"
@@ -507,9 +524,7 @@ export namespace SessionCompaction {
     const session = await SessionManager.requireSession(input.sessionID)
     const prior = newestSameModelRemoteArtifact(input.messages, input.providerID, input.profileID, input.apiModelID)
     const base = prior ? input.messages.slice(prior.index + 1) : input.messages
-    // Shallow copies isolate the transform hook's mutations (invoke.ts does
-    // the same before triggering the hook).
-    const sessionMessages = base.map((m) => ({ ...m, parts: [...m.parts] }))
+    const sessionMessages = MessageV2.copyForTransform(base)
     try {
       await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
     } catch (error) {
@@ -1005,27 +1020,6 @@ export namespace SessionCompaction {
           auto: part.auto,
         })
         return result
-      },
-    })
-    LoopJob.register({
-      type: "prune",
-      phase: "pre",
-      blocking: false,
-      collect(ctx) {
-        if (ctx.step <= 1) return []
-        return [{ type: "prune" }]
-      },
-      capture(ctx) {
-        return { type: "prune", sessionID: ctx.sessionID, modelID: ctx.modelID }
-      },
-      key(input) {
-        return input.sessionID
-      },
-      timeoutMs: 30_000,
-      async execute(input, signal) {
-        const messages = await SessionHistory.detachedModelMessages({ sessionID: input.sessionID, signal })
-        await prune({ sessionID: input.sessionID, messages, modelID: input.modelID, abort: signal })
-        return "pass"
       },
     })
   }

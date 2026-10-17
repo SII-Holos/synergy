@@ -12,9 +12,7 @@ import DESCRIPTION from "./blueprint-loop-reject.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 
 const parameters = z.object({
-  reason: z
-    .string()
-    .describe("Unmet requirements, evidence and concrete corrections; distinguish optional suggestions."),
+  reason: z.string().describe("Concise unmet requirements, reproduction evidence and actionable corrections."),
 })
 
 export const BlueprintLoopRejectTool = Tool.define("blueprint_loop_reject", {

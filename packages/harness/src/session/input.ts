@@ -228,17 +228,7 @@ export async function resolveUserAgent(
   const { Agent } = await import("../agent/agent")
   let agentName = input.agent ?? session?.agentOverride
   if (!agentName) {
-    // Inherit the current session agent from the last user message,
-    // so system notifications (cortex completion, agenda delivery, etc.)
-    // don't silently switch the agent to the default.
-    const messages = await effectiveMessages(input.sessionID)
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const item = messages[i]
-      if (isUserAnchor(item)) {
-        agentName = item.info.agent
-        break
-      }
-    }
+    agentName = (await SessionExecutionOwners.latestRoot(input.sessionID))?.agent
   }
   let agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
   if (!agent && independent && input.agent === undefined) agent = await Agent.get(await Agent.defaultAgent())

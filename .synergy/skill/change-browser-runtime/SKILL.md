@@ -81,11 +81,13 @@ Browser import uses one source picker, independent password/Cookie switches and 
 
 Invalidate in-flight saves when deleting profile data. Query native navigation controls only after the page is ready; suspension and recovery are ordinary states, not background-probe errors. Keep tab menu addresses synchronized even when the website title is unchanged, and bind batch tab closing to the original task and surface.
 
+For page-independent management, use backend-issued opaque profile data contexts and Protocol v7; never accept a renderer partition or create an about:blank page. Test zero-page Settings listing/import, strict rejection of save/fill, profile revision and broker-epoch revocation, OS-return races, owned job cancellation and fixture-secret absence from API/IPC/log results. Keep the two-action global Settings surface separate from advanced Browser options and unrelated draft state. Anonymous reference preview uses no native context or website credentials: test pinned public DNS, every redirect, cancellation, body limits and blocked-target request counts independently from Chromium browsing.
+
 Bind asynchronous navigation-state replies to the page and reactive request lifetime. Ignore replies after navigation, page selection or disposal supersedes them. Verify out-of-order replies through rendered back, forward and zoom controls.
 
 ## Shared project pages
 
-Ordinary webpages use the unbound Scope owner; historical and local-file pages keep their Session owner. Capture the initiating Session’s Environment, Workspace generation and permission context before the page queue. Include Session identity in replay keys and Protocol v6 activity events, and let only the matching operation clear activity. Verify two tasks sharing one page with distinct Workspace bindings, cancellation, task deletion and binding transitions, plus real native create/browse/close while the Scope has zero Sessions. Metadata restoration must allocate no page; explicit empty-Workspace opening creates a blank page using the shared default profile.
+Ordinary webpages use the unbound Scope owner; historical and local-file pages keep their Session owner. Capture the initiating Session’s Environment, Workspace generation and permission context before the page queue. Include Session identity in replay keys and Protocol v7 activity events, and let only the matching operation clear activity. Verify two tasks sharing one page with distinct Workspace bindings, cancellation, task deletion and binding transitions, plus real native create/browse/close while the Scope has zero Sessions. Metadata restoration must allocate no page; explicit empty-Workspace opening creates a blank page using the shared default profile.
 
 ## Agent activity and human changes
 

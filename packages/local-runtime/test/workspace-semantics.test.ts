@@ -9,8 +9,9 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { openLocalRuntime, RuntimeHandle, createLocalStorage, registerLocalRuntime } from "../src"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 
-test("Home and explicit none retain a null workspace through creation and child inheritance", async () => {
+test("Home sessions share a managed default while explicit none and child bindings remain authoritative", async () => {
   await using fixture = await runtimeHome()
   await using runtime = await openLocalRuntime({ host: fixture.host, mode: "oneshot" })
   await runtime.run(() =>
@@ -18,13 +19,34 @@ test("Home and explicit none retain a null workspace through creation and child 
       scope: Scope.home(),
       fn: async () => {
         expect(Scope.home()).toEqual({ type: "home", id: "home", local: null })
+        const directory = path.join(fixture.host.root, "workspaces", "home")
+        expect(await fs.stat(directory).catch(() => undefined)).toBeUndefined()
         const parent = await Session.create()
-        expect(parent.workspace).toBeNull()
-        expect((await Session.create({ parentID: parent.id })).workspace).toBeNull()
-        expect(await Session.applyWorkspaceSelection(parent.id, { mode: "current" })).toMatchObject({
+        expect(parent.workspace).toMatchObject({
+          type: "directory",
+          path: await fs.realpath(directory),
+          scopeID: "home",
+        })
+        expect(parent.workspaceID).toStartWith("wsp_")
+        expect((await Session.create()).workspaceID).toBe(parent.workspaceID)
+        expect((await Session.create({ parentID: parent.id })).workspace).toEqual(parent.workspace)
+        expect((await Session.applyWorkspaceSelection(parent.id, { mode: "current" })).workspace).toEqual(
+          parent.workspace,
+        )
+        const none = await Session.create({ workspaceID: null })
+        expect(none.workspace).toBeNull()
+        expect((await Session.create({ parentID: none.id })).workspace).toBeNull()
+        expect((await Session.create({ workspace: null })).workspace).toBeNull()
+        expect(await Session.applyWorkspaceSelection(none.id, { mode: "current" })).toMatchObject({
           workspace: null,
           workspaceID: null,
         })
+        expect((await Session.applyWorkspaceSelection(parent.id, { mode: "none" })).workspace).toBeNull()
+        expect((await Session.get(none.id)).workspace).toBeNull()
+        const alternate = path.join(fixture.host.home, "chosen")
+        await fs.mkdir(alternate)
+        const record = await WorkspaceBinding.register("home", alternate)
+        expect((await Session.create({ workspaceID: record.id })).workspace?.path).toBe(await fs.realpath(alternate))
       },
     }),
   )
@@ -53,7 +75,7 @@ test("Home and explicit none retain a null workspace through creation and child 
             expect(inherited.scope.id).toBe(scope.id)
             expect(inherited.workspace).toEqual(parent.workspace)
             const moved = await Session.create({ parentID: parent.id, scope: Scope.home() })
-            expect(moved.workspace).toBeNull()
+            expect(moved.workspace?.path).toBe(await fs.realpath(path.join(fixture.host.root, "workspaces", "home")))
           },
         })
         await Session.applyWorkspaceSelection(parent.id, { mode: "none" })
@@ -125,7 +147,7 @@ test("file tools are undiscoverable without a workspace and a previously obtaine
     await ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
-        const session = await Session.create({ controlProfile: "full_access" })
+        const session = await Session.create({ controlProfile: "full_access", workspace: null })
         expect(await ToolRegistry.find("read")).toBeUndefined()
         expect((await ToolRegistry.ids()).includes("session_read")).toBe(true)
         await expect(
@@ -189,7 +211,7 @@ test("plugin workspace metadata controls discovery and remains enforced on a ret
     await ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
-        const session = await Session.create({ controlProfile: "full_access" })
+        const session = await Session.create({ controlProfile: "full_access", workspace: null })
         const context = {
           sessionID: session.id,
           messageID: "msg_test",

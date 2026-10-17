@@ -39,6 +39,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let previousOffset = 0
   let interactionVersion = 0
   let smoothForce = false
+  let navigating = false
   const motion = createScrollMotion(() => options.motionTarget?.())
 
   const [store, setStore] = createStore({
@@ -58,7 +59,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     movementOffset = undefined
   }
   const preserveReadingAnchor = (target?: Element) => {
-    if (!store.userScrolled) {
+    if (!store.userScrolled || navigating) {
       clearReadingAnchor()
       return
     }
@@ -123,6 +124,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (!scroll) return
     if (!force && store.userScrolled) return
     if (force) {
+      navigating = false
       resumeRequested = false
       clearReadingAnchor()
     }
@@ -150,6 +152,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const beginMovement = () => {
+    navigating = false
     anchoredScrollTop = undefined
     movementOffset = scroll?.scrollTop
   }
@@ -237,9 +240,16 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handleInteraction = (event?: Event) => {
+    navigating = false
     movementOffset = undefined
     stop()
     preserveReadingAnchor(event && event.target instanceof Element ? event.target : undefined)
+  }
+
+  const handleNavigation = () => {
+    navigating = true
+    stop()
+    clearReadingAnchor()
   }
 
   const resizeObserver = makeResizeObserver(
@@ -272,7 +282,8 @@ export function createAutoScroll(options: AutoScrollOptions) {
   )
 
   createEffect(() => {
-    const targets = new Set(enabled() ? [store.contentRef, store.viewportRef] : [])
+    // Virtual rows can resize before the content extent updates; preserve reading in that same paint.
+    const targets = new Set(enabled() ? [store.contentRef, store.viewportRef, readingAnchorOwner()] : [])
     for (const target of targets) if (target) resizeObserver.observe(target)
     onCleanup(() => {
       for (const target of targets) if (target) resizeObserver.unobserve(target)
@@ -340,6 +351,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
       settling = false
       forcedSettling = false
       followingLatest = false
+      navigating = false
       if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
       if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
       scrollFrame = undefined
@@ -377,6 +389,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     },
     handleScroll,
     handleInteraction,
+    handleNavigation,
     preserveReadingAnchor,
     readingAnchorOwner,
     interactionVersion: () => interactionVersion,

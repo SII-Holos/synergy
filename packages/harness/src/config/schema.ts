@@ -964,7 +964,7 @@ export const CoreInfo = z
       .string()
       .optional()
       .describe(
-        "Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.",
+        "Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable.",
       ),
     username: z.string().optional().describe("Custom username to display in conversations instead of system username"),
     agent: z

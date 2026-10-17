@@ -8306,12 +8306,20 @@ msgid "app.rawMessages.title"
 msgstr "原始消息"
 
 #. js-lingui-explicit-id
+msgid "app.reference.browserUnavailable"
+msgstr "应用内浏览器正在重新连接。你可以重试，或在系统浏览器中打开此链接。"
+
+#. js-lingui-explicit-id
 msgid "app.reference.chooseWorkspace"
 msgstr "选择这条引用所属的工作区"
 
 #. js-lingui-explicit-id
 msgid "app.reference.copy"
 msgstr "复制引用"
+
+#. js-lingui-explicit-id
+msgid "app.reference.fileSource"
+msgstr "工作区文件"
 
 #. js-lingui-explicit-id
 msgid "app.reference.invalid"
@@ -8322,12 +8330,40 @@ msgid "app.reference.locationUnavailable"
 msgstr "引用位置超出了可用内容，已显示最接近的位置。"
 
 #. js-lingui-explicit-id
+msgid "app.reference.noteLocationUnavailable"
+msgstr "此位置已不存在。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.noteSource"
+msgstr "笔记"
+
+#. js-lingui-explicit-id
 msgid "app.reference.noWorkspace"
 msgstr "原工作区不可用，请选择工作区来打开这条引用。"
 
 #. js-lingui-explicit-id
+msgid "app.reference.open"
+msgstr "打开引用"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openBrowser"
+msgstr "在浏览器中打开"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openExternal"
+msgstr "在系统浏览器中打开"
+
+#. js-lingui-explicit-id
 msgid "app.reference.openFailed"
 msgstr "无法打开引用"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openFile"
+msgstr "在文件中打开"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openNote"
+msgstr "在笔记中打开"
 
 #. js-lingui-explicit-id
 msgid "app.reference.outsideWorkspace"
@@ -8336,6 +8372,14 @@ msgstr "这个路径不在引用所属的工作区内。"
 #. js-lingui-explicit-id
 msgid "app.reference.pageUnavailable"
 msgstr "引用的页码超出了文档范围，已显示最后一页。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.previewSignIn"
+msgstr "请打开此页面以查看需要登录的内容。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.previewUnavailable"
+msgstr "暂无预览，你仍可打开这条引用。"
 
 #. js-lingui-explicit-id
 msgid "app.reference.searchWorkspace"
@@ -13109,12 +13153,24 @@ msgid "note.list.options"
 msgstr "笔记列表选项"
 
 #. js-lingui-explicit-id
+msgid "note.navigation.choose"
+msgstr "选择笔记以阅读或编辑"
+
+#. js-lingui-explicit-id
 msgid "note.navigation.hide"
 msgstr "隐藏笔记列表"
 
 #. js-lingui-explicit-id
 msgid "note.navigation.show"
 msgstr "显示笔记列表"
+
+#. js-lingui-explicit-id
+msgid "note.reference.copy"
+msgstr "复制引用"
+
+#. js-lingui-explicit-id
+msgid "note.reference.unavailable"
+msgstr "此位置已不在这篇笔记中。"
 
 #. js-lingui-explicit-id
 msgid "note.scope.archived"
@@ -14457,6 +14513,10 @@ msgstr "已暂停"
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.pending"
 msgstr "发送任务后开始"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.ready"
+msgstr "待运行"
 
 #. js-lingui-explicit-id
 msgid "prompt.loopStatus.reason"
@@ -19176,6 +19236,62 @@ msgid "settings.archivedSessions.you"
 msgstr "你：{text}"
 
 #. js-lingui-explicit-id
+msgid "settings.browser.chooseProfile"
+msgstr "请选择已启用的持久浏览器身份。"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.contextExpired"
+msgstr "浏览器数据访问状态已更改，请关闭并重新打开此对话框后重试。"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.data"
+msgstr "浏览器数据"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.action"
+msgstr "导入"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.hint"
+msgstr "从受支持的浏览器导入密码和 Cookie。"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.label"
+msgstr "导入浏览器数据"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.hint"
+msgstr "查看和删除在应用内浏览器保存或导入的登录记录。"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.label"
+msgstr "管理已保存的密码"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.section"
+msgstr "密码与自动填充"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.preparing"
+msgstr "正在准备浏览器数据…"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.target"
+msgstr "浏览器身份"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.title"
+msgstr "应用内浏览器"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.unavailable"
+msgstr "浏览器数据不可用，请重试。"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.account.description"
 msgstr "Holos 智能体身份和本地账号控制。"
 
@@ -19210,6 +19326,18 @@ msgstr "Boss 模式"
 #. js-lingui-explicit-id
 msgid "settings.catalog.boss.searchTerms"
 msgstr "boss | 任务 | 项目 | 助手 | 飞书"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.description"
+msgstr "导入浏览器数据并管理此设备上保存的密码。"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.label"
+msgstr "浏览器"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.searchTerms"
+msgstr "浏览器 | 密码 | 自动填充 | Cookie | 导入 | 登录记录"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
@@ -26538,6 +26666,34 @@ msgstr "生成失败"
 #. js-lingui-explicit-id
 msgid "ui.mediaGeneration.generating"
 msgstr "正在生成"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.close"
+msgstr "关闭预览"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.copy"
+msgstr "复制链接"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.external"
+msgstr "在系统浏览器中打开"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.loading"
+msgstr "正在加载预览…"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.open"
+msgstr "打开"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.preview"
+msgstr "预览引用"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.unavailable"
+msgstr "预览不可用"
 
 #. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
 msgid "ui.review.after"

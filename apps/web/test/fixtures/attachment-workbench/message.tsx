@@ -12,6 +12,8 @@ import { Toast } from "@ericsanchezok/synergy-ui/toast"
 import { UserMessageDisplay, createUserMessagePresentation } from "@ericsanchezok/synergy-ui/user-message-content"
 import type { AttachmentPart, Part, UserMessage } from "@ericsanchezok/synergy-sdk"
 import { ResourceOpenProvider } from "../../../src/context/resource-open"
+import { NoteDocumentsProvider } from "../../../src/components/note/documents"
+import { BrowserCatalogProvider } from "../../../src/components/workspace/browser/browser-catalog"
 import { useResourceOpen } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { WorkbenchPanelsProvider, useWorkbenchPanels } from "../../../src/context/workbench"
 import { registerWorkbenchPanel } from "../../../src/plugin/registries/workbench-panel-registry"
@@ -233,7 +235,11 @@ render(
                 component={() => (
                   <SessionTransitionProvider>
                     <WorkbenchPanelsProvider>
-                      <Fixture />
+                      <BrowserCatalogProvider>
+                        <NoteDocumentsProvider>
+                          <Fixture />
+                        </NoteDocumentsProvider>
+                      </BrowserCatalogProvider>
                     </WorkbenchPanelsProvider>
                   </SessionTransitionProvider>
                 )}

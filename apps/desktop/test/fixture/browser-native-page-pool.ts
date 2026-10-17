@@ -6,7 +6,7 @@ import path from "node:path"
 import { loadWindowState } from "../../src/window-state.js"
 import { BrowserNativeViewManager } from "../../src/browser-native-view.js"
 import { BrowserNativePagePool } from "../../src/browser-native-page-pool.js"
-import type { BrowserHostPageEvent } from "@ericsanchezok/synergy-browser-core"
+import { BROWSER_PROTOCOL_VERSION, type BrowserHostPageEvent } from "@ericsanchezok/synergy-browser-core"
 
 void run().catch((error) => {
   console.error(error)
@@ -120,7 +120,7 @@ async function run() {
     window.webContents.setZoomFactor(1.25)
     const firstManager = new BrowserNativeViewManager(window, pool, () => {})
     const firstRequest = {
-      protocolVersion: 6 as const,
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
       ownerKey: input.ownerKey,
       pageId: input.page.id,
       bounds: { x: 256, y: 40, width: 640, height: 480 },
@@ -311,7 +311,7 @@ async function run() {
     }
     const manager = new BrowserNativeViewManager(window, pool, () => {})
     const request = {
-      protocolVersion: 6 as const,
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
       ownerKey: secondInput.ownerKey,
       pageId: secondInput.page.id,
       bounds: { x: 0, y: 0, width: 600, height: 400 },

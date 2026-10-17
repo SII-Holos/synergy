@@ -154,7 +154,7 @@ async function recoverTerminalReviewer(
 function reviewPrompt(loop: BlueprintLoopInfo): string {
   if (!loop.stopRequest) throw new Error(`BlueprintLoop ${loop.id} has no pending stop request`)
   return [
-    `Review Blueprint ${loop.noteID}; execution session ${loop.sessionID}. Read the full Note and start instruction.`,
+    `Review Blueprint ${loop.noteID}; execution session ${loop.sessionID}. Use the complete Note and start instruction; read missing or changed requirements.`,
     loop.userPrompt,
     `Executor summary:
 ${loop.stopRequest.summary}`,

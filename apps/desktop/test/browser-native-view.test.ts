@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { BrowserNativeAttachRequest } from "@ericsanchezok/synergy-browser-core"
+import { BROWSER_PROTOCOL_VERSION, type BrowserNativeAttachRequest } from "@ericsanchezok/synergy-browser-core"
 
 const { BrowserNativeViewManager } = await import("../src/browser-native-view.js")
 
@@ -23,12 +23,12 @@ describe("Browser native view manager", () => {
       { attach: () => view, detach() {} } as never,
       (event) => events.push(event),
     )
-    const request = { protocolVersion: 6 as const, ownerKey: "owner", pageId: "page" }
+    const request = { protocolVersion: BROWSER_PROTOCOL_VERSION, ownerKey: "owner", pageId: "page" }
     await manager.attach(request)
     await manager.attach({ ...request, visible: false })
     expect(events).toContainEqual({
       type: "native.cover",
-      protocolVersion: 6,
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
       pageId: "page",
       url: "https://example.com",
       dataUrl: "data:image/jpeg;base64,cHJldmlldw==",
@@ -69,7 +69,7 @@ describe("Browser native view manager", () => {
       () => {},
     )
     const hiddenRequest: BrowserNativeAttachRequest & { visible: boolean } = {
-      protocolVersion: 6,
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
       ownerKey: "scope:test:session:test",
       pageId: "page-test",
       bounds: { x: 12, y: 24, width: 640, height: 480 },
@@ -111,7 +111,7 @@ describe("Browser native view manager", () => {
     )
 
     await manager.attach({
-      protocolVersion: 6,
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
       ownerKey: "scope:test:session:test",
       pageId: "page-test",
     })
@@ -165,7 +165,7 @@ describe("Browser native view manager", () => {
       () => {},
     )
     await manager.attach({
-      protocolVersion: 6,
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
       ownerKey: "scope:test:session:generation",
       pageId: "page-generation",
     })

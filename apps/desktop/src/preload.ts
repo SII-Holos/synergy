@@ -31,6 +31,11 @@ const browserNative = {
       import("@ericsanchezok/synergy-browser-core").BrowserDataResult
     >
   },
+  profileDataAction(input: import("@ericsanchezok/synergy-browser-core").BrowserProfileDataRequest) {
+    return ipcRenderer.invoke("browserNative.profileDataAction", input) as Promise<
+      import("@ericsanchezok/synergy-browser-core").BrowserDataResult
+    >
+  },
   pageAction(input: import("@ericsanchezok/synergy-browser-core").BrowserPageActionRequest) {
     return ipcRenderer.invoke("browserNative.pageAction", input) as Promise<
       import("@ericsanchezok/synergy-browser-core").BrowserPageActionResult

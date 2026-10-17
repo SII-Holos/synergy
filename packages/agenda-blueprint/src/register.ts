@@ -1,14 +1,6 @@
 import { setBlueprintAgendaAssertClear } from "@ericsanchezok/synergy-blueprint/blueprint/tools/blueprint-loop-stop"
 import { AgendaSessionWakeup } from "@ericsanchezok/synergy-agenda/agenda/session-wakeup"
-import { AgentPromptContributions } from "@ericsanchezok/synergy-harness/agent/prompt-contributions"
 export function registerBridge() {
-  AgentPromptContributions.register("agenda-blueprint", [
-    {
-      requiredTools: ["blueprint_loop_stop", "agenda_cancel"],
-      render: () =>
-        "BlueprintLoop review requires all active Agenda wakeups for this execution session to be cancelled. Review is rejected while any wakeup remains.",
-    },
-  ])
   setBlueprintAgendaAssertClear(AgendaSessionWakeup.assertClear)
   AgendaSessionWakeup.registerInstruction("agenda-blueprint", async (input) => {
     const loopID = input.session.blueprint?.loopID

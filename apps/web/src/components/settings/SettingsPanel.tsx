@@ -3,6 +3,7 @@ import { createBossNameController } from "./panels/boss-name-controller"
 import { validateSettingsDraft } from "./settings-draft-validation"
 import { SettingsViewStateContext } from "./settings-view-state"
 import { runtimeFeatureAvailable } from "../runtime-features"
+import { createBrowserSettingsCapability } from "./browser-settings-capability"
 import {
   ErrorBoundary,
   createEffect,
@@ -10,6 +11,7 @@ import {
   createResource,
   createSignal,
   For,
+  lazy,
   onCleanup,
   Show,
   untrack,
@@ -146,6 +148,8 @@ import { SlotOutlet } from "@/plugin/slot-outlet"
 function settingsValues(value: unknown, fallback: Record<string, unknown> = {}): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : fallback
 }
+
+const BrowserPanel = lazy(() => import("./panels/BrowserPanel").then((module) => ({ default: module.BrowserPanel })))
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
@@ -291,6 +295,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const input = useInput()
   const platform = usePlatform()
   const productUpdate = useProductUpdate()
+  const browserCapability = createBrowserSettingsCapability({
+    selection: globalSDK.capabilities.current,
+    selected: () => globalSDK.capabilities.has("browser"),
+    serverUrl: () => globalSDK.url,
+    bridge: () => platform.browserNative,
+  })
+  const sectionAvailable = (id: string) =>
+    runtimeFeatureAvailable("settings", id, globalSDK.capabilities.has) &&
+    (id !== "browser" || browserCapability.visible())
   const theme = useTheme()
   const font = useFontPreference()
   const holos = useHolos()
@@ -315,7 +328,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const initialNavigation = createSettingsMobileNavigationState(
     initialTab,
     filterSettingsSections(getSettingsSections(), initialDeveloperMode)
-      .filter((section) => runtimeFeatureAvailable("settings", section.id, globalSDK.capabilities.has))
+      .filter((section) => sectionAvailable(section.id))
       .map((section) => section.id),
     isDesktop(),
   )
@@ -1193,6 +1206,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   }
 
   const builtinSettingsComponents = (): Partial<Record<string, Component>> => ({
+    browser: BrowserPanel,
     account: AccountPanel,
     personalize: () => <PersonalizePanel controller={personalizeController} />,
     general: () => (
@@ -1539,7 +1553,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const components = builtinSettingsComponents()
     const desktopZoom = Boolean(platform.desktopZoom)
     return filterSettingsSections(getSettingsSections(), developerMode())
-      .filter((section) => runtimeFeatureAvailable("settings", section.id, globalSDK.capabilities.has))
+      .filter((section) => sectionAvailable(section.id))
       .map((section) => {
         const localized = localizeSettingsSection(section, _, globalSDK.capabilities.has)
         const base = isBuiltinSettingsId(section.id) ? { ...localized, component: components[section.id] } : localized

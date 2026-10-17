@@ -658,6 +658,7 @@ window.__conversationProcess = {
     )
   },
   latest() {
+    scroll()?.dispatchEvent(new Event("conversation-location-reset"))
     context.autoScroll?.forceScrollToBottom()
   },
   prependTurns(count: number, more = false) {

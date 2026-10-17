@@ -62,7 +62,7 @@ One model step performs the following work:
 4. Persist the assistant and await Runtime-registered domain model preparation with its exact assistant/root identities and cancellation signal. A failed observation settles the assistant with an error before model dispatch. Resolve tool definitions, system context, Cortex context, Library recall, environment context, and Agenda reminders in parallel where independent.
 5. Project workflow-wrapped messages without mutating stored user text.
 6. Build and measure the provider prompt.
-7. Trigger compaction instead of calling the model if the prompt crosses the configured soft budget or leaves no response space.
+7. Under soft-budget pressure or hard overflow, synchronously prune eligible old outputs and remeasure; trigger compaction instead of calling the model if pressure remains.
 8. Resolve a serializable model-facing tool catalog separately from Control Plane execution callbacks.
 9. Queue the provider turn on `AgentTurn`, consume its bounded event frames, and persist one assistant message. Delta batches are bounded by 32 KiB and flush after 16 milliseconds for text/reasoning or 250 milliseconds for tool input, preserving serial delivery and acknowledgement backpressure. Partial tool input is presentation data; execution still requires the completed call.
 10. Release the model executor slot, dispatch generation-aware ToolTasks, authorize each operation in the Control Plane before physical execution, and settle results.
@@ -154,7 +154,7 @@ Git health retains its last completed diagnostic while refreshing internally. An
 
 Some managed-inference providers reject requests that lack a per-conversation request header the AI SDK never sends. The per-request header gate (`ProviderSessionHeader`) covers this at the two live call surfaces — the `AgentTurn` `streamText` call and the setup live probe. It resolves the effective endpoint (model options beat provider options, and the catalog API URL is only the fallback, mirroring SDK construction) and adds `x-opencode-session` with the Synergy session id only when that resolved endpoint is the OpenCode Go endpoint or the provider id is `opencode-go`; probes without a session send a one-shot UUID. The endpoint is parsed and compared on host and path, so lookalike hosts never receive the id, and a user-pinned header of any casing replaces the generated value instead of duplicating it. Headers must stay per-call: language-model instances are cached, so headers baked into provider options would leak one conversation id across every session sharing the cached instance. When another provider adds a per-conversation header requirement, extend this gate instead of baking headers into provider options.
 
-Plugins can transform the system prompt at budget and final phases. If a transform removes every system message, Synergy restores the pre-transform system prompt rather than sending an empty safety/instruction context.
+Message-transform hooks receive isolated mutable message objects through `MessageV2.copyForTransform()` in ordinary calls and remote-compaction reconstruction. The copy shares immutable string payloads rather than serializing the full transcript; in-place changes to nested parts or metadata cannot alter canonical history used for pruning writes. Plugins can transform the system prompt at budget and final phases. If a transform removes every system message, Synergy restores the pre-transform system prompt rather than sending an empty safety/instruction context.
 
 Historical reasoning replay for `openai-codex` is conditional: `MessageV2.projectModelMessages()` retains the Responses reasoning item ID and encrypted content only when the producing assistant and current request have the same resolved canonical `openai-codex` profile, connection provider ID, and wire API model ID, and the item's parts contain a non-empty encrypted payload. The logical catalog model ID is not sufficient to establish wire compatibility. It keeps all summary parts of that item together for the stateless (`store: false`) SDK request. Older messages without recorded producer identity or ciphertext cannot be inferred from current configuration; their reasoning IDs, text/tool item references, and encrypted payloads are omitted while readable summaries remain. Remote compaction applies the same identity and ciphertext checks to its input and artifact replay, preserving the local summary when remote replay is unavailable.
 
@@ -307,15 +307,17 @@ Later model projection keeps the boundary root, completed summaries for that roo
 
 Model working-set loading applies rollback before boundary selection and restores legacy stable-ID chronology from message creation time. It scans all small message-info records but loads parts only for the selected working set. The active loop caches that projected set and maintains it incrementally; it never retains the full pre-compaction transcript.
 
-Separately, asynchronous pruning clears large outputs from older completed tool parts when all of these conditions hold:
+After `PromptBudgeter.decide()` reports soft-budget pressure or no remaining response space, the loop synchronously attempts configurable pruning before requesting a summary. Pruning clears outputs from older completed tool parts when all of these conditions hold:
 
-- the output lies before the two most recent protected turns;
-- it is not after an existing summary boundary;
+- the output lies before the two most recent prompt-visible canonical task roots; non-root steer, Cortex completion notices and system observations do not advance this protection;
+- it is not before an existing completed summary boundary;
 - it is not already compacted;
 - it is not from a protected tool such as `skill`;
 - accumulated protected and prunable token thresholds are exceeded.
 
-Pruning is configurable and records a compaction timestamp on the tool state. Pruning uses an independent compaction-aware working-set read so it cannot retain or populate the active loop's cache. Its `Session.updatePart()` writes still maintain the loop-scoped cache incrementally when that cache exists.
+Pruning records a compaction timestamp through ordinary canonical tool-part writes and retains the original output evidence. The request snapshot receives only the committed timestamps, preserving ephemeral message transforms. The loop rebuilds workflow and model projection plus the final prompt plan, then measures the reduced prompt without the pre-pruning usage calibration. An assistant's optional `metadata.promptPruning` records a digest of the retained pruned-part identities and timestamps included in that request. Calibration requires an identical digest for its input history; legacy usage without that proof falls back to measurement when pruned parts are retained. The first reduced provider request can establish a valid baseline even though its assistant record was created before pruning. This optional derived metadata does not require rewriting historical messages.
+
+Insufficient pruning leaves the existing automatic summary and hard-overflow recovery paths responsible for reducing the working set. A single long task can still compact even though its tool outputs remain protected from pruning. `compaction.prune` and `compaction.auto` remain independent: pruning can relieve pressure with summaries disabled, while unrelieved hard overflow still terminates locally. Without prompt pressure, the loop neither schedules pruning nor changes older tool results. See the [decision record](../decisions/implemented/bug-fix/2026-10-16-pressure-driven-task-safe-pruning.md).
 
 ## Streaming and Persistence
 

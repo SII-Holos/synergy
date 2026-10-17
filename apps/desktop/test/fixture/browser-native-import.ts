@@ -1,3 +1,4 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { app, BrowserWindow, safeStorage } from "electron"
 import { DatabaseSync } from "node:sqlite"
 import { createCipheriv, createHash, pbkdf2Sync } from "node:crypto"
@@ -78,7 +79,7 @@ async function run() {
     target: () => ({ partition: "persist:import-fixture", contents: window.webContents }),
     chooseFile: async () => undefined,
   })
-  const base = { protocolVersion: 6 as const, ownerKey: "fixture", pageId: "one" }
+  const base = { protocolVersion: BROWSER_PROTOCOL_VERSION, ownerKey: "fixture", pageId: "one" }
   const catalog = await actions.execute({ ...base, action: { type: "importSources" } })
   assert.equal(authorizations, 0)
   assert.equal(catalog.type, "sources")

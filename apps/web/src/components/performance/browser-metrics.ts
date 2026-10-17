@@ -12,6 +12,9 @@ type ResourceEntry = {
   transferSize?: number
   encodedBodySize?: number
   decodedBodySize?: number
+  requestStart?: number
+  responseStart?: number
+  responseEnd?: number
 }
 
 type LongTaskEntry = {
@@ -473,6 +476,9 @@ function observePerformanceEntries() {
         transferSize: entry.transferSize,
         encodedBodySize: entry.encodedBodySize,
         decodedBodySize: entry.decodedBodySize,
+        requestStart: entry.requestStart,
+        responseStart: entry.responseStart,
+        responseEnd: entry.responseEnd,
       },
     })
   })

@@ -3,6 +3,10 @@ import { useGlobalSDK } from "./global-sdk"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { catalogFileWorkspace } from "./file/workspace"
 import { buildWorkspaceFileBrowserUrl } from "@/utils/workspace-file-url"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
+import { useNoteDocuments } from "@/components/note/documents"
+import { noteReferenceExcerpt, resolveNoteReference } from "./note-reference"
+import { createResourcePreviewCache } from "./resource-preview-cache"
 import { fileWriteErrorMessage } from "./file/errors"
 import { usePlatform } from "./platform"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
@@ -19,6 +23,7 @@ import {
   type OpenableResource,
   type ResourceOpenResult,
   type ResourceOpenOptions,
+  type ResourcePreview,
   type ToolReviewTarget,
   type ToolActivityTarget,
   type ActivityDetailTarget,
@@ -50,6 +55,12 @@ import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-regi
 import { useSync } from "@/context/sync"
 import { draftTransitionKey, useSessionTransition } from "@/context/session-transition"
 import { isOptimisticMessagePending } from "./session-optimistic-message"
+import { useBrowserCatalog } from "@/components/workspace/browser/browser-catalog"
+import {
+  browserWorkbenchRoute,
+  sameBrowserCatalog,
+  type BrowserWorkbenchRoute,
+} from "@/components/workspace/browser/browser-workbench-model"
 
 const DraftAttachmentPreview = lazy(() =>
   import("@/components/attachment-workbench/draft-preview").then((module) => ({
@@ -120,7 +131,13 @@ export function ResourceOpenProvider(props: ParentProps) {
   const workbench = useWorkbenchPanels()
   const plugins = usePluginHost()
   const params = useParams()
+  const browserCatalog = useBrowserCatalog()
+  const noteDocuments = useNoteDocuments()
+  const previewCache = createResourcePreviewCache<ResourcePreview>()
+  const notePreviewTargets = createResourcePreviewCache<Awaited<ReturnType<typeof resolveNoteReference>>>()
+  const [previewEpoch, setPreviewEpoch] = createSignal(0)
   const ownerKey = () => JSON.stringify([sdk.url, sdk.scopeKey, params.id])
+  const contextKey = () => JSON.stringify([ownerKey(), previewEpoch(), workbench.surface("side").selectionRevision()])
   let pending: AbortController | undefined
   const [resourceSelection, setResourceSelection] = createSignal<{
     owner: string
@@ -130,6 +147,9 @@ export function ResourceOpenProvider(props: ParentProps) {
   createEffect(() => {
     ownerKey()
     globalSDK.capabilities.current()
+    previewCache.clear()
+    notePreviewTargets.clear()
+    setPreviewEpoch((epoch) => epoch + 1)
     pending?.abort()
     resourceRequest?.abort()
     setResourceSelection(undefined)
@@ -137,7 +157,17 @@ export function ResourceOpenProvider(props: ParentProps) {
   onCleanup(() => {
     pending?.abort()
     resourceRequest?.abort()
+    previewCache.clear()
+    notePreviewTargets.clear()
   })
+  onCleanup(
+    globalSDK.event.listen(({ details }) => {
+      if (!["note.updated", "note.deleted", "file.watcher.updated", "workspace.updated"].includes(details.type)) return
+      previewCache.clear()
+      notePreviewTargets.clear()
+      setPreviewEpoch((epoch) => epoch + 1)
+    }),
+  )
   const { _ } = useLingui()
   const [openedResource, setOpenedResource] = createSignal<{
     session: string
@@ -274,24 +304,9 @@ export function ResourceOpenProvider(props: ParentProps) {
         if (!resource || !workbench.getPanel(resource.panelId)) return fallback(value)
         let source = resource.source
         if (resource.panelId === "notes") {
-          const groups = await Promise.all(
-            (["false", "true"] as const).map(async (archived) => {
-              const result = await client.note.listMeta(
-                { scopeID, archived },
-                { signal: request.signal, throwOnError: true },
-              )
-              return result.data ?? []
-            }),
-          )
+          const note = await resolveNoteReference(client, scopeID, resource.resourceId, request.signal)
           if (!current()) return
-          const scopes = new Set(
-            groups
-              .flat()
-              .filter((group) => group.notes.some((note) => note.id === resource!.resourceId))
-              .map((group) => group.scopeID),
-          )
-          if (scopes.size !== 1) return fallback(value)
-          source = [...scopes][0]
+          source = note.scopeID
           const existing = side
             .tabs()
             .find((tab) => tab.panelId === "notes" && tab.resourceId === resource!.resourceId && tab.source === source)
@@ -522,16 +537,332 @@ export function ResourceOpenProvider(props: ParentProps) {
     }
   }
 
-  const openUrl = async (input: { url: string; mime?: string; filename?: string }): Promise<boolean> => {
-    if (input.mime?.startsWith("image/")) {
-      const image = previewImageForUrl(input)
-      if (!image) return false
-      showResourceDialog(() => <ImagePreview images={[image]} />)
+  const openNote = async (resource: Extract<OpenableResource, { kind: "note" }>, options: ResourceOpenOptions) => {
+    if (!globalSDK.capabilities.has("note") || !workbench.getPanel("notes"))
+      throw new Error(_({ id: "app.reference.unavailable", message: "The resource is unavailable." }))
+    const owner = ownerKey()
+    const captured = contextKey()
+    const current = () => !disposed && !options.signal?.aborted && contextKey() === captured
+    const note = await resolveNoteReference(sdk.client, sdk.scopeID, resource.id, options.signal)
+    if (!current()) return false
+    const state = { referenceLocation: options.location, referenceNavigation: generateUUID() }
+    const existing = !options.newTab
+      ? workbench
+          .surface("side")
+          .tabs()
+          .find((tab) => tab.panelId === "notes" && tab.resourceId === note.id && tab.source === note.scopeID)
+      : undefined
+    if (existing) {
+      workbench.updateTab(existing.id, { state: { ...(existing.state as object), ...state } })
+      workbench.activateTab("side", existing.id)
+      setOpenedResource({ session: workbench.sessionKey(), tabID: existing.id, origin: options.focusTarget })
       return true
     }
-    if (ResourceReference.parse(input.url).kind !== "url") return false
-    platform.openLink(input.url)
+    const tab = await workbench.openPanel("notes", {
+      canCommit: current,
+      forceNew: options.newTab,
+      init: { resourceId: note.id, source: note.scopeID, state },
+    })
+    if (!tab || disposed || options.signal?.aborted || ownerKey() !== owner) return false
+    setOpenedResource({ session: workbench.sessionKey(), tabID: tab.id, origin: options.focusTarget })
     return true
+  }
+
+  const preview = async (resource: OpenableResource, options: ResourceOpenOptions = {}): Promise<ResourcePreview> => {
+    if (resource.kind === "url") resource = ResourceReference.parse(resource.url)
+    const captured = contextKey()
+    const client = sdk.client
+    const scopeID = sdk.scopeID
+    const location = options.location ?? ("location" in resource ? resource.location : undefined)
+    const missing = _({
+      id: "app.reference.previewUnavailable",
+      message: "A preview isn’t available. You can still open the reference.",
+    })
+    const base: ResourcePreview = {
+      title:
+        resource.kind === "attachment" ? (resource.file.filename ?? "") : ResourceReference.format(resource, location),
+      source: "",
+      unavailable: missing,
+    }
+    const current = () => !disposed && !options.signal?.aborted && contextKey() === captured
+    const key = (...values: unknown[]) => JSON.stringify([ownerKey(), previewEpoch(), ...values])
+    const assertCurrent = () => {
+      if (!current()) throw new DOMException("Reference owner changed", "AbortError")
+    }
+    try {
+      options.signal?.throwIfAborted()
+      if (resource.kind === "note") {
+        base.source = _({ id: "app.reference.noteSource", message: "Note" })
+        if (!globalSDK.capabilities.has("note")) return base
+        const target = resource
+        const resolved = await notePreviewTargets.read(
+          key("note-target", target.id),
+          (signal) => resolveNoteReference(client, scopeID, target.id, signal),
+          options.signal,
+        )
+        assertCurrent()
+        const blockId = location?.kind === "heading" ? location.id : undefined
+        const project = (title: string, content: unknown): ResourcePreview => {
+          const excerpt = noteReferenceExcerpt(content, blockId)
+          return {
+            title,
+            source: base.source,
+            path: ResourceReference.format(target, location),
+            description: excerpt.text || undefined,
+            ...(!excerpt.found
+              ? {
+                  unavailable: _({
+                    id: "app.reference.noteLocationUnavailable",
+                    message: "This location no longer exists.",
+                  }),
+                }
+              : {}),
+          }
+        }
+        const draft = noteDocuments.peek(resolved.scopeID, target.id)
+        if (draft) return project(draft.title(), draft.content())
+        const value = await previewCache.read(
+          key("note", resolved.scopeID, target.id, location),
+          async (signal) => {
+            const response = await client.note.get(
+              { id: target.id, scopeID: resolved.scopeID },
+              { signal, throwOnError: true },
+            )
+            return response.data ? project(response.data.title, response.data.content) : base
+          },
+          options.signal,
+        )
+        assertCurrent()
+        const latest = noteDocuments.peek(resolved.scopeID, target.id)
+        return latest ? project(latest.title(), latest.content()) : value
+      }
+      if (resource.kind === "workspace-file") {
+        base.source = _({ id: "app.reference.fileSource", message: "Workspace file" })
+        if (!options.context || options.context.state !== "bound") return base
+        const target = workspaceTarget(resource.path, options.context)
+        const start = location?.kind === "text" ? Math.max(0, location.line - 4) : 0
+        const project = (text: string, startLine: number): ResourcePreview => ({
+          title: filenameFor(target),
+          source: base.source,
+          path: ResourceReference.format(resource, location),
+          code: { text: text.slice(0, 6000), startLine },
+        })
+        const fromDocument = () => {
+          const document = projectFiles.peek(target.workspace, target.path)
+          if (document?.deleted) return
+          const text =
+            document?.draft?.content ?? (document?.content?.kind === "text" ? document.content.content : undefined)
+          return text === undefined
+            ? undefined
+            : project(
+                text
+                  .split("\n")
+                  .slice(start, start + 11)
+                  .join("\n"),
+                start + 1,
+              )
+        }
+        const draft = fromDocument()
+        if (draft) return draft
+        const value = await previewCache.read(
+          key("file", target.workspace.id, target.workspace.generation, target.path, location),
+          async (signal) => {
+            const query = {
+              workspaceID: target.workspace.id,
+              workspaceGeneration: target.workspace.generation,
+              path: target.path,
+            }
+            const stat = await client.workspace.files.stat(query, { signal, throwOnError: true })
+            if (!stat.data || stat.data.type === "directory" || stat.data.binary) return base
+            const result = await client.workspace.files.read(
+              { ...query, offset: start, limit: 11, mode: "range" },
+              { signal, throwOnError: true },
+            )
+            return result.data?.kind === "text" ? project(result.data.content, result.data.range.startLine) : base
+          },
+          options.signal,
+        )
+        assertCurrent()
+        return fromDocument() ?? value
+      }
+      if (resource.kind === "url") {
+        const url = new URL(resource.url)
+        base.source = url.hostname
+        base.title = `${url.hostname}${url.pathname === "/" ? "" : url.pathname}`
+        if (!globalSDK.capabilities.has("browser") || !["https:", "http:"].includes(url.protocol)) return base
+        const value = await previewCache.read(
+          key("url", url.href),
+          async (signal) => {
+            const result = await client.browser.preview(
+              { path_directory: scopeID ?? sdk.scopeKey, scopeID, mode: "scope", url: url.href },
+              { signal, throwOnError: true },
+            )
+            const metadata = result.data
+            if (!metadata) return base
+            const unavailable = metadata.unavailable
+              ? metadata.unavailable === "authentication_required"
+                ? _({
+                    id: "app.reference.previewSignIn",
+                    message: "Open this page to view content that requires sign-in.",
+                  })
+                : missing
+              : undefined
+            return { ...metadata, unavailable }
+          },
+          options.signal,
+        )
+        assertCurrent()
+        return value
+      }
+      return base
+    } catch (error) {
+      if (!current() || (error instanceof DOMException && error.name === "AbortError")) throw error
+      return { ...base, unavailable: missing }
+    }
+  }
+
+  const openLabel = (resource: OpenableResource) => {
+    if (resource.kind === "note") return _({ id: "app.reference.openNote", message: "Open in Notes" })
+    if (resource.kind === "workspace-file") return _({ id: "app.reference.openFile", message: "Open in Files" })
+    if (resource.kind === "url" && globalSDK.capabilities.has("browser") && platform.browserNative)
+      return _({ id: "app.reference.openBrowser", message: "Open in Browser" })
+    return _({ id: "app.reference.open", message: "Open reference" })
+  }
+
+  const nativeLink = (reference: ResourceReference.Target) =>
+    platform.platform === "web" && reference.kind === "url" && /^https?:/i.test(reference.url)
+
+  const openUrl = async (
+    input: { url: string; mime?: string; filename?: string },
+    options: ResourceOpenOptions = {},
+    opening?: { id: string; owner: string },
+    onOpening?: (tabId: string) => void,
+  ): Promise<ResourceOpenResult> => {
+    if (input.mime?.startsWith("image/")) {
+      const image = previewImageForUrl(input)
+      if (!image) return { status: "cancelled" }
+      showResourceDialog(() => <ImagePreview images={[image]} />)
+      return { status: "opened" }
+    }
+    if (ResourceReference.parse(input.url).kind !== "url") return { status: "cancelled" }
+    const url = new URL(input.url)
+    const external = () => {
+      platform.openLink(input.url)
+      return { status: "dispatched" } as const
+    }
+    if (
+      options.prefer === "external" ||
+      !["http:", "https:"].includes(url.protocol) ||
+      !globalSDK.capabilities.has("browser") ||
+      !platform.browserNative
+    )
+      return external()
+    const captured = ownerKey()
+    const selection = globalSDK.capabilities.current()
+    const side = workbench.surface("side")
+    const revision = side.selectionRevision()
+    const current = () =>
+      !disposed &&
+      !options.signal?.aborted &&
+      captured === ownerKey() &&
+      globalSDK.capabilities.current() === selection &&
+      side.selectionRevision() === revision
+    const { BROWSER_PROTOCOL_VERSION, BrowserNativePresentationCapabilityResultSchema } = await import(
+      "@ericsanchezok/synergy-browser-core"
+    )
+    const capability = await platform.browserNative.presentationCapability({
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      serverUrl: sdk.url,
+    })
+    if (!current()) return { status: "cancelled" }
+    const validated = BrowserNativePresentationCapabilityResultSchema.safeParse(capability)
+    if (
+      !validated.success ||
+      validated.data.error ||
+      (validated.data.managedLocal ? validated.data.status !== "ready" : validated.data.status !== "failed")
+    )
+      throw new Error(
+        _({
+          id: "app.reference.browserUnavailable",
+          message: "The in-app browser is unavailable. Retry or open this link in your system browser.",
+        }),
+      )
+    if (!validated.data.managedLocal) return external()
+    if (opening) {
+      if (opening.owner !== captured) return { status: "cancelled" }
+      const pending = workbench.openingForTab(opening.id)
+      if (!pending) return { status: "cancelled" }
+      const tab = await pending.resolve()
+      if (!current()) return { status: "cancelled" }
+      setOpenedResource({ session: workbench.sessionKey(), tabID: tab.id, origin: options.focusTarget })
+      return { status: "opened" }
+    }
+    const route: BrowserWorkbenchRoute = {
+      mode: "scope",
+      scopeID: sdk.scopeID ?? sdk.scopeKey,
+      path_directory: params.dir ?? sdk.scopeID ?? sdk.scopeKey,
+    }
+    const catalog = browserCatalog.peek(route)
+    const candidates = options.newTab
+      ? []
+      : side.tabs().flatMap((tab) => {
+          const source = browserWorkbenchRoute(tab.state)
+          if (tab.panelId !== "browser" || !source || !catalog || !sameBrowserCatalog(source, catalog.route)) return []
+          const page = catalog.store.session.pages.find(
+            (page) => page.id === tab.resourceId && page.status === "active",
+          )
+          if (!page) return []
+          try {
+            const address = new URL(page.url)
+            const exact = address.href === url.href
+            address.hash = ""
+            const base = new URL(url.href)
+            base.hash = ""
+            return exact || address.href === base.href ? [{ tab, page, exact }] : []
+          } catch {
+            return []
+          }
+        })
+    if (candidates.length === 1) {
+      const match = candidates[0]
+      if (!match.exact) {
+        const { browserWorkbenchAccess } = await import("@/components/workspace/browser/browser-workbench-api")
+        const { createBrowserCommandId } = await import("@/components/workspace/browser/browser-command")
+        const access = await browserWorkbenchAccess({
+          client: sdk.client,
+          serverUrl: sdk.url,
+          bridge: platform.browserNative,
+          route: catalog!.route,
+        })
+        if (!current()) return { status: "cancelled" }
+        await sdk.client.browser.control(
+          {
+            ...access,
+            browserControlRequest: {
+              protocolVersion: BROWSER_PROTOCOL_VERSION,
+              pageId: match.page.id,
+              commandId: createBrowserCommandId(),
+              command: { type: "navigate", source: "user", url: input.url },
+            },
+          },
+          { signal: options.signal, throwOnError: true },
+        )
+        if (!current()) return { status: "cancelled" }
+      }
+      workbench.activateTab("side", match.tab.id)
+      setOpenedResource({ session: workbench.sessionKey(), tabID: match.tab.id, origin: options.focusTarget })
+      return { status: "opened" }
+    }
+    const tab = await workbench.openPanel("browser", {
+      canCommit: current,
+      forceNew: true,
+      init: { state: { url: input.url } },
+      onOpening,
+    })
+    if (!current()) return { status: "cancelled" }
+    if (!tab) throw new Error(_({ id: "browser.prepare.failed", message: "Browser preparation failed. Retry." }))
+    setOpenedResource({ session: workbench.sessionKey(), tabID: tab.id, origin: options.focusTarget })
+    return { status: "opened" }
   }
 
   const openAttachment = async (
@@ -627,16 +958,24 @@ export function ResourceOpenProvider(props: ParentProps) {
     }
 
     if (path) return openWorkspaceFile(path, options)
-    if (url) return openUrl({ url, mime: attachment.mime, filename: attachment.filename })
+    if (url)
+      return (await openUrl({ url, mime: attachment.mime, filename: attachment.filename }, options)).status === "opened"
     throw new Error(_({ id: "app.reference.unavailable", message: "The resource is unavailable." }))
   }
 
-  const open = async (resource: OpenableResource, supplied: ResourceOpenOptions = {}): Promise<ResourceOpenResult> => {
+  const open = async (
+    resource: OpenableResource,
+    supplied: ResourceOpenOptions = {},
+    retry?: { opening: { id: string; owner: string }; request: AbortController },
+  ): Promise<ResourceOpenResult> => {
     if (resource.kind === "url")
       resource = { ...ResourceReference.parse(resource.url), mime: resource.mime, filename: resource.filename }
-    resourceRequest?.abort()
-    const request = new AbortController()
+    if (retry && (resourceRequest !== retry.request || retry.opening.owner !== ownerKey()))
+      return { status: "cancelled" }
+    if (!retry) resourceRequest?.abort()
+    const request = retry?.request ?? new AbortController()
     resourceRequest = request
+    let opening = retry?.opening
     const signal = supplied.signal ? AbortSignal.any([supplied.signal, request.signal]) : request.signal
     const options = {
       ...supplied,
@@ -705,15 +1044,19 @@ export function ResourceOpenProvider(props: ParentProps) {
         if (attachment) opened = await openAttachment(attachment, options)
       } else if (resource.kind === "workspace-file")
         opened = await openWorkspaceFile(resource.path, options, resource.mime)
-      else if (resource.kind === "url") opened = await openUrl(resource)
-      else if (resource.kind === "image") opened = await openUrl({ ...resource, mime: "image/*" })
+      else if (resource.kind === "note") opened = await openNote(resource, options)
+      else if (resource.kind === "url")
+        return await openUrl(resource, options, opening, (id) => {
+          opening = { id, owner: ownerKey() }
+        })
+      else if (resource.kind === "image") return await openUrl({ ...resource, mime: "image/*" }, options)
       else if (resource.kind === "unavailable")
         throw new Error(
           _({ id: "app.reference.invalid", message: "This reference has an invalid path, protocol or location." }),
         )
       if (signal.aborted) return { status: "cancelled" }
       if (!opened) return { status: "cancelled" }
-      return { status: resource.kind === "url" && !resource.mime?.startsWith("image/") ? "dispatched" : "opened" }
+      return { status: "opened" }
     } catch (error) {
       if (signal.aborted) return { status: "cancelled" }
       const reason =
@@ -735,10 +1078,20 @@ export function ResourceOpenProvider(props: ParentProps) {
         title: _({ id: "app.reference.openFailed", message: "Couldn’t open reference" }),
         description: reason,
         actions: [
+          ...(resource.kind === "url" && /^https?:/i.test(resource.url)
+            ? [
+                {
+                  label: _({ id: "app.reference.openExternal", message: "Open in system browser" }),
+                  onClick: () => {
+                    void open(resource, { ...supplied, prefer: "external" })
+                  },
+                },
+              ]
+            : []),
           {
             label: _({ id: "app.workspace.panel.retry", message: "Retry" }),
             onClick: () => {
-              void open(resource, supplied)
+              void open(resource, supplied, opening ? { opening, request } : undefined)
             },
           },
           ...(reference
@@ -770,6 +1123,10 @@ export function ResourceOpenProvider(props: ParentProps) {
 
   const controller = {
     open,
+    preview,
+    openLabel,
+    nativeLink,
+    contextKey,
     resolveUrl,
     openToolReview,
     openToolActivity,

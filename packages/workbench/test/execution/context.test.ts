@@ -1,4 +1,5 @@
-import { afterAll, expect, test } from "bun:test"
+import { afterAll, expect, spyOn, test } from "bun:test"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Hono } from "hono"
 import { generateSpecs } from "hono-openapi"
 import { testRuntime } from "../support/runtime"
@@ -16,6 +17,19 @@ import { reconcileContextUsage } from "@ericsanchezok/synergy-harness/context"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const app = new Hono().route("/session", ExecutionRoute())
+
+test("context history reads only its session metadata without building descendant message trees", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      await Session.create({ parentID: session.id, title: "Unrelated child history" })
+      using messages = spyOn(MessageV2, "stream")
+      using children = spyOn(Session, "children")
+      const page = await ExecutionService.contextHistory(session.id, { limit: 30 })
+      expect(page.sessionID).toBe(session.id)
+      expect(messages).not.toHaveBeenCalled()
+      expect(children).not.toHaveBeenCalled()
+    }),
+  ))
 
 test("formal attribution retains its call identity when an assistant contains a later retry", () =>
   runtime.run(() =>
@@ -96,10 +110,10 @@ test("running request estimates stay out of accounting and calibrate with provid
     }),
   ))
 
-test("execution rebuilds deliver live classification without repeating unchanged contexts", () =>
+test("execution projections deliver live classification without repeating unchanged contexts", () =>
   runtime.run(() =>
     fixture(async ({ session, rootID, call }) => {
-      await ExecutionService.contextHistory(session.id, { limit: 30 })
+      await ExecutionService.summary(session.id)
       const draft = Promise.withResolvers<ReturnType<typeof contextDraft>>()
       const delivered = Promise.withResolvers<void>()
       const unchanged = Promise.withResolvers<ExecutionSchema.ContextSnapshot[]>()

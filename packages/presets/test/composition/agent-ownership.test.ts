@@ -188,53 +188,43 @@ for (const selected of [false, true]) {
 
 for (const kind of ["blueprint", "light-loop"] as const) {
   for (const selected of [false, true]) {
-    for (const deniedTool of [undefined, "agenda_cancel", kind === "blueprint" ? "blueprint_loop_stop" : "loop_stop"]) {
-      test(`${kind} stop guidance requires the selected Agenda bridge and both permitted tools (${selected}, ${deniedTool ?? "allowed"})`, async () => {
-        const stop = kind === "blueprint" ? "blueprint_loop_stop" : "loop_stop"
-        const components = kind === "blueprint" ? [note(), blueprint()] : [lightLoop()]
-        await using runtime = await open(
-          [
-            agenda(),
-            ...components,
-            ...(selected ? [kind === "blueprint" ? agendaBlueprint() : agendaLightLoop()] : []),
-          ],
-          deniedTool ? { [deniedTool]: "deny" } : {},
-        )
-        await runtime.run(() =>
-          ScopeContext.provide({
-            scope: Scope.home(),
-            async fn() {
-              const created = await Session.create({ title: "Stop guidance" })
-              const loop =
-                kind === "blueprint"
-                  ? await BlueprintLoopStore.create({
-                      noteID: "note_guidance",
-                      title: "Stop guidance",
-                      sessionID: created.id,
-                    })
-                  : undefined
-              if (loop) await BlueprintLoopStore.updateStatus(created.scope.id, loop.id, { status: "running" })
-              await Session.update(created.id, (draft) => {
-                if (loop) draft.blueprint = { loopID: loop.id, loopRole: "execution" }
-                else draft.workflow = { kind: "lightloop", instructions: "Complete task" }
-              })
-              const agent = await Agent.get(PrimaryAgentIdentity.names.general)
-              const result = await prepared(agent, await Session.get(created.id))
-              expect((await ToolRegistry.find(stop))?.description).not.toMatch(/Agenda|agenda_cancel/)
-              const instruction = `${kind === "blueprint" ? "BlueprintLoop review" : "Light Loop completion"} requires all active Agenda wakeups`
-              expect(result.prompt.includes(instruction)).toBe(selected && !deniedTool)
-              if (selected && !deniedTool) {
-                expect(result.prompt).toContain(
-                  `${kind === "blueprint" ? "Review" : "Completion"} is rejected while any wakeup remains`,
-                )
-                expect(result.availableToolIDs).toContain(stop)
-                expect(result.availableToolIDs).toContain("agenda_cancel")
-              }
-            },
-          }),
-        )
-      }, 30_000)
-    }
+    test(`${kind} does not prime Agenda cleanup without a wakeup (bridge=${selected})`, async () => {
+      const stop = kind === "blueprint" ? "blueprint_loop_stop" : "loop_stop"
+      const components = kind === "blueprint" ? [note(), blueprint()] : [lightLoop()]
+      await using runtime = await open([
+        agenda(),
+        ...components,
+        ...(selected ? [kind === "blueprint" ? agendaBlueprint() : agendaLightLoop()] : []),
+      ])
+      await runtime.run(() =>
+        ScopeContext.provide({
+          scope: Scope.home(),
+          async fn() {
+            const created = await Session.create({ title: "Stop guidance" })
+            const loop =
+              kind === "blueprint"
+                ? await BlueprintLoopStore.create({
+                    noteID: "note_guidance",
+                    title: "Stop guidance",
+                    sessionID: created.id,
+                  })
+                : undefined
+            if (loop) await BlueprintLoopStore.updateStatus(created.scope.id, loop.id, { status: "running" })
+            await Session.update(created.id, (draft) => {
+              if (loop) draft.blueprint = { loopID: loop.id, loopRole: "execution" }
+              else draft.workflow = { kind: "lightloop", instructions: "Complete task" }
+            })
+            const agent = await Agent.get(PrimaryAgentIdentity.names.general)
+            const result = await prepared(agent, await Session.get(created.id))
+            expect((await ToolRegistry.find(stop))?.description).not.toMatch(/Agenda|agenda_cancel/)
+            const instruction = `${kind === "blueprint" ? "BlueprintLoop review" : "Light Loop completion"} requires all active Agenda wakeups`
+            expect(result.prompt).not.toContain(instruction)
+            expect(result.availableToolIDs).toContain(stop)
+            expect(result.availableToolIDs).toContain("agenda_cancel")
+          },
+        }),
+      )
+    }, 30_000)
   }
 }
 

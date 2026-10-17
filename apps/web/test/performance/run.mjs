@@ -32,10 +32,13 @@ try {
       timer = setTimeout(() => reject(new Error("Fixture readiness timeout")), 120000)
     }),
   ]).finally(() => clearTimeout(timer))
-  client = Bun.spawn([process.execPath, path.join(import.meta.dir, "browser.mjs"), repo, home], {
-    stdout: "pipe",
-    stderr: Bun.file(path.join(home, "browser-errors.log")),
-  })
+  client = Bun.spawn(
+    [process.execPath, path.join(import.meta.dir, panels === "soak" ? "soak.mjs" : "browser.mjs"), repo, home],
+    {
+      stdout: "pipe",
+      stderr: Bun.file(path.join(home, "browser-errors.log")),
+    },
+  )
   let output = "",
     started = false
   for await (const chunk of client.stdout) {
@@ -49,7 +52,7 @@ try {
   }
   await Bun.write(path.join(home, "browser.log"), output)
   if ((await client.exited) !== 0) throw new Error("Browser comparison failed; inspect browser-errors.log")
-  if (panels) {
+  if (panels === "panels" || process.env.SYNERGY_PERF_PANELS === "1") {
     const panel = Bun.spawn([process.execPath, path.join(import.meta.dir, "panels.mjs"), repo, home], {
       stdout: Bun.file(path.join(home, "panels.log")),
       stderr: Bun.file(path.join(home, "panels-errors.log")),
@@ -58,9 +61,13 @@ try {
   }
   console.log(await Bun.file(path.join(home, "report.json")).text())
 } finally {
-  server.stdin.write("stop\n")
-  await server.stdin.flush()
-  server.stdin.end()
+  if (server.exitCode === null) {
+    try {
+      server.stdin.write("stop\n")
+      await server.stdin.flush()
+      server.stdin.end()
+    } catch {}
+  }
   await server.exited
   await readServer
 }

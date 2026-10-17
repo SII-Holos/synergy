@@ -43,6 +43,7 @@ Apply [agent-facing design](../integrate-llm/references/agent-facing-design.md) 
 ## Verify
 
 1. Add a behavioral or catalog test before implementation when behavior changes. Assert visibility, permission, model-role, or routing invariants rather than source text.
+   When changing the initial primary, verify catalog ordering agrees with implicit execution, explicit configuration still wins, and missing, hidden, disabled or subagent-only defaults fall back to a selectable primary. Preserve existing Session and composer choices.
 2. Run the narrow agent/session tests from `packages/harness`.
 3. Run `bun run typecheck` and `bun run quality:quick` from the repository root.
 4. Exercise the affected primary catalog in an isolated development instance when prompt routing or delegation changed; use the `develop-synergy` skill.

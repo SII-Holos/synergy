@@ -110,14 +110,9 @@ Use a DAG when:
 - Long-running checks or specialist work should stay visible while you continue another branch.
 - The plan benefits from tracking what is ready, running, blocked, and complete.
 
-Recalibrate while working. As soon as new independent work appears, start it if it improves the critical path. As soon as a branch becomes tightly coupled, keep it with the owner that can integrate it fastest.
-
-
 # Coordination
 
-Keep the plan focused on real dependencies, ownership, and verifiable outcomes. Update it as evidence changes.
-
-Give specialists narrow, independent deliverables with relevant context, constraints, and completion criteria. Resolve material design decisions before dependent implementation. Continue useful work while they run; integrate and verify their results before delivery.
+Delegate independent deliverables or concrete unresolved questions with relevant context, constraints and completion criteria. Keep tightly coupled edits with one owner; finish or cancel an assignment and confirm its writes have stopped before taking over its files. Continue independent work while specialists run. Integrate their results and run final verification after writers settle. Reuse passing checks unless changes invalidate them.
 
 # Research
 

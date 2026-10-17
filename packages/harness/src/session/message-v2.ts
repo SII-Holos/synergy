@@ -946,6 +946,34 @@ export namespace MessageV2 {
   })
   export type WithParts = z.infer<typeof WithParts>
 
+  export function copyForTransform(messages: WithParts[]): WithParts[] {
+    const copies = new WeakMap<object, object>()
+    function copy<T>(value: T): T {
+      // Share immutable strings: native deep cloning copies large tool outputs on every step.
+      if (value === null || typeof value !== "object") return value
+      const existing = copies.get(value)
+      if (existing) return existing as T
+      const prototype = Object.getPrototypeOf(value)
+      if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+        const result = structuredClone(value)
+        copies.set(value, result)
+        return result
+      }
+      const result: object = Array.isArray(value) ? new Array(value.length) : Object.create(prototype)
+      copies.set(value, result)
+      for (const [key, item] of Object.entries(value)) {
+        Object.defineProperty(result, key, {
+          value: copy(item),
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        })
+      }
+      return result as T
+    }
+    return copy(messages)
+  }
+
   export function extractText(parts: Part[], options?: { includeSynthetic?: boolean; maxLength?: number }): string {
     const texts: string[] = []
     for (const part of parts) {

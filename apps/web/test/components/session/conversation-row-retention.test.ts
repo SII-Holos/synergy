@@ -120,6 +120,18 @@ declare global {
     __holdExecutions: (options?: ExecutionTransportOptions) => void
     __pendingExecutions: () => number
     __settleExecutions: () => void
+    __taskDetails: {
+      open(): void
+      close(): void
+      settle(failed: boolean): void
+      loading(): boolean
+      requests(): number
+    }
+    __contentRecovery: {
+      version(value: string): void
+      checkpoint(version: string): void
+      reads(): number
+    }
   }
 }
 
@@ -187,6 +199,7 @@ beforeAll(async () => {
         import { ExecutionCompletion } from ${JSON.stringify(`/@fs/${completionPath}`)}
         import { createPartArrivalState } from ${JSON.stringify(`/@fs/${arrivalPath}`)}
         import { createSessionTransitionState } from ${JSON.stringify(`/@fs/${transitionPath}`)}
+        import { createExecutionSummary } from ${JSON.stringify(`/@fs/${path.resolve(import.meta.dir, "../../../src/context/execution-summary.ts")}`)}
         export { draftTransitionKey } from ${JSON.stringify(`/@fs/${transitionPath}`)}
         import { draftTransitionKey } from ${JSON.stringify(`/@fs/${transitionPath}`)}
         import { createStore } from "solid-js/store"
@@ -370,7 +383,30 @@ beforeAll(async () => {
           if (rootID === "r32") virtualExecutionWork.processRootReads++
           return undefined
         }
-        export const useExecution = () => ({retain() {},
+        let executionSummary
+        export function createTaskDetails() {
+          const [visible, setVisible] = createSignal(false)
+          let requests = 0, settle
+          executionSummary = createExecutionSummary({
+            client: createSynergyClient({baseUrl: "http://fixture", fetch: request => {
+              requests++
+              return new Promise((resolve, reject) => {
+                request.signal.addEventListener("abort", () => reject(request.signal.reason), {once: true})
+                settle = failed => resolve(failed ? Response.json({}, {status: 503}) : Response.json({sessionID: session(), revision: requests, clockID: "fixture", sampledAt: requests, rounds: []}))
+              })
+            }}),
+            sessionID: session, available: executionAvailable, connected: () => true,
+            visible, subscribe: () => () => {},
+          })
+          window.__taskDetails = {
+            open() {setVisible(true); void executionSummary.refresh()},
+            close() {setVisible(false)},
+            settle(failed) {settle(failed)},
+            loading: () => executionSummary.state.loading,
+            requests: () => requests,
+          }
+        }
+        export const useExecution = () => ({get state() { return executionSummary.state }, retain() {},
           available: executionAvailable,
           round: () => undefined,
           open: (id: string) => openedExecution.push(id),
@@ -382,7 +418,7 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "main.tsx"),
       `
-        import { batch, createComponent, createSignal, Suspense } from "solid-js"
+        import { batch, createComponent, createSignal, onCleanup, Suspense } from "solid-js"
         import { render } from "solid-js/web"
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
@@ -390,13 +426,15 @@ beforeAll(async () => {
         import { DataProvider } from "@ericsanchezok/synergy-ui/context/data"
         import { SessionConversation } from ${JSON.stringify(`/@fs/${conversationPath}`)}
         import { ViewActivityProvider } from "@/context/view-residency"
+        import { createPartMaterializer } from "@/context/part-materializer"
         import ${JSON.stringify(`/@fs/${path.resolve(import.meta.dir, "../../../../../packages/ui/src/styles/theme.css")}`)}
-        import { fixtureSession, setFixtureSession, fixtureMessages, setFixtureMessages, readProjectionPage, historyState, returnLatest } from "./stubs"
+        import { fixtureSession, setFixtureSession, fixtureMessages, setFixtureMessages, readProjectionPage, historyState, returnLatest, createTaskDetails } from "./stubs"
         console.info("[conversation-boot] main")
 
         type AnyMsg = { id: string; role: "user" | "assistant"; text?: string }
 
         function App() {
+          createTaskDetails()
           const timeline = fixtureMessages
           const [contentEnabled, setContentEnabled] = createSignal(false)
           const [layoutReady, setLayoutReady] = createSignal(!window.location.search.includes("admission"))
@@ -406,6 +444,21 @@ beforeAll(async () => {
           const pendingBodies: { resolve(): void; reject(error: Error): void }[] = []
           const bodyReleases: string[] = []
           const hydratedSessions: string[] = []
+          const recoveryMode = window.location.search.includes("content-recovery")
+          const [version, setVersion] = createSignal("one")
+          const [checkpoint, setCheckpoint] = createSignal()
+          let reads = 0
+          const materializer = createPartMaterializer({
+            cached: summary => checkpoint()?.version === summary.content.version ? checkpoint().part : undefined,
+            read: async () => { reads++; throw {name: "SessionDisplayConflict"} },
+            refresh: async summary => summary, wait: async () => {}, apply: () => {}, evict: () => {},
+          })
+          onCleanup(() => materializer.dispose())
+          window.__contentRecovery = {
+            version: setVersion,
+            checkpoint: version => setCheckpoint({version, part: {id:"part-0000",messageID:"delivered",sessionID:sessionID(),type:"text",text:"Delivered body"}}),
+            reads: () => reads,
+          }
           Object.assign(window, {
             __hydratedSessions: () => [...hydratedSessions],
             __holdBodies: () => { holdBody = true },
@@ -440,8 +493,8 @@ beforeAll(async () => {
           })
           return createComponent(SessionConversation, { initialScrollSettled: layoutReady, onHydrated: id => hydratedSessions.push(id), context: {
             get content() { return contentEnabled() ? {
-              summaries: id => Array.from({length: id === "huge" ? 1001 : 1}, (_, index) => ({id: "part-"+String(index).padStart(4,"0"),messageID:id,sessionID:sessionID(),type:"text",preview:"",content:{version:"one",bytes:10}})),
-              page: readProjectionPage,load: async () => {},retain: summary => ({ready:holdBody ? new Promise<void>((resolve,reject) => pendingBodies.push({resolve,reject})) : Promise.resolve(),release() {bodyReleases.push(JSON.stringify([summary.sessionID, summary.messageID, summary.id]))}}),
+              summaries: id => Array.from({length: id === "huge" ? 1001 : 1}, (_, index) => ({id: "part-"+String(index).padStart(4,"0"),messageID:id,sessionID:sessionID(),type:"text",preview:"",content:{version:recoveryMode ? version() : "one",bytes:10}})),
+              page: readProjectionPage,load: async () => {},retain: summary => recoveryMode ? materializer.retain(summary) : ({ready:holdBody ? new Promise<void>((resolve,reject) => pendingBodies.push({resolve,reject})) : Promise.resolve(),release() {bodyReleases.push(JSON.stringify([summary.sessionID, summary.messageID, summary.id]))}}),
             } : undefined },
             registerMessageLocator: fn => { locate=fn; return () => { if(locate===fn) locate=undefined } },
             onFirstTurnMounted() {},
@@ -958,6 +1011,50 @@ test("cold admission paints only the settled reading window and never rearms for
   expect(pageErrors).toEqual([])
 })
 
+test("task details cannot hold cold conversation admission or resumed hydration while its summary is pending", async () => {
+  await page.goto(new URL("?admission", page.url()).href)
+  await page.waitForFunction(() => typeof window.__setTimeline === "function")
+  await page.evaluate(() => {
+    window.__taskDetails.open()
+    window.__holdExecutions()
+    window.__setTimeline([
+      { id: "initial", sessionID: "ses_1", role: "user", text: "Ready transcript", time: { created: 1 } },
+    ])
+    window.__enableContent()
+    ;(window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true)
+  })
+  await page.waitForSelector("[data-display-row]", { state: "attached" })
+  await executionFrames()
+  const viewport = page.locator("[data-conversation-viewport]")
+  expect(await viewport.getAttribute("data-ready")).toBe("false")
+  await page.evaluate(() => window.__settleExecutions())
+  await page.waitForSelector('[data-conversation-viewport][data-ready="true"]', { timeout: 3000 })
+  expect(await page.evaluate(() => window.__taskDetails.loading())).toBe(true)
+  expect(await viewport.getAttribute("aria-hidden")).toBeNull()
+  const row = page.locator('[data-slot="session-turn-stub"]').first()
+  const mount = await row.getAttribute("data-mount")
+  await page.evaluate(() => {
+    window.__viewActive(false)
+    window.__viewActive(true)
+  })
+  await page.waitForFunction(
+    () => (window as unknown as { __hydratedSessions(): string[] }).__hydratedSessions().length === 2,
+  )
+  expect(await page.evaluate(() => window.__taskDetails.loading())).toBe(true)
+  await page.evaluate(() => window.__taskDetails.settle(true))
+  await page.waitForFunction(() => !window.__taskDetails.loading())
+  expect(await row.getAttribute("data-mount")).toBe(mount)
+  expect(await viewport.getAttribute("data-ready")).toBe("true")
+  await page.evaluate(() => window.__taskDetails.open())
+  expect(await page.evaluate(() => window.__taskDetails.loading())).toBe(true)
+  expect(await viewport.getAttribute("data-ready")).toBe("true")
+  await page.evaluate(() => window.__taskDetails.close())
+  await page.waitForFunction(() => !window.__taskDetails.loading())
+  expect(await page.evaluate(() => window.__taskDetails.requests())).toBe(2)
+  expect(await row.getAttribute("data-mount")).toBe(mount)
+  expect(pageErrors).toEqual([])
+})
+
 test("cold admission cannot be starved by continuous live text mutations", async () => {
   await page.goto(new URL("?admission", page.url()).href)
   await page.waitForFunction(() => typeof window.__setTimeline === "function")
@@ -1011,6 +1108,41 @@ test("terminal body failures reveal an actionable retry instead of stranding ini
   expect(await page.locator("[data-conversation-viewport]").getAttribute("aria-hidden")).toBeNull()
   expect(pageErrors).toEqual([])
 })
+
+for (const [changed, background] of [
+  [false, false],
+  [true, false],
+  [true, true],
+]) {
+  test(`a ${changed ? "new" : "same"}-version ${background ? "background" : "live"} checkpoint removes the stale retry without remounting readable content`, async () => {
+    await page.goto(new URL("?content-recovery", page.url()).href)
+    await page.waitForFunction(() => typeof window.__setTimeline === "function")
+    await page.evaluate(() => {
+      window.__setTimeline([
+        { id: "delivered", sessionID: "ses_1", role: "user", text: "Delivered body", time: { created: 1 } },
+      ])
+      window.__enableContent()
+    })
+    await page.waitForSelector("[data-content-error]")
+    const row = page.locator('[data-slot="session-turn-stub"][data-message-id="delivered"][data-part-count="1"]')
+    const mount = await row.getAttribute("data-mount")
+    expect(await row.textContent()).toContain("Delivered body")
+    expect(await page.evaluate(() => window.__contentRecovery.reads())).toBe(8)
+    const version = changed ? "terminal" : "one"
+    await page.evaluate((version) => window.__contentRecovery.version(version), version)
+    expect(await page.locator("[data-content-error]").count()).toBe(1)
+    await page.evaluate(() => window.__contentRecovery.checkpoint("obsolete"))
+    expect(await page.locator("[data-content-error]").count()).toBe(1)
+    if (background) await page.evaluate(() => window.__viewActive(false))
+    await page.evaluate((version) => window.__contentRecovery.checkpoint(version), version)
+    if (background) await page.evaluate(() => window.__viewActive(true))
+    await page.waitForSelector("[data-content-error]", { state: "detached", timeout: 3000 })
+    expect(await row.getAttribute("data-mount")).toBe(mount)
+    expect(await row.textContent()).toContain("Delivered body")
+    expect(await page.evaluate(() => window.__contentRecovery.reads())).toBe(8)
+    expect(pageErrors).toEqual([])
+  })
+}
 
 test("cold hydration waits for bodies and Markdown, releases once, and rejects the previous owner", async () => {
   await page.goto(new URL("?admission", page.url()).href)

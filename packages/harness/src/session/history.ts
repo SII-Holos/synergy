@@ -525,8 +525,10 @@ export namespace SessionHistory {
       numTurns: z.number().int().min(1).optional(),
       cutMessageID: z.string().optional(),
     }),
-    async (input) =>
-      Storage.transaction(async () => {
+    async (input) => {
+      const session = await SessionManager.requireSession(input.sessionID)
+      await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+      return Storage.transaction(async () => {
         if ((input.numTurns == null) === (input.cutMessageID == null)) {
           throw new Error("Provide exactly one of numTurns or cutMessageID")
         }
@@ -579,7 +581,8 @@ export namespace SessionHistory {
         const nextEvents = [...events, event]
         await updateSessionHistory(input.sessionID, info(input.sessionID, raw, nextEvents))
         return event
-      }),
+      })
+    },
   )
 
   export const unrollback = fn(
@@ -587,8 +590,10 @@ export namespace SessionHistory {
       sessionID: Identifier.schema("session"),
       rollbackID: Identifier.schema("history").optional(),
     }),
-    async (input) =>
-      Storage.transaction(async () => {
+    async (input) => {
+      const session = await SessionManager.requireSession(input.sessionID)
+      await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+      return Storage.transaction(async () => {
         SessionManager.assertIdle(input.sessionID)
         const [raw, events] = await Promise.all([
           rawMessages({ sessionID: input.sessionID }),
@@ -628,7 +633,8 @@ export namespace SessionHistory {
         const nextEvents = [...events, event]
         await updateSessionHistory(input.sessionID, info(input.sessionID, raw, nextEvents))
         return event
-      }),
+      })
+    },
   )
 
   export const FileDiffInput = z.object({

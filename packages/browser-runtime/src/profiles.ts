@@ -27,6 +27,7 @@ const state = RuntimeContext.state(() => ({
   tail: Promise.resolve(),
   temporary: new Map<string, z.infer<typeof StoredProfile>>(),
   listeners: new Set<(id: string) => Promise<void>>(),
+  invalidators: new Set<(id: string) => Promise<void>>(),
 }))
 
 export namespace BrowserProfiles {
@@ -127,12 +128,36 @@ export namespace BrowserProfiles {
     })
   }
 
+  export function withDataProfile<T>(id: string | undefined, operation: (profile: Stored) => Promise<T>): Promise<T> {
+    return exclusive(async () => {
+      const value = await catalog()
+      const profile = value.profiles.find((profile) => profile.id === (id ?? value.defaultProfileId))
+      if (!profile?.enabled || profile.kind !== "persistent")
+        throw new BrowserProtocolError({
+          code: "browser_profile_unavailable",
+          message: "Choose an enabled persistent browser identity.",
+          retryable: false,
+        })
+      return operation(structuredClone(profile))
+    })
+  }
+
+  export function beforeChange(listener: (id: string) => Promise<void>): () => void {
+    state().invalidators.add(listener)
+    return () => state().invalidators.delete(listener)
+  }
+
+  async function invalidate(id: string): Promise<void> {
+    await Promise.all([...state().invalidators].map((listener) => listener(id)))
+  }
+
   export async function update(id: string, input: z.infer<typeof BrowserProfileUpdateSchema>): Promise<Stored> {
     const parsed = BrowserProfileUpdateSchema.parse(input)
     const result = await exclusive(async () => {
       const value = await catalog()
       const profile = value.profiles.find((item) => item.id === id)
       if (!profile) throw missing(id)
+      await invalidate(id)
       Object.assign(profile, parsed, { revision: profile.revision + 1 })
       if (profile.enabled) value.defaultProfileId ??= id
       if (!profile.enabled && value.defaultProfileId === id)
@@ -163,6 +188,7 @@ export namespace BrowserProfiles {
       if (!profile) throw missing(id)
       if (parsed && !(key in profile.origins) && Object.keys(profile.origins).length >= 256)
         throw new Error("Remove an unused website rule before adding another (256 rule limit).")
+      await invalidate(id)
       if (parsed) profile.origins[key] = parsed
       else delete profile.origins[key]
       profile.revision++

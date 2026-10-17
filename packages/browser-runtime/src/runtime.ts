@@ -119,6 +119,7 @@ export namespace BrowserRuntime {
     const instanceState = runtimeState()
 
     const failures: unknown[] = []
+    collectFailures(await Promise.allSettled([BrowserBroker.releaseDataContexts()]), failures)
     collectFailures(await Promise.allSettled(Array.from(instanceState.disposalPromises.values())), failures)
     collectFailures(await Promise.allSettled(Array.from(instanceState.sessionPromises.values())), failures)
     const executor = requireCommandExecutor()

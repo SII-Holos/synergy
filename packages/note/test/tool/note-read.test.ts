@@ -28,6 +28,32 @@ function paragraph(text: string) {
 }
 
 describe("note_read blocks output", () => {
+  test("every successful format includes an escaped Markdown reference without changing metadata", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const note = await NoteStore.create({
+            title: "A [draft] *bold* `code` <tag> &copy; \\ path\nNext",
+            content: { type: "doc", content: [paragraph("Read me")] },
+          })
+          for (const format of ["markdown", "blocks", "json"]) {
+            const result = await execute({ noteIds: [note.id, "missing"], format })
+            expect(result.output.split("\n")).toContain(
+              "Reference: [A \\[draft\\] \\*bold\\* \\`code\\` \\<tag\\> &amp;copy; \\\\ path Next](note://" +
+                note.id +
+                ")",
+            )
+            expect(result.metadata).toEqual({ count: 1, titles: [note.title], truncated: false })
+            expect(result.output).toContain("[missing] Not found")
+            expect(result.output).not.toContain("note://missing")
+          }
+        },
+      })
+    }))
+
   test("emits versioned block anchors and paginates by block entries", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir()

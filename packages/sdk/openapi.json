@@ -8974,6 +8974,9 @@
           "404": {
             "description": "Execution evidence was not found in the selected Scope and session"
           },
+          "500": {
+            "description": "Execution computation failed"
+          },
           "503": {
             "description": "Runtime shutting down",
             "content": {
@@ -9064,6 +9067,9 @@
           "404": {
             "description": "Execution evidence was not found in the selected Scope and session"
           },
+          "500": {
+            "description": "Execution computation failed"
+          },
           "503": {
             "description": "Runtime shutting down",
             "content": {
@@ -9145,6 +9151,9 @@
           },
           "404": {
             "description": "Execution evidence was not found in the selected Scope and session"
+          },
+          "500": {
+            "description": "Execution computation failed"
           },
           "503": {
             "description": "Runtime shutting down",
@@ -9278,6 +9287,9 @@
           },
           "404": {
             "description": "Execution evidence was not found in the selected Scope and session"
+          },
+          "500": {
+            "description": "Execution computation failed"
           },
           "503": {
             "description": "Runtime shutting down",
@@ -9511,6 +9523,9 @@
           "404": {
             "description": "Execution evidence was not found in the selected Scope and session"
           },
+          "500": {
+            "description": "Execution computation failed"
+          },
           "503": {
             "description": "Runtime shutting down",
             "content": {
@@ -9592,6 +9607,9 @@
           },
           "404": {
             "description": "Execution evidence was not found in the selected Scope and session"
+          },
+          "500": {
+            "description": "Execution computation failed"
           },
           "503": {
             "description": "Runtime shutting down",
@@ -9713,6 +9731,9 @@
           "404": {
             "description": "Execution evidence was not found in the selected Scope and session"
           },
+          "500": {
+            "description": "Execution computation failed"
+          },
           "503": {
             "description": "Runtime shutting down",
             "content": {
@@ -9830,6 +9851,9 @@
           },
           "404": {
             "description": "Execution evidence was not found in the selected Scope and session"
+          },
+          "500": {
+            "description": "Execution computation failed"
           },
           "503": {
             "description": "Runtime shutting down",
@@ -9965,6 +9989,9 @@
           },
           "404": {
             "description": "Execution evidence was not found in the selected Scope and session"
+          },
+          "500": {
+            "description": "Execution computation failed"
           },
           "503": {
             "description": "Runtime shutting down",
@@ -28967,6 +28994,415 @@
         ]
       }
     },
+    "/{directory}/browser/preview": {
+      "post": {
+        "operationId": "browser.preview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "scope",
+              "type": "string",
+              "const": "scope"
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "Preview an anonymous public webpage",
+        "description": "Read public metadata or a fixed-commit GitHub source excerpt without using a website identity or creating a Browser page.",
+        "responses": {
+          "200": {
+            "description": "Public metadata or a typed unavailable reason",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserPreviewResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid preview request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["code", "message"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Preview request is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["code", "message"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "required": ["url"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.preview({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/{directory}/browser/data-context": {
+      "post": {
+        "operationId": "browser.dataContext",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 7,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "Prepare browser profile data access",
+        "responses": {
+          "200": {
+            "description": "Profile data context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserDataContext"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Browser data access rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserDataContextInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.dataContext({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/{directory}/browser/data-context/{contextId}": {
+      "delete": {
+        "operationId": "browser.releaseDataContext",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 7,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "in": "path",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "contextId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Release browser profile data access",
+        "responses": {
+          "200": {
+            "description": "Data context released",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Browser data access rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.releaseDataContext({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/{directory}/browser/pages": {
       "post": {
         "operationId": "browser.openPage",
@@ -29018,7 +29454,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 6,
+              "default": 7,
               "type": "number"
             }
           },
@@ -29158,7 +29594,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 6,
+              "default": 7,
               "type": "number"
             }
           },
@@ -29277,7 +29713,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 6,
+              "default": 7,
               "type": "number"
             }
           },
@@ -29407,7 +29843,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 6,
+              "default": 7,
               "type": "number"
             }
           },
@@ -29555,7 +29991,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 6,
+              "default": 7,
               "type": "number"
             }
           },
@@ -29706,7 +30142,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 6,
+              "default": 7,
               "type": "number"
             }
           },
@@ -29857,7 +30293,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 6,
+              "default": 7,
               "type": "number"
             }
           },
@@ -30024,7 +30460,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 6,
+              "default": 7,
               "type": "number"
             }
           },
@@ -30156,7 +30592,7 @@
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 6,
+              "default": 7,
               "type": "number"
             }
           },
@@ -48036,6 +48472,18 @@
                 },
                 "decodedBodySize": {
                   "type": "number"
+                },
+                "requestStart": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "responseStart": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "responseEnd": {
+                  "type": "number",
+                  "minimum": 0
                 }
               },
               "required": ["name", "startTime", "duration"]
@@ -52370,7 +52818,7 @@
             ]
           },
           "default_agent": {
-            "description": "Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.",
+            "description": "Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable.",
             "type": "string"
           },
           "role_variant": {
@@ -57561,7 +58009,7 @@
             "enum": ["replace", "hashline", "patch"]
           },
           "default_agent": {
-            "description": "Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.",
+            "description": "Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable.",
             "type": "string"
           },
           "username": {
@@ -75490,6 +75938,142 @@
         },
         "required": ["id", "url", "mime", "size"]
       },
+      "BrowserPreviewResult": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "code": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "language": {
+                "type": "string"
+              },
+              "startLine": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["text"],
+            "additionalProperties": false
+          },
+          "meta": {
+            "type": "string"
+          },
+          "unavailable": {
+            "type": "string",
+            "enum": [
+              "invalid_url",
+              "blocked_address",
+              "dns_failed",
+              "network_error",
+              "timeout",
+              "cancelled",
+              "redirect_loop",
+              "redirect_limit",
+              "target_changed",
+              "authentication_required",
+              "bot_challenge",
+              "http_error",
+              "non_text",
+              "unsupported_encoding",
+              "too_large",
+              "empty_metadata",
+              "invalid_range"
+            ]
+          }
+        },
+        "required": ["title", "source"],
+        "additionalProperties": false
+      },
+      "BrowserProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["persistent", "temporary"]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "createdAt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "origins": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "access": {
+                  "type": "string",
+                  "enum": ["inherit", "allow", "ask", "deny"]
+                },
+                "downloads": {
+                  "type": "string",
+                  "enum": ["inherit", "allow", "ask", "deny"]
+                },
+                "uploads": {
+                  "type": "string",
+                  "enum": ["inherit", "allow", "ask", "deny"]
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["id", "name", "kind", "enabled", "revision", "createdAt", "origins"],
+        "additionalProperties": false
+      },
+      "BrowserDataContext": {
+        "type": "object",
+        "properties": {
+          "contextId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/BrowserProfile"
+          }
+        },
+        "required": ["contextId", "profile"],
+        "additionalProperties": false
+      },
       "BrowserAPIError": {
         "type": "object",
         "properties": {
@@ -75681,6 +76265,18 @@
         "required": ["type", "code", "message", "retryable"],
         "additionalProperties": false
       },
+      "BrowserDataContextInput": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
       "BrowserAPISessionPage": {
         "type": "object",
         "properties": {
@@ -75761,65 +76357,6 @@
           }
         },
         "required": ["requestId"],
-        "additionalProperties": false
-      },
-      "BrowserProfile": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "pattern": "^[a-zA-Z0-9._-]+$"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "kind": {
-            "type": "string",
-            "enum": ["persistent", "temporary"]
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "revision": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "createdAt": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "origins": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": "object",
-              "properties": {
-                "access": {
-                  "type": "string",
-                  "enum": ["inherit", "allow", "ask", "deny"]
-                },
-                "downloads": {
-                  "type": "string",
-                  "enum": ["inherit", "allow", "ask", "deny"]
-                },
-                "uploads": {
-                  "type": "string",
-                  "enum": ["inherit", "allow", "ask", "deny"]
-                }
-              },
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": ["id", "name", "kind", "enabled", "revision", "createdAt", "origins"],
         "additionalProperties": false
       },
       "BrowserProfileList": {
@@ -75974,7 +76511,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 6
+            "const": 7
           },
           "annotation": {
             "type": "object",
@@ -76034,7 +76571,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 6
+            "const": 7
           },
           "pageId": {
             "type": "string",
@@ -76073,7 +76610,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 6
+            "const": 7
           },
           "pageId": {
             "type": "string",
@@ -76095,7 +76632,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 6
+            "const": 7
           },
           "pageId": {
             "type": "string",
@@ -76131,7 +76668,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 6
+            "const": 7
           },
           "ownerKey": {
             "type": "string",
@@ -76199,7 +76736,7 @@
                 "properties": {
                   "protocolVersion": {
                     "type": "number",
-                    "const": 6
+                    "const": 7
                   },
                   "kind": {
                     "type": "string",
@@ -76285,7 +76822,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 6
+            "const": 7
           },
           "result": {
             "anyOf": [
@@ -76731,7 +77268,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 6
+            "const": 7
           },
           "command": {
             "anyOf": [

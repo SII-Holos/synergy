@@ -142,6 +142,54 @@ function createScrollHarness() {
 }
 
 describe("createAutoScroll", () => {
+  test("explicit history navigation releases the old reading anchor until native reading resumes", async () => {
+    const harness = createScrollHarness()
+    let dispose = () => {}
+    try {
+      const element = harness.makeScroller()
+      let autoScroll!: ReturnType<typeof createAutoScroll>
+      createRoot((cleanup) => {
+        dispose = cleanup
+        autoScroll = createAutoScroll({
+          working: () => false,
+          captureReadingAnchor: () => {
+            const top = element.scrollTop
+            return {
+              owner: element,
+              restore: () => {
+                element.scrollTop = top
+              },
+            }
+          },
+        })
+        autoScroll.scrollRef(element)
+        autoScroll.contentRef(element)
+      })
+      await harness.tick()
+      element.scrollTop = 500
+      autoScroll.handleInteraction()
+      expect(autoScroll.readingAnchorOwner()).toBe(element)
+      autoScroll.handleNavigation()
+      element.scrollTop = 100
+      autoScroll.handleScroll()
+      element.scrollHeight += 200
+      harness.lastObserver()!.fire(element)
+      harness.flushFrames()
+      expect(element.scrollTop).toBe(100)
+      expect(autoScroll.readingAnchorOwner()).toBeUndefined()
+      autoScroll.handleInteraction()
+      element.scrollTop = 150
+      element.scrollHeight += 200
+      harness.lastObserver()!.fire(element)
+      harness.flushFrames()
+      expect(element.scrollTop).toBe(100)
+      expect(autoScroll.readingAnchorOwner()).toBe(element)
+    } finally {
+      dispose()
+      harness.restore()
+    }
+  })
+
   test("following never captures or restores a reading owner returned by a caller", async () => {
     const harness = createScrollHarness()
     let dispose = () => {}
@@ -1134,12 +1182,19 @@ test("paused retained view ignores resize and scroll work without losing reading
   let dispose = () => {}
   try {
     const element = harness.makeScroller()
+    const reading = harness.makeScroller()
     const [enabled, setEnabled] = createSignal(true)
     let auto!: ReturnType<typeof createAutoScroll>
     let measures = 0
+    let restores = 0
     createRoot((cleanup) => {
       dispose = cleanup
-      auto = createAutoScroll({ enabled, working: () => true, onMeasure: () => measures++ })
+      auto = createAutoScroll({
+        enabled,
+        working: () => true,
+        onMeasure: () => measures++,
+        captureReadingAnchor: () => ({ owner: reading, restore: () => restores++ }),
+      })
       auto.scrollRef(element)
       auto.contentRef(element)
     })
@@ -1147,22 +1202,31 @@ test("paused retained view ignores resize and scroll work without losing reading
     harness.flushFrames()
     element.scrollTop = 240
     auto.handleInteraction()
+    await harness.tick()
+    harness.lastObserver()?.fire(reading)
+    expect(restores).toBe(1)
     setEnabled(false)
     await harness.tick()
     const before = measures
     element.scrollHeight = 0
     harness.lastObserver()?.fire(element)
+    harness.lastObserver()?.fire(reading)
     auto.forceScrollToBottom()
     harness.flushFrames()
     expect(element.scrollTop).toBe(240)
     expect(measures).toBe(before)
+    expect(restores).toBe(1)
     expect(auto.userScrolled()).toBe(true)
     element.scrollHeight = 1000
     setEnabled(true)
     await harness.tick()
     harness.flushFrames()
+    harness.lastObserver()?.fire(reading)
+    expect(restores).toBe(2)
     expect(auto.userScrolled()).toBe(true)
     expect(element.scrollTop).toBe(240)
+    dispose()
+    expect(harness.lastObserver()?.targets.size).toBe(0)
   } finally {
     dispose()
     harness.restore()

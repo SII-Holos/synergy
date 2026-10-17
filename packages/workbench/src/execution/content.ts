@@ -1,3 +1,4 @@
+import { ExecutionQueryError, queryCursor } from "./query"
 import { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { RolloutEvidence } from "@ericsanchezok/synergy-harness/rollout"
@@ -62,11 +63,12 @@ export namespace ExecutionContent {
   }
   function position(input: string | undefined, version: string, query: string) {
     if (!input) return 0
-    const value = z
-      .object({ version: z.string(), query: z.string(), offset: z.number().int().nonnegative() })
-      .parse(JSON.parse(Buffer.from(input, "base64url").toString()))
+    const value = queryCursor(
+      z.object({ version: z.string(), query: z.string(), offset: z.number().int().nonnegative() }),
+      input,
+    )
     if (value.version !== version || value.query !== query)
-      throw new RangeError("Execution content cursor does not match its version and query")
+      throw new ExecutionQueryError("Execution content cursor does not match its version and query")
     return value.offset
   }
   export async function sections(source: Source, input: z.infer<typeof PageQuery>, signal?: AbortSignal) {

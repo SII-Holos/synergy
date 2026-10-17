@@ -322,6 +322,100 @@ test("bounds conflicts across advancing versions, then allows a manual retry", a
   materializer.dispose()
 })
 
+for (const accepted of [false, true]) {
+  for (const changed of [false, true]) {
+    test(`a live checkpoint heals an exhausted ${accepted ? "warm" : "cold"} lease at a ${changed ? "new" : "same"} version without another read`, async () => {
+      let reads = 0
+      let subscriptions = 0
+      let current: { part: Part; version: string } | undefined
+      const memory = createContentBudget(1)
+      const applied: string[] = []
+      const materializer = createPartMaterializer({
+        memory,
+        subscribe: () => {
+          subscriptions++
+          return () => {}
+        },
+        cached: (item) => (current?.version === item.content.version ? current.part : undefined),
+        read: async (item) => {
+          reads++
+          if (item.content.version === "initial") return { part: body("a"), version: "initial" }
+          throw conflict
+        },
+        refresh: async (item) => item,
+        wait: async () => {},
+        apply: (_, item) => applied.push(item.content.version),
+        evict: () => {},
+      })
+      const initial = accepted ? materializer.retain(summary("a", "initial")) : undefined
+      await initial?.ready
+      const failed = materializer.retain(summary("a"))
+      initial?.release()
+      await expect(failed.ready).rejects.toMatchObject({ name: "PartContentSyncError" })
+      const exhaustedReads = reads
+      expect(reads).toBe(accepted ? 5 : 8)
+      const latest = summary("a", changed ? "terminal" : "one")
+      const waiting = materializer.retain(latest)
+      await expect(waiting.ready).rejects.toMatchObject({ name: "PartContentSyncError" })
+      failed.release()
+      current = { part: body("a"), version: "obsolete" }
+      expect(waiting.isCurrent()).toBe(true)
+      current = { part: body("a"), version: latest.content.version }
+      expect(waiting.isCurrent()).toBe(false)
+      const recovered = materializer.retain(latest)
+      const shared = materializer.retain(latest)
+      waiting.release()
+      await Promise.all([recovered.ready, shared.ready])
+      expect(recovered.isCurrent()).toBe(true)
+      expect(shared.isCurrent()).toBe(true)
+      expect(applied).toEqual(accepted ? ["initial", latest.content.version] : [latest.content.version])
+      expect(reads).toBe(exhaustedReads)
+      expect(subscriptions).toBe(1)
+      expect(memory.bytes).toBe(24)
+      recovered.release()
+      shared.release()
+      materializer.dispose()
+      expect(memory.bytes).toBe(0)
+    })
+  }
+}
+
+test("a matching checkpoint supersedes a pending read and a late result cannot replace it", async () => {
+  let current: Part | undefined
+  let authoritative = true
+  let resolve!: (value: { part: Part; version: string }) => void
+  let signal!: AbortSignal
+  let reads = 0
+  const applied: string[] = []
+  const materializer = createPartMaterializer({
+    cached: () => current,
+    isCurrent: () => authoritative,
+    read: async (_, reading) => {
+      reads++
+      signal = reading
+      return new Promise((done) => (resolve = done))
+    },
+    apply: (part) => applied.push(part.id),
+    evict: () => {},
+  })
+  const pending = materializer.retain(summary("a"))
+  current = body("checkpoint")
+  authoritative = false
+  expect(pending.isCurrent()).toBe(true)
+  authoritative = true
+  expect(pending.isCurrent()).toBe(false)
+  const recovered = materializer.retain(summary("a"))
+  pending.release()
+  await Promise.all([pending.ready, recovered.ready])
+  expect(signal.aborted).toBe(true)
+  resolve({ part: body("obsolete"), version: "one" })
+  await Promise.resolve()
+  expect(applied).toEqual(["checkpoint"])
+  expect(reads).toBe(1)
+  recovered.release()
+  materializer.dispose()
+})
+
 test("a failed update preserves a readable body and uses only one attempt window", async () => {
   let reads = 0
   const evicted: string[] = []
