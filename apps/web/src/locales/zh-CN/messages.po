@@ -9071,6 +9071,14 @@ msgid "app.sidebar.menu.usage"
 msgstr "用量"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.navigation.failed"
+msgstr "会话和项目加载失败。"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.navigation.retry"
+msgstr "重试"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.newSession"
 msgstr "新建会话"
 

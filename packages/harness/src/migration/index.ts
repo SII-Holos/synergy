@@ -661,31 +661,49 @@ export async function getMigrationStatus(
 }
 
 export async function upgradeSessionRecords(owners: Array<{ scopeID: string; sessionID: string }>) {
-  const migrations = [...collectByDomain()].flatMap(([domain, entries]) =>
-    orderMigrations(entries)
-      .filter((entry) => entry.onAccess)
-      .map((migration) => ({ domain, migration })),
-  )
+  const migrations = MigrationPlan.ordered(collectByDomain()).filter(({ migration }) => migration.onAccess)
   if (!migrations.length || !owners.length) return
-  const targets = owners.flatMap((owner) =>
-    migrations.map(({ domain, migration }) => ({
-      owner,
-      migration,
-      key: ["sessions", owner.scopeID, owner.sessionID, "migrations", domain, migration.id],
-    })),
-  )
-  const completed = await Storage.readMany(targets.map((target) => target.key))
-  const pending = targets.filter((_, index) => completed[index] === undefined)
-  if (!pending.length) return
-  await Storage.transaction(async () => {
-    const current = await Storage.readMany(pending.map((target) => target.key))
-    for (const [index, target] of pending.entries()) {
-      if (current[index] !== undefined) continue
-      if (!(await Storage.readMany([["sessions", target.owner.scopeID, target.owner.sessionID, "info"]]))[0]) continue
-      await target.migration.upSession!(target.owner, () => {})
-      await Storage.write(target.key, { completed: Date.now() })
-    }
-  })
+  const unique = [...new Map(owners.map((owner) => [JSON.stringify([owner.scopeID, owner.sessionID]), owner])).values()]
+  for (let offset = 0; offset < unique.length; offset += 128) {
+    const batch = unique.slice(offset, offset + 128)
+    const keys = batch.map((owner) => ["sessions", owner.scopeID, owner.sessionID, "info"])
+    const records = await Storage.readMany<Record<string, unknown>>(keys)
+    const targets = batch.flatMap((owner, ownerIndex) =>
+      migrations.map(({ domain, migration }) => ({
+        owner,
+        ownerIndex,
+        migration,
+        key: ["sessions", owner.scopeID, owner.sessionID, "migrations", domain, migration.id],
+      })),
+    )
+    const completed = await Storage.readMany(targets.map((target) => target.key))
+    const pending = targets.filter((_, index) => completed[index] === undefined)
+    if (
+      !pending.some(
+        ({ migration, ownerIndex }) =>
+          records[ownerIndex] && (migration.onAccess === true || migration.onAccess!(records[ownerIndex]!)),
+      )
+    )
+      continue
+    await Storage.transaction(async (tx) => {
+      const current = await Storage.readMany(pending.map((target) => target.key))
+      const records = await Storage.readMany<Record<string, unknown>>(keys)
+      const receipts = []
+      const changed = new Set<number>()
+      for (const [index, target] of pending.entries()) {
+        if (current[index] !== undefined) continue
+        if (changed.delete(target.ownerIndex))
+          records[target.ownerIndex] = (await Storage.readMany<Record<string, unknown>>([keys[target.ownerIndex]]))[0]
+        const record = records[target.ownerIndex]
+        if (!record) continue
+        if (target.migration.onAccess !== true && !target.migration.onAccess!(record)) continue
+        await target.migration.upSession!(target.owner, () => {})
+        changed.add(target.ownerIndex)
+        receipts.push({ key: target.key, value: { completed: Date.now() } })
+      }
+      if (receipts.length) await tx.writeMany(receipts)
+    })
+  }
 }
 
 const sessionPreparations = Storage.state(() => new Map<string, Promise<void>>())
@@ -730,7 +748,8 @@ async function prepareMigrations(owner: MigrationOwner, execution: "session" | "
       const receipt = [...root, "migrations", domain, migration.id]
       if ((await Storage.readMany([receipt]))[0]) continue
       if (execution === "owner") await migration.upOwner!(owner, () => {})
-      else if (owner.kind === "session") await migration.upSession!(owner, () => {})
+      else if (owner.kind === "session")
+        await migration.upSession!({ scopeID: owner.scopeID, sessionID: owner.sessionID }, () => {})
       await Storage.transaction(async () => {
         if ((await Storage.readMany([ownerKey]))[0]) await Storage.write(receipt, { completed: Date.now() })
       })

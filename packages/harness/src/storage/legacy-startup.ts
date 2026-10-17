@@ -77,8 +77,11 @@ export async function isLegacyStartupResidue(dataRoot: string, relative: string,
   if (navigation)
     return (
       EmptyNavigation.safeParse(value).success &&
-      EmptyNavigation.extend({ entries: z.array(z.unknown()), composition: z.string().optional() }).safeParse(canonical)
-        .success
+      EmptyNavigation.extend({
+        version: z.union([z.literal(1), z.literal(2)]),
+        entries: z.array(z.unknown()),
+        composition: z.string().optional(),
+      }).safeParse(canonical).success
     )
   if (relative === "@home/plugin.lock")
     return EmptyPluginLock.safeParse(value).success && EmptyPluginLock.safeParse(canonical).success

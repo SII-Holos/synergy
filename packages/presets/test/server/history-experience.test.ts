@@ -12,7 +12,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import type { ScopeNavIndex } from "@ericsanchezok/synergy-harness/session/nav"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 
-test("full resident startup, old message pages and new sessions avoid unrelated cold owners", async () => {
+test("full resident startup, cold navigation, old message pages and new sessions avoid unrelated history", async () => {
   await using fixture = await runtimeHome()
   const store = await TransactionalStore.open({
     backend: "sqlite",
@@ -104,11 +104,13 @@ test("full resident startup, old message pages and new sessions avoid unrelated 
       const nav = await tx.read<ScopeNavIndex>(key)
       const original = nav.entries[0]!
       nav.entries.push(...coldIDs.map((id) => ({ ...original, id })))
+      delete nav.composition
       await tx.write(key, nav)
     })
     using reads = spyOn(Storage, "read")
     using batches = spyOn(Storage, "readMany")
     using markerInventories = spyOn(Storage, "scan")
+    using records = spyOn(Storage, "records")
     const start = performance.now()
     await using runtime = await PresetRuntimeHandle.open({
       host: fixture.host,
@@ -119,6 +121,32 @@ test("full resident startup, old message pages and new sessions avoid unrelated 
     const startupMs = performance.now() - start
     const client = createSynergyClient({ baseUrl: `http://127.0.0.1:${runtime.server.port}` })
     const options = () => ({ throwOnError: true as const, signal: AbortSignal.timeout(30_000) })
+    const navigating = performance.now()
+    const [, recent, concurrent] = await Promise.all([
+      client.scope.index(undefined, options()),
+      client.global.nav.recent({ limit: 20 }, options()),
+      client.session.create(
+        { scopeID: "home", title: "Work during navigation", workspace: { mode: "none" } },
+        options(),
+      ),
+    ])
+    expect(recent.data.total).toBeGreaterThanOrEqual(coldIDs.length + 1)
+    const complete = await client.global.nav.recent({ limit: 20 }, options())
+    expect(complete.data.total).toBe(coldIDs.length + 2)
+    expect(complete.data.items.some((entry) => entry.id === concurrent.data.id)).toBe(true)
+    const navigationMs = performance.now() - navigating
+    expect(
+      records.mock.calls.filter(
+        ([query]) => coldIDs.includes(query?.sessionID ?? "") && ["part", "message"].includes(query?.kind ?? ""),
+      ),
+    ).toEqual([])
+    const historyKey = (key: string[]) =>
+      key[0] === "operations" || (coldIDs.includes(key[2]!) && (key.includes("messages") || key.includes("parts")))
+    expect(reads.mock.calls.filter(([key]) => historyKey(key))).toEqual([])
+    expect(batches.mock.calls.flatMap(([keys]) => keys.filter(historyKey))).toEqual([])
+    reads.mockClear()
+    batches.mockClear()
+    markerInventories.mockClear()
     const opening = performance.now()
     const page = await client.session.timelinePage({ sessionID: session.id, scopeID: "home", limit: 10 }, options())
     expect(page.data.items.map((item) => item.info.id)).toEqual(ids.slice(-10))
@@ -140,8 +168,17 @@ test("full resident startup, old message pages and new sessions avoid unrelated 
     ).toEqual([])
     // These are hang guards for shared CI runners, not workstation experience targets.
     expect(startupMs).toBeLessThan(30_000)
+    expect(navigationMs).toBeLessThan(30_000)
     expect(interactionMs).toBeLessThan(30_000)
-    console.info(JSON.stringify({ fixture: "resident-history-experience", coldOwners: 5000, startupMs, interactionMs }))
+    console.info(
+      JSON.stringify({
+        fixture: "resident-history-experience",
+        coldOwners: 5000,
+        startupMs,
+        navigationMs,
+        interactionMs,
+      }),
+    )
   } finally {
     await store.close()
   }

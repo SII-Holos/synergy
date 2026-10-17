@@ -268,14 +268,14 @@ describe("session workspace binding", () => {
               await Worktree.enter({ sessionID: session.id, target: worktree.id, force: true })
 
               const entered = await Session.get(session.id)
-              expect(entered.blueprint).toEqual({ loopID: loop.id })
+              expect(entered.blueprint).toEqual({ loopID: loop.id, source: "user" })
               expect(entered.workflow).toEqual({ kind: "plan" })
               expect(entered.workspace?.type).toBe("git_worktree")
               expect(entered.workspace?.path).toBe(worktree.path)
 
               await Worktree.leave(session.id)
               const left = await Session.get(session.id)
-              expect(left.blueprint).toEqual({ loopID: loop.id })
+              expect(left.blueprint).toEqual({ loopID: loop.id, source: "user" })
               expect(left.workflow).toEqual({ kind: "plan" })
               expect(left.workspace?.type).toBe("main")
             } finally {

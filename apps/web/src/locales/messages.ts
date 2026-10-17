@@ -698,6 +698,8 @@ export const sidebar = {
   noRecentSessions: { id: "app.sidebar.empty.recent", message: "No recent sessions" },
   noSessions: { id: "app.sidebar.empty.sessions", message: "No sessions" },
   loadingProjects: { id: "app.sidebar.loading.projects", message: "Loading projects…" },
+  navigationFailed: { id: "app.sidebar.navigation.failed", message: "Unable to load conversations and projects." },
+  retryNavigation: { id: "app.sidebar.navigation.retry", message: "Retry" },
   loadMore: { id: "app.sidebar.loadMore", message: "Load more" },
   loadSessions: { id: "app.sidebar.loadSessions", message: "Load sessions" },
   // Project actions

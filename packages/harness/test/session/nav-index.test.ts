@@ -41,7 +41,7 @@ describe("SessionNav.buildNavIndex", () => {
         scope,
         fn: async () => {
           const index = await SessionNav.buildNavIndex(scope.id)
-          expect(index.version).toBe(1)
+          expect(index.version).toBe(2)
           expect(index.scopeID).toBe(scope.id)
           expect(index.entries.length).toBeGreaterThanOrEqual(2)
 
