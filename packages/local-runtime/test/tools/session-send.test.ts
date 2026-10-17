@@ -51,8 +51,7 @@ test("default user delivery admits a durable task, preserves source metadata and
           })
           expect(result.title).toBe(`Queued for ${target.id}`)
           expect(result.output).toContain("queued as a new task")
-          expect(result.output).toContain("not a read acknowledgement")
-          expect(result.output).toContain("tool call is complete")
+          expect(result.output).toContain("Reading is not yet confirmed.")
           expect(await Session.messages({ sessionID: target.id })).toEqual([])
         } finally {
           await SessionManager.release(lease, { requestNextWork: false })

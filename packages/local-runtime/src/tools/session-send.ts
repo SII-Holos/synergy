@@ -81,7 +81,7 @@ export const SessionSendTool = Tool.define("session_send", {
         : "queued as a new task; it waits for the current task to finish and for the session to be runnable"
     return {
       title: `Queued for ${params.target}`,
-      output: `Message ${deliveryState} in session ${session.id} as user. This is durable queue admission, not a read acknowledgement. The session_send tool call is complete.`,
+      output: `Message ${deliveryState} in session ${session.id}. Reading is not yet confirmed.`,
       metadata: {
         sessionID: session.id,
         role: "user",

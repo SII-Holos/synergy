@@ -341,7 +341,7 @@ for (const scenario of [
             expect(pending[0]?.mode).toBe("steer")
             expect(result.metadata.mode).toBe("steer")
             expect(result.output).toContain("next model call")
-            expect(result.output).toContain("not a read acknowledgement")
+            expect(result.output).toContain("Reading is not yet confirmed.")
             expect(ask).toHaveBeenCalledTimes(1)
             expect(toolFinished).toBe(true)
             expect(Cortex.get(task.id)?.status).toBe("completed")
