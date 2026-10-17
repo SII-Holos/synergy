@@ -26993,7 +26993,7 @@ msgstr "收起工作区"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.applyBinding"
-msgstr "重新绑定 Workspace"
+msgstr "确认目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.back"
@@ -27018,6 +27018,10 @@ msgstr "使用此目录"
 #. js-lingui-explicit-id
 msgid "workspace.dialog.close"
 msgstr "关闭"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.confirmBinding"
+msgstr "将共享这些文件的会话改为使用以下目录？\n{path}\n任务列表中有 {count} 个关联任务。已有文件保留在原位置。"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.create"
@@ -27045,7 +27049,11 @@ msgstr "没有匹配的目录。"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.failed"
-msgstr "无法更新 Workspace。请重新加载以查看当前状态。"
+msgstr "无法更新目录。请查看错误后重试。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.hideCopies"
+msgstr "收起其他 Worktree"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.loading"
@@ -27068,16 +27076,20 @@ msgid "workspace.dialog.none"
 msgstr "不使用 Workspace"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.otherCopies"
+msgstr "显示其他 Worktree（{count}）"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.pick"
 msgstr "浏览"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebind"
-msgstr "更改本地绑定"
+msgstr "更换本地目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebindDescription"
-msgstr "使用此 Workspace 的所有会话都将改用新目录。已有文件保留在原位置。"
+msgstr "共享这些文件的所有会话都将改用新目录。已有文件保留在原位置。"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebindPath"
@@ -27096,12 +27108,20 @@ msgid "workspace.dialog.recovery"
 msgstr "原目录不可用，请选择目录。"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.refreshHint"
+msgstr "刷新目录列表，不会更改目录关联。"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "添加目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.reload"
-msgstr "重新加载"
+msgstr "刷新列表"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.repair"
+msgstr "重新关联目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.saveSharing"

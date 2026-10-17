@@ -1,3 +1,4 @@
+import { Dialog as DialogPrimitive } from "@kobalte/core/dialog"
 import { createSignal, onCleanup, Show } from "solid-js"
 import type { I18n, MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
@@ -77,8 +78,39 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
       initialFocus={() => cancelButton}
       dismissible={!pending()}
       title={resolveContent(props.title, _)}
-      description={resolveContent(props.description, _)}
       class="confirm-dialog"
+      footer={
+        <div data-slot="dialog-actions" class="confirm-dialog-actions">
+          <Button
+            ref={cancelButton}
+            type="button"
+            variant="ghost"
+            size="large"
+            disabled={pending()}
+            onClick={() => dismiss()}
+          >
+            {props.cancelLabel ? resolveContent(props.cancelLabel, _) : _(dialog.cancel)}
+          </Button>
+          <Button
+            type="button"
+            variant={props.tone === "neutral" ? "primary" : "secondary"}
+            size="large"
+            class="confirm-dialog-button"
+            data-tone={props.tone}
+            disabled={pending()}
+            onClick={() => void confirm()}
+          >
+            {pending() ? (
+              <>
+                <Spinner class="confirm-dialog-spinner" />
+                {resolveContent(props.confirmLabel, _)}
+              </>
+            ) : (
+              resolveContent(props.confirmLabel, _)
+            )}
+          </Button>
+        </div>
+      }
       action={
         <button
           type="button"
@@ -99,41 +131,14 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
         </button>
       }
     >
+      <DialogPrimitive.Description class="confirm-dialog-copy">
+        {resolveContent(props.description, _)}
+      </DialogPrimitive.Description>
       <Show when={failure()}>
         <p role="alert" class="confirm-dialog-error">
           {failure()}
         </p>
       </Show>
-      <div data-slot="dialog-actions" class="confirm-dialog-actions">
-        <Button
-          ref={cancelButton}
-          type="button"
-          variant="ghost"
-          size="large"
-          disabled={pending()}
-          onClick={() => dismiss()}
-        >
-          {props.cancelLabel ? resolveContent(props.cancelLabel, _) : _(dialog.cancel)}
-        </Button>
-        <Button
-          type="button"
-          variant={props.tone === "neutral" ? "primary" : "secondary"}
-          size="large"
-          class="confirm-dialog-button"
-          data-tone={props.tone}
-          disabled={pending()}
-          onClick={() => void confirm()}
-        >
-          {pending() ? (
-            <>
-              <Spinner class="confirm-dialog-spinner" />
-              {resolveContent(props.confirmLabel, _)}
-            </>
-          ) : (
-            resolveContent(props.confirmLabel, _)
-          )}
-        </Button>
-      </div>
     </Dialog>
   )
 }

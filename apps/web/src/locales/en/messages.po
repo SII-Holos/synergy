@@ -26993,7 +26993,7 @@ msgstr "Collapse workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.applyBinding"
-msgstr "Rebind Workspace"
+msgstr "Confirm directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.back"
@@ -27018,6 +27018,10 @@ msgstr "Use this directory"
 #. js-lingui-explicit-id
 msgid "workspace.dialog.close"
 msgstr "Close"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.confirmBinding"
+msgstr "Use this directory for all sessions sharing these files?\n{path}\n{count, plural, one {# listed task will use this location.} other {# listed tasks will use this location.}} Existing files stay in place."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.create"
@@ -27045,7 +27049,11 @@ msgstr "No matching directories."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.failed"
-msgstr "The Workspace could not be updated. Reload to review its current state."
+msgstr "The directory could not be updated. Review the error and try again."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.hideCopies"
+msgstr "Hide worktrees"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.loading"
@@ -27068,16 +27076,20 @@ msgid "workspace.dialog.none"
 msgstr "No Workspace"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.otherCopies"
+msgstr "Show worktrees ({count})"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.pick"
 msgstr "Browse"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebind"
-msgstr "Change local binding"
+msgstr "Change local directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebindDescription"
-msgstr "All sessions using this Workspace will use the new directory. Existing files stay in place."
+msgstr "All sessions sharing these files will use the new directory. Existing files stay in place."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebindPath"
@@ -27096,12 +27108,20 @@ msgid "workspace.dialog.recovery"
 msgstr "The previous directory is unavailable. Choose a directory."
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.refreshHint"
+msgstr "Refreshes the directory list without changing any bindings."
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "Add directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.reload"
-msgstr "Reload"
+msgstr "Refresh list"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.repair"
+msgstr "Reconnect directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.saveSharing"

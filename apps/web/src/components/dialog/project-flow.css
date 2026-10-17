@@ -5,11 +5,17 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: min(360px, 40dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .workspace-directory-dialog .workspace-directory-copy > * {
   white-space: normal;
   overflow-wrap: anywhere;
   overflow: visible;
+}
+.workspace-directory-list > button {
+  flex: 0 0 auto;
 }
 .workspace-directory-row > [data-component="icon"] {
   flex-shrink: 0;
@@ -493,4 +499,26 @@
   .project-worktree-row .project-flow-row-copy {
     min-width: 65%;
   }
+}
+
+.workspace-directory-recovery {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.workspace-associated-tasks > summary {
+  cursor: pointer;
+  color: var(--text-weak);
+  font-size: var(--type-ui-body-size, 14px);
+}
+.workspace-associated-list {
+  max-height: min(200px, 30dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-block-start: 8px;
+}
+.workspace-associated-list > p {
+  padding-block: 4px;
+  overflow-wrap: anywhere;
 }
