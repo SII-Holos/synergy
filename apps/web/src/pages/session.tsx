@@ -1409,6 +1409,9 @@ function SessionPageContent() {
   let historyScrollFrame: number | undefined
   const [initialScrollSettled, setInitialScrollSettled] = createSignal<string>()
   const [hydratedConversation, setHydratedConversation] = createSignal<string>()
+  createEffect(() => {
+    if (!active()) setHydratedConversation(undefined)
+  })
   const [presentedSession, setPresentedSession] = createSignal<string>()
   let scrollView: ReturnType<typeof layout.view> | undefined
   let scrollSession: string | undefined
@@ -2045,7 +2048,7 @@ function SessionPageContent() {
             ),
       loadWindow: async (messageID, partID) => {
         setHistoryLocationPinned(true)
-        autoScroll.handleInteraction()
+        autoScroll.handleNavigation()
         setStore("turnStart", 0)
         return sync.session.history.locate(params.id!, messageID, partID)
       },

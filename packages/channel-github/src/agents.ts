@@ -16,8 +16,6 @@ export function createDomainAgents(ctx: BuiltinAgentContext): Record<string, Age
       permission: PermissionNext.fromConfig({
         "*": "deny",
         read: "allow",
-        grep: "allow",
-        glob: "allow",
         edit: "allow",
         write: "allow",
         todoread: "allow",

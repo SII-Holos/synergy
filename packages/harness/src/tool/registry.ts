@@ -248,6 +248,11 @@ export namespace ToolRegistry {
     return [...builtin, ...provided, ...custom]
   }
 
+  export async function fileInterfaceIDs(): Promise<string[]> {
+    const group = (await Config.current()).fileToolGroup ?? "patch"
+    return (await all()).filter((tool) => tool.fileToolGroups?.includes(group)).map((tool) => tool.id)
+  }
+
   export async function ids() {
     const tools = await all()
     return (await Promise.all(tools.map(async (tool) => ((await enabled(tool)) ? tool.id : undefined)))).filter(
@@ -272,7 +277,7 @@ export namespace ToolRegistry {
   export type Initialized = Omit<Tool.Info, "init" | "catalogDescription"> & Awaited<ReturnType<Tool.Info["init"]>>
   export type Deferred = Pick<
     Initialized,
-    "id" | "requiresWorkspace" | "requiresExecution" | "exposure" | "display" | "source"
+    "id" | "requiresWorkspace" | "requiresExecution" | "fileToolGroups" | "exposure" | "display" | "source"
   > & {
     description: string
     resolve(): Promise<Initialized>
@@ -285,8 +290,15 @@ export namespace ToolRegistry {
     workspaceID?: string | null,
   ): Promise<CatalogEntry[]> {
     const allTools = await all()
+    const fileToolGroup = (await Config.current()).fileToolGroup ?? "patch"
     const tools = (
-      await Promise.all(allTools.map(async (tool) => ((await enabled(tool, workspaceID)) ? tool : undefined)))
+      await Promise.all(
+        allTools.map(async (tool) =>
+          (!tool.fileToolGroups || tool.fileToolGroups.includes(fileToolGroup)) && (await enabled(tool, workspaceID))
+            ? tool
+            : undefined,
+        ),
+      )
     ).filter((tool): tool is Tool.Info => Boolean(tool))
     const results = await Promise.allSettled(
       tools.map(async (t): Promise<CatalogEntry> => {
@@ -294,6 +306,7 @@ export namespace ToolRegistry {
           id: t.id,
           requiresWorkspace: t.requiresWorkspace ?? false,
           requiresExecution: t.requiresExecution,
+          fileToolGroups: t.fileToolGroups,
           exposure: ToolExposure.deferredExposure(t.id, ToolExposure.normalize(t.id, t.exposure), agent?.deferredTools),
           display: t.display,
           source: t.source,
@@ -301,7 +314,7 @@ export namespace ToolRegistry {
         const resolve = async (): Promise<Initialized> => ({
           ...metadata,
           inputSchema: t.inputSchema,
-          ...(await t.init({ agent })),
+          ...(await t.init({ agent, fileToolGroup })),
         })
         return t.catalogDescription === undefined
           ? resolve()

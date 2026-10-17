@@ -24,76 +24,73 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
     }),
   async execute({ pageId, ...params }, ctx) {
     const page = await BrowserToolHelper.resolvePage(ctx, pageId)
-    return BrowserToolHelper.withActivity(
-      ctx,
-      page,
-      "reading",
-      "browser_screenshot",
-      "Capturing screenshot",
-      async () => {
-        const result = await BrowserToolHelper.execute(ctx, pageId, {
-          type: "screenshot",
-          fullPage: params.fullPage,
-          clip: params.clip,
-          target: params.target,
-        })
-        if (result.type !== "screenshot") throw new Error("Browser screenshot returned an unexpected result.")
-        const buffer = Buffer.from(result.dataUrl.split(",", 2)[1] ?? "", "base64")
-        const filename = `browser-${page.id.slice(0, 8)}-${Date.now()}.png`
-        const assetId = await Asset.write(buffer, "image/png", filename)
-        const filePath = Asset.filePath(assetId)
-        const kind = params.target ? "locator" : params.clip ? "clip" : params.fullPage ? "fullPage" : "viewport"
-        const supportsImageInput =
-          ctx.extra?.model?.capabilities?.input?.image === true && supportsImageMediaType(ctx.extra.model, "image/png")
-        const lookAtAvailable = ctx.extra?.lookAtAvailable === true
-        const delivery = supportsImageInput
-          ? "The screenshot is available in the current model context."
-          : lookAtAvailable
-            ? `Use look_at with file_path ${JSON.stringify(filePath)} to inspect the screenshot visually.`
-            : `The screenshot is saved at local path ${JSON.stringify(filePath)}.`
-        return {
-          title: `Screenshot of ${page.url || page.title || "page"}`,
-          output: `Captured ${kind} screenshot (${result.width}x${result.height}) as ${filename}. ${delivery}`,
-          metadata: {
-            pageId: page.id,
-            url: page.url,
-            width: result.width,
-            height: result.height,
-            captureKind: kind,
-            assetId,
-            filename,
-            filePath,
-            modelDelivery: supportsImageInput ? "provider-file" : lookAtAvailable ? "look_at" : "local_only",
-          },
-          attachments: [
-            {
-              id: Identifier.ascending("part"),
-              sessionID: ctx.sessionID,
-              messageID: ctx.messageID,
-              type: "attachment" as const,
-              mime: "image/png",
-              filename,
-              url: `asset://${assetId}`,
-              localPath: filePath,
-              presentation: {
-                purpose: "evidence" as const,
-                renderer: "image" as const,
-                size: "large" as const,
-                crop: false,
-              },
-              model: supportsImageInput
-                ? {
-                    mode: "provider-file" as const,
-                    summary: `${filename} browser screenshot ${result.width}x${result.height}`,
-                  }
-                : {
-                    mode: "summary" as const,
-                    summary: `${filename} browser screenshot ${result.width}x${result.height} at ${filePath}`,
-                  },
-            },
-          ],
-        }
+
+    const result = await BrowserToolHelper.execute(ctx, pageId, {
+      type: "screenshot",
+      fullPage: params.fullPage,
+      clip: params.clip,
+      target: params.target,
+    })
+    if (result.type !== "screenshot") throw new Error("Browser screenshot returned an unexpected result.")
+    const buffer = Buffer.from(result.dataUrl.split(",", 2)[1] ?? "", "base64")
+    const filename = `browser-${page.id.slice(0, 8)}-${Date.now()}.png`
+    const assetId = await Asset.write(buffer, "image/png", filename)
+    const filePath = Asset.filePath(assetId)
+    const kind = params.target ? "locator" : params.clip ? "clip" : params.fullPage ? "fullPage" : "viewport"
+    const supportsImageInput =
+      ctx.extra?.model?.capabilities?.input?.image === true && supportsImageMediaType(ctx.extra.model, "image/png")
+    const lookAtAvailable = ctx.extra?.lookAtAvailable === true
+    const delivery = supportsImageInput
+      ? "The screenshot is available in the current model context."
+      : lookAtAvailable
+        ? `Use look_at with file_path ${JSON.stringify(filePath)} to inspect the screenshot visually.`
+        : `The screenshot is saved at local path ${JSON.stringify(filePath)}.`
+    return {
+      title: `Screenshot of ${page.url || page.title || "page"}`,
+      output: [
+        result.userChanges,
+        `Captured ${kind} screenshot (${result.width}x${result.height}) as ${filename}. ${delivery}`,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      metadata: {
+        pageId: page.id,
+        url: page.url,
+        width: result.width,
+        height: result.height,
+        captureKind: kind,
+        assetId,
+        filename,
+        filePath,
+        modelDelivery: supportsImageInput ? "provider-file" : lookAtAvailable ? "look_at" : "local_only",
       },
-    )
+      attachments: [
+        {
+          id: Identifier.ascending("part"),
+          sessionID: ctx.sessionID,
+          messageID: ctx.messageID,
+          type: "attachment" as const,
+          mime: "image/png",
+          filename,
+          url: `asset://${assetId}`,
+          localPath: filePath,
+          presentation: {
+            purpose: "evidence" as const,
+            renderer: "image" as const,
+            size: "large" as const,
+            crop: false,
+          },
+          model: supportsImageInput
+            ? {
+                mode: "provider-file" as const,
+                summary: `${filename} browser screenshot ${result.width}x${result.height}`,
+              }
+            : {
+                mode: "summary" as const,
+                summary: `${filename} browser screenshot ${result.width}x${result.height} at ${filePath}`,
+              },
+        },
+      ],
+    }
   },
 })

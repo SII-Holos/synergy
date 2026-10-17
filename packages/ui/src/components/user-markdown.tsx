@@ -1,4 +1,5 @@
-import { createEffect, createResource, onCleanup } from "solid-js"
+import { createEffect, createMemo, createResource, onCleanup, Show } from "solid-js"
+import { MarkdownResourcePreview } from "./resource-preview"
 import { useLingui } from "@lingui/solid"
 import { useMarked } from "../context/marked"
 import { useReferenceContext, useResourceOpen } from "../context/resource-open"
@@ -22,7 +23,7 @@ export function UserMarkdown(props: {
   let root!: HTMLDivElement
   let pending: AbortController | undefined
   onCleanup(() => pending?.abort())
-  const key = () => JSON.stringify([props.text, props.references ?? []])
+  const key = createMemo(() => JSON.stringify([props.text, props.references ?? []]))
   const [rendered] = createResource(key, async (current) => {
     pending?.abort()
     const controller = new AbortController()
@@ -51,30 +52,35 @@ export function UserMarkdown(props: {
     if (resourceOpen) onCleanup(observeMarkdownResources(root, resourceOpen, context))
   })
   return (
-    <div
-      data-component="markdown"
-      data-user-markdown
-      ref={root}
-      onClick={async (event) => {
-        const button = (event.target as Element).closest<HTMLButtonElement>(
-          "button[data-user-reference], button[data-user-image]",
-        )
-        if (!button || !root.contains(button)) return
-        const reference = button.dataset.userReference
-        if (reference !== undefined) {
-          const index = Number(reference)
-          if (Number.isInteger(index) && props.references?.[index]) props.onOpenReference?.(index)
-          return
-        }
-        const { userMarkdownImageUrl } = await import("./user-markdown-model")
-        if (!root.isConnected || !root.contains(button)) return
-        const url = userMarkdownImageUrl(button.dataset.userImage ?? "")
-        if (url)
-          void resourceOpen?.open(
-            { ...ResourceReference.parse(url), mime: "image/*", filename: button.textContent ?? undefined },
-            { context: context(), prefer: "preview", focusTarget: () => button },
+    <>
+      <div
+        data-component="markdown"
+        data-user-markdown
+        ref={root}
+        onClick={async (event) => {
+          const button = (event.target as Element).closest<HTMLButtonElement>(
+            "button[data-user-reference], button[data-user-image]",
           )
-      }}
-    />
+          if (!button || !root.contains(button)) return
+          const reference = button.dataset.userReference
+          if (reference !== undefined) {
+            const index = Number(reference)
+            if (Number.isInteger(index) && props.references?.[index]) props.onOpenReference?.(index)
+            return
+          }
+          const { userMarkdownImageUrl } = await import("./user-markdown-model")
+          if (!root.isConnected || !root.contains(button)) return
+          const url = userMarkdownImageUrl(button.dataset.userImage ?? "")
+          if (url)
+            void resourceOpen?.open(
+              { ...ResourceReference.parse(url), mime: "image/*", filename: button.textContent ?? undefined },
+              { context: context(), prefer: "preview", focusTarget: () => button },
+            )
+        }}
+      />
+      <Show when={resourceOpen}>
+        {(controller) => <MarkdownResourcePreview root={() => root} resources={controller()} context={context} />}
+      </Show>
+    </>
   )
 }

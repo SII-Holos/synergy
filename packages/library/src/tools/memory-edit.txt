@@ -1,4 +1,4 @@
-Edit an existing memory by ID. Replaces the title, content, `category`, `recallMode`, and re-generates the embedding.
+Edit an existing memory by ID. Replaces the title, content, `category`, `recallMode`, and re-generates the embedding. Returns the new numeric `updatedAt` on success. Read with `memory_get` and pass its `updatedAt` as `expectedUpdatedAt` to prevent overwriting a newer revision. A `conflict` leaves the memory unchanged: re-read and reconsider before retrying. A removed memory returns `not_found`.
 
 Use this when `memory_write` reports similar existing memories, when a stored memory has become stale, or when a memory was classified with the wrong `category` or `recallMode`.
 

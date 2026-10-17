@@ -8,6 +8,17 @@ const context: ResourceReference.Context = {
 }
 
 describe("resource references", () => {
+  test("explicit Note targets retain their stable block identity without file or URL inference", () => {
+    const id = "nte_1450130f4001iji1k60OtBX7tK"
+    const location = { kind: "heading", id: "block-stable-中文" } as const
+    expect(ResourceReference.parse(`note://${id}`)).toEqual({ kind: "note", id })
+    const target = ResourceReference.parse(`note://${id}#${encodeURIComponent(location.id)}`)
+    expect(target).toEqual({ kind: "note", id, location })
+    expect(ResourceReference.format(target)).toBe(`note://${id}#block-stable-%E4%B8%AD%E6%96%87`)
+    expect(ResourceReference.parse(id)).toEqual({ kind: "workspace-file", path: id })
+    for (const value of ["note://", `note://${id}/other`, `note://${id}?scope=home`, `note://${id}#bad%ZZ`])
+      expect(ResourceReference.parse(value).kind).toBe("unavailable")
+  })
   test("inline images retain preview semantics without becoming external navigation", () => {
     for (const url of [
       "data:image/png;base64,AAAA",

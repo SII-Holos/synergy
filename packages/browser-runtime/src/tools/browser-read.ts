@@ -16,22 +16,14 @@ export const BrowserReadTool = Tool.define("browser_read", {
     .strict(),
   async execute({ pageId, ...params }, ctx) {
     const page = await BrowserToolHelper.resolvePage(ctx, pageId)
-    return BrowserToolHelper.withActivity(
-      ctx,
-      page,
-      "reading",
-      "browser_read",
-      `Reading ${params.format}`,
-      async () => {
-        const result = await BrowserToolHelper.execute(ctx, pageId, { type: "read", ...params })
-        if (result.type !== "data") throw new Error("Browser read returned an unexpected result.")
-        const data = result.data as { content?: string; truncated?: boolean }
-        return {
-          title: `Read ${params.format} from ${page.url || page.title || "page"}`,
-          output: data.content || "(empty page)",
-          metadata: { pageId: page.id, url: page.url, format: params.format, truncated: Boolean(data.truncated) },
-        }
-      },
-    )
+
+    const result = await BrowserToolHelper.execute(ctx, pageId, { type: "read", ...params })
+    if (result.type !== "data") throw new Error("Browser read returned an unexpected result.")
+    const data = result.data as { content?: string; truncated?: boolean }
+    return {
+      title: `Read ${params.format} from ${page.url || page.title || "page"}`,
+      output: [result.userChanges, data.content || "(empty page)"].filter(Boolean).join("\n\n"),
+      metadata: { pageId: page.id, url: page.url, format: params.format, truncated: Boolean(data.truncated) },
+    }
   },
 })

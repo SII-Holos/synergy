@@ -1,5 +1,12 @@
 import type { I18n, MessageDescriptor } from "@lingui/core"
-import type { Part as PartType, ToolPart, SessionStatus, SessionActivity } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  AssistantMessage,
+  UserMessage,
+  Part as PartType,
+  ToolPart,
+  SessionStatus,
+  SessionActivity,
+} from "@ericsanchezok/synergy-sdk/client"
 import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
 import { createEffect, createSignal, on, onCleanup, untrack } from "solid-js"
 
@@ -26,6 +33,15 @@ export function createActivityLabel(label: () => string | undefined, ordinary: (
     ),
   )
   return presented
+}
+
+export function hasTurnTerminalReply(messages: readonly (AssistantMessage | UserMessage)[]): boolean {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message.role === "user") return false
+    if (message.finish && message.finish !== "tool-calls" && message.finish !== "unknown") return true
+  }
+  return false
 }
 
 export function processIsWorking(input: {

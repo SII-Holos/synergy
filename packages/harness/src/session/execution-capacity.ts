@@ -45,13 +45,15 @@ export namespace ExecutionCapacity {
   }
 
   export async function wait<T>(fn: () => Promise<T>): Promise<T> {
-    const owners = [...(context.getStore()?.values() ?? [])]
+    const current = context.getStore()
+    const owners = [current?.get("cortex"), current?.get("tool")].filter((owner): owner is Owner => !!owner)
     for (const owner of owners) owner.pause()
     try {
       return await detached(fn)
     } finally {
       const errors: unknown[] = []
-      for (const owner of owners.reverse()) {
+      // Tool admission acquires Cortex before its tool slot; recovery must use the same order.
+      for (const owner of owners) {
         try {
           await owner.resume()
         } catch (error) {

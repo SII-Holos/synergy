@@ -74,6 +74,7 @@ function summarizeOperations(section: PatchSection): string[] {
 }
 
 function summarizeSection(result: PatchSectionResult, prepared: PreparedSection, recovered: boolean) {
+  const diff = buildSectionDiff(result.before, result.after, result.path)
   return {
     path: result.path,
     tag: result.fileHash,
@@ -81,11 +82,19 @@ function summarizeSection(result: PatchSectionResult, prepared: PreparedSection,
     operationSummary: result.op === "noop" ? [] : summarizeOperations(prepared.section),
     recovered,
     recoveryMode: recovered ? ("three-way-merge" as const) : undefined,
+    diff,
+    filediff: SnapshotSchema.fromContents({
+      file: result.path,
+      before: result.before,
+      after: result.after,
+      ...diffStats(diff),
+      preview: diff,
+    }),
   }
 }
 
-function buildSectionDiff(before: string, after: string): string {
-  return trimDiff(createTwoFilesPatch("file", "file", before, after))
+function buildSectionDiff(before: string, after: string, file = "file"): string {
+  return trimDiff(createTwoFilesPatch(file, file, before, after))
 }
 
 async function boundEditFeedback(blocks: string[]) {
@@ -465,5 +474,5 @@ ${r.after}`,
       }
     },
   },
-  { requiresWorkspace: true, activityKind: "file-change" },
+  { requiresWorkspace: true, fileToolGroups: ["hashline"], activityKind: "file-change" },
 )

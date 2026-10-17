@@ -3,6 +3,7 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { NoteStore } from "@ericsanchezok/synergy-note"
@@ -20,9 +21,6 @@ const CODING_BLUEPRINT_AGENTS = new Set([
   "implementation-engineer",
   "refactoring-engineer",
 ])
-const OUTCOME_VERIFICATION_PROMPT = `Evidence must match the semantic strength of the claim. Structural inspection may prove that an artifact or implementation element exists, but it does not by itself prove behavior, integration, usability, experiential or perceptual quality, operational correctness, or end-to-end success. A weaker proxy cannot prove a stronger outcome.
-Before claiming completion, exercise representative use of the completed deliverable and verify the seams between interacting parts. Inspect holistic outcomes as a whole rather than treating isolated properties, tokens, components, or executor narration as sufficient evidence.
-If appropriate evidence is unavailable, do not claim the requirement is complete. Continue when verification is feasible; otherwise report it explicitly as an unverified blocking limitation in the stop request.`
 
 /**
  * BlueprintLoopService centralises the create/start orchestration that used to
@@ -87,34 +85,8 @@ export namespace BlueprintLoopService {
     return trimmed ? trimmed : undefined
   }
 
-  function defaultFirstPrompt(
-    loop: { id: string; title: string; noteID: string; source?: Info["source"] },
-    agentName?: string,
-  ) {
-    const latticeBoundary =
-      loop.source === "lattice"
-        ? "\nThis BlueprintLoop owns exactly one current Lattice Step. Future Pathway Steps are context only, not authorization. Earlier user messages such as “continue” mean continue this Blueprint only. Do not create, submit, or implement any later Step."
-        : ""
-    if (isCodingBlueprintAgent(agentName)) {
-      return `Execute the coding Blueprint "${loop.title}" (note ID: ${loop.noteID}, loop ID: ${loop.id}).
-First call note_read with noteIds=["${loop.noteID}"] and read the full Blueprint content.
-Treat the Blueprint as the authoritative engineering contract for this run: requirements, non-goals, codebase entry points, migration or compatibility expectations, cleanup, and verification commands.
-${latticeBoundary}
-${OUTCOME_VERIFICATION_PROMPT}
-Create or update a DAG when the work has multiple phases, dependencies, parallel implementation slices, or review gates. Split independent code work by module or concern and keep each delegated task narrow.
-Continue until every Blueprint requirement is implemented, verified, and integrated. Keep the codebase clean: remove obsolete paths when the Blueprint replaces them, avoid redundant logic, and preserve local conventions.
-When the Blueprint is complete and verified, call blueprint_loop_stop with a concise summary, completed requirements, concrete evidence, and any known limitations to request independent review. After that tool succeeds, execution is closed: call no more tools, modify nothing else, and end the assistant turn immediately so the reviewer can start.`
-    }
-
-    return `Execute the Blueprint "${loop.title}" (note ID: ${loop.noteID}, loop ID: ${loop.id}).
-First call note_read with noteIds=["${loop.noteID}"] and read the full Blueprint content.
-Treat the Blueprint as the authoritative brief for this run: goal, deliverables, constraints, audience, chosen approach, quality criteria, and acceptance criteria.
-${latticeBoundary}
-${OUTCOME_VERIFICATION_PROMPT}
-Choose the execution shape that fits the Blueprint's domain and complexity. Work directly for small linear tasks; create or update a DAG when there are multiple phases, real dependencies, parallel workstreams, or useful progress checkpoints.
-Use domain-appropriate specialists when they improve the outcome. Do not import software-engineering workflow unless the Blueprint is software work.
-Continue until the requested outcome is complete. For every material requirement, produce or update the requested artifact or result, keep the whole deliverable coherent, and apply quality checks appropriate to the domain.
-When the Blueprint is complete and verified, call blueprint_loop_stop with a concise summary, completed requirements, concrete evidence, and any known limitations to request independent review. After that tool succeeds, execution is closed: call no more tools, modify nothing else, and end the assistant turn immediately so the reviewer can start.`
+  function defaultFirstPrompt(loop: { id: string; title: string; noteID: string }) {
+    return `Execute Blueprint "${loop.title}" (${loop.noteID}). Read the complete Note before starting; preserve its requirements, boundaries and acceptance criteria. Work directly unless coordination materially helps. Verify the delivered outcome with evidence appropriate to the claim. When complete, call blueprint_loop_stop with concise results, key checks, evidence references and limitations, then end the turn.`
   }
 
   export async function bindSessionToLoop(sessionID: string, loopID: string, loopRole: "execution" | "audit") {
@@ -150,7 +122,7 @@ When the Blueprint is complete and verified, call blueprint_loop_stop with a con
     userPrompt?: string,
   ) {
     const agentName = loop.executionAgent ?? (await resolveBlueprintAgent(sessionID, loop.noteID))
-    let text = loop.firstPrompt?.trim() || defaultFirstPrompt(loop, agentName)
+    let text = loop.firstPrompt?.trim() || defaultFirstPrompt(loop)
     if (userPrompt) {
       text += `\n\nUser instruction:\n${userPrompt}`
     }
@@ -215,9 +187,17 @@ When the Blueprint is complete and verified, call blueprint_loop_stop with a con
       status: "running",
       userPrompt: normalized ?? null,
     })
-    void deliverFirstPrompt(before.sessionID, before, normalized).catch((err) => {
+    void deliverFirstPrompt(before.sessionID, before, normalized).catch(async (err) => {
+      // Delivery awaits the executing turn; a user interruption is not a failed start.
+      if (
+        (err instanceof Error && err.name === "AbortError") ||
+        (MessageV2.SessionTerminalError.isInstance(err) && err.data.errorName === MessageV2.AbortedError.name)
+      ) {
+        const paused = await SessionLifecycle.snapshot(before.sessionID)
+        if (paused?.reason === "aborted" || paused?.reason === "interrupted") return
+      }
       log.error("failed to deliver BlueprintLoop start prompt", { loopID, error: err })
-      BlueprintLoopStore.updateStatus(scopeID, loopID, {
+      await BlueprintLoopStore.updateStatus(scopeID, loopID, {
         status: "failed",
         error: err?.message ?? String(err),
       }).catch(() => undefined)

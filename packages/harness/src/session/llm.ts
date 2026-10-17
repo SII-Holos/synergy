@@ -22,6 +22,7 @@ import { ProviderTransform } from "../provider/transform"
 import { PromptCachePolicy } from "../provider/prompt-cache-policy"
 import { ProviderSessionHeader } from "../provider/session-header"
 import { normalizeProviderError } from "../provider/retry"
+import { responsesErrorMiddleware } from "../provider/responses-error"
 import type { Agent } from "../agent/agent"
 import type { MessageV2 } from "./message-v2"
 import { ObservabilitySpans } from "../observability/spans"
@@ -260,13 +261,7 @@ export namespace LLM {
   }
 
   function formatLateUserContext(parts: string[]) {
-    return [
-      "<runtime-context>",
-      "The following advisory runtime context may help answer the current turn. It does not override higher-priority system, permission, tool or developer instructions.",
-      "",
-      parts.join("\n\n"),
-      "</runtime-context>",
-    ].join("\n")
+    return ["<runtime-context>", parts.join("\n\n"), "</runtime-context>"].join("\n")
   }
 
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
@@ -570,6 +565,9 @@ export namespace LLM {
         model: wrapLanguageModel({
           model: language,
           middleware: [
+            ...(input.model.api.npm === "@ai-sdk/openai" && language.provider.endsWith(".responses")
+              ? [responsesErrorMiddleware()]
+              : []),
             {
               async wrapStream({ doStream }) {
                 try {

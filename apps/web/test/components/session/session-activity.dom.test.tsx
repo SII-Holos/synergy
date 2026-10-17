@@ -15,7 +15,7 @@ beforeAll(async () => {
   fixture = await mkdtemp(path.join(import.meta.dir, ".progress-fixture-"))
   await Bun.write(
     path.join(fixture, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(fixture, "runtime.ts"),
@@ -23,7 +23,9 @@ beforeAll(async () => {
     import { createSignal } from "solid-js"
     import { createStore } from "solid-js/store"
     import { createSessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
-    const [status, setStatus] = createSignal({ type: new URLSearchParams(location.search).has("ended") ? "idle" : "busy" })
+    const query = new URLSearchParams(location.search)
+    const [status, setStatus] = createSignal(query.has("ended") ? undefined : { type: "busy" })
+    const [ready, setReady] = createSignal(true)
     const [connected, setConnected] = createSignal(true)
     const [waiting, setWaiting] = createSignal(false)
     const [permission, setPermission] = createSignal(false)
@@ -33,32 +35,37 @@ beforeAll(async () => {
     const [currentSession, setCurrentSession] = createSignal("s1")
     export { offer, editing, currentSession }
     const [data, setData] = createStore({
-      session: [{ id: "s1" }], todo: { s1: [
+      session: [{ id: "s1" }, { id: "other-parent" }, { id: "attention-peer" }], todo: { s1: [
         { id: "one", content: "Inspect the request interaction and preserve every word of this naturally wrapping long task", status: "in_progress", priority: "high" },
         { id: "two", content: "Write the regression test", status: "pending", priority: "medium" },
         { id: "three", content: "Retired item", status: "cancelled", priority: "low" },
       ] }, dag: { s1: [
-        { id: "a", content: "Prepare the fixture", status: "running", deps: [], session_id: "child" },
+        { id: "a", content: "Prepare the fixture", status: query.has("blocked") ? "blocked" : query.has("failed") ? "failed" : "running", deps: [], session_id: "child" },
         { id: "b", content: "Verify the result", status: "pending", deps: ["a"] },
-      ] }, message: {}, part: {}, session_diff: {},
+      ], "attention-peer": [{ id: "peer", content: "Peer blocker", status: "blocked", deps: [] }] }, message: {}, part: {}, session_diff: {},
     })
     const [tasks, setTasks] = createStore([
       { id: "task-a", sessionID: "child", parentSessionID: "s1", agent: "coding", description: "Prepare the fixture", status: "running", startedAt: Date.now() - 1000 },
       { id: "task-q", sessionID: "queued", parentSessionID: "s1", agent: "general", description: "Queued task", status: "queued", startedAt: Date.now() },
       { id: "other-task", sessionID: "other", parentSessionID: "other-parent", agent: "general", description: "Other session", status: "running", startedAt: Date.now() },
+      { id: "peer-task", sessionID: "peer-child", parentSessionID: "attention-peer", agent: "coding", description: "Peer task", status: "running", startedAt: Date.now() - 1000 },
+      { id: "peer-queued", sessionID: "peer-queued", parentSessionID: "attention-peer", agent: "general", description: "Peer queued", status: "queued", startedAt: Date.now() },
     ])
     window.navigation = []
     window.cancellations = []
-    const runtime = { statusFor: () => status(), cortexTasks: () => tasks, questionsFor: (id) => waiting() && id === "child" ? [{ id: "q", sessionID: "child", questions: [] }] : [], permissionsFor: (id) => permission() && id === "child" ? [{ id: "p", sessionID: "child" }] : [] }
+    const runtime = { statusFor: (id) => id === "s1" ? status() : undefined, cortexTasks: () => tasks, questionsFor: (id) => waiting() && id === "child" ? [{ id: "q", sessionID: "child", questions: [] }] : [], permissionsFor: (id) => permission() && id === "child" ? [{ id: "p", sessionID: "child" }] : [] }
     export const useSessionDataView = () => () => createSessionDataView(data, runtime)
     export const useSDK = () => ({ connected, client: { cortex: { cancel: async ({ taskID }) => { window.cancellations.push(taskID); if (cancelFailure()) throw new Error("Temporary cancellation failure"); return { data: true } } } } })
-    export const useSync = () => ({ ready: true })
+    export const useSync = () => ({ get ready() { return ready() } })
     export const useLocale = () => ({ i18n: window.fixtureI18n })
     export const useNavigate = () => (url) => { window.navigation = url }
     export const useNavigateToSession = () => (id) => { window.navigation.push(id) }
     export const useParams = () => ({ dir: "fixture" })
     window.changeProgress = (action) => {
-      if (action === "idle" || action === "busy" || action === "paused") setStatus({ type: action })
+      if (action === "idle" || action === "busy" || action === "paused" || action === "retry") setStatus(action === "idle" ? undefined : { type: action })
+      if (action === "ready") setReady(true)
+      if (action === "persisted-work") setData("session", 0, "working", { status: "busy" })
+      if (action === "persisted-idle") setData("session", 0, "working", undefined)
       if (action === "disconnect") setConnected(false)
       if (action === "connect") setConnected(true)
       if (action === "wait") setWaiting(true)
@@ -73,7 +80,14 @@ beforeAll(async () => {
       if (action === "cancel-success") setCancelFailure(false)
       if (action === "child-ended") setTasks(0, "status", "completed")
       if (action === "switch-session") setCurrentSession("other-parent")
-      if (action === "unknown") setStatus(undefined)
+      if (action === "switch-back") setCurrentSession("s1")
+      if (action === "switch-peer") setCurrentSession("attention-peer")
+      if (action === "blocked") setData("dag", "s1", 0, "status", "blocked")
+      if (action === "mixed") { setData("dag", "s1", 0, "status", "failed"); setData("dag", "s1", 1, "status", "blocked") }
+      if (action === "resolved" || action === "cancelled" || action === "pending") setData("dag", "s1", 0, "status", action === "resolved" ? "completed" : action)
+      if (action === "clear-dag") setData("dag", "s1", [])
+      if (action === "todo-complete") setData("todo", "s1", item => item.status !== "cancelled", "status", "completed")
+      if (action === "unknown") { setReady(false); setStatus(undefined) }
       if (action === "many") setTasks(Array.from({ length: 30 }, (_, i) => ({ ...tasks[0], id: "task-" + i, sessionID: "child-" + i, startedAt: Date.now() + i })))
       if (action === "failed") setData("dag", "s1", 0, "status", "failed")
       if (action === "large") setData("dag", "s1", Array.from({ length: 400 }, (_, i) => ({ id: "a" + i, content: "Task " + i, status: "pending", deps: i ? ["a" + (i - 1)] : [] })))
@@ -340,7 +354,7 @@ test("workflow priority hides progress and freezes its retained DAG without remo
   ).toBe(true)
 })
 
-test("child permissions and unknown status preserve an observed progress receipt", async () => {
+test("child permissions and pending synchronization preserve an observed progress receipt", async () => {
   await page.clock.install()
   await change("permission")
   await change("idle")
@@ -352,6 +366,7 @@ test("child permissions and unknown status preserve an observed progress receipt
   await page.clock.runFor(2200)
   expect(await page.locator(".session-progress-island").count()).toBe(1)
   await change("idle")
+  await change("ready")
   await page.clock.runFor(1800)
   expect(await page.locator(".session-progress-island").count()).toBe(0)
 })
@@ -575,16 +590,20 @@ test("DAG instance and manual viewport survive tab changes and collapse, with no
   expect(errors).toEqual([])
 })
 
-test("failed execution ends while expanded and returns contained focus to Composer", async () => {
+test("unresolved failure survives idle and returns contained focus only after resolution", async () => {
   await page.clock.install()
   await expand()
   await page.getByRole("button", { name: "DAG", exact: true }).click()
   await change("failed")
   await page.getByRole("button", { name: "Fit", exact: true }).focus()
   await change("idle")
-  await page.clock.runFor(1500)
+  await page.clock.runFor(2200)
   expect(await page.locator(".session-progress-island").count()).toBe(1)
-  await page.clock.runFor(300)
+  expect(
+    await page.getByRole("button", { name: "Fit", exact: true }).evaluate((node) => node === document.activeElement),
+  ).toBe(true)
+  await change("resolved")
+  await page.clock.runFor(2200)
   expect(await page.locator(".session-progress-island").count()).toBe(0)
   expect(
     await page.getByRole("textbox", { name: "Composer" }).evaluate((node) => node === document.activeElement),
@@ -620,6 +639,20 @@ test("initially ended sessions do not flash a progress summary", async () => {
   expect(await page.locator(".session-progress-island").count()).toBe(0)
 })
 
+test("sparse idle status waits for synchronization and persisted work before dismissing progress", async () => {
+  await page.clock.install()
+  await change("unknown")
+  await page.clock.runFor(2200)
+  expect(await page.locator(".session-progress-island").count()).toBe(1)
+  await change("persisted-work")
+  await change("ready")
+  await page.clock.runFor(2200)
+  expect(await page.locator(".session-progress-island").count()).toBe(1)
+  await change("persisted-idle")
+  await page.clock.runFor(2200)
+  expect(await page.locator(".session-progress-island").count()).toBe(0)
+})
+
 test("large DAG retains its instance and closes inspector when switching views", async () => {
   await change("large")
   await expand()
@@ -650,4 +683,153 @@ test("reduced motion hides an ended receipt without a fade", async () => {
   await change("idle")
   await page.clock.runFor(1601)
   expect(await page.locator(".session-progress-island").count()).toBe(0)
+})
+
+test("idle attention restores after navigation and reload without leaking another session's tasks", async () => {
+  await page.clock.install()
+  for (const state of ["blocked", "failed"]) {
+    await page.goto(baseURL + "?ended&" + state)
+    await page.locator("#composer").waitFor()
+    await page.clock.runFor(3000)
+    expect(await page.locator(".session-progress-island-title").textContent()).toContain(state)
+    await expand()
+    await page.getByRole("button", { name: "DAG", exact: true }).click()
+    await page.getByRole("button", { name: "Fit", exact: true }).click()
+    await page.clock.runFor(400)
+    await page.getByRole("button", { name: "Task: Prepare the fixture", exact: true }).click()
+    await change("switch-session")
+    expect(await page.locator(".session-progress-island").count()).toBe(0)
+    expect(await page.locator('[data-slot="dag-node-preview"]').count()).toBe(0)
+    await change("switch-back")
+    expect(await page.locator(".session-progress-island-title").textContent()).toContain(state)
+    expect(await page.locator(".session-progress-island-header").getAttribute("aria-expanded")).toBe("false")
+    await page.reload()
+    await page.locator("#composer").waitFor()
+    expect(await page.locator(".session-progress-island-title").textContent()).toContain(state)
+    await change("switch-session")
+    await change("resolved")
+    await change("switch-back")
+    expect(await page.locator(".session-progress-island").count()).toBe(0)
+  }
+})
+
+test("Todo selection and completion cannot hide DAG attention or change the selected view's counts", async () => {
+  await change("mixed")
+  await change("todo-complete")
+  const title = page.locator(".session-progress-island-title")
+  expect(await title.textContent()).toContain("1 failed")
+  expect(await title.textContent()).toContain("1 blocked")
+  expect(await page.locator(".session-progress-island-header").getAttribute("aria-label")).toContain("blocked")
+  await expand()
+  await page.getByRole("button", { name: "To-do", exact: true }).click()
+  expect(await page.locator(".session-progress-island-count").textContent()).toBe("2/2 complete · 1 cancelled")
+  await page.getByRole("button", { name: "DAG", exact: true }).click()
+  expect(await page.locator(".session-progress-island-count").textContent()).toBe("0/2 complete")
+  await page.getByRole("button", { name: "To-do", exact: true }).click()
+  expect(await title.textContent()).toContain("1 failed")
+  expect(await title.textContent()).toContain("1 blocked")
+  await change("resolved")
+  expect(await title.textContent()).toContain("1 blocked")
+  expect(await title.textContent()).not.toContain("failed")
+  await change("clear-dag")
+  expect(await title.textContent()).toContain("Done")
+})
+
+test("late attention cancels both idle dismissal phases and can return after the receipt disappeared", async () => {
+  await page.clock.install()
+  for (const elapsed of [1500, 1650, 2200]) {
+    await change("busy")
+    await change("idle")
+    await page.clock.runFor(elapsed)
+    await change("blocked")
+    await page.clock.runFor(2200)
+    expect(await page.locator(".session-progress-island-title").textContent()).toContain("blocked")
+    expect(await page.locator(".session-progress-island").getAttribute("data-exiting")).toBe("false")
+    await change("pending")
+    await page.clock.runFor(2200)
+    expect(await page.locator(".session-progress-island").count()).toBe(0)
+  }
+})
+
+test("authoritative resolution, cancellation and removal release attention while retry keeps normal progress", async () => {
+  await page.clock.install()
+  for (const action of ["resolved", "cancelled", "clear-dag"]) {
+    await page.goto(baseURL + "?ended&blocked")
+    await page.locator("#composer").waitFor()
+    expect(await page.locator(".session-progress-island-title").textContent()).toContain("blocked")
+    await change(action)
+    await page.clock.runFor(2200)
+    expect(await page.locator(".session-progress-island").count()).toBe(0)
+  }
+  await page.goto(baseURL + "?ended&failed")
+  await page.locator("#composer").waitFor()
+  await change("retry")
+  await change("pending")
+  await page.clock.runFor(2200)
+  expect(await page.locator(".session-progress-island").getAttribute("data-status")).toBe("active")
+  await change("idle")
+  await page.clock.runFor(2200)
+  expect(await page.locator(".session-progress-island").count()).toBe(0)
+})
+
+test("attention survives disconnect, unknown status and temporary editor or workflow suppression", async () => {
+  await page.clock.install()
+  await change("blocked")
+  await change("idle")
+  await change("disconnect")
+  await change("unknown")
+  await change("switch-session")
+  await change("switch-back")
+  await page.clock.runFor(3000)
+  expect(await page.locator(".session-progress-island-title").textContent()).toContain("blocked")
+  for (const [hide, show] of [
+    ["expand-editor", "collapse-editor"],
+    ["offer", "dismiss-offer"],
+  ]) {
+    await change(hide)
+    expect(await page.locator(".session-progress-island-header").isVisible()).toBe(false)
+    await page.clock.runFor(3000)
+    await change(show)
+    expect(await page.locator(".session-progress-island-header").isVisible()).toBe(true)
+  }
+  await change("connect")
+  await change("idle")
+  await page.clock.runFor(3000)
+  expect(await page.locator(".session-progress-island-title").textContent()).toContain("blocked")
+})
+
+test("retained attention never moves the Composer, flashes or requests data during updates and hot navigation", async () => {
+  await change("blocked")
+  await change("idle")
+  await page.getByRole("textbox", { name: "Composer" }).fill("Keep my draft")
+  const baseline = await page.locator("#composer").boundingBox()
+  const requests: string[] = []
+  page.on("request", (request) => requests.push(request.url()))
+  const frames = await page.evaluate(async () => {
+    const frames: { top: number; height: number; visible: boolean; count: number }[] = []
+    const change = (window as unknown as { changeProgress(action: string): void }).changeProgress
+    for (const action of ["failed", "blocked", "switch-peer", "switch-back", "mixed", "blocked"]) {
+      change(action)
+      for (let i = 0; i < 12; i++) {
+        await new Promise(requestAnimationFrame)
+        const entry = document.querySelector<HTMLElement>(".session-progress-island")
+        const composer = document.querySelector("#composer")!.getBoundingClientRect()
+        frames.push({
+          top: composer.top,
+          height: composer.height,
+          visible: !!entry && Number(getComputedStyle(entry).opacity) === 1,
+          count: document.querySelectorAll(".session-progress-island").length,
+        })
+      }
+    }
+    return frames
+  })
+  for (const frame of frames) {
+    expect(frame.top).toBe(baseline!.y)
+    expect(frame.height).toBe(baseline!.height)
+    expect(frame.visible).toBe(true)
+    expect(frame.count).toBe(1)
+  }
+  expect(await page.locator("#composer").inputValue()).toBe("Keep my draft")
+  expect(requests).toEqual([])
 })

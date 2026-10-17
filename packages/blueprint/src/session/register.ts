@@ -5,11 +5,7 @@ import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/se
 import { SessionModePolicy } from "@ericsanchezok/synergy-harness/session/tool-mode-policy"
 import { WorkflowInfo } from "../session-schema"
 import { WorkflowSessionService, WorkflowConflictError } from "./workflow"
-import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
-import { genericPlan, generalPlan, codingPlan } from "./plan-wrapper"
 import PLAN from "./prompt/plan.txt"
-import PLAN_GENERAL from "./prompt/plan-general.txt"
-import PLAN_CODING from "./prompt/plan-coding.txt"
 import { SessionBlueprintState } from "./blueprint-state"
 import { WorkflowRecovery } from "./recovery"
 import { SessionRecoveryContributions } from "@ericsanchezok/synergy-harness/session/recovery-contributions"
@@ -48,22 +44,8 @@ export function registerSessions() {
   })
   WorkflowPromptRegistry.register({
     kind: "plan",
-    buildSystem(_session, ctx) {
-      const parts = [PLAN.trim()]
-      if (ctx.agentName === PrimaryAgentIdentity.names.general)
-        parts.push(PrimaryAgentIdentity.render("general", PLAN_GENERAL.trim()))
-      if (ctx.agentName === PrimaryAgentIdentity.names.coding)
-        parts.push(PrimaryAgentIdentity.render("coding", PLAN_CODING.trim()))
-      return parts
-    },
-    projectUserMessage(query, agentName) {
-      return (
-        agentName === PrimaryAgentIdentity.names.general
-          ? generalPlan
-          : agentName === PrimaryAgentIdentity.names.coding
-            ? codingPlan
-            : genericPlan
-      )(query)
+    buildSystem() {
+      return [PLAN.trim()]
     },
     isActive: async () => false,
   })

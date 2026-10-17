@@ -1,5 +1,6 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
-import { afterAll, beforeAll, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -36,7 +37,7 @@ beforeAll(async () => {
     `
     window.attachments=[]; window.detachments=[]; window.dataRequests=[]; window.resizes=[]; window.commands=[];
     export const usePlatform = () => ({browserNative:{
-      presentationCapability:async () => ({protocolVersion:5,managedLocal:true,status:"ready"}),
+      presentationCapability:async () => ({protocolVersion:${BROWSER_PROTOCOL_VERSION},managedLocal:true,status:"ready"}),
       attachView:async input => window.attachments.push(input), resizeView:async input => window.resizes.push(input),
       detachView:async input => window.detachments.push(input), focusView:async () => {}, onEvent:() => () => {},
       get dataAction() { return window.dataUnavailable ? undefined : async input => {
@@ -74,7 +75,7 @@ beforeAll(async () => {
   `,
   )
   await Bun.write(path.join(directory, "draft.ts"), "export const useBrowserDraft = () => ({})")
-  await Bun.write(path.join(directory, "router.ts"), "export const useParams = () => ({})")
+  await Bun.write(path.join(directory, "router.ts"), 'export const useParams = () => ({ id: "current" })')
   await Bun.write(
     path.join(directory, "main.tsx"),
     `
@@ -91,7 +92,7 @@ beforeAll(async () => {
     import {messages} from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
-    window.presentation={kind:"native",protocolVersion:5,capabilities:{native:true},reason:"desktop-local"};
+    window.presentation={kind:"native",protocolVersion:${BROWSER_PROTOCOL_VERSION},capabilities:{native:true},reason:"desktop-local"};
     window.pages=["one","two"].map(id => ({id:"page-"+id,profileId:"personal",status:"active",url:new URLSearchParams(location.search).has("blank") ? "about:blank" : "https://example.test/"+id,title:id,isLoading:false,lastActiveAt:null}));
     window.catalogPages=new URLSearchParams(location.search).has("missing") ? [] : window.pages;
     window.seq=1; window.dataUnavailable=new URLSearchParams(location.search).has("no-data");
@@ -147,9 +148,17 @@ beforeAll(async () => {
   await server.listen()
   url = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
+}, 60_000)
+
+beforeEach(async () => {
+  errors.length = 0
   page = await browser.newPage()
   page.on("pageerror", (error) => errors.push(error.message))
-}, 60_000)
+})
+
+afterEach(async () => {
+  await page?.close()
+})
 
 afterAll(async () => {
   await browser?.close()
@@ -171,7 +180,15 @@ type Fixture = Window & {
   replaceMetadata(id: string, title: string, url: string): void
   store: {
     setBrowserError(error: { pageId: string; severity: "error"; message: string }): void
-    applyAgentActivity(activity: { pageId: string; url: string; kind: "acting"; label: string }): void
+    applyAgentActivity(activity: {
+      sessionID: string
+      operationID: string
+      tool: string
+      pageId: string
+      url: string
+      kind: "acting" | "idle"
+      label: string
+    }): void
   }
 }
 
@@ -204,6 +221,53 @@ test("mounting and changing peer page panels preserves the catalog's current nat
   expect(errors).toEqual([])
 })
 
+test("Agent activity never adds a status row or resizes the native page", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Open first", exact: true }).click()
+  await page.getByRole("combobox").waitFor()
+  const before = await page.locator(".browser-content:visible").boundingBox()
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.store.applyAgentActivity({
+      sessionID: "current",
+      operationID: "current-call",
+      pageId: "page-two",
+      url: "https://example.test/two",
+      kind: "acting",
+      tool: "browser_navigation",
+      label: "Navigating",
+    })
+    fixture.store.applyAgentActivity({
+      sessionID: "other",
+      operationID: "other-call",
+      pageId: "page-one",
+      url: "https://example.test/one",
+      kind: "acting",
+      tool: "browser_action",
+      label: "Clicking",
+    })
+    fixture.replaceMetadata("page-two", "Destination", "https://example.test/destination")
+  })
+  expect(await page.locator("[data-browser-agent-status]").count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Follow", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("combobox").inputValue()).toBe("https://example.test/one")
+  expect(await page.locator(".browser-content:visible").boundingBox()).toEqual(before)
+  await page.evaluate(() =>
+    (window as unknown as Fixture).store.applyAgentActivity({
+      sessionID: "current",
+      operationID: "current-call",
+      pageId: "page-two",
+      url: "https://example.test/destination",
+      kind: "idle",
+      tool: "browser_navigation",
+      label: "Idle",
+    }),
+  )
+  expect(await page.locator("[data-browser-agent-status]").count()).toBe(0)
+  expect(await page.locator(".browser-content:visible").boundingBox()).toEqual(before)
+  expect(errors).toEqual([])
+})
+
 test("retained peer panels keep their page and input target through repeated switching and Agent updates", async () => {
   await page.goto(url)
   await page.getByRole("button", { name: "Open first", exact: true }).click()
@@ -217,6 +281,9 @@ test("retained peer panels keep their page and input target through repeated swi
     expect(await page.getByRole("combobox").inputValue()).toBe("https://example.test/one")
     await page.evaluate(() =>
       (window as unknown as Fixture).store.applyAgentActivity({
+        sessionID: "current",
+        operationID: "reading",
+        tool: "browser_read",
         pageId: "page-two",
         url: "https://example.test/two",
         kind: "acting",

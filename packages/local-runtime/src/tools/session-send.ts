@@ -67,13 +67,29 @@ export const SessionSendTool = Tool.define("session_send", {
       parts: [textPart],
       metadata: mailMetadata,
     }
-    await SessionManager.deliver({ target: session.id, mail, waitForProcessing: false })
+    const item = await SessionManager.deliver({
+      target: session.id,
+      mail,
+      waitForProcessing: false,
+      sourceSessionID: ctx.sessionID,
+    })
+    if (!item) throw new Error(`Message was not delivered: session ${session.id} is no longer available.`)
 
-    const deliveryState = "queued and scheduled for asynchronous processing"
+    const deliveryState =
+      item.mode === "steer"
+        ? "queued for the current task's next model call"
+        : "queued as a new task; it waits for the current task to finish and for the session to be runnable"
     return {
-      title: `Sent to ${params.target}`,
-      output: `Message ${deliveryState} in session ${session.id} as user. The session_send tool call is complete.`,
-      metadata: { sessionID: session.id, role: "user", deliveryState } as Record<string, any>,
+      title: `Queued for ${params.target}`,
+      output: `Message ${deliveryState} in session ${session.id}. Reading is not yet confirmed.`,
+      metadata: {
+        sessionID: session.id,
+        role: "user",
+        mode: item.mode,
+        itemID: item.id,
+        messageID: item.messageID,
+        deliveryState,
+      },
     }
   },
 })

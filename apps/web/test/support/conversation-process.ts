@@ -7,8 +7,16 @@ import { createBrowserFixture, type BrowserFixture } from "./browser-fixture"
 import type { VListHandle } from "virtua/solid"
 
 type Fixture = {
+  execution(value?: "running" | "completed"): void
+  background(ended: boolean, delayed: boolean): void
+  backlog(count: number, ended: boolean, delayed?: boolean): void
+  backlogPage(index: number): void
+  contentStats(): Record<string, number>
+  select(id: string): void
   continuation(): void
   continuationReady(): void
+  runtimeContext(): void
+  runtimeContextReady(): void
   append(id: string, source?: "live" | "replay"): void
   nextTool(id: string, status?: "pending" | "generating"): void
   remount(): void
@@ -24,7 +32,7 @@ type Fixture = {
   prepare(): void
   respond(): void
   phase(value?: {
-    phase: "waiting_model" | "running_tools" | "preparing_files" | "stopping"
+    phase: "waiting_model" | "running_tools" | "preparing_files" | "preparing_context" | "stopping"
     startedAt: number
     rootID?: string
     tool?: { id?: string; count: number }
@@ -59,7 +67,7 @@ type Fixture = {
   contentReconnect(): void
   contentPageFinish(): void
   contentStale(): void
-  contentPageLoads(): number
+  contentPageLoads(id?: string): number
 }
 declare global {
   interface Window {

@@ -2,7 +2,13 @@ import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presen
 import { attachmentSuppression, markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-assets"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { useLingui } from "@lingui/solid"
-import { createActivityLabel, processIsWorking, sessionActivityAnimating, sessionActivityLabel } from "./session-status"
+import {
+  createActivityLabel,
+  hasTurnTerminalReply,
+  processIsWorking,
+  sessionActivityAnimating,
+  sessionActivityLabel,
+} from "./session-status"
 import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
 
 import type {
@@ -538,10 +544,6 @@ export function collectAssistantMessagesForTurn(messages: MessageType[], userMes
   )
 }
 
-function isTerminalAssistant(message: AssistantMessage): boolean {
-  return !!message.finish && message.finish !== "tool-calls" && message.finish !== "unknown"
-}
-
 export function resolveTurnWorking(input: {
   isLastUserMessage: boolean
   messages: readonly SessionTurnDisplayMessage[]
@@ -550,23 +552,7 @@ export function resolveTurnWorking(input: {
   if (!input.isLastUserMessage) return false
   if (input.sessionStatus?.type === "paused") return false
 
-  let latestUserIndex = -1
-  let lastAssistant: AssistantMessage | undefined
-  for (let index = 0; index < input.messages.length; index++) {
-    const message = input.messages[index]
-    if (message.role === "user") {
-      latestUserIndex = index
-      continue
-    }
-    lastAssistant = message
-  }
-
-  const hasTerminalReply = input.messages.slice(latestUserIndex + 1).some((message) => {
-    return message.role === "assistant" && isTerminalAssistant(message)
-  })
-  if (hasTerminalReply) return false
-
-  if (lastAssistant?.time.completed == null) return !!input.sessionStatus && input.sessionStatus.type !== "idle"
+  if (hasTurnTerminalReply(input.messages)) return false
   return !!input.sessionStatus && input.sessionStatus.type !== "idle"
 }
 

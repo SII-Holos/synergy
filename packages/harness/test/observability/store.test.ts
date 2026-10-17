@@ -83,6 +83,34 @@ describe("ObservabilityStore", () => {
       expect(rows[0]?.value).toBe(100)
     }))
 
+  test("storage queue depth retains the last value and peak without sharding by request", () =>
+    runtime.run(async () => {
+      for (const [index, value] of [1, 7, 3, 0].entries()) {
+        ObservabilityMetrics.record({
+          name: "storage.queue.depth",
+          value,
+          unit: "count",
+          module: "storage",
+          labels: { queue: "reader" },
+          sessionID: `session-${index}`,
+          scopeID: `scope-${index}`,
+          traceId: `trace-${index}`,
+        })
+      }
+      ObservabilityStore.flush()
+      expect(ObservabilityStore.queryMetrics({ since: 0, names: ["storage.queue.depth"] })).toHaveLength(0)
+      await Bun.sleep(1050)
+      ObservabilityStore.flush()
+      const rows = ObservabilityStore.queryMetrics({
+        since: 0,
+        names: ["storage.queue.depth", "storage.queue.depth.peak"],
+      }).filter((row) => JSON.parse(row.labels_json).queue === "reader")
+      expect(rows).toHaveLength(2)
+      expect(rows.find((row) => row.name === "storage.queue.depth")?.value).toBe(0)
+      expect(rows.find((row) => row.name === "storage.queue.depth.peak")?.value).toBe(7)
+      expect(rows.every((row) => !row.session_id && !row.trace_id && !row.scope_id)).toBe(true)
+    }))
+
   test("collapses aggregated counters that differ only in per-turn identity", () =>
     runtime.run(() => {
       const identity = [

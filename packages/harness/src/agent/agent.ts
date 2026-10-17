@@ -453,14 +453,13 @@ export namespace Agent {
 
   export async function list() {
     const cfg = await Config.current()
-    return pipe(
-      await state(),
-      values(),
-      sortBy([
-        (x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === PrimaryAgentIdentity.names.general),
-        "desc",
-      ]),
-    )
+    const agents = await state()
+    const configured = cfg.default_agent ? agents[cfg.default_agent] : undefined
+    const preferred =
+      configured && configured.mode !== "subagent" && !configured.hidden
+        ? configured.name
+        : PrimaryAgentIdentity.names.lightweight
+    return pipe(agents, values(), sortBy([(x) => x.name === preferred, "desc"]))
   }
 
   export async function modelRoleSummaries(): Promise<ModelRoleSummary[]> {
@@ -543,7 +542,7 @@ export namespace Agent {
       log.warn(`${reason}; falling back`)
     }
     const fallback =
-      agents.find((agent) => agent.name === PrimaryAgentIdentity.names.general && eligible(agent)) ??
+      agents.find((agent) => agent.name === PrimaryAgentIdentity.names.lightweight && eligible(agent)) ??
       agents.find(eligible)
     if (!fallback)
       throw new Error("No visible primary agent is available. Enable a primary agent in the agents configuration.")

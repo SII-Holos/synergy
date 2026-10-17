@@ -18,6 +18,8 @@ Edit message moves a confirmed removed item into the existing empty Prompt draft
 
 Recovery controls obey the same current first-task and rollback restrictions as ordinary queue actions. Withdrawal retry is hidden while frozen, and every activation rechecks eligibility as well as the in-flight operation lock so a retained control cannot bypass a later state change.
 
+An in-flight queue action replaces the existing status icon with an equally sized busy indicator and announces progress through a persistent screen-reader status. Controls remain disabled until settlement. Progress adds no row, margin or Dock reservation; authoritative removal and actionable failures can still change the queue's size.
+
 Latest following stays owned by the conversation scroll controller. It observes both content and viewport border boxes: on narrow screens, the relative Dock shrinks the viewport before Dock height delivery; on desktop, the absolute Dock changes content bottom padding without changing the content box or viewport. The observer consumes native border-box delivery rather than a helper that deduplicates by content-box dimensions. The page must not infer follow intent from the resulting bottom gap. Native reading input retains its existing cancellation and anchor protection. The bounded queue has an explicitly named keyboard scroll target and the shared visible focus treatment even when rollback or the first-task lock removes every action.
 
 Provenance: The user's Codex queue screenshots supplied for this task show pending input attached immediately above the Composer. The public [Codex application features](https://developers.openai.com/codex/app/features/) page provides workflow context, not verification of that queue layout.
@@ -36,6 +38,8 @@ Local adaptation: Adopt the attached pending-input placement and quiet row hiera
 
 **Replace a nonempty draft or merge it silently.** Destroys or mixes unrelated intent. The editor requires an empty draft, and a concurrent draft change requeues the original input.
 
+**Insert a temporary progress line beneath the input.** Changes the measured Dock height for every request, moving the queue and bottom-following transcript twice. Inline feedback preserves acknowledgement without reserving an empty row or delaying the request.
+
 ## Consequences
 
 Pending input stays beside the draft and its controls remain reachable independently of conversation reading. Delivery removes the queue row by canonical message identity without an extra transcript bubble or empty spacer. A bounded queue can require internal scrolling, and expanded editing temporarily defers access to pending controls until collapse. The change adds no API, persistence migration or scheduling behavior.
@@ -47,3 +51,5 @@ Recovery browser fixtures hold request completion explicitly while asserting dis
 Inactive retained Sessions suspend both viewport and content observation and unmount their Composer; activation restores observation without discarding reading intent. Queue keyboard checks use the shared focus treatment so they remain aligned with global presentation.
 
 The browser fixture composes the production Session layout, conversation presentation, viewport, content clearance, scroll controller and Dock at 375 and 1000 px. Late queue mounting after the settling window must keep an accepted latest intent at the bottom without transcript growth; a native upward wheel control must retain reading through mount and delivery. Frozen keyboard cases reach the final row with Tab and End. Chromium's implicit scroll-container focusability passes without an explicit target, while WebKit skips the same frozen list; both are checked without custom key handlers.
+
+Delayed Guide, Queue, Edit and Delete operations are sampled across frames in both layouts, with a Loop beneath the queue. Pointer activation while following and keyboard activation while reading must preserve queue, Loop and Composer geometry until acknowledgement; settlement retains the bottom anchor and reading intent. Existing failure, rollback, draft restoration and late-response tests retain their independent coverage. No transport or delivery behavior changes.

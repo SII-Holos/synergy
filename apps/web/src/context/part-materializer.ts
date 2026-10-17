@@ -57,6 +57,7 @@ const pause = (ms: number, signal: AbortSignal) =>
 
 export function createPartMaterializer(input: {
   budget?: number
+  cached?: (summary: SessionPartSummary) => Part | undefined
   read: (summary: SessionPartSummary, signal: AbortSignal) => Promise<{ part: Part; version: string }>
   refresh?: (summary: SessionPartSummary, signal: AbortSignal) => Promise<SessionPartSummary | undefined>
   wait?: (ms: number, signal: AbortSignal) => Promise<void>
@@ -92,6 +93,24 @@ export function createPartMaterializer(input: {
       if (!entry.consumers) remove(key, entry)
     }
   }
+  const accept = (key: string, entry: Entry, part: Part, summary: SessionPartSummary) => {
+    bytes += summary.content.bytes * 2 - entry.bytes
+    entry.bytes = summary.content.bytes * 2
+    entry.accepted = summary
+    entry.attempts = 0
+    entry.failure = undefined
+    input.apply(part, summary)
+    input.memory?.publish(memoryKey(summary), summary.content.version, entry.bytes, () => remove(key, entry, true))
+    trim()
+  }
+  const checkpoint = (entry: Entry) => {
+    if (
+      (entry.accepted?.content.version === entry.summary.content.version && !entry.failure) ||
+      input.isCurrent?.(entry.summary) === false
+    )
+      return
+    return input.cached?.(entry.summary)
+  }
   const start = (key: string, entry: Entry) => {
     const load: Load = { controller: new AbortController(), ready: Promise.resolve() }
     entry.load = load
@@ -116,16 +135,7 @@ export function createPartMaterializer(input: {
             entry.summary.content.version === summary.content.version &&
             input.isCurrent?.(summary) !== false
           ) {
-            input.apply(result.part, summary)
-            bytes += summary.content.bytes * 2 - entry.bytes
-            entry.bytes = summary.content.bytes * 2
-            entry.accepted = summary
-            entry.attempts = 0
-            entry.failure = undefined
-            input.memory?.publish(memoryKey(summary), summary.content.version, entry.bytes, () =>
-              remove(key, entry, true),
-            )
-            trim()
+            accept(key, entry, result.part, summary)
             return
           }
           refresh = entry.summary.content.version === summary.content.version
@@ -188,6 +198,18 @@ export function createPartMaterializer(input: {
         entry.summary = snapshot(summary)
         entry.load?.reading?.abort()
       }
+      entries.delete(key)
+      entries.set(key, entry)
+      if (!entry.consumers) entry.unsubscribe = input.subscribe?.(summary)
+      entry.consumers++
+      const releaseMemory = input.memory?.retain(memoryKey(summary))
+      const cached = checkpoint(entry)
+      if (cached) {
+        entry.load?.controller.abort()
+        entry.load = undefined
+        accept(key, entry, cached, entry.summary)
+        entry.ready = Promise.resolve()
+      }
       if (
         !entry.load &&
         !(entry.failure instanceof PartContentSyncError) &&
@@ -195,17 +217,13 @@ export function createPartMaterializer(input: {
         (!entry.failure || changed)
       )
         start(key, entry)
-      entries.delete(key)
-      entries.set(key, entry)
       const retained = entry
       const ready = retained.ready
-      if (!retained.consumers) retained.unsubscribe = input.subscribe?.(summary)
-      retained.consumers++
-      const releaseMemory = input.memory?.retain(memoryKey(summary))
       let released = false
       return {
         ready,
-        isCurrent: () => !released && !disposed && entries.get(key) === retained && retained.ready === ready,
+        isCurrent: () =>
+          !released && !disposed && entries.get(key) === retained && retained.ready === ready && !checkpoint(retained),
         release() {
           if (released) return
           released = true

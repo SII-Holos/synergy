@@ -4,7 +4,6 @@ import { version } from "../package.json" with { type: "json" }
 import { registerSessionSchema } from "./session-schema"
 import { registerSessions } from "./session/register"
 import { registerLightLoopDomain } from "./light-loop/register"
-import { registerAgents } from "./agents"
 export function lightLoop(): RuntimeComponent {
   return {
     id: "light-loop",
@@ -18,7 +17,6 @@ export function lightLoop(): RuntimeComponent {
       registerSessionSchema()
       registerSessions()
       registerLightLoopDomain()
-      registerAgents()
     },
   }
 }

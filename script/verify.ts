@@ -16,7 +16,7 @@ import { createIsolatedTestEnv } from "../packages/testing/src/env"
 
 const HELP = `Usage: bun run verify <plan|local|coverage|pre-push> [options]
 plan [--base origin/dev]: explain CI selection for the complete working tree.
-local [--base origin/dev] --test path/to/test.test.ts (repeatable): selected tests, new-source measurements and local static checks.
+local [--base origin/dev] --test path/to/test.test.ts (repeatable): local static checks, then selected tests and new-source measurements.
 coverage --package packages/name (repeatable): fresh complete package coverage.
 pre-push: required static checks, reusing only identical local inputs.
 Reports: .artifacts/verify/report.json. Local reports cannot satisfy CI.
@@ -164,6 +164,9 @@ async function main() {
     }
     if ([...groups.keys()].some((owner) => ["apps/web", "packages/ui"].includes(owner)))
       await command([process.execPath, "turbo", "build", "--filter=@ericsanchezok/synergy-plugin"])
+    const gates = await runGates("local")
+    report.errors.push(...gates.failures.map((failure) => `${failure.gate}: ${failure.stderr}`))
+    if (report.errors.length) throw new Error(report.errors.join("\n"))
     for (const [owner, files] of groups) {
       try {
         if (owner === ".") {
@@ -200,8 +203,6 @@ async function main() {
         report.errors.push(String(error))
       }
     }
-    const gates = await runGates("local")
-    report.errors.push(...gates.failures.map((failure) => `${failure.gate}: ${failure.stderr}`))
     if (
       report.changed.some((file) =>
         /^(apps\/web\/(?:vite\.config|src\/(?:app|index|entry))|packages\/ui\/package\.json)/.test(file),

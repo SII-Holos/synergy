@@ -205,6 +205,7 @@ function WorkbenchSortableTab(props: {
     ),
   )
   const currentIndex = () => props.tabs.findIndex((tab) => tab.id === props.tab.id)
+  const description = () => props.entry?.tabDescription?.(props.tab)
   return (
     <div
       use:sortable
@@ -231,7 +232,8 @@ function WorkbenchSortableTab(props: {
         class="workbench-surface-tab-main"
         aria-selected={props.active}
         aria-label={props.title}
-        title={props.title}
+        aria-description={description()}
+        title={[props.title, description()].filter(Boolean).join(" — ")}
         tabIndex={props.active ? 0 : -1}
         onClick={props.onActivate}
         onKeyDown={(event) => {
@@ -471,7 +473,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
     const bound = state()
     const tabs = bound.tabs()
     const revalidating = workbench.revalidating()
-    const savedTabs = revalidating ? bound.savedTabs() : tabs
+    const savedTabs = bound.savedTabs()
     const key = panelMountKey()
     const panel = activePanel()
     const opened = bound.opened() && viewActive()
@@ -481,7 +483,10 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
         const current = workbench.panelForTab(resident.tab())
         const builtin = !entry.pluginId || entry.pluginId === "builtin"
         const retain = builtin || entry.retention === "pause"
-        const pending = revalidating && builtin && savedTabs.some((tab) => workbenchPanelMountKey(tab) === id)
+        const pending =
+          builtin &&
+          savedTabs.some((tab) => workbenchPanelMountKey(tab) === id) &&
+          (revalidating || workbench.supportsTab(resident.tab()))
         const replaced =
           entry.pluginId &&
           entry.pluginId !== "builtin" &&

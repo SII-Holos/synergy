@@ -6,7 +6,6 @@ import { BrowserToolHelper } from "@ericsanchezok/synergy-browser-runtime/tools/
 
 const originalResolvePage = BrowserToolHelper.resolvePage
 const originalExecute = BrowserToolHelper.execute
-const originalWithActivity = BrowserToolHelper.withActivity
 
 const snapshot = {
   type: "snapshot",
@@ -32,13 +31,11 @@ beforeEach(() => {
       settleElapsedMs: 842,
       snapshot,
     }) as never
-  BrowserToolHelper.withActivity = async (_ctx, _page, _kind, _tool, _label, fn) => fn()
 })
 
 afterEach(() => {
   BrowserToolHelper.resolvePage = originalResolvePage
   BrowserToolHelper.execute = originalExecute
-  BrowserToolHelper.withActivity = originalWithActivity
 })
 
 function context() {

@@ -9,7 +9,7 @@ export const lightLoopPluginAdapter: PluginLightLoopAdapter = {
     await WorkflowSessionService.startLightloop(sessionID, input.instructions)
     await Session.update(sessionID, (draft) => {
       if (draft.workflow?.kind !== "lightloop") return
-      draft.workflow = { ...draft.workflow, ...input, status: "running" }
+      draft.workflow = { ...draft.workflow, ...input }
     })
   },
   async clear(sessionID) {
@@ -24,7 +24,6 @@ export const lightLoopPluginAdapter: PluginLightLoopAdapter = {
     return {
       instructions: workflow.instructions,
       pluginOwner: workflow.pluginOwner,
-      reviewSessionID: workflow.stopRequest?.reviewSessionID,
     }
   },
   scheduleDeadline(sessionID: string, deadlineAt: number) {

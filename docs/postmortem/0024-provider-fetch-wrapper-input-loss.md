@@ -22,7 +22,7 @@ A standard Request carries request semantics but not runtime-specific fetch init
 ## Guardrails added
 
 - [Provider fetch tests](../../packages/harness/test/provider/fetch-transparency.test.ts) check native options, UTF-8 bytes, sliced byte views, Content-Length, explicit proxy routing, authentication replay, held streaming producers, inherited headers/cancellation, and Request initializer overrides.
-- [LLM integration guidance](../../.synergy/skill/integrate-llm/SKILL.md#streaming-bounds) requires tests across the complete wrapper chain.
+- [LLM integration guidance](../../.synergy/skill/integrate-llm/references/streaming-workers.md) requires tests across the complete wrapper chain.
 - [The decision record](../decisions/implemented/bug-fix/2026-09-22-preserve-provider-fetch-inputs.md) records why preserving materialized inputs is preferable to buffering arbitrary streams.
 
 ## Lessons

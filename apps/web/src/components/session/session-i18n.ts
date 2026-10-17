@@ -265,6 +265,10 @@ export const S = {
     id: "session.progress.needsAttentionBlocked",
     message: "Needs attention · {count, plural, one {# blocked} other {# blocked}}",
   },
+  progressNeedsAttentionMixed: {
+    id: "session.progress.needsAttentionMixed",
+    message: "Needs attention · {failed} failed, {blocked} blocked",
+  },
   progressReady: { id: "session.progress.ready", message: "Ready · {fraction}" },
   progressWorkingLabel: {
     id: "session.progress.workingLabel",
@@ -474,6 +478,8 @@ export const S = {
 export function describeProgress(snapshot: ProgressIslandSnapshot, i18n: I18n): string {
   if (snapshot.status === "hidden") return i18n._(S.progressSessionLabel)
   if (snapshot.status === "complete") return i18n._({ ...S.progressCompleteAria, values: { count: snapshot.total } })
+  if (snapshot.failed > 0 && snapshot.blocked > 0)
+    return i18n._({ ...S.progressNeedsAttentionMixed, values: { failed: snapshot.failed, blocked: snapshot.blocked } })
   if (snapshot.tone === "failed") return i18n._({ ...S.progressAttentionAria, values: { count: snapshot.failed } })
   if (snapshot.tone === "blocked") return i18n._({ ...S.progressBlockedAria, values: { count: snapshot.blocked } })
   return i18n._({ ...S.progressActiveAria, values: { completed: snapshot.completed, total: snapshot.total } })
@@ -491,6 +497,8 @@ export function formatProgressLabel(
   if (snapshot.status === "hidden") return ""
   if (snapshot.status === "complete" && snapshot.total === 0) return i18n._(S.progressEnded)
   if (snapshot.status === "complete") return i18n._({ ...S.progressDone, values: { count: snapshot.total } })
+  if (snapshot.failed > 0 && snapshot.blocked > 0)
+    return i18n._({ ...S.progressNeedsAttentionMixed, values: { failed: snapshot.failed, blocked: snapshot.blocked } })
   if (snapshot.tone === "failed") return i18n._({ ...S.progressNeedsAttention, values: { count: snapshot.failed } })
   if (snapshot.tone === "blocked")
     return i18n._({ ...S.progressNeedsAttentionBlocked, values: { count: snapshot.blocked } })

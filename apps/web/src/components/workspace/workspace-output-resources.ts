@@ -49,21 +49,6 @@ export function workspaceOutputResources(input: {
         },
       })
     }
-    if (
-      part.tool === "browser_navigation" &&
-      ["open", "goto"].includes(String(metadata.action ?? toolInput.action)) &&
-      typeof metadata.pageId === "string" &&
-      typeof metadata.url === "string" &&
-      /^https?:\/\//.test(metadata.url)
-    ) {
-      resources.push({
-        sessionID,
-        key: `${part.id}:browser`,
-        completedAt,
-        panelId: "browser",
-        init: { resourceId: metadata.pageId, title: metadata.url },
-      })
-    }
     for (const attachment of part.state.attachments ?? []) {
       if (attachment.mime.startsWith("image/")) continue
       const init = attachmentWorkbenchPanelInit(attachment)

@@ -43,22 +43,14 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
     }),
   async execute({ pageId, requestId, ...params }, ctx) {
     const browserPage = await BrowserToolHelper.resolvePage(ctx, pageId)
-    return BrowserToolHelper.withActivity(
-      ctx,
-      browserPage,
-      "reading",
-      "browser_network",
-      `${params.action} network`,
-      async () => {
-        const result = await BrowserToolHelper.execute(ctx, pageId, { type: "network", ...params, id: requestId })
-        if (result.type !== "data") throw new Error("Browser network returned an unexpected result.")
-        const formatted = formatBrowserJSON(browserAgentRecord(result.data, "requestId", "requests"))
-        return {
-          title: `Browser network: ${params.action}`,
-          output: formatted.output,
-          metadata: { pageId: browserPage.id, action: params.action, outputTruncated: formatted.truncated },
-        }
-      },
-    )
+
+    const result = await BrowserToolHelper.execute(ctx, pageId, { type: "network", ...params, id: requestId })
+    if (result.type !== "data") throw new Error("Browser network returned an unexpected result.")
+    const formatted = formatBrowserJSON(browserAgentRecord(result.data, "requestId", "requests"))
+    return {
+      title: `Browser network: ${params.action}`,
+      output: formatted.output,
+      metadata: { pageId: browserPage.id, action: params.action, outputTruncated: formatted.truncated },
+    }
   },
 })

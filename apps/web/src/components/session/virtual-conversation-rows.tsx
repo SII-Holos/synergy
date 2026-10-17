@@ -21,6 +21,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { ActivityBatchLabel, ActivityBatchStatus } from "@ericsanchezok/synergy-ui/activity-batch"
 import {
+  hasTurnTerminalReply,
   processIsWorking,
   sessionActivityAnimating,
   sessionActivityLabel,
@@ -45,7 +46,7 @@ import {
   processReadingAnchorNode,
   type ProcessReadingAnchor,
 } from "@ericsanchezok/synergy-ui/process-viewport"
-import { ConversationMotionProvider } from "@ericsanchezok/synergy-ui/conversation-motion"
+import { ConversationMotionProvider, useConversationMotionReady } from "@ericsanchezok/synergy-ui/conversation-motion"
 import { CompactionCard } from "@ericsanchezok/synergy-ui/compaction-card"
 import { useData } from "@ericsanchezok/synergy-ui/context/data"
 import { requestErrorMessage } from "../../utils/error"
@@ -160,16 +161,19 @@ export function VirtualConversationRows(
       if (root.role !== "user") continue
       const state = input.executionFor?.(root.id)
       const last = previous?.get(root.id)
-      const final = props
-        .turnProjection()
-        .turnMessagesFor(root)
-        .findLast((message) => message.role === "assistant")
+      const messages = props.turnProjection().turnMessagesFor(root)
+      const final = messages.findLast((message) => message.role === "assistant")
       const submission = input.submissionFor?.(root.id)
       const working = processIsWorking({
         current: root.id === props.lastUserMessage()?.id,
         sessionStatus: view.statusFor(props.sessionID),
         submission,
-        projected: state?.status === "completed" && last?.working && final?.time.completed == null ? true : undefined,
+        projected:
+          final?.time.completed != null && hasTurnTerminalReply(messages)
+            ? false
+            : state?.status === "completed" && last?.working && final?.time.completed == null
+              ? true
+              : undefined,
         executionStatus: state?.status,
         fallback: root.id === props.lastUserMessage()?.id && props.isWorking(),
       })
@@ -612,13 +616,14 @@ function ConversationDisplayRow(
   const content = props.content!
   const row = input.row
   const [activityMounted, setActivityMounted] = createSignal(!!row().activity?.open)
+  const motionReady = useConversationMotionReady()
   let manualDisclosure = false
   createEffect(() => {
     if (row().activity?.open) setActivityMounted(true)
   })
   const batchMotion = createDisclosureMotionRef({
     visible: () => !!row().activity?.open,
-    animate: () => true,
+    animate: () => manualDisclosure || motionReady(),
     appear: () => manualDisclosure,
     resize: true,
     onHidden: () => setActivityMounted(false),
@@ -632,7 +637,7 @@ function ConversationDisplayRow(
   onCleanup(() => input.onMotionReleased?.(row().motion))
   const exitMotion = createDisclosureMotionRef({
     visible: () => !row().exiting,
-    animate: () => !!row().motion || !props.scrolledUp(),
+    animate: () => !!row().motion || (motionReady() && !props.scrolledUp()),
     appear: () => !!entrance && row().motion === entrance,
     resize: () => !!row().motion || row().kind !== "activity",
     onHidden: () => input.onExit(row().key),
@@ -858,6 +863,7 @@ function ConversationDisplayRow(
     const current = row()
     return (
       current.kind === "load" &&
+      !current.validation &&
       !current.continuation &&
       !content.summaries(current.message.id).some((part) => part.content.version.startsWith("optimistic:"))
     )

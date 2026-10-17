@@ -52,12 +52,28 @@ describe("catalog determinism", () => {
 })
 
 describe("generated catalog completeness", () => {
+  test("code search documentation explains evidence without unresolved template variables", async () => {
+    const body = (await generateTools()).split("## parse_code\n")[1]!.split("\n## ")[0]!
+    expect(body).toContain("Only displayed source lines count as observations")
+    expect(body).not.toMatch(/\{\{(?:reader|evidence)\}\}/)
+  })
   test("observe documentation lists its imported schema instead of the execution command", async () => {
     const body = (await generateTools()).split("## computer_observe\n")[1]!.split("\n## ")[0]!
     expect(body).toContain("| `pid` | number | yes |")
     expect(body).toContain("| `windowId` | number | yes |")
     expect(body).not.toContain("| `type` |")
   })
+  test("memory editing documentation resolves local parameter schemas and optional revisions", async () => {
+    const catalog = await generateTools()
+    const edit = catalog.split("## memory_edit\n")[1]!.split("\n## ")[0]!
+    const get = catalog.split("## memory_get\n")[1]!.split("\n## ")[0]!
+    expect(edit).toContain("| `expectedUpdatedAt` | number |  |")
+    expect(edit).toContain("| `memoryId` | string | yes |")
+    expect(edit).not.toContain("| `metadata`")
+    expect(get).toContain("| `memoryIds` | array | yes |")
+    expect(get).not.toContain("| `updatedAt` |")
+  })
+
   test("cli catalog lists top-level commands with option tables", async () => {
     const body = await generateCli()
     expect(body).toContain("## Commands")

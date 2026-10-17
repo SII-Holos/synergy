@@ -15,11 +15,8 @@ export type SubagentPermissionProfile =
   | "readOnly"
   | "review"
   | "codeWrite"
-  | "anchoredCodeWrite"
   | "testWrite"
-  | "anchoredTestWrite"
   | "docsWrite"
-  | "anchoredDocsWrite"
   | "quality"
   | "sessionHistory"
   | "externalResearch"
@@ -47,39 +44,12 @@ export function resolveAgentModelRole(ctx: BuiltinAgentContext, role: Provider.M
   }
 }
 
-function classicWriteTools(): PermissionNext.Ruleset {
-  return PermissionNext.fromConfig({
-    edit: "ask",
-    write: "ask",
-  })
+function fileReadTools(): PermissionNext.Ruleset {
+  return PermissionNext.fromConfig({ read: "allow" })
 }
 
-function classicReadTools(): PermissionNext.Ruleset {
-  return PermissionNext.fromConfig({
-    read: "allow",
-    grep: "allow",
-    view_file: "deny",
-    scan_files: "deny",
-  })
-}
-
-function anchoredReadTools(): PermissionNext.Ruleset {
-  return PermissionNext.fromConfig({
-    read: "deny",
-    grep: "deny",
-    view_file: "allow",
-    scan_files: "allow",
-  })
-}
-
-function anchoredWriteTools(): PermissionNext.Ruleset {
-  return PermissionNext.fromConfig({
-    edit: "deny",
-    write: "deny",
-    revise_file: "ask",
-    resolve_conflicts: "ask",
-    save_file: "ask",
-  })
+function fileWriteTools(): PermissionNext.Ruleset {
+  return PermissionNext.fromConfig({ edit: "ask" })
 }
 
 function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext.Ruleset {
@@ -102,7 +72,6 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     process: "allow",
     skill: "allow",
     webfetch: "allow",
-    glob: "allow",
     list: "allow",
     external_directory: {
       "*": "ask",
@@ -110,26 +79,14 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     },
   })
 
-  if (profile === "codeWrite" || profile === "testWrite") {
-    return PermissionNext.merge(common, classicReadTools(), classicWriteTools())
-  }
-
-  if (profile === "anchoredCodeWrite" || profile === "anchoredTestWrite") {
-    return PermissionNext.merge(common, anchoredReadTools(), anchoredWriteTools())
-  }
-
-  if (profile === "docsWrite") {
-    return PermissionNext.merge(common, classicReadTools(), classicWriteTools())
-  }
-
-  if (profile === "anchoredDocsWrite") {
-    return PermissionNext.merge(common, anchoredReadTools(), anchoredWriteTools())
+  if (profile === "codeWrite" || profile === "testWrite" || profile === "docsWrite") {
+    return PermissionNext.merge(common, fileReadTools(), fileWriteTools())
   }
 
   if (profile === "sessionHistory") {
     return PermissionNext.merge(
       common,
-      classicReadTools(),
+      fileReadTools(),
       PermissionNext.fromConfig({
         session_list: "allow",
         scope_list: "allow",
@@ -141,7 +98,7 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     )
   }
 
-  return PermissionNext.merge(common, classicReadTools())
+  return PermissionNext.merge(common, fileReadTools())
 }
 
 export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDefinition): Agent.Info {

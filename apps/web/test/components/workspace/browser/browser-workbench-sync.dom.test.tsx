@@ -40,6 +40,7 @@ beforeAll(async () => {
     export const surface = { tabs: () => state[task()].tabs, savedTabs: () => state[task()].tabs, hasOpening: () => false, active: () => state[task()].active,
       setTabs: tabs => setState(task(), "tabs", tabs), setActive: active => setState(task(), "active", active), opened: () => false }
     window.switchTask = id => setTask(id)
+    export const useParams = () => ({ get id() { return task() } })
     export const useWorkbenchPanels = () => ({ sessionKey: task, surface: () => surface, openingForTab: () => undefined })
   `,
   )
@@ -76,6 +77,7 @@ beforeAll(async () => {
       alias: {
         "@/context/sdk": path.join(directory, "sdk.ts"),
         "@/context/workbench": path.join(directory, "workbench.ts"),
+        "@/context/session-route": path.join(directory, "workbench.ts"),
         "./browser-ws": path.join(directory, "transport.ts"),
         "@": source,
       },
@@ -106,6 +108,40 @@ type Fixture = Window & {
   deliverPages(pages: unknown[]): void
   switchTask(id: string): void
 }
+
+test("Agent-created pages reconcile silently on bootstrap, task switching and navigation", async () => {
+  await page.goto(url)
+  await page.waitForFunction(() => typeof (window as unknown as Fixture).completeSnapshot === "function")
+  const pages = ["one", "two"].map((sessionID) => ({
+    id: `agent-${sessionID}`,
+    profileId: "personal",
+    title: sessionID,
+    url: "about:blank",
+    createdBySessionID: sessionID,
+    status: "active",
+    isLoading: false,
+    lastActiveAt: null,
+  }))
+  await page.evaluate(
+    (pages) =>
+      (window as unknown as Fixture).completeSnapshot({ data: { pages, seq: 1, epoch: "one", ownerKey: "owner-one" } }),
+    pages,
+  )
+  await page.getByRole("tab", { name: /agent-one/ }).waitFor()
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["file", expect.stringContaining("agent-one")])
+  expect(await page.getByRole("tab", { name: "file", exact: true }).getAttribute("aria-selected")).toBe("true")
+  await page.evaluate(() => (window as unknown as Fixture).switchTask("two"))
+  await page.getByRole("tab", { name: /agent-two/ }).waitFor()
+  expect(await page.getByRole("tab").allTextContents()).toEqual(["two-file", expect.stringContaining("agent-two")])
+  await page.getByRole("tab", { name: "two-file", exact: true }).focus()
+  await page.evaluate(
+    (pages) => (window as unknown as Fixture).deliverPages(pages),
+    pages.map((item) => ({ ...item, title: "Navigated", url: "https://example.com/new" })),
+  )
+  await page.locator('[role="tab"][title="Navigated"]').waitFor()
+  expect(await page.getByRole("tab", { name: "two-file", exact: true }).getAttribute("aria-selected")).toBe("true")
+  expect(await page.evaluate(() => document.activeElement?.textContent)).toBe("two-file")
+})
 
 test("a held bootstrap removes stale tabs but preserves a page opened after its request", async () => {
   await page.goto(url)

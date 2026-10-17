@@ -34,6 +34,7 @@ beforeAll(async () => {
       return null
     },
     SmartTool: () => null,
+    useToolResultPresentation: () => false,
   }))
   mock.module("../../../../src/components/message-part", () => ({
     ToolRegistry: {
@@ -70,6 +71,16 @@ function renderResolveConflicts(props: Record<string, any>) {
 
 beforeEach(() => {
   capturedTrigger = undefined
+})
+
+test("patch card retains partial and unresolved outcomes", () => {
+  expect(registrations.has("apply_patch")).toBe(true)
+  for (const outcome of ["partial", "unresolved"]) {
+    registrations.get("apply_patch")?.({ input: {}, metadata: { outcome, sections: [] }, status: "error" })
+    expect(capturedTrigger?.tags).toEqual([
+      { label: outcome === "partial" ? "Partially applied" : "Outcome unconfirmed", tone: "warning" },
+    ])
+  }
 })
 
 describe("resolve_conflicts file-ops renderer", () => {

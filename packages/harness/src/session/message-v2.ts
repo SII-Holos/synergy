@@ -9,6 +9,7 @@ import { markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-as
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { ToolIntent } from "./tool-intent"
+import { RuntimeContextMetadata } from "./runtime-context-schema"
 import { ToolActivityEvidence } from "./activity-evidence"
 import { RuntimeContext } from "../lifecycle/context"
 import { ModelSelection } from "./model-selection-schema"
@@ -945,6 +946,34 @@ export namespace MessageV2 {
   })
   export type WithParts = z.infer<typeof WithParts>
 
+  export function copyForTransform(messages: WithParts[]): WithParts[] {
+    const copies = new WeakMap<object, object>()
+    function copy<T>(value: T): T {
+      // Share immutable strings: native deep cloning copies large tool outputs on every step.
+      if (value === null || typeof value !== "object") return value
+      const existing = copies.get(value)
+      if (existing) return existing as T
+      const prototype = Object.getPrototypeOf(value)
+      if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+        const result = structuredClone(value)
+        copies.set(value, result)
+        return result
+      }
+      const result: object = Array.isArray(value) ? new Array(value.length) : Object.create(prototype)
+      copies.set(value, result)
+      for (const [key, item] of Object.entries(value)) {
+        Object.defineProperty(result, key, {
+          value: copy(item),
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        })
+      }
+      return result as T
+    }
+    return copy(messages)
+  }
+
   export function extractText(parts: Part[], options?: { includeSynthetic?: boolean; maxLength?: number }): string {
     const texts: string[] = []
     for (const part of parts) {
@@ -1255,6 +1284,7 @@ export namespace MessageV2 {
     selector?: string[]
     range?: { start: number; end: number }
     precision?: "source" | "role"
+    segments?: Array<{ source: string; start: number; end: number }>
   }
 
   export interface ModelMessageProvenance {
@@ -1484,7 +1514,31 @@ export namespace MessageV2 {
               isSystemPart(part) ? "injectedContext" : "userMessages",
               part.text,
               part,
+              msg.info.origin?.type === "system" && msg.info.origin.detail === "runtime-context"
+                ? "runtime-context"
+                : undefined,
             )
+            if (
+              msg.info.origin?.type === "system" &&
+              msg.info.origin.detail === "runtime-context" &&
+              isSystemPart(part)
+            ) {
+              const metadata = RuntimeContextMetadata.parse(msg.info.metadata?.runtimeContext)
+              const segments: NonNullable<ModelMessageContribution["segments"]> = []
+              let cursor = 0
+              for (const source of metadata.sources) {
+                if (!RuntimeContextMetadata.verified(source, part.text) || !source.range || source.range.start < cursor)
+                  continue
+                if (source.range.start > cursor)
+                  segments.push({ source: "runtime-context", start: cursor, end: source.range.start })
+                segments.push({ source: source.id, ...source.range })
+                cursor = source.range.end
+              }
+              if (cursor < part.text.length)
+                segments.push({ source: "runtime-context", start: cursor, end: part.text.length })
+              const contribution = provenance.categories.injectedContext.at(-1)
+              if (contribution) contribution.segments = segments
+            }
           }
           if (part.type === "attachment") {
             appendAttachmentModelParts(userMessage.parts, part, provenance, { keptHashes, includeLocalPath: true })
@@ -2227,6 +2281,7 @@ export namespace MessageV2 {
             // try to extract common error message fields
             const errMsg = body.message || body.error || body.error?.message
             if (errMsg && typeof errMsg === "string") {
+              if (errMsg === msg) return msg
               return `${msg}: ${errMsg}`
             }
           } catch {}

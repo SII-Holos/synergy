@@ -18,10 +18,11 @@ import { McpOAuthCallback } from "./oauth-callback"
 import { McpAuth } from "./auth"
 import open from "open"
 import { McpSupervisor, mapStatus } from "./supervisor"
-import type { PromptCache, ResourceCache } from "./supervisor"
+import type { McpServerSource, PromptCache, ResourceCache } from "./supervisor"
 import { ToolExposure } from "@ericsanchezok/synergy-harness/tool/exposure"
 import { builtinApiKeyHint, builtinApiKeyOf, builtinMcpServerInfos } from "./builtin-catalog"
 import { PendingOAuth } from "./pending-oauth"
+import { modelDescription } from "./model-descriptions"
 
 // Re-export supervisor symbols so downstream imports from "@/mcp" still work.
 // These go at module scope, not inside the namespace.
@@ -39,6 +40,7 @@ export namespace MCP {
   const log = Log.create({ service: "mcp" })
   const runtimeState = RuntimeContext.state(() => ({
     toolCallTimeouts: new Map<string, number | undefined>(),
+    changedDescriptions: new Map<string, string>(),
     authCompletions: new Map<string, { pending: PendingOAuth.Connection; promise: Promise<Status> }>(),
   }))
 
@@ -79,6 +81,7 @@ export namespace MCP {
     id: string
     serverName: string
     toolName: string
+    source?: McpServerSource
     requiresWorkspace?: boolean
     tool: Tool
     inputSchema: JSONSchema7
@@ -95,6 +98,7 @@ export namespace MCP {
     client: Client,
     callTimeout: number | undefined,
     requiresWorkspace: boolean,
+    description = mcpTool.description ?? "",
   ): Promise<Pick<ToolEntry, "inputSchema" | "tool">> {
     const source = mcpTool.inputSchema
     const inputSchema: JSONSchema7 = {
@@ -107,7 +111,7 @@ export namespace MCP {
     return {
       inputSchema,
       tool: dynamicTool({
-        description: mcpTool.description ?? "",
+        description,
         inputSchema: jsonSchema(inputSchema),
         execute: async (args: unknown) => {
           return HarnessTool.withWorkspace(requiresWorkspace, {}, () =>
@@ -330,38 +334,7 @@ export namespace MCP {
 
   // ── Non-blocking snapshots ─────────────────────────────────────────
 
-  export interface DeferredGroupCatalogServer {
-    serverName: string
-    toolNames: string[]
-  }
-
-  export interface DeferredGroupCatalog {
-    totalTools: number
-    servers: DeferredGroupCatalogServer[]
-  }
-
-  /**
-   * Cheap snapshot of connected MCP servers and their tool names, used to
-   * render the deferred-group directory in the expand_tools description.
-   * Reads the supervisor's cached toolDefs directly — no dynamicTool
-   * conversion, no network calls.
-   */
-  export async function deferredGroupCatalog(): Promise<DeferredGroupCatalog> {
-    await McpSupervisor().ready()
-    const servers: DeferredGroupCatalogServer[] = []
-    let totalTools = 0
-    for (const handle of McpSupervisor().getAll()) {
-      if (mapStatus(handle).status !== "connected") continue
-      if (!handle.client || handle.toolDefs.length === 0) continue
-      if ((handle.config.requiresWorkspace ?? true) && !ScopeContext.current.workspace) continue
-      const toolNames = ToolExposure.unique(handle.toolDefs.map((tool) => tool.name))
-      servers.push({ serverName: handle.name, toolNames })
-      totalTools += toolNames.length
-    }
-    return { totalTools, servers }
-  }
-
-  export async function toolEntries(): Promise<ToolEntry[]> {
+  export async function toolEntries(options?: { audience: "model" }): Promise<ToolEntry[]> {
     const instanceState = runtimeState()
 
     await McpSupervisor().ready()
@@ -378,16 +351,36 @@ export namespace MCP {
         const toolName = ToolExposure.mcpToolID(handle.name, mcpTool.name)
         const effectiveCallTimeout = handle.config.callTimeout ?? callTimeout
         instanceState.toolCallTimeouts.set(toolName, effectiveCallTimeout)
+        const presentation =
+          options?.audience === "model"
+            ? modelDescription(
+                {
+                  name: handle.name,
+                  source: handle.source,
+                  url: handle.config.type === "remote" ? handle.config.url : undefined,
+                },
+                mcpTool,
+              )
+            : { description: mcpTool.description ?? "" }
+        if (presentation.changed && instanceState.changedDescriptions.get(toolName) !== presentation.changed) {
+          instanceState.changedDescriptions.set(toolName, presentation.changed)
+          log.warn("builtin tool definition changed; retaining remote description", {
+            tool: toolName,
+            fingerprint: presentation.changed,
+          })
+        }
         const converted = await convertMcpTool(
           mcpTool,
           handle.client,
           effectiveCallTimeout,
           handle.config.requiresWorkspace ?? true,
+          presentation.description,
         )
         result.push({
           id: toolName,
           serverName: handle.name,
           toolName: mcpTool.name,
+          source: handle.source,
           requiresWorkspace: handle.config.requiresWorkspace ?? true,
           ...converted,
         })

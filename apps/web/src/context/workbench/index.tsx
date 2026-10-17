@@ -46,6 +46,7 @@ export interface OpenWorkbenchPanelOptions {
   intent?: "user" | "restore" | "output"
   init?: WorkbenchPanelTabInit
   canCommit?: () => boolean
+  onOpening?: (tabId: string) => void
 }
 
 export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = createSimpleContext({
@@ -82,10 +83,10 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     const [registryVersion, setRegistryVersion] = createSignal(0)
     let nextTabIndex = 0
     const closeGuard = createTabCloseGuard()
-    const selectionRevisions = new Map<string, number>()
+    const [selectionRevisions, setSelectionRevisions] = createStore<Record<string, number>>({})
     function changeSelection(boundSession: string, surfaceName: WorkbenchPanelSurface) {
       const key = JSON.stringify([boundSession, surfaceName])
-      selectionRevisions.set(key, (selectionRevisions.get(key) ?? 0) + 1)
+      setSelectionRevisions(key, (revision) => (revision ?? 0) + 1)
     }
     const confirm = useConfirm()
     const dialog = useDialog()
@@ -159,8 +160,8 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       )
     }
 
-    function visibleTab(tab: WorkbenchPanelTab) {
-      if (!visibleEntry(tab.panelId)) return false
+    function supportsTab(tab: WorkbenchPanelTab) {
+      if (!runtimeFeatureAvailable("panel", tab.panelId, capabilities.has)) return false
       if (tab.panelId === "execution-detail" && !executionDetailAvailable(tab.state, capabilities.has)) return false
       const state = tab.state
       return (
@@ -171,6 +172,10 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         state.kind !== "blueprint" ||
         capabilities.has("blueprint")
       )
+    }
+
+    function visibleTab(tab: WorkbenchPanelTab) {
+      return !!visibleEntry(tab.panelId) && supportsTab(tab)
     }
 
     function projectedTabs(boundSession: string, surfaceName: WorkbenchPanelSurface) {
@@ -211,7 +216,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         savedTabs: value.tabs,
         tabs,
         active,
-        selectionRevision: () => selectionRevisions.get(key) ?? 0,
+        selectionRevision: () => selectionRevisions[key] ?? 0,
         activeTab: () => tabs().find((tab) => tab.id === active()),
         setTabs: (next: WorkbenchPanelTab[]) =>
           batch(() => {
@@ -417,6 +422,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         setOpeningActive(key, id)
         if (options.intent !== "restore") layout.surface(boundSession, entry.surface).open()
       })
+      options.onOpening?.(id)
       return task.run()
     }
 
@@ -703,6 +709,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       },
       getPanel: visibleEntry,
       panelForTab,
+      supportsTab,
       panelTitle,
       openPanel,
       openingForTab(tabId: string): WorkbenchPanelOpening | undefined {

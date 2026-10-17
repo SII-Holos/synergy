@@ -13,6 +13,7 @@ import { AgendaEvent } from "./event"
 import { AgendaTypes } from "./types"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { upgradeAccessRecord } from "@ericsanchezok/synergy-harness/migration/import"
 
 export namespace AgendaStore {
   export function transferWorkspace(
@@ -169,7 +170,20 @@ export namespace AgendaStore {
   }
 
   export async function get(scopeID: string, itemID: string): Promise<AgendaTypes.Item> {
-    return Storage.read<AgendaTypes.Item>(StoragePath.agendaItem(Identifier.asScopeID(scopeID), itemID))
+    const key = StoragePath.agendaItem(Identifier.asScopeID(scopeID), itemID)
+    return upgradeAccessRecord(key, await Storage.read<AgendaTypes.Item>(key))
+  }
+
+  async function readItems(keys: string[][]): Promise<(AgendaTypes.Item | undefined)[]> {
+    const results = await Storage.readMany<AgendaTypes.Item>(keys)
+    return results.map((item, index) => item && upgradeAccessRecord(keys[index], item))
+  }
+
+  function updateItem(key: string[], change: (item: AgendaTypes.Item) => void): Promise<AgendaTypes.Item> {
+    return Storage.update<AgendaTypes.Item>(key, (item) => {
+      Object.assign(item, upgradeAccessRecord(key, item))
+      change(item)
+    })
   }
 
   export async function listStored(scopeID: string): Promise<AgendaTypes.Item[]> {
@@ -177,7 +191,7 @@ export namespace AgendaStore {
     const ids = await Storage.scan(StoragePath.agendaItemsRoot(sid))
     if (ids.length === 0) return []
     const keys = ids.map((id) => StoragePath.agendaItem(sid, id))
-    const results = await Storage.readMany<AgendaTypes.Item>(keys)
+    const results = await readItems(keys)
     const items = results.filter((item): item is AgendaTypes.Item => item !== undefined)
     items.sort((a, b) => b.time.created - a.time.created)
     return items
@@ -203,7 +217,7 @@ export namespace AgendaStore {
     return Storage.transaction(async () => {
       const sid = Identifier.asScopeID(scopeID)
       const now = Date.now()
-      const item = await Storage.update<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID), (draft) => {
+      const item = await updateItem(StoragePath.agendaItem(sid, itemID), (draft) => {
         AgendaItemOwners.assert(draft)
         if (patch.title !== undefined) draft.title = patch.title
         if (patch.description !== undefined) draft.description = patch.description
@@ -265,7 +279,7 @@ export namespace AgendaStore {
     return Storage.transaction(async () => {
       const sid = Identifier.asScopeID(scopeID)
       const newNextRunAt = computeNextRunAt(triggers)
-      const item = await Storage.update<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID), (draft) => {
+      const item = await updateItem(StoragePath.agendaItem(sid, itemID), (draft) => {
         draft.state.lastRunAt = result.startTime
         draft.state.lastRunStatus = result.status
         draft.state.lastRunError = result.error
@@ -568,7 +582,7 @@ export namespace AgendaStore {
       const sid = Identifier.asScopeID(scopeID)
       const itemIDs = [...new Set(entries.filter((e) => e.scopeID === sid).map((e) => e.itemID))]
       const keys = itemIDs.map((id) => StoragePath.agendaItem(sid, id))
-      const results = await Storage.readMany<AgendaTypes.Item>(keys)
+      const results = await readItems(keys)
       for (let i = 0; i < itemIDs.length; i++) {
         if (results[i]) itemMap.set(itemIDs[i], results[i]!)
       }
@@ -600,7 +614,7 @@ export namespace AgendaStore {
     const result = new Map<string, AgendaTypes.Item>()
     if (!scopeID || itemIDs.length === 0) return result
     const keys = itemIDs.map((id) => StoragePath.agendaItem(scopeID, id))
-    const items = await Storage.readMany<AgendaTypes.Item>(keys)
+    const items = await readItems(keys)
     for (let i = 0; i < itemIDs.length; i++) {
       if (items[i]) result.set(itemIDs[i], items[i]!)
     }
@@ -740,8 +754,7 @@ export namespace AgendaStore {
   export async function find(itemID: string): Promise<{ item: AgendaTypes.Item; scopeID: string }> {
     const scopeIDs = await Storage.scan(["agenda", "items"])
     for (const scopeID of scopeIDs) {
-      const sid = Identifier.asScopeID(scopeID)
-      const item = await Storage.read<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID)).catch(() => undefined)
+      const item = await get(scopeID, itemID).catch(() => undefined)
       if (item && AgendaItemOwners.available(item)) return { item, scopeID }
     }
     throw new Error(`Agenda item not found: ${itemID}`)
@@ -751,14 +764,10 @@ export namespace AgendaStore {
     scopeID: string,
     itemID: string,
   ): Promise<{ item: AgendaTypes.Item; scopeID: string }> {
-    const sid = Identifier.asScopeID(scopeID)
-    const item = await Storage.read<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID)).catch(() => undefined)
+    const item = await get(scopeID, itemID).catch(() => undefined)
     if (item && AgendaItemOwners.available(item)) return { item, scopeID }
     if (scopeID !== HOME_SCOPE_ID) {
-      const globalSid = Identifier.asScopeID(HOME_SCOPE_ID)
-      const globalItem = await Storage.read<AgendaTypes.Item>(StoragePath.agendaItem(globalSid, itemID)).catch(
-        () => undefined,
-      )
+      const globalItem = await get(HOME_SCOPE_ID, itemID).catch(() => undefined)
       if (globalItem && AgendaItemOwners.available(globalItem)) return { item: globalItem, scopeID: HOME_SCOPE_ID }
     }
     throw new Error(`Agenda item not found: ${itemID}`)
@@ -775,7 +784,7 @@ export namespace AgendaStore {
 
   export async function setPersistentSession(scopeID: string, itemID: string, sessionID: string): Promise<void> {
     const sid = Identifier.asScopeID(scopeID)
-    await Storage.update<AgendaTypes.Item>(StoragePath.agendaItem(sid, itemID), (draft) => {
+    await updateItem(StoragePath.agendaItem(sid, itemID), (draft) => {
       draft.state.persistentSessionID = sessionID
       draft.time.updated = Date.now()
     })

@@ -1,3 +1,4 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { describe, expect, test } from "bun:test"
 import type { BrowserWindow, OpenDialogOptions, WebContents } from "electron"
 import { mapSelectDirectoryDialogResponse, selectDirectoryWithNativeDialog } from "../src/directory-picker.js"
@@ -36,14 +37,14 @@ describe("desktop ipc contract", () => {
   test("accepts valid browser native attach payloads", () => {
     expect(
       parseBrowserNativeAttach({
-        protocolVersion: 5,
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
         ownerKey: "scope:scope:session:session",
         pageId: "page",
         bounds: { x: 0, y: 0, width: 640, height: 480 },
         visible: false,
       }),
     ).toEqual({
-      protocolVersion: 5,
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
       ownerKey: "scope:scope:session:session",
       pageId: "page",
       bounds: { x: 0, y: 0, width: 640, height: 480 },
@@ -53,11 +54,15 @@ describe("desktop ipc contract", () => {
 
   test("rejects malformed browser native payloads", () => {
     expect(() =>
-      parseBrowserNativePage({ protocolVersion: 5, ownerKey: "scope:scope:session:session", pageId: "" }),
+      parseBrowserNativePage({
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey: "scope:scope:session:session",
+        pageId: "",
+      }),
     ).toThrow()
     expect(() =>
       parseBrowserNativeResize({
-        protocolVersion: 5,
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
         ownerKey: "scope:scope:session:session",
         pageId: "page",
         bounds: { width: -1, height: 1, x: 0, y: 0 },
@@ -65,7 +70,7 @@ describe("desktop ipc contract", () => {
     ).toThrow()
     expect(() =>
       parseBrowserNativeAttach({
-        protocolVersion: 5,
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
         ownerKey: "scope:scope:session:session",
         pageId: "page",
         extra: true,
@@ -77,24 +82,30 @@ describe("desktop ipc contract", () => {
   test("validates native capability and owner-bound ticket requests", () => {
     expect(
       parseBrowserNativePresentationCapability({
-        protocolVersion: 5,
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
         serverUrl: "http://127.0.0.1:4096",
       }),
-    ).toEqual({ protocolVersion: 5, serverUrl: "http://127.0.0.1:4096" })
+    ).toEqual({ protocolVersion: BROWSER_PROTOCOL_VERSION, serverUrl: "http://127.0.0.1:4096" })
     expect(
       parseBrowserNativePresentationTicket({
-        protocolVersion: 5,
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
         serverUrl: "http://127.0.0.1:4096",
         ownerKey: "scope:home:session:test",
       }),
     ).toEqual({
-      protocolVersion: 5,
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
       serverUrl: "http://127.0.0.1:4096",
       ownerKey: "scope:home:session:test",
     })
-    expect(() => parseBrowserNativePresentationCapability({ protocolVersion: 5, serverUrl: "not-a-url" })).toThrow()
     expect(() =>
-      parseBrowserNativePresentationTicket({ protocolVersion: 5, serverUrl: "http://127.0.0.1", ownerKey: "" }),
+      parseBrowserNativePresentationCapability({ protocolVersion: BROWSER_PROTOCOL_VERSION, serverUrl: "not-a-url" }),
+    ).toThrow()
+    expect(() =>
+      parseBrowserNativePresentationTicket({
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        serverUrl: "http://127.0.0.1",
+        ownerKey: "",
+      }),
     ).toThrow()
   })
 

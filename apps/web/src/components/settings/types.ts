@@ -1,5 +1,5 @@
 import type { MessageDescriptor } from "@lingui/core"
-import type { McpStatus } from "@ericsanchezok/synergy-sdk/client"
+import type { Config, McpStatus } from "@ericsanchezok/synergy-sdk/client"
 import type { LocalePreference } from "@/context/locale/types"
 import type { ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type { SendShortcut } from "@/context/input"
@@ -93,6 +93,7 @@ export const UI_DEFAULTS = {
   lspDiagnosticsSeverity: "error" as string,
   lspDiagnosticsScope: "project" as string,
   defaultAgent: "" as string,
+  fileToolGroup: "patch" as NonNullable<Config["fileToolGroup"]>,
   defaultSessionWorkspace: "main" as NewSessionWorkspacePreference,
 } as const
 
@@ -366,6 +367,7 @@ export type ModelsStore = {
 }
 
 export type AgentsStore = {
+  fileToolGroup: NonNullable<Config["fileToolGroup"]>
   defaultAgent: string
 }
 
@@ -487,6 +489,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
     },
     agents: {
       defaultAgent: UI_DEFAULTS.defaultAgent,
+      fileToolGroup: UI_DEFAULTS.fileToolGroup,
     },
     providers: {
       enabledProviders: "",

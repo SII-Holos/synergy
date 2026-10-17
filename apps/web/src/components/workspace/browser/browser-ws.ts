@@ -181,6 +181,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     if (snapshot.epoch === catalogSnapshot.epoch && snapshot.seq < catalogSnapshot.seq) return
     catalogSnapshot = { epoch: snapshot.epoch, seq: snapshot.seq }
     store.replacePages(snapshot.pages)
+    store.replaceAgentActivities(snapshot.agentActivities ?? [])
     for (const page of snapshot.pages)
       store.setHostStatus(page.id, page.status === "active" ? snapshot.hostStatus : "detached")
   }
@@ -310,7 +311,15 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
         "epoch" in msg &&
         msg.epoch === catalogSnapshot.epoch &&
         msg.seq <= catalogSnapshot.seq &&
-        ["page.created", "page.updated", "page.closed", "page.loading", "page.loaded", "host.status"].includes(msg.type)
+        [
+          "page.created",
+          "page.updated",
+          "page.closed",
+          "page.loading",
+          "page.loaded",
+          "host.status",
+          "agent.activity",
+        ].includes(msg.type)
       )
         return
       switch (msg.type) {
@@ -388,6 +397,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
             kind: msg.kind,
             tool: msg.tool,
             label: msg.label,
+            completed: msg.completed,
           })
           break
         }

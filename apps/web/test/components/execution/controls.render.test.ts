@@ -38,7 +38,7 @@ afterAll(() => {
   if (fonts) Object.defineProperty(document, "fonts", fonts)
   else Reflect.deleteProperty(document, "fonts")
 })
-mock.module("@lingui/solid", () => ({ useLingui: () => ({ _: i18n._.bind(i18n), i18n: () => i18n }) }))
+const { I18nProvider } = await import("@lingui/solid")
 mock.module("@ericsanchezok/synergy-ui/context/dialog", () => ({ useDialog: () => ({ show: () => {} }) }))
 mock.module("../../../src/context/locale", () => ({ useLocale: () => ({ i18n }) }))
 mock.module("../../../src/components/dialog/dialog-workspace", () => ({ DialogWorkspace: () => null }))
@@ -316,11 +316,16 @@ function mount(view: () => JSX.Element = () => null) {
   document.body.append(root)
   const dispose = render(
     () =>
-      createComponent(ExecutionProvider, {
+      createComponent(I18nProvider, {
+        i18n,
         get children() {
-          execution = useExecution()
-          execution.retain()
-          return view()
+          return createComponent(ExecutionProvider, {
+            get children() {
+              execution = useExecution()
+              execution.retain()
+              return view()
+            },
+          })
         },
       }),
     root,

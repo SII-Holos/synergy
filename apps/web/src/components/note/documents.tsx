@@ -85,6 +85,9 @@ export const { use: useNoteDocuments, provider: NoteDocumentsProvider } = create
         navigation.set(key, value)
         return value
       },
+      peek(scopeID: string, id: string) {
+        return documents.get(JSON.stringify([sdk.url, scopeID, id]))?.controller
+      },
       get(scopeID: string, id: string) {
         const key = JSON.stringify([sdk.url, scopeID, id])
         const existing = documents.get(key)

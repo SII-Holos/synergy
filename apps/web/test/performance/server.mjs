@@ -10,6 +10,9 @@ if (
   (await Bun.file(path.join(home, "manifest.json")).exists())
 )
   throw Error("isolated fixture required")
+const pressure = process.env.SYNERGY_PERF_PRESSURE === "1"
+const durationMs = Number(process.env.SYNERGY_PERF_DURATION_MS ?? 60000)
+if (!Number.isFinite(durationMs) || durationMs < 1000 || durationMs > 3600000) throw Error("Invalid fixture duration")
 const workspace = path.join(home, "workspace")
 await mkdir(workspace, { recursive: true })
 process.env.SYNERGY_HOME = home
@@ -51,6 +54,8 @@ const load = async (file) => import(path.join(repo, file)),
   { SessionManager } = await load("packages/harness/src/session/manager.ts"),
   { ExecutionService } = await load("packages/workbench/src/execution/service.ts"),
   { NoteStore } = await load("packages/note/src/store.ts"),
+  { ObservabilityStore } = await load("packages/harness/src/observability/store.ts"),
+  { SessionMessageCache } = await load("packages/harness/src/session/message-cache.ts"),
   runtime = await PresetRuntimeHandle.open({
     host: createLocalHost({ home }),
     mode: "server",
@@ -63,7 +68,7 @@ const load = async (file) => import(path.join(repo, file)),
   time = 1802311200000
 await runtime.run(async () => {
   const scopes = []
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < (pressure ? 5 : 3); i++) {
     const directory = path.join(workspace, `scope-${i}`)
     await mkdir(directory, { recursive: true })
     await Bun.write(
@@ -77,8 +82,8 @@ await runtime.run(async () => {
     )
     scopes.push(await Scope.resolve({ directory }))
   }
-  for (let i = 0; i < 12; i++) {
-    const scope = scopes[i % 3]
+  for (let i = 0; i < (pressure ? 20 : 12); i++) {
+    const scope = scopes[i % scopes.length]
     await ScopeContext.provide({
       scope,
       fn: async () => {
@@ -171,7 +176,7 @@ Readable Markdown **bold** and \`code\`.
           noteID: note.id,
           route: `/${Buffer.from(scope.id).toString("base64url")}/session/${session.id}`,
         })
-        if (i < 2) {
+        if (i < (pressure ? 20 : 2)) {
           const rootID = `msg_fixture_${String(i).padStart(3, "0")}_${String(messageCount).padStart(4, "0")}`
           await saveMessage({
             id: rootID,
@@ -212,8 +217,44 @@ Readable Markdown **bold** and \`code\`.
             text: "Streaming fixture: ",
           }
           await Session.updatePart(part)
-          streams.push({ scope, message, part })
-          await Session.create({ parentID: session.id, title: `Fixture child ${i}` })
+          streams.push({ scope, message, part, index: i })
+          if (pressure)
+            for (let childIndex = 0; childIndex < 4; childIndex++) {
+              const child = await Session.create({ parentID: session.id, title: `Fixture child ${i}.${childIndex}` })
+              const promptID = `${rootID}_child_${childIndex}`
+              await saveMessage({
+                id: promptID,
+                sessionID: child.id,
+                role: "user",
+                agent: "atlas",
+                model: { providerID: "openai", modelID: "gpt-4o" },
+                time: { created: time },
+              })
+              await Session.updatePart({
+                id: `${part.id}_prompt_${childIndex}`,
+                messageID: promptID,
+                sessionID: child.id,
+                type: "text",
+                text: "Synthetic child stream",
+              })
+              const childMessage = {
+                ...message,
+                id: `${message.id}_child_${childIndex}`,
+                sessionID: child.id,
+                rootID: promptID,
+                parentID: promptID,
+              }
+              const childPart = {
+                ...part,
+                id: `${part.id}_child_${childIndex}`,
+                messageID: childMessage.id,
+                sessionID: child.id,
+              }
+              await saveMessage(childMessage)
+              await Session.updatePart(childPart)
+              streams.push({ scope, message: childMessage, part: childPart, index: i })
+            }
+          else await Session.create({ parentID: session.id, title: `Fixture child ${i}` })
           await ExecutionService.summary(session.id)
         }
       },
@@ -225,51 +266,84 @@ function directoryOf(scope) {
 }
 await Bun.write(
   path.join(home, "manifest.json"),
-  JSON.stringify({ origin: runtime.server.url.toString().replace(/\/$/, ""), sessions }, null, 2),
+  JSON.stringify(
+    {
+      origin: runtime.server.url.toString().replace(/\/$/, ""),
+      sessions,
+      streamCount: streams.length,
+      durationMs: pressure ? durationMs : undefined,
+    },
+    null,
+    2,
+  ),
 )
 console.log("FIXTURE_READY")
 let burst
+let stopping = false
 for await (const line of createInterface({ input: process.stdin })) {
   if (line === "burst")
     burst = runtime.run(async () => {
-      await Promise.all(
-        streams.map(async (item) =>
-          ScopeContext.provide({
-            scope: item.scope,
-            fn: async () => {
-              SessionManager.setStatus(item.message.sessionID, { type: "busy" })
-              for (let k = 0; k < 300; k++) {
-                const delta =
-                  `chunk ${k}: ` +
-                  "abcd ".repeat(50) +
-                  `
+      const samples = []
+      const started = Date.now()
+      const sampler = pressure
+        ? setInterval(() => {
+            samples.push({
+              elapsedMs: Date.now() - started,
+              memory: process.memoryUsage(),
+              telemetry: ObservabilityStore.stats(),
+              sessions: SessionManager.runtimeStats(),
+              messages: SessionMessageCache.stats({ entryLimit: 0 }),
+            })
+            void Bun.write(path.join(home, "server-pressure.json"), JSON.stringify(samples, null, 2))
+          }, 30000)
+        : undefined
+      try {
+        await Promise.all(
+          streams.map(async (item) =>
+            ScopeContext.provide({
+              scope: item.scope,
+              fn: async () => {
+                SessionManager.setStatus(item.message.sessionID, { type: "busy" })
+                const streamStarted = performance.now()
+                for (let k = 0; k < (pressure ? Math.ceil(durationMs / 500) : 300) && !stopping; k++) {
+                  const delta =
+                    `${pressure ? `Fixture ${item.index} ` : ""}chunk ${k}: ` +
+                    "abcd ".repeat(pressure ? 10 : 50) +
+                    `
 `
-                item.part = { ...item.part, text: item.part.text + delta }
-                await Session.updatePartDelta(item.part, delta)
-                if (k % 10 === 0)
-                  await saveMessage({ ...item.message, tokens: { ...item.message.tokens, output: k * 50 } })
-                await Bun.sleep(35)
-              }
-              await Session.updatePart(item.part)
-              await saveMessage({
-                ...item.message,
-                time: { ...item.message.time, completed: Date.now() },
-                finish: "stop",
-                tokens: { ...item.message.tokens, output: 15000 },
-              })
-              await Session.flushPartWrites(item.message.sessionID)
-              SessionManager.setStatus(item.message.sessionID, { type: "idle" })
-            },
-          }),
-        ),
-      )
-      await Bun.write(path.join(home, "burst-done"), "done")
-      console.log("BURST_DONE")
+                  item.part = { ...item.part, text: item.part.text + delta }
+                  await Session.updatePartDelta(item.part, delta)
+                  if (k % 10 === 0)
+                    await saveMessage({ ...item.message, tokens: { ...item.message.tokens, output: k * 50 } })
+                  await Bun.sleep(pressure ? Math.max(0, streamStarted + (k + 1) * 500 - performance.now()) : 35)
+                }
+                await Session.updatePart(item.part)
+                await saveMessage({
+                  ...item.message,
+                  time: { ...item.message.time, completed: Date.now() },
+                  finish: "stop",
+                  tokens: { ...item.message.tokens, output: 15000 },
+                })
+                await Session.flushPartWrites(item.message.sessionID)
+                SessionManager.setStatus(item.message.sessionID, { type: "idle" })
+              },
+            }),
+          ),
+        )
+        await Bun.write(path.join(home, "burst-done"), "done")
+        console.log("BURST_DONE")
+      } finally {
+        clearInterval(sampler)
+        if (pressure) await Bun.write(path.join(home, "server-pressure.json"), JSON.stringify(samples, null, 2))
+      }
     })
   if (line === "stop") {
+    stopping = true
     await burst
     await runtime.close()
     break
   }
 }
+stopping = true
+await burst
 await runtime.close()

@@ -6,7 +6,7 @@ import { isSessionSubmissionContentReady } from "./session-transition-handoff"
 import { useSync } from "@/context/sync"
 import { useGlobalSync } from "@/context/global-sync"
 import { ConversationMotionProvider } from "@ericsanchezok/synergy-ui/conversation-motion"
-import { submissionForRoot } from "./session-submission-status"
+import { createOptimisticSubmissionActivity, submissionForRoot } from "./session-submission-status"
 import { useFileRestore } from "./file-restore-dialog-loader"
 import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
@@ -34,6 +34,7 @@ import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import type { UserMessage, AssistantMessage, TurnExecutionState } from "@ericsanchezok/synergy-sdk"
 import { buildConversationTimelineSnapshot } from "./conversation-timeline"
+import { createConversationHydration } from "./conversation-hydration"
 import { ConversationViewport } from "./conversation-viewport"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
@@ -103,11 +104,27 @@ function SessionConversationView(input: SessionConversationProps) {
   const restoreFiles = useFileRestore(() => props.sessionID)
   const data = useSessionDataView()
   const sync = useSync()
+  const [executionStates, setExecutionStates] = createStore<Record<string, TurnExecutionState | undefined>>({})
+  const optimisticSubmission = createOptimisticSubmissionActivity({
+    message: props.lastUserMessage,
+    messageKey,
+    status: () => data().statusFor(props.sessionID),
+    settled: (rootID) =>
+      !!executionStates[rootID] ||
+      props
+        .turnProjection()
+        .turnMessagesFor(props.lastUserMessage())
+        .some(
+          (message) =>
+            message.role === "assistant" && message.rootID === rootID && message.time.completed !== undefined,
+        ),
+  })
   const submissionFor = (rootID: string) =>
     submissionForRoot(
       transitions.get(props.sessionID) ?? transitions.get(draftTransitionKey(sdk.url, sdk.scopeKey)),
       rootID,
       data().statusFor(props.sessionID),
+      optimisticSubmission(),
     )
   let stateRequest: AbortController | undefined
   const executionRequest = createMemo(
@@ -147,7 +164,6 @@ function SessionConversationView(input: SessionConversationProps) {
           a.rootIDs.every((rootID, index) => rootID === b.rootIDs[index])),
     },
   )
-  const [executionStates, setExecutionStates] = createStore<Record<string, TurnExecutionState | undefined>>({})
   let baseline: ReturnType<typeof executionRequest>
   let identityEpoch = 0
   let rootVersion = 0
@@ -339,60 +355,29 @@ function SessionConversationView(input: SessionConversationProps) {
   const turnProjection = props.turnProjection
   const [scrollRef, setScrollRef] = createSignal<HTMLDivElement>()
   const [rowsReady, setRowsReady] = createSignal(!props.content)
-  let hydrated = false
   createEffect(() => {
-    if (hydrated || !active() || (input.initialScrollSettled && !input.initialScrollSettled())) return
+    if (!active() || (input.initialScrollSettled && !input.initialScrollSettled())) return
     if ((!settleHistory || !props.content) && !admitted()) {
       input.onAdmitted?.(props.sessionID)
       setAdmitted(true)
     }
-    if (!rowsReady() || executionPending() || execution.state?.loading) return
-    const viewport = scrollRef()
-    const surface = viewport?.querySelector<HTMLElement>("[data-conversation-motion]")
-    if (!surface) return
-    let current = true
-    let frame: number | undefined
-    const pending = () => surface.querySelector("[data-markdown-pending]") || document.fonts?.status === "loading"
-    const schedule = () => {
-      if (!current || frame !== undefined || pending()) return
-      frame = requestAnimationFrame(() => {
-        frame = requestAnimationFrame(() => {
-          frame = undefined
-          if (!current || pending()) return
-          hydrated = true
-          cleanup()
-          batch(() => {
-            if (!admitted()) {
-              input.onAdmitted?.(props.sessionID)
-              setAdmitted(true)
-            }
-            input.onHydrated?.(props.sessionID)
-          })
-        })
-      })
-    }
-    const mutations = new MutationObserver(schedule)
-    const resize = new ResizeObserver(schedule)
-    const cleanup = () => {
-      current = false
-      if (frame !== undefined) cancelAnimationFrame(frame)
-      mutations.disconnect()
-      resize.disconnect()
-      document.fonts?.removeEventListener("loadingdone", schedule)
-      document.fonts?.removeEventListener("loadingerror", schedule)
-    }
-    mutations.observe(surface, {
-      subtree: true,
-      childList: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ["data-markdown-pending"],
-    })
-    resize.observe(surface)
-    document.fonts?.addEventListener("loadingdone", schedule)
-    document.fonts?.addEventListener("loadingerror", schedule)
-    schedule()
-    onCleanup(cleanup)
+  })
+  const hydrated = createConversationHydration({
+    active,
+    ready: () =>
+      (!input.initialScrollSettled || input.initialScrollSettled()) &&
+      !sdk.content.pending(sdk.scopeKey, props.sessionID) &&
+      rowsReady() &&
+      !executionPending(),
+    surface: () => scrollRef()?.querySelector<HTMLElement>("[data-conversation-motion]") ?? undefined,
+    onHydrated: () =>
+      batch(() => {
+        if (!admitted()) {
+          input.onAdmitted?.(props.sessionID)
+          setAdmitted(true)
+        }
+        input.onHydrated?.(props.sessionID)
+      }),
   })
   // Rows below are keyed by the stable message id (see conversation-timeline):
   // message objects are replaced in place by window reload, reconnect replay,
@@ -402,7 +387,11 @@ function SessionConversationView(input: SessionConversationProps) {
   // heap grew to the 4 GiB V8 limit after ~33h of a long session.
   const timelineSnapshot = createMemo(() => buildConversationTimelineSnapshot(props.timeline() ?? [], messageKey))
   return (
-    <ConversationMotionProvider takeArrival={takePartArrival} liveRevision={() => arrivalView()?.revision() ?? 0}>
+    <ConversationMotionProvider
+      takeArrival={takePartArrival}
+      liveRevision={() => arrivalView()?.revision() ?? 0}
+      ready={hydrated}
+    >
       <ConversationViewport
         ready={admitted()}
         scrolledUp={props.scrolledUp()}

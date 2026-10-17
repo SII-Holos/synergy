@@ -6,6 +6,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { testRuntime } from "../support/runtime"
 import { createSession } from "../../src/session-api"
+import { DockerProfileSpec } from "../../src/environment/profile-schema"
 
 test("explicit profile selection reuses its owner policy without allocating or changing the default", async () => {
   await using runtime = await testRuntime()
@@ -38,6 +39,46 @@ test("invalid and conflicting profile choices fail before creating an environmen
           "environmentID",
         )
         expect(await Environment.list("home")).toEqual([])
+      },
+    }),
+  )
+})
+
+test("a Home native default requires explicit compatible files before selecting a Docker profile", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        await Config.updateGlobal({
+          resources: {
+            environments: {
+              remote: {
+                provider: "docker",
+                spec: DockerProfileSpec.parse({
+                  host: { endpoint: "unix:///absent/docker.sock" },
+                  image: "executor:test",
+                }),
+              },
+            },
+          },
+        })
+        for (const workspace of [undefined, { mode: "current" } as const]) {
+          await expect(createSession({ environmentProfile: "remote", workspace })).rejects.toMatchObject({
+            name: "SessionLocationError",
+            data: { code: "incompatible_files" },
+          })
+        }
+        expect(await Environment.list("home")).toEqual([])
+        const none = await createSession({ environmentProfile: "remote", workspace: { mode: "none" } })
+        expect(none.workspace).toBeNull()
+        expect(await Environment.get(none.environmentID!, "home")).toMatchObject({
+          provider: "docker",
+          state: "idle",
+          generation: 0,
+        })
+        expect((await createSession({ parentID: none.id, environmentProfile: "remote" })).workspace).toBeNull()
+        expect((await createSession({ workspaceID: null, environmentProfile: "remote" })).workspace).toBeNull()
       },
     }),
   )

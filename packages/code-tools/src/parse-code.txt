@@ -1,24 +1,5 @@
-Search code with AST-aware patterns and return anchored file blocks.
+Search code with AST-aware patterns and return matching line ranges.
 
-Use this instead of `ast_grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and the matched source ranges as `LINE:TEXT` rows by default, so results stay small. Use `view_file` with targeted ranges when you need surrounding context before editing. The output also reports match line/range locations for each tagged file.
+Use complete, parseable syntax for the chosen language, such as function $NAME($$$) { $$$ }. Paths select roots, globs narrow files, context adds surrounding lines, and limit/skip page through matches. Syntax errors include recovery guidance; no matches may require broader paths or a literal file_search query.
 
-Pattern rules:
-- Patterns must be complete, parseable AST nodes in the selected language.
-- `$NAME` matches one node; `$_` matches one ignored node; `$$$NAME` or `$$$` matches zero or more nodes.
-- Do not use incomplete fragments such as `const $X` when the language requires an initializer; use a complete pattern such as `const $X = $Y`.
-
-Examples:
-- TypeScript/JavaScript: `console.log($MSG)`, `function $NAME($$$) { $$$ }`, `import { $$$ } from '$MODULE'`
-- Python: `def $FUNC($$$)`, `class $NAME`, `for $VAR in $ITER`
-- Rust: `fn $NAME($$$) -> $RET { $$$ }`, `impl $TRAIT for $TYPE { $$$ }`
-
-Result control:
-- `limit` caps returned matches; default is 50.
-- `context` adds surrounding lines (default 0). Overlapping ranges are merged; files share a 50 KiB code budget.
-- `skip` continues from a previous limited result.
-- If the result says the limit was reached, continue with `skip` or narrow `paths`, `globs`, or `pattern`.
-
-Critical:
-- A parse error or invalid pattern is a query failure, not evidence that the code is absent.
-- Use `scan_files` for literal text or error-message search; use `parse_code` when syntax structure matters.
-- A current tag and completely displayed target region can feed `revise_file` directly. Use `view_file` for missing context, omitted regions, or changed files.
+The active file interface determines the read evidence. Only displayed source lines count as observations; truncated output does not establish a complete read.

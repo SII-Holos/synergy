@@ -2619,6 +2619,9 @@ export type PerfBrowserMetricBatch = {
     transferSize?: number
     encodedBodySize?: number
     decodedBodySize?: number
+    requestStart?: number
+    responseStart?: number
+    responseEnd?: number
   }>
   longTasks?: Array<{
     startTime: number
@@ -3575,43 +3578,13 @@ export type SessionWorkflowInfo =
   | {
       kind: "lightloop"
       instructions: string
-      status?: "running" | "reviewing" | "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
-      executionAgent?: string
-      reviewAgent?: string
       pluginOwner?: {
         pluginId: string
         pluginGeneration: string
         scopeId: string
         correlationId?: string
       }
-      budget?: {
-        maxRuntimeMs: number
-        maxIterations: number
-      }
       deadlineAt?: number
-      terminalError?: string
-      terminalHookDeliveredAt?: number
-      terminalHookError?: string
-      reviewTools?: {
-        [key: string]: boolean
-      }
-      stopRequest?: {
-        summary: string
-        completed?: Array<string>
-        evidence?: Array<string>
-        remaining?: Array<string>
-        requestedAt: number
-        requesterSessionID: string
-        requesterMessageID: string
-        reviewTaskID?: string
-        reviewSessionID?: string
-        reviewToolRecoveryAttempts?: number
-      }
-      review?: {
-        attempts: number
-        lastReason?: string
-        lastReviewedAt?: number
-      }
     }
   | {
       kind: "boss"
@@ -4114,7 +4087,7 @@ export type ScopeUiPreferences = {
    */
   model?: string | null
   /**
-   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.
+   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable.
    */
   default_agent?: string
   /**
@@ -6907,7 +6880,11 @@ export type Config = {
     [key: string]: string | null
   }
   /**
-   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.
+   * File read/write interface for all local Agents in this Scope: replace (text replacement), hashline (line-anchored editing), or patch (patch editing, default). Does not change permissions.
+   */
+  fileToolGroup?: "replace" | "hashline" | "patch"
+  /**
+   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable.
    */
   default_agent?: string
   /**
@@ -12011,9 +11988,6 @@ export type BlueprintLoopInfo = {
   auditTaskID?: string
   stopRequest?: {
     summary: string
-    completed?: Array<string>
-    evidence?: Array<string>
-    remaining?: Array<string>
     requestedAt: number
     requesterSessionID: string
     requesterMessageID: string
@@ -12684,6 +12658,58 @@ export type AssetInfo = {
   size: number
 }
 
+export type BrowserPreviewResult = {
+  title: string
+  source: string
+  path?: string
+  description?: string
+  code?: {
+    text: string
+    language?: string
+    startLine?: number
+  }
+  meta?: string
+  unavailable?:
+    | "invalid_url"
+    | "blocked_address"
+    | "dns_failed"
+    | "network_error"
+    | "timeout"
+    | "cancelled"
+    | "redirect_loop"
+    | "redirect_limit"
+    | "target_changed"
+    | "authentication_required"
+    | "bot_challenge"
+    | "http_error"
+    | "non_text"
+    | "unsupported_encoding"
+    | "too_large"
+    | "empty_metadata"
+    | "invalid_range"
+}
+
+export type BrowserProfile = {
+  id: string
+  name: string
+  kind: "persistent" | "temporary"
+  enabled: boolean
+  revision: number
+  createdAt: number
+  origins: {
+    [key: string]: {
+      access?: "inherit" | "allow" | "ask" | "deny"
+      downloads?: "inherit" | "allow" | "ask" | "deny"
+      uploads?: "inherit" | "allow" | "ask" | "deny"
+    }
+  }
+}
+
+export type BrowserDataContext = {
+  contextId: string
+  profile: BrowserProfile
+}
+
 export type BrowserApiError = {
   type: "error"
   code: string
@@ -12731,6 +12757,10 @@ export type BrowserApiError = {
   locator?: unknown
 }
 
+export type BrowserDataContextInput = {
+  profileId?: string
+}
+
 export type BrowserApiSessionPage = {
   id: string
   url: string
@@ -12739,6 +12769,7 @@ export type BrowserApiSessionPage = {
   lastActiveAt: number | null
   profileId: string
   openerId?: string
+  createdBySessionID?: string
   status: "active" | "suspended" | "failed"
   error?: BrowserApiError
 }
@@ -12747,22 +12778,6 @@ export type BrowserOpenPage = {
   requestId: string
   url?: string
   profileId?: string
-}
-
-export type BrowserProfile = {
-  id: string
-  name: string
-  kind: "persistent" | "temporary"
-  enabled: boolean
-  revision: number
-  createdAt: number
-  origins: {
-    [key: string]: {
-      access?: "inherit" | "allow" | "ask" | "deny"
-      downloads?: "inherit" | "allow" | "ask" | "deny"
-      uploads?: "inherit" | "allow" | "ask" | "deny"
-    }
-  }
 }
 
 export type BrowserProfileList = {
@@ -12805,7 +12820,7 @@ export type BrowserManageProfile =
     }
 
 export type BrowserAnnotationResponse = {
-  protocolVersion: 5
+  protocolVersion: 7
   annotation: {
     id: string
     pageURL: string
@@ -12821,7 +12836,7 @@ export type BrowserAnnotationResponse = {
 }
 
 export type BrowserAnnotationRequest = {
-  protocolVersion: 5
+  protocolVersion: 7
   pageId: string
   x: number
   y: number
@@ -12832,14 +12847,14 @@ export type BrowserAnnotationRequest = {
 }
 
 export type BrowserDiagnosticsResponse = {
-  protocolVersion: 5
+  protocolVersion: 7
   pageId: string
   action: string
   data: unknown
 }
 
 export type BrowserDiagnosticsRequest = {
-  protocolVersion: 5
+  protocolVersion: 7
   pageId: string
   commandId: string
   action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
@@ -12848,11 +12863,22 @@ export type BrowserDiagnosticsRequest = {
 
 export type BrowserApiSessionState = {
   type: "session.state"
-  protocolVersion: 5
+  protocolVersion: 7
   ownerKey: string
   status: "empty" | "suspended" | "active" | "failed"
+  agentActivities?: Array<{
+    sessionID: string
+    operationID: string
+    pageId: string
+    url: string
+    title?: string
+    kind: "reading" | "acting" | "idle"
+    tool: string
+    label: string
+    completed?: boolean
+  }>
   presentation: {
-    protocolVersion: 5
+    protocolVersion: 7
     kind: "native"
     capabilities: {
       native: boolean
@@ -12877,12 +12903,14 @@ export type BrowserApiSessionState = {
 
 export type BrowserControlResponse = {
   type: "control.result"
-  protocolVersion: 5
+  protocolVersion: 7
   result:
     | {
+        userChanges?: string
         type: "void"
       }
     | {
+        userChanges?: string
         type: "page"
         page: {
           id: string
@@ -12893,6 +12921,7 @@ export type BrowserControlResponse = {
         }
       }
     | {
+        userChanges?: string
         type: "navigation"
         page: {
           id: string
@@ -12908,6 +12937,7 @@ export type BrowserControlResponse = {
         inflightRequests?: number
       }
     | {
+        userChanges?: string
         type: "snapshot"
         pageId: string
         snapshotId: string
@@ -12922,6 +12952,7 @@ export type BrowserControlResponse = {
         truncated: boolean
       }
     | {
+        userChanges?: string
         type: "action"
         pageId: string
         action: string
@@ -12939,6 +12970,7 @@ export type BrowserControlResponse = {
         inflightRequests?: number
       }
     | {
+        userChanges?: string
         type: "wait"
         pageId: string
         matched: boolean
@@ -12952,11 +12984,13 @@ export type BrowserControlResponse = {
         }
       }
     | {
+        userChanges?: string
         type: "evaluation"
         pageId: string
         value: unknown
       }
     | {
+        userChanges?: string
         type: "screenshot"
         pageId: string
         dataUrl: string
@@ -12964,6 +12998,7 @@ export type BrowserControlResponse = {
         height: number
       }
     | {
+        userChanges?: string
         type: "data"
         pageId: string
         data: unknown
@@ -12972,7 +13007,7 @@ export type BrowserControlResponse = {
 
 export type BrowserControlRequest = {
   pageId: string
-  protocolVersion: 5
+  protocolVersion: 7
   command:
     | {
         type: "navigate"
@@ -19463,6 +19498,10 @@ export type SessionExecutionSummaryErrors = {
    */
   404: unknown
   /**
+   * Execution computation failed
+   */
+  500: unknown
+  /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
@@ -19503,6 +19542,10 @@ export type SessionExecutionContextHistoryErrors = {
    * Execution evidence was not found in the selected Scope and session
    */
   404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
   /**
    * Runtime shutting down
    */
@@ -19545,6 +19588,10 @@ export type SessionExecutionContextSnapshotErrors = {
    * Execution evidence was not found in the selected Scope and session
    */
   404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
   /**
    * Runtime shutting down
    */
@@ -19600,6 +19647,10 @@ export type SessionExecutionContextItemsErrors = {
    * Execution evidence was not found in the selected Scope and session
    */
   404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
   /**
    * Runtime shutting down
    */
@@ -19671,6 +19722,10 @@ export type SessionExecutionTrajectoryErrors = {
    */
   404: unknown
   /**
+   * Execution computation failed
+   */
+  500: unknown
+  /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
@@ -19711,6 +19766,10 @@ export type SessionExecutionNodeErrors = {
    * Execution evidence was not found in the selected Scope and session
    */
   404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
   /**
    * Runtime shutting down
    */
@@ -19756,6 +19815,10 @@ export type SessionExecutionContentErrors = {
    */
   404: unknown
   /**
+   * Execution computation failed
+   */
+  500: unknown
+  /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
@@ -19799,6 +19862,10 @@ export type SessionExecutionContentSectionsErrors = {
    * Execution evidence was not found in the selected Scope and session
    */
   404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
   /**
    * Runtime shutting down
    */
@@ -19847,6 +19914,10 @@ export type SessionExecutionContentSearchErrors = {
    * Execution evidence was not found in the selected Scope and session
    */
   404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
   /**
    * Runtime shutting down
    */
@@ -28369,6 +28440,137 @@ export type AssetGetResponses = {
    */
   200: unknown
 }
+
+export type BrowserPreviewData = {
+  body?: {
+    url: string
+  }
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "scope"
+  }
+  url: "/{directory}/browser/preview"
+}
+
+export type BrowserPreviewErrors = {
+  /**
+   * Invalid preview request
+   */
+  400: {
+    code: string
+    message: string
+  }
+  /**
+   * Preview request is too large
+   */
+  413: {
+    code: string
+    message: string
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserPreviewError = BrowserPreviewErrors[keyof BrowserPreviewErrors]
+
+export type BrowserPreviewResponses = {
+  /**
+   * Public metadata or a typed unavailable reason
+   */
+  200: BrowserPreviewResult
+}
+
+export type BrowserPreviewResponse = BrowserPreviewResponses[keyof BrowserPreviewResponses]
+
+export type BrowserDataContextData = {
+  body?: BrowserDataContextInput
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/data-context"
+}
+
+export type BrowserDataContextErrors = {
+  /**
+   * Browser data access rejected
+   */
+  400: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserDataContextError = BrowserDataContextErrors[keyof BrowserDataContextErrors]
+
+export type BrowserDataContextResponses = {
+  /**
+   * Profile data context
+   */
+  200: BrowserDataContext
+}
+
+export type BrowserDataContextResponse = BrowserDataContextResponses[keyof BrowserDataContextResponses]
+
+export type BrowserReleaseDataContextData = {
+  body?: never
+  path: {
+    directory: string
+    contextId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/data-context/{contextId}"
+}
+
+export type BrowserReleaseDataContextErrors = {
+  /**
+   * Browser data access rejected
+   */
+  400: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserReleaseDataContextError = BrowserReleaseDataContextErrors[keyof BrowserReleaseDataContextErrors]
+
+export type BrowserReleaseDataContextResponses = {
+  /**
+   * Data context released
+   */
+  200: boolean
+}
+
+export type BrowserReleaseDataContextResponse =
+  BrowserReleaseDataContextResponses[keyof BrowserReleaseDataContextResponses]
 
 export type BrowserOpenPageData = {
   body?: BrowserOpenPage

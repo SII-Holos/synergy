@@ -834,7 +834,7 @@ describe.serial("Cortex", () => {
               taskID = task.id
 
               let progressTask: CortexTypes.Task | undefined
-              for (let i = 0; i < 30; i++) {
+              for (let i = 0; i < 80; i++) {
                 progressTask = progressUpdates.find(
                   (item) => item.id === task.id && item.progress?.lastMessage === "partial status",
                 )
@@ -848,6 +848,12 @@ describe.serial("Cortex", () => {
               expect(progressTask?.progress?.lastToolStatus).toBe("running")
               expect(progressTask?.progress?.lastMessage).toBe("partial status")
 
+              const beforeBurst = progressUpdates.length
+              for (let i = 0; i < 10; i++) {
+                await writeAssistantText(task.sessionID, `Progress ${i}`)
+                await Bun.sleep(50)
+              }
+              expect(progressUpdates.length - beforeBurst).toBeLessThanOrEqual(1)
               invoke.resolve()
               progressObserved.resolve()
               const completed = await waitUntilTerminal(task.id)

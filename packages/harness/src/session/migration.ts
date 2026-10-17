@@ -1,4 +1,5 @@
 import { migrateContextUsage, upgradeContextUsageRecord } from "./context-usage-migration"
+import { migrateRuntimeContext, upgradeRuntimeContextRecord } from "./runtime-context-migration"
 import { RolloutExecutionMigration } from "./rollout/execution-migration"
 import { migrateReferenceContexts, upgradeReferenceContext } from "./reference-context"
 import { migrateAttachmentPurposes, upgradeAttachmentPresentation } from "./attachment-migration"
@@ -1537,9 +1538,31 @@ async function migrateAttachmentDisplay(
 
 export const migrations: Migration[] = [
   {
+    id: "20261017-session-nav-canonical-membership",
+    execution: "record",
+    scope: "derived",
+    description: "Reconstruct legacy navigation membership from canonical Session metadata on access",
+    upgradeRecord(key, record) {
+      if (key.length === 2 && key[0] === "session_nav_v2" && record.version === 1) delete record.composition
+    },
+    async up() {},
+  },
+  {
+    id: "20261015-runtime-context-semantics",
+    scope: "session",
+    execution: "record",
+    description: "Preserve advisory snapshots while introducing knowledge and event observations",
+    upgradeRecord: upgradeRuntimeContextRecord,
+    upSession: migrateRuntimeContext,
+    async up(progress) {
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID))
+          await migrateRuntimeContext({ scopeID, sessionID }, progress)
+    },
+  },
+  {
     id: "20261011-session-retire-loop-guard-notices",
     execution: "session",
-    onAccess: true,
     scope: "session",
     description: "Retire injected tool-loop guard notices while retaining user-authored context",
     upSession: migrateLoopGuardNotices,
@@ -2570,7 +2593,6 @@ export const migrations: Migration[] = [
   {
     id: "20261010-session-pause-recovery-candidates",
     execution: "session",
-    onAccess: true,
     scope: "session",
     description: "Defer historical pause recovery until explicit Session access",
     upSession: SessionPauseRecovery.defer,

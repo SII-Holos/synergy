@@ -1579,11 +1579,7 @@ msgstr "最近打开"
 
 #. ── Agent ──
 msgid "app.browser.agent.activity"
-msgstr "智能体 {kind} {host}"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.agent.follow"
-msgstr "跟随"
+msgstr "{kind, select, acting {Agent 正在操作} reading {Agent 正在查看} other {Agent 最近查看}}"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.annotation.color"
@@ -5150,6 +5146,21 @@ msgstr "知识库"
 msgid "app.library.views"
 msgstr "知识库视图"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.checkConnection"
+msgstr "检查模型连接"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.configure"
+msgstr "配置模型"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.unavailable"
+msgstr "暂无可选模型"
+
 #. js-lingui-explicit-id
 msgid "app.name.synergy"
 msgstr "Synergy"
@@ -8295,12 +8306,20 @@ msgid "app.rawMessages.title"
 msgstr "原始消息"
 
 #. js-lingui-explicit-id
+msgid "app.reference.browserUnavailable"
+msgstr "应用内浏览器正在重新连接。你可以重试，或在系统浏览器中打开此链接。"
+
+#. js-lingui-explicit-id
 msgid "app.reference.chooseWorkspace"
 msgstr "选择这条引用所属的工作区"
 
 #. js-lingui-explicit-id
 msgid "app.reference.copy"
 msgstr "复制引用"
+
+#. js-lingui-explicit-id
+msgid "app.reference.fileSource"
+msgstr "工作区文件"
 
 #. js-lingui-explicit-id
 msgid "app.reference.invalid"
@@ -8311,12 +8330,40 @@ msgid "app.reference.locationUnavailable"
 msgstr "引用位置超出了可用内容，已显示最接近的位置。"
 
 #. js-lingui-explicit-id
+msgid "app.reference.noteLocationUnavailable"
+msgstr "此位置已不存在。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.noteSource"
+msgstr "笔记"
+
+#. js-lingui-explicit-id
 msgid "app.reference.noWorkspace"
 msgstr "原工作区不可用，请选择工作区来打开这条引用。"
 
 #. js-lingui-explicit-id
+msgid "app.reference.open"
+msgstr "打开引用"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openBrowser"
+msgstr "在浏览器中打开"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openExternal"
+msgstr "在系统浏览器中打开"
+
+#. js-lingui-explicit-id
 msgid "app.reference.openFailed"
 msgstr "无法打开引用"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openFile"
+msgstr "在文件中打开"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openNote"
+msgstr "在笔记中打开"
 
 #. js-lingui-explicit-id
 msgid "app.reference.outsideWorkspace"
@@ -8325,6 +8372,14 @@ msgstr "这个路径不在引用所属的工作区内。"
 #. js-lingui-explicit-id
 msgid "app.reference.pageUnavailable"
 msgstr "引用的页码超出了文档范围，已显示最后一页。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.previewSignIn"
+msgstr "请打开此页面以查看需要登录的内容。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.previewUnavailable"
+msgstr "暂无预览，你仍可打开这条引用。"
 
 #. js-lingui-explicit-id
 msgid "app.reference.searchWorkspace"
@@ -8748,11 +8803,6 @@ msgstr "工具"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.shell.modelConfigCmd"
-msgstr "synergy config"
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.action.connect"
 msgstr "连接提供商"
 
@@ -8764,17 +8814,17 @@ msgstr "查看提供商"
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.needsAttention"
-msgstr "已连接的提供商需要处理后，其模型才能使用。"
+msgstr "请检查提供商连接或用量限制。"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.notConfigured"
-msgstr "尚未连接任何 AI 提供商。连接一个即可选择模型，也可以在终端中运行 {cmd}。"
+msgstr "连接提供商后即可开始对话。"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.restricted"
-msgstr "没有可选择的模型。请确认已连接的提供商已启用并提供模型。"
+msgstr "暂无可选模型，请启用提供商并检查模型列表。"
 
 #. js-lingui-explicit-id
 msgid "app.shell.window.maximize"
@@ -9019,6 +9069,14 @@ msgstr "设置"
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.menu.usage"
 msgstr "用量"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.navigation.failed"
+msgstr "会话和项目加载失败。"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.navigation.retry"
+msgstr "重试"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.newSession"
@@ -11647,6 +11705,10 @@ msgid "context.dashboard.items"
 msgstr "{count} 条"
 
 #. js-lingui-explicit-id
+msgid "context.dashboard.knownTokenCategories"
+msgstr "仅展示已知分类；灰色部分为未分类用量。"
+
+#. js-lingui-explicit-id
 msgid "context.dashboard.latest"
 msgstr "最近一次请求"
 
@@ -13099,12 +13161,24 @@ msgid "note.list.options"
 msgstr "笔记列表选项"
 
 #. js-lingui-explicit-id
+msgid "note.navigation.choose"
+msgstr "选择笔记以阅读或编辑"
+
+#. js-lingui-explicit-id
 msgid "note.navigation.hide"
 msgstr "隐藏笔记列表"
 
 #. js-lingui-explicit-id
 msgid "note.navigation.show"
 msgstr "显示笔记列表"
+
+#. js-lingui-explicit-id
+msgid "note.reference.copy"
+msgstr "复制引用"
+
+#. js-lingui-explicit-id
+msgid "note.reference.unavailable"
+msgstr "此位置已不在这篇笔记中。"
 
 #. js-lingui-explicit-id
 msgid "note.scope.archived"
@@ -14241,7 +14315,7 @@ msgstr "更改将从模型的下一步执行开始生效。"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.inactive"
-msgstr "Light Loop 已不再处于活动状态。关闭此对话框以继续。"
+msgstr "本次 Light Loop 已结束。"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14249,13 +14323,6 @@ msgstr "Light Loop 已不再处于活动状态。关闭此对话框以继续。"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.label"
 msgstr "任务描述"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.lightLoop.taskDialog.reviewPending"
-msgstr "完成情况审核待处理。请先停止或完成审核，再更改任务。"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14283,7 +14350,7 @@ msgstr "Light Loop 任务"
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.working"
-msgstr "会话正在运行。请先停止会话或等待其空闲，再更改任务。"
+msgstr "暂停后可编辑目标。"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -14398,6 +14465,102 @@ msgstr "编辑视图"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.loopReady"
 msgstr "循环已就绪"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.auditing"
+msgstr "审核中"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.bound"
+msgstr "已绑定"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancel"
+msgstr "取消本次循环"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.completed"
+msgstr "审核通过"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.details"
+msgstr "详情"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.edit"
+msgstr "编辑目标"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failure"
+msgstr "失败原因"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.iterationExhausted"
+msgstr "审核达上限"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.lightCompleted"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.openNote"
+msgstr "打开蓝图"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.pending"
+msgstr "发送任务后开始"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.ready"
+msgstr "待运行"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reason"
+msgstr "审核意见"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.resolving"
+msgstr "正在确认结果"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.result"
+msgstr "结果"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reviewer"
+msgstr "打开审核会话"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.rework"
+msgstr "返工中"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.timedOut"
+msgstr "已超时"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.unavailable"
+msgstr "状态暂不可用"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -17230,6 +17393,10 @@ msgid "session.execution.copyLoaded"
 msgstr "复制已加载输出"
 
 #. js-lingui-explicit-id
+msgid "session.execution.copyMetadata"
+msgstr "复制执行记录"
+
+#. js-lingui-explicit-id
 msgid "session.execution.copyOutput"
 msgstr "复制工具输出"
 
@@ -17304,6 +17471,10 @@ msgstr "无法加载执行详情。"
 #. js-lingui-explicit-id
 msgid "session.execution.loading"
 msgstr "正在加载工具结果…"
+
+#. js-lingui-explicit-id
+msgid "session.execution.metadata"
+msgstr "执行记录"
 
 #. js-lingui-explicit-id
 msgid "session.execution.noDiagnostics"
@@ -17971,6 +18142,10 @@ msgstr "需要处理 · {count, plural, one {# 个任务失败} other {# 个任�
 #. js-lingui-explicit-id
 msgid "session.progress.needsAttentionBlocked"
 msgstr "需要处理 · {count, plural, one {# 个任务受阻} other {# 个任务受阻}}"
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttentionMixed"
+msgstr "需要处理 · {failed} 个失败，{blocked} 个受阻"
 
 #. js-lingui-explicit-id
 msgid "session.progress.noActivePlan"
@@ -19069,6 +19244,62 @@ msgid "settings.archivedSessions.you"
 msgstr "你：{text}"
 
 #. js-lingui-explicit-id
+msgid "settings.browser.chooseProfile"
+msgstr "请选择已启用的持久浏览器身份。"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.contextExpired"
+msgstr "浏览器数据访问状态已更改，请关闭并重新打开此对话框后重试。"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.data"
+msgstr "浏览器数据"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.action"
+msgstr "导入"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.hint"
+msgstr "从受支持的浏览器导入密码和 Cookie。"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.label"
+msgstr "导入浏览器数据"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.hint"
+msgstr "查看和删除在应用内浏览器保存或导入的登录记录。"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.label"
+msgstr "管理已保存的密码"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.section"
+msgstr "密码与自动填充"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.preparing"
+msgstr "正在准备浏览器数据…"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.target"
+msgstr "浏览器身份"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.title"
+msgstr "应用内浏览器"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.unavailable"
+msgstr "浏览器数据不可用，请重试。"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.account.description"
 msgstr "Holos 智能体身份和本地账号控制。"
 
@@ -19103,6 +19334,18 @@ msgstr "Boss 模式"
 #. js-lingui-explicit-id
 msgid "settings.catalog.boss.searchTerms"
 msgstr "boss | 任务 | 项目 | 助手 | 飞书"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.description"
+msgstr "导入浏览器数据并管理此设备上保存的密码。"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.label"
+msgstr "浏览器"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.searchTerms"
+msgstr "浏览器 | 密码 | 自动填充 | Cookie | 导入 | 登录记录"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
@@ -23325,6 +23568,26 @@ msgid "settings.runtime.compaction.prune.title"
 msgstr "剪除工具输出"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.description"
+msgstr "为本地智能体统一选择文件接口，独立于智能体和模型，仍受原有权限约束。项目配置会覆盖此全局设置。工具：{members}"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.hashline"
+msgstr "行锚编辑"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.patch"
+msgstr "补丁编辑"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.replace"
+msgstr "文本替换"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.title"
+msgstr "文件读写工具组"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.managedByEnv"
 msgstr "由环境管理"
 
@@ -25137,6 +25400,58 @@ msgid "tool.misc.warnings"
 msgstr "警告"
 
 #. js-lingui-explicit-id
+msgid "tool.patch.applied"
+msgstr "已应用"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.committed"
+msgstr "已生效"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.delete"
+msgstr "删除"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.move"
+msgstr "移动"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.noChange"
+msgstr "无变更"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.notStarted"
+msgstr "未执行"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.partial"
+msgstr "部分已应用"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.rejected"
+msgstr "已拒绝"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unknown"
+msgstr "执行结果未知"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unresolved"
+msgstr "执行结果未确认"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unsaved"
+msgstr "持久化未确认"
+
+#. js-lingui-explicit-id
+msgid "tool.patch.write"
+msgstr "写入"
+
+#. js-lingui-explicit-id
 msgid "tool.render.busy"
 msgstr "请等待当前可视化操作完成。"
 
@@ -25333,6 +25648,10 @@ msgid "tool.title.answer-question"
 msgstr "回答问题"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.apply-patch"
+msgstr "应用补丁"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.approve-blueprint-loop"
 msgstr "批准 BlueprintLoop"
 
@@ -25419,6 +25738,10 @@ msgstr "提交 Clarus 结果"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.compact-session"
 msgstr "整理会话上下文"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.complete-light-loop"
+msgstr "完成轻循环"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.control-session"
@@ -25779,10 +26102,6 @@ msgstr "渲染内容"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.request-blueprint-review"
 msgstr "请求 Blueprint 审查"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.request-review"
-msgstr "请求审查"
 
 #. Research
 msgid "tool.title.research-init"
@@ -26356,6 +26675,34 @@ msgstr "生成失败"
 msgid "ui.mediaGeneration.generating"
 msgstr "正在生成"
 
+#. js-lingui-explicit-id
+msgid "ui.resource.close"
+msgstr "关闭预览"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.copy"
+msgstr "复制链接"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.external"
+msgstr "在系统浏览器中打开"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.loading"
+msgstr "正在加载预览…"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.open"
+msgstr "打开"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.preview"
+msgstr "预览引用"
+
+#. js-lingui-explicit-id
+msgid "ui.resource.unavailable"
+msgstr "预览不可用"
+
 #. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
 msgid "ui.review.after"
 msgstr "更改后"
@@ -26654,7 +27001,7 @@ msgstr "收起工作区"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.applyBinding"
-msgstr "重新绑定 Workspace"
+msgstr "确认目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.back"
@@ -26679,6 +27026,10 @@ msgstr "使用此目录"
 #. js-lingui-explicit-id
 msgid "workspace.dialog.close"
 msgstr "关闭"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.confirmBinding"
+msgstr "将共享这些文件的会话改为使用以下目录？\n{path}\n任务列表中有 {count} 个关联任务。已有文件保留在原位置。"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.create"
@@ -26706,7 +27057,11 @@ msgstr "没有匹配的目录。"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.failed"
-msgstr "无法更新 Workspace。请重新加载以查看当前状态。"
+msgstr "无法更新目录。请查看错误后重试。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.hideCopies"
+msgstr "收起其他 Worktree"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.loading"
@@ -26729,16 +27084,20 @@ msgid "workspace.dialog.none"
 msgstr "不使用 Workspace"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.otherCopies"
+msgstr "显示其他 Worktree（{count}）"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.pick"
 msgstr "浏览"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebind"
-msgstr "更改本地绑定"
+msgstr "更换本地目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebindDescription"
-msgstr "使用此 Workspace 的所有会话都将改用新目录。已有文件保留在原位置。"
+msgstr "共享这些文件的所有会话都将改用新目录。已有文件保留在原位置。"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebindPath"
@@ -26757,12 +27116,20 @@ msgid "workspace.dialog.recovery"
 msgstr "原目录不可用，请选择目录。"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.refreshHint"
+msgstr "刷新目录列表，不会更改目录关联。"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "添加目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.reload"
-msgstr "重新加载"
+msgstr "刷新列表"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.repair"
+msgstr "重新关联目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.saveSharing"

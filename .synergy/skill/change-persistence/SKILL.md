@@ -17,6 +17,8 @@ When hydrating references from a batch of records, deduplicate referenced identi
 
 For composed domain reads, use `Storage.snapshot()` and make every paginated projection query join its parent transaction; a direct `TransactionalStore` query inside it can reenter the non-reentrant reader queue or lose writer-local visibility. Release a reader snapshot before a cold derived-index write and recheck after writer admission. Verify with a real held writer, committed external reads, transaction-local writes and a concurrent publication; use physical barriers with bounded rescue and cleanup rather than latency targets.
 
+Do not join store-wide in-flight preparation from a transaction that the preparation may need. Complete preparation before business admission; inside the transaction validate durable receipts with its own snapshot. Test a cold concurrent reader and writer behind explicit barriers, including already-current owners, missing receipts, rollback and retry. A prewarmed load can hide this cycle.
+
 For physical directory retirement, enumerate host-qualified canonical Workspace authority across the Storage namespace, not only one Scope or registry. Repeat subtree and physical-alias exclusion inside the serialized catalog write transaction, and reject overlapping authority publication through registration, rebinding, relocation and identity upgrades while deleting. Keep filesystem identity checks outside SQL callbacks. Cover both writer commit orders with barriers, descendant and foreign-Scope references, active ancestors, unbound imports and blockers beyond a page boundary; a native claim does not prove the absence of dormant logical references.
 
 ### Authoritative Agent records
@@ -46,6 +48,7 @@ For PostgreSQL deletion plans, include a new namespace created after statistics 
 1. Keep fresh-install schema creation in the owning database initialization.
 2. Put upgrades, backfills, and rewrites in versioned domain migrations registered through the central migration runner.
 3. Preserve transaction, WAL, vector-extension fail-soft, and backup assumptions of the owning store.
+4. For model-assisted read-transform-write work, carry the observed revision through asynchronous preparation and compare it inside the final database mutation. Use a monotonic revision, including same-millisecond writes. A conflict must leave canonical data and derived indexes untouched; test a held preparation step with an intervening writer and deletion. A preflight read alone does not protect the write.
 
 ## Migrate Existing Data
 
@@ -62,6 +65,10 @@ Mark migrations that convert file configuration with `configuration: "files"`. R
 Choose migration execution independently of its data scope. New migrations must explicitly declare `startup`, `session`, `owner`, `record`, `after-convergence` or `maintenance`; `scope: session` alone does not mean lazy. Do not enumerate historical Sessions/operations, replay journals, decode message bodies or read artifact bytes to admit the application. Put owner transforms behind the central owner runner and pure compatibility transforms behind record access. Keep unknown recovery coverage durable and fence only its owner before execution; never replace unknown coverage with an empty clean index. Historical imports and full usage rebuilds require explicit resume/request, including old queued jobs. See [history admission](../../../docs/decisions/implemented/bug-fix/2026-10-10-history-work-outside-startup.md).
 
 Optional owner metadata upgrades must also obey the startup history budget: use central per-Session receipts for metadata and pure record transforms for message reads. Exercise a populated component installation with pending and completed global receipts, then verify bounded Session reads, message/display agreement and atomic terminal extraction.
+
+Test the first navigation after a composition change separately from startup and warm reads. Seed absent and partial outdated indexes, pending metadata receipts and thousands of unrelated owners; assert zero history traversal, a concurrent business writer admitted between metadata batches, complete canonical membership and retained activity. Input predicates must observe earlier dependency upgrades and leave no receipt for absent input. Keep historical recovery enrollment with explicit Session preparation. Pass only the declared owner fields to migration callbacks; internal dispatch tags can override record-kind filters when callbacks spread their input. Exercise storage failure, rollback, retry and the rendered sidebar error state so an unavailable snapshot cannot appear as data loss.
+
+Exercise repeated catalog refreshes during real interaction with many archived owners. Use storage batch reads instead of unbounded per-record promises; simultaneous callers multiply reader admissions even when most records are filtered from the result. Test both a catalog larger than the admission queue and overlapping reads of a smaller catalog.
 
 Test a released completion ledger with the new migration absent, interrupted and complete. Include both owner kinds, simultaneous requests, deleted owners, a corrupt cold owner and restart. Measure real read/scan counts on populated SQL stores; empty-home speed alone cannot establish bounded startup. Verify first-page work separately from full export/maintenance and retain original source evidence until its owner verifies the upgrade.
 

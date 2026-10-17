@@ -1,5 +1,1 @@
-Use this when the BlueprintLoop review confirms every required outcome is fully and correctly delivered.
-
-Parameters:
-- sessionID: The execution session ID provided in your launch context
-- summary: Concise approved completion verdict
+Accept the bound BlueprintLoop only when every required outcome is verified and in scope. Briefly state the conclusion and decisive checks; reference detailed evidence. Only its recorded reviewer can approve; the host infers the loop.

@@ -427,6 +427,130 @@ render(
         onNavigateToSession={(id) => navigateCalls.push(id)}
       >
         <CodeComponentProvider component={CodeFixture}>
+          {(["partial", "unresolved"] as const).map((outcome) => (
+            <div id={`patch-${outcome}`}>
+              <ToolResultBody
+                part={{
+                  id: `patch-${outcome}`,
+                  sessionID: "s",
+                  messageID: "m1",
+                  type: "tool",
+                  callID: `patch-${outcome}`,
+                  tool: "apply_patch",
+                  state: {
+                    status: "error",
+                    input: { patch: "retained patch" },
+                    error:
+                      "Raw patch ledger: Stopped after a committed write; inspect the destination before retrying.",
+                    metadata: {
+                      outcome,
+                      error: "Stopped after a committed write; inspect the destination before retrying.",
+                      sections: [
+                        {
+                          source: "source.ts",
+                          destination: "destination.ts",
+                          operation: "update",
+                          diff: "--- source.ts\n+++ source.ts\n@@ -1 +1 @@\n-old\n+new\n",
+                          observedPath: "source.ts",
+                          state: outcome === "partial" ? "failed" : "unknown",
+                          error: "Stopped after a committed write; inspect the destination before retrying.",
+                          operations: [
+                            { phase: "write", state: "committed" },
+                            { phase: "move", state: outcome === "partial" ? "failed" : "unknown" },
+                          ],
+                        },
+                        { source: "later.ts", operation: "add", state: "not_started", operations: [] },
+                      ],
+                    },
+                    time: { start: 1, end: 2 },
+                  },
+                }}
+                serverUrl="http://localhost"
+                resultOnly
+                defaultOpen
+              />
+            </div>
+          ))}
+          <div id="patch-applied">
+            <ToolResultBody
+              part={{
+                id: "patch-applied",
+                sessionID: "s",
+                messageID: "m1",
+                type: "tool",
+                callID: "patch-applied",
+                tool: "apply_patch",
+                state: {
+                  status: "completed",
+                  input: { patch: "retained patch" },
+                  title: "Patch applied",
+                  output: "Patch applied.\ncommitted: added.ts (complete; write: committed)",
+                  metadata: {
+                    outcome: "applied",
+                    sections: [
+                      {
+                        source: "added.ts",
+                        operation: "add",
+                        state: "committed",
+                        diff: "--- /dev/null\n+++ added.ts\n@@ -0,0 +1,1 @@\n+export const added = true;\n",
+                        filediff: { file: "added.ts" },
+                        operations: [{ phase: "write", state: "committed" }],
+                      },
+                    ],
+                  },
+                  time: { start: 1, end: 2 },
+                },
+              }}
+              serverUrl="http://localhost"
+              resultOnly
+              defaultOpen
+            />
+          </div>
+          {(["edit", "revise_file"] as const).map((tool) => (
+            <div id={`result-${tool}`}>
+              <ToolResultBody
+                part={{
+                  id: `result-${tool}`,
+                  sessionID: "s",
+                  messageID: "m1",
+                  type: "tool",
+                  callID: `result-${tool}`,
+                  tool,
+                  state: {
+                    status: "completed",
+                    title: "changed",
+                    input: { filePath: "example.ts" },
+                    output: "SWAP result",
+                    metadata: {
+                      path: "example.ts",
+                      operationSummary: ["SWAP"],
+                      warnings: ["private diagnostic"],
+                      diff: "--- file\n+++ file\n@@ -1 +1 @@\n-old\n+new\n",
+                      filediff: { file: "example.ts", additions: 1, deletions: 1 },
+                      ...(tool === "revise_file"
+                        ? {
+                            sections: ["example.ts", "second.ts"].map((file) => ({
+                              path: file,
+                              applied: true,
+                              filediff: {
+                                file,
+                                additions: 1,
+                                deletions: 1,
+                                preview: "--- file\n+++ file\n@@ -1 +1 @@\n-old\n+new\n",
+                              },
+                            })),
+                          }
+                        : {}),
+                    },
+                    time: { start: 1, end: 2 },
+                  },
+                }}
+                serverUrl="http://localhost"
+                resultOnly
+                defaultOpen
+              />
+            </div>
+          ))}
           <MarkedProvider>
             <div id="late-blueprint-start">
               <BlueprintStart message={latticeBlueprintStart} parts={lateParts()} />

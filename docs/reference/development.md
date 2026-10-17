@@ -157,7 +157,7 @@ bun run quality:quick
 bun run quality
 ```
 
-`verify local --test <path>` runs selected behavior tests with fresh coverage before the local static cluster. `verify plan` explains the complete working-tree CI scope against `origin/dev`; `verify coverage --package <path>` checks a complete package. Reports under `.artifacts/verify/` distinguish local results from pending CI verification.
+`verify local --test <path>` validates the selection and passes the local static cluster before running selected behavior tests with fresh coverage. Static failures stop before test execution. `verify plan` explains the complete working-tree CI scope against `origin/dev`; `verify coverage --package <path>` checks a complete package. Reports under `.artifacts/verify/` distinguish local results from pending CI verification.
 
 `quality:quick` runs only the local static cluster: format, lint, Skill/package-guide/test-layout checks, strict localization contract, typecheck, monorepo consistency, and package validation. `quality` adds all Turbo tests. The pre-push hook checks the Bun version and runs format, lint, typecheck, monorepo, documentation and decision checks. Identical local static inputs may reuse successful checks for one day; CI executes independently.
 

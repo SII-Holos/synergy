@@ -416,8 +416,13 @@
       "propertyNames": { "type": "string" },
       "additionalProperties": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
     },
+    "fileToolGroup": {
+      "description": "File read/write interface for all local Agents in this Scope: replace (text replacement), hashline (line-anchored editing), or patch (patch editing, default). Does not change permissions.",
+      "type": "string",
+      "enum": ["replace", "hashline", "patch"]
+    },
     "default_agent": {
-      "description": "Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.",
+      "description": "Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable.",
       "type": "string"
     },
     "username": {

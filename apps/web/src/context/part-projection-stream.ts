@@ -9,6 +9,7 @@ export function createPartProjectionStream(input: {
     signal: AbortSignal,
   ): Promise<{ part: Part; version: string }>
   emit(scopeID: string, properties: ContentSummaryProperties): void
+  discard(scopeID: string, properties: ContentSummaryProperties): void
   recover(scopeID: string, properties: ContentSummaryProperties): void
 }) {
   type State = {
@@ -21,7 +22,11 @@ export function createPartProjectionStream(input: {
   let disposed = false
   return {
     receive(scopeID: string, properties: ContentSummaryProperties, reset = false) {
-      if (disposed || !input.accepts(scopeID, properties)) return Promise.resolve()
+      if (disposed) return Promise.resolve()
+      if (!input.accepts(scopeID, properties)) {
+        input.discard(scopeID, properties)
+        return Promise.resolve()
+      }
       const key = JSON.stringify([scopeID, properties.summary.messageID, properties.summary.id])
       let state = entries.get(key)
       if (state && (reset || state.properties.subscription !== properties.subscription)) {
@@ -48,6 +53,7 @@ export function createPartProjectionStream(input: {
         current.controller.abort()
         entries.delete(key)
         input.recover(scopeID, properties)
+        input.discard(scopeID, current.properties)
       }
       if (++current.queued > 64) {
         recover()
@@ -78,6 +84,7 @@ export function createPartProjectionStream(input: {
         if (input.accepts(scopeID, state.properties)) continue
         state.controller.abort()
         entries.delete(key)
+        input.discard(scopeID, state.properties)
       }
     },
     dispose() {

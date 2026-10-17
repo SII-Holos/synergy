@@ -89,7 +89,7 @@ export namespace ExecutionProjection {
         try {
           const summary = await ScopeContext.provide({
             scope,
-            fn: () => ExecutionService.summary(session.id),
+            fn: () => ExecutionService.summary(session.id, undefined, signal),
           })
           publish(baseline(summary))
         } catch (error) {

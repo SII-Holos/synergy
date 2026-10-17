@@ -40,14 +40,14 @@ export function registerBridge() {
       requiredTools: ["channel_push"],
       render: (_agent, identity) =>
         identity?.owner === "boss"
-          ? "Feishu source headers: inbound messages carry [群: chat | 发送者: sender | time] plus channel sender and chat metadata. Use those facts to attribute requests and select the explicit channel_push receipt target."
+          ? "Feishu source headers: inbound messages carry [群: chat | 发送者: sender | time] plus channel sender and chat metadata. Attribute requests and receipts to those recorded facts."
           : "",
     },
     {
       requiredTools: ["channel_push", "bash"],
       render: (_agent, identity) =>
         identity?.owner === "boss"
-          ? "Feishu history: if lark-cli is installed and authorized, first check lark-cli auth status --json --verify, then use read-only im +chat-messages-list, im +messages-search or im +chat-search queries. Do not assume CLI authorization; ask the human when access is unavailable."
+          ? "Feishu history requires authorized read access. Do not assume an external account is available or bypass missing authorization; request human help when access is unavailable."
           : "",
     },
   ])

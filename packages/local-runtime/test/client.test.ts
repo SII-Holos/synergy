@@ -16,9 +16,21 @@ test("in-process client creates and lists sessions in its explicit Scope", async
   const client = createLocalClient(runtime, { directory })
   const { data: session } = await client.session.create({ title: "Research session", workspace: { mode: "current" } })
   expect(session.title).toBe("Research session")
-  expect(session.workspace?.path).toBe(directory)
+  expect(session.workspace?.path).toBe(await fs.realpath(directory))
   expect((await client.scope.current()).data.id).toBe(session.scope.id)
   expect((await client.session.list()).data.data.some((item) => item.id === session.id)).toBe(true)
+})
+
+test("in-process Home clients use the managed default and preserve an explicit empty selection", async () => {
+  await using fixture = await runtimeHome()
+  await using runtime = await openLocalRuntime({ host: fixture.host, mode: "oneshot" })
+  const client = createLocalClient(runtime, { scopeID: "home" })
+  const { data: session } = await client.session.create({ workspace: { mode: "current" } })
+  expect(session.scope).toEqual({ type: "home", id: "home", local: null })
+  expect(session.workspace?.path).toBe(await fs.realpath(path.join(fixture.host.root, "workspaces", "home")))
+  const { data: empty } = await client.session.create({ workspace: { mode: "none" } })
+  expect(empty.workspace).toBeNull()
+  expect(empty.workspaceID).toBeNull()
 })
 
 for (const close of ["caller", "runtime"] as const) {

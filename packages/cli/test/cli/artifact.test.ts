@@ -157,7 +157,8 @@ for (const mode of scenarios)
             (process.env.SYNERGY_TEST_ARTIFACT_PROFILE ?? "full") === "full"
               ? { apiKey: "fixture", baseURL: server.url.toString(), model: "fixture-embedding" }
               : undefined,
-          agent: mode === "budget" ? { synergy: { steps: 1 } } : undefined,
+          default_agent: mode === "budget" ? "artifact-budget" : undefined,
+          agent: mode === "budget" ? { "artifact-budget": { mode: "primary", steps: 1 } } : undefined,
           model: "test/test-model",
           controlProfile: mode === "tool" || mode === "read" ? "full_access" : "guarded",
           permission: { bash: "ask" },

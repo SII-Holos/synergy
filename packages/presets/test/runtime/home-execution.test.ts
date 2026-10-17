@@ -105,7 +105,10 @@ test("Home tasks run in independent core and full workers, and full task data su
     runtime.run(() => ScopeContext.provide({ scope: Scope.home(), fn: body }))
   const run = async (runtime: typeof core, owner: string) =>
     inHome(runtime, async () => {
-      const session = await Session.create({ title: `${owner} Home task` })
+      const session = await Session.create({
+        title: `${owner} Home task`,
+        ...(owner === "full" ? { workspace: null } : {}),
+      })
       sessions.set(owner, session.id)
       const result = await SessionInvoke.invoke({
         sessionID: session.id,
@@ -115,7 +118,8 @@ test("Home tasks run in independent core and full workers, and full task data su
       const messages = await Session.messages({ sessionID: session.id })
       const tool = messages.flatMap((message) => message.parts).find((part) => part.type === "tool")
       expect(tool?.type === "tool" ? tool.state.status : undefined).toBe("completed")
-      expect((await Session.get(session.id)).workspace).toBeNull()
+      if (owner === "full") expect((await Session.get(session.id)).workspace).toBeNull()
+      else expect((await Session.get(session.id)).workspaceID).toBeTruthy()
       expect(await Environment.get(session.environmentID!, ScopeContext.current.scope.id)).toMatchObject({
         state: "idle",
         generation: 0,
@@ -144,7 +148,10 @@ test("Home tasks run in independent core and full workers, and full task data su
     ),
   )
   expect(requests.every((request) => ["core", "full"].includes(request.owner))).toBe(true)
-  expect(requests.every((request) => !request.tools.includes("read"))).toBe(true)
+  expect(
+    requests.filter((request) => request.owner === "full").every((request) => !request.tools.includes("read")),
+  ).toBe(true)
+  expect(requests.some((request) => request.owner === "core" && request.tools.includes("read"))).toBe(true)
   for (const owner of ["core", "full"])
     expect(requests.some((request) => request.owner === owner && request.tools.includes("bash"))).toBe(true)
   expect(

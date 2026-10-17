@@ -19,7 +19,7 @@ type LoopStatus = Info["status"]
 
 const TRANSITIONS: Record<LoopStatus, LoopStatus[]> = {
   armed: ["running", "cancelled"],
-  running: ["auditing", "completed", "failed", "cancelled"],
+  running: ["auditing", "failed", "cancelled"],
   auditing: ["running", "completed", "failed", "cancelled"],
   completed: ["completed"],
   failed: [],
@@ -260,7 +260,6 @@ export namespace BlueprintLoopStore {
           draft.time.started = Date.now()
         }
         if (patch.status === "running" && current.status === "auditing" && patch.auditSessionID === undefined) {
-          draft.auditSessionID = undefined
           draft.auditTaskID = undefined
           draft.stopRequest = undefined
         }
@@ -279,7 +278,7 @@ export namespace BlueprintLoopStore {
       if (phase !== undefined) {
         await syncBoundSessionBlueprint({ sessionID: updated.sessionID, loopID: id, phase, source: updated.source })
         await syncBoundSessionBlueprint({
-          sessionID: updated.auditSessionID,
+          sessionID: updated.status === "auditing" ? updated.auditSessionID : undefined,
           loopID: id,
           phase,
           source: updated.source,
@@ -343,6 +342,8 @@ export namespace BlueprintLoopStore {
   }
 
   export async function complete(scopeID: string, id: string): Promise<Info> {
-    return updateStatus(scopeID, id, { status: "completed" })
+    const loop = await get(scopeID, id)
+    if (loop.status === "completed") return loop
+    throw new Error("BlueprintLoop completion requires blueprint_loop_approve from its recorded reviewer")
   }
 }

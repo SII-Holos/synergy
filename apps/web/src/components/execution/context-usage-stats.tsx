@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For } from "solid-js"
+import { createMemo, createSignal, For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { ExecutionSummary } from "@ericsanchezok/synergy-sdk/client"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
@@ -39,8 +39,21 @@ export function ContextUsageStats(props: { summary: ExecutionSummary; now: numbe
   const complete = () =>
     rows().every((row) => row.metric.total != null) &&
     rows().reduce((sum, row) => sum + row.metric.total!, 0) === tokens().total.total
-  const segments = () =>
-    complete() ? rows().map((row) => ({ key: row.key, value: row.metric.total!, color: row.color })) : []
+  const segments = createMemo(() =>
+    rows()
+      .map((row) => ({ key: row.key, value: row.metric.known, color: row.color }))
+      .filter((row) => row.value > 0),
+  )
+  const ringTotal = () =>
+    Math.max(
+      tokens().total.known,
+      segments().reduce((sum, row) => sum + row.value, 0),
+    )
+  const totalText = (format: (value: number) => string) => {
+    const total = tokens().total
+    if ((!props.summary.accounting.calls && !total.known) || (total.total == null && !total.known)) return "—"
+    return (total.unknown ? "≥ " : "") + format(total.known)
+  }
   return (
     <section class="context-usage-stats" aria-label={_(D.tokenStats)}>
       <div class="context-section-heading">
@@ -52,27 +65,17 @@ export function ContextUsageStats(props: { summary: ExecutionSummary; now: numbe
       <div class="context-usage-body">
         <ContextRing
           segments={segments()}
-          total={tokens().total.total}
+          total={ringTotal()}
           label={_(D.accumulated)}
-          value={
-            (tokens().total.unknown ? "≥ " : "") +
-            (props.summary.accounting.calls || tokens().total.known ? number(tokens().total.known) : "—")
-          }
-          caption={_(D.accumulated)}
+          value={totalText(number)}
+          caption={_(D.tokenUnit)}
           fitValue={{
             alternatives: [
-              (tokens().total.unknown ? "≥ " : "") +
-                (props.summary.accounting.calls || tokens().total.known
-                  ? new Intl.NumberFormat(i18n().locale, { notation: "compact", maximumFractionDigits: 0 }).format(
-                      tokens().total.known,
-                    )
-                  : "—"),
+              totalText((value) =>
+                new Intl.NumberFormat(i18n().locale, { notation: "compact", maximumFractionDigits: 0 }).format(value),
+              ),
             ],
-            accessible:
-              (tokens().total.unknown ? "≥ " : "") +
-              (props.summary.accounting.calls || tokens().total.known
-                ? new Intl.NumberFormat(i18n().locale).format(tokens().total.known)
-                : "—"),
+            accessible: totalText((value) => new Intl.NumberFormat(i18n().locale).format(value)),
           }}
           highlight={highlight()}
           onHighlight={setHighlight}
@@ -98,6 +101,9 @@ export function ContextUsageStats(props: { summary: ExecutionSummary; now: numbe
           </For>
         </div>
       </div>
+      <Show when={!complete()}>
+        <p class="context-usage-basis">{_(D.knownTokenCategories)}</p>
+      </Show>
       <ContextMetrics summary={props.summary} now={props.now} />
     </section>
   )

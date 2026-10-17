@@ -591,6 +591,15 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       h.emit("pulse-scope", 1, "cortex.task.created", {
         task: { id: "task-pulse", parentSessionID: "resting-child", status: "running" },
       })
+      const identity = api.cortex.find((task) => task.id === "task-pulse")
+      h.emit("pulse-scope", 2, "cortex.task.completed", {
+        task: { id: "task-pulse", parentSessionID: "resting-child", status: "running", progress: { toolCalls: 1 } },
+      })
+      expect(api.cortex.find((task) => task.id === "task-pulse")).toBe(identity)
+      h.emit("pulse-scope", 3, "cortex.tasks.updated", {
+        tasks: [{ id: "task-pulse", parentSessionID: "resting-child", status: "running", progress: { toolCalls: 2 } }],
+      })
+      expect(api.cortex.find((task) => task.id === "task-pulse")).toBe(identity)
       expect(api.sessionStatus["resting-child"]).toBeUndefined()
       expect(h.resolveEntry("resting-child")).toMatchObject({ tone: "active", pulse: true })
       pulseScope.release()

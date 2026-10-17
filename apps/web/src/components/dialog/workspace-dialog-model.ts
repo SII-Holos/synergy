@@ -47,11 +47,25 @@ export function workspaceAvailable(item: WorkspaceInfo) {
 
 export function sortWorkspaces(
   items: WorkspaceInfo[],
-  input: { currentID?: string | null; mainID?: string; available: (item: WorkspaceInfo) => boolean; locale: string },
+  input: {
+    currentID?: string | null
+    mainID?: string
+    recoveryID?: string
+    available: (item: WorkspaceInfo) => boolean
+    locale: string
+  },
 ) {
   const collator = new Intl.Collator(input.locale, { numeric: true, sensitivity: "base" })
   const priority = (item: WorkspaceInfo) =>
-    !input.available(item) ? 3 : item.id === input.currentID ? 0 : item.id === input.mainID ? 1 : 2
+    item.id === input.recoveryID
+      ? 0
+      : item.id === input.currentID
+        ? 1
+        : item.id === input.mainID
+          ? 2
+          : input.available(item)
+            ? 3
+            : 4
   return [...items].sort(
     (a, b) =>
       priority(a) - priority(b) ||
@@ -59,4 +73,14 @@ export function sortWorkspaces(
       collator.compare(a.binding.path ?? "", b.binding.path ?? "") ||
       a.id.localeCompare(b.id),
   )
+}
+
+export function workspaceUnavailable(error: unknown): { workspaceID: string; reason?: string } | undefined {
+  if (!error || typeof error !== "object" || !("name" in error) || error.name !== "WorkspaceUnavailable") return
+  const data = "data" in error ? error.data : undefined
+  if (!data || typeof data !== "object" || !("workspaceID" in data) || typeof data.workspaceID !== "string") return
+  return {
+    workspaceID: data.workspaceID,
+    reason: "reason" in data && typeof data.reason === "string" ? data.reason : undefined,
+  }
 }

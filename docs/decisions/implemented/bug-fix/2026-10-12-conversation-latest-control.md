@@ -14,6 +14,8 @@ The built-in session shares its mounted dock-body element with the viewport thro
 
 Explicit return-to-latest resets the mounted conversation's location before awaiting history recovery. This cancels pending location frames and advances the locator generation, so a completed search cannot restore its hash or scroll target after a newer latest intent. Reading restoration uses the same reset; ordinary reading input still cancels pending following through the existing interaction revision.
 
+Explicit history navigation also releases the previous DOM reading anchor. The locator owns positioning while its target hydrates; resize and scroll delivery cannot reacquire the previous paragraph as a competing owner. Native reading input restores ordinary reading-anchor capture, while explicit latest following clears navigation ownership. This changes no history requests or transport interests.
+
 ## Alternatives considered
 
 **Stop propagating all process interactions.** That removes the false visibility signal but also allows outer following to disrupt deliberate reading and disclosure. Measuring actual overflow preserves both behaviors.
@@ -27,3 +29,5 @@ Explicit return-to-latest resets the mounted conversation's location before awai
 ## Consequences
 
 The viewport owns an additional ResizeObserver for overflow and anchor geometry. Measurements precede reactive writes, unchanged positions retain their object identity, and cleanup follows the mounted owner. A production browser fixture covers internal wheel and keyboard reading, subsequent outer growth, return activation, activity visibility, input resizing, light and dark themes, mobile stacking and pending decisions. The full production host additionally checks pointer, Enter and Space after searches inside and outside the latest window, with 24-frame bottom-distance checks across viewport resizing. The fixtures retain existing dock-height and reading-anchor tests because they protect distinct behavior.
+
+Search acceptance also samples the located message itself across 24 frames; a mounted but offscreen target is not success. Shared scroll tests cover delayed growth during navigation and the subsequent return to native reading ownership.

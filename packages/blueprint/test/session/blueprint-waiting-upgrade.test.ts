@@ -7,6 +7,7 @@ import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecyc
 import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoreTransaction } from "@ericsanchezok/synergy-harness/storage/transactional-store"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { waitingPhaseMigration } from "../../src/session-migration"
 import { bindingSourceAccessMigration } from "../../src/binding-source-migration"
@@ -90,14 +91,17 @@ describe("Blueprint-owned retired waiting phase", () => {
           const { sessionID, key, original } = await seedWaitingPhaseSession()
           const other = await seedWaitingPhaseSession()
           const ownerReceipt = receipt(ScopeContext.current.scope.id, sessionID)
-          const write = Storage.write
+          const writeMany = StoreTransaction.prototype.writeMany
           let interrupted = false
-          const failure = spyOn(Storage, "write").mockImplementation(async (candidate, value) => {
-            if (candidate.join("/") === ownerReceipt.join("/")) {
+          const failure = spyOn(StoreTransaction.prototype, "writeMany").mockImplementation(async function (
+            this: StoreTransaction,
+            entries,
+          ) {
+            await writeMany.call(this, entries)
+            if (entries.some(({ key }) => key.join("/") === ownerReceipt.join("/"))) {
               interrupted = true
               throw new Error("owner receipt interrupted")
             }
-            return write(candidate, value)
           })
           try {
             await expect(Session.get(sessionID)).rejects.toThrow("owner receipt interrupted")

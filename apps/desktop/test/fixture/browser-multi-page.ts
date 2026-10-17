@@ -1,3 +1,4 @@
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { app, BrowserWindow, safeStorage, type WebContents } from "electron"
 import { createServer } from "node:http"
 import assert from "node:assert/strict"
@@ -169,12 +170,17 @@ async function run() {
   await first.executeJavaScript(
     'document.body.insertAdjacentHTML("beforeend",`<form><input autocomplete="username" value="fixture"><input type="password" value="fixture-pass"></form>`)',
   )
-  await data.execute({ protocolVersion: 5, ownerKey: base.ownerKey, pageId: "page-0", action: { type: "saveLogin" } })
+  await data.execute({
+    protocolVersion: BROWSER_PROTOCOL_VERSION,
+    ownerKey: base.ownerKey,
+    pageId: "page-0",
+    action: { type: "saveLogin" },
+  })
   const state = await store.list(base.profile.partition)
   assert.equal(state.passwords.length, 1)
   await first.executeJavaScript('document.querySelector("input[type=password]").value=""')
   await data.execute({
-    protocolVersion: 5,
+    protocolVersion: BROWSER_PROTOCOL_VERSION,
     ownerKey: base.ownerKey,
     pageId: "page-0",
     action: { type: "fillLogin", id: state.passwords[0]!.id },

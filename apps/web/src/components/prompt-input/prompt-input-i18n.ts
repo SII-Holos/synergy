@@ -117,15 +117,12 @@ export const PI = {
   },
   lightLoopTaskWorking: {
     id: "prompt.lightLoop.taskDialog.working",
-    message: "The session is running. Stop it or wait until it is idle before changing the task.",
+    message: "Pause to edit the goal.",
   },
-  lightLoopTaskReviewPending: {
-    id: "prompt.lightLoop.taskDialog.reviewPending",
-    message: "Completion review is pending. Stop or finish the review before changing the task.",
-  },
+
   lightLoopTaskInactive: {
     id: "prompt.lightLoop.taskDialog.inactive",
-    message: "Light Loop is no longer active. Close this dialog to continue.",
+    message: "This Light Loop has ended.",
   },
   lightLoopTaskCancel: { id: "prompt.lightLoop.taskDialog.cancel", message: "Cancel" },
   lightLoopTaskClose: { id: "prompt.lightLoop.taskDialog.close", message: "Close" },

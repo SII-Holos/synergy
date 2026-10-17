@@ -120,6 +120,55 @@ const testPage = {
   lastActiveAt: null,
 }
 
+test("activity snapshots restore the current task and older replay cannot overwrite recent viewing", async () => {
+  mountNativeWebSocket()
+  bridge = bridgeStub()
+  const { store, handle, dispose } = mountHandle()
+  try {
+    store.setSession({ epoch: "test", seq: 10 })
+    await sleep(30)
+    const activity = {
+      sessionID: "ses_1",
+      operationID: "recent",
+      pageId: testPage.id,
+      url: testPage.url,
+      kind: "idle" as const,
+      tool: "browser_read",
+      label: "Idle",
+    }
+    handle.applySnapshot(
+      {
+        type: "session.state",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey: "owner-1",
+        status: "active",
+        pages: [testPage],
+        hostStatus: "ready",
+        presentation: null,
+        seq: 12,
+        epoch: "test",
+        agentActivities: [activity],
+      },
+      "test",
+    )
+    MockWebSocket.instances.at(-1)!.emit("message", {
+      data: JSON.stringify({
+        ...activity,
+        kind: "acting",
+        type: "agent.activity",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        seq: 11,
+        epoch: "test",
+      }),
+    })
+    expect(store.agentActivitiesFor("ses_1")).toEqual([activity])
+    expect(store.agentActivitiesFor("another-task")).toEqual([])
+    expect(store.session.seq).toBe(11)
+  } finally {
+    dispose()
+  }
+})
+
 test.each(["updated", "closed", "unrelated"] as const)(
   "late navigation response preserves %s canonical pages",
   async (event) => {

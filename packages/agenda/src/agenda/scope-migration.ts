@@ -1,7 +1,19 @@
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
 }
+export function upgradeAgendaOriginScope(key: string[], value: Record<string, unknown>): void {
+  if (key[0] !== "agenda" || key[1] !== "items" || key.length !== 4) return
+  const scope = record(record(value.origin)?.scope)
+  if (!scope || (scope.type !== "home" && scope.id !== "home")) return
+  delete scope.directory
+  delete scope.worktree
+  delete scope.vcs
+  delete scope.sandboxes
+  Object.assign(scope, Scope.home())
+}
+
 function upgrade(value: Record<string, unknown>) {
   if (value.scopeID === "global") value.scopeID = "home"
   const origin = record(value.origin)

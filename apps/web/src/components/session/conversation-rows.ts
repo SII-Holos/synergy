@@ -61,7 +61,7 @@ export type ConversationRow = {
   | { kind: "activity"; activity: ConversationActivity }
   | { kind: "process" }
   | { kind: "footer" }
-  | { kind: "load"; more: boolean; older?: boolean; continuation?: boolean }
+  | { kind: "load"; more: boolean; older?: boolean; continuation?: boolean; validation?: boolean }
 )
 
 // Provenance: docs/postmortem/0059-cold-process-disclosure-jank.md
@@ -110,7 +110,12 @@ export function buildConversationRows(input: {
     const messages =
       root.role === "assistant"
         ? [root]
-        : [root, ...input.messagesFor(root).filter((message) => message.id !== root.id)]
+        : [
+            root,
+            ...input
+              .messagesFor(root)
+              .filter((message) => message.id !== root.id && (message.role !== "user" || message.visible !== false)),
+          ]
     const processState = root.role === "user" ? input.process?.(root) : undefined
     const lastAssistant = messages.findLast((message) => message.role === "assistant")
     const isCompaction = (message: Message) =>
@@ -302,6 +307,7 @@ export function buildConversationRows(input: {
           message,
           kind: "load",
           more: !!page,
+          validation: !page && parts.length > 0,
           continuation:
             !page &&
             !event &&
@@ -330,6 +336,11 @@ function groupActivities(
   const blocks: ConversationActivity[] = []
   let block: ConversationActivity | undefined
   for (const row of rows) {
+    // Live summaries can precede their page snapshot; validation is not an unloaded content span.
+    if (row.kind === "load" && row.validation) {
+      result.push(row)
+      continue
+    }
     if (
       row.process &&
       row.kind === "body" &&

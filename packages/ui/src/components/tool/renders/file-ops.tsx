@@ -1,7 +1,7 @@
 import { TOOL_TITLE_DESC, TOOL_LABEL_DESC } from "../../tool-title-descriptors"
 import { useLingui } from "@lingui/solid"
-import { createMemo, Show } from "solid-js"
-import { BasicTool } from "../../basic-tool"
+import { createMemo, For, Show } from "solid-js"
+import { BasicTool, useToolResultPresentation } from "../../basic-tool"
 import {
   AnchoredParseCodeTool,
   AnchoredResolveConflictsTool,
@@ -12,8 +12,69 @@ import {
 } from "../../anchored-tool-card"
 import { ToolRegistry, getDiagnostics, DiagnosticsDisplay } from "../../message-part"
 import { ToolTextOutput } from "../../tool-output-text"
-import { ToolDiffPreview } from "../diff-preview"
 import { ToolFilePreview, ToolPatchPreview } from "../content-preview"
+import { PATCH_OUTCOMES, patchOutcome, patchSections } from "../patch-result"
+
+ToolRegistry.register({
+  name: "apply_patch",
+  render(props) {
+    const { _ } = useLingui()
+    const resultOnly = useToolResultPresentation()
+    const sections = createMemo(() => patchSections(props.metadata?.sections))
+    const outcome = () => patchOutcome(props.metadata?.outcome)
+    const error = () => (typeof props.metadata?.error === "string" ? props.metadata.error : undefined)
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "diff",
+          title: TOOL_TITLE_DESC["apply_patch"],
+          tags: outcome()
+            ? [
+                {
+                  label: _(PATCH_OUTCOMES[outcome()!]),
+                  tone: outcome() === "applied" ? "success" : outcome() === "no-change" ? "default" : "warning",
+                },
+              ]
+            : undefined,
+        }}
+      >
+        <Show
+          when={outcome()}
+          fallback={
+            <Show when={props.output}>
+              <div data-component="tool-output" data-scrollable>
+                <ToolTextOutput text={props.output!} />
+              </div>
+            </Show>
+          }
+        >
+          <Show
+            when={
+              error() && (!resultOnly || !sections().length) && !sections().some((section) => section.error === error())
+            }
+          >
+            <p class="break-words text-sm">{error()}</p>
+          </Show>
+          <div class="flex flex-col gap-4" data-component="patch-result">
+            <For each={sections().filter((section) => section.diff && section.observedPath)}>
+              {(section) => (
+                <div class="flex flex-col gap-2" data-component="patch-section" data-state={section.state}>
+                  <Show when={!resultOnly && section.error}>
+                    <p class="break-words text-sm">{section.error}</p>
+                  </Show>
+                  <Show when={section.diff && section.observedPath}>
+                    <ToolPatchPreview tool={props} path={section.observedPath!} patch={section.diff} />
+                  </Show>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+      </BasicTool>
+    )
+  },
+})
 
 ToolRegistry.register({ name: "view_file", render: AnchoredViewTool })
 ToolRegistry.register({ name: "scan_files", render: AnchoredScanFilesTool })
@@ -53,6 +114,7 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "edit",
   render(props) {
+    const resultOnly = useToolResultPresentation()
     const diagnostics = createMemo(() =>
       props.status === "completed" ? getDiagnostics(props.metadata.diagnostics, props.input.filePath) : [],
     )
@@ -70,17 +132,12 @@ ToolRegistry.register({
           {(filediff) => {
             const patch = () =>
               (props.metadata.diff as string | undefined) ?? (filediff().preview as string | undefined)
-            return (
-              <ToolPatchPreview
-                tool={props}
-                path={props.input.filePath}
-                patch={patch()}
-                fallback={<ToolDiffPreview diff={filediff()} />}
-              />
-            )
+            return <ToolPatchPreview tool={props} path={props.input.filePath} patch={patch()} />
           }}
         </Show>
-        <DiagnosticsDisplay diagnostics={diagnostics()} />
+        <Show when={!resultOnly}>
+          <DiagnosticsDisplay diagnostics={diagnostics()} />
+        </Show>
       </BasicTool>
     )
   },
@@ -133,14 +190,7 @@ ToolRegistry.register({
                 {(filediff) => {
                   const patch = () =>
                     (lastResult?.diff as string | undefined) ?? (filediff.preview as string | undefined)
-                  return (
-                    <ToolPatchPreview
-                      tool={props}
-                      path={props.input.filePath}
-                      patch={patch()}
-                      fallback={<ToolDiffPreview diff={filediff} />}
-                    />
-                  )
+                  return <ToolPatchPreview tool={props} path={props.input.filePath} patch={patch()} />
                 }}
               </Show>
             )

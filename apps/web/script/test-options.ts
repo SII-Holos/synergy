@@ -7,6 +7,8 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 // These `mock.module`-heavy suites stub the same context modules under the same
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
+  "test/components/prompt-input/loop-status-entry.dom.test.ts",
+  "test/components/session/conversation-hydration.test.ts",
   "test/components/session/retained-session-views.dom.test.ts",
   "test/components/session/project-directory-resource.dom.test.ts",
   "test/components/workspace/browser/native-browser-lifecycle.dom.test.ts",
@@ -40,6 +42,7 @@ const playwrightIsolated = [
   "test/components/workspace/builtin-workbench-panels.test.ts",
   "test/components/workspace/workspace-output-effects.test.ts",
   "test/components/note/documents.test.ts",
+  "test/components/note/reading.dom.test.ts",
 
   "test/components/workspace/execution-detail.dom.test.ts",
   "test/components/workspace/browser/browser-draft.test.ts",
@@ -64,6 +67,7 @@ const playwrightIsolated = [
   "test/components/session/rollback-files.dom.test.ts",
   "test/components/session/session-review-workspace.dom.test.ts",
   "test/components/session/conversation-reading-anchor.dom.test.ts",
+  "test/components/session/conversation-background-return.dom.test.ts",
   "test/components/session/conversation-process-disclosure.dom.test.ts",
   "test/components/session/conversation-process-reading.dom.test.ts",
   "test/components/session/conversation-process-virtualization.dom.test.ts",
@@ -96,7 +100,7 @@ const playwrightIsolated = [
   "test/components/prompt-input/editor.dom.test.ts",
   "test/components/app-shell/mobile-drawer-drag-region.test.tsx",
   "test/components/app-shell/mobile-drawer-root.test.tsx",
-  "test/components/app-shell/model-unavailable-banner.test.tsx",
+  "test/components/dialog/model-availability.dom.test.tsx",
   "test/components/dialog/model-selector-layout.test.ts",
   "test/components/file-workbench/scrollbar-dark.test.ts",
   "test/components/file-workbench/selection.test.ts",
@@ -128,6 +132,7 @@ const playwrightIsolated = [
   "test/components/settings/panels/VoicePanel.test.ts",
   "test/components/settings/settings-resource-flows.dom.test.tsx",
   "test/components/settings/settings-details.dom.test.tsx",
+  "test/components/settings/browser-settings.dom.test.tsx",
   "test/components/session/session-preparation.dom.test.tsx",
   "test/components/session/session-tag-menu.dom.test.tsx",
   "test/components/session/raw-messages-layout.test.ts",
@@ -151,9 +156,12 @@ export const testOptions = {
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/components/prompt-input/loop-status-resource.test.ts",
+    "test/components/session/conversation-hydration.test.ts",
     "test/components/session/project-directory-resource.test.ts",
     "test/components/note/blueprint-loops.test.ts",
     "test/components/settings/settings-resource.test.ts",
+    "test/components/settings/browser-settings.test.ts",
     "test/context/session-submission-view.test.ts",
     "test/components/workspace/browser/browser-import-target.test.ts",
     "test/components/workspace/browser/browser-store.test.ts",

@@ -171,7 +171,6 @@ for (const [name, components] of [
       }
       for (const [owner, agent] of [
         ["blueprint", "supervisor"],
-        ["light-loop", "lightloop-reviewer"],
         ["boss", "boss-synergy"],
       ]) {
         expect(state.agents.includes(agent!), `agent ${agent}`).toBe(selected.has(owner!))

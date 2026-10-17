@@ -21,35 +21,27 @@ export const BrowserWaitTool = Tool.define("browser_wait", {
     .strict(),
   async execute({ pageId, ...params }, ctx) {
     const page = await BrowserToolHelper.resolvePage(ctx, pageId)
-    return BrowserToolHelper.withActivity(
-      ctx,
-      page,
-      "reading",
-      "browser_wait",
-      "Waiting for page condition",
-      async () => {
-        const timeoutMs = params.timeoutSeconds * 1_000
-        const result = await BrowserToolHelper.execute(ctx, pageId, {
-          type: "wait",
-          condition: params.condition,
-          timeoutMs,
-        })
-        if (result.type !== "wait") throw new Error("Browser wait returned an unexpected result.")
-        const pageState = result.page
-        return {
-          title: "Browser wait satisfied",
-          output: `Condition ${params.condition.type} was satisfied${result.elapsedMs !== undefined ? ` in ${result.elapsedMs / 1_000}s` : ` within ${params.timeoutSeconds}s`}.`,
-          metadata: {
-            pageId: page.id,
-            condition: params.condition,
-            timeoutMs,
-            matched: result.matched,
-            ...(result.elapsedMs !== undefined ? { elapsedMs: result.elapsedMs } : {}),
-            ...(pageState ? { url: pageState.url, title: pageState.title, isLoading: pageState.isLoading } : {}),
-          },
-        }
+
+    const timeoutMs = params.timeoutSeconds * 1_000
+    const result = await BrowserToolHelper.execute(ctx, pageId, {
+      type: "wait",
+      condition: params.condition,
+      timeoutMs,
+    })
+    if (result.type !== "wait") throw new Error("Browser wait returned an unexpected result.")
+    const pageState = result.page
+    return {
+      title: "Browser wait satisfied",
+      output: `Condition ${params.condition.type} was satisfied${result.elapsedMs !== undefined ? ` in ${result.elapsedMs / 1_000}s` : ` within ${params.timeoutSeconds}s`}.`,
+      metadata: {
+        pageId: page.id,
+        condition: params.condition,
+        timeoutMs,
+        matched: result.matched,
+        ...(result.elapsedMs !== undefined ? { elapsedMs: result.elapsedMs } : {}),
+        ...(pageState ? { url: pageState.url, title: pageState.title, isLoading: pageState.isLoading } : {}),
       },
-    )
+    }
   },
   formatValidationError() {
     return 'Invalid browser_wait input. Example: {"condition":{"type":"locator","locator":{"kind":"role","role":"button","name":"Continue"},"state":"visible"},"timeoutSeconds":10}'

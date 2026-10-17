@@ -1,7 +1,7 @@
-import { createRoot, getOwner, onCleanup, runWithOwner } from "solid-js"
+import { createRoot, createSignal, getOwner, onCleanup, runWithOwner } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useSDK } from "@/context/sdk"
-import type { BrowserWorkbenchRoute } from "./browser-workbench-model"
+import { sameBrowserCatalog, type BrowserWorkbenchRoute } from "./browser-workbench-model"
 import type { BrowserAPISessionState } from "@ericsanchezok/synergy-browser-core"
 import type { createBrowserStore } from "./browser-store"
 import type { createBrowserWebSocket } from "./browser-ws"
@@ -21,6 +21,9 @@ export const { use: useBrowserCatalog, provider: BrowserCatalogProvider } = crea
     const sdk = useSDK(),
       owner = getOwner()!
     const entries = new Map<string, Promise<BrowserCatalog>>()
+    const [loaded, setLoaded] = createSignal<ReadonlyMap<string, BrowserCatalog>>(new Map())
+    const keyFor = (route: BrowserWorkbenchRoute) =>
+      JSON.stringify([sdk.url, route.mode, route.scopeID, route.sessionID])
     const disposers = new Set<() => void>()
     let disposed = false
     onCleanup(() => {
@@ -28,6 +31,10 @@ export const { use: useBrowserCatalog, provider: BrowserCatalogProvider } = crea
       for (const dispose of disposers) dispose()
     })
     return {
+      peek(route: BrowserWorkbenchRoute) {
+        const value = loaded().get(keyFor(route))
+        return value && sameBrowserCatalog(value.route, route) ? value : undefined
+      },
       async refresh(catalog: BrowserCatalog) {
         const epoch = catalog.store.session.epoch
         const { BROWSER_PROTOCOL_VERSION } = await import("@ericsanchezok/synergy-browser-core")
@@ -40,7 +47,7 @@ export const { use: useBrowserCatalog, provider: BrowserCatalogProvider } = crea
         catalog.transport.applySnapshot(snapshot, epoch)
       },
       get(route: BrowserWorkbenchRoute) {
-        const key = JSON.stringify([sdk.url, route.mode, route.scopeID, route.sessionID])
+        const key = keyFor(route)
         const previous = entries.get(key)
         if (previous) return previous
         const client = sdk.client,
@@ -64,6 +71,7 @@ export const { use: useBrowserCatalog, provider: BrowserCatalogProvider } = crea
               disposers.add(dispose)
               const store = createBrowserStore()
               store.replacePages(initial.pages)
+              store.replaceAgentActivities(initial.agentActivities ?? [])
               store.setSession("seq", initial.seq)
               store.setSession("epoch", initial.epoch)
               store.setPresentation(initial.presentation)
@@ -82,10 +90,15 @@ export const { use: useBrowserCatalog, provider: BrowserCatalogProvider } = crea
               return { route: canonical, initial, store, transport, client }
             }),
           )!
-        })().catch((error) => {
-          entries.delete(key)
-          throw error
-        })
+        })()
+          .then((value) => {
+            if (!disposed) setLoaded((previous) => new Map(previous).set(key, value))
+            return value
+          })
+          .catch((error) => {
+            entries.delete(key)
+            throw error
+          })
         entries.set(key, result)
         return result
       },

@@ -22,6 +22,8 @@ Owner-local migrations upgrade old embedded Session directories before navigatio
 
 Workbench project-folder responses preserve structured `WorkspaceUnavailable` reasons alongside availability and Git status. Unknown validation failures remain request errors. Git detection runs only after the binding validates. Folder confirmation uses revision-checked `workspace.rebind`, preserving Scope ownership, sharing and historical Worktree sources; it does not automatically adopt a mismatched legacy directory.
 
+The working-directory chooser distinguishes catalog refresh from explicit binding recovery. Registering an existing unavailable location selects its record and stages the chosen path for confirmation; neither catalog metadata nor registration grants replacement-directory access. Recovery prioritizes that directory, bounds historical lists and keeps confirmation actions reachable. See [accessible directory recovery](../decisions/implemented/bug-fix/2026-10-17-workspace-directory-recovery.md).
+
 Project-directory and embedded Session Workspace conversion reuse host-qualified catalog locations and retain their IDs, binding generations, physical identities and source metadata. Unregistered missing, inaccessible, non-directory or looping-symlink paths become unverified references. Default Workspace description uses the same historical conversion. Canonical path aliases contribute one folder; historical Worktrees retain their host and remain separate. Sharing is updated only between active bound records on the same host. Conversion does not require successful live directory validation; native access still does. See [historical binding migration](../decisions/implemented/bug-fix/2026-10-10-historical-project-binding-migration.md).
 
 Rebinding may release an obsolete native directory mount after its active users finish. Direct-directory detachment validates the immutable mount reference, holds lifecycle exclusion and only releases its watcher and receipt; it does not read, write or delete the directory. Materialized-mount detachment still verifies physical identity before removing its files. Unavailable identities continue to reject file access and execution until the new binding is committed.
@@ -145,13 +147,13 @@ File API queries require `workspaceID` and `workspaceGeneration` alongside Scope
 
 The Session status bar and new-session composer open the same Workspace selector. Existing directories can be registered without moving the Scope; direct sharing and explicit rebinding use conditional updates. Editing either form retains its original revision across incoming catalog events. An unbound historical Workspace remains visible but cannot be selected for local execution until rebound. Busy or conflicting operations keep the dialog open with the server's structured error.
 
-The current selection preserves Home's absent Workspace and preserves unresolved historical Workspace references. It does not turn missing history into the Scope's default directory. Choosing none is the explicit operation that clears a reference.
+New local Home sessions receive the [Session default Workspace](runtime-and-scope.md#session-workspace). The current selection preserves an existing absent Home binding and unresolved historical Workspace references; it does not turn missing history into the default directory. Choosing none explicitly clears a reference.
 
 Scope bootstrap includes the Workspace catalog. The frontend merges catalog events and snapshots using the Scope epoch and sequence, then projects current Session bindings without changing conversation activity. Delayed Session responses cannot replace a newer known binding with an old generation. Already-open file tabs retain their captured binding instead of following the Session to another directory.
 
 The Web file workspace exposes scoped routes for directory children, file metadata, text/image preview, PDF byte streaming, file/content/symbol search, VCS status, and user-direct file writes. Every path is resolved inside `ScopeContext.current.directory`. Lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied.
 
-Read-only file routes await the selected Workspace's generation-owned file resources and start Scope recovery separately at background storage priority. Scope startup remains deduplicated, drained during disposal and retried after failure; it does not hold the file response behind examination of unrelated Session history. File mutations retain the Scope recovery barrier. Directory children and metadata do not compute Git status; the independent status resource supplies it after the file listing becomes usable.
+Read-only file routes await the selected Workspace's generation-owned file resources and start Scope recovery separately at background storage priority. Scope startup remains deduplicated, drained during disposal and retried after failure; it does not hold the file response behind examination of unrelated Session history. File mutations retain the Scope recovery barrier. Directory children and metadata do not compute Git status; the independent status resource supplies it after the file listing becomes usable. The file-domain status registry owns one status request per server, Scope and Workspace generation across retained Session providers. Its resources are released with their last file owner; it does not alter global shared-request cancellation. Watcher bursts mark it dirty without releasing its in-flight request; completion permits one trailing refresh, with automatic starts separated by at least 500 ms. View-activity leases include retained file-panel consumers. With no active consumer, watcher changes invalidate cached data without starting reads; activation validates retained presentation. Rename, deletion and dirty-draft conflict facts still apply while hidden.
 
 Directory results can hide ignored and dot-prefixed entries, are sorted with directories first, and use bounded cursor pages. Reads distinguish:
 
@@ -200,7 +202,11 @@ Successful operations invalidate the file index and publish Workspace-qualified 
 
 ## Message resource opening
 
-Explicit Markdown links and structured file references pass through the portable `ResourceReference` parser and the host's asynchronous `resource.open`. File paths, immutable Assets, external URLs and local anchors have distinct typed targets. Plain inline code is not inferred as a file reference. File controls have a file-type icon, preserved label, path tooltip and keyboard activation; ordinary external links retain native browser behavior.
+Explicit Markdown links and structured file references pass through the portable `ResourceReference` parser and the host's asynchronous `resource.open`. File paths, immutable Assets, Note references, external URLs and local anchors have distinct typed targets. Plain inline code and ordinary Note IDs are not inferred as references. Shared UI supplies source icons, compact bare-URL labels and a delayed interactive preview without changing copied source or model input. Ordinary HTTP(S) references open a peer Browser tab on managed-local Desktop; unsupported hosts, system protocols and explicit external actions retain host opening.
+
+`note://<noteID>#<blockID>` resolves its unique current Scope through active and archived metadata, sharing the tool-resource resolver. Notes navigation consumes a stable block request once after the existing editor is ready, preserving drafts, selection and editor identity. Missing blocks report an unavailable location. Note UI and successful read/write tools provide copyable Markdown references.
+
+Preview reads begin only after actual intent. Note previews prefer existing NoteDocuments content; file previews prefer the captured generation's live draft and otherwise read a bounded range through the existing Workspace file owner. Unknown historical origins never select the current Workspace during preview. The optional Browser owner returns anonymous public metadata or fixed-commit GitHub excerpts without page allocation, website credentials, executable HTML or model calls. Owner-scoped memory cache entries share pending reads and are cancelled or invalidated on Session, Scope, server and capability changes. See [semantic message references](../decisions/implemented/feature/2026-10-16-semantic-message-references.md).
 
 Workspace targets resolve only against their recorded message or structured-reference context: Workspace ID, binding generation, root and relative directory. A file open verifies the captured generation through the generated Workspace SDK, then opens the current file or directory in the File workbench. It does not use basename search, strip arbitrary diff prefixes or select the current Workspace for unresolved history. An explicit Workspace picker resolves only that opening request. A removed or rebound Workspace remains unavailable.
 
@@ -239,22 +245,41 @@ Logical Workspace services use catalog identity and binding generation without p
 
 Failed incremental watcher batches require the same full resync as queue overflow. Idle waiters receive the failure; the drain retries reconciliation after at least one second without requiring a new native event. Repeated failures retain pending reconciliation, events received during a resync remain queued, and disposal cancels retries.
 
-## Classic and Anchored Coding Tools
+## File tool interfaces
 
-Synergy supports ordinary file tools and an anchored coding harness. The anchored family uses:
+The current Scope's resolved `fileToolGroup` selects one model-facing file interface. Global and project values use normal configuration precedence; absence resolves to `patch` for every local Agent. Agent identity, model, workflow and Session do not select or override the group.
 
-- `view_file` for an exact file/range view
-- `scan_files` for bounded text matches
-- `parse_code` for AST-aware matches
-- `revise_file` for surgical changes
-- `resolve_conflicts` for atomic, tag-checked merge-conflict resolution
-- `save_file` for new files or intentional full-file replacement
+| Value      | Interface             | Members                                                                    |
+| ---------- | --------------------- | -------------------------------------------------------------------------- |
+| `replace`  | Text replacement      | `read`, `edit`, `write`                                                    |
+| `hashline` | Line-anchored editing | `view_file`, `scan_files`, `revise_file`, `save_file`, `resolve_conflicts` |
+| `patch`    | Patch editing         | `read`, `apply_patch`                                                      |
+
+Tool owners declare membership. The shared catalog filters before initialization and pins the group in its init context. Discovery, deferred expansion and final model schemas consume that catalog. Old expansion records, explicit tool permissions and full access cannot add a different interface. An in-flight batch retains its selection; configuration reload affects the next preparation.
+
+Permissions govern authority independently. File readers match `read` plus their concrete ID; writers match `edit` plus their concrete ID, in the existing ordered Agent/config precedence. Saved user/session denials retain their separate deny precedence. Reader roles stay unable to invoke writers, and no-file roles stay no-file. Existing explicit user rules are preserved. The selected writer can be unavailable if its reader companion is denied.
+
+`bash`, `process` and public `file_search` remain shared capabilities when installed and permitted. Image observation uses the same model/vision-owner eligibility in discovery and execution. Optional `parse_code` retains its syntax engine, with ordinary ranges for replace/patch and tags plus displayed-line evidence only for hashline. The product no longer registers `grep`, `glob` or `ast_grep`; published compatibility wrappers and historical presentation remain, without execution aliases.
+
+`file_search` defaults to its existing hybrid ranking. Precise `paths` uses an exact glob; precise `content` accepts literal text or regex. They share selected-view search, comma-separated include/exclude filters and deterministic ordering, and return the first unreturned `nextOffset` with distinct count/byte omission diagnostics. Invalid regex fails even on empty roots. Dormant searches allocate no compute. Only displayed results become evidence; plain search does not mint file-read or Hashline credentials.
+
+### Native patch editing
+
+`apply_patch` accepts an object containing one complete `patch` string. The dependency-light Util grammar is also the Policy worker's path extractor. Add, Update, Delete and Update with Move are planned against the selected file view; the legacy raw-filesystem patch APIs are never its backend. Exact, unambiguous original spans preserve untouched line endings, BOM and terminal-newline state. Context-free insertions require an explicit EOF marker.
+
+Full grammar, aliases, file types, coherent bytes, current Session read evidence, parents and combined authorization are checked before the first target effect. Existing sources must be regular UTF-8 text files; Add and Move destinations must be absent. Final symlinks, binary content, duplicate targets, inter-section dependencies and ambiguous/overlapping hunks fail. Add may create parents; Move requires an existing destination parent.
+
+After authorization the entire plan is revalidated, then sections commit conditionally in order through existing mutation owners. Native/live identities stay strict. Dormant destructive tokens are refreshed only after comparing canonical targets, entry content/mode/chunks and parent resolution in one current manifest; publication CAS still rejects later changes. Unrelated object revisions do not invalidate an unchanged target. Writes carry both content and observed entry preconditions when supplied.
+
+This is sequential execution, not a multi-file transaction. Update+Move can stop after writing the original source. No automatic rollback or whole-patch replay occurs. Incremental result metadata retains every section and stage, operation IDs and committed/failed/not-started/unknown/unsaved states. Errors retain raw rollout evidence and show committed or unresolved paths. Cancellation waits for this ledger to settle. Known effects emit Workspace-qualified events; final formatter bytes provide diffs/read evidence, and committed configuration paths reload once per batch. Attempted Add parent directories can remain after failure.
+
+### Line-anchored editing
 
 Anchored reads return a `[path#TAG]` representing a session-local snapshot of that file. Displayed lines are recorded separately. `revise_file` accepts only a real current tag and operations on lines that the agent actually saw; fabricated, stale, truncated, or unseen anchors are rejected. `resolve_conflicts` also requires the current tag and exactly one explicit resolution for every conflict block in the file.
 
 Read and search output uses a shared 50 KiB UTF-8 code/text budget across ranges and files. Explicit read limits are honored; the default window remains 2,000 lines. Search context can feed an edit directly when the required region is fully visible and its tag remains current. Anchored edit results return compact final-file previews, while complete diffs remain in UI metadata. Known unchanged rows and submitted content that survives formatting remain known across versions; omitted observations do not grant new line evidence. See [bounded coding observations](../decisions/implemented/architecture/2026-09-21-bounded-coding-tool-observations.md).
 
-Every successful edit mints a new tag and makes older tags stale. The patch language applies all ranges to the original snapshot, resolves block operations with syntax-aware parsing, rejects overlapping/duplicate file sections, detects no-op loops, and refuses surgical edits across unresolved merge-conflict markers. A conflicted file must be resolved atomically with `resolve_conflicts`, or intentionally replaced in full with `save_file`. This turns freshness and observed context into enforced preconditions rather than prompt-only advice.
+Every successful anchored edit mints a new tag and makes older tags stale. The patch language applies all ranges to the original snapshot, resolves block operations with syntax-aware parsing, rejects overlapping/duplicate file sections, detects no-op loops, and refuses surgical edits across unresolved merge-conflict markers. A conflicted file must be resolved atomically with `resolve_conflicts`, or intentionally replaced in full with `save_file`. This turns freshness and observed context into enforced preconditions rather than prompt-only advice.
 
 `save_file` bypasses line-level anchoring because it owns the complete replacement. It still crosses normal permission, conflict, formatting, diagnostic, snapshot, and event boundaries.
 

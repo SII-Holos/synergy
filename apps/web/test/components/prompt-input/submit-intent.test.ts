@@ -21,6 +21,16 @@ describe("prompt submit intent", () => {
     expect(resolvePromptSubmitIntent({ text: "", working: false, hasBlueprintSlot: true })).toBe("blueprint")
   })
 
+  test("a staged Blueprint waits for the current task and starts only on a later submit", () => {
+    expect(resolvePromptSubmitIntent({ text: "Start this plan", working: true, hasBlueprintSlot: true })).toBe(
+      "blocked",
+    )
+    expect(resolvePromptSubmitIntent({ text: "Start this plan", working: false, hasBlueprintSlot: true })).toBe(
+      "blueprint",
+    )
+    expect(resolvePromptSubmitIntent({ text: "", working: true, hasBlueprintSlot: true })).toBe("abort")
+  })
+
   test("treats empty submit while running as abort", () => {
     expect(resolvePromptSubmitIntent({ text: "", working: true, hasBlueprintSlot: false })).toBe("abort")
   })

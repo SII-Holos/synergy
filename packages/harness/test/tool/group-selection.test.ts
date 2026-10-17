@@ -7,7 +7,6 @@ test("embedded group selection permits an owned replacement without changing ano
     id: "session",
     title: "Hosted sessions",
     description: "Owned session operations",
-    whenToExpand: "Inspect history",
     tools: ["session_read"],
   }
   await using selected = await testRuntime({
@@ -39,4 +38,31 @@ test("unknown defaults and selection after group consumption fail explicitly", a
       },
     }),
   ).rejects.toThrow("before group registration")
+})
+
+test("legacy plugin exposure keeps the canonical discovery description without a second routing field", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() => {
+    const exposure = {
+      mode: "group" as const,
+      group: "snapshot-review",
+      title: "Snapshot review",
+      description: "Inspect saved snapshots before restoring files.",
+      whenToExpand: "Obsolete expansion guidance",
+    }
+    const { whenToExpand, ...current } = exposure
+    expect(ToolExposure.normalize("snapshot_review", exposure)).toEqual(current)
+    const groups = ToolExposure.availableGroups([{ id: "snapshot_review", exposure }])
+    expect(groups).toEqual([
+      {
+        id: exposure.group,
+        title: exposure.title,
+        description: exposure.description,
+        tools: ["snapshot_review"],
+        keywords: [],
+      },
+    ])
+    expect(ToolExposure.score({ ...groups[0]!, id: exposure.group }, "restoring files")).toBeGreaterThan(0)
+    expect(ToolExposure.score({ ...groups[0]!, id: exposure.group }, whenToExpand)).toBe(0)
+  })
 })

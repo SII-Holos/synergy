@@ -676,6 +676,9 @@ export namespace PerformanceSchema {
             transferSize: z.number().optional(),
             encodedBodySize: z.number().optional(),
             decodedBodySize: z.number().optional(),
+            requestStart: z.number().finite().nonnegative().optional(),
+            responseStart: z.number().finite().nonnegative().optional(),
+            responseEnd: z.number().finite().nonnegative().optional(),
           }),
         )
         .max(100)

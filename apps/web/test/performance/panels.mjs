@@ -69,8 +69,27 @@ try {
   await page.keyboard.type(" retained edit")
   const node = await editor.elementHandle(),
     before = await editor.innerText()
+  const noteContinuity = []
+  const inspectNote = async (stage) => {
+    noteContinuity.push(
+      await node.evaluate(
+        (el, stage) => ({
+          stage,
+          connected: el.isConnected,
+          session: el.closest("[data-session-resident]")?.getAttribute("data-session-resident"),
+          panel: el.closest("[data-resident-panel]")?.getAttribute("data-resident-panel"),
+          residents: [...document.querySelectorAll("[data-session-resident]")].map((el) =>
+            el.getAttribute("data-session-resident"),
+          ),
+        }),
+        stage,
+      ),
+    )
+  }
+  await inspectNote("before-away")
   console.log("STEP away")
   await go(manifest.sessions[4])
+  await inspectNote("after-away")
   const hiddenNoteRequests = []
   let checkHidden = true
   const onRequest = (request) => {
@@ -88,12 +107,16 @@ try {
   await page.waitForTimeout(1800)
   checkHidden = false
   page.off("request", onRequest)
+  await inspectNote("after-reconnect")
   console.log("STEP back")
   await go(manifest.sessions[3])
   await page.waitForTimeout(500)
-  const sameNote = await node.evaluate(
-    (el) => el.isConnected && el.getBoundingClientRect().height > 0 && el.textContent.includes("retained edit"),
-  )
+  const noteState = await node.evaluate((el) => ({
+    connected: el.isConnected,
+    height: el.getBoundingClientRect().height,
+    text: el.textContent,
+  }))
+  const sameNote = noteState.connected && noteState.height > 0 && noteState.text.includes("retained edit")
   console.log("STEP newtab")
   await side.getByRole("button", { name: "New tab", exact: true }).click()
   await side
@@ -157,6 +180,8 @@ try {
     coldShellAvailable,
     delayedReads,
     sameNote,
+    noteState,
+    noteContinuity,
     sameFile,
     sameExecution,
     fileScroll,

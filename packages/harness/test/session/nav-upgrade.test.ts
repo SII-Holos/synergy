@@ -143,7 +143,7 @@ test("Runtime startup repairs empty indexes after the original nav migration was
   })
 })
 
-test("owner-local nav repair upgrades only its deferred Session and preserves unrelated historical records", async () => {
+test("owner-local nav repair stays isolated until complete navigation is requested", async () => {
   await using runtime = await testRuntime()
   await runtime.run(async () => {
     const infos = await ScopeContext.provide({
@@ -160,10 +160,14 @@ test("owner-local nav repair upgrades only its deferred Session and preserves un
     expect(migration?.upSession).toBeDefined()
     const owner = { scopeID: "home", sessionID: infos[0]!.id }
     await Storage.withMigrationRecords(() => Storage.transaction(() => migration!.upSession!(owner, () => {})))
-    expect((await SessionNav.readNavIndex("home")).entries.map((entry) => entry.id)).toEqual([owner.sessionID])
+    expect((await Storage.read<ScopeNavIndex>(navKey)).entries.map((entry) => entry.id)).toEqual([owner.sessionID])
     expect(await Storage.read<Record<string, unknown>>(infoKey(infos[0]!))).toEqual(upgraded(before[0]!, infos[0]!))
     expect(await Storage.read<Record<string, unknown>>(infoKey(infos[1]!))).toEqual(before[1])
     expect(await Storage.readMany([ownerReceipt(infos[1]!)])).toEqual([undefined])
+    expect((await SessionNav.readNavIndex("home")).entries.map((entry) => entry.id).sort()).toEqual(
+      infos.map((info) => info.id).sort(),
+    )
+    expect(await Storage.read<Record<string, unknown>>(infoKey(infos[1]!))).toEqual(upgraded(before[1]!, infos[1]!))
   })
 })
 

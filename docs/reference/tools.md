@@ -20,11 +20,11 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `agenda_update` | `orchestration.agenda` | Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged. Use agenda_list to find the item ID first. Common actions: - Pause: agenda_update(agendaItemId="agd_ |
 | `agenda_watch` | `orchestration.agenda` |  |
 | `agent_config` | `platform.config` | Manage Synergy agent definitions: create, update, disable, delete, inspect, and set the default agent through validated writes. Use this when the user wants to create a custom agent ("make me an agent |
-| `ast_grep` | `search.codebase` | Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep understands code structure and finds patterns based on syntax, not just text. Supports 25 languages: bash, c, cpp, cshar |
-| `bash` | `code.execute` | Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID `cd <directory> && <command>` pat |
-| `blueprint_loop_approve` | `orchestration.task` | Use this when the BlueprintLoop review confirms every required outcome is fully and correctly delivered. Parameters: - sessionID: The execution session ID provided in your launch context - summary: Co |
-| `blueprint_loop_reject` | `orchestration.task` | Use this when the BlueprintLoop review finds missing, incorrect, or unverified required work. Parameters: - sessionID: The execution session ID provided in your launch context - reason: Clear explanat |
-| `blueprint_loop_stop` | `orchestration.task` | Request independent review only when the one current Blueprint outcome is complete and ready for audit. Parameters: - summary: Concise summary of the completed outcome - completed: Completed Blueprint |
+| `apply_patch` | `code.write` | Apply a complete text patch to the selected Workspace. Read existing source files with read first. Permissions remain unchanged. Pass an object with patch containing exactly one document: *** Begin Pa |
+| `bash` | `code.execute` | Run a shell command; default directory: ${directory}. Select another directory with workdir rather than cd. Use this for terminal operations and command-line reads (rg, rg --files, find); prefer the s |
+| `blueprint_loop_approve` | `orchestration.task` | Accept the bound BlueprintLoop only when every required outcome is verified and in scope. Briefly state the conclusion and decisive checks; reference detailed evidence. Only its recorded reviewer can  |
+| `blueprint_loop_reject` | `orchestration.task` | Return the bound BlueprintLoop for corrections. State unmet requirements, reproduction evidence and actionable fixes concisely; reference detailed reports. Optional improvements alone do not block acc |
+| `blueprint_loop_stop` | `orchestration.task` | Request independent final review after checking the complete Blueprint, user instructions and results. Summarize the outcome, key checks and limitations briefly; reference detailed reports. After succ |
 | `boss_assign` | `orchestration.session` | Assign a task to a direct-child worker session in the Boss Mode tree. The task is delivered as an inbox message to the worker; the worker processes it and reports back through boss_report. Assigning t |
 | `boss_cancel` | `orchestration.session` | Cancel a task (or all tasks) assigned to a direct-child worker in the Boss Mode tree. If the worker is running, its turn is interrupted; matching pending inbox tasks are removed. Use taskID to cancel  |
 | `boss_project` | `orchestration.session` | Create a new project as a runtime colleague: create the project directory if missing, bind it as a project Scope, and create a project boss session in that scope. Only a boss-role session (the runtime |
@@ -62,18 +62,14 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `edit` | `code.write` | Performs exact string replacements in files. Usage: - You must use your `Read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the fi |
 | `email_read` | `communication.email` | Read emails from an IMAP inbox. Use this tool when the user asks to check email, read mail, view inbox, or search for specific emails. Usage notes: - The `folder` parameter defaults to "INBOX" if not  |
 | `email_send` | `communication.email` | Send an email via SMTP. Use this tool when the user asks you to send an email, notify someone via email, or deliver content to an email address. Usage notes: - The `to` field accepts one or more email |
-| `expand_tools` | `platform.tooling` | Expand deferred groups or activate search-only tools for this session. Visibility persists across turns, restore and compaction until the session ends or expansion state is cleared. This does not call |
-| `file_search` | `search.codebase` | Hybrid workspace search that combines fuzzy file path matching, literal file-content search, and LSP workspace symbol lookup. Use this when you roughly know a filename, directory name, module name, pa |
-| `glob` | `search.codebase` | - Fast file pattern matching tool that works with any codebase size - Supports glob patterns like "**/*.js" or "src/**/*.ts" - Returns matching file paths sorted by modification time - Use this tool w |
-| `grep` | `search.codebase` | - Fast content search tool that works with any codebase size - Searches file contents using regular expressions - Supports full regex syntax (eg. "log.*Error", "function\s+\w+", etc.) - Filter files b |
+| `expand_tools` | `platform.tooling` | Expand deferred groups or activate search-only tools for this session, persisting through turns, restore and compaction until cleared or the session ends. Expansion does not execute tools or bypass pe |
+| `file_search` | `search.codebase` | Search the selected Workspace with hybrid (default), exact path-glob, or literal/regex content modes. Hybrid search combines fuzzy file path matching, literal file-content search, and LSP workspace sy |
 | `lattice_submit` | `orchestration.task` | Submit exactly one semantic action for the current parent Lattice state. Valid state/action pairs are: submit_requirements in clarifying; submit_pathway in planning; submit_pathway_review in reviewing |
-| `light_loop_approve` | `orchestration.task` | Use this when the LightLoop review audit confirms the task is fully and correctly delivered. Parameters: - sessionID: The execution session ID provided in your launch context - summary: Concise approv |
-| `light_loop_reject` | `orchestration.task` | Use this when the LightLoop audit finds missing or incorrect work. Parameters: - sessionID: The execution session ID provided in your launch context - reason: Clear explanation of why the task is not  |
 | `look_at` | `code.analyze` | Analyze image files (screenshots, diagrams, charts, UI mockups, photos) with a separate vision model when the active model cannot accept image input directly. Accepts up to 5 images per call — all ima |
-| `loop_stop` | `orchestration.task` | Request a completion review for the active Light Loop. Use this when you believe the task is fully complete and verified. Parameters: - summary: Concise summary of what was completed (required) - comp |
+| `loop_stop` | `orchestration.task` | Complete the Light Loop after verifying every required outcome against the full goal. Briefly summarize results and key checks; reference detailed evidence. Continue if required work or verification r |
 | `lsp` | `code.analyze` | Interact with Language Server Protocol (LSP) servers to get code intelligence features. Supported operations: - goToDefinition: Find where a symbol is defined - findReferences: Find all references to  |
-| `memory_edit` | `knowledge.memory` | Edit an existing memory by ID. Replaces the title, content, `category`, `recallMode`, and re-generates the embedding. Use this when `memory_write` reports similar existing memories, when a stored memo |
-| `memory_get` | `search.memory` | Retrieve the full content of one or more memories by their IDs. Returns the title, content, and timestamp for each memory. Use this after `memory_search` to read the full details of relevant memories. |
+| `memory_edit` | `knowledge.memory` | Edit an existing memory by ID. Replaces the title, content, `category`, `recallMode`, and re-generates the embedding. Returns the new numeric `updatedAt` on success. Read with `memory_get` and pass it |
+| `memory_get` | `search.memory` | Retrieve the full content of one or more memories by their IDs. Returns the title, content, category, recall mode, creation time and numeric `updatedAt` for each memory. Pass `updatedAt` as `expectedU |
 | `memory_search` | `search.memory` | Search stored memories by semantic similarity. Returns the top-k most relevant memory IDs, titles, categories, recall modes, and timestamps. Use this before writing new memories, when you need to insp |
 | `memory_write` | `knowledge.memory` | Persist a piece of knowledge as long-term memory. Provide a concise title, content, `category`, and `recallMode`. `category` answers **what kind of memory this is**: - `user` — Stable facts about the  |
 | `note_archive` | `knowledge.note` | Archive notes by ID. Archived notes are hidden from the active list but preserved on disk. Use this when you need to clean up notes from a completed sprint, task, or session. Archiving is safe and rev |
@@ -85,30 +81,30 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `note_write` | `knowledge.note` |  |
 | `openai_image_edit` | `communication.visual` | Edit or transform existing images with a text prompt and save the result to output_path. Use it when the user wants to modify, restyle, composite, expand, clean up, or create a variation from one or m |
 | `openai_image_gen` | `communication.visual` | Generate a new image from a text prompt and save it to output_path. Use it when the user wants a raster visual such as an illustration, photo, product shot, UI mockup, concept art, texture, sprite, me |
-| `parse_code` | `code.analyze` | Search code with AST-aware patterns and return anchored file blocks. Use this instead of `ast_grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and the ma |
+| `parse_code` | `code.analyze` | Search code with AST-aware patterns and return matching line ranges. Use complete, parseable syntax for the chosen language, such as function $NAME($$$) { $$$ }. Paths select roots, globs narrow files |
 | `pathway_read` | `orchestration.dag` | Read the current Lattice Run and ordered Pathway. The result separates pathway.history and pathway.current, which are read-only, from pathway.editableFuture, which is the complete list accepted by pat |
 | `pathway_write` | `orchestration.dag` | Replace the complete ordered list of pending future Steps in the current Lattice Pathway. Pass pathway_read.pathway.editableFuture through futureSteps after making any required additions, removals, re |
-| `process` | `code.execute` | Manage background bash processes: list, poll, log, write, send-keys, kill, clear, remove. ## Actions - **list**: List all running and recently finished background processes - **poll**: Check status an |
+| `process` | `code.execute` | Manage background Bash processes in the current Session Environment using the returned processId. - list: running and recently finished processes. - poll: status and recent output; nonblocking by defa |
 | `question` | `communication.question` | Use this tool when you need to ask the user questions during execution. This allows you to: 1. Gather user preferences or requirements 2. Clarify ambiguous instructions 3. Get decisions on execution c |
-| `read` | `code.read` | Reads text and document content from the local filesystem. You can access any text or supported document file directly by using this tool. Assume this tool is able to read files on the machine. If the |
-| `render` | `communication.visual` | Create an interactive visual directly in the conversation: charts, diagrams, simulations, calendars, comparisons and design variants. Prefer the native ui catalog below for estimates, comparisons and  |
+| `read` | `code.read` | Reads text and supported document content through the selected Workspace, subject to its availability and file permissions. Missing or inaccessible files return an error. Usage: - Relative filePath va |
+| `render` | `communication.visual` | Purpose and mode selection Create an interactive visual in the conversation: charts, diagrams, simulations, calendars, comparisons or design variants. Provide exactly one of ui or html; libraries is H |
 | `resolve_conflicts` | `code.write` | Resolve every merge-conflict marker block in one anchored file as a single guarded write. Use this tool after `view_file` reports conflict ranges and `revise_file` refuses the file. Pass the current ` |
 | `response_card` | `communication.deliver` | Prepare a provider-neutral response card for the current Channel conversation. Use this only when structured presentation or bounded interaction is clearer than plain text. The card supports ordered t |
 | `revise_file` | `code.write` | Name the lines to replace, delete, or insert at, then supply new content. A `:` operation takes `+` body rows; `DEL` has no body. <headers> Every section starts with a real `[path#TAG]` header returne |
 | `runtime_reload` | `platform.config` | Reload Synergy runtime state after self-configuration changes. Use this when configuration, skills, providers, MCP servers, channels, commands, or custom tools were changed and you need the current ba |
 | `save_file` | `code.write` | Write a full file through the anchored coding harness. Use this for new files or intentional full-file rewrites. The tool writes the supplied content and returns a real `[path#TAG]` header for follow- |
 | `scan_document` | `code.analyze` | Read and paginate through document files by converting them to Markdown. Use this tool to inspect the content of document files (PDF, DOCX, XLSX, PPTX, HTML, EPUB, IPYNB, CSV, XML, RSS, images, audio, |
-| `scan_files` | `search.codebase` | Search file contents and return anchored file blocks. Use this instead of `grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and only the matching `LINE:T |
+| `scan_files` | `search.codebase` | Search file contents and return anchored file blocks. Use this when search results will supply line evidence for anchored editing. Matched files are returned with real `[path#TAG]` headers and only th |
 | `scope_list` | `orchestration.session` | List available Synergy scopes (projects + home) so you can choose a valid `scopeID`. Each entry includes: - `id`: stable Scope ID; use a project ID as `scopeID` with `session_list` or `session_control |
-| `search_tools` | `platform.tooling` | Discover non-resident tool capabilities that are not currently visible to the model. This tool searches deferred groups and search-only tools; it does not enable, expand, activate, execute, or grant p |
+| `search_tools` | `platform.tooling` | Discover deferred groups and search-only tools without changing visibility, executing tools or granting permission. Expand a known group directly with expand_tools({groups:[id]}). Otherwise search her |
 | `session_control` | `orchestration.session_control` | Control a target session remotely — inspect its state and perform actions as if you were the user in that session. The `target` parameter identifies which session to control: - A session ID (e.g. "ses |
 | `session_list` | `orchestration.session` | List sessions by scope. Returns session metadata, scope info, and the latest message exchange for each session. The `scope` parameter selects which sessions to list: - "project": Ordinary sessions acr |
 | `session_read` | `orchestration.session` | Read messages from a session. Returns session metadata and a paginated list of messages. The `target` parameter identifies which session to read: - A session ID (e.g. "ses_xxx") to read a specific ses |
 | `session_search` | `search.session` | Search across session message content using regex patterns. Searches messages in sessions across the selected scopes, returning matching sessions with context around each match. Use this to find past  |
-| `session_send` | `orchestration.session` | Send an actionable user message to a session. The target session's agent will process and respond to the message. The `target` parameter identifies which session to send to: - A session ID (e.g. "ses_ |
+| `session_send` | `orchestration.session` | Send an actionable user message to a session. The target session's agent will process and respond to the message. Messages to your own actively running delegated subagent join its current task's next  |
 | `skill` | `knowledge.skill` |  |
 | `speak` | `communication.audio` | Synthesize the given text into spoken audio and deliver it as a playable attachment in the conversation. Use this when the user asks you to speak, narrate, or read something aloud, wants a voice reply |
-| `task` | `orchestration.task` | Delegate one coherent deliverable to a specialist agent. Available agent types: {agents} ## Scope and parallelism Use delegation for independent, ready tasks or work that benefits from a specialist. H |
+| `task` | `orchestration.task` | Delegate one coherent, independently verifiable deliverable to a specialist agent. Available agent types: {agents} Use for independent ready work or specialist tasks; handle quick actions directly. Do |
 | `task_cancel` | `orchestration.task` | Cancel visible background tasks. Subagents commonly run 5–30 minutes. Before cancelling, use a one-shot status check with `task_output(taskId="...", mode="summary")` to confirm the task is truly stuck |
 | `task_list` | `orchestration.task` | List background tasks visible from the current session. Use this before `task_output` when you need to ground yourself in which background tasks are actually available. ## Usage ``` task_list() ``` |
 | `task_output` | `orchestration.task` | Retrieve output from a visible background task. ## Parameters - **taskId** (optional): Task ID from a visible background task - **mode** (optional): Output mode: - `progress` — live status (health, to |
@@ -231,25 +227,21 @@ Manage Synergy agent definitions: create, update, disable, delete, inspect, and 
 | --- | --- | --- | --- |
 | `input` | union | yes | One action object. create/update/remove/set_default/describe each take agent fields; list takes none. |
 
-## ast_grep
+## apply_patch
 
-Kind: `search.codebase`
+Kind: `code.write`
 
-Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep understands code structure and finds patterns based on syntax, not just text. Supports 25 languages: bash, c, cpp, csharp, css, elixir, go, haskell, html, java, javascript, json, kotlin, lua, nix, php, python, ruby, rust, scala, solidity, swift, typescript, tsx, yaml. Meta-variables: - $VAR - Matches a single AST node (identifier, expression, statement) - $$$ - Matches zero or more nodes (function arguments, array elements, etc.) CRITICAL: Patterns must be complete, valid AST nodes. Incomplete patterns will fail. Examples by language: JavaScript/TypeScript: - `console.log($MSG)` - Find all console.log calls - `function $NAME($$$) { $$$ }` - Find function declarations - `async function $NAME($$$) { $$$ }` - Find async functions - `export const $NAME = $VALUE` - Find exported constants - `import { $$$ } from '$MODULE'` - Find named imports Python: - `def $FUNC($$$)` - Find function definitions (NO trailing colon) - `class $NAME` - Find class definitions (NO trailing colon) - `for $VAR in $ITER` - Find for loops - `import $MODULE` - Find imports Go: - `func $NAME($$$) $RET { $$$ }` - Find function declarations - `if err != nil { $$$ }` - Find error handling patterns Rust: - `fn $NAME($$$) -> $RET { $$$ }` - Find function declarations - `impl $TRAIT for $TYPE { $$$ }` - Find trait implementations Common mistakes: - Python: Don't include trailing colons (use `def foo($$$)` not `def foo($$$):`) - Functions: Include params and body (use `function $N($$$) { $$$ }` not `function $N`) - Incomplete patterns: Patterns like `const $X` fail - use `const $X = $Y` Use this tool when: - You need structural code search (finding function definitions, class patterns) - Regex would be too fragile or match unintended text - You want to find code patterns regardless of whitespace/formatting
+Apply a complete text patch to the selected Workspace. Read existing source files with read first. Permissions remain unchanged. Pass an object with patch containing exactly one document: *** Begin Patch *** Add File: notes.txt +New text *** Update File: source.ts @@ -old text +new text *** Delete File: obsolete.txt *** End Patch An Update may contain *** Move to: destination immediately after its header, with or without text hunks. Destinations must be absent; move parents must exist. Prefix unchanged lines with a space, removals with -, and additions with +. Each @@ hunk needs unique exact original context, including whitespace. An optional @@ followed by a space and an exact anchor line narrows the following hunk. *** End of File may finish the final hunk and requires a match at the actual tail; insertion without context requires this marker. Relative paths resolve in the selected Workspace. Existing files must be regular UTF-8 text and unchanged since your read. The whole patch is validated and authorized before any target changes. Duplicate/aliased paths, overlapping hunks, malformed documents, binary files, symlinks, stale reads and ambiguous matches are rejected. Updates preserve BOM, unchanged line endings and terminal-newline state. Add uses LF and a terminal newline unless empty. Sections commit in order with version checks. This is not a multi-file transaction: a failure or cancellation stops remaining work and does not roll back earlier effects. Results identify committed, failed, not-started, unknown and unsaved stages, including update-before-move failures. Inspect partial/unresolved results and current files before issuing a new patch; never replay the whole patch to retry an uncertain operation.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `pattern` | string | yes | AST pattern with meta-variables ($VAR for single node, $$$ for multiple nodes). Must be a complete AST node. |
-| `lang` | z.enum | yes | Target language for AST parsing |
-| `paths` | array |  | Paths to search (default: current directory) |
-| `globs` | array |  | Include/exclude globs (prefix ! to exclude) |
-| `context` | number |  | Number of context lines around each match |
+| `patch` | string | yes | One complete *** Begin Patch / *** End Patch document with Add, Update, Delete and optional Move to sections. |
 
 ## bash
 
 Kind: `code.execute`
 
-Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID `cd <directory> && <command>` patterns — use `workdir` instead. IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) — use the specialized tools for this instead. Before executing the command: - If the command will create new directories or files, first use `ls` to verify the parent directory exists and is the correct location (e.g. check `foo` exists before `mkdir foo/bar`). - Always quote file paths that contain spaces with double quotes: `rm "path with spaces/file.txt"` works; `mkdir /Users/name/My Documents` fails; `mkdir "/Users/name/My Documents"` works. - Capture the output of the command. - For unattended work, use the command's supported non-interactive options or explicit inputs when their values are known and authorized. An acceptance flag may not cover every prompt. Use script entry points for scripts; do not accidentally start a REPL. Keep diagnostic output accessible. - Run validation commands directly when their exit status matters. Filtered or clipped output is useful for diagnosis, but a pipeline's zero exit does not prove an earlier command or test passed. ${artifactGuidance} Usage notes: - `command` is required. Use `workdir` to select the working directory. - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it is truncated and the full output is written to a file. You can read specific sections with offset/limit or search the file. Because of this, you do NOT need `head`, `tail`, or other truncation commands to limit output — run the command directly. - `background: true` runs the command in the background immediately and returns a processId. `yieldSeconds` delays auto-backgrounding until a command has run that long (default 30); if the command completes first it returns normally. - After backgrounding, continue independent work if available. Otherwise choose a completion wait, readiness check or targeted diagnosis using `process` guidance. Running means alive, not necessarily progressing; do not restart a command merely to refresh its status. - For very long-running commands (experiments, training, large downloads, data processing running for minutes or hours), prefer the tracked background flow so Synergy shows a processId you can later poll, log, or kill. Detached launches (`tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, shell `&`) are blocked unless the runtime intentionally permits them (`full_access` control profile or `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`). - For outbound text the user should review before publication (PR body, commit message, channel message), prepare a file with the available writing tools and let the user review it. Pass the reviewed file to the command's file-input option, such as `gh pr create --body-file ./pr-body.md`; keep its contents out of shell parsing. Prefer the available file, search and editing tools over shell equivalents; output text directly when no command is needed. When issuing multiple commands: independent commands can run in parallel — issue multiple Bash tool calls in one message. Sequential dependencies chain with `&&` in a single call. Use `;` only when the failure of the first command does not matter. DO NOT use newlines to separate commands (newlines are fine inside quoted strings). # Committing changes with git Git Safety Protocol: - NEVER update the git config. - NEVER run destructive/irreversible git commands (like push --force, hard reset, etc.) unless the user explicitly requests them. - NEVER skip hooks (--no-verify, --no-gpg-sign) unless the user explicitly requests it. NEVER force-push to main/master. - Avoid `git commit --amend`. Only use it when ALL conditions hold: the user explicitly requested the amend (or the commit succeeded but a pre-commit hook auto-modified files), the HEAD commit was created by you in this conversation, and the commit was NOT pushed. If a commit FAILED or was REJECTED by a hook, never amend — fix the issue and create a NEW commit. - NEVER commit changes unless the user explicitly asks. Commit flow: run `git status`, `git diff`, and `git log` in parallel first. Stage only files owned by the current task; preserve unrelated dirty and untracked files. Draft a concise conventional-type message focused on the "why". Verify with `git status` after committing. Do not create an empty commit. Never run additional commands to read or explore code besides git commands. Never use the TodoWrite or Task tools. Never push unless the user asks. # Creating pull requests Use the `gh` command for ALL GitHub-related tasks (issues, PRs, checks, releases). When creating a PR: run `git status`, `git diff`, and `git log` plus `git diff [base-branch]...HEAD` in parallel to understand the current branch state and full commit history. Analyze ALL commits and draft a pull request summary. Create the branch if needed, push with `-u` if needed, then `gh pr create --body-file` with the reviewed file. Return the PR URL when done. Never push, open a PR, or mutate external systems unless the user requests it. Never use the TodoWrite or Task tools for PR work.
+Run a shell command; default directory: ${directory}. Select another directory with workdir rather than cd. Use this for terminal operations and command-line reads (rg, rg --files, find); prefer the selected file interface for editing. - Verify the parent directory before creating files. Quote paths containing spaces and keep literal text out of shell interpolation. - Use supported non-interactive options or explicit input only when known and authorized. Run scripts through their entry points, avoid accidental REPLs, and retain diagnostic output. - Run validation directly: a successful output-filtering pipeline does not prove its earlier test or command passed. - Independent commands may run in parallel. Chain dependencies with &&; use ; only when earlier failure is irrelevant. Do not separate commands with unquoted newlines. ${artifactGuidance} Output beyond ${maxLines} lines or ${maxBytes} bytes is saved to a file; read/search that file as needed. Manual output truncation is unnecessary. background: true immediately returns a processId. yieldSeconds controls auto-backgrounding (default 30); earlier completion returns normally. For long work use this tracked flow. Detached launches (tmux/screen/nohup/setsid/disown/shell &) require full_access or SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1. Continue independent work, then use process for completion, readiness or diagnosis; running does not prove progress. Git and publication: - Commit, push, open PRs or mutate external systems only when the user requests it. Never update Git configuration or force-push main/master. Destructive commands and hook/signing bypasses require explicit user authority. - Inspect status, diff and history before Git mutations; preserve unrelated dirty/untracked work and stage only task-owned files. Verify status afterward; do not create empty commits. - Amend only your own unpushed commit when the user requests it or a successful commit's hook changed intended files. After a failed/rejected commit, fix the issue and create a new commit. - Use gh for GitHub tasks. Review all branch commits before PR creation. Prepare outbound prose in a file for review and pass a file-input option (such as --body-file); do not interpolate it into a shell command. Return the PR URL after creation.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -262,39 +254,31 @@ Executes a bash command in a persistent shell session. All commands run in ${dir
 
 Kind: `orchestration.task`
 
-Use this when the BlueprintLoop review confirms every required outcome is fully and correctly delivered. Parameters: - sessionID: The execution session ID provided in your launch context - summary: Concise approved completion verdict
+Accept the bound BlueprintLoop only when every required outcome is verified and in scope. Briefly state the conclusion and decisive checks; reference detailed evidence. Only its recorded reviewer can approve; the host infers the loop.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `sessionID` | string | yes | The execution session ID provided in your launch context |
-| `summary` | string | yes | Concise approved completion verdict |
+| `summary` | string | yes | Concise acceptance verdict, decisive checks and evidence references. |
 
 ## blueprint_loop_reject
 
 Kind: `orchestration.task`
 
-Use this when the BlueprintLoop review finds missing, incorrect, or unverified required work. Parameters: - sessionID: The execution session ID provided in your launch context - reason: Clear explanation of why the Blueprint outcome is not complete - completed: Optional summary of work that is already correct - remaining: Missing or incorrect work, marking each item BLOCKING or NON-BLOCKING - instructions: Concrete next actions the execution agent can follow without further clarification
+Return the bound BlueprintLoop for corrections. State unmet requirements, reproduction evidence and actionable fixes concisely; reference detailed reports. Optional improvements alone do not block acceptance. Only its recorded reviewer can reject; the host infers the loop.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `sessionID` | string | yes | The execution session ID provided in your launch context |
-| `reason` | string | yes | Clear explanation of why the Blueprint outcome is not complete |
-| `completed` | string |  | Optional summary of work that is already correct |
-| `remaining` | string | yes | Missing or incorrect work, marking each item BLOCKING or NON-BLOCKING |
-| `instructions` | string | yes | Concrete next actions the execution agent can follow without clarification |
+| `reason` | string | yes | Concise unmet requirements, reproduction evidence and actionable corrections. |
 
 ## blueprint_loop_stop
 
 Kind: `orchestration.task`
 
-Request independent review only when the one current Blueprint outcome is complete and ready for audit. Parameters: - summary: Concise summary of the completed outcome - completed: Completed Blueprint requirement statements - evidence: Concrete verification evidence such as checks, artifacts, and file paths - remaining: Any known remaining work or limitations This records durable stop intent; it does not synchronously start the reviewer. A successful result closes execution work for this Blueprint and instructs you to end the assistant turn immediately because the configured reviewer can start only after the turn releases the session. After success, do not call another tool, modify files or artifacts, inspect reviewer state, repeat the request, extend the Blueprint scope, or begin a later Lattice Pathway Step. A repeated call is idempotent and returns the same end-turn instruction. The reviewer will either approve completion or return concrete work, and it delivers that verdict directly to this execution session.
+Request independent final review after checking the complete Blueprint, user instructions and results. Summarize the outcome, key checks and limitations briefly; reference detailed reports. After success, end the turn without further tools or changes. Review results arrive in this session. Lattice execution stays within its current Step.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `summary` | string | yes | Summary of what was completed. |
-| `completed` | array |  | Completed Blueprint requirement statements. |
-| `evidence` | array |  | Concrete verification evidence such as checks, artifacts, and file paths. |
-| `remaining` | array |  | Any known remaining work or limitations. |
+| `summary` | string | yes | Concise results, key checks, evidence references and remaining limitations. |
 
 ## boss_assign
 
@@ -773,7 +757,7 @@ Send an email via SMTP. Use this tool when the user asks you to send an email, n
 
 Kind: `platform.tooling`
 
-Expand deferred groups or activate search-only tools for this session. Visibility persists across turns, restore and compaction until the session ends or expansion state is cleared. This does not call the tools or bypass permissions, agent policy, sandboxing, user settings or runtime availability. For a known domain, expand its group directly. If the name is uncertain, use search_tools first, then expand its group or activate the returned search-only tool. Use the tools listed in the result; other tools may remain hidden by policy, settings or availability.
+Expand deferred groups or activate search-only tools for this session, persisting through turns, restore and compaction until cleared or the session ends. Expansion does not execute tools or bypass permissions, agent policy, sandboxing, user settings or runtime availability. Expand known groups directly; use search_tools if the ID is uncertain. Call only tools listed in the result with their returned schemas; other tools may remain unavailable.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -785,37 +769,18 @@ Expand deferred groups or activate search-only tools for this session. Visibilit
 
 Kind: `search.codebase`
 
-Hybrid workspace search that combines fuzzy file path matching, literal file-content search, and LSP workspace symbol lookup. Use this when you roughly know a filename, directory name, module name, path fragment, code symbol, or an exact literal snippet in file contents. Parameters: - query: Search text. Empty or whitespace-only queries list files and directories only. - limit: Maximum total merged results returned across path, content, and symbol matches. Defaults to 50; allowed range is 1-100. - include: Optional comma-separated glob patterns to include. Applies to path and content search. - exclude: Optional comma-separated glob patterns to exclude. Applies to path and content search. Search behavior: - Path search uses fuzzy matching over workspace file and directory paths. - Content search uses fixed-string literal matching, not regex. A query with spaces searches for that exact text including spaces; it is not multi-keyword AND. - Symbol search uses workspace symbols from an active language server. Results depend on LSP availability and may ignore include/exclude filters. - Non-empty searches return merged results in priority order: path matches first, then content hits, then symbols. - If path search finds no matches, the file index may be refreshed and path search retried before content and symbol results are merged. - Empty or whitespace-only queries do not search content or symbols. For multi-keyword AND logic, use multiple targeted calls or scan_files with an appropriate regex. For regex content search with anchored editable results, use scan_files. For syntax-aware queries, use parse_code. For file reading, use view_file.
+Search the selected Workspace with hybrid (default), exact path-glob, or literal/regex content modes. Hybrid search combines fuzzy file path matching, literal file-content search, and LSP workspace symbol lookup. Use this when you roughly know a filename, directory name, module name, path fragment, code symbol, or an exact literal snippet in file contents. Parameters: - query: Search text. Empty or whitespace-only queries list files and directories only. - limit: Maximum total merged results returned across path, content, and symbol matches. Defaults to 50; allowed range is 1-100. - include: Optional comma-separated glob patterns to include. Applies to path and content search. - exclude: Optional comma-separated glob patterns to exclude. Applies to path and content search. Hybrid search behavior: - Path search uses fuzzy matching over workspace file and directory paths. - Content search uses fixed-string literal matching, not regex. A query with spaces searches for that exact text including spaces; it is not multi-keyword AND. - Symbol search uses workspace symbols from an active language server. Results depend on LSP availability and may ignore include/exclude filters. - Non-empty searches return merged results in priority order: path matches first, then content hits, then symbols. - If path search finds no matches, the file index may be refreshed and path search retried before content and symbol results are merged. - Empty or whitespace-only queries do not search content or symbols. Precise search: - mode: hybrid (default), paths, or content. The existing hybrid ranking and empty-query listing are unchanged. - paths: query is an exact path glob. Only matching paths are returned. - content: query is literal text by default; syntax: regex enables Ripgrep regular expressions. Invalid regex is an error, even in an empty root. - path: precise-mode root within the selected file view; defaults to its root. - offset: nonnegative continuation offset in precise modes, default zero. Use nextOffset to continue at the first undisplayed hit. - syntax is only accepted for content. path/offset are not accepted for hybrid. Precise results sort by path, line and column. Columns count Unicode characters from one. include/exclude retain comma-separated globs. Output reports mode, displayed counts, result-limit and byte-limit omissions. Search evidence covers displayed hits only and does not establish a full-file read or grant edit anchors. Use the selected file reader before editing. Dormant object searches do not allocate compute.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `mode` | "hybrid" \| "paths" \| "content" |  | Search mode; defaults to hybrid. paths uses an exact glob, content uses literal text or regex. |
+| `syntax` | "literal" \| "regex" |  | Content mode only; defaults to literal. |
+| `path` | string |  | Precise modes only: root in the selected file view; defaults to its root. |
+| `offset` | number |  | Precise modes only: continuation offset, defaults to zero. |
 | `query` | string | yes | Fuzzy filename, directory name, module name, path fragment, code symbol, or exact literal content snippet to search for |
 | `limit` | number |  | Maximum total merged results across path, content, and symbol matches; defaults to 50 |
 | `include` | string |  | Optional comma-separated glob patterns to include for path and content search |
 | `exclude` | string |  | Optional comma-separated glob patterns to exclude from path and content search |
-
-## glob
-
-Kind: `search.codebase`
-
-- Fast file pattern matching tool that works with any codebase size - Supports glob patterns like "**/*.js" or "src/**/*.ts" - Returns matching file paths sorted by modification time - Use this tool when you need to find files by name patterns - When you are doing an open-ended search that may require multiple rounds of globbing and grepping, use the Task tool instead - You have the capability to call multiple tools in a single response. It is always better to speculatively perform multiple searches as a batch that are potentially useful.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `pattern` | string | yes | The glob pattern to match files against |
-| `path` | string |  | The directory to search in. If not specified, the task’s main and shared project folders will be searched. IMPORTANT: Omit this field to use the default directory. DO NOT enter "undefined" or "null" - simply omit it for the default behavior. Must be a valid directory path if provided. |
-
-## grep
-
-Kind: `search.codebase`
-
-- Fast content search tool that works with any codebase size - Searches file contents using regular expressions - Supports full regex syntax (eg. "log.*Error", "function\s+\w+", etc.) - Filter files by pattern with the include parameter (eg. "*.js", "*.{ts,tsx}") - Returns file paths and line numbers with at least one match sorted by modification time - Use this tool when you need to find files containing specific patterns - If you need to identify/count the number of matches within files, use the Bash tool with `rg` (ripgrep) directly. Do NOT use `grep`. - When you are doing an open-ended search that may require multiple rounds of globbing and grepping, use the Task tool instead
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `pattern` | string | yes | The regex pattern to search for in file contents |
-| `path` | string |  | The directory to search in. Defaults to the task’s main and shared project folders. |
-| `include` | string |  | File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}") |
 
 ## lattice_submit
 
@@ -823,31 +788,6 @@ Kind: `orchestration.task`
 
 Submit exactly one semantic action for the current parent Lattice state. Valid state/action pairs are: submit_requirements in clarifying; submit_pathway in planning; submit_pathway_review in reviewing_pathway; submit_blueprint in blueprinting; submit_blueprint_review in reviewing_blueprint; and approve_execution in awaiting_execution. The strict action contracts are: submit_requirements uses goal, successCriteria, and optional constraints/nonGoals/assumptions; submit_pathway uses reason; submit_pathway_review uses reason; submit_blueprint uses blueprintID; submit_blueprint_review uses reason; approve_execution uses reason and only follows explicit user approval. Never mix fields from different actions. Result semantics are operational instructions. LATTICE_SUBMIT_INVALID_ARGUMENTS means no action was persisted: correct only the stated fields and retry the same current-state action once. LATTICE_ACTION_WRONG_STATE, LATTICE_RUN_NOT_ACTIVE, LATTICE_ACTION_CONFLICT, LATTICE_BLUEPRINT_REVIEW_STALE, or LATTICE_RUN_NOT_FOUND means no action was persisted and the result is not retryable: follow the stated current owner, do not bypass Lattice with other tools, and do not begin another state or future Pathway Step. LATTICE_BLUEPRINT_UNAVAILABLE is retryable only when the result explicitly says to repair the current Blueprint artifact and retry once. LATTICE_ACTION_QUEUED means the semantic intent is durable but state has not changed synchronously. LATTICE_ACTION_ALREADY_QUEUED means an exact retry matched the existing durable intent. After either successful result, end the assistant turn immediately; do not call tools, poll, resubmit, create next-state artifacts, or execute future work. Only the host controller validates the intent, advances state, and delivers the next responsibility after the turn ends.
 
-
-## light_loop_approve
-
-Kind: `orchestration.task`
-
-Use this when the LightLoop review audit confirms the task is fully and correctly delivered. Parameters: - sessionID: The execution session ID provided in your launch context - summary: Concise approved completion verdict
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `sessionID` | string | yes | The execution session ID provided in your launch context |
-| `summary` | string | yes | Concise approved completion verdict |
-
-## light_loop_reject
-
-Kind: `orchestration.task`
-
-Use this when the LightLoop audit finds missing or incorrect work. Parameters: - sessionID: The execution session ID provided in your launch context - reason: Clear explanation of why the task is not complete - completed: Optional summary of work that is already correct - remaining: Summary of missing or incorrect work, marking each item BLOCKING or NON-BLOCKING - instructions: Concrete next actions the execution agent can follow without further clarification
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `sessionID` | string | yes | The execution session ID provided in your launch context |
-| `reason` | string | yes | Clear explanation of why the task is not complete |
-| `completed` | string |  | Optional summary of work that is already correct |
-| `remaining` | string | yes | Summary of missing or incorrect work, marking each item BLOCKING or NON-BLOCKING |
-| `instructions` | string | yes | Concrete next actions the execution agent can follow without further clarification |
 
 ## look_at
 
@@ -865,14 +805,11 @@ Analyze image files (screenshots, diagrams, charts, UI mockups, photos) with a s
 
 Kind: `orchestration.task`
 
-Request a completion review for the active Light Loop. Use this when you believe the task is fully complete and verified. Parameters: - summary: Concise summary of what was completed (required) - completed: List of completed deliverable or requirement statements - evidence: Concrete verification evidence (test results, file paths, checks) - remaining: Any known remaining work or limitations This will launch a reviewer agent that audits the task against the session trajectory and workspace evidence. The reviewer will either approve completion or return concrete remaining work to finish. Do not call any tools to check on the reviewer — it will deliver results directly to this session when the audit completes.
+Complete the Light Loop after verifying every required outcome against the full goal. Briefly summarize results and key checks; reference detailed evidence. Continue if required work or verification remains. This tool completes the workflow directly.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `summary` | string | yes | Summary of what was completed. |
-| `completed` | array |  | Completed deliverable or requirement statements. |
-| `evidence` | array |  | Concrete verification evidence (test results, file paths, checks). |
-| `remaining` | array |  | Any known remaining work or limitations. |
+| `summary` | string | yes | Concise results, key checks, evidence references and remaining limitations. |
 
 ## lsp
 
@@ -891,54 +828,26 @@ Interact with Language Server Protocol (LSP) servers to get code intelligence fe
 
 Kind: `knowledge.memory`
 
-Edit an existing memory by ID. Replaces the title, content, `category`, `recallMode`, and re-generates the embedding. Use this when `memory_write` reports similar existing memories, when a stored memory has become stale, or when a memory was classified with the wrong `category` or `recallMode`. Prefer editing over creating when the memory is durable and high-priority — especially for `user`, `self`, `relationship`, and `interaction` memories, or anything using `always` recall. You may also change both classification fields, for example moving a broad old preference into `interaction`, `coding`, `writing`, `workflow`, or `personal`, and adjusting recall from `always` to `contextual` or `search_only` when appropriate.
+Edit an existing memory by ID. Replaces the title, content, `category`, `recallMode`, and re-generates the embedding. Returns the new numeric `updatedAt` on success. Read with `memory_get` and pass its `updatedAt` as `expectedUpdatedAt` to prevent overwriting a newer revision. A `conflict` leaves the memory unchanged: re-read and reconsider before retrying. A removed memory returns `not_found`. Use this when `memory_write` reports similar existing memories, when a stored memory has become stale, or when a memory was classified with the wrong `category` or `recallMode`. Prefer editing over creating when the memory is durable and high-priority — especially for `user`, `self`, `relationship`, and `interaction` memories, or anything using `always` recall. You may also change both classification fields, for example moving a broad old preference into `interaction`, `coding`, `writing`, `workflow`, or `personal`, and adjusting recall from `always` to `contextual` or `search_only` when appropriate.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `id` | params.memoryId | yes |  |
-| `title` | params.memoryTitle | yes |  |
-| `content` | params.memoryContent | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `memoryId` | params.memoryId | yes |  |
-| `memoryTitle` | params.memoryTitle | yes |  |
-| `memoryContent` | params.memoryContent | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
-| `metadata` | - | yes |  |
-| `id` | params.memoryId | yes |  |
-| `title` | params.memoryTitle | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
+| `memoryId` | string | yes | The memory ID to edit |
+| `memoryTitle` | string | yes | New title (10 words max) |
+| `memoryContent` | string | yes | New content to replace the existing memory |
+| `category` | categorySchema.describe | yes |  |
+| `recallMode` | recallModeSchema.describe | yes | Memory recall mode: always, contextual, or search_only |
+| `expectedUpdatedAt` | number |  | The numeric updatedAt returned by memory_get. Reject the edit if that revision changed; re-read on conflict. |
 
 ## memory_get
 
 Kind: `search.memory`
 
-Retrieve the full content of one or more memories by their IDs. Returns the title, content, and timestamp for each memory. Use this after `memory_search` to read the full details of relevant memories.
+Retrieve the full content of one or more memories by their IDs. Returns the title, content, category, recall mode, creation time and numeric `updatedAt` for each memory. Pass `updatedAt` as `expectedUpdatedAt` to `memory_edit` when revising a read entry. Use this after `memory_search` to read the full details of relevant memories.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `memoryId` | r.id | yes |  |
-| `memoryTitle` | r.title | yes |  |
-| `memoryContent` | r.content | yes |  |
-| `category` | r.category | yes |  |
-| `recallMode` | r.recall_mode | yes |  |
-| `createdAt` | formatLocalDateTime | yes |  |
-| `metadata` | - | yes |  |
+| `memoryIds` | array | yes | List of memory IDs to retrieve |
 
 ## memory_search
 
@@ -948,48 +857,23 @@ Search stored memories by semantic similarity. Returns the top-k most relevant m
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `query` | params.query | yes |  |
-| `topK` | params.limit | yes |  |
-| `categories` | params.categories | yes |  |
-| `recallModes` | params.recallModes | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `memoryId` | r.id | yes |  |
-| `memoryTitle` | r.title | yes |  |
-| `category` | r.category | yes |  |
-| `recallMode` | r.recallMode | yes |  |
-| `similarity` | r.similarity | yes |  |
-| `createdAt` | formatLocalDateTime | yes |  |
-| `metadata` | - | yes |  |
+| `query` | string | yes | Search query |
+| `limit` | number |  | Maximum memories to return, from 1 to 100; defaults to 5 |
+| `categories` | array |  | Optional category filters |
+| `recallModes` | array |  | Optional recall mode filters |
 
 ## memory_write
 
 Kind: `knowledge.memory`
 
-Persist a piece of knowledge as long-term memory. Provide a concise title, content, `category`, and `recallMode`. `category` answers **what kind of memory this is**: - `user` — Stable facts about the user - `self` — Agent self-knowledge - `relationship` — Durable collaboration norms and trust boundaries - `interaction` — Naming, tone, language, and interaction style - `workflow` — General working preferences that apply across domains - `coding` — Coding-specific preferences and conventions - `writing` — Writing and documentation preferences - `asset` — Shared resources, accounts, websites, or services - `insight` — Transferable user reasoning patterns across domains - `knowledge` — Technical facts, conventions, and lessons learned - `personal` — Low-priority personal trivia and lifestyle preferences - `general` — Anything valuable that does not fit above `recallMode` answers **how this memory should be used later**: - `always` — Inject every session; reserve for durable identity and interaction rules - `contextual` — Auto-retrieve only when semantically relevant - `search_only` — Never auto-inject; only surface via explicit `memory_search` Guidelines: - Use `interaction` + `always` for naming, tone, language, or other conversation-wide style rules - Use `coding` or `writing` with `contextual` for domain-specific preferences - Use `personal` with `search_only` for lifestyle details like food, hobbies, or casual likes - Be highly selective with `always`; these should stay few and consolidated - Prefer `memory_edit` over `memory_write` when a similar durable memory already exists - When in doubt, choose a narrower category and a less aggressive recall mode If similar memories already exist, the tool may return them instead of writing and suggest `memory_edit` to update an existing memory rather than creating a duplicate.
+Persist a piece of knowledge as long-term memory. Provide a concise title, content, `category`, and `recallMode`. `category` answers **what kind of memory this is**: - `user` — Stable facts about the user - `self` — Agent self-knowledge - `relationship` — Durable collaboration norms and trust boundaries - `interaction` — Naming, tone, language, and interaction style - `workflow` — General working preferences that apply across domains - `coding` — Coding-specific preferences and conventions - `writing` — Writing and documentation preferences - `asset` — Shared resources, accounts, websites, or services - `insight` — Transferable user reasoning patterns across domains - `knowledge` — Technical facts, conventions, and lessons learned - `personal` — Low-priority personal trivia and lifestyle preferences - `general` — Anything valuable that does not fit above `recallMode` answers **how this memory should be used later**: - `always` — Inject every session; reserve for durable identity, interaction, consent, authorization, privacy, and representation rules - `contextual` — Auto-retrieve only when semantically relevant - `search_only` — Never auto-inject; only surface via explicit `memory_search` Guidelines: - Use `interaction` + `always` for naming, tone, language, or other conversation-wide style rules - Use `coding` or `writing` with `contextual` for domain-specific preferences - Use `personal` with `search_only` for lifestyle details like food, hobbies, or casual likes - Be highly selective with `always`; these should stay few and consolidated - Prefer `memory_edit` over `memory_write` when a similar durable memory already exists - When in doubt, choose a narrower category and a less aggressive recall mode; do not demote clear session-wide identity, language, or trust rules merely to reduce context If similar memories already exist, the tool may return them instead of writing and suggest `memory_edit` to update an existing memory rather than creating a duplicate.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | params.memoryTitle | yes |  |
-| `content` | params.memoryContent | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `memoryId` | id | yes |  |
-| `memoryTitle` | params.memoryTitle | yes |  |
-| `memoryContent` | params.memoryContent | yes |  |
-| `category` | params.category | yes |  |
-| `recallMode` | params.recallMode | yes |  |
-| `metadata` | - | yes |  |
+| `memoryTitle` | string | yes | A concise title summarizing the memory (10 words max) |
+| `memoryContent` | string | yes | The memory content to persist |
+| `category` | categorySchema.describe | yes |  |
+| `recallMode` | recallModeSchema.describe | yes | Memory recall mode: always, contextual, or search_only |
 
 ## note_archive
 
@@ -1069,21 +953,12 @@ Edit or transform existing images with a text prompt and save the result to outp
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `method` | - | yes |  |
-| `headers` | - | yes |  |
-| `Accept` | - | yes |  |
-| `body` | JSON.stringify | yes |  |
-| `images` | inputImages.map | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `background` | params.background | yes |  |
-| `model` | OPENAI_IMAGE_MODEL | yes |  |
-| `quality` | params.quality | yes |  |
-| `size` | params.size | yes |  |
-| `operation` | - | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `inputImages` | inputImages.map | yes |  |
-| `requested` | - | yes |  |
-| `display` | openAIImageEditDisplay | yes |  |
+| `prompt` | string | yes | Image edit prompt, 1–12000 characters. Sent as-is. |
+| `input_paths` | array | yes | Required source image paths, 1–5 PNG/JPEG/WebP files. Relative paths resolve under the current workspace. |
+| `output_path` | string | yes | Required PNG output path. Relative paths resolve under the current workspace; absolute paths are used as provided. |
+| `size` | openAIImageSizeParameter | yes |  |
+| `quality` | openAIImageQualityParameter | yes |  |
+| `background` | openAIImageBackgroundParameter | yes |  |
 
 ## openai_image_gen
 
@@ -1093,25 +968,17 @@ Generate a new image from a text prompt and save it to output_path. Use it when 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `method` | - | yes |  |
-| `headers` | - | yes |  |
-| `Accept` | - | yes |  |
-| `body` | JSON.stringify | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `background` | params.background | yes |  |
-| `model` | OPENAI_IMAGE_MODEL | yes |  |
-| `quality` | params.quality | yes |  |
-| `size` | params.size | yes |  |
-| `operation` | - | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `requested` | - | yes |  |
-| `display` | openAIImageGenDisplay | yes |  |
+| `prompt` | string | yes | Image generation prompt, 1–12000 characters. Sent as-is. |
+| `output_path` | string | yes | Required PNG output path. Relative paths resolve under the current workspace; absolute paths are used as provided. |
+| `size` | openAIImageSizeParameter | yes |  |
+| `quality` | openAIImageQualityParameter | yes |  |
+| `background` | openAIImageBackgroundParameter | yes |  |
 
 ## parse_code
 
 Kind: `code.analyze`
 
-Search code with AST-aware patterns and return anchored file blocks. Use this instead of `ast_grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and the matched source ranges as `LINE:TEXT` rows by default, so results stay small. Use `view_file` with targeted ranges when you need surrounding context before editing. The output also reports match line/range locations for each tagged file. Pattern rules: - Patterns must be complete, parseable AST nodes in the selected language. - `$NAME` matches one node; `$_` matches one ignored node; `$$$NAME` or `$$$` matches zero or more nodes. - Do not use incomplete fragments such as `const $X` when the language requires an initializer; use a complete pattern such as `const $X = $Y`. Examples: - TypeScript/JavaScript: `console.log($MSG)`, `function $NAME($$$) { $$$ }`, `import { $$$ } from '$MODULE'` - Python: `def $FUNC($$$)`, `class $NAME`, `for $VAR in $ITER` - Rust: `fn $NAME($$$) -> $RET { $$$ }`, `impl $TRAIT for $TYPE { $$$ }` Result control: - `limit` caps returned matches; default is 50. - `context` adds surrounding lines (default 0). Overlapping ranges are merged; files share a 50 KiB code budget. - `skip` continues from a previous limited result. - If the result says the limit was reached, continue with `skip` or narrow `paths`, `globs`, or `pattern`. Critical: - A parse error or invalid pattern is a query failure, not evidence that the code is absent. - Use `scan_files` for literal text or error-message search; use `parse_code` when syntax structure matters. - A current tag and completely displayed target region can feed `revise_file` directly. Use `view_file` for missing context, omitted regions, or changed files.
+Search code with AST-aware patterns and return matching line ranges. Use complete, parseable syntax for the chosen language, such as function $NAME($$$) { $$$ }. Paths select roots, globs narrow files, context adds surrounding lines, and limit/skip page through matches. Syntax errors include recovery guidance; no matches may require broader paths or a literal file_search query. The active file interface determines the read evidence. Only displayed source lines count as observations; truncated output does not establish a complete read.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1144,7 +1011,7 @@ Replace the complete ordered list of pending future Steps in the current Lattice
 
 Kind: `code.execute`
 
-Manage background bash processes: list, poll, log, write, send-keys, kill, clear, remove. ## Actions - **list**: List all running and recently finished background processes - **poll**: Check status and recent output. Non-blocking by default. `block: true` waits until exit or the wait window ends (`timeoutSeconds` in seconds, default 30s); an earlier exit returns sooner. - **log**: Get full output from a process (supports offset/limit for pagination). Non-blocking — returns immediately with whatever output has been produced so far. - **write**: Write raw data to a process's stdin - **send-keys**: Send key sequences to a process (e.g., ["C-c"] for Ctrl+C, ["Enter"]) - **kill**: Terminate a running process - **clear**: Remove a finished process from the list. - **remove**: Remove a process (kills if running, then removes). ## Notes Choose according to the next useful action: - Continue independent work while the process runs. Check status or logs when the result can change a decision, not merely to refresh progress. - If completion gates the next action and no independent work remains, use a blocking poll with a window appropriate to the expected work. A long local operation can use `block: true, timeoutSeconds: 300`; this is a wait window, not an execution deadline. - `running` means the process is alive, not that it is making progress. If output requests input, or an initial wait provides no progress evidence and interaction or a stalled dependency is plausible, inspect the relevant output or process state once before deciding what to do. Redirected output may require reading the command's log file. Confirmed quiet work can continue waiting; silence alone does not prove a stall. - Supply input only when its value is known and authorized; do not guess confirmations. If a required decision is unavailable, surface the blocker instead of waiting for nonexistent input. Do not kill or rerun a command merely because a wait ends, and do not replace repeated polls with shell status loops. For a persistent service, check readiness rather than waiting for exit. Ending the current turn does not itself arrange a later check of external work. Use a delayed follow-up capability only when the current runtime explicitly provides one. Visible running subagents already notify you on completion; rely on their automatic notification. ## Usage Manage a process in the current Session Environment using the processId returned by Bash. Examples (use the processId returned by Bash): ``` // One status check when it can change a decision: process(action: "poll", processId: "proc_xxx") // Completion gates progress and no independent work remains: process(action: "poll", processId: "proc_xxx", block: true, timeoutSeconds: 300) // Diagnose output; offset/limit can select the relevant part: process(action: "log", processId: "proc_xxx") // Supply known, authorized task input: process(action: "write", processId: "proc_xxx", data: "<known input>\n") // Interrupt or terminate when appropriate: process(action: "send-keys", processId: "proc_xxx", keys: ["C-c"]) process(action: "kill", processId: "proc_xxx") ``` ## Key Tokens for send-keys - Single characters: `"a"`, `"1"`, `"/"` - Special keys: `"Enter"`, `"Tab"`, `"Escape"`, `"Space"`, `"Backspace"` - Arrow keys: `"Up"`, `"Down"`, `"Left"`, `"Right"` - Ctrl combinations: `"C-c"` (Ctrl+C), `"C-d"` (Ctrl+D), `"C-z"` (Ctrl+Z) - Alt combinations: `"M-x"` (Alt+X) - Function keys: `"F1"` through `"F12"`
+Manage background Bash processes in the current Session Environment using the returned processId. - list: running and recently finished processes. - poll: status and recent output; nonblocking by default. block: true waits for exit or timeoutSeconds (seconds, default 30). This is a wait window, not an execution deadline. - log: available full output, with offset/limit pagination; returns immediately. - write: raw stdin data. send-keys: key sequences. - kill: terminate. clear: remove a finished process. remove: kill if running, then remove. Continue independent work while a process runs. Check only when the result can change a decision. If completion gates progress and no independent work remains, use a suitable blocking poll (for example timeoutSeconds: 300). For persistent services, check readiness instead of waiting for exit. Running means alive, not progressing. If input is requested or a wait gives no progress evidence and interaction/stalled dependencies are plausible, inspect relevant output or process state once; redirected output may be in a log file. Confirmed quiet work can keep waiting. Supply input only when known and authorized; otherwise surface the missing decision. Do not kill/rerun because a wait ends, guess confirmations, or replace repeated polls with shell status loops. Ending a turn does not schedule a later check; use delayed follow-up only if the runtime provides it. Subagent completion already sends an automatic notification. send-keys tokens: literal characters; Enter, Tab, Escape, Space, Backspace; Up, Down, Left, Right; Ctrl as C-c/C-d/C-z; Alt as M-x; F1–F12.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1171,7 +1038,7 @@ Use this tool when you need to ask the user questions during execution. This all
 
 Kind: `code.read`
 
-Reads text and document content from the local filesystem. You can access any text or supported document file directly by using this tool. Assume this tool is able to read files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned. Usage: - The filePath parameter must be an absolute path, not a relative path - By default, it reads up to 2000 lines starting from the beginning of the file - Use offset/limit for a known target. Read enough surrounding code to understand dependencies; omit them when an overview or the whole small file is needed. - Explicit limits are honored; there is no minimum reading window. Output shares a 50 KiB UTF-8 budget. - Complete lines are retained within the byte budget. A line larger than the budget requires a bounded shell inspection. - Results are returned using cat -n format, with line numbers starting at 1 - Batch independent reads when the files are known to be relevant. Avoid speculative whole-file reads. - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents. - Use this tool for text files and formats supported by the registered document extractors. For image visual inspection, discover an available image tool in the current catalog.
+Reads text and supported document content through the selected Workspace, subject to its availability and file permissions. Missing or inaccessible files return an error. Usage: - Relative filePath values resolve within the selected Workspace. Absolute paths remain subject to the selected view and permissions; do not invent local machine paths for remote Workspace files. - By default, it reads up to 2000 lines starting from the beginning of the file - Use offset/limit for a known target. Read enough surrounding code to understand dependencies; omit them when an overview or the whole small file is needed. - Explicit limits are honored; there is no minimum reading window. Output shares a 50 KiB UTF-8 budget. - Complete lines are retained within the byte budget. A line larger than the budget requires a bounded shell inspection. - Results are returned using cat -n format, with line numbers starting at 1 - Batch independent reads when the files are known to be relevant. Avoid speculative whole-file reads. - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents. - Use this tool for text files and formats supported by the registered document extractors. For image visual inspection, discover an available image tool in the current catalog.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1183,7 +1050,7 @@ Reads text and document content from the local filesystem. You can access any te
 
 Kind: `communication.visual`
 
-Create an interactive visual directly in the conversation: charts, diagrams, simulations, calendars, comparisons and design variants. Prefer the native ui catalog below for estimates, comparisons and parameter-driven explanations. Use one complete HTML fragment for custom visuals; inline CSS, SVG and JavaScript are supported. Maximum HTML size: 1 MiB in UTF-8. Use artifactTitle for its name and layout "wide" for a larger canvas. Use replaces with a previous visual ID to produce an immutable revision; do not edit a saved source. The page runs in an opaque sandbox. It has no file, session, auth, tool, plugin or Electron access. HTTPS scripts, styles, fonts and images are allowed without a domain allowlist; fetch, XHR, WebSocket, forms, child frames and popups are blocked. Resource URLs can still make outbound requests: do not embed secrets. Obtain business data with normal tools and embed the resulting data. The libraries parameter loads bundled d3 (window.d3), chart (window.Chart) or mermaid (window.mermaid) before authored scripts. Prefer these to external libraries. Use window.synergy.render after await window.synergy.render.ready. API: - getState() returns { modelContent, uiContent }; setState({ modelContent, uiContent }) returns a Promise after durable save. Both fields together are limited to 16 KiB; use modelContent for concise semantic data the next model turn should see. uiContent is omitted from model context, not secret storage. Saving state never starts a model turn. Handle rejected saves and conflicts visibly. - getHostContext() and addEventListener("hostcontextchange", callback) provide theme, colorScheme, locale, width, reducedMotion, viewMode and active. Read fresh state on "statechange". Pause animation when active is false. Use ResizeObserver and redraw SVG at actual width; don't squeeze fixed-width text into narrow viewports. - requestFollowUp(text) opens a host-owned editable preview. Only the user's confirmation sends a normal session input. The existing composer draft is preserved. Never imply a request was sent before confirmation. - controls([{id,label,type,value,min,max,step,options,group,variant}], onChange) registers number, color, boolean or select controls (12 per group, 12 select options). Values preview locally. Users can reset or submit the change summary. Use variants([{id,label,element}]) for a named carousel; selecting a variant does not call the model. Keep state serializable. - annotate(element,{id,label}) registers a DOM/SVG region; annotate(canvas,{id,label,hitTest:(x,y)=>({id,label})}) supports Canvas objects. Host feedback includes source version, variant and selection. A screenshot may be unavailable; structural feedback remains usable. - calendar(element,{events:[{id,title,start,end?}],onSelect}) renders a keyboard-accessible month view. Dates use YYYY-MM-DD. icon(name) returns a safe inline SVG for common controls. Use canonical CSS variables --render-text-base/strong/weak, --render-background-base, --render-surface-base/raised-base/inset-base, --render-border-base/weak-base, --render-text-interactive-base and --render-chart-series-1 through -9. No invented tokens or component-specific light/dark colors. Let host fonts and theme update live. Use responsive grid/flex, semantic headings/labels, focus-visible, SVG text >=12px and adequate contrast. Motion uses --render-motion-duration-fast/base/slow (120/180/240ms); respect reduced motion and preserve current values during interruption. Avoid autoplay and gratuitous entry animation on restored history. Use data-render-fullbleed on the single root to remove padding. Long content expands in the shared viewer. Export retains local interactions and state but removes host follow-up actions. The host displays the visual card automatically. The returned source Asset is JSON, not an image: if needed, reference it with an ordinary Markdown link, never image syntax. This tool confirms durable source creation, not successful rendering; do not claim frontend verification without observed evidence. Prefer ui instead of html for estimates, comparisons and parameter-driven explanations. Native UI appears progressively during generation, uses host components and never evaluates authored scripts. Provide exactly one of ui or html. Do not pass libraries with ui. ui has: - state: up to 32 named string, finite number or boolean defaults (12 KiB total). Keys begin with a letter, contain letters, digits, underscores or hyphens and are at most 64 characters. Keep each state's key stable while generating. - computed: up to 64 ordered {id,op,inputs:[a,b]} definitions. op is add, subtract, multiply, divide, min or max. Inputs are literals or {ref:"state-or-earlier-computed-key"}. Computations require numeric inputs and finite results. No JavaScript, eval, functions or network operations. - nodes: up to 128 keyed components, with optional parent referencing an earlier row or card. Supported types: heading {text,level?:"2"|"3"}, text {text}, row {columns?:1..4}, card {title?}, metric {label,value,prefix?,suffix?}, slider {label,state,min,max,step?}, select {label,state,options}, checkbox {label,state}, bar {label,items:[{label,value}]}, button {label,text}. All nodes need id and type. metric/bar values accept literals or {ref:"key"}; bar values must resolve to numbers. Controls reference state with matching types; select defaults must be in options. Use stable node IDs to preserve controls and focus. Unknown properties are rejected. The entire ui is limited to 128 KiB. Example ui: {"state":{"seats":8},"computed":[{"id":"price","op":"multiply","inputs":[{"ref":"seats"},29]}],"nodes":[{"id":"seats-control","type":"slider","label":"Seats","state":"seats","min":1,"max":50},{"id":"price-output","type":"metric","label":"Monthly price","value":{"ref":"price"},"prefix":"$"}]} Native controls update locally without inference. Preview edits save after the producing call completes; cancelled calls do not acquire durable state. Saved modelContent.parameters contains the current values for subsequent turns. Buttons request the existing editable confirmation; they include current parameters only when the complete summary fits the host text limit and cannot send directly. Native exports retain controls and disable host follow-ups. Use html for unsupported custom graphics, simulations or richer layouts; its scripts still execute only after completion.
+Purpose and mode selection Create an interactive visual in the conversation: charts, diagrams, simulations, calendars, comparisons or design variants. Provide exactly one of ui or html; libraries is HTML-only. Prefer ui for estimates, comparisons and parameter-driven explanations; use a complete HTML fragment for unsupported graphics, simulations or richer layouts. Use layout "wide" for a larger canvas. Lifecycle and output Sources are immutable: replaces creates a new version of an earlier visual in this session. The host displays the card and expands long content. The returned source Asset is JSON, not an image: link it only if needed with ordinary Markdown, never image syntax. Success confirms durable source creation, not frontend rendering; claim verification only with observed evidence. Parameter/variant changes and state saves never start inference. Native preview edits stay local until the producing call completes; cancelled calls cannot save or request follow-ups. HTML scripts execute only after completion. Follow-ups open a host-owned editable preview; only user confirmation sends a normal session input. The existing composer draft stays independent. Never imply sending before confirmation. Export retains local interactions and state but disables host follow-ups. Native UI Host components appear progressively without authored scripts, CSS or network operations. Keep state keys and node IDs stable to preserve controls and focus. Node IDs must be unique; computed IDs cannot shadow state or earlier computations. Resolve {ref:"key"} from state or computed values; computations may reference only state or earlier computations. parent must name an earlier row or card. Computed inputs and bar values must be numeric, arithmetic results finite. Sliders bind to numbers in [min,max] with min < max; checkboxes to booleans; selects to strings in their options. State defaults: at most 32 values and 12 KiB; entire ui: 128 KiB (UTF-8 JSON). Saved modelContent.parameters holds current native values for later turns. Buttons open the shared confirmation and include parameters only when the complete summary fits the host text limit. Example ui: {"state":{"seats":8},"computed":[{"id":"price","op":"multiply","inputs":[{"ref":"seats"},29]}],"nodes":[{"id":"seats-control","type":"slider","label":"Seats","state":"seats","min":1,"max":50},{"id":"price-output","type":"metric","label":"Monthly price","value":{"ref":"price"},"prefix":"$"}]} HTML Maximum HTML: 1 MiB UTF-8. The opaque sandbox has no host file, session, auth, tool, plugin or Electron access. HTTPS scripts, styles, fonts and images are allowed without a domain allowlist; fetch, XHR, WebSocket, forms, child frames and popups are blocked. Resource URLs still make outbound requests: never embed secrets or leak data through them. Obtain business data with normal tools and embed results. Prefer bundled libraries: d3 (window.d3), chart (window.Chart), mermaid (window.mermaid). They load before authored scripts; do not repeat entries. After await window.synergy.render.ready, use window.synergy.render: - getState() returns { modelContent, uiContent }; setState({ modelContent, uiContent }) returns a Promise after durable save. Keep state JSON-serializable, within 16 KiB combined. modelContent carries concise semantics for the next model turn; uiContent is omitted from model context, not secret storage. Show rejected saves and conflicts visibly. - getHostContext() returns theme, colorScheme, locale, width, reducedMotion, viewMode and active. Listen with addEventListener("hostcontextchange", callback) and reread getHostContext(); on "statechange", reread getState(). Pause animation when active is false. - requestFollowUp(text) opens the shared confirmation, not a direct send. - controls([{id,label,type,value,min,max,step,options,group,variant}], onChange) registers number, color, boolean or select controls. onChange receives an ID-to-value record (string|number|boolean) for shared and active-variant controls. Number values must be finite and in range; colors use #RRGGBB; select values belong to unique options. Limits: 12 controls/group, 96 total, 12 select options. Preview/reset locally; submit opens confirmation. - variants([{id,label,element}]) registers a named carousel (up to 12); controls with variant apply to that ID. - annotate(element,{id,label}) registers a DOM/SVG region; annotate(canvas,{id,label,hitTest:(x,y)=>({id,label})}) supports Canvas objects. hitTest uses element-local coordinates and may return undefined. Feedback includes source version, variant and selection even when a screenshot is unavailable. Limit: 200 regions. - calendar(element,{events:[{id,title,start,end?}],onSelect}) renders a keyboard-accessible month view. Dates use YYYY-MM-DD; onSelect(id) receives the event ID. Limit: 500 events. icon(name) returns safe inline SVG for common controls. Use canonical CSS variables --render-text-base/strong/weak, --render-background-base, --render-surface-base/raised-base/inset-base, --render-border-base/weak-base, --render-text-interactive-base and --render-chart-series-1 through -9. No invented tokens or component-specific light/dark palettes. Let host fonts/theme update live. Use responsive grid/flex and ResizeObserver; redraw SVG at actual width, never squeeze fixed-width text. Use semantic headings/labels, focus-visible, SVG text >=12px and adequate contrast. data-render-fullbleed on the single root removes padding. Motion uses --render-motion-duration-fast/base/slow (120/180/240ms); respect reducedMotion and preserve current values during interruption. Avoid autoplay and gratuitous entry animation on restored history.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1267,7 +1134,7 @@ Read and paginate through document files by converting them to Markdown. Use thi
 
 Kind: `search.codebase`
 
-Search file contents and return anchored file blocks. Use this instead of `grep` in the anchored coding harness. Matched files are returned with real `[path#TAG]` headers and only the matching `LINE:TEXT` rows by default, so results stay small. Use `view_file` with targeted ranges when you need surrounding context before editing. Set `outputMode: "files"` only for small, known result sets where full file blocks are truly needed. Parameters: - `pattern` is a regular expression. - `path` is the directory to search; defaults to the current working directory. - `include` and `globs` filter file paths. - `limitFiles` caps how many matched files are returned; use `skipFiles` to continue when the result says the limit was reached. - `perFileLimit` caps matched lines per file so one hot file cannot dominate the result. - `context` adds surrounding lines (default 0). Overlapping regions are merged and all files share a 50 KiB code budget. - `timeoutSeconds` bounds long searches (min 1, default 10). If a search times out, narrow `path`, `include`/`globs`, or `pattern`. - `outputMode` defaults to `matches`; use `files` only when you intentionally want full file blocks for small results. Critical: - Do not use bash `grep`, `rg`, `ripgrep`, `git grep`, `awk`, `sed`, or similar CLI search when you need results for anchored editing. Use `scan_files` so matched files are returned with tags. - Search results are intentionally bounded. If the output says the result limit was reached, continue with `skipFiles` or narrow the search. - A current tag and completely displayed target region can feed `revise_file` directly. Use `view_file` when surrounding context is missing, content was omitted, or the file changed. Do not edit hidden or shortened regions.
+Search file contents and return anchored file blocks. Use this when search results will supply line evidence for anchored editing. Matched files are returned with real `[path#TAG]` headers and only the matching `LINE:TEXT` rows by default, so results stay small. Use `view_file` with targeted ranges when you need surrounding context before editing. Set `outputMode: "files"` only for small, known result sets where full file blocks are truly needed. Parameters: - `pattern` is a regular expression. - `path` is the directory to search; defaults to the current working directory. - `include` and `globs` filter file paths. - `limitFiles` caps how many matched files are returned; use `skipFiles` to continue when the result says the limit was reached. - `perFileLimit` caps matched lines per file so one hot file cannot dominate the result. - `context` adds surrounding lines (default 0). Overlapping regions are merged and all files share a 50 KiB code budget. - `timeoutSeconds` bounds long searches (min 1, default 10). If a search times out, narrow `path`, `include`/`globs`, or `pattern`. - `outputMode` defaults to `matches`; use `files` only when you intentionally want full file blocks for small results. Critical: - Do not use bash `grep`, `rg`, `ripgrep`, `git grep`, `awk`, `sed`, or similar CLI search when you need results for anchored editing. Use `scan_files` so matched files are returned with tags. - Search results are intentionally bounded. If the output says the result limit was reached, continue with `skipFiles` or narrow the search. - A current tag and completely displayed target region can feed `revise_file` directly. Use `view_file` when surrounding context is missing, content was omitted, or the file changed. Do not edit hidden or shortened regions.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1299,7 +1166,7 @@ List available Synergy scopes (projects + home) so you can choose a valid `scope
 
 Kind: `platform.tooling`
 
-Discover non-resident tool capabilities that are not currently visible to the model. This tool searches deferred groups and search-only tools; it does not enable, expand, activate, execute, or grant permission to any tool. When a result has type="group" or includes a group field, prefer expand_tools({ groups: [group] }) so the whole capability group becomes available on the next model request or subsequent turns. When a result is a search-only individual tool with no group, use expand_tools({ tools: [id] }) to activate it. If you already know the capability domain, call expand_tools directly instead of searching first.
+Discover deferred groups and search-only tools without changing visibility, executing tools or granting permission. Expand a known group directly with expand_tools({groups:[id]}). Otherwise search here, then expand the returned group; use expand_tools({tools:[id]}) only for a search-only tool without a group. Schemas become available on the next request.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1386,7 +1253,7 @@ Search across session message content using regex patterns. Searches messages in
 
 Kind: `orchestration.session`
 
-Send an actionable user message to a session. The target session's agent will process and respond to the message. The `target` parameter identifies which session to send to: - A session ID (e.g. "ses_xxx") to send to a specific session Only `role: "user"` is supported. Omitting `role` defaults to `user`. Calls with `role: "assistant"` are rejected; retry them with `role: "user"`.
+Send an actionable user message to a session. The target session's agent will process and respond to the message. Messages to your own actively running delegated subagent join its current task's next model call without interrupting a tool or model request already in progress. Other messages queue as new tasks, after any current task finishes. Sending does not resume a paused session or override cancellation. The result reports the admitted mode and queue/message IDs. Queue admission is not confirmation that the target has read or acted on the message. The `target` parameter identifies which session to send to: - A session ID (e.g. "ses_xxx") to send to a specific session Only `role: "user"` is supported. Omitting `role` defaults to `user`. Calls with `role: "assistant"` are rejected; retry them with `role: "user"`.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1420,7 +1287,7 @@ Synthesize the given text into spoken audio and deliver it as a playable attachm
 
 Kind: `orchestration.task`
 
-Delegate one coherent deliverable to a specialist agent. Available agent types: {agents} ## Scope and parallelism Use delegation for independent, ready tasks or work that benefits from a specialist. Handle a single quick action directly; do not delegate a task requiring immediate user back-and-forth. Launch independent tasks concurrently when their inputs are ready and write/resource ownership is compatible; continue useful independent parent work. Scope each assignment around one coherent, independently verifiable deliverable. Include the steps needed to produce and verify it: do not bundle separately decidable goals, and do not split tightly coupled work by file, step count, or duration just to create parallelism. Start dependent tasks after the inputs they need exist; do not serialize unrelated ready work while waiting for eventual integration. Resolve material design decisions before dispatching dependent implementation, or delegate a clearly bounded investigation first. State clearly whether the agent should implement or investigate. Do not disguise an open-ended planning problem as an implementation task. The parent composes the handoff (goal, settled decisions, evidence, scope, deliverable, verification and escalation conditions) and owns decomposition, integration, and acceptance. Do not ask the user to write a task contract. Subagent results are not directly visible to the user; integrate and summarize them. ## Execution and results - `background: true` returns a `taskId` immediately. Use it when independent parent or sibling work can proceed. - `background: false` or omitted waits up to 300 seconds. It returns the full result if finished, otherwise auto-backgrounds and returns a `taskId`. - Completion sends a lightweight notification that wakes you automatically; it does NOT contain the final result. Retrieve it once with `task_output(taskId="...", mode="full")`. - Reading full/default output acknowledges the completion and clears its notification. Diagnostic modes do not acknowledge completion. - `task_output` diagnostic modes are `summary` (status, health, elapsed time), `progress` (tool activity, health, duration), and `tail` (recent conversation). Use them for one-shot diagnosis when evidence, a stale health signal or a cancellation decision warrants it. Do not poll or loop to refresh progress. Use `task_list()` for an overview when needed. - `task_output(..., block: true)` is only valid with `mode="full"` or the default mode; it waits up to 300 seconds. Diagnostic modes with blocking are rejected. - Do NOT schedule additional wake-ups for subagent completion; automatic notifications already handle it. Provide `session_id` to continue an idle session owned by this parent. Its prior context is retained, so focus on new information. A busy or differently owned session is rejected. Use `output` to request `{ mode: "summary" }`, `{ mode: "final_response" }`, or `{ mode: "structured", schema, maxRepairTurns }`. Structured schemas accept objects, arrays, primitives, `anyOf` and `oneOf`; results appear as rendered JSON and structured metadata. When executing a DAG node, pass `dag_node_id`; the node automatically completes or fails with the task, so no manual status update is needed. ## Dependency examples Reviewing an existing trust boundary is independent of unrelated implementation when ownership and inputs allow it. Review of new implementation waits until the implementation produces a reviewable artifact. ``` task(background: true, subagent_type: "code-cartographer", taskTitle: "Map relevant data flow", taskInstructions: "<bounded investigation and expected evidence>") ``` Continue a separate ready branch while that investigation runs. Dispatch work that depends on its findings only after retrieving and assessing the result.
+Delegate one coherent, independently verifiable deliverable to a specialist agent. Available agent types: {agents} Use for independent ready work or specialist tasks; handle quick actions directly. Do not delegate work needing immediate user back-and-forth. Resolve design decisions before dependent implementation, or assign a bounded investigation explicitly. Include goal, settled decisions, evidence, scope, deliverable, verification and escalation conditions; the parent owns decomposition, integration and acceptance, not the user. Subagent results are not directly visible to the user. Launch independent tasks concurrently only when inputs and write/resource ownership allow it; continue independent parent work. Wait for prerequisites before dependent work. Do not bundle separately decidable goals or split tightly coupled work merely by file, duration or step count. - background: true returns taskId immediately. Otherwise wait up to 300 seconds, returning the full result if finished or auto-backgrounding with taskId. - Completion automatically wakes you with a notification, not the final result. Retrieve it once with task_output(taskId, mode="full"). Full/default output acknowledges and clears the notification; diagnostic modes do not. - task_output diagnostic modes: summary (status/health/elapsed time), progress (tool activity/health/duration), tail (recent conversation). Use for evidence-based diagnosis, stale health or cancellation decisions; do not poll/loop for progress. task_list gives an overview. - task_output(block: true) is valid only with full/default mode and waits up to 300 seconds. Do not schedule extra completion wake-ups. - session_id continues an idle session owned by this parent with retained context. Busy or differently owned sessions are rejected; provide only new information when continuing. - output accepts summary, final_response, or structured with schema and maxRepairTurns. Structured schemas support objects, arrays, primitives, anyOf and oneOf; results include rendered JSON and structured metadata. - For a DAG node pass dag_node_id; completion/failure updates the node automatically.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |

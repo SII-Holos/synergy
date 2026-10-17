@@ -85,7 +85,7 @@ test("Note grants opted-in domain agents without overriding user rules or matchi
         expect(AgentPromptContributions.render(boss, available(boss))).toEqual([])
         const allowed = await Agent.get("fixture-boss-allowed")
         expect(allowed.name).toBe("Renamed coordinator")
-        expect(AgentPromptContributions.render(allowed, available(allowed)).join("\n")).toContain("Note tools")
+        expect(AgentPromptContributions.render(allowed, available(allowed)).join("\n")).toContain("durable documents")
         expect(AgentPromptContributions.render(allowed, new Set(ids.filter((id) => id !== "note_edit")))).toEqual([])
         expect(AgentPromptContributions.render(custom, new Set(ids))).toEqual([])
       },

@@ -1,14 +1,6 @@
 import { setBlueprintAgendaAssertClear } from "@ericsanchezok/synergy-blueprint/blueprint/tools/blueprint-loop-stop"
 import { AgendaSessionWakeup } from "@ericsanchezok/synergy-agenda/agenda/session-wakeup"
-import { AgentPromptContributions } from "@ericsanchezok/synergy-harness/agent/prompt-contributions"
 export function registerBridge() {
-  AgentPromptContributions.register("agenda-blueprint", [
-    {
-      requiredTools: ["blueprint_loop_stop", "agenda_cancel"],
-      render: () =>
-        "Before requesting BlueprintLoop review with blueprint_loop_stop, cancel every active Agenda item that can still wake this session using agenda_cancel. The review request is rejected while any such item remains.",
-    },
-  ])
   setBlueprintAgendaAssertClear(AgendaSessionWakeup.assertClear)
   AgendaSessionWakeup.registerInstruction("agenda-blueprint", async (input) => {
     const loopID = input.session.blueprint?.loopID
@@ -27,9 +19,7 @@ export function registerBridge() {
             "This Agenda watch owns the wake-up cadence while it remains active, so ordinary BlueprintLoop continuation is paused.",
             "",
             "If the Blueprint is incomplete, continue the required work and keep or adjust monitoring only when another wake-up is needed.",
-            "If the complete Blueprint is finished and verified:",
-            "1. Cancel every remaining Agenda watch listed below.",
-            "2. Call blueprint_loop_stop with the completion summary and concrete evidence.",
+            "Once the complete Blueprint is finished and verified, cancel the remaining wakeups and formally request audit through blueprint_loop_stop.",
             "Do not request audit while an Agenda watch still holds continuation.",
             "",
             ...cleanup,

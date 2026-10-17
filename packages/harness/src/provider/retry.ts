@@ -3,11 +3,18 @@ import { classifyNetworkError, isRetryableHttpStatus } from "@ericsanchezok/syne
 import { findRecordingError } from "../session/rollout/error"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 
+// Provenance: https://github.com/openai/codex/blob/2f05c0a71f59fb2f05800846351f3e9926c3e52b/codex-rs/codex-api/src/sse/responses_error.rs
+// Provenance: https://github.com/openai/codex/blob/2f05c0a71f59fb2f05800846351f3e9926c3e52b/codex-rs/protocol/src/error.rs
+// Local adaptation: share explicit Codex categories and exact capacity wording; unknown errors stay terminal and caller retry budgets remain unchanged.
 const TRANSIENT_CODES = new Set([
   "too_many_requests",
   "rate_limit_exceeded",
   "rate_limit_error",
   "overloaded_error",
+  "server_is_overloaded",
+  "server_overloaded",
+  "service_unavailable_error",
+  "slow_down",
   "server_error",
   "api_error",
   "service_unavailable",
@@ -17,6 +24,11 @@ const TRANSIENT_CODES = new Set([
 ])
 const TERMINAL_CODES = new Set([
   "insufficient_quota",
+  "usage_limit_reached",
+  "usage_not_included",
+  "credit_balance_exhausted",
+  "organization_spend_limit_exceeded",
+  "project_spend_limit_exceeded",
   "billing_hard_limit_reached",
   "personal-team-blocked:spending-limit",
   "invalid_api_key",
@@ -24,6 +36,17 @@ const TERMINAL_CODES = new Set([
   "permission_error",
   "invalid_request_error",
   "not_found_error",
+  "context_length_exceeded",
+  "invalid_prompt",
+  "cyber_policy",
+  "bio_policy",
+  "misalignment_policy_violation",
+])
+
+// Message-only fallback is exact; a provider's structured terminal refusal takes precedence.
+const TRANSIENT_MESSAGES = new Set([
+  "our servers are currently overloaded. please try again later.",
+  "selected model is at capacity. please try a different model.",
 ])
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -49,7 +72,11 @@ export function providerRetryable(error: unknown): boolean | undefined {
       body = record(JSON.parse(source.responseBody))
     } catch {}
   }
-  const entries = [source, payload, record(payload?.error), body, record(body?.error)]
+  const entries = [source, payload, body].flatMap((entry) => [
+    entry,
+    record(entry?.error),
+    record(record(entry?.response)?.error),
+  ])
   const codes = entries
     .flatMap((entry) => [entry?.code, entry?.type])
     .filter((value): value is string => typeof value === "string")
@@ -67,6 +94,19 @@ export function providerRetryable(error: unknown): boolean | undefined {
     return status === 409 && source?.isRetryable === true
   }
   if (codes.some((code) => TRANSIENT_CODES.has(code))) return true
+  if (
+    [message, ...entries.map((entry) => entry?.message)].some(
+      (value) =>
+        typeof value === "string" &&
+        TRANSIENT_MESSAGES.has(
+          value
+            .trim()
+            .replace(/^Error:\s*/, "")
+            .toLowerCase(),
+        ),
+    )
+  )
+    return true
   if (entries.some((entry) => typeof entry?.message === "string" && /\bno_kv_space\b/i.test(entry.message))) return true
   if (network?.kind === "transient" || network?.kind === "indeterminate") return true
   return typeof source?.isRetryable === "boolean" ? source.isRetryable : undefined

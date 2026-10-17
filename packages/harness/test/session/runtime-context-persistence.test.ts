@@ -10,6 +10,79 @@ import { SessionExport } from "../../src/session/session-export"
 import { SessionImport } from "../../src/session/session-import"
 import { testRuntime } from "../support/runtime"
 import { tmpdir } from "../support/fixture"
+import { migrateRuntimeContext } from "../../src/session/runtime-context-migration"
+import { upgradeAccessRecord, upgradeImportedRecord } from "../../src/migration/import"
+import { StoragePath } from "../../src/storage/path"
+
+test("legacy advisory upgrades preserve text and extensions through storage, access and import", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const session = await Session.create({ workspace: null })
+        const other = await Session.create({ workspace: null })
+        const id = Identifier.ascending("message")
+        const key = StoragePath.messageInfo(
+          Identifier.asScopeID(session.scope.id),
+          Identifier.asSessionID(session.id),
+          id,
+        )
+        const foreign = StoragePath.messageInfo(
+          Identifier.asScopeID(other.scope.id),
+          Identifier.asSessionID(other.id),
+          id,
+        )
+        const text = "Original advisory text must remain byte-for-byte unchanged."
+        const part = StoragePath.messagePart(
+          Identifier.asScopeID(session.scope.id),
+          Identifier.asSessionID(session.id),
+          id,
+          Identifier.ascending("part"),
+        )
+        const value = {
+          id,
+          sessionID: session.id,
+          role: "user",
+          origin: RuntimeAdvisory.origin,
+          metadata: {
+            retained: true,
+            runtimeContext: {
+              version: 1,
+              scope: "home",
+              role: "user",
+              contentHash: RuntimeAdvisory.knowledgeRevision(text),
+              extension: "preserved",
+              sources: [{ id: "git-health", state: "present", revision: "original", annotation: "retained" }],
+            },
+          },
+        }
+        await Storage.write(key, value)
+        await Storage.write(foreign, { ...value, sessionID: other.id })
+        await Storage.write(part, { type: "text", text })
+        const expected = {
+          ...value,
+          metadata: {
+            ...value.metadata,
+            runtimeContext: {
+              ...value.metadata.runtimeContext,
+              version: 2,
+              sources: [{ ...value.metadata.runtimeContext.sources[0], kind: "state" }],
+            },
+          },
+        }
+        expect(upgradeAccessRecord(key, value)).toMatchObject(expected)
+        expect(upgradeImportedRecord(key, value)).toMatchObject(expected)
+        expect(value.metadata.runtimeContext.version).toBe(1)
+        await migrateRuntimeContext({ scopeID: session.scope.id, sessionID: session.id }, () => {})
+        await migrateRuntimeContext({ scopeID: session.scope.id, sessionID: session.id }, () => {})
+        expect(await Storage.read<typeof expected>(key)).toEqual(expected)
+        expect((await Storage.read<typeof value>(foreign)).metadata.runtimeContext.version).toBe(1)
+        expect(await Storage.read<{ type: string; text: string }>(part)).toEqual({ type: "text", text })
+      },
+    }),
+  )
+})
 
 test("advisory messages survive reopen and fork before their associated output without becoming task roots", async () => {
   await using home = await tmpdir()

@@ -14,7 +14,8 @@ export interface Migration {
   version?: string
   domain?: string
   scope?: "global" | "scope" | "session" | "derived"
-  onAccess?: true
+  /** Metadata-only access. A pure predicate may prove this Session has no input to upgrade; no receipt is written. */
+  onAccess?: true | ((session: Readonly<Record<string, unknown>>) => boolean)
   /** All inputs are records below these prefixes; when all are empty, up has no effects. */
   emptyInput?: string[][]
   /** Read-only proof of the current state; startup proofs run inside the completion transaction. */

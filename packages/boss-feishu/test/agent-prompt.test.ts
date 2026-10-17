@@ -125,7 +125,8 @@ for (const selected of [false, true])
               expect(prompt.includes("chat_target")).toBe(enabled)
               expect(prompt.includes("message_target")).toBe(enabled)
               expect(prompt.includes("Feishu source headers")).toBe(enabled)
-              expect(prompt.includes("lark-cli")).toBe(enabled)
+              expect(prompt.includes("Feishu history requires authorized read access")).toBe(enabled)
+              expect(prompt).not.toMatch(/lark-cli|auth status|im \+|channel_push\(/)
             },
           }),
         )

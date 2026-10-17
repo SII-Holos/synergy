@@ -13,6 +13,8 @@ export namespace ObservabilityMetrics {
     "llm.stream.output_chars",
     "process.output.chars",
     "storage.operation.count",
+    "execution.tree.build",
+    "execution.owner.build",
   ])
   const runtimeState = RuntimeContext.state(() => ({
     stopped: false,
@@ -35,6 +37,8 @@ export namespace ObservabilityMetrics {
   interface AggregatedMetric {
     input: Omit<ResolvedMetricInput, "value">
     value: number
+    peak?: number
+    started: number
   }
 
   export function register() {
@@ -70,6 +74,18 @@ export namespace ObservabilityMetrics {
     }
     const config = ObservabilityConfig.current()
     if (!config.enabled) return
+    if (input.name === "storage.queue.depth") {
+      aggregate({
+        name: input.name,
+        value: input.value,
+        unit: "count",
+        module: "storage",
+        source: input.source ?? "backend",
+        labels: { queue: input.labels?.queue },
+        sampleRate: 1,
+      })
+      return
+    }
     const sampleRate = input.sampleRate ?? config.samplingRate
     if (sampleRate < 1 && Math.random() > sampleRate) return
     const context = ObservabilityContext.current()
@@ -135,32 +151,53 @@ export namespace ObservabilityMetrics {
 
     const key = aggregateKey(input)
     const existing = instanceState.aggregates.get(key)
+    const gauge = input.name === "storage.queue.depth"
     if (existing) {
-      existing.value += input.value
+      if (gauge) {
+        existing.value = input.value
+        existing.peak = Math.max(existing.peak ?? input.value, input.value)
+      } else existing.value += input.value
     } else {
       const { value: _value, ...rest } = input
-      instanceState.aggregates.set(key, { input: rest, value: input.value })
+      instanceState.aggregates.set(key, {
+        input: rest,
+        value: input.value,
+        ...(gauge && { peak: input.value }),
+        started: performance.now(),
+      })
     }
     if (!instanceState.aggregateTimer) {
-      instanceState.aggregateTimer = setTimeout(flushAggregates, AGGREGATE_FLUSH_MS)
+      instanceState.aggregateTimer = setTimeout(() => flushAggregates(), AGGREGATE_FLUSH_MS)
       instanceState.aggregateTimer.unref()
     }
   }
 
   export function stop() {
     runtimeState().stopped = true
-    flushAggregates()
+    flushAggregates(true)
   }
 
-  export function flushAggregates() {
+  export function flushAggregates(force = false) {
     const instanceState = runtimeState()
 
     if (instanceState.aggregateTimer) clearTimeout(instanceState.aggregateTimer)
     instanceState.aggregateTimer = undefined
     if (instanceState.aggregates.size === 0) return
-    const items = [...instanceState.aggregates.values()]
-    instanceState.aggregates.clear()
-    for (const item of items) insert({ ...item.input, value: item.value })
+    const now = performance.now()
+    let remaining = AGGREGATE_FLUSH_MS
+    for (const [key, item] of instanceState.aggregates) {
+      if (item.peak !== undefined && !force && now - item.started < AGGREGATE_FLUSH_MS) {
+        remaining = Math.min(remaining, AGGREGATE_FLUSH_MS - (now - item.started))
+        continue
+      }
+      instanceState.aggregates.delete(key)
+      insert({ ...item.input, value: item.value })
+      if (item.peak !== undefined) insert({ ...item.input, name: `${item.input.name}.peak`, value: item.peak })
+    }
+    if (instanceState.aggregates.size) {
+      instanceState.aggregateTimer = setTimeout(() => flushAggregates(), Math.max(1, remaining))
+      instanceState.aggregateTimer.unref()
+    }
   }
 
   // Aggregated counters measure volume, not identity. Per-turn and per-request

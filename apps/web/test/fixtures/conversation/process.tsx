@@ -8,7 +8,7 @@ import type {
   SessionActivity,
 } from "@ericsanchezok/synergy-sdk"
 import type { Data } from "@ericsanchezok/synergy-ui/context/data"
-import { createEffect, createMemo, createSignal, on, Show, type ParentProps } from "solid-js"
+import { batch, createEffect, createMemo, createSignal, on, Show, type ParentProps } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { setupI18n } from "@lingui/core"
@@ -26,7 +26,15 @@ import { createPartArrivalState } from "../../../src/context/part-arrival"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
+import { createConversationHydration } from "../../../src/components/session/conversation-hydration"
+import { RetainedSessionViews } from "../../../src/components/session/retained-session-views"
+import { useViewActivity } from "../../../src/context/view-residency"
+import { ConversationMotionProvider } from "@ericsanchezok/synergy-ui/conversation-motion"
 import { captureConversationReadingAnchor } from "../../../src/components/session/conversation-reading-anchor"
+import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
+
+const [selectedSession, selectSession] = createSignal("session")
+const resident = new URL(location.href).searchParams.has("resident")
 
 const root: UserMessage = {
   id: "root",
@@ -109,6 +117,7 @@ const [reading, setReading] = createSignal(false)
 const [connected, setConnected] = createSignal(true)
 const [mode, setMode] = createSignal<"balanced" | "full" | "minimal">("balanced")
 const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
+const [rowsReady, setRowsReady] = createSignal(false)
 const [scroll, setScroll] = createSignal<HTMLDivElement>()
 const [versions, setVersions] = createStore<Record<string, string>>({})
 const [historyMore, setHistoryMore] = createSignal(true)
@@ -116,6 +125,11 @@ const historyControls = new URL(location.href).searchParams.has("history-control
 const [hasPage, setHasPage] = createSignal(true)
 const [pendingPage, setPendingPage] = createSignal<string>()
 let continuationReady = Promise.withResolvers<void>()
+const [contextPageReady, setContextPageReady] = createSignal(true)
+let contextPage = Promise.withResolvers<void>()
+const [backlogPages, setBacklogPages] = createStore<Record<string, boolean>>({})
+const backlogReads = new Map<string, ReturnType<typeof Promise.withResolvers<void>>>()
+const [executionOverride, setExecutionOverride] = createSignal<"running" | "completed">()
 const [pageStale, setPageStale] = createSignal(false)
 const [mounted, setMounted] = createSignal(true)
 const arrivals = createPartArrivalState()
@@ -150,7 +164,7 @@ if (scenario) {
     part("work", "command-0", "tool"),
   ])
   if (scenario === "pending-refresh") faults.set("progress", "pending")
-  else if (scenario !== "late-reconnect" && scenario !== "tool-follow")
+  else if (scenario !== "late-reconnect" && scenario !== "tool-follow" && scenario !== "background")
     faults.set(
       "progress",
       scenario === "mixed"
@@ -162,6 +176,17 @@ if (scenario) {
             : "conflict",
     )
   if (scenario === "mixed") faults.set("progress-2", "denied")
+}
+if (scenario === "background") {
+  setData("part", "root", [
+    part("root", "request", "text", "Describe the project"),
+    ...Array.from({ length: 28 }, (_, i) => part("root", `history-${i}`, "text", `Historical section ${i}`)),
+  ])
+  setData(
+    "part",
+    "more",
+    Array.from({ length: 12 }, (_, i) => part("more", `many-${i}`, "tool")),
+  )
 }
 if (scenario === "cold-process") {
   setData("part", "more", [
@@ -200,6 +225,7 @@ if (new URL(location.href).searchParams.has("initial-page")) {
   setPendingPage("root")
 }
 const canonicalParts =
+  scenario === "background" ||
   scenario === "late-reconnect" ||
   scenario === "pending-refresh" ||
   scenario === "cold-process" ||
@@ -229,6 +255,7 @@ let finishPage: (() => void) | undefined
 let pageRefresh: Promise<void> | undefined
 let finishPageRefresh: (() => void) | undefined
 let pageLoads = 0
+const messagePageLoads = new Map<string, number>()
 const pageReady =
   scenario === "late-reconnect"
     ? new Promise<void>((resolve) => {
@@ -320,18 +347,12 @@ const materializer = createPartMaterializer({
 })
 let retained = 0
 let locate: ((messageID: string, behavior?: ScrollBehavior, partID?: string) => Promise<boolean>) | undefined
+const turnProjection = createMemo(() => buildSessionTurnProjection(data.message.session))
 const context: Partial<PluginConversationService> = {
   sessionID: "session",
   timeline: () => data.message.session.filter((message) => message.role === "user" && message.isRoot) as UserMessage[],
   lastUserMessage: () => root,
-  turnProjection: () => ({
-    roots: [],
-    byRoot: new Map(),
-    memberIndex: new Map(),
-    turnMessagesFor: (turn = root) =>
-      data.message.session.filter((message) => message.rootID === turn.id && message.id !== turn.id),
-    compactionParentIDs: new Set<string>(),
-  }),
+  turnProjection,
   activityDisplay: mode,
   activityView: { getExpanded: (key) => expanded[key], setExpanded: (key, value) => setExpanded(key, value) },
   isWorking: () => status() === "running",
@@ -358,9 +379,18 @@ const context: Partial<PluginConversationService> = {
         content: { version: versions[p.id] ?? "v1", bytes: 64 },
       }))
     },
-    page: (id) => (hasPage() && pendingPage() !== id ? { hasMore: false, stale: pageStale() } : undefined),
+    page: (id) =>
+      hasPage() &&
+      pendingPage() !== id &&
+      backlogPages[id] !== false &&
+      (id !== "runtime-context" || contextPageReady())
+        ? { hasMore: false, stale: pageStale() }
+        : undefined,
     load: async (id) => {
       pageLoads++
+      messagePageLoads.set(id, (messagePageLoads.get(id) ?? 0) + 1)
+      if (backlogPages[id] === false) await backlogReads.get(id)!.promise
+      if (id === "runtime-context" && !contextPageReady()) await contextPage.promise
       if (pendingPage() === id) {
         await continuationReady.promise
         setPendingPage(undefined)
@@ -387,6 +417,64 @@ const context: Partial<PluginConversationService> = {
 }
 let toolCaseSequence = 0
 window.__conversationProcess = {
+  execution: setExecutionOverride,
+  backlog(count, ended, delayed = false) {
+    batch(() => {
+      const messages = Array.from({ length: count }, (_, index) => {
+        const id = `backlog-${index}`
+        const message = { ...assistant(id), time: { created: 4 + index * 2, completed: 5 + index * 2 } }
+        const bodies = Array.from({ length: 4 }, (_, item) => part(id, `${id}-tool-${item}`, "tool"))
+        if (delayed) for (const body of bodies) faults.set(body.id, "pending")
+        canonicalParts!.set(id, bodies)
+        setBacklogPages(id, false)
+        backlogReads.set(id, Promise.withResolvers<void>())
+        setData("part", id, [])
+        return message
+      })
+      setData("message", "session", (current) => [...current, ...messages])
+      if (ended) window.__conversationProcess.background(true, false)
+    })
+  },
+  backlogPage(index) {
+    const id = `backlog-${index}`
+    setBacklogPages(id, true)
+    backlogReads.get(id)?.resolve()
+  },
+  background(ended, delayed) {
+    const message = { ...assistant("background", "stop"), time: { created: 4, completed: ended ? 10 : undefined } }
+    const body = part(
+      message.id,
+      "background-answer",
+      "text",
+      "Background answer.\n\n" + "More background content. ".repeat(60),
+    )
+    canonicalParts!.set(message.id, [body])
+    if (delayed) faults.set(body.id, "pending")
+    setData("part", message.id, [])
+    setData("message", "session", (messages) => [...messages, message])
+    if (ended) setStatus("completed")
+  },
+  contentStats: () => Object.fromEntries(reads),
+  runtimeContext() {
+    contextPage = Promise.withResolvers<void>()
+    setContextPageReady(false)
+    setData("part", "runtime-context", [])
+    setData("message", "session", (messages) => [
+      ...messages,
+      {
+        ...root,
+        id: "runtime-context",
+        isRoot: false,
+        visible: false,
+        origin: { type: "system", detail: "runtime-context" },
+        time: { created: 4 },
+      } satisfies UserMessage,
+    ])
+  },
+  runtimeContextReady() {
+    setContextPageReady(true)
+    contextPage.resolve()
+  },
   continuation() {
     continuationReady = Promise.withResolvers<void>()
     setData("part", "continuation", [])
@@ -506,11 +594,9 @@ window.__conversationProcess = {
         previous: data.part.more.some((part) => part.id === id),
       })
     }
-    setData(
-      "part",
-      "more",
-      Array.from({ length: count }, (_, i) => part("more", "many-" + i, "tool")),
-    )
+    const parts = Array.from({ length: count }, (_, i) => part("more", "many-" + i, "tool"))
+    canonicalParts?.set("more", parts)
+    setData("part", "more", parts)
   },
   restoreProcess(count: number) {
     setData(
@@ -572,6 +658,7 @@ window.__conversationProcess = {
     )
   },
   latest() {
+    scroll()?.dispatchEvent(new Event("conversation-location-reset"))
     context.autoScroll?.forceScrollToBottom()
   },
   prependTurns(count: number, more = false) {
@@ -660,6 +747,7 @@ window.__conversationProcess = {
     completions.get(id)?.(Response.json({ part: body, version: versions[id] ?? "v1" }))
     completions.delete(id)
   },
+  select: selectSession,
   contentReads: (id) => reads.get(id) ?? 0,
   contentAborts: (id) => aborts.get(id) ?? 0,
   contentReconnect() {
@@ -678,7 +766,12 @@ window.__conversationProcess = {
     })
     setPageStale(true)
   },
-  contentPageLoads: () => pageLoads,
+  contentPageLoads: (id) => (id ? (messagePageLoads.get(id) ?? 0) : pageLoads),
+}
+if (new URL(location.href).searchParams.has("first-response")) {
+  window.__conversationProcess.prepare()
+  window.__conversationProcess.phase({ phase: "preparing_files", startedAt: 1, rootID: "root" })
+  window.__conversationProcess.prependTurns(12)
 }
 const runtime = {
   statusFor: (): SessionStatus =>
@@ -699,11 +792,16 @@ const resource = {
   open: async () => ({ status: "cancelled" as const }),
 }
 function Scroller(props: ParentProps) {
+  const active = useViewActivity()
   const [motionTarget, setMotionTarget] = createSignal<HTMLElement>()
+  const hydrated = createConversationHydration({ active, ready: rowsReady, surface: motionTarget, onHydrated() {} })
   const autoScroll = scrolling
     ? createAutoScroll({
+        enabled: active,
         working: context.isWorking!,
-        motionTarget: new URL(location.href).searchParams.has("motion") ? motionTarget : undefined,
+        motionTarget: new URL(location.href).searchParams.has("motion")
+          ? () => (!resident || hydrated() ? motionTarget() : undefined)
+          : undefined,
         captureReadingAnchor: ({ reading, target }) => {
           const element = scroll()
           if (!element || !reading) return
@@ -747,13 +845,37 @@ function Scroller(props: ParentProps) {
               Load earlier messages
             </button>
           </Show>
-          {props.children}
+          <ConversationMotionProvider ready={hydrated}>{props.children}</ConversationMotionProvider>
         </div>
       </div>
       <button type="button" data-outside-control>
         Outside conversation
       </button>
     </div>
+  )
+}
+function Transcript() {
+  return (
+    <Scroller>
+      <Show when={mounted()}>
+        <VirtualConversationRows
+          onReady={setRowsReady}
+          layoutOwner={["http://localhost", "/project", "session"]}
+          takePartArrival={arrivalView.take}
+          liveRevision={arrivalView.revision}
+          context={context as PluginConversationService}
+          scrollRef={scroll()}
+          submissionFor={() => submission()}
+          executionFor={() => ({
+            rootID: "root",
+            status: executionOverride() ?? status(),
+            startedAt: 1,
+            stoppedAt: [],
+          })}
+          connected={connected}
+        />
+      </Show>
+    </Scroller>
   )
 }
 render(
@@ -765,20 +887,30 @@ render(
             <MarkedProvider>
               <DiffComponentProvider component={() => null}>
                 <DataProvider data={data} runtime={runtime} directory="/project" serverUrl="http://localhost">
-                  <Scroller>
-                    <Show when={mounted()}>
-                      <VirtualConversationRows
-                        layoutOwner={["http://localhost", "/project", "session"]}
-                        takePartArrival={arrivalView.take}
-                        liveRevision={arrivalView.revision}
-                        context={context as PluginConversationService}
-                        scrollRef={scroll()}
-                        submissionFor={() => submission()}
-                        executionFor={() => ({ rootID: "root", status: status(), startedAt: 1, stoppedAt: [] })}
-                        connected={connected}
-                      />
-                    </Show>
-                  </Scroller>
+                  <Show when={resident} fallback={<Transcript />}>
+                    <nav>
+                      <button onClick={() => selectSession("peer")}>Session A</button>
+                      <button onClick={() => selectSession("session")}>Session B</button>
+                    </nav>
+                    <RetainedSessionViews
+                      owner={{
+                        server: "http://localhost",
+                        scopeID: "/project",
+                        sessionID: selectedSession(),
+                        generation: "one",
+                      }}
+                      render={(owner) =>
+                        owner.sessionID === "session" ? (
+                          <Transcript />
+                        ) : (
+                          <div>
+                            <p>Independent session A</p>
+                            <textarea aria-label="Session A draft" />
+                          </div>
+                        )
+                      }
+                    />
+                  </Show>
                 </DataProvider>
               </DiffComponentProvider>
             </MarkedProvider>

@@ -38,6 +38,6 @@ export interface BrowserPageBackend {
   loading: boolean
   lastActiveAt: number | null
   isAlive(): boolean
-  execute(command: BrowserBackendCommand): Promise<BrowserBackendResult>
+  execute(command: BrowserBackendCommand, agentSessionID?: string): Promise<BrowserBackendResult>
   close(): Promise<void>
 }

@@ -73,6 +73,7 @@ class MockContents extends EventEmitter {
 
   sendInputEvent(input: Record<string, unknown>) {
     this.inputEvents.push(input)
+    this.emit("before-mouse-event", {}, input)
   }
 
   insertText(text: string) {
@@ -91,6 +92,133 @@ class MockContents extends EventEmitter {
     this.windowOpenHandler = handler
   }
 }
+
+test("native human input is coalesced and each Agent must observe before dispatching another effect", async () => {
+  const contents = new MockContents({
+    handler: (method) => {
+      if (method === "Page.captureScreenshot") return { data: "aW1hZ2U=" }
+      if (method === "Runtime.evaluate") return { result: { value: { x: 0, y: 0, width: 800, height: 600 } } }
+      return {}
+    },
+  })
+  const control = new BrowserWebContentsControl(targetFor(contents) as never)
+  try {
+    contents.emit("before-mouse-event", {}, { type: "mouseDown" })
+    contents.emit("before-input-event", {}, { type: "keyDown", key: "a" })
+    const effect = { type: "clipboard", action: "write", text: "effect" } as const
+    await expect(control.execute(effect, "one")).rejects.toMatchObject({ code: "browser_page_changed_by_user" })
+    const observed = await control.execute({ type: "screenshot" }, "one")
+    expect(observed.userChanges).toContain("pointer: 1, keyboard: 1")
+    await control.execute(effect, "one")
+    await expect(control.execute(effect, "two")).rejects.toMatchObject({ code: "browser_page_changed_by_user" })
+    await control.execute({ type: "reload", includeSnapshot: false, settleMode: "none" })
+    await expect(control.execute(effect, "one")).rejects.toThrow("navigation: 1")
+  } finally {
+    await control.dispose()
+  }
+})
+
+test("Agent-injected wheel input never becomes a human change", async () => {
+  const contents = new MockContents()
+  const control = new BrowserWebContentsControl(targetFor(contents) as never)
+  try {
+    await control.execute(
+      {
+        type: "action",
+        action: {
+          type: "scroll",
+          target: { kind: "point", x: 12, y: 20 },
+          deltaX: 0,
+          deltaY: 100,
+          settleMode: "none",
+          includeSnapshot: false,
+        },
+      },
+      "agent",
+    )
+    expect(contents.inputEvents.some((event) => event.type === "mouseWheel")).toBe(true)
+    await control.execute({ type: "clipboard", action: "write", text: "allowed" }, "agent")
+    contents.emit("before-mouse-event", {}, { type: "mouseWheel", x: 12, y: 20 })
+    await expect(control.execute({ type: "clipboard", action: "write", text: "blocked" }, "agent")).rejects.toThrow(
+      "scroll: 1",
+    )
+  } finally {
+    await control.dispose()
+  }
+})
+
+for (const order of ["human-first", "agent-first"] as const)
+  test(`identical concurrent wheel input remains a human change with ${order}`, async () => {
+    const contents = new MockContents({
+      handler: (method) => {
+        if (method === "Page.captureScreenshot") return { data: "aW1hZ2U=" }
+        if (method === "Runtime.evaluate") return { result: { value: { x: 0, y: 0, width: 800, height: 600 } } }
+        return {}
+      },
+    })
+    const injected = contents.sendInputEvent.bind(contents)
+    contents.sendInputEvent = (input) => {
+      const human = () => contents.emit("before-mouse-event", {}, { ...input })
+      if (input.type === "mouseWheel" && order === "human-first") human()
+      injected(input)
+      if (input.type === "mouseWheel" && order === "agent-first") human()
+    }
+    const control = new BrowserWebContentsControl(targetFor(contents) as never)
+    try {
+      await control.execute(
+        {
+          type: "action",
+          action: {
+            type: "scroll",
+            target: { kind: "point", x: 12, y: 20 },
+            deltaX: 0,
+            deltaY: 100,
+            settleMode: "none",
+            includeSnapshot: false,
+          },
+        },
+        "agent",
+      )
+      const effect = { type: "clipboard", action: "write", text: "effect" } as const
+      await expect(control.execute(effect, "agent")).rejects.toThrow("scroll: 1")
+      expect((await control.execute({ type: "screenshot" }, "agent")).userChanges).toContain("scroll: 1")
+      await control.execute(effect, "agent")
+    } finally {
+      await control.dispose()
+    }
+  })
+
+test("failed native injection releases its exemption before later human input", async () => {
+  const contents = new MockContents()
+  contents.sendInputEvent = () => {
+    throw new Error("native input failed")
+  }
+  const control = new BrowserWebContentsControl(targetFor(contents) as never)
+  try {
+    await expect(
+      control.execute(
+        {
+          type: "action",
+          action: {
+            type: "scroll",
+            target: { kind: "point", x: 12, y: 20 },
+            deltaX: 0,
+            deltaY: 100,
+            settleMode: "none",
+            includeSnapshot: false,
+          },
+        },
+        "agent",
+      ),
+    ).rejects.toThrow("native input failed")
+    contents.emit("before-mouse-event", {}, { type: "mouseWheel", x: 12, y: 20 })
+    await expect(control.execute({ type: "clipboard", action: "write", text: "effect" }, "agent")).rejects.toThrow(
+      "scroll: 1",
+    )
+  } finally {
+    await control.dispose()
+  }
+})
 
 interface MockDiagnostics {
   stageFiles(

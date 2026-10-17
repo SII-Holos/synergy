@@ -9,6 +9,7 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { browserErrorDiagnostics } from "./error-diagnostics.js"
 import {
   BrowserProtocolError,
+  updateBrowserActivities,
   normalizeBrowserURL,
   redactBrowserText,
   type BrowserSessionPage,
@@ -45,7 +46,7 @@ export class BrowserSessionImpl implements BrowserSession {
   private saveTail: Promise<void> = Promise.resolve()
   private disposed = false
   private openings = new Map<string, { fingerprint: string; result: Promise<BrowserPageBackend> }>()
-  private activity = new Map<string, string>()
+  agentActivities: BrowserAgentActivity[] = []
 
   constructor(
     readonly owner: BrowserOwner.Info,
@@ -78,9 +79,18 @@ export class BrowserSessionImpl implements BrowserSession {
     return this.entries.get(id)?.live
   }
 
-  async openPage(input: { url?: string; profileId?: string; requestId?: string }): Promise<BrowserPageBackend> {
+  async openPage(input: {
+    url?: string
+    profileId?: string
+    requestId?: string
+    createdBySessionID?: string
+  }): Promise<BrowserPageBackend> {
     if (!input.requestId) return this.openRequested(input)
-    const fingerprint = JSON.stringify({ url: input.url ?? "about:blank", profileId: input.profileId })
+    const fingerprint = JSON.stringify({
+      url: input.url ?? "about:blank",
+      profileId: input.profileId,
+      createdBySessionID: input.createdBySessionID,
+    })
     const existing = this.openings.get(input.requestId)
     if (existing) {
       if (existing.fingerprint !== fingerprint)
@@ -107,11 +117,20 @@ export class BrowserSessionImpl implements BrowserSession {
     return result
   }
 
-  private async openRequested(input: { url?: string; profileId?: string }): Promise<BrowserPageBackend> {
+  private async openRequested(input: {
+    url?: string
+    profileId?: string
+    createdBySessionID?: string
+  }): Promise<BrowserPageBackend> {
     const profile = input.profileId
       ? await BrowserProfiles.requireEnabled(input.profileId)
       : await BrowserProfiles.defaultProfile()
-    return this.create({ id: crypto.randomUUID(), url: input.url, profile })
+    return this.create({
+      id: crypto.randomUUID(),
+      url: input.url,
+      profile,
+      createdBySessionID: input.createdBySessionID,
+    })
   }
 
   async adoptPage(input: { id: string; url: string; openerId: string }): Promise<BrowserPageBackend> {
@@ -125,6 +144,7 @@ export class BrowserSessionImpl implements BrowserSession {
     url?: string
     profile: BrowserProfiles.Stored
     openerId?: string
+    createdBySessionID?: string
     adopt?: boolean
   }): Promise<BrowserPageBackend> {
     if (this.disposed) throw new Error("Browser session is closed.")
@@ -143,13 +163,36 @@ export class BrowserSessionImpl implements BrowserSession {
         lastActiveAt: null,
         profileId: input.profile.id,
         status: "suspended",
+        ...(input.createdBySessionID ? { createdBySessionID: input.createdBySessionID } : {}),
         ...(input.openerId ? { openerId: input.openerId } : {}),
       },
     }
     this.entries.set(input.id, entry)
+    const activity: BrowserAgentActivity | undefined = input.createdBySessionID
+      ? {
+          sessionID: input.createdBySessionID,
+          operationID: `open:${input.id}`,
+          pageId: input.id,
+          url,
+          kind: "acting",
+          tool: "browser_navigation",
+          label: "Opening page",
+        }
+      : undefined
+    if (activity) await this.notifyAgentActivity(activity)
     try {
-      return await this.start(entry, input.profile, input.adopt)
+      const page = await this.start(entry, input.profile, input.adopt)
+      if (activity)
+        await this.notifyAgentActivity({
+          ...activity,
+          url: page.url,
+          title: page.title,
+          kind: "idle",
+          completed: true,
+        })
+      return page
     } catch (error) {
+      if (activity) await this.notifyAgentActivity({ ...activity, kind: "idle", completed: false })
       if (entry.live) await entry.live.close()
       this.entries.delete(input.id)
       await this.save()
@@ -212,7 +255,7 @@ export class BrowserSessionImpl implements BrowserSession {
     await entry.flight?.catch(() => undefined)
     await entry.live?.close()
     this.entries.delete(id)
-    this.activity.delete(id)
+    this.agentActivities = this.agentActivities.filter((item) => item.pageId !== id)
     await this.save()
     BrowserEvent.publish(this.owner, { type: "page.closed", pageId: id })
   }
@@ -277,6 +320,7 @@ export class BrowserSessionImpl implements BrowserSession {
     return {
       onClosed: () => {
         if (!this.entries.delete(id)) return
+        this.agentActivities = this.agentActivities.filter((item) => item.pageId !== id)
         void this.save().catch(() => undefined)
         BrowserEvent.publish(this.owner, { type: "page.closed", pageId: id })
       },
@@ -434,9 +478,8 @@ export class BrowserSessionImpl implements BrowserSession {
 
   async notifyAgentActivity(activity: BrowserAgentActivity): Promise<void> {
     if (this.disposed) return
-    if (activity.kind === "idle" && this.activity.get(activity.pageId) !== activity.operationID) return
-    if (activity.kind === "idle") this.activity.delete(activity.pageId)
-    else this.activity.set(activity.pageId, activity.operationID)
+    if (!this.entries.has(activity.pageId)) return
+    this.agentActivities = updateBrowserActivities(this.agentActivities, activity)
     BrowserEvent.publish(this.owner, { type: "agent.activity", ...activity })
   }
 

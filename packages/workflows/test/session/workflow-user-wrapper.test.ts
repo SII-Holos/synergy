@@ -12,9 +12,6 @@ const latticeSession = {
   workflow: { kind: "lattice" as const, runID: "r1", mode: "auto" as const },
 }
 const lightloopSession = { workflow: { kind: "lightloop" as const, instructions: "test" } }
-const terminalLightloopSession = {
-  workflow: { kind: "lightloop" as const, instructions: "done", status: "completed" as const },
-}
 const normalSession = {}
 
 function userMessage(id: string, text: string, metadata?: Record<string, any>): MessageV2.WithParts {
@@ -48,7 +45,6 @@ describe("WorkflowUserWrapper metadata", () => {
       expect(WorkflowUserWrapper.activeMode(planSession)).toBe("plan")
       expect(WorkflowUserWrapper.activeMode(latticeSession)).toBe("lattice")
       expect(WorkflowUserWrapper.activeMode(lightloopSession)).toBe("lightloop")
-      expect(WorkflowUserWrapper.activeMode(terminalLightloopSession)).toBeUndefined()
       expect(WorkflowUserWrapper.activeMode(normalSession)).toBeUndefined()
     }))
 
@@ -157,94 +153,34 @@ describe("WorkflowUserWrapper metadata", () => {
 })
 
 describe("WorkflowUserWrapper projection", () => {
-  test("wraps marked Plan workflow requests", () =>
+  for (const agent of [PrimaryAgentIdentity.names.general, PrimaryAgentIdentity.names.coding, "custom-agent"]) {
+    for (const session of [planSession, lightloopSession]) {
+      test(`${session.workflow.kind} preserves marked user text for ${agent}`, () =>
+        runtime.run(() => {
+          const original = userMessage("message_1", "Build the importer and preserve its public API", {
+            workflow: session.workflow.kind,
+            workflowAgent: agent,
+          })
+          const projected = WorkflowUserWrapper.projectMessages({
+            messages: [original],
+            session,
+            agent: { name: PrimaryAgentIdentity.names.general },
+          })
+          expect(projected).toEqual([original])
+        }))
+    }
+  }
+
+  test("preserves unmarked history", () =>
     runtime.run(() => {
-      const original = userMessage("message_1", "build the new importer", {
-        workflow: "plan",
-        workflowAgent: PrimaryAgentIdentity.names.general,
-      })
-      const projected = WorkflowUserWrapper.projectMessages({
-        messages: [original],
-        session: planSession,
-        agent: { name: PrimaryAgentIdentity.names.general },
-      })
-
-      expect((original.parts[0] as MessageV2.TextPart).text).toBe("build the new importer")
-      const text = (projected[0].parts[0] as MessageV2.TextPart).text
-      expect(text).toContain(`You are ${PrimaryAgentIdentity.names.general} in the Plan workflow`)
-      expect(text).toContain("converge materially different routes")
-      expect(text).toContain("single clarification checkpoint")
-      expect(text).toContain("one question call")
-      expect(text).toContain("User request:\nbuild the new importer")
-    }))
-
-  test("uses coding-specific Plan guidance", () =>
-    runtime.run(() => {
-      const projected = WorkflowUserWrapper.projectMessages({
-        messages: [
-          userMessage("message_1", "refactor the route layer", {
-            workflow: "plan",
-            workflowAgent: PrimaryAgentIdentity.names.coding,
-          }),
-        ],
-        session: planSession,
-        agent: { name: PrimaryAgentIdentity.names.coding },
-      })
-
-      const text = (projected[0].parts[0] as MessageV2.TextPart).text
-      expect(text).toContain(`You are ${PrimaryAgentIdentity.names.coding} in the coding Plan workflow`)
-      expect(text).toContain("Do not carry out the requested change.")
-      expect(text).toContain("one material engineering route")
-      expect(text).toContain("canonical owner")
-      expect(text).toContain("single clarification checkpoint")
-      expect(text).toContain("one question call")
-      expect(text).toContain("User request:\nrefactor the route layer")
-    }))
-
-  test("uses stored agent metadata when projecting history", () =>
-    runtime.run(() => {
-      const projected = WorkflowUserWrapper.projectMessages({
-        messages: [
-          userMessage("message_1", "build it", {
-            workflow: "plan",
-            workflowAgent: PrimaryAgentIdentity.names.coding,
-          }),
-        ],
-        session: planSession,
-        agent: { name: PrimaryAgentIdentity.names.general },
-      })
-
-      const text = (projected[0].parts[0] as MessageV2.TextPart).text
-      expect(text).toContain(`You are ${PrimaryAgentIdentity.names.coding} in the coding Plan workflow`)
-    }))
-
-  test("falls back to generic guidance for custom agents", () =>
-    runtime.run(() => {
-      const projected = WorkflowUserWrapper.projectMessages({
-        messages: [
-          userMessage("message_1", "shape a rollout plan", {
-            workflow: "plan",
-            workflowAgent: "custom-agent",
-          }),
-        ],
-        session: planSession,
-        agent: { name: "custom-agent" },
-      })
-
-      const text = (projected[0].parts[0] as MessageV2.TextPart).text
-      expect(text).toContain("You are in the Plan workflow")
-      expect(text).toContain("User request:\nshape a rollout plan")
-    }))
-
-  test("does not wrap unmarked user messages", () =>
-    runtime.run(() => {
-      const projected = WorkflowUserWrapper.projectMessages({
-        messages: [userMessage("message_1", "ordinary history")],
-        session: planSession,
-        agent: { name: PrimaryAgentIdentity.names.general },
-      })
-
-      expect((projected[0].parts[0] as MessageV2.TextPart).text).toBe("ordinary history")
+      const original = userMessage("message_1", "ordinary history")
+      expect(
+        WorkflowUserWrapper.projectMessages({
+          messages: [original],
+          session: planSession,
+          agent: { name: PrimaryAgentIdentity.names.general },
+        }),
+      ).toEqual([original])
     }))
 })
 

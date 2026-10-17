@@ -1,9 +1,5 @@
 # Synergy Agent Tooling
 
-## Goal
-
-Design, evaluate, or improve the tooling an agent works with: agent-facing tool contracts, MCP servers, and agent-friendly CLIs.
-
 **Start from a concrete deliverable.** The unit of work is a tool, an MCP server, or a CLI the agent will call — not a general discussion of tooling. If the request is about connecting an existing MCP server into Synergy (adding servers, converting config), route to the builtin skill `synergy-config` reference `mcp.txt` instead.
 
 **Inside the Synergy repository**, a first-party product tool follows the repository `add-tool` workflow (registration, taxonomy, Web presentation); apply this skill for the contract design within that workflow.

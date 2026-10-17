@@ -206,8 +206,10 @@ export const browser = {
   presetTablet: { id: "app.browser.viewport.preset.tablet", message: "Tablet" },
   presetMobile: { id: "app.browser.viewport.preset.mobile", message: "Mobile" },
   // ── Agent ──
-  agentActivity: { id: "app.browser.agent.activity", message: "Agent {kind} {host}" },
-  follow: { id: "app.browser.agent.follow", message: "Follow" },
+  agentActivity: {
+    id: "app.browser.agent.activity",
+    message: "{kind, select, acting {Agent operating} reading {Agent viewing} other {Agent last viewed}}",
+  },
   // ── Annotation ──
   annotationPlaceholder: { id: "app.browser.annotation.placeholder", message: "Add a comment about this element..." },
   styleFeedback: { id: "app.browser.annotation.styleFeedback", message: "Style feedback" },
@@ -696,6 +698,8 @@ export const sidebar = {
   noRecentSessions: { id: "app.sidebar.empty.recent", message: "No recent sessions" },
   noSessions: { id: "app.sidebar.empty.sessions", message: "No sessions" },
   loadingProjects: { id: "app.sidebar.loading.projects", message: "Loading projects…" },
+  navigationFailed: { id: "app.sidebar.navigation.failed", message: "Unable to load conversations and projects." },
+  retryNavigation: { id: "app.sidebar.navigation.retry", message: "Retry" },
   loadMore: { id: "app.sidebar.loadMore", message: "Load more" },
   loadSessions: { id: "app.sidebar.loadSessions", message: "Load sessions" },
   // Project actions

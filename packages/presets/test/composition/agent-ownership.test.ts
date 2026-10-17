@@ -73,7 +73,6 @@ async function open(
               ? {
                   agent: {
                     supervisor: { name: "Renamed Blueprint reviewer" },
-                    "lightloop-reviewer": { name: "Renamed Light Loop reviewer" },
                   },
                 }
               : {}),
@@ -127,24 +126,21 @@ for (const selected of [false, true]) {
         ScopeContext.provide({
           scope: Scope.home(),
           async fn() {
-            for (const name of ["supervisor", "lightloop-reviewer"]) {
+            for (const name of ["supervisor"]) {
               const reviewer = await Agent.get(name)
-              for (const tool of [
-                "parse_code",
-                "look_at",
-                "scan_document",
-                "browser_navigation",
-                "browser_action",
-                "browser_upload",
-              ])
+              expect(action(reviewer, "parse_code"), `${name}:semantic read`).toBe(denied ? "deny" : "allow")
+              if (!selected) expect(reviewer.permission.some((rule) => rule.permission === "parse_code")).toBe(denied)
+              for (const tool of ["look_at", "scan_document", "browser_navigation", "browser_action", "browser_upload"])
                 expect(action(reviewer, tool), `${name}:${tool}`).toBe(selected && !denied ? "allow" : "deny")
               const session = await Session.create({ title: "Reviewer evidence" })
               const result = await prepared(reviewer, session)
-              if (!selected || denied) expect(result.prompt).not.toMatch(/\bparse_code\b|\blook_at\b|\bscan_document\b/)
-              else {
-                expect(result.availableToolIDs).toContain("parse_code")
-                expect(result.prompt).toContain("Use parse_code")
+              expect(result.prompt).not.toMatch(/\bparse_code\b|\blook_at\b|\bscan_document\b/)
+              const registered = await ToolRegistry.ids()
+              for (const tool of ["parse_code", "look_at", "scan_document"]) {
+                expect(registered.includes(tool), `${name}:${tool}`).toBe(selected)
+                if (!selected || denied) expect(result.availableToolIDs).not.toContain(tool)
               }
+              expect(result.availableToolIDs.includes("parse_code")).toBe(selected && !denied)
             }
           },
         }),
@@ -166,7 +162,7 @@ for (const selected of [false, true]) {
         ScopeContext.provide({
           scope: Scope.home(),
           async fn() {
-            for (const name of selected ? ["supervisor", "lightloop-reviewer"] : ["lightloop-reviewer"]) {
+            for (const name of selected ? ["supervisor"] : []) {
               const reviewer = await Agent.get(name)
               for (const id of tools) {
                 expect(action(reviewer, id), `${name}:${id}`).toBe(selected && !denied ? "allow" : "deny")
@@ -192,50 +188,43 @@ for (const selected of [false, true]) {
 
 for (const kind of ["blueprint", "light-loop"] as const) {
   for (const selected of [false, true]) {
-    for (const deniedTool of [undefined, "agenda_cancel", kind === "blueprint" ? "blueprint_loop_stop" : "loop_stop"]) {
-      test(`${kind} stop guidance requires the selected Agenda bridge and both permitted tools (${selected}, ${deniedTool ?? "allowed"})`, async () => {
-        const stop = kind === "blueprint" ? "blueprint_loop_stop" : "loop_stop"
-        const components = kind === "blueprint" ? [note(), blueprint()] : [lightLoop()]
-        await using runtime = await open(
-          [
-            agenda(),
-            ...components,
-            ...(selected ? [kind === "blueprint" ? agendaBlueprint() : agendaLightLoop()] : []),
-          ],
-          deniedTool ? { [deniedTool]: "deny" } : {},
-        )
-        await runtime.run(() =>
-          ScopeContext.provide({
-            scope: Scope.home(),
-            async fn() {
-              const created = await Session.create({ title: "Stop guidance" })
-              const loop =
-                kind === "blueprint"
-                  ? await BlueprintLoopStore.create({
-                      noteID: "note_guidance",
-                      title: "Stop guidance",
-                      sessionID: created.id,
-                    })
-                  : undefined
-              if (loop) await BlueprintLoopStore.updateStatus(created.scope.id, loop.id, { status: "running" })
-              await Session.update(created.id, (draft) => {
-                if (loop) draft.blueprint = { loopID: loop.id, loopRole: "execution" }
-                else draft.workflow = { kind: "lightloop", instructions: "Complete task" }
-              })
-              const agent = await Agent.get(PrimaryAgentIdentity.names.general)
-              const result = await prepared(agent, await Session.get(created.id))
-              expect((await ToolRegistry.find(stop))?.description).not.toMatch(/Agenda|agenda_cancel/)
-              const instruction = `Before requesting ${kind === "blueprint" ? "BlueprintLoop" : "Light Loop"} review`
-              expect(result.prompt.includes(instruction)).toBe(selected && !deniedTool)
-              if (selected && !deniedTool) {
-                expect(result.availableToolIDs).toContain(stop)
-                expect(result.availableToolIDs).toContain("agenda_cancel")
-              }
-            },
-          }),
-        )
-      }, 30_000)
-    }
+    test(`${kind} does not prime Agenda cleanup without a wakeup (bridge=${selected})`, async () => {
+      const stop = kind === "blueprint" ? "blueprint_loop_stop" : "loop_stop"
+      const components = kind === "blueprint" ? [note(), blueprint()] : [lightLoop()]
+      await using runtime = await open([
+        agenda(),
+        ...components,
+        ...(selected ? [kind === "blueprint" ? agendaBlueprint() : agendaLightLoop()] : []),
+      ])
+      await runtime.run(() =>
+        ScopeContext.provide({
+          scope: Scope.home(),
+          async fn() {
+            const created = await Session.create({ title: "Stop guidance" })
+            const loop =
+              kind === "blueprint"
+                ? await BlueprintLoopStore.create({
+                    noteID: "note_guidance",
+                    title: "Stop guidance",
+                    sessionID: created.id,
+                  })
+                : undefined
+            if (loop) await BlueprintLoopStore.updateStatus(created.scope.id, loop.id, { status: "running" })
+            await Session.update(created.id, (draft) => {
+              if (loop) draft.blueprint = { loopID: loop.id, loopRole: "execution" }
+              else draft.workflow = { kind: "lightloop", instructions: "Complete task" }
+            })
+            const agent = await Agent.get(PrimaryAgentIdentity.names.general)
+            const result = await prepared(agent, await Session.get(created.id))
+            expect((await ToolRegistry.find(stop))?.description).not.toMatch(/Agenda|agenda_cancel/)
+            const instruction = `${kind === "blueprint" ? "BlueprintLoop review" : "Light Loop completion"} requires all active Agenda wakeups`
+            expect(result.prompt).not.toContain(instruction)
+            expect(result.availableToolIDs).toContain(stop)
+            expect(result.availableToolIDs).toContain("agenda_cancel")
+          },
+        }),
+      )
+    }, 30_000)
   }
 }
 
@@ -247,8 +236,8 @@ test("selected hidden reviewers retain recursive delegation while primary catalo
       async fn() {
         const agents = await Agent.list()
         const supervisor = await Agent.get("supervisor")
-        const reviewer = await Agent.get("lightloop-reviewer")
-        for (const agent of [supervisor, reviewer]) {
+        expect(await Agent.get("lightloop-reviewer")).toBeUndefined()
+        for (const agent of [supervisor]) {
           expect(agent.hidden).toBe(true)
           expect(agent.visibleTo).toEqual([agent.name])
           for (const permission of [
@@ -262,7 +251,6 @@ test("selected hidden reviewers retain recursive delegation while primary catalo
           ])
             expect(action(agent, permission), `${agent.name}:${permission}`).toBe("allow")
         }
-        expect(reviewer.delegationGroups).toEqual(["supervisor"])
         const info = agents.map((agent) => ({ ...agent, description: agent.description ?? "" }))
         for (const primary of [PrimaryAgentIdentity.names.coding, PrimaryAgentIdentity.names.general]) {
           const names = getDelegatableAgents(info, primary).map((agent) => agent.name)
@@ -270,7 +258,7 @@ test("selected hidden reviewers retain recursive delegation while primary catalo
           expect(names).not.toContain("lightloop-reviewer")
           expect(names.length).toBeGreaterThan(0)
         }
-        const names = getDelegatableAgents(info, reviewer).map((agent) => agent.name)
+        const names = getDelegatableAgents(info, supervisor).map((agent) => agent.name)
         expect(names).toContain("implementation-engineer")
         expect(names).toContain("quality-gatekeeper")
         expect(names).not.toContain("supervisor")
@@ -300,7 +288,7 @@ test("selected owners preserve the complete subagent permission profiles", async
             "skill",
             "webfetch",
             "look_at",
-            "glob",
+            "file_search",
             "list",
             "search_tools",
             "expand_tools",
@@ -327,12 +315,11 @@ test("selected owners preserve the complete subagent permission profiles", async
           "type-test-engineer",
         ]) {
           const agent = await Agent.get(name)
-          for (const permission of ["view_file", "scan_files", "parse_code"])
+          for (const permission of ["read", "view_file", "scan_files", "file_search", "parse_code"])
             expect(action(agent, permission)).toBe("allow")
-          for (const permission of ["revise_file", "resolve_conflicts", "save_file"])
+          for (const permission of ["edit", "write", "apply_patch", "revise_file", "resolve_conflicts", "save_file"])
             expect(action(agent, permission)).toBe("ask")
-          for (const permission of ["read", "grep", "ast_grep", "edit", "write"])
-            expect(action(agent, permission)).toBe("deny")
+          for (const permission of ["grep", "glob", "ast_grep"]) expect(action(agent, permission)).toBe("deny")
         }
         for (const name of [
           "requirements-engineer",
@@ -355,11 +342,13 @@ test("selected owners preserve the complete subagent permission profiles", async
           "research-methodologist",
         ]) {
           const agent = await Agent.get(name)
-          for (const permission of ["read", "grep", "ast_grep"]) expect(action(agent, permission)).toBe("allow")
+          for (const permission of ["read", "view_file", "scan_files", "file_search", "parse_code"])
+            expect(action(agent, permission)).toBe("allow")
           for (const permission of [
-            "view_file",
-            "scan_files",
-            "parse_code",
+            "grep",
+            "glob",
+            "ast_grep",
+            "apply_patch",
             "revise_file",
             "resolve_conflicts",
             "save_file",
@@ -371,7 +360,8 @@ test("selected owners preserve the complete subagent permission profiles", async
         const lightweight = await Agent.get(PrimaryAgentIdentity.names.lightweight)
         expect(action(lightweight, "memory_write")).toBe("allow")
         expect(action(lightweight, "memory_edit")).toBe("allow")
-        expect(action(lightweight, "ast_grep")).toBe("deny")
+        expect(lightweight.permission.some((rule) => rule.permission === "ast_grep")).toBe(false)
+        expect(await ToolRegistry.ids()).not.toContain("ast_grep")
         expect(action(lightweight, "parse_code")).toBe("deny")
       },
     }),

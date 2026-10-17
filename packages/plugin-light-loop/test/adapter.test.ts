@@ -38,10 +38,7 @@ test("Plugin Light Loop keeps owner metadata and acknowledges its durable termin
           }
           await lightLoopPluginAdapter.start(session.id, {
             instructions: "Complete the work",
-            executionAgent: "executor",
-            reviewAgent: "reviewer",
             pluginOwner,
-            budget: { maxRuntimeMs: 60000, maxIterations: 3 },
             deadlineAt: Date.now() + 60000,
           })
           expect(lightLoopPluginAdapter.getActive(await Session.get(session.id))).toMatchObject({

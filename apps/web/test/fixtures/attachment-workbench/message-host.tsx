@@ -50,7 +50,11 @@ export const useLocale = () => ({ i18n: useLingui().i18n() })
 export const useConfirm = () => ({ ask: async () => true })
 export const usePluginHost = () => ({ resources: { register: () => () => {} } })
 const selection = { features: [] }
-export const useGlobalSDK = () => ({ capabilities: { current: () => selection, has: () => false } })
+export const useGlobalSDK = () => ({
+  url: location.origin,
+  capabilities: { current: () => selection, has: () => false },
+  event: { listen: () => () => {} },
+})
 export const useSDK = () => ({
   url: location.origin,
   scopeKey: "fixture",

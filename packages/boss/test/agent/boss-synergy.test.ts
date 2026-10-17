@@ -14,6 +14,8 @@ test("Boss registers its hidden coordinator with the complete required-owner whi
         const agent = await Agent.get("boss-synergy")
         expect(agent).toMatchObject({ mode: "primary", native: true, hidden: true })
         expect(agent.prompt).toContain("协调者")
+        expect(agent.prompt).toContain("不自行修改项目内容")
+        expect(agent.prompt).toContain("确认结果后再报告完成")
         for (const permission of [
           "search_tools",
           "expand_tools",

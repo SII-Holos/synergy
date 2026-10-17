@@ -169,7 +169,7 @@ Scope ownership and the current execution directory are related but distinct:
 
 Sessions persist a canonical `workspaceID` reference, with `null` representing no filesystem workspace. Their public `workspace` descriptor projects the current catalog binding and metadata. Missing catalog entries retain their ID and expose an error rather than becoming workspace-free. The [Workspace and files](workspace-and-files.md) contract defines catalog identity, generation and native-resource ownership.
 
-New sessions default to the Scope local directory, or `null` for Home and other nonlocal Scopes. Child sessions inherit their parent Scope and Workspace, including `null`, unless the caller explicitly changes them. Bindings must belong to the session Scope.
+New project sessions default to the Scope local directory. Local Runtime gives new Home sessions a shared, persistent Workspace at `workspaces/home/` under the Runtime root, created and registered on first use through the existing Workspace provider. Home Scope still has `local: null`; entering the Scope alone does not select those files. Hosts without local Workspace services retain a null default. Explicit Workspace choices and child inheritance, including `null`, take precedence. Existing sessions and imports retain their saved references without a migration. Bindings must belong to the session Scope.
 
 Workspace selection supports:
 

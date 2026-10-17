@@ -56,4 +56,22 @@ for (const [name, buildPrompt] of Object.entries(builders)) {
   }
 }
 
+test("primary roles remain independent of concrete tool interfaces", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      async fn() {
+        for (const name of Object.values(PrimaryAgentIdentity.names)) {
+          const agent = await Agent.get(name)
+          expect(agent?.prompt).toBeTruthy()
+          expect(agent!.prompt).not.toMatch(
+            /`(?:read|edit|write|grep|ast_grep|bash|process|view_file|scan_files|revise_file|save_file|resolve_conflicts|expand_tools|search_tools|dagwrite|dagpatch|dagread|task|task_output|question|webfetch|view_image)`|\[path#TAG\]|yieldSeconds|\btask\(/,
+          )
+          expect(agent!.prompt).not.toMatch(/\{(?:AGENT_NAME|MEMORY_INTERACTION|PROGRESS_UPDATES)\}/)
+        }
+      },
+    })
+  }))
+
 afterRuntimeTests(() => runtime.close())

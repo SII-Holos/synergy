@@ -49,7 +49,7 @@ describe("SessionNav tag performance", () => {
             }))
 
             await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id)), {
-              version: 1,
+              version: 2,
               composition: SessionSchemaRegistry.projectionKey(),
               scopeID: scope.id,
               updatedAt: now,

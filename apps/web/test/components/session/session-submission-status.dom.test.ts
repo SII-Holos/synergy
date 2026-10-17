@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -75,14 +75,59 @@ beforeAll(async () => {
   await server.listen()
   url = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
-  page = await browser.newPage({ viewport: { width: 375, height: 812 } })
-  page.on("pageerror", (error) => errors.push(error.message))
 }, 30000)
+beforeEach(async () => {
+  page = await browser.newPage({ viewport: { width: 375, height: 812 } })
+  errors.length = 0
+  page.on("pageerror", (error) => errors.push(error.message))
+})
+afterEach(async () => {
+  await page?.close()
+})
 afterAll(async () => {
   await browser?.close()
   await server?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
 })
+
+test("an existing session shows optimistic submission until authoritative activity or pause", async () => {
+  await page.goto(`${url}?existing`)
+  await page.getByText("Inspect this project", { exact: true }).waitFor()
+  expect(await page.getByRole("status").textContent({ timeout: 1500 })).toBe("Submitting message")
+  const header = await page.locator('[data-slot="turn-process-trigger"]').elementHandle()
+  await page.evaluate("window.fixture.canonical('accepted-message')")
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+  expect(await page.getByRole("status").textContent()).toBe("Submitting message")
+  await page.evaluate("window.fixture.waiting('accepted-message')")
+  await page.getByText("Waiting for model response", { exact: true }).waitFor()
+  expect(await header!.evaluate((node) => node.isConnected)).toBe(true)
+  await page.evaluate("window.fixture.paused()")
+  await page.getByText("Paused", { exact: true }).waitFor()
+  expect(await page.getByRole("status").count()).toBe(0)
+  expect(await page.getByText("Submitting message", { exact: true }).count()).toBe(0)
+  expect(await header!.evaluate((node) => node.isConnected)).toBe(true)
+  expect(errors).toEqual([])
+}, 30000)
+
+test.each(["settle", "remove", "replace", "paused"])(
+  "optimistic activity releases on %s",
+  async (action) => {
+    await page.goto(`${url}?existing`)
+    await page.getByRole("status").waitFor()
+    await page.evaluate("window.fixture.canonical()")
+    expect(await page.getByRole("status").textContent()).toBe("Submitting message")
+    await page.evaluate(
+      (action) => (window as unknown as { fixture: Record<string, () => void> }).fixture[action](),
+      action,
+    )
+    await page.getByRole("status").waitFor({ state: "detached" })
+    expect(await page.getByText("Submitting message", { exact: true }).count()).toBe(0)
+    expect(errors).toEqual([])
+  },
+  30000,
+)
 
 test("one current status replaces workspace progress and reacts to locale changes", async () => {
   await page.goto(url)

@@ -12,12 +12,25 @@ const ctx = {
   role: () => undefined,
 }
 
+const nativeToolProcedure =
+  /\b(?:view_file|scan_files|revise_file|resolve_conflicts|save_file|session_send|session_control|todowrite|todoread|ast_grep|webfetch|yieldSeconds)\b|read\(filePath|strength:\s*["']|\bgh (?:repo clone|search)\b|\btool descriptions?\b|\bcurrent (?:tool )?catalog\b/i
+
 function action(agent: ReturnType<typeof createBuiltinMaxSubagents>[string], permission: string) {
   return PermissionNext.evaluate(permission, "*", agent.permission).action
 }
 
 describe("coding subagents", () => {
   const agents = runtime.run(() => createBuiltinMaxSubagents(ctx))
+
+  test("specialist prompts retain role and handoff without native tool procedures", () =>
+    runtime.run(() => {
+      for (const [name, agent] of Object.entries(agents)) {
+        expect(agent.prompt, name).toMatch(/# Identity\b/)
+        expect(agent.prompt, name).toMatch(/# Mission\b/)
+        expect(agent.prompt, name).toMatch(/# Report\b/)
+        expect(agent.prompt, name).not.toMatch(nativeToolProcedure)
+      }
+    }))
 
   test("does not expose workflow-designer", () =>
     runtime.run(() => {
@@ -27,7 +40,7 @@ describe("coding subagents", () => {
   test("all max subagents receive the base utility tool bundle", () =>
     runtime.run(() => {
       for (const agent of Object.values(agents)) {
-        for (const permission of ["bash", "process", "skill", "webfetch", "glob", "list"]) {
+        for (const permission of ["bash", "process", "skill", "webfetch", "list"]) {
           expect(action(agent, permission)).toBe("allow")
         }
         expect(action(agent, "look_at")).toBe("deny")
@@ -72,7 +85,7 @@ describe("coding subagents", () => {
       }
     }))
 
-  test("anchored write agents use only the anchored file harness", () =>
+  test("writer roles authorize every file interface without choosing one", () =>
     runtime.run(() => {
       const anchoredWriters = [
         "implementation-engineer",
@@ -90,19 +103,20 @@ describe("coding subagents", () => {
         expect(agent, name).toBeDefined()
         expect(action(agent, "view_file")).toBe("allow")
         expect(action(agent, "scan_files")).toBe("allow")
-        expect(action(agent, "parse_code")).toBe("deny")
+        expect(action(agent, "parse_code")).toBe("allow")
         expect(action(agent, "revise_file")).toBe("ask")
         expect(action(agent, "resolve_conflicts")).toBe("ask")
         expect(action(agent, "save_file")).toBe("ask")
-        expect(action(agent, "read")).toBe("deny")
+        expect(action(agent, "apply_patch")).toBe("ask")
+        expect(action(agent, "read")).toBe("allow")
         expect(action(agent, "grep")).toBe("deny")
         expect(action(agent, "ast_grep")).toBe("deny")
-        expect(action(agent, "edit")).toBe("deny")
-        expect(action(agent, "write")).toBe("deny")
+        expect(action(agent, "edit")).toBe("ask")
+        expect(action(agent, "write")).toBe("ask")
       }
     }))
 
-  test("classic read agents use only the classic read harness and cannot write files", () =>
+  test("reader roles authorize every reader and cannot write files", () =>
     runtime.run(() => {
       const classicReaders = [
         "requirements-engineer",
@@ -129,11 +143,11 @@ describe("coding subagents", () => {
         const agent = agents[name]
         expect(agent, name).toBeDefined()
         expect(action(agent, "read")).toBe("allow")
-        expect(action(agent, "grep")).toBe("allow")
+        expect(action(agent, "grep")).toBe("deny")
         expect(action(agent, "ast_grep")).toBe("deny")
-        expect(action(agent, "view_file")).toBe("deny")
-        expect(action(agent, "scan_files")).toBe("deny")
-        expect(action(agent, "parse_code")).toBe("deny")
+        expect(action(agent, "view_file")).toBe("allow")
+        expect(action(agent, "scan_files")).toBe("allow")
+        expect(action(agent, "parse_code")).toBe("allow")
         expect(action(agent, "revise_file")).toBe("deny")
         expect(action(agent, "resolve_conflicts")).toBe("deny")
         expect(action(agent, "save_file")).toBe("deny")
@@ -160,6 +174,15 @@ describe("coding subagents", () => {
 
 describe("synergy subagents", () => {
   const agents = runtime.run(() => createBuiltinLegacySubagents(ctx))
+
+  test("classic prompts retain their responsibilities without native tool procedures", () =>
+    runtime.run(() => {
+      for (const [name, agent] of Object.entries(agents)) {
+        expect(agent.prompt, name).toMatch(/\bYou are\b/)
+        expect(agent.prompt, name).toMatch(/\b(?:report|output|response|answer|deliver)\b/i)
+        expect(agent.prompt, name).not.toMatch(nativeToolProcedure)
+      }
+    }))
 
   test("classic subagents retain discovery without granting absent Browser tools", () =>
     runtime.run(() => {

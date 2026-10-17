@@ -76,7 +76,9 @@ beforeAll(async () => {
     import {DialogProvider,useDialog} from "@ericsanchezok/synergy-ui/context/dialog"
     import {DialogScopeEdit} from ${JSON.stringify(`/@fs/${source}/components/dialog/dialog-scope-edit.tsx`)}
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
-    function App(){const dialog=useDialog();return <button id="open" onClick={()=>dialog.show(()=> <DialogScopeEdit scope={{id:"project",name:"Original project",expanded:true}} onSaved={()=>{const h=window.fixture;h.saved++;if(h.callbackFail==="throw") throw new Error("Cannot refresh directories");return (async ()=>{if(h.callbackHold) await new Promise(resolve=>{h.callbackRelease=()=>{h.callbackHold=false;resolve()}});if(h.callbackFail==="reject") throw new Error("Cannot refresh directories")})()}}/>)}>Settings</button>}
+    const params=new URLSearchParams(location.search)
+    const scope={id:"project",type:"project",local:{directory:"/projects/main",worktree:"/projects/main",sandboxes:[]},expanded:true,...(params.has("unnamed")?{}:{name:params.get("name")??"Original project"})}
+    function App(){const dialog=useDialog();return <button id="open" onClick={()=>dialog.show(()=> <DialogScopeEdit scope={scope} onSaved={()=>{const h=window.fixture;h.saved++;if(h.callbackFail==="throw") throw new Error("Cannot refresh directories");return (async ()=>{if(h.callbackHold) await new Promise(resolve=>{h.callbackRelease=()=>{h.callbackHold=false;resolve()}});if(h.callbackFail==="reject") throw new Error("Cannot refresh directories")})()}}/>)}>Settings</button>}
     render(()=> <ThemeProvider><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><App/></DialogProvider></I18nProvider></ThemeProvider>,document.getElementById("root"))
   `,
   )
@@ -230,6 +232,50 @@ test("adding only a folder enables Save and commits the expanded selection", asy
   expect(await save().isDisabled()).toBe(true)
 })
 
+for (const value of [undefined, "", "   "]) {
+  test(`a project with ${value === undefined ? "no" : value === "" ? "an empty" : "a whitespace"} name can save folders and task defaults without renaming`, async () => {
+    await open(value === undefined ? "?unnamed" : `?name=${encodeURIComponent(value)}`)
+    expect(await name().inputValue()).toBe(value ?? "")
+    if (!value) expect(await name().getAttribute("placeholder")).toBe("main")
+    expect(await save().isDisabled()).toBe(true)
+    await settings().getByRole("button", { name: "Add folder", exact: true }).click()
+    const picker = page.getByRole("dialog").last()
+    await picker.getByRole("checkbox", { name: "Select folder: extra", exact: true }).press("Space")
+    await picker.getByRole("button", { name: "Use selected folders", exact: true }).click()
+    await page.locator(".directory-navigation").waitFor({ state: "hidden" })
+    expect(await settings().locator(".project-folder-row").count()).toBe(3)
+    expect(await save().isEnabled()).toBe(true)
+    await save().click()
+    await settings().getByRole("status").filter({ hasText: "Saved" }).waitFor()
+    await start().click()
+    expect(await save().isEnabled()).toBe(true)
+    await save().click()
+    await settings().getByRole("status").filter({ hasText: "Saved" }).waitFor()
+    const writes =
+      await page.evaluate<Array<{ section: string; input: Record<string, unknown> }>>("window.fixture.writes")
+    expect(writes.map((item) => item.section)).toEqual(["folders", "defaults"])
+    expect(writes[0]!.input.projectDirectoriesUpdate).toEqual({
+      directories: ["/projects/main", "/projects/shared", "/projects/extra"],
+      mainDirectory: "/projects/main",
+      revision: 1,
+    })
+    expect(writes[1]!.input.projectTaskDefaultsInput).toEqual({
+      defaults: { defaultSessionWorkspace: "worktree" },
+      expected: {},
+    })
+    expect(await name().inputValue()).toBe(value ?? "")
+    expect(await save().isDisabled()).toBe(true)
+    await name().fill("Named by the user")
+    await save().click()
+    await settings().getByRole("status").filter({ hasText: "Saved" }).waitFor()
+    expect(await page.evaluate<string[]>("window.fixture.writes.map(item=>item.section)")).toEqual([
+      "folders",
+      "defaults",
+      "name",
+    ])
+  }, 20_000)
+}
+
 test("failed saves retain drafts and retry only the unsaved sections", async () => {
   await open()
   await name().fill("Keep this draft")
@@ -262,7 +308,10 @@ test("cancel, nested directory picking, and validation never save a draft", asyn
   await page.locator(".directory-navigation").waitFor({ state: "hidden" })
   expect(await name().inputValue()).toBe("Draft name")
   await name().fill("   ")
+  await changeMain()
   expect(await save().isDisabled()).toBe(true)
+  expect(await name().getAttribute("aria-invalid")).toBe("true")
+  expect(await settings().getByText("Name your project", { exact: true }).isVisible()).toBe(true)
   await settings().locator('[data-slot="dialog-footer"]').getByRole("button", { name: "Cancel", exact: true }).click()
   await page.getByRole("dialog").last().getByRole("button", { name: "Discard changes", exact: true }).click()
   await settings().waitFor({ state: "hidden" })

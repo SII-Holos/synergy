@@ -1579,11 +1579,7 @@ msgstr ""
 
 #. ── Agent ──
 msgid "app.browser.agent.activity"
-msgstr "⟦Agent {kind} {host}⟧"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.agent.follow"
-msgstr "⟦Follow⟧"
+msgstr "{kind, select, acting {⟦Agent operating⟧} reading {⟦Agent viewing⟧} other {⟦Agent last viewed⟧}}"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.annotation.color"
@@ -5150,6 +5146,21 @@ msgstr "⟦Library⟧"
 msgid "app.library.views"
 msgstr ""
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.checkConnection"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.configure"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.model.unavailable"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "app.name.synergy"
 msgstr "⟦Synergy⟧"
@@ -8295,11 +8306,19 @@ msgid "app.rawMessages.title"
 msgstr "⟦Raw messages⟧"
 
 #. js-lingui-explicit-id
+msgid "app.reference.browserUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.reference.chooseWorkspace"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.reference.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.fileSource"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -8311,11 +8330,39 @@ msgid "app.reference.locationUnavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.reference.noteLocationUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.noteSource"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.reference.noWorkspace"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.reference.open"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.openBrowser"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.openExternal"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.reference.openFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.openFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.openNote"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -8324,6 +8371,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.reference.pageUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.previewSignIn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.previewUnavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -8748,11 +8803,6 @@ msgstr "⟦Tools⟧"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "app.shell.modelConfigCmd"
-msgstr "⟦synergy config⟧"
-
-#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.shell.modelUnavailable.action.connect"
 msgstr "⟦Connect a provider⟧"
 
@@ -9019,6 +9069,14 @@ msgstr "⟦Settings⟧"
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.menu.usage"
 msgstr "⟦Usage⟧"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.navigation.failed"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.navigation.retry"
+msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.newSession"
@@ -11647,6 +11705,10 @@ msgid "context.dashboard.items"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "context.dashboard.knownTokenCategories"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "context.dashboard.latest"
 msgstr ""
 
@@ -13099,11 +13161,23 @@ msgid "note.list.options"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "note.navigation.choose"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "note.navigation.hide"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "note.navigation.show"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.reference.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "note.reference.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -14254,13 +14328,6 @@ msgstr "⟦Task description⟧"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.lightLoop.taskDialog.reviewPending"
-msgstr "⟦Completion review is pending. Stop or finish the review before changing the task.⟧"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.taskDialog.save"
 msgstr "⟦Save task⟧"
 
@@ -14398,6 +14465,102 @@ msgstr ""
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.loopReady"
 msgstr "⟦Loop ready⟧"
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.auditing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.bound"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.details"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.edit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.failure"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.iterationExhausted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.lightCompleted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.openNote"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.paused"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reason"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.resolving"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.result"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.reviewer"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.rework"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.timedOut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "prompt.loopStatus.unavailable"
+msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -17230,6 +17393,10 @@ msgid "session.execution.copyLoaded"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.execution.copyMetadata"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.execution.copyOutput"
 msgstr ""
 
@@ -17303,6 +17470,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.execution.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.execution.metadata"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17970,6 +18141,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.progress.needsAttentionBlocked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.needsAttentionMixed"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -19069,6 +19244,62 @@ msgid "settings.archivedSessions.you"
 msgstr "⟦You: {text}⟧"
 
 #. js-lingui-explicit-id
+msgid "settings.browser.chooseProfile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.contextExpired"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.data"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.action"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.import.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.passwords.section"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.preparing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.target"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.browser.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.account.description"
 msgstr "⟦Holos agent identities and local account controls.⟧"
 
@@ -19103,6 +19334,18 @@ msgstr "⟦Boss Mode⟧"
 #. js-lingui-explicit-id
 msgid "settings.catalog.boss.searchTerms"
 msgstr "⟦boss | task | project | assistant | feishu⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.browser.searchTerms"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
@@ -23325,6 +23568,26 @@ msgid "settings.runtime.compaction.prune.title"
 msgstr "⟦Prune Tool Output⟧"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.hashline"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.patch"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.replace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.fileToolGroup.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.managedByEnv"
 msgstr "⟦Managed by environment⟧"
 
@@ -25137,6 +25400,58 @@ msgid "tool.misc.warnings"
 msgstr "⟦Warnings⟧"
 
 #. js-lingui-explicit-id
+msgid "tool.patch.applied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.committed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.delete"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.move"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.noChange"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.notStarted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.partial"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.rejected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unresolved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.unsaved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.patch.write"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "tool.render.busy"
 msgstr ""
 
@@ -25333,6 +25648,10 @@ msgid "tool.title.answer-question"
 msgstr "⟦Answer Question⟧"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.apply-patch"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.approve-blueprint-loop"
 msgstr "⟦Approve BlueprintLoop⟧"
 
@@ -25419,6 +25738,10 @@ msgstr "⟦Submit Clarus Result⟧"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.compact-session"
 msgstr "⟦Compact Session⟧"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.complete-light-loop"
+msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.control-session"
@@ -25779,10 +26102,6 @@ msgstr "⟦Render content⟧"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.request-blueprint-review"
 msgstr "⟦Request Blueprint Review⟧"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.request-review"
-msgstr "⟦Request Review⟧"
 
 #. Research
 msgid "tool.title.research-init"
@@ -26356,6 +26675,34 @@ msgstr "⟦Generation failed⟧"
 msgid "ui.mediaGeneration.generating"
 msgstr "⟦Generating media⟧"
 
+#. js-lingui-explicit-id
+msgid "ui.resource.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.resource.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.resource.external"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.resource.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.resource.open"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.resource.preview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.resource.unavailable"
+msgstr ""
+
 #. Local adaptation: one virtualized viewer with owned headers, original line selection and scoped cleanup.
 msgid "ui.review.after"
 msgstr ""
@@ -26681,6 +27028,10 @@ msgid "workspace.dialog.close"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.confirmBinding"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.create"
 msgstr "⟦Create Workspace⟧"
 
@@ -26709,6 +27060,10 @@ msgid "workspace.dialog.failed"
 msgstr "⟦The Workspace could not be updated. Reload to review its current state.⟧"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.hideCopies"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.loading"
 msgstr "⟦Loading Workspaces…⟧"
 
@@ -26727,6 +27082,10 @@ msgstr "⟦Workspace name⟧"
 #. js-lingui-explicit-id
 msgid "workspace.dialog.none"
 msgstr "⟦No Workspace⟧"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.otherCopies"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.pick"
@@ -26757,12 +27116,20 @@ msgid "workspace.dialog.recovery"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.refreshHint"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "⟦Add directory⟧"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.reload"
 msgstr "⟦Reload⟧"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.repair"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.saveSharing"

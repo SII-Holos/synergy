@@ -65,9 +65,6 @@
   .sb-navigation [data-component="tooltip-trigger"] {
     -webkit-app-region: no-drag;
   }
-  .app-shell-notices:has(> *) {
-    padding-top: 48px;
-  }
   [data-ui-part="content"]:not(:has([data-ui-part="conversation"])) {
     padding-top: 48px;
   }

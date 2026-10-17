@@ -6,15 +6,15 @@ export const AP = {
   appLoading: { id: "app.shell.loading", message: "Loading…" },
   appModelUnavailableNotConfigured: {
     id: "app.shell.modelUnavailable.notConfigured",
-    message: "No AI provider is connected. Connect one to choose a model, or run {cmd} in your terminal.",
+    message: "Connect a provider to start a conversation.",
   },
   appModelUnavailableNeedsAttention: {
     id: "app.shell.modelUnavailable.needsAttention",
-    message: "A connected provider needs attention before its models can run.",
+    message: "Check your provider’s connection or usage limits to continue.",
   },
   appModelUnavailableRestricted: {
     id: "app.shell.modelUnavailable.restricted",
-    message: "No model is available to select. Check that a connected provider is enabled and offers models.",
+    message: "No model is available. Enable a provider and check its model list.",
   },
   appModelUnavailableConnect: {
     id: "app.shell.modelUnavailable.action.connect",
@@ -24,7 +24,9 @@ export const AP = {
     id: "app.shell.modelUnavailable.action.review",
     message: "Review providers",
   },
-  appModelConfigCmd: { id: "app.shell.modelConfigCmd", message: "synergy config" },
+  appModelConfigure: { id: "app.model.configure", message: "Configure model" },
+  appModelCheckConnection: { id: "app.model.checkConnection", message: "Check model connection" },
+  appModelUnavailable: { id: "app.model.unavailable", message: "No models available" },
 
   // ── entry.tsx ───────────────────────────────────────────────────────
   entryCopyFailed: { id: "app.entry.copyFailed", message: "Copy failed" },

@@ -58,11 +58,16 @@ function reclaimed(root: string) {
   }
 }
 
-test.each([undefined, "selected-owner-generation"])(
-  "active startup preserves SQL authority and original metadata bytes with navigation composition %s",
-  (composition) =>
+test.each([
+  [1, undefined],
+  [1, "selected-owner-generation"],
+  [2, undefined],
+  [2, "selected-owner-generation"],
+] as const)(
+  "active startup preserves SQL authority and original metadata bytes with navigation version %s and composition %s",
+  (version, composition) =>
     runtime.run(async () => {
-      const currentNavigation = { ...navigation, ...(composition === undefined ? {} : { composition }) }
+      const currentNavigation = { ...navigation, version, ...(composition === undefined ? {} : { composition }) }
       const root = await home(currentNavigation)
       const residues = [
         ["data/meta/migration/log-scope.json", { "20260424-scope-reclaim-orphans": 2 }],
@@ -105,6 +110,7 @@ test.each([
   ["data/meta/migration/log-unknown.json", { migration: 2 }],
   ["data/session_nav_v2/home.json", { ...navigation, entries: [], unknown: true }],
   ["data/session_nav_v2/home.json", { ...navigation, entries: [], composition: "foreign-writer" }],
+  ["data/session_nav_v2/home.json", { ...navigation, version: 2, entries: [] }],
   ["data/session_nav_v2/home.json", { ...navigation, scopeID: "other", entries: [] }],
   ["data/session_nav_v2/home.json", navigation],
   ["data/projects/unexpected.json", {}],

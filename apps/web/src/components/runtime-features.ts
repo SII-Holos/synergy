@@ -3,6 +3,7 @@ const requirements: Record<
   Readonly<Record<string, string>>
 > = {
   settings: {
+    browser: "browser",
     account: "holos",
     github: "github",
     channels: "channels",

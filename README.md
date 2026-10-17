@@ -33,7 +33,11 @@
 
 AI agent work often outlives a single conversation. Synergy treats it as durable workspace state. A task can move between Web, Desktop, CLI, background execution, and specialist agents while preserving its project, history, files, tools, and operating context.
 
-Choose **Atlas** for general assistance, **Forge** for coding, or **Pico** for lightweight work. Their CLI names are `atlas`, `forge`, and `pico`; for example, `synergy send --agent forge "Fix the failing test"`. Existing configurations and conversations [upgrade automatically](docs/migrations/primary-agent-identities.md).
+Choose **Atlas** for general assistance, **Forge** for coding, or **Pico** for lightweight work. Pico is the initial default when no Agent is selected or configured. Their CLI names are `atlas`, `forge`, and `pico`; for example, `synergy send --agent forge "Fix the failing test"`. Existing configurations and conversations [upgrade automatically](docs/migrations/primary-agent-identities.md).
+
+Use Plan to prepare a Blueprint with detail proportional to the task. Light Loop keeps working until the executor verifies the complete goal; BlueprintLoop adds independent final acceptance and preserves reviewer context through rework.
+
+Local Agents share the scoped file interface, with patch editing as the default. Choose the [file read/write tool group](docs/reference/configuration-layout.md#file-readwrite-tool-group) independently of Agent and model; existing permissions still apply. Configurations that previously selected an interface through permission rules should set this group explicitly.
 
 Historical conversations prepare when opened. Full history import and usage rebuilds require an explicit request; [storage admission](docs/architecture/agent-storage.md) documents upgrade and recovery behavior.
 

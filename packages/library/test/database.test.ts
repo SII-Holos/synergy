@@ -1,4 +1,5 @@
-import { describe, expect, test, beforeEach, afterAll } from "bun:test"
+import { describe, expect, test, beforeEach, afterAll, spyOn } from "bun:test"
+import * as sqliteVec from "sqlite-vec"
 import { Database } from "bun:sqlite"
 import { LibraryDB, closeDB } from "../src/database"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -860,6 +861,74 @@ describe.serial("LibraryDB", () => {
         expect(updated!.content).toBe("New content")
         expect(updated!.category).toBe("coding")
       }))
+
+    test("update preserves canonical memory when the vector extension cannot reload", () =>
+      runtime.run(() => {
+        const input = {
+          id: "missing-vector",
+          title: "Rule",
+          content: "old",
+          category: "self" as const,
+          recallMode: "always" as const,
+        }
+        const embedding = { id: input.id, vector: dimensionVector(DIMENSIONS, 0), model: "fixture" }
+        const row = LibraryDB.Memory.insert(input, embedding)
+        closeDB()
+        const load = spyOn(sqliteVec, "load").mockImplementation(() => {
+          throw new Error("fixture extension unavailable")
+        })
+        try {
+          const updated = LibraryDB.Memory.update(
+            { ...input, content: "new", expectedUpdatedAt: row.updated_at },
+            { ...embedding, vector: dimensionVector(DIMENSIONS + 1, 1) },
+          )!
+          expect(updated.content).toBe("new")
+          expect(updated.updated_at).toBeGreaterThan(row.updated_at)
+          expect(LibraryDB.Memory.get(input.id)?.content).toBe("new")
+          expect(LibraryDB.Memory.searchByVector(embedding.vector, 1)).toEqual([])
+        } finally {
+          load.mockRestore()
+          closeDB()
+        }
+      }))
+
+    test("update preserves canonical memory when a full vector chunk cannot grow", async () => {
+      await using capacityRuntime = await testRuntime()
+      capacityRuntime.run(() => {
+        const input = {
+          id: "full-vector",
+          title: "Rule",
+          content: "old",
+          category: "self" as const,
+          recallMode: "always" as const,
+        }
+        const embedding = { id: input.id, vector: dimensionVector(DIMENSIONS, 0), model: "fixture" }
+        const row = LibraryDB.Memory.insert(input, embedding)
+        const conn = LibraryDB.connection()
+        conn.prepare("DELETE FROM vec_memory WHERE memory_id = ?1").run(input.id)
+        for (let i = 0; i < 1024; i++)
+          conn
+            .prepare("INSERT INTO vec_memory (memory_id, category, embedding) VALUES (?1, ?2, ?3)")
+            .run(`full-${i}`, "self", new Float32Array(embedding.vector))
+        const pages = (conn.prepare("PRAGMA page_count").get() as { page_count: number }).page_count
+        conn.exec(`PRAGMA max_page_count = ${pages}`)
+        try {
+          const updated = LibraryDB.Memory.update(
+            { ...input, content: "new", expectedUpdatedAt: row.updated_at },
+            { ...embedding, vector: dimensionVector(DIMENSIONS, 1) },
+          )!
+          expect(updated.content).toBe("new")
+          expect(updated.updated_at).toBeGreaterThan(row.updated_at)
+          expect(LibraryDB.Memory.get(input.id)?.content).toBe("new")
+          expect(LibraryDB.Memory.searchByVector(embedding.vector, 1)).toEqual([])
+          expect(conn.inTransaction).toBe(false)
+          expect(LibraryDB.Memory.update({ ...input, expectedUpdatedAt: row.updated_at }, embedding)).toBeNull()
+        } finally {
+          conn.exec("PRAGMA max_page_count = 1073741823")
+          closeDB()
+        }
+      })
+    })
 
     test("update returns null for non-existent memory", () =>
       runtime.run(() => {

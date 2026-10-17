@@ -3,19 +3,13 @@ import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 
 const contribution: AgentPermissionContributions.Phases = {
   base(_agent, identity) {
-    if (
-      identity.source === "builtin" &&
-      ((identity.owner === "blueprint" && identity.registrationKey === "supervisor") ||
-        (identity.owner === "light-loop" && identity.registrationKey === "lightloop-reviewer"))
-    )
-      return PermissionNext.fromConfig({ parse_code: "allow", ast_grep: "deny" })
+    if (identity.source === "builtin" && identity.owner === "blueprint" && identity.registrationKey === "supervisor")
+      return PermissionNext.fromConfig({ parse_code: "allow" })
     if (identity.owner !== "harness") return []
-    if (identity.primaryRole === "coding" || identity.subagentProfile?.startsWith("anchored"))
-      return PermissionNext.fromConfig({ parse_code: "allow", ast_grep: "deny" })
-    if (identity.primaryRole === "lightweight")
-      return PermissionNext.fromConfig({ parse_code: "deny", ast_grep: "deny" })
+    if (identity.primaryRole === "coding" || identity.subagentProfile)
+      return PermissionNext.fromConfig({ parse_code: "allow" })
+    if (identity.primaryRole === "lightweight") return PermissionNext.fromConfig({ parse_code: "deny" })
     if (identity.primaryRole === "general") return PermissionNext.fromConfig({ parse_code: "deny" })
-    if (identity.subagentProfile) return PermissionNext.fromConfig({ parse_code: "deny", ast_grep: "allow" })
     return []
   },
 }

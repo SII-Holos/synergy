@@ -10,9 +10,12 @@ import { AgendaSessionWakeup } from "@ericsanchezok/synergy-agenda/agenda/sessio
 import { lightLoop } from "@ericsanchezok/synergy-light-loop/component"
 import { LoopStopTool } from "@ericsanchezok/synergy-light-loop/light-loop/tools/loop-stop"
 import { registerWorker } from "../src/worker"
+import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { AgentPromptContributions } from "@ericsanchezok/synergy-harness/agent/prompt-contributions"
+import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 
 for (const selected of [false, true]) {
-  test(`Agenda review bridge selected=${selected} controls wakeup guidance and review`, async () => {
+  test(`Agenda review bridge selected=${selected} keeps wakeup guidance conditional and guards completion`, async () => {
     await using runtime = await testRuntime({
       composition: {
         register() {
@@ -27,9 +30,24 @@ for (const selected of [false, true]) {
       ScopeContext.provide({
         scope: Scope.home(),
         fn: async () => {
+          const agent = await Agent.get(PrimaryAgentIdentity.names.general)
+          const guidance = AgentPromptContributions.render(agent, new Set(["loop_stop", "agenda_cancel"]))
+          expect(guidance).toEqual([])
+          expect(AgentPromptContributions.render(agent, new Set(["loop_stop"]))).toEqual([])
           const session = await Session.create({})
           await Session.update(session.id, (draft) => {
             draft.workflow = { kind: "lightloop", instructions: "Complete the work" }
+          })
+          const other = await Session.create({})
+          const unrelated = await AgendaStore.create({
+            title: "Another task",
+            prompt: "Continue another task",
+            triggers: [{ type: "delay", delay: "30m" }],
+            wake: true,
+            silent: false,
+            autoDone: true,
+            createdBy: "agent",
+            sessionID: other.id,
           })
           const item = await AgendaStore.create({
             title: "Wait",
@@ -46,7 +64,12 @@ for (const selected of [false, true]) {
             item,
           })
           expect(!!instruction).toBe(selected)
-          if (selected) expect(instruction!.text).toContain("loop_stop")
+          if (selected) {
+            expect(instruction!.text).toContain("loop_stop")
+            expect(instruction!.text).toContain(item.id)
+            expect(instruction!.text).toContain("complete task is finished and verified")
+            expect(instruction!.text).not.toMatch(/agenda_cancel\(|Call loop_stop with/)
+          }
           const tool = await LoopStopTool.init()
           const context = {
             sessionID: session.id,
@@ -63,7 +86,8 @@ for (const selected of [false, true]) {
             await AgendaStore.update(session.scope.id, item.id, { status: "cancelled" })
           }
           const result = await tool.execute({ summary: "Verified" }, context)
-          expect(result.metadata.loopStopRequested).toBe(true)
+          expect((await AgendaStore.get(other.scope.id, unrelated.id))?.status).toBe("active")
+          expect(result.metadata.loopCompleted).toBe(true)
           expect(
             await AgendaSessionWakeup.loopInstruction({ session: await Session.get(session.id), item }),
           ).toBeUndefined()

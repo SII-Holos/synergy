@@ -1,5 +1,6 @@
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
-import { Marked, type Renderer, type RendererObject } from "marked"
+import { bareUrlEnd } from "@ericsanchezok/synergy-util/markdown-link"
+import { Marked, Tokenizer, type Renderer, type RendererObject } from "marked"
 import markedKatex from "marked-katex-extension"
 import markedShiki from "marked-shiki"
 import type { BundledLanguage, Highlighter } from "shiki"
@@ -56,6 +57,15 @@ export function createMarkdownParser() {
   const create = () =>
     new Marked().use(
       {
+        tokenizer: {
+          url(source) {
+            const token = Tokenizer.prototype.url.call(this, source)
+            if (!token || !/^(?:https?:\/\/|www\.)/i.test(token.raw)) return token
+            const end = bareUrlEnd(token.raw)
+            const bounded = end < token.raw.length ? Tokenizer.prototype.url.call(this, source.slice(0, end)) : token
+            return bounded ? Object.assign(bounded, { bare: true }) : undefined
+          },
+        },
         hooks: {
           preprocess: prepareMarkdownMath,
         },
@@ -72,14 +82,16 @@ export function createMarkdownParser() {
                 : ""
             return `<img data-resource-reference="${escapeHtmlAttribute(href)}"${src} alt="${escapeHtmlAttribute(text)}"${titleAttr}>`
           },
-          link({ href, title, tokens }) {
+          link(token) {
+            const { href, title, tokens } = token
             const titleAttr = title ? ` title="${escapeHtmlAttribute(title)}"` : ""
             const reference = ResourceReference.parse(href)
             const target =
               reference.kind === "url" || reference.kind === "anchor"
                 ? `href="${escapeHtmlAttribute(reference.kind === "url" ? reference.url : href)}"`
                 : `data-resource-reference="${escapeHtmlAttribute(href)}" role="button" tabindex="0"`
-            return `<a ${target}${titleAttr} target="_blank" rel="noopener noreferrer">${this.parser.parseInline(tokens)}</a>`
+            const bare = "bare" in token && token.bare ? ' data-resource-bare="true"' : ""
+            return `<a ${target}${bare}${titleAttr} target="_blank" rel="noopener noreferrer">${this.parser.parseInline(tokens)}</a>`
           },
         },
       },

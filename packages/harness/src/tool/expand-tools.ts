@@ -28,9 +28,9 @@ interface ExpandToolsIssues {
 export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => {
   return {
     description: [
-      "Expand deferred groups or activate search-only tools for this session. Visibility persists across turns, restore and compaction until the session ends or expansion state is cleared. This does not call the tools or bypass permissions, agent policy, sandboxing, user settings or runtime availability.",
-      "For a known domain, expand its group directly. If the name is uncertain, use search_tools first, then expand its group or activate the returned search-only tool. Use the tools listed in the result; other tools may remain hidden by policy, settings or availability.",
-    ].join("\n\n"),
+      "Expand deferred groups or activate search-only tools for this session, persisting through turns, restore and compaction until cleared or the session ends. Expansion does not execute tools or bypass permissions, agent policy, sandboxing, user settings or runtime availability.",
+      "Expand known groups directly; use search_tools if the ID is uncertain. Call only tools listed in the result with their returned schemas; other tools may remain unavailable.",
+    ].join("\n"),
     parameters,
     formatValidationError(error) {
       return [

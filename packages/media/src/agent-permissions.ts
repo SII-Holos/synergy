@@ -3,16 +3,13 @@ import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 
 const contribution: AgentPermissionContributions.Phases = {
   base(agent, identity) {
-    if (
-      identity.source === "builtin" &&
-      ((identity.owner === "blueprint" && identity.registrationKey === "supervisor") ||
-        (identity.owner === "light-loop" && identity.registrationKey === "lightloop-reviewer"))
-    )
+    if (identity.source === "builtin" && identity.owner === "blueprint" && identity.registrationKey === "supervisor")
       return PermissionNext.fromConfig({ look_at: "allow", scan_document: "allow" })
     if (identity.owner !== "harness") return []
     return PermissionNext.fromConfig({
       ...(agent.mode === "subagent" ? { look_at: "allow" } : {}),
-      ...(identity.primaryRole === "coding" || identity.subagentProfile?.startsWith("anchored")
+      ...(identity.primaryRole === "coding" ||
+      ["codeWrite", "testWrite", "docsWrite"].includes(identity.subagentProfile ?? "")
         ? { scan_document: "allow" }
         : {}),
     })

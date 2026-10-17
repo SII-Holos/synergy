@@ -121,28 +121,6 @@ beforeAll(async () => {
       `,
     ),
     Bun.write(
-      path.join(fixtureDirectory, "lingui-stub.tsx"),
-      `
-        import type { JSX } from "solid-js"
-        export function I18nProvider(props: { children?: JSX.Element }) {
-          return props.children
-        }
-        export function useLingui() {
-          return {
-            _: (descriptor: { id: string; message?: string }) => descriptor.message ?? descriptor.id,
-          }
-        }
-      `,
-    ),
-    Bun.write(
-      path.join(fixtureDirectory, "lingui-core-stub.ts"),
-      `
-        export function setupI18n() {
-          return {}
-        }
-      `,
-    ),
-    Bun.write(
       path.join(fixtureDirectory, "source-stub.tsx"),
       `
         import { onMount } from "solid-js"
@@ -163,6 +141,8 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "note-stub.ts"),
       `
+        import { createStore } from "solid-js/store"
+        const [navigation, setNavigation] = createStore({ open: true, width: 260 })
         const capabilities = { features: ["note"] }
         export const useGlobalSDK = () => ({
           capabilities: { current: () => capabilities, has: id => capabilities.features.includes(id) },
@@ -175,7 +155,9 @@ beforeAll(async () => {
         export const useSync = () => ({})
         export const useParams = () => ({ dir: "aG9tZQ" })
         export const useWorkbenchPanels = () => ({})
-        export const useNoteDocuments = () => ({ navigation: () => ({}) })
+        export const useNoteDocuments = () => ({ navigation: () => ({
+          state: navigation, setOpen: value => setNavigation("open", value), setWidth: value => setNavigation("width", value),
+        }) })
         export const useConfirm = () => ({})
         export const TIPTAP_STYLES = ""
         export const DocumentEditorCore = () => null
@@ -268,8 +250,6 @@ beforeAll(async () => {
           find: /^@\/components\/(dialog\/confirm-dialog|note\/document-editor-core)$/,
           replacement: path.join(fixtureDirectory, "note-stub.ts"),
         },
-        { find: "@lingui/solid", replacement: path.join(fixtureDirectory, "lingui-stub.tsx") },
-        { find: "@lingui/core", replacement: path.join(fixtureDirectory, "lingui-core-stub.ts") },
         {
           find: "@ericsanchezok/synergy-plugin/theme",
           replacement: path.resolve(import.meta.dir, "../../../../..", "packages/plugin/src/theme/index.ts"),
@@ -278,7 +258,16 @@ beforeAll(async () => {
       ],
     },
     optimizeDeps: {
-      include: ["solid-js", "solid-js/web", "solid-js/store", "solid-js/jsx-runtime", "zod", "fuzzysort"],
+      include: [
+        "solid-js",
+        "solid-js/web",
+        "solid-js/store",
+        "solid-js/jsx-runtime",
+        "@lingui/core",
+        "@lingui/solid",
+        "zod",
+        "fuzzysort",
+      ],
       noDiscovery: true,
     },
     cacheDir: path.join(fixtureDirectory, ".vite"),
@@ -506,6 +495,7 @@ describe("retained panel keyboard ownership", () => {
       await owner.locator(".note-resource-row").press("Space")
       expect(await owner.locator(".note-resource-row").getAttribute("aria-pressed")).toBe("true")
       const original = await owner.locator(".note-list-search input").elementHandle()
+      const selected = await owner.locator(".note-resource-row").elementHandle()
       await page.evaluate(() => (window as unknown as RetainedInputWindow).fixture.setActive(false))
       await page.getByRole("textbox", { name: "Other editor" }).focus()
       await page.keyboard.press("Escape")
@@ -514,6 +504,9 @@ describe("retained panel keyboard ownership", () => {
       await page.evaluate(() => (window as unknown as RetainedInputWindow).fixture.setActive(true))
       expect(
         await owner.locator(".note-list-search input").evaluate((element, previous) => element === previous, original),
+      ).toBe(true)
+      expect(
+        await owner.locator(".note-resource-row").evaluate((element, previous) => element === previous, selected),
       ).toBe(true)
       const input =
         source === "external editor"
@@ -539,4 +532,29 @@ describe("retained panel keyboard ownership", () => {
       expect(await owner.getByRole("button", { name: "Cancel", exact: true }).count()).toBe(0)
     },
   )
+
+  test("a retained Notes navigator ignores hidden measurements and fits the restored viewport", async () => {
+    await page.goto(`${baseUrl}?notes`)
+    const owner = page.locator("[data-retained-owner]")
+    const navigation = owner.locator("[data-workspace-navigation]")
+    await navigation.waitFor({ state: "visible" })
+    const original = await owner.locator(".note-list-search input").elementHandle()
+    const width = await navigation.evaluate((element) => element.getBoundingClientRect().width)
+    await page.evaluate(() => (window as unknown as RetainedInputWindow).fixture.setActive(false))
+    await page.setViewportSize({ width: 360, height: 600 })
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    )
+    expect(await navigation.evaluate((element) => parseFloat((element as HTMLElement).style.width))).toBe(width)
+    await page.evaluate(() => (window as unknown as RetainedInputWindow).fixture.setActive(true))
+    await page.waitForFunction(() => {
+      const owner = document.querySelector<HTMLElement>("[data-retained-owner]")!
+      const navigation = owner.querySelector<HTMLElement>("[data-workspace-navigation]")!
+      return Math.abs(navigation.getBoundingClientRect().width - owner.getBoundingClientRect().width) < 1
+    })
+    expect(
+      await owner.locator(".note-list-search input").evaluate((element, previous) => element === previous, original),
+    ).toBe(true)
+    expect(pageErrors).toEqual([])
+  })
 })

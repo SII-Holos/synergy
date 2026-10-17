@@ -117,8 +117,9 @@ for (const selected of [false, true]) {
             } else {
               expect(availableToolIDs).toContain("memory_write")
               expect(availableToolIDs).toContain("agenda_schedule")
-              expect(prompt).toContain("memory_write")
-              expect(prompt).toContain("agenda_schedule")
+              expect(prompt).toContain("Preserve durable project ownership")
+              expect(prompt).toContain("Maintain useful recurring work and one-time follow-up")
+              expect(prompt).not.toMatch(/memory_(?:search|write|edit)|agenda_(?:schedule|watch)/)
             }
           },
         }),

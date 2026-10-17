@@ -1,4 +1,5 @@
 import { PrimaryAgentIdentity } from "../agent/primary-identity"
+import { FileToolGroup } from "../tool/file-tool-group"
 import { StorageConfiguration } from "../storage/config"
 import { Log } from "../util/log"
 import z from "zod"
@@ -956,11 +957,14 @@ export const CoreInfo = z
       .describe(
         "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant. A null value clears the role's variant",
       ),
+    fileToolGroup: FileToolGroup.optional().describe(
+      "File read/write interface for all local Agents in this Scope: replace (text replacement), hashline (line-anchored editing), or patch (patch editing, default). Does not change permissions.",
+    ),
     default_agent: z
       .string()
       .optional()
       .describe(
-        "Default agent to use when none is specified. Must be a visible primary agent. Falls back to the general-purpose primary, then another visible primary if unavailable.",
+        "Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable.",
       ),
     username: z.string().optional().describe("Custom username to display in conversations instead of system username"),
     agent: z

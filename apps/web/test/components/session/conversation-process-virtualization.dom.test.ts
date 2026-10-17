@@ -197,8 +197,10 @@ test("terminal process collection preserves the visible answer while following i
     )
     window.__conversationProcess.latest()
   })
+  await frames()
   await page.waitForFunction(
     () =>
+      !document.querySelector("[data-markdown-pending]") &&
       !document.querySelector("[data-motion-resizing]") &&
       !document.querySelector("[data-follow-motion]")!.getAnimations().length,
   )
@@ -401,6 +403,91 @@ test("an empty live continuation loads without inserting and removing a transcri
     JSON.stringify(result),
   ).toBeLessThanOrEqual(1)
 }, 30000)
+
+test.each([
+  ["first-response", "following"],
+  ["first-response", "reading"],
+  ["continuation", "following"],
+  ["continuation", "reading"],
+] as const)(
+  "hidden runtime context cannot move the transcript during %s (%s)",
+  async (stage, mode) => {
+    await page.goto(`${url}?scrolling&motion${stage === "first-response" ? "&first-response" : ""}`)
+    await page
+      .getByText(stage === "first-response" ? "Describe the project" : "I will check the project first.", {
+        exact: true,
+      })
+      .waitFor()
+    await page.evaluate((stage) => {
+      if (stage === "continuation") {
+        window.__conversationProcess.grow(20)
+        window.__conversationProcess.nextTool("next")
+      }
+      window.__conversationProcess.latest()
+    }, stage)
+    await page.waitForFunction(() => {
+      const view = document.querySelector<HTMLElement>("[data-scroller]")!
+      return (
+        view.scrollHeight - view.clientHeight - view.scrollTop < 1 &&
+        !document.querySelector("[data-motion-resizing]") &&
+        !document.getAnimations().some((animation) => animation.effect?.getTiming().iterations !== Infinity)
+      )
+    })
+    if (mode === "reading") {
+      await page.evaluate(() => {
+        const view = document.querySelector<HTMLElement>("[data-scroller]")!
+        window.__conversationProcess.reading(true)
+        view.dispatchEvent(new WheelEvent("wheel", { deltaY: -180, bubbles: true }))
+        view.scrollTop -= 180
+      })
+      await frames()
+    }
+    const result = await page.evaluate(async () => {
+      const fixture = window.__conversationProcess
+      const view = document.querySelector<HTMLElement>("[data-scroller]")!
+      const viewport = view.getBoundingClientRect()
+      const anchor = [...view.querySelectorAll<HTMLElement>('[data-display-row][data-row-kind="body"]')].find(
+        (row) => row.getBoundingClientRect().bottom > viewport.top && row.getBoundingClientRect().top < viewport.bottom,
+      )!
+      const before = anchor.getBoundingClientRect().top
+      fixture.phase({ phase: "preparing_context", startedAt: 2, rootID: "root" })
+      fixture.runtimeContext()
+      const samples = []
+      for (let frame = 0; frame < 80; frame++) {
+        if (frame === 8) fixture.continuation()
+        if (frame === 35) fixture.runtimeContextReady()
+        if (frame === 45) {
+          fixture.continuationReady()
+          fixture.phase({ phase: "waiting_model", startedAt: 3, rootID: "root" })
+        }
+        await new Promise(requestAnimationFrame)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        samples.push({
+          drift: anchor.getBoundingClientRect().top - before,
+          connected: anchor.isConnected,
+          hiddenRow: !!view.querySelector('[data-display-row="runtime-context:load"]'),
+        })
+      }
+      return {
+        samples,
+        hiddenReads: fixture.contentPageLoads("runtime-context"),
+        responseReads: fixture.contentPageLoads("continuation"),
+      }
+    })
+    expect(
+      Math.max(...result.samples.map((sample) => Math.abs(sample.drift))),
+      JSON.stringify(result),
+    ).toBeLessThanOrEqual(1)
+    expect(
+      result.samples.every((sample) => sample.connected && !sample.hiddenRow),
+      JSON.stringify(result),
+    ).toBe(true)
+    expect(result.hiddenReads).toBe(0)
+    expect(result.responseReads).toBe(1)
+    expect(errors).toEqual([])
+  },
+  30000,
+)
 
 test("focus outside a large conversation does not reread its summaries", async () => {
   await page.goto(`${url}?scrolling`)

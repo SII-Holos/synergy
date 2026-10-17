@@ -210,7 +210,7 @@ export const ReadTool = Tool.define(
       }
     },
   },
-  { requiresWorkspace: true },
+  { requiresWorkspace: true, fileToolGroups: ["replace", "patch"] },
 )
 
 async function isBinaryFile(filepath: string, file: ReturnType<typeof FileView.file>): Promise<boolean> {

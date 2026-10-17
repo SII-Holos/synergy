@@ -10,6 +10,7 @@ const fileTools = new Set([
   "edit",
   "save_file",
   "revise_file",
+  "apply_patch",
   "resolve_conflicts",
   "grep",
   "glob",

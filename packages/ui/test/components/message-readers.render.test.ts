@@ -7,7 +7,7 @@ import { setupSolidDOM } from "../support/solid-dom"
 const closeDOM = await setupSolidDOM()
 afterAll(closeDOM)
 const i18n = setupI18n({ locale: "en", messages: { en: {} } })
-mock.module("@lingui/solid", () => ({ useLingui: () => ({ _: i18n._.bind(i18n) }) }))
+const { I18nProvider } = await import("@lingui/solid")
 const pending: Array<{ signal?: AbortSignal; resolve(value: string): void }> = []
 const parse = (_text: string, signal?: AbortSignal) =>
   new Promise<string>((resolve) => pending.push({ signal, resolve }))
@@ -30,7 +30,16 @@ async function until<T>(read: () => T, expected: T) {
 function mount(component: () => ReturnType<typeof ToolObjectResult>) {
   const root = document.createElement("div")
   document.body.append(root)
-  const dispose = render(component, root)
+  const dispose = render(
+    () =>
+      createComponent(I18nProvider, {
+        i18n,
+        get children() {
+          return component()
+        },
+      }),
+    root,
+  )
   disposers.push(dispose)
   return { root, dispose }
 }

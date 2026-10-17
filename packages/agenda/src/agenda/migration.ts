@@ -1,4 +1,4 @@
-import { migrateAgendaHomeScope } from "./scope-migration"
+import { migrateAgendaHomeScope, upgradeAgendaOriginScope } from "./scope-migration"
 import { PrimaryAgentUpgrade } from "@ericsanchezok/synergy-harness/agent/primary-identity-upgrade"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
@@ -24,6 +24,17 @@ const upgradePrimaryAgentRecord: NonNullable<Migration["upgradeRecord"]> = (key,
 }
 
 export const migrations: Migration[] = [
+  {
+    id: "20261014-agenda-origin-home-scope",
+    description: "Normalize retained Agenda Home origins before current runtime validation",
+    scope: "global",
+    execution: "record",
+    dependsOn: ["20261012-agenda-home-scope"],
+    upgradeRecord: upgradeAgendaOriginScope,
+    async up(progress) {
+      progress(0, 0)
+    },
+  },
   {
     id: "20261012-agenda-home-scope",
     description: "Catch up Agenda Home records when the owner is selected",

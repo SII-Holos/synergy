@@ -1,9 +1,1 @@
-Request independent review only when the one current Blueprint outcome is complete and ready for audit.
-
-Parameters:
-- summary: Concise summary of the completed outcome
-- completed: Completed Blueprint requirement statements
-- evidence: Concrete verification evidence such as checks, artifacts, and file paths
-- remaining: Any known remaining work or limitations
-
-This records durable stop intent; it does not synchronously start the reviewer. A successful result closes execution work for this Blueprint and instructs you to end the assistant turn immediately because the configured reviewer can start only after the turn releases the session. After success, do not call another tool, modify files or artifacts, inspect reviewer state, repeat the request, extend the Blueprint scope, or begin a later Lattice Pathway Step. A repeated call is idempotent and returns the same end-turn instruction. The reviewer will either approve completion or return concrete work, and it delivers that verdict directly to this execution session.
+Request independent final review after checking the complete Blueprint, user instructions and results. Summarize the outcome, key checks and limitations briefly; reference detailed reports. After success, end the turn without further tools or changes. Review results arrive in this session. Lattice execution stays within its current Step.

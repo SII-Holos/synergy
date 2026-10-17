@@ -1,10 +1,10 @@
 # light-loop Package
 
-Light Loop state, continuation, terminal records, tools and its host-selected reviewer. Required components: Local Runtime. See [owning architecture](../../docs/architecture/workflows.md).
+Light Loop state, continuation, terminal records, and direct completion tools. Required components: Local Runtime. See [owning architecture](../../docs/architecture/workflows.md).
 
-Own Light Loop workflow descriptors, session field upgrades and reviewer prompts. Keep plugin observer delivery in plugin-light-loop and Agenda wakeups in agenda-light-loop.
+Own Light Loop workflow descriptors, session field upgrades and terminal migration. Keep plugin observer delivery in plugin-light-loop and Agenda wakeups in agenda-light-loop.
 
-The reviewer must not assume optional evidence tools. Media, Code Tools and Browser supply their own grants after selection; explicit user denials remain authoritative. Keep Agenda stop guidance in agenda-light-loop rather than the standalone tool description.
+Keep Agenda completion guards in agenda-light-loop. Active state contains the goal and optional plugin owner/deadline; terminal records own outcomes and hook acknowledgement. Legacy review input is migration data, not a runtime branch.
 
 Expose selection through `./component`; imports are inert. Keep factory requirements, published `synergy` metadata, worker roles and production dependencies aligned. Register owner schemas, events, tools and HTTP features before Runtime composition closes.
 

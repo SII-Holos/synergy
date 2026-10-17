@@ -215,7 +215,7 @@ export const bindingSourceAccessMigration: Migration = {
   description: "Derive a retained Session binding source without reading its history",
   scope: "session",
   execution: "session",
-  onAccess: true,
+  onAccess: (session) => typeof record(session.blueprint)?.loopID === "string",
   async upSession(owner) {
     await Storage.transaction(() => upgradeBinding(owner))
   },

@@ -26,12 +26,12 @@ test("only viewable outputs from the current assistant task become reveal candid
   const parts = [
     tool("file_read", {}),
     tool("note_write", { action: "create", id: "note", title: "Note" }),
-    tool("browser_navigation", { action: "goto", pageId: "page", url: "https://example.com" }),
+    tool("browser_navigation", { action: "open", pageId: "page", url: "https://example.com" }),
     attachment,
     { ...attachment, id: "image", mime: "image/png" },
   ]
   const resources = workspaceOutputResources({ message, parts, currentSessionID: "one", scopeID: "project" })
-  expect(resources.map((value) => value.panelId)).toEqual(["notes", "browser", "attachment"])
+  expect(resources.map((value) => value.panelId)).toEqual(["notes", "attachment"])
   expect(resources[0]).toMatchObject({ completedAt: 101, init: { resourceId: "note", source: "project" } })
   expect(workspaceOutputResources({ message, parts, currentSessionID: "background", scopeID: "project" })).toEqual([])
   expect(
@@ -44,7 +44,7 @@ test("only viewable outputs from the current assistant task become reveal candid
   ).toEqual([])
 })
 
-test("updates, scans, blank webpages and incomplete tools do not reveal resources", () => {
+test("browser creation, navigation, scans and incomplete tools never reveal", () => {
   const running = tool("note_write", { id: "pending" })
   running.state = { status: "running", input: {}, time: { start: 100 } }
   const resources = workspaceOutputResources({
@@ -53,6 +53,7 @@ test("updates, scans, blank webpages and incomplete tools do not reveal resource
     scopeID: "project",
     parts: [
       running,
+      tool("browser_navigation", { action: "goto", pageId: "existing", url: "https://example.com/new" }),
       tool("note_write", { action: "update", id: "existing" }),
       tool("file_scan", {}),
       tool("browser_navigation", { action: "open", pageId: "page", url: "about:blank" }),

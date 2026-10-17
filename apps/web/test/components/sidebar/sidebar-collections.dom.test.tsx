@@ -39,6 +39,7 @@ beforeAll(async () => {
     const [opened, setOpened] = createSignal(true)
     const [unread, setUnread] = createSignal(1)
     const [loaded, setLoaded] = createSignal(false)
+    const [navState, setNavState] = createSignal(query.get("navigation") || "ready")
     const motion = query.get("motion") === "1"
     const [projects, setProjects] = createSignal(motion ? [
       {id:"project-two",name:"Project two",expanded:true},
@@ -62,7 +63,10 @@ beforeAll(async () => {
     }
     export const useLayout = () => ({
       sidebar:{opened,width,resize,setOccupiedWidth:()=>{},close:()=>setOpened(false),toggle:()=>setOpened(!opened())},
-      nav:{recentEntries:()=>recent,hasMoreRecent:()=>!loaded(),loadMoreNav:()=>setLoaded(true),
+      nav:{recentEntries:()=>["error","loading","empty"].includes(navState()) ? [] : recent,hasMoreRecent:()=>!loaded(),loadMoreNav:()=>setLoaded(true),
+        recentLoaded:()=>!["error","loading"].includes(navState()),
+        loading:()=>navState()==="loading",error:()=>navState()==="error"||navState()==="refresh-error",
+        retry:async()=>setNavState("ready"),
         rootNavEntries:kind=>({home,channel,background})[kind]||[],hasMoreRootNavSection:()=>false,
         scopeIndexLoaded:()=>true,navEntries:()=>Object.fromEntries(projects().filter(scope=>scope.id!=="project-one"||projectLoaded()).map(scope=>[scope.id,{items:projectEntries(scope)}])),
         projectNavEntries:scope=>scope.id!=="project-one"||projectLoaded() ? projectEntries(scope) : [],
@@ -213,6 +217,25 @@ async function projectAction(action: "refresh" | "reorder" | "finishLoad") {
     fixture[action]()
   }, action)
 }
+
+test("navigation failure offers retry instead of an empty state and preserves retained rows", async () => {
+  await open("?locale=en&navigation=error")
+  expect(await page.getByText("Unable to load conversations and projects.").isVisible()).toBe(true)
+  expect(await page.getByText("No recent sessions", { exact: true }).count()).toBe(0)
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  expect(await page.locator('[data-session-id="recent-0"]').isVisible()).toBe(true)
+  expect(await page.getByText("Unable to load conversations and projects.").count()).toBe(0)
+  await open("?locale=en&navigation=refresh-error")
+  expect(await page.getByText("Unable to load conversations and projects.").isVisible()).toBe(true)
+  expect(await page.locator('[data-session-id="recent-0"]').isVisible()).toBe(true)
+})
+
+test("only a successfully loaded empty navigation shows the empty state", async () => {
+  await open("?locale=en&navigation=loading")
+  expect(await page.getByText("No recent sessions", { exact: true }).count()).toBe(0)
+  await open("?locale=en&navigation=empty")
+  expect(await page.getByText("No recent sessions", { exact: true }).isVisible()).toBe(true)
+})
 
 async function prepareProjectMotion(query = "") {
   await page.emulateMedia({ reducedMotion: "no-preference" })

@@ -15,15 +15,14 @@ export const BrowserInspectTool = Tool.define("browser_inspect", {
     .strict(),
   async execute({ pageId, ...params }, ctx) {
     const page = await BrowserToolHelper.resolvePage(ctx, pageId)
-    return BrowserToolHelper.withActivity(ctx, page, "reading", "browser_inspect", "Inspecting element", async () => {
-      const result = await BrowserToolHelper.execute(ctx, pageId, { type: "inspect", ...params })
-      if (result.type !== "data") throw new Error("Browser inspect returned an unexpected result.")
-      const formatted = formatBrowserJSON(result.data)
-      return {
-        title: "Browser element inspection",
-        output: formatted.output,
-        metadata: { pageId: page.id, target: params.target, outputTruncated: formatted.truncated },
-      }
-    })
+
+    const result = await BrowserToolHelper.execute(ctx, pageId, { type: "inspect", ...params })
+    if (result.type !== "data") throw new Error("Browser inspect returned an unexpected result.")
+    const formatted = formatBrowserJSON(result.data)
+    return {
+      title: "Browser element inspection",
+      output: [result.userChanges, formatted.output].filter(Boolean).join("\n\n"),
+      metadata: { pageId: page.id, target: params.target, outputTruncated: formatted.truncated },
+    }
   },
 })

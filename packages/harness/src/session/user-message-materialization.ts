@@ -3,6 +3,8 @@ import { SessionPluginHooks } from "./plugin-hooks"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
 import { SecretMask } from "../secrets/mask"
+import { prepareSessionMigrations } from "../migration"
+import { SessionManager } from "./manager"
 
 const log = Log.create({ service: "session.user-message-materialization" })
 
@@ -47,6 +49,8 @@ export namespace SessionUserMessageMaterialization {
       // durable record never holds the plaintext.
       prepared.push(await SecretMask.maskPart(normalized))
     }
+    const session = await SessionManager.requireSession(message.info.sessionID)
+    await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
     return Storage.transaction(async () => {
       const existing = await MessageV2.get({ sessionID: message.info.sessionID, messageID: message.info.id }).catch(
         (error) => {

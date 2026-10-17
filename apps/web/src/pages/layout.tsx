@@ -37,7 +37,6 @@ import {
   DesktopWindowChrome,
   MobileDrawer,
   MobileToolsDrawer,
-  ModelUnavailableBanner,
   desktopWindowNativeChromeActive,
 } from "@/components/app-shell"
 import { DialogCreateProject } from "@/components/dialog/dialog-create-project"
@@ -496,10 +495,7 @@ function LayoutContent(
       <MobileToolsDrawer />
       <DesktopWindowChrome />
       <DesktopNativeTitlebar />
-      <div class="app-shell-notices">
-        <ModelUnavailableBanner />
-        <ConnectionBanner />
-      </div>
+      <ConnectionBanner />
       <SkinRoot>
         <ShellOutlet
           onBuiltinMount={() => {

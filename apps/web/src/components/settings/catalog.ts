@@ -25,6 +25,7 @@ export const BUILTIN_SETTINGS_IDS = [
   "account",
   "personalize",
   "general",
+  "browser",
   "models",
   "voice",
   "providers",
@@ -115,6 +116,22 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [settingsFieldCopy.customInstructions],
+  },
+  browser: {
+    label: { id: "settings.catalog.browser.label", message: "Browser" },
+    description: {
+      id: "settings.catalog.browser.description",
+      message: "Import browser data and manage saved passwords on this device.",
+    },
+    searchTerms: {
+      id: "settings.catalog.browser.searchTerms",
+      message: "browser | passwords | autofill | cookies | import | saved logins",
+      comment: SEARCH_TERMS_COMMENT,
+    },
+    rowLabels: [
+      { id: "settings.browser.import.label", message: "Import browser data" },
+      { id: "settings.browser.passwords.label", message: "Manage saved passwords" },
+    ],
   },
   general: {
     fieldAliases: [
@@ -451,6 +468,7 @@ const BUILTIN_SETTINGS_COPY = {
       settingsFieldCopy.agentConcurrency,
       settingsFieldCopy.coauthor,
       settingsFieldCopy.defaultAgent,
+      settingsFieldCopy.fileToolGroup,
       settingsFieldCopy.invokeTimeout,
       settingsFieldCopy.providerTtfb,
       settingsFieldCopy.providerIdle,
@@ -589,6 +607,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
   section("account", "personal", 30, "settings.account", ["holos"]),
   section("personalize", "personal", 20, "settings.personalize"),
   section("general", "personal", 10, "settings.general", ["general"]),
+  section("browser", "personal", 15, "browser.main"),
   section("models", "core", 20, "settings.models", ["models"]),
   section("voice", "core", 25, "settings.voice", ["voice"]),
   section("providers", "core", 10, "providers.main", ["providers"]),

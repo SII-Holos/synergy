@@ -105,15 +105,15 @@ Users can work interactively from Web or Desktop, or submit a one-off task with 
 
 ### Plan and Blueprint execution
 
-Plan guides the agent to produce or refine a decision-complete Blueprint. Investigation may include commands, tests, builds, and scratch files to establish feasibility. The prompt reserves implementation, commits, pushes, deployment, and external identity actions for the execution session. Plan adds no tool permission boundary: the selected control profile and ordinary permission rules govern all tool calls.
+Plan guides the agent to produce or refine a Blueprint with detail proportional to the task, preserving the complete goal, constraints, important decisions and acceptance evidence. Investigation resolves material uncertainty within the user’s authorized scope. The prompt reserves implementation, commits, pushes, deployment, and external identity actions for the execution session. Plan adds no tool permission boundary: the selected control profile and ordinary permission rules govern all tool calls.
 
-A Blueprint is the durable handoff from planning to execution. Starting a user-owned BlueprintLoop exits Plan or Light Loop while the session is idle, binds the Blueprint to the session, and runs it until the execution agent requests review. An independent audit agent then approves the result or returns structured remaining work so execution can continue. Planning and execution therefore share one authored contract without collapsing into the same workflow phase.
+A Blueprint is the durable handoff from planning to execution. Starting a user-owned BlueprintLoop exits Plan or Light Loop while the session is idle, binds the Blueprint to the session, and runs it until the execution agent requests review. An independent audit agent then approves the result or returns actionable corrections in natural language so execution can continue. Rework reuses the reviewer’s context while checking the full Blueprint again. Planning and execution therefore share one authored contract without collapsing into the same workflow phase.
 
 ### Light Loop
 
 Light Loop is a focused persistence workflow for one task. When the session becomes idle, the continuation kernel asks the agent to compare the original task with the current work, continue anything incomplete, and gather evidence before requesting completion.
 
-Calling `loop_stop` requests an independent review rather than ending the workflow immediately. Approval completes and clears the Light Loop; rejection returns concrete remaining instructions to the execution session and re-enables continuation. This keeps a lightweight task moving without requiring the user to design a multi-step plan first.
+Calling `loop_stop({summary})` completes and clears the Light Loop after the executor verifies the whole goal. The summary records delivered results and concrete verification evidence. The durable goal remains available across continuation, compaction and resumption; BlueprintLoop provides independent final acceptance when the task needs it.
 
 ### Lattice
 

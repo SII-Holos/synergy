@@ -34,7 +34,7 @@ afterEach(() =>
   }),
 )
 
-async function runAtomicStartTest(input?: { startError?: Error }) {
+async function runAtomicStartTest(input?: { startError?: Error; request?: Partial<LightLoopStartInput> }) {
   await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
   const pluginId = "lightloop-atomic-test"
   const pluginGeneration = "generation-one"
@@ -69,6 +69,7 @@ async function runAtomicStartTest(input?: { startError?: Error }) {
       const startSnapshots: Array<Session.Info["workflow"]> = []
       const cancelled: string[] = []
       ;(Cortex.prepare as any) = mock(async (request: Parameters<typeof Cortex.prepare>[0]) => {
+        expect(request.timeoutMs).toBeUndefined()
         const session = await Session.create({
           parentID: request.parentSessionID,
           cortex: {
@@ -129,6 +130,7 @@ async function runAtomicStartTest(input?: { startError?: Error }) {
             reviewAgent,
             model: { providerID: "test-provider", modelID: "test-model" },
             budget: { maxRuntimeMs: 30_000, maxIterations: 5 },
+            ...input?.request,
           },
         })
       } catch (caught) {
@@ -152,12 +154,33 @@ describe("plugin LightLoop Host Service", () => {
       expect(state.startSnapshots).toHaveLength(1)
       expect(state.startSnapshots[0]).toMatchObject({
         kind: "lightloop",
-        status: "running",
         instructions: "Finish the implementation",
         pluginOwner: { pluginId: "lightloop-atomic-test", pluginGeneration: "generation-one" },
       })
       expect(state.cancelled).toEqual([])
     }))
+
+  test.each([
+    { reviewAgent: undefined, reviewTools: undefined, budget: { maxRuntimeMs: 30_000 } },
+    {
+      reviewAgent: "missing.legacy-reviewer",
+      reviewTools: { denied_tool: true },
+      budget: { maxRuntimeMs: 30_000, maxIterations: -1 },
+    },
+  ])("accepts omitted or obsolete reviewer configuration without retaining it", (request) =>
+    runtime.run(async () => {
+      const state = await runAtomicStartTest({ request })
+      expect(state.error).toBeUndefined()
+      expect(state.result?.status).toBe("running")
+      expect(Object.keys(state.startSnapshots[0]!).sort()).toEqual([
+        "deadlineAt",
+        "instructions",
+        "kind",
+        "pluginOwner",
+      ])
+      expect(state.task?.agent).toBe("lightloop-atomic-test.executor")
+    }),
+  )
 
   test("cancels and archives the prepared task when Cortex start fails", () =>
     runtime.run(async () => {

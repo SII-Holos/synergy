@@ -26,7 +26,7 @@ beforeAll(async () => {
     path.join(directory, "main.tsx"),
     `
     import { render } from "solid-js/web"
-    import { For, createMemo, createSignal, onCleanup } from "solid-js"
+    import { For, Show, createMemo, createSignal, onCleanup } from "solid-js"
     import { I18nProvider } from "@lingui/solid"
     import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
     import { applyThemeToDocument, resolveThemeVariant, synergyTheme } from "@ericsanchezok/synergy-ui/theme"
@@ -35,6 +35,7 @@ beforeAll(async () => {
     import { i18n, setLocale } from "./locale"
     import { PromptDock } from "@/components/session/prompt-dock"
     import { PendingComposerQueue } from "@/components/session/pending-composer-queue"
+    import { LoopStatusEntry } from "@/components/prompt-input/loop-status-entry"
     import { selectPendingTimelineItems } from "@/components/session/conversation-pending"
     import { createPromptDockHeight } from "@/components/session/prompt-dock-height"
     import { DefaultSession } from "@/plugin/default-session"
@@ -51,6 +52,7 @@ beforeAll(async () => {
     const [rollback, setRollback] = createSignal(false)
     const [root, setRoot] = createSignal(true)
     const [session, setSession] = createSignal("s1")
+    const [loop, setLoop] = createSignal()
     const [height, setHeight] = createSignal(0)
     const [replies, setReplies] = createSignal(Array.from({length:40}, (_,i) => "Reply "+i))
     const visible = createMemo(() => selectPendingTimelineItems(items(), messages()))
@@ -61,11 +63,18 @@ beforeAll(async () => {
       primaryAction: () => "send", render: slot => slot === "toolbar" ? <div style={{height:"48px"}} /> : null,
       editor: {label: () => "Composer", mount: () => () => {}, placeholder: () => "Write a message", completion: () => undefined},
     }
-    onCleanup(bindComposerPresentation(input, {state:presentation, preview: () => ({text:"",references:[]})}))
+    onCleanup(bindComposerPresentation(input, {state:presentation, status: () => <Show when={loop()}>{value => <LoopStatusEntry value={value()} onOpen={() => {}} onEdit={() => window.fixture.loopEdits++} onRemove={() => window.fixture.loopRemoves++} />}</Show>, preview: () => ({text:"",references:[]})}))
     window.fixture = {theme, locale: setLocale, setMessage: (parts, metadata) => setItems([{...make("media"),message:{origin:{type:"user"},parts,metadata}}]), editCalls: 0, setItems: (count) => setItems(Array.from({length:count}, (_,i) => make(String(i)))), deliver: () => setMessages(items().map(item => ({id:item.messageID}))), rollback:setRollback, root:setRoot, mode: mode => setItems(items().map(item => ({...item,mode}))), fail: () => setItems(items().map(item => ({...item,status:"failed"}))), expand: () => presentation.expand(), collapse: () => presentation.collapse(), switch: () => {setSession("s2");setItems([make("other")]);setMessages([])}, append: () => setReplies([...replies(), "New output"]), guideCalls:0, removeCalls:0, hold:false}
-    const guide = async () => {window.fixture.guideCalls++; if(window.fixture.hold) await new Promise(resolve => window.fixture.finish = resolve)}
+    const action = async (kind, item) => {
+      window.fixture[kind + "Calls"]++
+      const owner = session()
+      if(window.fixture.hold) await new Promise(resolve => window.fixture.finish = resolve)
+      if (session() !== owner) return
+      setItems(items().flatMap(value => value.id !== item.id ? [value] : kind === "guide" ? [{...value,mode:value.mode === "steer" ? "task" : "steer"}] : []))
+    }
+    Object.assign(window.fixture, {loopEdits:0, loopRemoves:0, loop: (stage) => setLoop(stage ? {kind:"lightloop",stage,title:"Check edge cases ".repeat(30),reason:stage === "rework" ? "Missing coverage" : undefined,terminal:false} : undefined)})
     const dock = createPromptDockHeight(setHeight)
-    const renderDock = () => <PromptDock context={{input:()=>input,mount:dock.mount,ready:()=>true,readOnly:()=>false,links:()=>[],render:()=>null}} pending={<PendingComposerQueue identity={session()} items={visible()} rollbackActive={rollback()} hasCanonicalRoot={root()} serverUrl={location.origin} onEdit={async item => {window.fixture.editCalls++;setItems(items().filter(value=>value.id!==item.id))}} onGuide={guide} onRemove={async item => {window.fixture.removeCalls++;setItems(items().filter(value=>value.id!==item.id))}} />} />
+    const renderDock = () => <PromptDock context={{input:()=>input,mount:dock.mount,ready:()=>true,readOnly:()=>false,links:()=>[],render:()=>null}} pending={<PendingComposerQueue identity={session()} items={visible()} rollbackActive={rollback()} hasCanonicalRoot={root()} serverUrl={location.origin} onEdit={item => action("edit", item)} onGuide={item => action("guide", item)} onRemove={item => action("remove", item)} />} />
     render(() => {
       if (!scrolling) return <I18nProvider i18n={i18n}><MarkedProvider><div class="session-workbench-pane" style={{height:"100dvh",position:"relative"}} data-height={height()}>
         <div data-conversation-current><div data-session-top-bar style={{height:"48px"}} /><p>Current answer</p></div>{renderDock()}
@@ -105,6 +114,9 @@ afterAll(async () => {
 })
 
 interface Fixture {
+  loop(stage?: string): void
+  loopEdits: number
+  loopRemoves: number
   theme(mode: "light" | "dark"): void
   locale(value: "en" | "zh-CN"): void
   setMessage(parts: Array<Record<string, unknown>>, metadata?: Record<string, unknown>): void
@@ -127,7 +139,166 @@ interface Fixture {
   finish(): void
 }
 
+async function actionFrames(count = 12) {
+  return page.evaluate(async (count) => {
+    const result = []
+    for (let frame = 0; frame < count; frame++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      const bounds = (selector: string) => {
+        const box = document.querySelector(selector)?.getBoundingClientRect()
+        return box ? { top: box.top, height: box.height, bottom: box.bottom } : null
+      }
+      const viewport = document.querySelector("[data-conversation-viewport]")!
+      result.push({
+        dock: bounds(".session-prompt-dock")!,
+        queue: bounds(".pending-composer-list"),
+        row: bounds(".pending-composer-row"),
+        loop: bounds('[data-component="loop-status-entry"]')!,
+        composer: bounds(".session-composer")!,
+        reply: bounds(".session-conversation-content p:last-child")!,
+        scrollTop: viewport.scrollTop,
+        gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+      })
+    }
+    return result
+  }, count)
+}
+
+for (const width of [375, 1000]) {
+  for (const action of ["Guide", "Queue", "Edit message", "Delete"]) {
+    test(`pending ${action} does not move the queue or transcript while awaiting its result at ${width}px`, async () => {
+      for (const reading of [false, true]) {
+        await page.setViewportSize({ width, height: 640 })
+        await page.goto(server.url + "?scroll")
+        await page.locator("[data-conversation-viewport]").waitFor()
+        await page.evaluate((action) => {
+          const f = (window as unknown as { fixture: Fixture }).fixture
+          f.setItems(1)
+          f.loop("running")
+          f.mode(action === "Queue" ? "steer" : "task")
+          f.hold = true
+          f.latest()
+        }, action)
+        await page.waitForFunction(() => {
+          const viewport = document.querySelector("[data-conversation-viewport]")!
+          return viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 1
+        })
+        if (reading) {
+          await page.locator("[data-conversation-viewport]").hover()
+          await page.mouse.wheel(0, -320)
+          await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.reading())
+        }
+        const before = (await actionFrames()).at(-1)!
+        const button = page.getByRole("button", { name: action, exact: true }).first()
+        if (reading) await button.press("Enter")
+        else await button.click()
+        expect(await button.isDisabled()).toBe(true)
+        const pending = await actionFrames()
+        await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.finish())
+        const settled = await actionFrames()
+        for (const frame of pending) {
+          expect(frame.dock.height).toBeCloseTo(before.dock.height, 0)
+          expect(frame.queue!.top).toBeCloseTo(before.queue!.top, 0)
+          expect(frame.row!.top).toBeCloseTo(before.row!.top, 0)
+          expect(frame.loop.top).toBeCloseTo(before.loop.top, 0)
+          expect(frame.composer.top).toBeCloseTo(before.composer.top, 0)
+          expect(frame.reply.top).toBeCloseTo(before.reply.top, 0)
+        }
+        for (const frame of settled) {
+          expect(frame.dock.height).toBeLessThanOrEqual(before.dock.height)
+          expect(frame.composer.bottom).toBeCloseTo(before.composer.bottom, 0)
+          expect(frame.loop.top).toBeCloseTo(before.loop.top, 0)
+          if (reading) expect(frame.scrollTop).toBeCloseTo(before.scrollTop, 0)
+          else expect(frame.gap).toBeLessThan(2)
+        }
+        if (action === "Guide" || action === "Queue") {
+          expect(settled.at(-1)!.row!.top).toBeCloseTo(before.row!.top, 0)
+          expect(
+            await page.getByRole("button", { name: action === "Queue" ? "Guide" : "Queue", exact: true }).isEnabled(),
+          ).toBe(true)
+        } else expect(settled.at(-1)!.queue).toBeNull()
+        expect(
+          await page.evaluate(() => {
+            const f = (window as unknown as { fixture: Fixture }).fixture
+            return f.guideCalls + f.editCalls + f.removeCalls
+          }),
+        ).toBe(1)
+      }
+    })
+  }
+}
+
+test("Loop is the bottom queue layer with compact icon actions outside the editor", async () => {
+  await page.setViewportSize({ width: 375, height: 700 })
+  await page.goto(server.url)
+  await page.getByRole("region", { name: "Inbox", exact: true }).waitFor()
+  const guide = page.getByRole("button", { name: "Guide", exact: true })
+  expect(await guide.innerText()).toBe("")
+  expect(await guide.locator("svg").count()).toBe(1)
+  await page.evaluate(() => {
+    const f = (window as unknown as { fixture: Fixture }).fixture
+    f.setItems(12)
+    f.loop("paused")
+  })
+  const loop = page.locator('[data-component="loop-status-entry"]')
+  await loop.waitFor({ timeout: 3000 })
+  expect(await page.locator("[data-prompt-pending]").locator(loop).count()).toBe(1)
+  expect(await page.locator(".prompt-input-shell").locator(loop).count()).toBe(0)
+  const queue = await page.locator(".pending-composer-list").boundingBox()
+  const row = await loop.boundingBox()
+  const editor = await page.locator(".prompt-input-shell").boundingBox()
+  expect(row!.y).toBeGreaterThanOrEqual(queue!.y + queue!.height - 1)
+  expect(row!.y + row!.height).toBeLessThanOrEqual(editor!.y + 12)
+  for (const name of ["Edit goal", "Cancel loop"]) {
+    const action = loop.getByRole("button", { name, exact: true })
+    expect(await action.innerText()).toBe("")
+    const bounds = (await action.boundingBox())!
+    expect(bounds.x).toBeGreaterThanOrEqual(0)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(375)
+    await action.click()
+  }
+  expect(await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.loopEdits)).toBe(1)
+  expect(await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.loopRemoves)).toBe(1)
+  const original = await loop.elementHandle()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.loop("auditing"))
+  expect(await loop.evaluate((node, old) => node === old, original)).toBe(true)
+  expect((await loop.boundingBox())!.height).toBe(row!.height)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.deliver())
+  await page.getByRole("region", { name: "Inbox", exact: true }).waitFor({ state: "detached" })
+  expect(await loop.isVisible()).toBe(true)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.expand())
+  await page.waitForFunction(() => document.querySelector(".session-composer")?.hasAttribute("data-expanded"))
+  expect(await loop.isVisible()).toBe(false)
+})
+
+test("narrow Loop rows preserve the entire short status before the goal", async () => {
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 700 })
+    await page.goto(server.url + "?locale=zh-CN")
+    for (const stage of ["running", "auditing", "paused", "rework", "iteration_exhausted"]) {
+      await page.evaluate((stage) => (window as unknown as { fixture: Fixture }).fixture.loop(stage), stage)
+      const loop = page.locator('[data-component="loop-status-entry"]')
+      const state = loop.getByRole("status")
+      await state.waitFor()
+      const size = await state.evaluate((node) => ({
+        text: node.textContent,
+        width: node.clientWidth,
+        full: node.scrollWidth,
+      }))
+      expect({ width, stage, text: size.text, overflow: size.full > size.width }).toEqual({
+        width,
+        stage,
+        text: size.text,
+        overflow: false,
+      })
+      const last = (await loop.locator("button").last().boundingBox())!
+      expect(last.x + last.width).toBeLessThanOrEqual(width)
+    }
+  }
+})
+
 test("pending messages attach to the measured dock, not the answer, and delivery leaves no queue space", async () => {
+  await page.setViewportSize({ width: 1000, height: 800 })
   await page.goto(server.url)
   const queue = page.getByRole("region", { name: "Inbox", exact: true })
   await queue.waitFor()
@@ -173,9 +344,9 @@ test("mode updates retain controls and pending operations cannot leak across ses
   })
   expect(await queueAction.evaluate((element) => element === document.activeElement)).toBe(true)
   await queueAction.press("Enter")
-  await page.locator(".pending-composer-feedback[role=status]").waitFor()
+  await page.locator(".pending-composer-actions[aria-busy=true]").waitFor()
   await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.switch())
-  expect(await page.locator(".pending-composer-feedback[role=status]").count()).toBe(0)
+  expect(await page.locator(".pending-composer-actions[aria-busy=true]").count()).toBe(0)
   await page.getByRole("button", { name: "Guide", exact: true }).waitFor()
   await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.finish())
   expect(await page.getByRole("button", { name: "Guide", exact: true }).isEnabled()).toBe(true)
@@ -278,9 +449,13 @@ test("queued media, references and editing stay readable in both locales and the
     await page.evaluate((locale) => (window as unknown as { fixture: Fixture }).fixture.locale(locale), locale)
     await queue.getByRole("button", { name: locale === "en" ? "Edit message" : "编辑消息", exact: true }).waitFor()
     const deletion = queue.getByRole("button", { name: locale === "en" ? "Delete" : "删除", exact: true })
-    expect(await deletion.getAttribute("title")).toBe(locale === "en" ? "Delete" : "删除")
+    await deletion.hover()
+    await page.getByRole("tooltip", { name: locale === "en" ? "Delete" : "删除", exact: true }).waitFor()
     for (const width of [375, 1000]) {
       await page.setViewportSize({ width, height: 812 })
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      )
       for (const mode of ["light", "dark"] as const) {
         await page.evaluate((mode) => (window as unknown as { fixture: Fixture }).fixture.theme(mode), mode)
         if (locale === "en" && width === 375) {

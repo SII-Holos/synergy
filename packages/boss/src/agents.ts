@@ -47,8 +47,6 @@ function bossPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Ruleset
       read: "deny",
       edit: "deny",
       write: "deny",
-      grep: "deny",
-      ast_grep: "deny",
       runtime_reload: "deny",
       dagwrite: "deny",
       dagread: "deny",

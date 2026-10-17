@@ -11,6 +11,8 @@ import { SessionManagedProjects } from "./managed-projects"
 import { SessionCompat } from "./compat-import"
 import { SessionRecords } from "./records"
 import { WorkflowKindRegistry } from "./workflow-kind-registry"
+import { upgradeSessionRecords } from "../migration"
+import { upgradeAccessRecord } from "../migration/import"
 
 export type NavCategory = "project" | "home" | "channel" | "background" | "github"
 
@@ -162,7 +164,7 @@ export interface ScopeNavEntry {
   }
 }
 export interface ScopeNavIndex {
-  version: 1
+  version: 1 | 2
   composition?: string
   scopeID: string
   updatedAt: number
@@ -245,11 +247,10 @@ export namespace SessionNav {
   async function buildNavIndexUnlocked(scopeID: string, previous?: ScopeNavIndex): Promise<ScopeNavIndex> {
     const { Session } = await import(".")
     const sid = Identifier.asScopeID(scopeID)
-    const sessionIDs = previous?.entries.map((entry) => entry.id) ?? (await Storage.scan(StoragePath.sessionsRoot(sid)))
+    const keys = await sessionInfoKeys(scopeID)
     const activity = new Map(previous?.entries.map((entry) => [entry.id, entry.lastActivityAt]))
     const entries: SessionNavEntry[] = []
-    if (sessionIDs.length > 0) {
-      const keys = sessionIDs.map((id) => StoragePath.sessionInfo(sid, Identifier.asSessionID(id)))
+    if (keys.length > 0) {
       const storedSessions = await SessionRecords.readMany(keys)
       for (const storedSession of storedSessions) {
         let projected = storedSession
@@ -323,7 +324,7 @@ export namespace SessionNav {
     }
     entries.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id))
     const index: ScopeNavIndex = {
-      version: 1,
+      version: 2,
       composition: SessionSchemaRegistry.projectionKey(),
       scopeID,
       updatedAt: Date.now(),
@@ -337,31 +338,45 @@ export namespace SessionNav {
   }
 
   export async function buildNavIndex(scopeID: string): Promise<ScopeNavIndex> {
+    if (!Storage.inTransaction()) await prepareNavIndex(scopeID)
     return Storage.transaction(async () => {
       return buildNavIndexUnlocked(scopeID)
     })
   }
 
+  async function prepareNavIndex(scopeID: string) {
+    const keys = await sessionInfoKeys(scopeID)
+    await upgradeSessionRecords(keys.map((key) => ({ scopeID, sessionID: key[2] })))
+  }
+
+  async function sessionInfoKeys(scopeID: string) {
+    const keys: string[][] = []
+    for (;;) {
+      const page = await Storage.queryKeys({ kind: "session", scopeID, after: keys.at(-1), limit: 1_000 })
+      keys.push(...page)
+      if (page.length < 1_000) return keys
+    }
+  }
+
   async function readNavIndexUnlocked(scopeID: string): Promise<ScopeNavIndex> {
     const sid = Identifier.asScopeID(scopeID)
     const key = StoragePath.sessionNavIndex(sid)
-    const existing = await Storage.read<ScopeNavIndex>(key).catch(() => undefined)
+    let [existing] = await Storage.readMany<ScopeNavIndex>([key])
+    if (existing?.version === 1) existing = upgradeAccessRecord(key, existing)
     if (existing?.composition === SessionSchemaRegistry.projectionKey()) return existing
-    return buildNavIndexUnlocked(scopeID, existing).catch<ScopeNavIndex>((error) => {
-      log.warn("failed to lazily build nav index", { scopeID, error: String(error) })
-      return { version: 1, scopeID, updatedAt: 0, entries: [] }
-    })
+    return buildNavIndexUnlocked(scopeID, existing)
   }
 
   export async function readNavIndex(scopeID: string): Promise<ScopeNavIndex> {
     const existing = await Storage.snapshot(async () => {
-      const index = await Storage.read<ScopeNavIndex>(StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID))).catch(
-        () => undefined,
-      )
+      const key = StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID))
+      let [index] = await Storage.readMany<ScopeNavIndex>([key])
+      if (index?.version === 1) index = upgradeAccessRecord(key, index)
       if (index?.composition === SessionSchemaRegistry.projectionKey())
         return SessionCompat.mergeNavIndex(scopeID, index)
     })
     if (existing) return existing
+    if (!Storage.inTransaction()) await prepareNavIndex(scopeID)
     return Storage.transaction(async () => {
       const index = await readNavIndexUnlocked(scopeID)
       return (await SessionCompat.mergeNavIndex(scopeID, index)) as ScopeNavIndex
@@ -537,7 +552,20 @@ export namespace SessionNav {
     options?: { preserveActivityAt?: boolean },
   ): Promise<SessionNavEntry> {
     return Storage.transaction(async () => {
-      const index = await readNavIndexUnlocked(entry.scopeID)
+      const key = StoragePath.sessionNavIndex(Identifier.asScopeID(entry.scopeID))
+      let [index] = await Storage.readMany<ScopeNavIndex>([key])
+      if (!index) {
+        const sessions = await Storage.queryKeys({ kind: "session", scopeID: entry.scopeID, limit: 2 })
+        // A missing historical index must remain missing until a complete read rebuilds it.
+        if (sessions.some((session) => session[2] !== entry.id)) return entry
+        index = {
+          version: 2,
+          composition: SessionSchemaRegistry.projectionKey(),
+          scopeID: entry.scopeID,
+          updatedAt: 0,
+          entries: [],
+        }
+      }
       const existing = index.entries.findIndex((e) => e.id === entry.id)
       const nextEntry =
         options?.preserveActivityAt && existing >= 0
@@ -552,17 +580,19 @@ export namespace SessionNav {
       if (insertAt === -1) index.entries.push(nextEntry)
       else index.entries.splice(insertAt, 0, nextEntry)
       index.updatedAt = Date.now()
-      await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(nextEntry.scopeID)), index)
+      await Storage.write(key, index)
       return nextEntry
     })
   }
 
   export async function removeNavEntry(scopeID: string, sessionID: string): Promise<void> {
     return Storage.transaction(async () => {
-      const index = await readNavIndexUnlocked(scopeID)
+      const key = StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID))
+      const [index] = await Storage.readMany<ScopeNavIndex>([key])
+      if (!index) return
       index.entries = index.entries.filter((e) => e.id !== sessionID)
       index.updatedAt = Date.now()
-      await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(scopeID)), index)
+      await Storage.write(key, index)
     })
   }
 }

@@ -69,41 +69,79 @@
   text-underline-offset: 2px;
 }
 
-[data-component="markdown"] a:hover {
+[data-component="markdown"] a:hover,
+[data-component="markdown"] a:focus-visible,
+[data-component="markdown"] a[data-resource-preview] {
   text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, currentColor 50%, transparent);
 }
 
 [data-component="markdown"] a[data-resource-reference] {
   cursor: pointer;
-  font-weight: var(--font-weight-medium);
-  border-radius: var(--radius-xs);
-  text-decoration: underline;
-  text-decoration-color: transparent;
+  font-weight: inherit;
+  background: transparent;
   text-underline-offset: 3px;
   overflow-wrap: anywhere;
 }
 
-[data-component="markdown"] a[data-resource-reference]:hover {
-  text-decoration-color: currentColor;
+[data-component="markdown"] a[data-resource-label] > [data-reference-text] {
+  font-size: 0;
+}
+
+[data-component="markdown"] a[data-resource-label]::after {
+  content: attr(data-resource-label);
+}
+
+[data-component="markdown"] [data-reference-decoration] {
+  display: contents;
 }
 
 [data-component="markdown"] [data-reference-icon] {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   width: 1em;
   height: 1em;
   margin-inline-end: 0.3em;
   vertical-align: -0.12em;
   pointer-events: none;
+  color: inherit;
 }
 
-[data-component="markdown"] a[data-resource-reference] > code {
+[data-component="markdown"] [data-reference-icon] [data-component="icon"],
+[data-component="markdown"] [data-reference-icon] [data-component="file-icon"] {
+  display: inline-flex;
+  width: 1em;
+  height: 1em;
+  color: inherit;
+}
+
+[data-component="markdown"] [data-resource-info] {
+  display: none;
+}
+
+@media (hover: none), (pointer: coarse) {
+  [data-component="markdown"] [data-resource-info] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    vertical-align: middle;
+    color: var(--text-interactive-base);
+    background: transparent;
+    border: 0;
+  }
+}
+
+[data-component="markdown"] a[data-resource-reference] code {
   color: inherit;
   background: transparent;
   padding: 0;
 }
 
 [data-component="markdown"] [data-resource-state="unavailable"] {
-  text-decoration: underline dotted;
+  text-decoration-style: dotted;
 }
 
 [data-component="markdown"] ul,

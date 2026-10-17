@@ -298,11 +298,7 @@ export interface PluginLightLoopAdapter {
     sessionID: string,
     input: {
       instructions: string
-      executionAgent: string
-      reviewAgent: string
-      reviewTools?: Record<string, boolean>
       pluginOwner: NonNullable<PluginLightLoopTerminal["pluginOwner"]>
-      budget: LightLoopStartInput["budget"]
       deadlineAt: number
     },
   ): Promise<void>
@@ -311,7 +307,6 @@ export interface PluginLightLoopAdapter {
     | {
         instructions: string
         pluginOwner?: PluginLightLoopTerminal["pluginOwner"]
-        reviewSessionID?: string
       }
     | undefined
   scheduleDeadline(sessionID: string, deadlineAt: number): void
@@ -406,7 +401,6 @@ async function assertLightLoopDelegation(
     pluginGeneration: string
     pluginDir: string
     executionAgent: string
-    reviewAgent: string
   },
   manifestCapability: string,
 ) {
@@ -414,13 +408,6 @@ async function assertLightLoopDelegation(
   if (!execAgent) throw new Error(`Unknown execution agent: ${input.executionAgent}`)
   if (execAgent.mode === "primary") throw new Error(`Execution agent "${input.executionAgent}" is a primary agent`)
   if (!execAgent.hidden) throw new Error(`Execution agent "${input.executionAgent}" is not hidden`)
-
-  const reviewAgent = await Agent.get(input.reviewAgent)
-  if (!reviewAgent) throw new Error(`Unknown review agent: ${input.reviewAgent}`)
-  if (reviewAgent.mode === "primary") throw new Error(`Review agent "${input.reviewAgent}" is a primary agent`)
-  if (!reviewAgent.hidden) throw new Error(`Review agent "${input.reviewAgent}" is not hidden`)
-
-  if (input.executionAgent === input.reviewAgent) throw new Error("Execution and review agents must differ")
 
   const manifest = await readPluginManifest(input.pluginDir)
   const cap = manifest.capabilities.find((c) => c.id === manifestCapability)
@@ -430,21 +417,11 @@ async function assertLightLoopDelegation(
   if (agents) {
     if (!agents.includes(input.executionAgent))
       throw new Error(`Plugin manifest does not allow LightLoop execution agent "${input.executionAgent}"`)
-    if (!agents.includes(input.reviewAgent))
-      throw new Error(`Plugin manifest does not allow LightLoop review agent "${input.reviewAgent}"`)
   }
 
   const execOwner = Agent.pluginOwner(execAgent)
   if (!execOwner || execOwner.pluginId !== input.pluginId || execOwner.pluginGeneration !== input.pluginGeneration) {
     throw new Error(`Execution agent "${input.executionAgent}" is not owned by this plugin generation`)
-  }
-  const reviewOwner = Agent.pluginOwner(reviewAgent)
-  if (
-    !reviewOwner ||
-    reviewOwner.pluginId !== input.pluginId ||
-    reviewOwner.pluginGeneration !== input.pluginGeneration
-  ) {
-    throw new Error(`Review agent "${input.reviewAgent}" is not owned by this plugin generation`)
   }
 }
 
@@ -461,12 +438,9 @@ export async function startLightLoop(input: {
   if (!request.instructions?.trim()) throw new Error("lightloop.start requires instructions")
   if (!request.correlationId?.trim()) throw new Error("lightloop.start requires correlationId")
   if (!request.executionAgent?.trim()) throw new Error("lightloop.start requires executionAgent")
-  if (!request.reviewAgent?.trim()) throw new Error("lightloop.start requires reviewAgent")
   if (!request.budget) throw new Error("lightloop.start requires budget")
-  if (!Number.isFinite(request.budget.maxRuntimeMs) || request.budget.maxRuntimeMs <= 0)
+  if (!Number.isSafeInteger(request.budget.maxRuntimeMs) || request.budget.maxRuntimeMs <= 0)
     throw new Error("budget.maxRuntimeMs must be a positive integer")
-  if (!Number.isFinite(request.budget.maxIterations) || request.budget.maxIterations <= 0)
-    throw new Error("budget.maxIterations must be a positive integer")
 
   await assertLightLoopDelegation(
     {
@@ -474,7 +448,6 @@ export async function startLightLoop(input: {
       pluginGeneration: input.pluginGeneration,
       pluginDir: input.pluginDir,
       executionAgent: request.executionAgent.trim(),
-      reviewAgent: request.reviewAgent.trim(),
     },
     "lightloop.delegate",
   )
@@ -482,14 +455,12 @@ export async function startLightLoop(input: {
   await requestPluginPermission(input.context, {
     capability: "lightloop.delegate",
     permission: "task",
-    patterns: [request.executionAgent, request.reviewAgent],
+    patterns: [request.executionAgent.trim()],
     metadata: { capability: "lightloop.delegate", source: "plugin" },
   })
 
   const execAgent = (await Agent.get(request.executionAgent.trim()))!
   const model = request.model ?? (await Agent.getAvailableModel(execAgent)) ?? (await parentModel(input.context))
-  const timeoutMs = request.budget.maxRuntimeMs
-
   const task = await Cortex.prepare({
     description: `[LightLoop] ${request.instructions.slice(0, 80)}`,
     prompt: request.instructions.trim(),
@@ -502,7 +473,6 @@ export async function startLightLoop(input: {
     tools: request.executionTools,
     visibility: "hidden",
     notifyParentOnComplete: false,
-    timeoutMs,
     owner: {
       pluginId: input.pluginId,
       pluginGeneration: input.pluginGeneration,
@@ -512,19 +482,15 @@ export async function startLightLoop(input: {
   })
 
   try {
-    const deadlineAt = Date.now() + timeoutMs
+    const deadlineAt = Date.now() + request.budget.maxRuntimeMs
     await lightLoopAdapterOrThrow().start(task.sessionID, {
       instructions: request.instructions.trim(),
-      executionAgent: request.executionAgent.trim(),
-      reviewAgent: request.reviewAgent.trim(),
-      reviewTools: request.reviewTools,
       pluginOwner: {
         pluginId: input.pluginId,
         pluginGeneration: input.pluginGeneration,
         scopeId: input.scopeId,
         correlationId: request.correlationId.trim(),
       },
-      budget: request.budget,
       deadlineAt,
     })
 
@@ -578,7 +544,7 @@ export async function getLightLoop(input: {
 
   return {
     sessionID: input.sessionID,
-    status: workflow.reviewSessionID ? "reviewing" : "running",
+    status: "running",
     instructions: workflow.instructions,
   }
 }
@@ -627,14 +593,6 @@ export async function cancelLightLoop(input: {
   const delegated = session.cortex
   if (delegated) {
     await CortexModule.cancel(delegated.taskID).catch(() => {})
-  }
-
-  // Cancel any pending review session
-  if (workflow.reviewSessionID) {
-    const reviewSession = await Session.get(workflow.reviewSessionID).catch(() => undefined)
-    if (reviewSession?.cortex) {
-      await CortexModule.cancel(reviewSession.cortex.taskID).catch(() => {})
-    }
   }
 
   await lightLoopAdapterOrThrow().setTerminalStatus(input.sessionID, "cancelled")
