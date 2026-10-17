@@ -18,10 +18,13 @@ Composition invalidation sent the first catalog read through reconstruction unde
 
 Real-data interaction acceptance also exposed reader saturation after the cold path was fixed. Each catalog refresh used an unbounded parallel read of all Scope records, including archived projects. Overlapping refreshes during streaming exhausted the reader queue. Scope listing now uses the storage batch-read contract instead of one admission per project.
 
+The wider CI matrix caught a restart gap in the initial fix: legacy startup-residue validation recognized only canonical navigation version 1. A refreshed version 2 index therefore caused an inert empty initializer file to be rejected. The classifier now recognizes both canonical versions without broadening the historical file schema; restart tests retain original file bytes and continue rejecting foreign records.
+
 ## Guardrails
 
 - [Navigation isolation tests](../../packages/harness/test/session/nav-read-isolation.test.ts) cover absent and partial indexes, rollback, concurrent readers and business publication between batches.
 - [Metadata access tests](../../packages/harness/test/migration/session-access.test.ts) cover absent input, later input, dependencies and duplicate callers.
+- [Legacy startup admission](../../packages/harness/test/storage/legacy-startup.test.ts) and [managed CLI readiness](../../packages/presets/test/cli/managed-readiness.test.ts) cover both canonical navigation versions, strict residue rejection and repeated startup.
 - [Scope listing admission](../../packages/harness/test/scope/list-admission.test.ts) covers more projects than the queue limit and eight simultaneous readers over a largely archived catalog.
 - [Historical cleanup](../../packages/harness/test/session/loop-guard-migration.test.ts) and [pause recovery](../../packages/harness/test/session/pause-recovery.test.ts) verify explicit preparation and durable restart behavior.
 - [Full composition history acceptance](../../packages/presets/test/server/history-experience.test.ts) combines thousands of cold owners with HTTP navigation, old message pages and new Session creation.

@@ -14,6 +14,8 @@ A versioned record migration invalidates legacy navigation composition markers w
 
 Scope catalogs use the storage batch-read contract, including archived records before filtering. Concurrent refreshes must not multiply individual reader admissions by the retained project count. Interaction acceptance covers streaming-triggered refreshes as well as the first cold request.
 
+The legacy startup-residue classifier accepts either supported canonical navigation version while retaining its strict version 1 initializer-file schema. Repeated startup preserves the SQL index and original residual bytes; populated or unknown legacy formats remain conflicts. Both ordinary and deferred admission use this classifier.
+
 ## Alternatives considered
 
 **Increase storage admission deadlines.** A longer deadline leaves unrelated writes queued behind work proportional to historical message volume and cannot distinguish failure from empty data.
