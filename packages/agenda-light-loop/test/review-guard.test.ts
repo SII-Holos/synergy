@@ -15,7 +15,7 @@ import { AgentPromptContributions } from "@ericsanchezok/synergy-harness/agent/p
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 
 for (const selected of [false, true]) {
-  test(`Agenda review bridge selected=${selected} controls wakeup guidance and review`, async () => {
+  test(`Agenda review bridge selected=${selected} keeps wakeup guidance conditional and guards completion`, async () => {
     await using runtime = await testRuntime({
       composition: {
         register() {
@@ -32,12 +32,22 @@ for (const selected of [false, true]) {
         fn: async () => {
           const agent = await Agent.get(PrimaryAgentIdentity.names.general)
           const guidance = AgentPromptContributions.render(agent, new Set(["loop_stop", "agenda_cancel"]))
-          expect(guidance.join("\n").includes("all active Agenda wakeups")).toBe(selected)
-          expect(guidance.join("\n")).not.toMatch(/loop_stop|agenda_cancel/)
+          expect(guidance).toEqual([])
           expect(AgentPromptContributions.render(agent, new Set(["loop_stop"]))).toEqual([])
           const session = await Session.create({})
           await Session.update(session.id, (draft) => {
             draft.workflow = { kind: "lightloop", instructions: "Complete the work" }
+          })
+          const other = await Session.create({})
+          const unrelated = await AgendaStore.create({
+            title: "Another task",
+            prompt: "Continue another task",
+            triggers: [{ type: "delay", delay: "30m" }],
+            wake: true,
+            silent: false,
+            autoDone: true,
+            createdBy: "agent",
+            sessionID: other.id,
           })
           const item = await AgendaStore.create({
             title: "Wait",
@@ -76,6 +86,7 @@ for (const selected of [false, true]) {
             await AgendaStore.update(session.scope.id, item.id, { status: "cancelled" })
           }
           const result = await tool.execute({ summary: "Verified" }, context)
+          expect((await AgendaStore.get(other.scope.id, unrelated.id))?.status).toBe("active")
           expect(result.metadata.loopCompleted).toBe(true)
           expect(
             await AgendaSessionWakeup.loopInstruction({ session: await Session.get(session.id), item }),

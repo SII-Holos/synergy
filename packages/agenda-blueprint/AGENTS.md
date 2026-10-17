@@ -4,7 +4,7 @@ Agenda wake-up guidance and review guards for BlueprintLoop. Required components
 
 Register the explicit lifecycle bridge only. Do not load or expose other workflow kinds.
 
-Stop guidance is an Agent prompt contribution requiring both blueprint_loop_stop and agenda_cancel to be available and permitted. The execution guard remains independent of prompt visibility.
+Wake-up instructions carry cleanup guidance for the owning session. Completion guards remain independent of prompt visibility.
 
 Expose selection through `./component`; imports are inert. Keep factory requirements, published `synergy` metadata, worker roles and production dependencies aligned. Register owner schemas, events, tools and HTTP features before Runtime composition closes.
 

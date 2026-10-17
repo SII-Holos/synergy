@@ -1,1 +1,1 @@
-Complete the Light Loop after checking every required outcome against the full goal. Include results and concrete verification evidence in summary. Continue working if required work or verification remains. This tool completes the workflow directly.
+Complete the Light Loop after verifying every required outcome against the full goal. Briefly summarize results and key checks; reference detailed evidence. Continue if required work or verification remains. This tool completes the workflow directly.

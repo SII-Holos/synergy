@@ -1,14 +1,6 @@
 import { setLightLoopAgendaAssertClear } from "@ericsanchezok/synergy-light-loop/light-loop/tools/loop-stop"
 import { AgendaSessionWakeup } from "@ericsanchezok/synergy-agenda/agenda/session-wakeup"
-import { AgentPromptContributions } from "@ericsanchezok/synergy-harness/agent/prompt-contributions"
 export function registerBridge() {
-  AgentPromptContributions.register("agenda-light-loop", [
-    {
-      requiredTools: ["loop_stop", "agenda_cancel"],
-      render: () =>
-        "Light Loop completion requires all active Agenda wakeups for this execution session to be cancelled. Completion is rejected while any wakeup remains.",
-    },
-  ])
   setLightLoopAgendaAssertClear(AgendaSessionWakeup.assertClear)
   AgendaSessionWakeup.registerInstruction("agenda-light-loop", async (input) => {
     const lightLoopActive = input.session.workflow?.kind === "lightloop"

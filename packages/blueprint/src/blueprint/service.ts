@@ -86,7 +86,7 @@ export namespace BlueprintLoopService {
   }
 
   function defaultFirstPrompt(loop: { id: string; title: string; noteID: string }) {
-    return `Execute Blueprint "${loop.title}" (${loop.noteID}). Read the complete Note before starting; preserve its requirements, boundaries and acceptance criteria. Work directly unless coordination materially helps. Verify the delivered outcome with evidence appropriate to the claim. When complete, call blueprint_loop_stop with results, evidence and limitations in summary, then end the turn.`
+    return `Execute Blueprint "${loop.title}" (${loop.noteID}). Read the complete Note before starting; preserve its requirements, boundaries and acceptance criteria. Work directly unless coordination materially helps. Verify the delivered outcome with evidence appropriate to the claim. When complete, call blueprint_loop_stop with concise results, key checks, evidence references and limitations, then end the turn.`
   }
 
   export async function bindSessionToLoop(sessionID: string, loopID: string, loopRole: "execution" | "audit") {

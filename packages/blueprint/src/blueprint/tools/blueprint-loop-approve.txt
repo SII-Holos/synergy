@@ -1,1 +1,1 @@
-Accept the current bound BlueprintLoop only when all required outcomes are verified and within scope. Include concrete evidence in summary. Only its recorded reviewer can approve; the host infers the loop.
+Accept the bound BlueprintLoop only when every required outcome is verified and in scope. Briefly state the conclusion and decisive checks; reference detailed evidence. Only its recorded reviewer can approve; the host infers the loop.

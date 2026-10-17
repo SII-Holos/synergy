@@ -22,9 +22,9 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `agent_config` | `platform.config` | Manage Synergy agent definitions: create, update, disable, delete, inspect, and set the default agent through validated writes. Use this when the user wants to create a custom agent ("make me an agent |
 | `apply_patch` | `code.write` | Apply a complete text patch to the selected Workspace. Read existing source files with read first. Permissions remain unchanged. Pass an object with patch containing exactly one document: *** Begin Pa |
 | `bash` | `code.execute` | Run a shell command; default directory: ${directory}. Select another directory with workdir rather than cd. Use this for terminal operations and command-line reads (rg, rg --files, find); prefer the s |
-| `blueprint_loop_approve` | `orchestration.task` | Accept the current bound BlueprintLoop only when all required outcomes are verified and within scope. Include concrete evidence in summary. Only its recorded reviewer can approve; the host infers the  |
-| `blueprint_loop_reject` | `orchestration.task` | Return the current bound BlueprintLoop for corrections. Explain unmet requirements, supporting evidence and specific next actions in reason; optional improvements alone do not block acceptance. Only i |
-| `blueprint_loop_stop` | `orchestration.task` | Request independent final review after checking the complete Blueprint, start instructions and delivered results. Put completion evidence and limitations in summary. After success, end the turn withou |
+| `blueprint_loop_approve` | `orchestration.task` | Accept the bound BlueprintLoop only when every required outcome is verified and in scope. Briefly state the conclusion and decisive checks; reference detailed evidence. Only its recorded reviewer can  |
+| `blueprint_loop_reject` | `orchestration.task` | Return the bound BlueprintLoop for corrections. State unmet requirements, reproduction evidence and actionable fixes concisely; reference detailed reports. Optional improvements alone do not block acc |
+| `blueprint_loop_stop` | `orchestration.task` | Request independent final review after checking the complete Blueprint, user instructions and results. Summarize the outcome, key checks and limitations briefly; reference detailed reports. After succ |
 | `boss_assign` | `orchestration.session` | Assign a task to a direct-child worker session in the Boss Mode tree. The task is delivered as an inbox message to the worker; the worker processes it and reports back through boss_report. Assigning t |
 | `boss_cancel` | `orchestration.session` | Cancel a task (or all tasks) assigned to a direct-child worker in the Boss Mode tree. If the worker is running, its turn is interrupted; matching pending inbox tasks are removed. Use taskID to cancel  |
 | `boss_project` | `orchestration.session` | Create a new project as a runtime colleague: create the project directory if missing, bind it as a project Scope, and create a project boss session in that scope. Only a boss-role session (the runtime |
@@ -66,7 +66,7 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `file_search` | `search.codebase` | Search the selected Workspace with hybrid (default), exact path-glob, or literal/regex content modes. Hybrid search combines fuzzy file path matching, literal file-content search, and LSP workspace sy |
 | `lattice_submit` | `orchestration.task` | Submit exactly one semantic action for the current parent Lattice state. Valid state/action pairs are: submit_requirements in clarifying; submit_pathway in planning; submit_pathway_review in reviewing |
 | `look_at` | `code.analyze` | Analyze image files (screenshots, diagrams, charts, UI mockups, photos) with a separate vision model when the active model cannot accept image input directly. Accepts up to 5 images per call — all ima |
-| `loop_stop` | `orchestration.task` | Complete the Light Loop after checking every required outcome against the full goal. Include results and concrete verification evidence in summary. Continue working if required work or verification re |
+| `loop_stop` | `orchestration.task` | Complete the Light Loop after verifying every required outcome against the full goal. Briefly summarize results and key checks; reference detailed evidence. Continue if required work or verification r |
 | `lsp` | `code.analyze` | Interact with Language Server Protocol (LSP) servers to get code intelligence features. Supported operations: - goToDefinition: Find where a symbol is defined - findReferences: Find all references to  |
 | `memory_edit` | `knowledge.memory` | Edit an existing memory by ID. Replaces the title, content, `category`, `recallMode`, and re-generates the embedding. Returns the new numeric `updatedAt` on success. Read with `memory_get` and pass it |
 | `memory_get` | `search.memory` | Retrieve the full content of one or more memories by their IDs. Returns the title, content, category, recall mode, creation time and numeric `updatedAt` for each memory. Pass `updatedAt` as `expectedU |
@@ -254,31 +254,31 @@ Run a shell command; default directory: ${directory}. Select another directory w
 
 Kind: `orchestration.task`
 
-Accept the current bound BlueprintLoop only when all required outcomes are verified and within scope. Include concrete evidence in summary. Only its recorded reviewer can approve; the host infers the loop.
+Accept the bound BlueprintLoop only when every required outcome is verified and in scope. Briefly state the conclusion and decisive checks; reference detailed evidence. Only its recorded reviewer can approve; the host infers the loop.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `summary` | string | yes | Completion verdict with concrete evidence for all required outcomes. |
+| `summary` | string | yes | Concise acceptance verdict, decisive checks and evidence references. |
 
 ## blueprint_loop_reject
 
 Kind: `orchestration.task`
 
-Return the current bound BlueprintLoop for corrections. Explain unmet requirements, supporting evidence and specific next actions in reason; optional improvements alone do not block acceptance. Only its recorded reviewer can reject; the host infers the loop.
+Return the bound BlueprintLoop for corrections. State unmet requirements, reproduction evidence and actionable fixes concisely; reference detailed reports. Optional improvements alone do not block acceptance. Only its recorded reviewer can reject; the host infers the loop.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `reason` | string | yes | Unmet requirements, evidence and concrete corrections; distinguish optional suggestions. |
+| `reason` | string | yes | Concise unmet requirements, reproduction evidence and actionable corrections. |
 
 ## blueprint_loop_stop
 
 Kind: `orchestration.task`
 
-Request independent final review after checking the complete Blueprint, start instructions and delivered results. Put completion evidence and limitations in summary. After success, end the turn without further tools or changes; review results arrive in this session. Lattice execution remains limited to its current Step.
+Request independent final review after checking the complete Blueprint, user instructions and results. Summarize the outcome, key checks and limitations briefly; reference detailed reports. After success, end the turn without further tools or changes. Review results arrive in this session. Lattice execution stays within its current Step.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `summary` | string | yes | Delivered results, concrete verification evidence, and any remaining limitations. |
+| `summary` | string | yes | Concise results, key checks, evidence references and remaining limitations. |
 
 ## boss_assign
 
@@ -805,11 +805,11 @@ Analyze image files (screenshots, diagrams, charts, UI mockups, photos) with a s
 
 Kind: `orchestration.task`
 
-Complete the Light Loop after checking every required outcome against the full goal. Include results and concrete verification evidence in summary. Continue working if required work or verification remains. This tool completes the workflow directly.
+Complete the Light Loop after verifying every required outcome against the full goal. Briefly summarize results and key checks; reference detailed evidence. Continue if required work or verification remains. This tool completes the workflow directly.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `summary` | string | yes | Completed results and concrete verification evidence, including relevant limitations. |
+| `summary` | string | yes | Concise results, key checks, evidence references and remaining limitations. |
 
 ## lsp
 

@@ -26,7 +26,7 @@ export function setBlueprintAgendaAssertClear(fn: BlueprintAgendaAssertClear): v
 }
 
 const parameters = z.object({
-  summary: z.string().describe("Delivered results, concrete verification evidence, and any remaining limitations."),
+  summary: z.string().describe("Concise results, key checks, evidence references and remaining limitations."),
 })
 
 function stopResult(loop: Awaited<ReturnType<typeof BlueprintLoopStore.get>>) {

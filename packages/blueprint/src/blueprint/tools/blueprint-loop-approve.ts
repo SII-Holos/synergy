@@ -11,7 +11,7 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BlueprintLoopSources } from "../source"
 
 const parameters = z.object({
-  summary: z.string().describe("Completion verdict with concrete evidence for all required outcomes."),
+  summary: z.string().describe("Concise acceptance verdict, decisive checks and evidence references."),
 })
 
 function completionNotificationText(input: { loopID: string; summary: string; userPrompt?: string }) {

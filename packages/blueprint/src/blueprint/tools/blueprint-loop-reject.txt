@@ -1,1 +1,1 @@
-Return the current bound BlueprintLoop for corrections. Explain unmet requirements, supporting evidence and specific next actions in reason; optional improvements alone do not block acceptance. Only its recorded reviewer can reject; the host infers the loop.
+Return the bound BlueprintLoop for corrections. State unmet requirements, reproduction evidence and actionable fixes concisely; reference detailed reports. Optional improvements alone do not block acceptance. Only its recorded reviewer can reject; the host infers the loop.

@@ -20,6 +20,8 @@ Successful completion hides the Light Loop and BlueprintLoop composer rows direc
 
 Cancellation is checked again after asynchronous reviewer-binding reads and Agenda guards, before committing a review verdict or stop request. An interrupted turn must not settle a workflow.
 
+Agenda bridges provide cleanup instructions on actual wakeups and enforce session-local completion guards; they do not add a standing cleanup reminder. Execution reuses complete requirements already in context and reads missing or changed content. Delegation keeps one owner per coupled edit path, and final verification follows settled writers. Local verification runs its existing static gates before selected tests, avoiding test reruns caused by late static failures. Completion and review summaries reference detailed evidence without requiring another schema or report copy.
+
 ## Alternatives considered
 
 Mandatory review on every task preserves a uniform workflow but keeps the latency and duplicated state this change removes. Configurable review modes, risk scores and requirement registries add fields and execution paths; they are unnecessary for selecting between existing Light Loop and BlueprintLoop. Rejecting obsolete plugin inputs breaks callers without improving the current execution path. Removing Blueprint review would weaken independent acceptance for long tasks.

@@ -7,13 +7,13 @@ description: Design, write, run, and diagnose Synergy tests with Bun, temporary 
 
 ## Development Feedback Loop
 
-Start with `bun run verify plan` to inspect the working-tree impact, including uncommitted new files. Iterate with the narrow behavior test. Before publication, run `bun run verify local --test <repository-relative-test>` with every relevant test selected explicitly. The owning executor preserves isolation and browser conditions, runs selected tests with fresh coverage, and checks new measurable source before running static gates. Complete package coverage and platform matrices remain pending CI evidence.
+Start with `bun run verify plan` to inspect the working-tree impact, including uncommitted new files. Iterate with the narrow behavior test. Before publication, run `bun run verify local --test <repository-relative-test>` with every relevant test selected explicitly. The owning executor validates the selection, passes static gates, then runs selected tests with fresh coverage and checks new measurable source. Complete package coverage and platform matrices remain pending CI evidence.
 
 Use `bun run verify coverage --package <workspace>` when changing coverage policy, removing substantial test coverage or changing instrumentation. A focused LCOV report cannot establish package thresholds. Finish generation and self-review before this checkpoint. Collect all causal failures from one CI attempt before making the next focused correction; infrastructure retries retain the same SHA.
 
 ## Avoid concurrent artifact mutation
 
-Never run static gates alongside browser suites or builds in one worktree. Preserve isolated Homes, fresh reports and real Scope fixtures. Raw Harness coverage/parallel commands are unsafe; use the canonical executor.
+Finish or cancel concurrent file writers before final verification. Never run static gates alongside browser suites or builds in one worktree. Reuse passing evidence unless changed inputs invalidate it; preserve isolated Homes, fresh reports and real Scope fixtures. Raw Harness coverage/parallel commands are unsafe; use the canonical executor.
 
 Read [the domain guidance](references/isolation.md#avoid-concurrent-artifact-mutation) when this area is affected.
 

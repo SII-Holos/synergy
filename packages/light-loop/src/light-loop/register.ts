@@ -22,8 +22,8 @@ const runtimeState = RuntimeContext.state(() => ({
 function lightLoopContextBlock(instructions: string): string {
   return `<light-loop-context>
 Goal: ${instructions}
-Continue until the complete goal is delivered and verified. Keep this original goal and subsequent user corrections in view across subtasks, compaction and resumption; do not silently drop requirements. Use detail and checks proportional to the task. Reuse valid evidence, repeating checks when changes invalidate it.
-Before completion, compare the full goal against actual results and remaining gaps. If required work or verification remains, continue. Otherwise call loop_stop({summary}) with results and concrete evidence. This completes the Light Loop directly; do not claim unverified work is done.
+Deliver and verify the complete goal and subsequent user corrections across subtasks, compaction and resumption. Use proportional checks and reuse valid evidence unless changes invalidate it.
+Before completion, compare all requirements with actual results. Continue if any required work or verification remains; otherwise call loop_stop({summary}) with concise results, key checks and evidence references. This completes the Light Loop directly.
 </light-loop-context>`
 }
 
