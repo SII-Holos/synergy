@@ -70,6 +70,8 @@ A busy status carries optional structured `activity` with phase, phase start tim
 
 **Session identity is projected, not stored.** A row's identity — Blueprint binding and phase, workspace type, workflow kind and activity, parent, category — travels on the navigation entry (`SessionNavEntry`), which is paginated, persisted, and refreshed by `session.updated`. That projection is what keeps a row's glyph intact while its Scope store is gone.
 
+Sidebar catalog and recent-list requests distinguish pending, accepted and failed snapshots. Generated SDK errors retain accepted rows and expose an explicit retry; only a successfully accepted empty recent list displays the empty state. Request generations, SDK client identity and disposal fence late responses. Retrying refreshes the catalog and navigation sections without discarding the previous accepted snapshot.
+
 **Diff data sources.** Two separate diff stores exist:
 
 - **Turn-level diffs** are stored in `message[n].summary.diffs` on the user message and reach the frontend through the existing `message.updated` state event. No new event, store bucket, or route was needed — the normal message reconcile path carries them.

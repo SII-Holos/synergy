@@ -4,7 +4,7 @@
 
 - **Subtle** — investigation required.
 - **Systemic** — missed safeguards.
-- **Costly** to rediscover.
+- **Costly**.
 
 Otherwise, test.
 
@@ -24,6 +24,8 @@ Rationale: `docs/decisions/`.
 - **Lessons** — durable takeaways.
 
 ## Index
+
+- [0078](0078-cold-navigation-migration-admission.md)
 
 - [0074: Agenda Home origin](0074-agenda-home-origin-blocked-session-creation.md)
 

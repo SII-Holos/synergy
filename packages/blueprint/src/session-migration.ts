@@ -37,7 +37,7 @@ export const waitingPhaseMigration: Migration = {
   description: "Move a retained Blueprint hold to the Session pause latch when its owner is selected",
   scope: "session",
   execution: "session",
-  onAccess: true,
+  onAccess: (session) => record(session.blueprint)?.phase === "waiting",
   upgradeRecord: upgradeWaitingPhase,
   upSession: upgradeWaitingSession,
   async up(progress) {
@@ -108,7 +108,7 @@ export const migrations: Migration[] = [
     description: "Upgrade retained blueprint Session state when its owner is selected",
     scope: "session",
     execution: "record",
-    onAccess: true,
+    onAccess: (session) => session.planMode === true,
     upSession: upgradeSession,
     upgradeRecord: upgradeOwnerSession,
     async up(progress) {

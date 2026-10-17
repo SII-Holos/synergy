@@ -59,7 +59,7 @@ export const migrations: Migration[] = [
     description: "Upgrade retained lattice Session state when its owner is selected",
     scope: "session",
     execution: "record",
-    onAccess: true,
+    onAccess: (session) => !!record(session.lattice),
     upSession: upgradeSession,
     upgradeRecord: upgradeOwnerSession,
     async up(progress) {

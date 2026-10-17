@@ -601,6 +601,7 @@ export namespace Server {
           return c.json({ name: err.name, data: { message: err.message } }, 409)
         if (err instanceof Storage.BusyError || err instanceof Storage.UnavailableError) {
           const state = err instanceof Storage.UnavailableError ? "unavailable" : "busy"
+          log.warn("storage request unavailable", { state, error: err })
           const retryAfterMs = state === "unavailable" ? 5_000 : 1_000
           c.header("Retry-After", String(Math.ceil(retryAfterMs / 1_000)))
           return c.json(

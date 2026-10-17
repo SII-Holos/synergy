@@ -9071,6 +9071,14 @@ msgid "app.sidebar.menu.usage"
 msgstr "⟦Usage⟧"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.navigation.failed"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.navigation.retry"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.newSession"
 msgstr "⟦New session⟧"
 

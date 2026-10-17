@@ -9071,6 +9071,14 @@ msgid "app.sidebar.menu.usage"
 msgstr "Usage"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.navigation.failed"
+msgstr "Unable to load conversations and projects."
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.navigation.retry"
+msgstr "Retry"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.newSession"
 msgstr "New session"
 

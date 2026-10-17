@@ -639,6 +639,19 @@ export function Sidebar(props: SidebarProps) {
           }
         >
           <div class="sb-scroll">
+            <Show when={layout.nav.error()}>
+              <div role="alert" class="sb-section-empty">
+                {_(sidebar.navigationFailed)}
+              </div>
+              <button
+                type="button"
+                class="sb-load-more-btn"
+                disabled={layout.nav.loading()}
+                onClick={() => void layout.nav.retry()}
+              >
+                {_(sidebar.retryNavigation)}
+              </button>
+            </Show>
             <Show when={layout.nav.scopeIndexLoaded()}>
               <div class="sb-session-tag-filter" onClick={(event) => event.stopPropagation()}>
                 <Icon name={getSemanticIcon("notes.tag")} size="small" class="text-icon-weak-base" />
@@ -750,10 +763,12 @@ export function Sidebar(props: SidebarProps) {
               <Show
                 when={layout.nav.scopeIndexLoaded()}
                 fallback={
-                  <div class="flex flex-col items-center justify-center h-full min-h-[200px] gap-3">
-                    <Spinner class="text-text-weak size-8" />
-                    <span class="text-text-weak text-xs">{_(sidebar.loadingProjects)}</span>
-                  </div>
+                  <Show when={!layout.nav.error()}>
+                    <div class="flex flex-col items-center justify-center h-full min-h-[200px] gap-3">
+                      <Spinner class="text-text-weak size-8" />
+                      <span class="text-text-weak text-xs">{_(sidebar.loadingProjects)}</span>
+                    </div>
+                  </Show>
                 }
               >
                 {/* Recent */}
@@ -787,7 +802,18 @@ export function Sidebar(props: SidebarProps) {
                   <SidebarDisclosure open={recentSectionOpen()}>
                     <Show
                       when={recentEntries().length > 0}
-                      fallback={<div class="sb-section-empty">{_(sidebar.noRecentSessions)}</div>}
+                      fallback={
+                        <Show
+                          when={layout.nav.recentLoaded() && !layout.nav.error()}
+                          fallback={
+                            <Show when={layout.nav.loading()}>
+                              <Spinner />
+                            </Show>
+                          }
+                        >
+                          <div class="sb-section-empty">{_(sidebar.noRecentSessions)}</div>
+                        </Show>
+                      }
                     >
                       <SidebarSessionList
                         entries={filterEntries(recentEntries())}

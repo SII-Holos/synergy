@@ -46,9 +46,11 @@ test("normal startup restores historical navigation and global search after an e
         tracking["20260921-session-nav-tags"] = 1
         delete tracking["20260922-session-nav-workspace-binding"]
       })
-      const response = await Server.App().request("/global/session")
-      expect(response.status).toBe(200)
-      expect(await response.json()).toMatchObject({ total: 0, data: [] })
+      expect(
+        await Storage.read<Record<string, unknown>>(StoragePath.sessionNavIndex(Identifier.asScopeID("home"))),
+      ).toMatchObject({
+        entries: [],
+      })
       return session.id
     })
   } finally {

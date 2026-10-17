@@ -165,7 +165,7 @@ export const migrations: Migration[] = [
     description: "Upgrade retained light-loop Session state when its owner is selected",
     scope: "session",
     execution: "record",
-    onAccess: true,
+    onAccess: (session) => !!record(session.lightLoop) || record(session.workflow)?.kind === "lightloop",
     upSession: upgradeSession,
     upgradeRecord: upgradeOwnerSession,
     async up(progress) {
@@ -182,7 +182,7 @@ export const migrations: Migration[] = [
     description: "Retire Light Loop review state while preserving interrupted goals and terminal delivery",
     scope: "session",
     execution: "session",
-    onAccess: true,
+    onAccess: (session) => !!record(session.lightLoop) || record(session.workflow)?.kind === "lightloop",
     upSession: simplifySession,
     async up(progress) {
       let count = 0

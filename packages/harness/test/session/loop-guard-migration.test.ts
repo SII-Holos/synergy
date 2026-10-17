@@ -8,7 +8,7 @@ import { migrations } from "../../src/session/migration"
 import { testRuntime } from "../support/runtime"
 import { tmpdir } from "../support/fixture"
 import { Storage } from "../../src/storage/storage"
-import { upgradeSessionRecords } from "../../src/migration"
+import { prepareSessionMigrations } from "../../src/migration"
 
 test("owner upgrade removes only retired injected guard notices and preserves user quotes and other owners", async () => {
   await using runtime = await testRuntime()
@@ -45,6 +45,7 @@ test("owner upgrade removes only retired injected guard notices and preserves us
         }
         const rootID = await write(session.id)
         const otherRootID = await write(other.id)
+        await Session.flushPartWrites()
         const migration = migrations.find((m) => m.id === "20261011-session-retire-loop-guard-notices")!
         expect(migration?.execution).toBe("session")
         await migration.upSession!({ scopeID: session.scope.id, sessionID: session.id }, () => {})
@@ -55,7 +56,10 @@ test("owner upgrade removes only retired injected guard notices and preserves us
           text,
           "All memory facts remain intact.",
         ])
-        expect((await MessageV2.get({ sessionID: other.id, messageID: otherRootID })).parts).toHaveLength(3)
+        expect(
+          await Storage.query({ kind: "part", scopeID: other.scope.id, sessionID: other.id, messageID: otherRootID }),
+        ).toHaveLength(3)
+        expect((await MessageV2.get({ sessionID: other.id, messageID: otherRootID })).parts).toHaveLength(2)
       },
     }),
   )
@@ -97,8 +101,11 @@ test("central owner upgrade persists its receipt and removed notices across reop
             origin: "system",
             text: "[Search early stop] Historical generated protection notice.",
           })
+          await Session.flushPartWrites(sessionID)
           await Storage.remove(receipt())
-          await upgradeSessionRecords([{ scopeID: "home", sessionID }])
+          await Session.get(sessionID)
+          expect((await Storage.readMany([receipt()]))[0]).toBeUndefined()
+          await prepareSessionMigrations({ scopeID: "home", sessionID })
           expect((await Storage.readMany<{ completed: number }>([receipt()]))[0]?.completed).toBeGreaterThan(0)
           expect((await MessageV2.get({ sessionID, messageID })).parts).toEqual([])
         },
@@ -113,7 +120,7 @@ test("central owner upgrade persists its receipt and removed notices across reop
       scope: Scope.home(),
       fn: async () => {
         const before = (await Storage.readMany([receipt()]))[0]
-        await upgradeSessionRecords([{ scopeID: "home", sessionID }])
+        await prepareSessionMigrations({ scopeID: "home", sessionID })
         expect((await Storage.readMany([receipt()]))[0]).toEqual(before)
         expect(before).toBeDefined()
         expect((await MessageV2.get({ sessionID, messageID })).parts).toEqual([])

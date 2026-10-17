@@ -1,5 +1,6 @@
 import { SessionExecutionOwners } from "./execution-owners"
 import { SessionPauseRecovery } from "./pause-recovery"
+import { prepareSessionMigrations } from "../migration"
 import { PrimaryAgentIdentity } from "../agent/primary-identity"
 
 import { ToolIntent } from "./tool-intent"
@@ -2729,7 +2730,7 @@ export namespace SessionInvoke {
    * evidence that the turn was interrupted.
    *
    * Enumerate atomically recorded recovery candidates. Historical Sessions
-   * enter this path on access through their versioned metadata migration.
+   * enter this path when selected through their versioned Session migration.
    */
   export async function reconcilePausedSessions(scopeID?: string): Promise<void> {
     await reconcileInterruptedCortexDelegations(scopeID)
@@ -2744,6 +2745,7 @@ export namespace SessionInvoke {
       const session = await SessionManager.getSession(sessionID)
       if (!session) return
       const owner = { scopeID: session.scope.id, sessionID }
+      await prepareSessionMigrations(owner)
       const revision = await SessionPauseRecovery.request(owner)
       if (!revision) return
       if (await SessionLifecycle.isUnfinished(session)) {
