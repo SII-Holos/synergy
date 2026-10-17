@@ -27020,6 +27020,10 @@ msgid "workspace.dialog.close"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.confirmBinding"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.create"
 msgstr "⟦Create Workspace⟧"
 
@@ -27048,6 +27052,10 @@ msgid "workspace.dialog.failed"
 msgstr "⟦The Workspace could not be updated. Reload to review its current state.⟧"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.hideCopies"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.loading"
 msgstr "⟦Loading Workspaces…⟧"
 
@@ -27066,6 +27074,10 @@ msgstr "⟦Workspace name⟧"
 #. js-lingui-explicit-id
 msgid "workspace.dialog.none"
 msgstr "⟦No Workspace⟧"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.otherCopies"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.pick"
@@ -27096,12 +27108,20 @@ msgid "workspace.dialog.recovery"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.refreshHint"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "⟦Add directory⟧"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.reload"
 msgstr "⟦Reload⟧"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.repair"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.saveSharing"
