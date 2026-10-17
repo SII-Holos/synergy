@@ -33,7 +33,7 @@ import { abandonSession, continueSession } from "@ericsanchezok/synergy-local-ru
 
 runtime.run(() => Log.init({ print: false }))
 
-const model = {
+const model: Provider.Model = {
   id: "test-model",
   providerID: "test-provider",
   name: "Test Model",
@@ -44,11 +44,15 @@ const model = {
     attachment: false,
     reasoning: false,
     temperature: true,
-    input: { text: true, image: false, audio: false, video: false },
-    output: { text: true, image: false, audio: false, video: false },
+    input: { text: true, image: false, audio: false, video: false, pdf: false },
+    output: { text: true, image: false, audio: false, video: false, pdf: false },
+    interleaved: false,
   },
-  api: { npm: "@ai-sdk/openai" },
+  api: { id: "test-model", url: "https://fixture.invalid/v1", npm: "@ai-sdk/openai" },
   options: {},
+  headers: {},
+  status: "active",
+  release_date: "2026-10-01",
 }
 
 /** A turn that streams a little and then holds, so the abort lands on a
