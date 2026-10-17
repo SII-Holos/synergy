@@ -37,7 +37,7 @@ mock.module("@ericsanchezok/synergy-ui/session-turn", () => ({
 }))
 
 const i18n = setupI18n({ locale: "en", messages: { en: {} } })
-mock.module("@lingui/solid", () => ({ useLingui: () => ({ _: i18n._.bind(i18n), i18n: () => i18n }) }))
+const { I18nProvider } = await import("@lingui/solid")
 
 const getAnimations = Element.prototype.getAnimations
 Element.prototype.getAnimations = () => []
@@ -162,9 +162,14 @@ function mount(): Harness {
   document.body.append(root)
   const dispose = render(
     () =>
-      createComponent(DialogProvider, {
+      createComponent(I18nProvider, {
+        i18n,
         get children() {
-          return createComponent(KanbanPanel, {})
+          return createComponent(DialogProvider, {
+            get children() {
+              return createComponent(KanbanPanel, {})
+            },
+          })
         },
       }),
     root,
