@@ -18015,6 +18015,10 @@ msgstr "执行失败"
 msgid "session.process.hideReasoning"
 msgstr "收起推理"
 
+#. ── Reasoning progress ──────────────────────────────────────────────
+msgid "session.process.hideReasoningStatus"
+msgstr "收起推理。{state, select, thinking {正在思考} other {推理}}，{count, plural, one {已生成 1 个词} other {已生成 # 个词}}"
+
 #. js-lingui-explicit-id
 msgid "session.process.interrupted"
 msgstr "已中断"
@@ -18078,6 +18082,10 @@ msgstr "查看详情：{title}"
 #. js-lingui-explicit-id
 msgid "session.process.viewReasoning"
 msgstr "查看推理"
+
+#. ── Reasoning progress ──────────────────────────────────────────────
+msgid "session.process.viewReasoningStatus"
+msgstr "查看推理。{state, select, thinking {正在思考} other {推理}}，{count, plural, one {已生成 1 个词} other {已生成 # 个词}}"
 
 #. js-lingui-explicit-id
 msgid "session.process.workedDuration"
@@ -18222,6 +18230,10 @@ msgstr "{count} 段推理"
 #. js-lingui-explicit-id
 msgid "session.reasoning.title"
 msgstr "推理"
+
+#. ── Reasoning progress ──────────────────────────────────────────────
+msgid "session.reasoning.words"
+msgstr "{count, plural, one {个词} other {个词}}"
 
 #. js-lingui-explicit-id
 msgid "session.restore.binary"

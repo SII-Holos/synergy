@@ -580,7 +580,13 @@ function TimelineItemDisplay(props: {
     return <CompactionCard part={props.item.part} message={props.item.message} />
   }
   if (props.item.kind === "reasoning" && props.compactReasoning) {
-    return <CompactReasoningLine fullText={props.item.part.text} running={running()} />
+    return (
+      <CompactReasoningLine
+        fullText={props.item.part.text}
+        running={running()}
+        identity={timelineItemStableKey(props.item)}
+      />
+    )
   }
   if (props.item.kind === "part" || props.item.kind === "reasoning") {
     return <Part part={props.item.part} message={props.item.message} showAttachments={false} />
