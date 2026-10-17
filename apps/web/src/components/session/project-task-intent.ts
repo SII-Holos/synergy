@@ -1,7 +1,8 @@
-import type { ProjectDirectories, SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
+import type { ProjectDirectories, SessionWorkspaceSelection, WorkspaceInfo } from "@ericsanchezok/synergy-sdk/client"
 
 export function projectTaskIntent(input: {
   directories?: ProjectDirectories
+  workspaces?: Pick<WorkspaceInfo, "id" | "scopeID" | "binding">[]
   selected?: SessionWorkspaceSelection
   preference?: "main" | "worktree"
 }): SessionWorkspaceSelection {
@@ -12,5 +13,12 @@ export function projectTaskIntent(input: {
       : input.selected
   if (!main) return { mode: "none" }
   if (input.preference === "worktree" && main.git) return { mode: "create", sourceWorkspaceID: main.workspaceID }
-  return { mode: "workspace", workspaceID: main.workspaceID, workspaceGeneration: main.generation }
+  const current = input.workspaces?.find(
+    (item) => item.id === main.workspaceID && item.scopeID === input.directories?.scopeID,
+  )
+  return {
+    mode: "workspace",
+    workspaceID: main.workspaceID,
+    workspaceGeneration: Math.max(main.generation, current?.binding.generation ?? 0),
+  }
 }

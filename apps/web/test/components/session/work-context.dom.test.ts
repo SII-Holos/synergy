@@ -26,11 +26,11 @@ beforeAll(async () => {
     stubs,
     `
     import {createStore} from "solid-js/store"
-    export const [state,patch]=createStore({id:undefined,running:false,status:"idle",empty:false,disabled:false,width:700,home:false,git:true,available:true,extraAvailable:true,shared:false,deriveSelection:false,mainRev:1,extraRev:1,gen:1,extraGen:1,failExtra:false,holdExtra:false,emptyTrees:false,holdInventory:false,url:"http://fixture.example",scopeID:"project",profile:"native",error:"",extras:false,selection:{mode:"workspace",workspaceID:"main",workspaceGeneration:1}})
+    export const [state,patch]=createStore({id:undefined,running:false,status:"idle",empty:false,disabled:false,width:700,home:false,git:true,available:true,extraAvailable:true,shared:false,deriveSelection:false,mainRev:1,extraRev:1,gen:1,catalogGen:undefined,extraGen:1,failExtra:false,holdExtra:false,emptyTrees:false,holdInventory:false,url:"http://fixture.example",scopeID:"project",profile:"native",error:"",extras:false,selection:{mode:"workspace",workspaceID:"main",workspaceGeneration:1}})
     const h=window.fixture={patch,requests:[],selection:undefined,healthPending:0,directoryPending:0,releaseHealth:[],releaseDirectories:[],menuRequests:[]}
     const folder=id=>({workspaceID:id,generation:id==="main"?state.gen:state.extraGen,path:id==="main"?"/projects/main-folder":"/projects/shared-folder",git:id==="main"&&state.git&&state.available,available:id==="main"?state.available:state.extraAvailable,...((id==="main"?state.available:state.extraAvailable)?{}:{unavailable:{name:"WorkspaceUnavailable",data:{workspaceID:id,reason:"identity_changed",message:"Identity changed"}}})})
     export const directories=()=>({version:1,scopeID:state.scopeID,revision:1,mainWorkspaceID:"main",additionalWorkspaceIDs:state.shared?["extra"]:[],folders:[folder("main"),...(state.shared?[folder("extra")]:[])]})
-    const record=id=>({id,scopeID:state.scopeID,type:"directory",revision:id==="main"?state.mainRev:state.extraRev,binding:{generation:id==="main"?state.gen:state.extraGen,state:"bound",path:folder(id).path,hostID:"host",physicalID:"identity"},lifecycle:"active",metadata:{},sharedWritableWorkspaceIDs:[],createdAt:1,updatedAt:1})
+    const record=id=>({id,scopeID:state.scopeID,type:"directory",revision:id==="main"?state.mainRev:state.extraRev,binding:{generation:id==="main"?(state.catalogGen??state.gen):state.extraGen,state:"bound",path:folder(id).path,hostID:"host",physicalID:"identity"},lifecycle:"active",metadata:{},sharedWritableWorkspaceIDs:[],createdAt:1,updatedAt:1})
     const trees=[{id:"tree",name:"Existing Worktree",branch:"feature/long-existing-worktree-branch",path:"/projects/worktrees/existing",sourceWorkspaceID:"main",bindings:[]}]
     const scope={id:"project",type:"project",time:{updated:1},name:${JSON.stringify(project)},local:{worktree:"/projects/main-folder",directory:"/projects/main-folder",sandboxes:[],vcs:"git"}}
     const client={project:{async worktreeInventory(input,options){
@@ -200,6 +200,21 @@ test("explicit directory selections show their actual location and clear it for 
   expect(await trigger.getAttribute("aria-label")).toBe("No project files")
   await patch({ selection: { mode: "workspace", workspaceID: "missing", workspaceGeneration: 1 } })
   expect(await trigger.getAttribute("aria-label")).not.toContain("/projects/main-folder")
+}, 20_000)
+
+test("choosing main uses a newer catalog generation while retaining the existing draft", async () => {
+  await open()
+  await patch({ catalogGen: 2, selection: { mode: "none" } })
+  const editor = page.locator("[contenteditable=true]").first()
+  await editor.fill("Keep this draft")
+  await page.locator("[data-worktree-task-selector]").click()
+  await page.getByRole("button", { name: "Main folder", exact: true }).click()
+  expect(await page.evaluate<SessionWorkspaceSelection | undefined>("window.fixture.selection")).toEqual({
+    mode: "workspace",
+    workspaceID: "main",
+    workspaceGeneration: 2,
+  })
+  expect(await editor.innerText()).toBe("Keep this draft")
 }, 20_000)
 
 test("a session identity removes setup through running, pause, completion, switching and reconnect", async () => {
@@ -478,7 +493,7 @@ test("an unavailable main without Worktrees offers confirmation and cancellation
   await page.waitForFunction(() => document.activeElement?.hasAttribute("data-worktree-task-selector"))
   expect(await editor!.evaluate((element) => element.isConnected)).toBe(true)
   expect(await page.getByRole("textbox", { name: "Message", exact: true }).innerText()).toBe("Keep this draft")
-  expect(await page.evaluate("window.fixture.selection")).toBeUndefined()
+  expect(await page.evaluate<SessionWorkspaceSelection | undefined>("window.fixture.selection")).toBeUndefined()
   expect(errors).toEqual([])
 }, 20_000)
 
@@ -507,7 +522,7 @@ test("recovery keeps partial success, blocks duplicate confirmation and selects 
   await page.evaluate("window.fixture.release()")
   await dialog.getByRole("alert").waitFor()
   expect(await dialog.getByText("Ready", { exact: true }).isVisible()).toBe(true)
-  expect(await page.evaluate("window.fixture.selection")).toBeUndefined()
+  expect(await page.evaluate<SessionWorkspaceSelection | undefined>("window.fixture.selection")).toBeUndefined()
   await patch({ failExtra: false, holdExtra: false })
   await dialog.getByRole("button", { name: "Continue using this folder", exact: true }).click()
   await dialog.waitFor({ state: "detached" })
@@ -535,7 +550,7 @@ test("switching projects during recovery cancels the old operation and leaves th
   await dialog.waitFor({ state: "detached" })
   await page.evaluate("window.fixture.release()")
   await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
-  expect(await page.evaluate("window.fixture.selection")).toBeUndefined()
+  expect(await page.evaluate<SessionWorkspaceSelection | undefined>("window.fixture.selection")).toBeUndefined()
   expect(await page.evaluate<string[]>("window.fixture.requests.filter(value=>value.startsWith('rebind:'))")).toEqual([
     "rebind:main",
     "rebind:extra",

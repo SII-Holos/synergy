@@ -267,7 +267,7 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
       const result = await client.workspace.list({ scopeID }, options)
       for (const item of result.data) upsert(item)
       if (!controller.signal.aborted) {
-        if (props.mode === "recover" && !failedBinding()) {
+        if (props.mode === "recover" && props.recovery.reason !== "binding_changed" && !failedBinding()) {
           const failed = records.data.find((item) => item.id === props.recovery.workspaceID)
           if (failed)
             setFailedBinding({
@@ -430,25 +430,29 @@ export function DialogWorkspace(props: WorkspaceDialogProps) {
       if (!controller.signal.aborted) {
         select(result.data.id)
         setView("list")
+        if (active() && target()) await applySelection(result.data)
       }
     })
+  async function applySelection(current?: WorkspaceInfo) {
+    const destination = target()
+    if (!destination || !active()) return
+    const selection: SessionWorkspaceSelection = current
+      ? { mode: "workspace", workspaceID: current.id, workspaceGeneration: current.binding.generation }
+      : { mode: "none" }
+    if (destination.kind === "session") {
+      await client.session.selectWorkspace(
+        { scopeID, sessionID: destination.sessionID, sessionWorkspaceSelection: selection },
+        options,
+      )
+      if (active()) await destination.onApplied?.(selection)
+    } else if (active()) await destination.onSelect(selection)
+    if (active()) dialog.close()
+  }
   const choose = () =>
     perform(async () => {
       const current = record()
-      const destination = target()
-      if (!destination || bindingChanged() || (selected() && (!current || !available(current)))) return
-      const selection: SessionWorkspaceSelection = current
-        ? { mode: "workspace", workspaceID: current.id, workspaceGeneration: selectedGeneration()! }
-        : { mode: "none" }
-      if (destination.kind === "session") {
-        await client.session.selectWorkspace(
-          { scopeID, sessionID: destination.sessionID, sessionWorkspaceSelection: selection },
-          options,
-        )
-        if (active()) await destination.onApplied?.(selection)
-      } else if (active()) await destination.onSelect(selection)
-      if (!active()) return
-      dialog.close()
+      if (bindingChanged() || (selected() && (!current || !available(current)))) return
+      await applySelection(current)
     })
 
   return (

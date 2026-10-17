@@ -607,18 +607,15 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           .catch((err) => {
             const failure = promptSubmitFailure(err)
             const isCurrent = () => currentLocation() && !disposed && binding.isCurrent()
-            if (failure.kind === "workspace-unavailable" && isCurrent())
-              input.onWorkspaceUnavailable({
-                kind: "draft",
-                workspaceID: failure.workspaceID,
-                reason: failure.reason,
-                isCurrent,
-              })
-            const recover = (autoSubmit: boolean) => {
-              if (!newSessionRecovery) return
+            const recover = (autoSubmit: boolean, recoveredSelection = workspaceSelection) => {
+              if (!newSessionRecovery || !isCurrent()) return
               batch(() => {
                 preparation?.clear()
-                sessionTransition.setRecovery(currentScopeKey, { ...newSessionRecovery, autoSubmit })
+                sessionTransition.setRecovery(currentScopeKey, {
+                  ...newSessionRecovery,
+                  workspaceSelection: recoveredSelection,
+                  autoSubmit,
+                })
               })
             }
             preparation?.progress(
@@ -628,6 +625,14 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               }),
               { retry: () => recover(true), dismiss: () => recover(false) },
             )
+            if (failure.kind === "workspace-unavailable" && isCurrent())
+              input.onWorkspaceUnavailable({
+                kind: "draft",
+                workspaceID: failure.workspaceID,
+                reason: failure.reason,
+                isCurrent,
+                onRecovered: (selection) => recover(false, selection),
+              })
             return null
           })
         if (session === null) return

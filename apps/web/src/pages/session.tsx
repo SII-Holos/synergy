@@ -1122,6 +1122,7 @@ function SessionPageContent() {
     globalSDK.capabilities.has("workbench") && !sdk.isHome
       ? projectTaskIntent({
           directories: projectDirectorySnapshot()?.data,
+          workspaces: sync.data.workspaces,
           selected: store.newSessionWorkspaceSelection,
           preference: sync.data.config.defaultSessionWorkspace ?? "main",
         })

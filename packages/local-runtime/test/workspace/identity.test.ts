@@ -5,13 +5,85 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { identifyDirectory as legacyDirectory } from "@ericsanchezok/synergy-util/filesystem-identity"
 import { identifyDirectory } from "../../src/workspace/identity"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
-import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceCatalog, WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { openLocalRuntime } from "../../src"
 import { createHash } from "node:crypto"
 import { NativeWorkspaceFiles } from "../../src/workspace/file-host"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { migrateNativeMountIdentities } from "../../src/workspace/identity-migration"
+
+test.skipIf(process.platform !== "darwin")(
+  "startup catches up a released migration ledger and native receipts after remount, then stays current",
+  async () => {
+    await using fixture = await runtimeHome()
+    const host = {
+      ...fixture.host,
+      workspaceLocation: { ...fixture.host.workspaceLocation!, identify: identifyDirectory },
+    }
+    const directory = path.join(host.home, "remounted")
+    await fs.mkdir(directory)
+    const actual = await identifyDirectory(directory)
+    const [device, ...object] = actual.legacyPhysicalID!.split(":")
+    const physicalID = [BigInt(device) + 1n, ...object].join(":")
+    let original!: WorkspaceCatalog.Info
+    {
+      await using runtime = await openLocalRuntime({ host, mode: "oneshot" })
+      await runtime.run(async () => {
+        original = await WorkspaceCatalog.register({
+          scopeID: "remounted",
+          type: "main",
+          hostID: await host.workspaceLocation.hostID(),
+          path: actual.path,
+          physicalID,
+        })
+        await Storage.write(["meta", "migration", "log-workspace"], {
+          "20260927-workspace-storage-backend": 1,
+          "20260929-workspace-checkpoint-attempts": 1,
+          "20261003-persistent-volume-identity": 1,
+        })
+        await Storage.write(["meta", "migration", "log-local-workspace"], { "20261003-persistent-mount-identity": 1 })
+      })
+    }
+    const mountDirectory = path.join(host.root, "state", "environments", "environment", "allocation", "workspace")
+    const files = new NativeWorkspaceFiles({
+      directory: mountDirectory,
+      materializationRoot: path.join(host.home, "views"),
+      coordinator: new WorkspaceCoordinator({ directory: path.join(host.home, "claims") }),
+    })
+    const reference = { id: "mount", workspaceID: original.id, generation: original.binding.generation }
+    try {
+      await files.mount({ ...reference, readOnly: true, source: { kind: "directory", path: directory } })
+      const receiptFile = path.join(mountDirectory, "mounts", createHash("sha256").update(reference.id).digest("hex"))
+      const receipt = await Bun.file(receiptFile).json()
+      receipt.mount.physicalID = physicalID
+      receipt.retainedExtension = { version: 9 }
+      await Bun.write(receiptFile, JSON.stringify(receipt))
+      for (let restart = 0; restart < 2; restart++) {
+        await using runtime = await openLocalRuntime({ host, mode: "oneshot" })
+        await runtime.run(async () => {
+          const upgraded = await WorkspaceCatalog.get(original.id, original.scopeID)
+          expect(upgraded.binding.physicalID).toBe(actual.physicalID)
+          expect(upgraded.binding.generation).toBe(original.binding.generation)
+          expect(upgraded.revision).toBe(original.revision + 1)
+          expect((await WorkspaceBinding.validate(original.id, original.scopeID)).generation).toBe(
+            original.binding.generation,
+          )
+          expect(await Storage.read<Record<string, number>>(["meta", "migration", "log-workspace"])).toMatchObject({
+            "20261003-persistent-volume-identity": 1,
+            "20261018-remounted-volume-identity": expect.any(Number),
+          })
+          expect((await files.inspect(reference))?.physicalID).toBe(actual.physicalID)
+          expect((await Bun.file(receiptFile).json()).retainedExtension).toEqual({ version: 9 })
+        })
+      }
+    } finally {
+      await files.close()
+    }
+  },
+  30_000,
+)
 
 test.skipIf(process.platform !== "darwin")(
   "local identity uses a persistent volume and retains upgrade evidence",
@@ -97,7 +169,7 @@ test.skipIf(process.platform !== "darwin")(
       coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
     })
     try {
-      for (const id of ["kept", "replaced"]) {
+      for (const id of ["kept", "replaced", "remounted", "detached"]) {
         const root = path.join(tmp.path, id)
         await fs.mkdir(root)
         const reference = { id, workspaceID: id, generation: 1 }
@@ -105,6 +177,11 @@ test.skipIf(process.platform !== "darwin")(
         const file = path.join(directory, "mounts", createHash("sha256").update(id).digest("hex"))
         const receipt = await Bun.file(file).json()
         receipt.mount.physicalID = (await legacyDirectory(root)).physicalID
+        if (id === "remounted" || id === "detached") {
+          const [device, ...object] = receipt.mount.physicalID.split(":")
+          receipt.mount.physicalID = [BigInt(device) + 1n, ...object].join(":")
+        }
+        if (id === "detached") receipt.detached = true
         await Bun.write(file, JSON.stringify(receipt))
       }
       await fs.rename(path.join(tmp.path, "replaced"), path.join(tmp.path, "old"))
@@ -114,6 +191,15 @@ test.skipIf(process.platform !== "darwin")(
       const current = await host.inspect(reference)
       expect(current?.physicalID).toStartWith("volume-v1:")
       expect(current?.generation).toBe(1)
+      await expect(host.inspect({ id: "remounted", workspaceID: "remounted", generation: 1 })).rejects.toThrow(
+        "changed",
+      )
+      await migrateNativeMountIdentities(path.join(tmp.path, "environments"), () => {}, true)
+      expect(
+        (await host.inspect({ id: "remounted", workspaceID: "remounted", generation: 1 }))?.physicalID,
+      ).toStartWith("volume-v1:")
+      const detachedFile = path.join(directory, "mounts", createHash("sha256").update("detached").digest("hex"))
+      expect((await Bun.file(detachedFile).json()).mount.physicalID).not.toStartWith("volume-v1:")
       await migrateNativeMountIdentities(path.join(tmp.path, "environments"), () => {})
       expect(await host.inspect(reference)).toEqual(current)
       await expect(host.inspect({ id: "replaced", workspaceID: "replaced", generation: 1 })).rejects.toThrow("changed")

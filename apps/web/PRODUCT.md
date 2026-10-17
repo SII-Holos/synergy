@@ -22,6 +22,8 @@ Avoid nested-card chrome, border-within-border form shells, decorative gradients
 
 ## Design Principles
 
+Confirming directory recovery completes the current task’s directory selection and preserves its draft. The next send uses that confirmed binding without another selection step. Background directory changes cannot silently redirect an explicit task selection.
+
 Use one visual source of truth for shared document editing.
 Make reciprocal actions visibly reciprocal.
 Reserve emphasis for workflow state and current selection.

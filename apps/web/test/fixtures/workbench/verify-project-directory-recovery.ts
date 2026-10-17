@@ -43,6 +43,10 @@ const project = (
   )
 ).data
 const scopeID = project.scope.id
+const agent = (await client.app.agents({ scopeID }, options)).data.find(
+  (item) => item.mode === "primary" && !item.hidden,
+)!
+assert.ok(agent, "A primary agent must be available")
 const main = (await client.project.directories({ scopeID }, options)).data.folders.find(
   (folder) => folder.workspaceID === project.directories.mainWorkspaceID,
 )!
@@ -57,7 +61,7 @@ await client.session.shell(
     scopeID,
     sessionID: seed.id,
     command: "true",
-    agent: "general",
+    agent: agent.name,
     model: { providerID: "fixture", modelID: "fixture-chat" },
   },
   options,
@@ -83,7 +87,7 @@ const { chromium } = requireWeb("playwright") as typeof import("playwright")
 const browser = await chromium.launch({ headless: true })
 const context = await browser.newContext({ locale: "zh-CN", viewport: { width: 1280, height: 900 } })
 const page = await context.newPage()
-page.setDefaultTimeout(15000)
+page.setDefaultTimeout(60000)
 const errors: string[] = []
 page.on("pageerror", (error) => errors.push(error.message))
 const route = url.origin + "/" + Buffer.from(scopeID).toString("base64url") + "/session"
@@ -166,6 +170,74 @@ try {
   assert.equal(trees[0]!.sourceDirectory, folders[0])
   assert.equal(trees[0]!.path, session.workspace?.path)
   assert.equal(await page.locator(".session-work-context").count(), 0)
+  for (const scenario of ["replaced", "already-rebound"] as const) {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto(route)
+    await trigger.click()
+    await page.getByRole("button", { name: /^(主目录|Main folder)$/ }).click()
+    const draft = `Retain first-send draft after ${scenario}`
+    await editor.fill(draft)
+    const before = (await client.workspace.list({ scopeID }, options)).data.find(
+      (item) => item.id === main.workspaceID,
+    )!
+    if (scenario === "replaced") {
+      await rename(folders[0]!, folders[0] + "-recovered")
+      await cp(folders[0] + "-recovered", folders[0]!, { recursive: true })
+    } else {
+      await client.workspace.rebind(
+        { scopeID, workspaceID: before.id, expectedRevision: before.revision, path: folders[0]! },
+        options,
+      )
+    }
+    const sends: number[] = []
+    const observe = (response: import("playwright").Response) => {
+      if (response.request().method() === "POST" && new URL(response.url()).pathname === "/session")
+        sends.push(response.status())
+    }
+    page.on("response", observe)
+    const rejected = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/session" &&
+        response.status() === 409,
+    )
+    await page.getByRole("button", { name: /^(发送消息|Send message)$/ }).click()
+    await rejected
+    await page.getByRole("dialog", { name: /^(选择工作目录|Choose a working directory)$/ }).waitFor()
+    const chooser = page.getByRole("dialog").first()
+    assert.equal(sends.length, 1)
+    assert.equal(sends[0], 409)
+    if (scenario === "replaced") {
+      await chooser.getByRole("button", { name: /^(重新关联目录|Reconnect directory)$/ }).click()
+      await chooser.getByRole("button", { name: /^(确认目录|Confirm directory)$/ }).click()
+      await page
+        .getByRole("dialog", { name: /^(更换本地目录|Change local directory)$/ })
+        .getByRole("button", { name: /^(确认目录|Confirm directory)$/ })
+        .click()
+    } else {
+      await chooser.locator(`[data-workspace-id="${main.workspaceID}"]`).click()
+      await chooser.getByRole("button", { name: /^(使用此目录|Use this directory)$/ }).click()
+    }
+    await chooser.waitFor({ state: "hidden" })
+    await page.waitForFunction(
+      (text) => [...document.querySelectorAll('[contenteditable="true"]')].some((item) => item.textContent === text),
+      draft,
+    )
+    assert.equal(sends.length, 1, "Recovery must not send automatically")
+    assert.equal(await editor.innerText(), draft)
+    await page.getByRole("button", { name: /^(发送消息|Send message)$/ }).click()
+    await page.waitForURL(/\/session\/ses_/)
+    await page.getByText("已收到测试任务。", { exact: false }).first().waitFor()
+    page.off("response", observe)
+    assert.deepEqual(sends, [409, 200])
+    const selected = (await client.session.get({ scopeID, sessionID: page.url().split("/").at(-1)! }, options)).data
+    const current = (await client.workspace.list({ scopeID }, options)).data.find(
+      (item) => item.id === main.workspaceID,
+    )!
+    assert.equal(selected.workspaceID, main.workspaceID)
+    assert.equal(selected.workspace?.generation, current.binding.generation)
+    await page.screenshot({ path: path.join(output, `${scenario}-sent.png`), animations: "disabled" })
+  }
   assert.deepEqual(errors, [])
   await writeFile(
     path.join(output, "result.json"),
@@ -184,6 +256,9 @@ try {
           "deferred selection without allocation",
           "one Worktree on send",
           "original source ownership",
+          "first-send replacement confirmation applies the recovered generation",
+          "stale explicit draft selects an already-rebound directory",
+          "failed-send draft retained without automatic submission",
         ],
         viewport: page.viewportSize(),
         fixture,

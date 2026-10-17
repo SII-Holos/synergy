@@ -2,6 +2,19 @@ import { describe, expect, test } from "bun:test"
 import { promptSubmitFailure } from "../../../src/components/prompt-input/submit-failure"
 
 describe("prompt submit failure presentation", () => {
+  test("a stale binding selection offers directory selection without requiring another rebind", () => {
+    expect(
+      promptSubmitFailure({
+        name: "WorkspaceBindingChanged",
+        data: { workspaceID: "workspace-1", message: "Workspace selection changed" },
+      }),
+    ).toEqual({
+      kind: "workspace-unavailable",
+      workspaceID: "workspace-1",
+      reason: "binding_changed",
+      message: "Workspace selection changed",
+    })
+  })
   test("directory identity conflicts retain a targeted repair action", () => {
     expect(
       promptSubmitFailure({

@@ -8,6 +8,8 @@ A filesystem device number identifies a current mount, not a durable volume. Per
 
 ## Decision
 
+[Remounted directory recovery](2026-10-18-remounted-directory-recovery.md) supersedes the exact-match requirement for local legacy records with unchanged canonical paths, inode and known birth time; the persistent volume representation and other rejection rules remain applicable.
+
 Local Runtime qualifies macOS durable directory identity with the native volume UUID, inode and birth time. Inspection checks the object again after reading its volume identity. Other platforms and volumes without a UUID retain strict device-qualified identity. A stored volume-qualified identity cannot silently downgrade when volume inspection fails.
 
 The Workspace startup migration upgrades only local active bindings whose complete legacy identity still matches. It preserves Workspace IDs and binding generations, advances the catalog revision and replaces location indexes transactionally. The dependent Local Runtime migration upgrades verified native mount receipts before admission. Missing, replaced, foreign and already mismatched legacy directories require explicit rebinding. Unknown owner data survives both upgrades. This refines the durable identity in [Workspace bindings](../architecture/2026-09-23-workspace-identity-and-local-bindings.md).

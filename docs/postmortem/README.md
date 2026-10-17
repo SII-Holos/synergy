@@ -2,7 +2,7 @@
 
 ## Criteria
 
-- **Subtle** — investigation required.
+- **Subtle**.
 - **Systemic** — missed safeguards.
 - **Costly**.
 
@@ -24,6 +24,8 @@ Rationale: `docs/decisions/`.
 - **Lessons** — durable takeaways.
 
 ## Index
+
+- [0079](0079-remount-and-confirmed-selection.md)
 
 - [0078](0078-cold-navigation-migration-admission.md)
 

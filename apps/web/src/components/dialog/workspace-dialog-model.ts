@@ -16,7 +16,7 @@ export type WorkspaceDialogTarget =
 export type WorkspaceRecovery = { workspaceID: string; reason?: string; isCurrent?: () => boolean }
 export type WorkspaceRecoveryRequest = WorkspaceRecovery &
   (
-    | { kind: "draft" }
+    | { kind: "draft"; onRecovered?: (selection: SessionWorkspaceSelection) => void | Promise<void> }
     | {
         kind: "session"
         sessionID: string

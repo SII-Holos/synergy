@@ -20,3 +20,28 @@ test("task intent selects the real main binding and a deferred Worktree uses tha
   })
   expect(projectTaskIntent({})).toEqual({ mode: "none" })
 })
+
+test("implicit main selection follows a confirmed catalog generation while explicit drafts stay pinned", () => {
+  const workspaces = [
+    { id: "B", scopeID: "project", binding: { hostID: "host", path: "/b", state: "bound" as const, generation: 4 } },
+  ]
+  expect(projectTaskIntent({ directories, workspaces })).toEqual({
+    mode: "workspace",
+    workspaceID: "B",
+    workspaceGeneration: 4,
+  })
+  expect(projectTaskIntent({ directories, workspaces, selected: { mode: "current" } })).toEqual({
+    mode: "workspace",
+    workspaceID: "B",
+    workspaceGeneration: 4,
+  })
+  const selected = { mode: "workspace" as const, workspaceID: "B", workspaceGeneration: 3 }
+  expect(projectTaskIntent({ directories, workspaces, selected })).toEqual(selected)
+  expect(projectTaskIntent({ directories, workspaces: [{ ...workspaces[0], scopeID: "another" }] })).toEqual(selected)
+  expect(
+    projectTaskIntent({
+      directories,
+      workspaces: [{ ...workspaces[0], binding: { ...workspaces[0].binding, generation: 2 } }],
+    }),
+  ).toEqual(selected)
+})

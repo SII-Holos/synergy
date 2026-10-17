@@ -2,7 +2,30 @@ import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { filesystemObjectID, identifyDirectory, readOrCreateIdentityFile } from "../src/filesystem-identity"
+import {
+  filesystemObjectID,
+  identifyDirectory,
+  readOrCreateIdentityFile,
+  matchesLegacyFilesystemIdentity,
+} from "../src/filesystem-identity"
+
+test("legacy remount compatibility requires the same inode and known birth time", () => {
+  expect(matchesLegacyFilesystemIdentity("10:42:123456789", "11:42:123456789", true)).toBe(true)
+  expect(matchesLegacyFilesystemIdentity("10:42:123456789", "11:42:123456789")).toBe(false)
+  expect(matchesLegacyFilesystemIdentity("10:42:123456789", "10:42:123456789")).toBe(true)
+  for (const actual of [
+    undefined,
+    "11:43:123456789",
+    "11:42:123456790",
+    "11:42:0",
+    "volume-v1:volume:42:123456789",
+    "overlay:11:42",
+    "bad",
+  ])
+    expect(matchesLegacyFilesystemIdentity("10:42:123456789", actual, true)).toBe(false)
+  for (const previous of ["10:42:0", "10:0:123456789", "volume-v1:volume:42:123456789", "overlay:10:42", "bad"])
+    expect(matchesLegacyFilesystemIdentity(previous, "11:42:123456789", true)).toBe(false)
+})
 
 test("persistent volume identity survives device reassignment without accepting another object", () => {
   const stat = { dev: 10n, ino: 42n, birthtimeNs: 123456789n }
