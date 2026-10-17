@@ -142,6 +142,54 @@ function createScrollHarness() {
 }
 
 describe("createAutoScroll", () => {
+  test("explicit history navigation releases the old reading anchor until native reading resumes", async () => {
+    const harness = createScrollHarness()
+    let dispose = () => {}
+    try {
+      const element = harness.makeScroller()
+      let autoScroll!: ReturnType<typeof createAutoScroll>
+      createRoot((cleanup) => {
+        dispose = cleanup
+        autoScroll = createAutoScroll({
+          working: () => false,
+          captureReadingAnchor: () => {
+            const top = element.scrollTop
+            return {
+              owner: element,
+              restore: () => {
+                element.scrollTop = top
+              },
+            }
+          },
+        })
+        autoScroll.scrollRef(element)
+        autoScroll.contentRef(element)
+      })
+      await harness.tick()
+      element.scrollTop = 500
+      autoScroll.handleInteraction()
+      expect(autoScroll.readingAnchorOwner()).toBe(element)
+      autoScroll.handleNavigation()
+      element.scrollTop = 100
+      autoScroll.handleScroll()
+      element.scrollHeight += 200
+      harness.lastObserver()!.fire(element)
+      harness.flushFrames()
+      expect(element.scrollTop).toBe(100)
+      expect(autoScroll.readingAnchorOwner()).toBeUndefined()
+      autoScroll.handleInteraction()
+      element.scrollTop = 150
+      element.scrollHeight += 200
+      harness.lastObserver()!.fire(element)
+      harness.flushFrames()
+      expect(element.scrollTop).toBe(100)
+      expect(autoScroll.readingAnchorOwner()).toBe(element)
+    } finally {
+      dispose()
+      harness.restore()
+    }
+  })
+
   test("following never captures or restores a reading owner returned by a caller", async () => {
     const harness = createScrollHarness()
     let dispose = () => {}

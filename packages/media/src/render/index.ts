@@ -64,6 +64,7 @@ export namespace Render {
   export async function write(target: RenderArtifact.Target, input: RenderArtifact.Write) {
     RenderArtifact.Target.parse(target)
     const update = RenderArtifact.Write.parse(input)
+    await owned(target)
     return Storage.transaction(async () => {
       const { part, descriptor, state } = await owned(target)
       if (descriptor.mode !== "interactive") throw new Unavailable({ message: "Static visuals cannot save state" })

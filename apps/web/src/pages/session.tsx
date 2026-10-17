@@ -2048,7 +2048,7 @@ function SessionPageContent() {
             ),
       loadWindow: async (messageID, partID) => {
         setHistoryLocationPinned(true)
-        autoScroll.handleInteraction()
+        autoScroll.handleNavigation()
         setStore("turnStart", 0)
         return sync.session.history.locate(params.id!, messageID, partID)
       },

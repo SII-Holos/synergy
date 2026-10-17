@@ -153,6 +153,8 @@ Hold storage preparation and history loading separately when testing navigation.
 
 Exercise the single floating return-to-latest control through the actual page after history search. Include pointer, Enter and Space activation while history reads are delayed. Search both inside and outside the latest window, then resize after returning and sample bottom distance across frames: retained search rows must not retain their old programmatic location. An explicit navigation control must own its activation event without cancelling itself through the viewport's reading-interruption handler; later reading input must still cancel pending following.
 
+Explicit location and DOM reading anchors cannot simultaneously own scroll compensation. Release the old anchor while a search target hydrates, then restore reading ownership on native input. Sample the searched message's viewport intersection across frames; DOM presence alone can hide a target that was immediately pulled offscreen by resize delivery.
+
 Verify return-to-latest visibility with the outer conversation at its bottom while wheel and keyboard input read an inner process window. Follow suspension alone must not show the outer control; subsequent outer content growth must still reveal it. Compose the real viewport, presentation, dock and Composer when measuring placement, including activity visibility, editor resizing, pending decisions, a narrow pane and native hit testing.
 
 ## Conversation process and read-only evidence

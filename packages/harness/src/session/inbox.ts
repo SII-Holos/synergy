@@ -395,18 +395,15 @@ export namespace SessionInbox {
   async function resolveUserAgent(
     sessionID: string,
     payload: NonNullable<StoredItem["message"]>,
-    session: Pick<Info, "agentOverride"> | undefined,
+    session: Info | undefined,
     independent = false,
   ) {
     let agentName = payload.agent ?? session?.agentOverride
     if (!agentName) {
-      const messages = await SessionHistory.modelMessages({ sessionID })
-      for (let index = messages.length - 1; index >= 0; index--) {
-        const msg = messages[index]
-        if (msg.info.role !== "user") continue
-        agentName = (msg.info as MessageV2.User).agent
-        break
-      }
+      const current = session ?? (await Session.get(sessionID))
+      const messages = await SessionHistory.effectiveMessageInfos(current)
+      const latest = messages.findLast((message) => message.role === "user")
+      if (latest?.role === "user") agentName = latest.agent
     }
 
     let agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))

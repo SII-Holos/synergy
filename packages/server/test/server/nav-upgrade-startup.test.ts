@@ -23,6 +23,7 @@ test("normal startup restores historical navigation and global search after an e
       })
       await Storage.write(StoragePath.sessionInfo(Identifier.asScopeID("home"), Identifier.asSessionID(session.id)), {
         ...session,
+        workspaceID: undefined,
         scope: { type: "home", id: "home", directory: tmp.path, worktree: tmp.path, sandboxes: [] },
         workspace: { type: "main", path: tmp.path, scopeID: "home" },
         time: { created: 100, updated: 200 },

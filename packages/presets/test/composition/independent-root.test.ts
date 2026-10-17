@@ -486,11 +486,11 @@ for (const delivery of ["input", "message"] as const) {
         within(async () => {
           expect(await Agent.get("boss-synergy")).toBeDefined()
           for (const choice of [
-            { agent: "boss-synergy", override: undefined, expected: PrimaryAgentIdentity.names.general },
+            { agent: "boss-synergy", override: undefined, expected: PrimaryAgentIdentity.names.lightweight },
             {
               agent: PrimaryAgentIdentity.names.coding,
               override: "boss-synergy",
-              expected: PrimaryAgentIdentity.names.general,
+              expected: PrimaryAgentIdentity.names.lightweight,
             },
             {
               agent: PrimaryAgentIdentity.names.coding,

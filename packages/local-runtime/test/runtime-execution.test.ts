@@ -102,7 +102,10 @@ for (const workspace of ["project", "none", "missing", "missing-inbox"] as const
       ScopeContext.provide({
         scope: workspace === "none" ? Scope.home() : (await Scope.fromDirectory(directory)).scope,
         fn: async () => {
-          const session = await Session.create({ title: "Worker round trip" })
+          const session = await Session.create({
+            title: "Worker round trip",
+            ...(workspace === "none" ? { workspace: null } : {}),
+          })
           sessionID = session.id
           if (workspace.startsWith("missing")) await fs.rm(directory, { recursive: true })
           const input = {

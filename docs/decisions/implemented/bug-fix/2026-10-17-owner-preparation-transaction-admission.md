@@ -12,6 +12,8 @@ Prepare user-message owners before entering their publication transaction. Withi
 
 Outside transactions, retain the existing Runtime/store-scoped deduplication, migration dependency order, retry and durable receipts. No persistent format, execution limit or event protocol changes.
 
+Rollback, unrollback and visual-state writes prepare their historical owner before entering the mutation transaction, then repeat authoritative validity checks inside it. Implicit Agent inheritance uses canonical message summaries instead of materializing model-history bodies during Inbox admission. Reinstalling an optional component cannot make that metadata-only operation depend on unrelated historical body preparation.
+
 ## Alternatives considered
 
 **Extend admission timeouts or submit tasks gradually.** These delay the failure or avoid its trigger without removing the dependency cycle.
@@ -23,3 +25,5 @@ Outside transactions, retain the existing Runtime/store-scoped deduplication, mi
 ## Consequences
 
 Cold owner admission performs its preparation before atomic message publication. Existing transactional readers pay a bounded metadata check and see their own receipt state. Callers attempting to prepare historical records inside a transaction receive an explicit conflict rather than a deadlock. Tests retain an outside preparation behind a barrier while a writer reads an already-prepared owner, and verify that neither reader nor writer transactions execute missing migrations. Message publication rollback tests preserve atomic input and part behavior.
+
+Upgrade, independent-input composition, rollback acknowledgment, model history, import and visual-state tests cover the additional transaction entry points. The visual write preflight adds a target-local read; revision and ownership checks remain transactional, so concurrent writes and rolled-back content still fail correctly.

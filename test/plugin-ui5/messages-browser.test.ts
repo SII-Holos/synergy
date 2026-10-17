@@ -134,6 +134,18 @@ describe("production conversation history", () => {
         await historySearch.getByRole("button", { name: `Question ${question}`, exact: true }).click()
         await historySearch.waitFor({ state: "detached" })
         await page.getByText(`Question ${question}`, { exact: true }).waitFor()
+        const located = await page.getByText(`Question ${question}`, { exact: true }).evaluate(async (node) => {
+          const visible: boolean[] = []
+          const viewport = node.closest<HTMLElement>("[data-conversation-viewport]")!
+          for (let frame = 0; frame < 24; frame++) {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+            const bounds = viewport.getBoundingClientRect()
+            const item = node.getBoundingClientRect()
+            visible.push(node.isConnected && item.height > 0 && item.bottom > bounds.top && item.top < bounds.bottom)
+          }
+          return visible
+        })
+        expect(located.every(Boolean)).toBe(true)
         phase(`search result ${question}`)
         expect(await rootCount()).toBeLessThanOrEqual(30)
         expect(await page.locator("[data-display-row]").count()).toBeLessThanOrEqual(80)
