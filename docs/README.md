@@ -35,9 +35,11 @@ Architecture documents define current invariants, ownership boundaries, and the 
 
 - [Architecture overview](architecture/README.md)
 - [Runtime and Scope](architecture/runtime-and-scope.md)
+- [Host connections](architecture/host-connections.md) — provider discovery, device pairing and authenticated remote access
 - [Agent storage](architecture/agent-storage.md)
 - [Workspace and files](architecture/workspace-and-files.md)
 - [Environments](architecture/environments.md)
+- [Paused Session transfer](architecture/session-transfer.md)
 - [Sessions and messages](architecture/session-and-messages.md)
 - [LLM loop and compaction](architecture/llm-loop.md)
 - [Usage accounting](architecture/usage-accounting.md)

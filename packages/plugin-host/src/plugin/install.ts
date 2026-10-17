@@ -1,4 +1,5 @@
 import { Global } from "@ericsanchezok/synergy-harness/global"
+import { HostConnection } from "@ericsanchezok/synergy-harness/host/connection"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
 import path from "path"
@@ -280,6 +281,7 @@ export async function remove(pluginId: string, options: { force?: boolean } = {}
   await pluginRuntimeManager()
     .stop(pluginId)
     .catch((error) => log.warn("plugin runtime stop failed during uninstall", { pluginId, error }))
+  await HostConnection.disableOwner(pluginId)
   await clearThemePreferenceIfOwned(pluginId)
   forgetPlugin(pluginId)
 }

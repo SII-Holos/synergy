@@ -42,6 +42,8 @@ import { getPluginConfig } from "./config-store"
 import { createAuthStore } from "./store"
 import { PluginEvent } from "./event"
 import { getRuntimeEndpoint } from "@ericsanchezok/synergy-harness/util/runtime-endpoint"
+import { HostConnection } from "@ericsanchezok/synergy-harness/host/connection"
+import { z } from "zod"
 import {
   cancelPluginBlueprint,
   cancelPluginTask,
@@ -120,6 +122,16 @@ const capabilityByMethod = {
   "asset.create": "asset.write",
   "shell.run": "shell.execute",
   "runtime.endpoint.get": "runtime.endpoint.read",
+  "host.connection.endpoint": "host.connection.manage",
+  "host.connection.configure": "host.connection.manage",
+  "host.connection.probe": "host.connection.manage",
+  "host.connection.invite": "host.connection.manage",
+  "host.connection.pair": "host.connection.manage",
+  "host.connection.pending": "host.connection.manage",
+  "host.connection.approve": "host.connection.manage",
+  "host.connection.finish": "host.connection.manage",
+  "host.connection.peers": "host.connection.manage",
+  "host.connection.revoke": "host.connection.manage",
 } as const
 
 const AGENT_CALL_MAX_INPUT_CHARS = 32_000
@@ -134,7 +146,7 @@ function assertCapability(input: PluginHostServiceInvocationInput) {
   const required = capabilityByMethod[input.method]
   const granted = input.manifest.capabilities.some((capability) => capability.id === required)
   if (!granted) throw new Error(`Plugin ${input.pluginId} does not declare capability "${required}"`)
-  if (required === "runtime.endpoint.read") {
+  if (required === "runtime.endpoint.read" || required === "host.connection.manage") {
     const contribution = input.manifest.contributions.find((item) => `${item.kind}:${item.id}` === input.handlerId)
     if (!contribution?.requires?.includes(required)) {
       throw new Error(`Plugin contribution ${input.handlerId ?? "unknown"} does not require capability "${required}"`)
@@ -780,6 +792,51 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
     // shared per-plugin runtime does not pin one Scope's limits for others.
     if (!input.limits) input.limits = await resolvePluginRuntimeLimits()
     const value = params(input)
+    if (input.method.startsWith("host.connection.")) {
+      const assertAuthority = () => {
+        input.signal.throwIfAborted()
+        input.assertAuthority?.()
+      }
+      assertAuthority()
+      if (HostConnection.remoteRequester())
+        throw pluginHostServiceError(
+          PluginHostServiceErrorCode.HOST_CONNECTION_LOCAL_REQUIRED,
+          "Connection management requires local access",
+        )
+      if (input.invocation.actor.type === "agent")
+        throw pluginHostServiceError(
+          PluginHostServiceErrorCode.HOST_CONNECTION_HUMAN_REQUIRED,
+          "Host pairing requires a human or lifecycle invocation",
+        )
+      const request = z.object({ requestID: z.string().uuid() }).strict()
+      switch (input.method) {
+        case "host.connection.configure":
+          return HostConnection.configure(input.pluginId, HostConnection.Configure.parse(value), assertAuthority)
+        case "host.connection.probe":
+          return HostConnection.probe(z.object({ url: z.string().url() }).strict().parse(value).url)
+        case "host.connection.pair": {
+          const pair = z
+            .object({ target: HostConnection.Descriptor, code: z.string().max(32) })
+            .strict()
+            .parse(value)
+          return HostConnection.pair(pair.target, pair.code, assertAuthority)
+        }
+        case "host.connection.approve":
+          return HostConnection.approve(request.parse(value).requestID, assertAuthority)
+        case "host.connection.finish":
+          return HostConnection.finish(request.parse(value).requestID, assertAuthority)
+        case "host.connection.revoke":
+          return HostConnection.revoke(
+            z.object({ hostID: z.string().uuid() }).strict().parse(value).hostID,
+            assertAuthority,
+          )
+      }
+      z.object({}).strict().parse(value)
+      if (input.method === "host.connection.endpoint") return HostConnection.endpoint()
+      if (input.method === "host.connection.invite") return HostConnection.invite(assertAuthority)
+      if (input.method === "host.connection.pending") return HostConnection.pending()
+      if (input.method === "host.connection.peers") return HostConnection.peers()
+    }
     if (input.method === "runtime.endpoint.get") {
       if (
         input.params !== undefined &&

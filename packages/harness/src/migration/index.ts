@@ -685,24 +685,26 @@ export async function upgradeSessionRecords(owners: Array<{ scopeID: string; ses
       )
     )
       continue
-    await Storage.transaction(async (tx) => {
-      const current = await Storage.readMany(pending.map((target) => target.key))
-      const records = await Storage.readMany<Record<string, unknown>>(keys)
-      const receipts = []
-      const changed = new Set<number>()
-      for (const [index, target] of pending.entries()) {
-        if (current[index] !== undefined) continue
-        if (changed.delete(target.ownerIndex))
-          records[target.ownerIndex] = (await Storage.readMany<Record<string, unknown>>([keys[target.ownerIndex]]))[0]
-        const record = records[target.ownerIndex]
-        if (!record) continue
-        if (target.migration.onAccess !== true && !target.migration.onAccess!(record)) continue
-        await target.migration.upSession!(target.owner, () => {})
-        changed.add(target.ownerIndex)
-        receipts.push({ key: target.key, value: { completed: Date.now() } })
-      }
-      if (receipts.length) await tx.writeMany(receipts)
-    })
+    const upgrade = () =>
+      Storage.transaction(async (tx) => {
+        const current = await Storage.readMany(pending.map((target) => target.key))
+        const records = await Storage.readMany<Record<string, unknown>>(keys)
+        const receipts = []
+        const changed = new Set<number>()
+        for (const [index, target] of pending.entries()) {
+          if (current[index] !== undefined) continue
+          if (changed.delete(target.ownerIndex))
+            records[target.ownerIndex] = (await Storage.readMany<Record<string, unknown>>([keys[target.ownerIndex]]))[0]
+          const record = records[target.ownerIndex]
+          if (!record) continue
+          if (target.migration.onAccess !== true && !target.migration.onAccess!(record)) continue
+          await target.migration.upSession!(target.owner, () => {})
+          changed.add(target.ownerIndex)
+          receipts.push({ key: target.key, value: { completed: Date.now() } })
+        }
+        if (receipts.length) await tx.writeMany(receipts)
+      })
+    await (Storage.inTransaction() ? upgrade() : Storage.withMigrationRecords(upgrade))
   }
 }
 
@@ -741,7 +743,7 @@ async function prepareMigrations(owner: MigrationOwner, execution: "session" | "
   ])
   const pending = sessionPreparations()
   if (pending.has(key)) return pending.get(key)!
-  const task = (async () => {
+  const task = Storage.withMigrationRecords(async () => {
     if (!(await Storage.readMany([ownerKey]))[0]) return
     for (const { domain, migration } of migrations) {
       UpgradeWork.signal()?.throwIfAborted()
@@ -754,7 +756,7 @@ async function prepareMigrations(owner: MigrationOwner, execution: "session" | "
         if ((await Storage.readMany([ownerKey]))[0]) await Storage.write(receipt, { completed: Date.now() })
       })
     }
-  })().finally(() => pending.delete(key))
+  }).finally(() => pending.delete(key))
   pending.set(key, task)
   return task
 }

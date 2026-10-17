@@ -7,7 +7,7 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useLingui } from "@lingui/solid"
 import { dialog } from "@/locales/messages"
-import { normalizeServerUrl, serverDisplayName, useServer } from "@/context/server"
+import { normalizeServerUrl, useServer } from "@/context/server"
 import { usePlatform } from "@/context/platform"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -73,6 +73,7 @@ export function DialogSelectServer(props: DialogSelectServerProps = {}) {
   })
 
   async function refreshHealth() {
+    await server.refreshConnections()
     const results: Record<string, ServerStatus> = {}
     await Promise.all(
       items().map(async (url) => {
@@ -152,7 +153,7 @@ export function DialogSelectServer(props: DialogSelectServerProps = {}) {
                   "bg-border-weak-base": store.status[i] === undefined,
                 }}
               />
-              <span class="truncate">{serverDisplayName(i)}</span>
+              <span class="truncate">{server.displayName(i)}</span>
               <span class="text-text-weak">{store.status[i]?.version}</span>
             </div>
           )}

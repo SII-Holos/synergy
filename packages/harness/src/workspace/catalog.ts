@@ -84,6 +84,7 @@ export namespace WorkspaceCatalog {
     hostID: string
     path: string
     physicalID?: string
+    generation?: number
     metadata?: Record<string, unknown>
     sharedWritableWorkspaceIDs?: string[]
   }
@@ -266,7 +267,13 @@ export namespace WorkspaceCatalog {
       scopeID: input.scopeID,
       type: input.type,
       revision: 1,
-      binding: { state: "bound", hostID: input.hostID, path: input.path, physicalID: input.physicalID, generation: 1 },
+      binding: {
+        state: "bound",
+        hostID: input.hostID,
+        path: input.path,
+        physicalID: input.physicalID,
+        generation: input.generation ?? 1,
+      },
       backend: { provider: "directory", spec: {} },
       content: { revision: 0, manifest: null },
       metadata: input.metadata ?? {},

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import { Session } from "../../src/session"
 import { SessionRecords } from "../../src/session/records"
 import { ScopeContext } from "../../src/scope/context"
@@ -85,13 +85,27 @@ test("lists more Workspace-backed parent sessions than storage admission capacit
 
 test("lists more Workspace-backed child sessions than storage admission capacity", async () => {
   await withRecords(async ({ seed, records }) => {
+    let transferReads = 0
+    const readTransfers = Storage.readMany
+    using _readMany = spyOn(Storage, "readMany").mockImplementation(async function <T>(keys: string[][]) {
+      if (keys.some((key) => key[0] === "session_transfer_out")) transferReads++
+      return readTransfers<T>(keys)
+    })
     expect(await Session.children(seed.id)).toHaveLength(records.length)
+    expect(transferReads).toBe(1)
   }, "child")
 }, 30_000)
 
 test("pages more Workspace-backed child sessions than storage admission capacity", async () => {
   await withRecords(async ({ seed, records }) => {
+    let transferReads = 0
+    const readTransfers = Storage.readMany
+    using _readMany = spyOn(Storage, "readMany").mockImplementation(async function <T>(keys: string[][]) {
+      if (keys.some((key) => key[0] === "session_transfer_out")) transferReads++
+      return readTransfers<T>(keys)
+    })
     expect((await Session.childPage({ parentID: seed.id })).items).toHaveLength(records.length)
+    expect(transferReads).toBe(1)
   }, "child")
 }, 30_000)
 

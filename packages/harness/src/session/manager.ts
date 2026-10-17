@@ -3,6 +3,7 @@ import { SessionRecords } from "./records"
 import { ExecutionCapacity } from "./execution-capacity"
 import { WorkspaceAccess } from "../workspace/access"
 import { WorkspaceCatalog } from "../workspace/catalog"
+import { SessionTransferGate } from "./transfer-gate"
 import { RuntimeContext } from "../lifecycle/context"
 import { SessionInputProgress } from "./input-progress"
 import { Bus } from "../bus"
@@ -441,6 +442,7 @@ export namespace SessionManager {
     runtimeState().sessionCompletions.set(sessionID, completion.promise)
 
     try {
+      await SessionTransferGate.assert(sessionID)
       if (!admitted) {
         const initial = await requireSession(sessionID)
         await SessionExecutionSource.authorize({

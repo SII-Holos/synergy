@@ -5,7 +5,7 @@ import type { PluginHostServiceMethod, RuntimeInvocationContextData } from "./pr
  * Capabilities whose injection additionally requires the invoking contribution to declare
  * them in `requires`, mirroring the per-contribution gate applied by the host services.
  */
-const CONTRIBUTION_GATED_CAPABILITIES = new Set(["agent.call", "runtime.endpoint.read"])
+const CONTRIBUTION_GATED_CAPABILITIES = new Set(["agent.call", "runtime.endpoint.read", "host.connection.manage"])
 
 /**
  * Filter a plugin-level capability set for a specific contribution. Capabilities that are
@@ -128,6 +128,20 @@ export function createPluginInvocationContext(input: {
       : undefined,
     runtimeEndpoint: capabilities.has("runtime.endpoint.read")
       ? { get: () => input.invokeHost("runtime.endpoint.get", {}) as never }
+      : undefined,
+    hostConnection: capabilities.has("host.connection.manage")
+      ? {
+          endpoint: () => input.invokeHost("host.connection.endpoint", {}) as never,
+          configure: (value) => input.invokeHost("host.connection.configure", value) as never,
+          probe: (value) => input.invokeHost("host.connection.probe", value) as never,
+          invite: () => input.invokeHost("host.connection.invite", {}) as never,
+          pair: (value) => input.invokeHost("host.connection.pair", value) as never,
+          pending: () => input.invokeHost("host.connection.pending", {}) as never,
+          approve: (value) => input.invokeHost("host.connection.approve", value) as never,
+          finish: (value) => input.invokeHost("host.connection.finish", value) as never,
+          peers: () => input.invokeHost("host.connection.peers", {}) as never,
+          revoke: (value) => input.invokeHost("host.connection.revoke", value) as never,
+        }
       : undefined,
     tools: capabilities.has("tool.invoke")
       ? { invoke: (toolId, value) => input.invokeHost("tool.invoke", { toolId, input: value }) as never }

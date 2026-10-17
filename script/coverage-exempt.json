@@ -1471,6 +1471,10 @@
           "reason": "test/components/workspace/execution-detail.dom.test.ts verifies Agent result identity, summary loading, full copying, retry, cancellation and bounded previews in Chromium; Vite/browser execution is outside Bun source LCOV."
         },
         {
+          "glob": "src/components/dialog/dialog-session-transfer.tsx",
+          "reason": "Paused migration selection, precommit failure/cancellation and committed retry/open behavior run in test/components/dialog/session-transfer.dom.test.ts through real Vite/Chromium; Bun cannot attribute browser TSX execution. The SDK handoff state machine is measured separately in test/components/session/session-transfer.test.ts."
+        },
+        {
           "glob": "src/components/session/retained-session-views.tsx",
           "reason": "Cross-Scope DOM, disclosure, scroll, owner fencing, deletion and six-view eviction are exercised by test/components/session/retained-session-views.dom.test.ts in Chromium; Vite browser execution does not contribute to Bun lcov."
         },

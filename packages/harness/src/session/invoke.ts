@@ -1,3 +1,4 @@
+import { SessionTransferGate } from "./transfer-gate"
 import { SessionExecutionOwners } from "./execution-owners"
 import { SessionPauseRecovery } from "./pause-recovery"
 import { prepareSessionMigrations } from "../migration"
@@ -2798,7 +2799,7 @@ export namespace SessionInvoke {
 
   export async function reconcilePausedSession(sessionID: string): Promise<void> {
     using control = await Lock.tryAcquireWrite(`session-control:${sessionID}`)
-    if (!control || SessionManager.isRunning(sessionID)) return
+    if (!control || SessionManager.isRunning(sessionID) || (await SessionTransferGate.isFrozen(sessionID))) return
     try {
       const session = await SessionManager.getSession(sessionID)
       if (!session) return

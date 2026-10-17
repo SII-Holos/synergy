@@ -1,4 +1,5 @@
 import { Global } from "@ericsanchezok/synergy-harness/global"
+import { HostConnection } from "@ericsanchezok/synergy-harness/host/connection"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { PluginEvent } from "./event"
@@ -83,12 +84,32 @@ export function replacePluginSpec(pluginId: string, spec: string) {
   specToPluginId.set(spec, pluginId)
 }
 
-function registerResolved(spec: string, resolved: ResolvedPluginSpec): LoadedPlugin {
+async function registerResolved(spec: string, resolved: ResolvedPluginSpec): Promise<LoadedPlugin> {
   const instanceState = runtimeState()
 
   const manifest = resolved.manifest
   const existing = instanceState.catalog.get(manifest.id)
   if (existing) {
+    const hadConnectionManagement = existing.manifest.capabilities.some(
+      (capability) => capability.id === "host.connection.manage",
+    )
+    const hasConnectionManagement =
+      manifest.capabilities.some((capability) => capability.id === "host.connection.manage") &&
+      manifest.contributions.some((contribution) => contribution.requires?.includes("host.connection.manage"))
+    if (
+      hadConnectionManagement &&
+      (existing.manifest.artifacts.generation !== manifest.artifacts.generation || !hasConnectionManagement)
+    ) {
+      const entry = pluginRuntimeManager().registry.active(manifest.id)
+      const stopping =
+        entry?.generation !== manifest.artifacts.generation || !hasConnectionManagement
+          ? pluginRuntimeManager()
+              .stop(manifest.id)
+              .catch(() => undefined)
+          : undefined
+      await HostConnection.disableOwner(manifest.id)
+      await stopping
+    }
     pluginContributionAdapters().registerPlugin(manifest.id, manifest)
     existing.name = manifest.name
     existing.manifest = manifest
@@ -224,7 +245,7 @@ export const state = ScopedState.create(
     }
 
     for (const { spec, resolved } of selected.values()) {
-      const plugin = registerResolved(spec, resolved)
+      const plugin = await registerResolved(spec, resolved)
       plugin.enabledScopes.add(scopeId)
       loaded.push(plugin)
       log.info("plugin enabled", {
@@ -240,12 +261,11 @@ export const state = ScopedState.create(
     for (const plugin of current.loaded) {
       plugin.enabledScopes.delete(current.scopeId)
       if (plugin.enabledScopes.size > 0) continue
-      await Promise.all([
-        pluginRuntimeManager()
-          .stop(plugin.id)
-          .catch(() => undefined),
-        stopForPlugin(plugin.id).catch(() => undefined),
-      ])
+      const stopping = pluginRuntimeManager()
+        .stop(plugin.id)
+        .catch(() => undefined)
+      await HostConnection.disableOwner(plugin.id)
+      await Promise.all([stopping, stopForPlugin(plugin.id).catch(() => undefined)])
     }
   },
 )
@@ -293,7 +313,7 @@ export async function reloadDevelopmentGeneration(input: {
       limits: await resolvePluginRuntimeLimits(),
     })
   }
-  const registered = registerResolved(current.spec, resolved)
+  const registered = await registerResolved(current.spec, resolved)
   const [{ Agent }, { ToolRegistry }] = await Promise.all([
     import("@ericsanchezok/synergy-harness/agent/agent"),
     import("@ericsanchezok/synergy-harness/tool/registry"),
@@ -334,6 +354,15 @@ export async function disablePlugin(input: {
   const plugin = current.loaded.find((item) => item.id === input.pluginId)
   if (plugin) {
     plugin.enabledScopes.delete(current.scopeId)
+    if (plugin.enabledScopes.size === 0) {
+      const stopping = plugin.manifest.capabilities.some((capability) => capability.id === "host.connection.manage")
+        ? pluginRuntimeManager()
+            .stop(plugin.id)
+            .catch(() => undefined)
+        : undefined
+      await HostConnection.disableOwner(plugin.id)
+      await stopping
+    }
     current.loaded = current.loaded.filter((item) => item.id !== input.pluginId)
   }
   const record = disabled({

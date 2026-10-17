@@ -7,6 +7,7 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 // These `mock.module`-heavy suites stub the same context modules under the same
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
+  "test/components/dialog/session-transfer.dom.test.ts",
   "test/components/prompt-input/loop-status-entry.dom.test.ts",
   "test/components/session/conversation-hydration.test.ts",
   "test/components/session/retained-session-views.dom.test.ts",
