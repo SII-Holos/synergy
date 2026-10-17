@@ -8,8 +8,13 @@ import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { identifyFilesystemObject } from "./identity"
 import { MountReceipt } from "./file-host"
+import { matchesLegacyFilesystemIdentity } from "@ericsanchezok/synergy-util/filesystem-identity"
 
-export async function migrateNativeMountIdentities(root: string, progress: (current: number, total: number) => void) {
+export async function migrateNativeMountIdentities(
+  root: string,
+  progress: (current: number, total: number) => void,
+  allowRemount = false,
+) {
   if (process.platform !== "darwin") return
   const exists = await fs.stat(root).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== "ENOENT") throw error
@@ -38,10 +43,14 @@ export async function migrateNativeMountIdentities(root: string, progress: (curr
     const mount = receipt.data.mount
     if (mount && !receipt.data.detached && !mount.physicalID.startsWith("volume-v1:")) {
       const actual = await identifyFilesystemObject(mount.path).catch((error: NodeJS.ErrnoException) => {
-        if (["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(error.code ?? "")) return undefined
+        if (["ENOENT", "ENOTDIR", "EACCES", "EPERM", "ELOOP"].includes(error.code ?? "")) return undefined
         throw error
       })
-      if (actual?.directory && actual.legacyPhysicalID === mount.physicalID) {
+      if (
+        actual?.directory &&
+        actual.physicalID.startsWith("volume-v1:") &&
+        matchesLegacyFilesystemIdentity(mount.physicalID, actual.legacyPhysicalID, allowRemount)
+      ) {
         await AtomicFile.writeJsonAtomic(
           file,
           JSON.stringify({
@@ -65,6 +74,19 @@ const migrations: Migration[] = [
     dependsOn: ["workspace/20261003-persistent-volume-identity"],
     up: (progress) =>
       migrateNativeMountIdentities(path.join(RuntimeContext.current().host.root, "state", "environments"), progress),
+  },
+  {
+    id: "20261018-remounted-mount-identity",
+    description: "Upgrade legacy native receipts after a mount number change",
+    scope: "global",
+    execution: "startup",
+    dependsOn: ["workspace/20261018-remounted-volume-identity", "local-workspace/20261003-persistent-mount-identity"],
+    up: (progress) =>
+      migrateNativeMountIdentities(
+        path.join(RuntimeContext.current().host.root, "state", "environments"),
+        progress,
+        true,
+      ),
   },
 ]
 

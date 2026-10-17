@@ -121,23 +121,29 @@ function installBasicLoopMocks(options?: {
 
   let callIndex = 0
 
-  ;(Provider.getModel as any) = mock(async () => ({
-    id: "test-model",
-    providerID: "test-provider",
-    name: "Test Model",
-    limit: { context: 100_000, output: 8_192 },
-    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
-    capabilities: {
-      toolcall: true,
-      attachment: false,
-      reasoning: false,
-      temperature: true,
-      input: { text: true, image: false, audio: false, video: false },
-      output: { text: true, image: false, audio: false, video: false },
-    },
-    api: { npm: "@ai-sdk/openai" },
-    options: {},
-  }))
+  ;(Provider.getModel as any) = mock(
+    async (): Promise<Provider.Model> => ({
+      id: "test-model",
+      providerID: "test-provider",
+      name: "Test Model",
+      limit: { context: 100_000, output: 8_192 },
+      cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+      capabilities: {
+        toolcall: true,
+        attachment: false,
+        reasoning: false,
+        temperature: true,
+        input: { text: true, image: false, audio: false, video: false, pdf: false },
+        output: { text: true, image: false, audio: false, video: false, pdf: false },
+        interleaved: false,
+      },
+      api: { id: "test-model", url: "https://fixture.invalid/v1", npm: "@ai-sdk/openai" },
+      options: {},
+      headers: {},
+      status: "active",
+      release_date: "2026-10-01",
+    }),
+  )
   ;(Agent.get as any) = mock(async (name: string) => ({
     name,
     mode: "primary",
@@ -677,23 +683,29 @@ describe("SessionInvoke system prompt assembly", () => {
       let capturedLateSystem: string[] | undefined
 
       try {
-        ;(Provider.getModel as any) = mock(async () => ({
-          id: "test-model",
-          providerID: "test-provider",
-          name: "Test Model",
-          limit: { context: 100_000, output: 8_192 },
-          cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
-          capabilities: {
-            toolcall: true,
-            attachment: false,
-            reasoning: false,
-            temperature: true,
-            input: { text: true, image: false, audio: false, video: false },
-            output: { text: true, image: false, audio: false, video: false },
-          },
-          api: { npm: "@ai-sdk/openai" },
-          options: {},
-        }))
+        ;(Provider.getModel as any) = mock(
+          async (): Promise<Provider.Model> => ({
+            id: "test-model",
+            providerID: "test-provider",
+            name: "Test Model",
+            limit: { context: 100_000, output: 8_192 },
+            cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+            capabilities: {
+              toolcall: true,
+              attachment: false,
+              reasoning: false,
+              temperature: true,
+              input: { text: true, image: false, audio: false, video: false, pdf: false },
+              output: { text: true, image: false, audio: false, video: false, pdf: false },
+              interleaved: false,
+            },
+            api: { id: "test-model", url: "https://fixture.invalid/v1", npm: "@ai-sdk/openai" },
+            options: {},
+            headers: {},
+            status: "active",
+            release_date: "2026-10-01",
+          }),
+        )
         ;(Agent.get as any) = mock(async () => ({
           name: "synergy",
           mode: "primary",
@@ -2132,51 +2144,61 @@ describe("SessionInvoke completion notices", () => {
 })
 
 describe("SessionInvoke turn lifecycle", () => {
-  test("clears prompt containers in place after processor completion", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
-      let activeSessionID = ""
-      let retainedMessages: unknown[] | undefined
-      let retainedSystem: unknown[] | undefined
-      let retainedToolIDs: string[] | undefined
-      let retainedTools: Record<string, unknown> | undefined
-      const restore = installBasicLoopMocks({
-        toolDefinitions: [
-          {
-            id: "memory_probe",
-            description: "Large prompt lifecycle probe",
-            inputSchema: { type: "object", properties: {} },
-            execute: async () => ({ output: "ok", title: "probe", metadata: {} }),
-          } as ToolResolver.Definition,
-        ],
-        activeToolIDs: ["memory_probe"],
-        onProcess(input) {
-          retainedMessages = input.messages
-          retainedSystem = input.system
-          retainedToolIDs = input.activeToolIDs
-          retainedTools = input.executionTools
-        },
-      })
-
-      try {
-        await ScopeContext.provide({
-          scope: await tmp.scope(),
-          fn: async () => {
-            const { session } = await createSessionWithUser()
-            activeSessionID = session.id
-            await SessionInvoke.loop.force(session.id)
+  for (const outcome of ["completion", "failure"] as const) {
+    test(`clears prepared prompt containers in place after processor ${outcome}`, () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        let activeSessionID = ""
+        let retainedMessages: unknown[] | undefined
+        let retainedSystem: unknown[] | undefined
+        let retainedPreparedSystem: unknown[] | undefined
+        let retainedToolIDs: string[] | undefined
+        let retainedTools: Record<string, unknown> | undefined
+        const restore = installBasicLoopMocks({
+          toolDefinitions: [
+            {
+              id: "memory_probe",
+              description: "Large prompt lifecycle probe",
+              inputSchema: { type: "object", properties: {} },
+              execute: async () => ({ output: "ok", title: "probe", metadata: {} }),
+            } as ToolResolver.Definition,
+          ],
+          activeToolIDs: ["memory_probe"],
+          onProcess(input) {
+            retainedMessages = input.messages
+            retainedSystem = input.system
+            retainedPreparedSystem = input.prepared?.system
+            retainedToolIDs = input.activeToolIDs
+            retainedTools = input.executionTools
+            expect(retainedMessages.length).toBeGreaterThan(0)
+            expect(retainedPreparedSystem?.length).toBeGreaterThan(0)
+            if (outcome === "failure") throw new Error("Fixture processor failure")
           },
         })
 
-        expect(retainedMessages?.length).toBe(0)
-        expect(retainedSystem?.length).toBe(0)
-        expect(retainedToolIDs?.length).toBe(0)
-        expect(Object.keys(retainedTools ?? {})).toEqual([])
-      } finally {
-        restore()
-        if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
-      }
-    }))
+        try {
+          await ScopeContext.provide({
+            scope: await tmp.scope(),
+            fn: async () => {
+              const { session } = await createSessionWithUser()
+              activeSessionID = session.id
+              if (outcome === "failure") {
+                await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow("Fixture processor failure")
+              } else await SessionInvoke.loop.force(session.id)
+            },
+          })
+
+          expect(retainedMessages?.length).toBe(0)
+          expect(retainedSystem?.length).toBe(0)
+          expect(retainedPreparedSystem?.length).toBe(0)
+          expect(retainedToolIDs?.length).toBe(0)
+          expect(Object.keys(retainedTools ?? {})).toEqual([])
+        } finally {
+          restore()
+          if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+        }
+      }))
+  }
 
   test("keeps the loop message cache populated across pre-jobs", () =>
     runtime.run(async () => {

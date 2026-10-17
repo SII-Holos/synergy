@@ -2144,7 +2144,14 @@ export function createPromptInputController(props: PromptInputProps) {
             environmentProfile={props.newSessionEnvironmentProfile}
             environmentID={props.newSessionEnvironmentID}
             mainWorkspaceID={props.projectDirectories?.mainWorkspaceID}
-            target={{ kind: "draft", selection: props.newSessionWorkspaceSelection, onSelect }}
+            target={{
+              kind: "draft",
+              selection: props.newSessionWorkspaceSelection,
+              onSelect: async (selection) => {
+                onSelect(selection)
+                await request.onRecovered?.(selection)
+              },
+            }}
           />
         ))
       } else {

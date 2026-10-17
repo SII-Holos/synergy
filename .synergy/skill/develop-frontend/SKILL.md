@@ -37,6 +37,8 @@ For request-context views, share one estimate/actual display projection across c
 
 ## Settings recovery
 
+Directory recovery must complete the captured task selection after confirmation, preserve its draft and clear obsolete retry actions without sending automatically. Test a completed rebind followed immediately by send, a stale implicit main-folder snapshot, background changes to an explicit selection, cancellation and late completion after changing owners.
+
 Read [the domain guidance](references/state-and-recovery.md#settings-recovery) when this area is affected.
 
 ## Library and statistics recovery

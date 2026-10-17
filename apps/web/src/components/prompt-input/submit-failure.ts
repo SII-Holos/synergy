@@ -21,14 +21,24 @@ export function promptSubmitFailure(error: unknown): PromptSubmitFailure {
   if (body && typeof body === "object" && "name" in body) {
     if (body.name === "WorktreeUnavailableError")
       return { kind: "worktree-unavailable", message: requestErrorMessage(body) }
-    if (body.name === "WorkspaceUnavailable" && "data" in body && body.data && typeof body.data === "object") {
+    if (
+      (body.name === "WorkspaceUnavailable" || body.name === "WorkspaceBindingChanged") &&
+      "data" in body &&
+      body.data &&
+      typeof body.data === "object"
+    ) {
       const data = body.data
       if ("workspaceID" in data && typeof data.workspaceID === "string")
         return {
           kind: "workspace-unavailable",
           message: requestErrorMessage(body),
           workspaceID: data.workspaceID,
-          reason: "reason" in data && typeof data.reason === "string" ? data.reason : undefined,
+          reason:
+            body.name === "WorkspaceBindingChanged"
+              ? "binding_changed"
+              : "reason" in data && typeof data.reason === "string"
+                ? data.reason
+                : undefined,
         }
     }
   }

@@ -10,6 +10,14 @@ export function filesystemObjectID(stat: ObjectStat, volume?: string) {
   return volume ? `volume-v1:${volume}:${stat.ino}:${stat.birthtimeNs}` : `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`
 }
 
+export function matchesLegacyFilesystemIdentity(expected: string, actual: string | undefined, allowRemount = false) {
+  if (actual === expected) return true
+  if (!allowRemount || !actual) return false
+  const previous = /^\d+:([1-9]\d*):([1-9]\d*)$/.exec(expected)
+  const current = /^\d+:([1-9]\d*):([1-9]\d*)$/.exec(actual)
+  return !!previous && !!current && previous[1] === current[1] && previous[2] === current[2]
+}
+
 export async function identifyFilesystemObject(filename: string, volumeIdentity?: VolumeIdentity) {
   const stat = await fs.stat(filename, { bigint: true })
   const directory = stat.isDirectory()

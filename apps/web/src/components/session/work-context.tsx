@@ -1,3 +1,4 @@
+import { projectTaskIntent } from "./project-task-intent"
 import type { SessionWorkspaceTransitionRequest } from "./worktree-session"
 import { createMemo, createResource, createSignal, For, Show, Suspense, onCleanup, type JSX } from "solid-js"
 import { useParams } from "@/context/session-route"
@@ -322,11 +323,7 @@ function WorkContextContent(props: WorkContextProps) {
               needsRecovery()
                 ? recover("main")
                 : main() &&
-                  void select({
-                    mode: "workspace",
-                    workspaceID: main()!.workspaceID,
-                    workspaceGeneration: main()!.generation,
-                  })
+                  void select(projectTaskIntent({ directories: props.directories, workspaces: sync.data.workspaces }))
             }
           >
             <Icon name={getSemanticIcon("workspace.main")} size="small" />

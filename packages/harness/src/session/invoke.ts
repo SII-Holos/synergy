@@ -1538,6 +1538,7 @@ export namespace SessionInvoke {
                       streamInput.system.splice(0)
                       streamInput.lateSystem?.splice(0)
                       streamInput.messages.splice(0)
+                      streamInput.prepared?.system.splice(0)
                       streamInput.toolDefinitions.splice(0)
                       for (const id of Object.keys(streamInput.executionTools)) delete streamInput.executionTools[id]
                       for (const id of Object.keys(streamInput.executorKinds)) delete streamInput.executorKinds[id]
@@ -1672,7 +1673,8 @@ export namespace SessionInvoke {
                         const preparedRequest = await AgentTurn.prepare(currentStreamInput)
                         combinedAbort.throwIfAborted()
                         compactionRequest = SessionCompaction.captureRequest(preparedRequest)
-                        return processor.process({ ...currentStreamInput, ...preparedRequest })
+                        streamInput = { ...currentStreamInput, ...preparedRequest }
+                        return processor.process(streamInput)
                       })(),
                       deadlinePromise,
                     ])

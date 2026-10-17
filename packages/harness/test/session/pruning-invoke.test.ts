@@ -56,6 +56,7 @@ for (const scenario of [
     scenario.name,
     async () => {
       const prompts: Parameters<LanguageModelV2["doStream"]>[0]["prompt"][] = []
+      const compactionPrompts: typeof prompts = []
       let mainCalls = 0
       let toolCalls = 0
       const stream = (chunks: LanguageModelV2StreamPart[]) => ({
@@ -81,6 +82,10 @@ for (const scenario of [
           throw new Error("Unexpected non-streaming call")
         },
         async doStream(input) {
+          if (input.toolChoice?.type === "none") {
+            compactionPrompts.push(structuredClone(input.prompt))
+            return reply("## Goal\nContinue the fixture task.\n## Completed\nEarlier evidence was inspected.")
+          }
           prompts.push(structuredClone(input.prompt))
           if ((scenario.pressure === "none" || "continuation" in scenario) && mainCalls++ === 0) {
             return stream([
@@ -353,6 +358,7 @@ for (const scenario of [
               expect(!!output.state.time.compacted).toBe(shouldPrune)
             }
             expect(summaries).toHaveLength(shouldSummarize ? 1 : 0)
+            expect(compactionPrompts).toHaveLength(shouldSummarize ? 1 : 0)
             expect(prompts).toHaveLength(
               expectedError || interrupted ? 0 : scenario.pressure === "none" || "continuation" in scenario ? 2 : 1,
             )

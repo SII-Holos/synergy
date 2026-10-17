@@ -21,7 +21,7 @@ import { registerMcpToolSource } from "../../src/tool-source"
 import definitions from "../fixtures/scholight-tools.json"
 
 type FixtureModel = Exclude<LanguageModel, string>
-type ModelRequest = Pick<Parameters<FixtureModel["doStream"]>[0], "prompt" | "tools">
+type ModelRequest = Pick<Parameters<FixtureModel["doStream"]>[0], "prompt" | "tools" | "toolChoice">
 type StreamPart =
   Awaited<ReturnType<FixtureModel["doStream"]>>["stream"] extends ReadableStream<infer Part> ? Part : never
 
@@ -91,6 +91,13 @@ test("deterministic model boundary auto-expands online, executes once and retain
         throw new Error("Unexpected non-streaming model call")
       },
       async doStream(input) {
+        if (input.toolChoice?.type === "none") {
+          compactRequests.push(
+            structuredClone({ prompt: input.prompt, tools: input.tools, toolChoice: input.toolChoice }),
+          )
+          sequence.push("compact")
+          return stream(text(summary))
+        }
         requests.push(structuredClone({ prompt: input.prompt, tools: input.tools }))
         sequence.push("primary")
         if (requests.length === 1)
@@ -115,10 +122,8 @@ test("deterministic model boundary auto-expands online, executes once and retain
       async doGenerate() {
         throw new Error("Unexpected non-streaming compaction call")
       },
-      async doStream(input) {
-        compactRequests.push(structuredClone({ prompt: input.prompt, tools: input.tools }))
-        sequence.push("compact")
-        return stream(text(summary))
+      async doStream() {
+        throw new Error("Native compaction must reuse the primary model")
       },
     },
     auxiliary: {
@@ -263,7 +268,8 @@ test("deterministic model boundary auto-expands online, executes once and retain
           }
           expect(schema).toEqual(originalSchema)
           expect(entry.tool.description).toBe(definitions.find((tool) => tool.name === "search_papers")!.description)
-          expect(compactRequests[0].tools ?? []).toHaveLength(0)
+          expect(compactRequests[0].tools).toEqual(requests[1].tools)
+          expect(compactRequests[0].toolChoice).toEqual({ type: "none" })
           expect(JSON.stringify(compactRequests[0].prompt)).toContain(output)
           expect(JSON.stringify(requests[2].prompt)).toContain(summary)
           expect(JSON.stringify(requests[2].prompt)).toContain("Continue if you have next steps")

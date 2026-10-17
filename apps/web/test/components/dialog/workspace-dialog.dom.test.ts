@@ -1,3 +1,4 @@
+import type { SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -27,7 +28,7 @@ beforeAll(async () => {
     rows.push({...record("wsp_objects",null), backend:{provider:"objects",spec:{}},type:"objects",metadata:{name:"Research"}})
     const listeners = new Set()
     const requests=[]
-    const h=window.fixture={ requests, rows, selected:[], fail:false, pick:"/new", sessions:[{id:"session",title:"Project task",workspaceID:"wsp_a"}],registerError:null,registerID:null,rebindError:null,isCurrent:current,expire:()=>setCurrent(false),emit(record){listeners.forEach(fn=>fn({properties:record}))} }
+    const h=window.fixture={ requests, rows, selected:[], fail:false, pick:"/new", sessions:[{id:"session",title:"Project task",workspaceID:"wsp_a"}],registerError:null,registerID:null,rebindError:null,recoveryReason:"identity_unverified",isCurrent:current,expire:()=>setCurrent(false),emit(record){listeners.forEach(fn=>fn({properties:record}))} }
     export const useSDK=()=>({scopeID:"scope",client:{environment:{async profiles(){return {data:{defaultEnvironment:"native",environments:[{name:"native",provider:"native"},{name:"remote",provider:"remote"}],stores:[{name:"local",provider:"local"}]}}}},workspace:{
       async createObjects(input){requests.push({kind:"objects",...input});const next={...record("wsp_created",null),type:"objects",backend:{provider:"objects",spec:{}},metadata:{name:input.name}}; rows.push(next);return {data:next}},
       async list(){return {data:structuredClone(rows)}},
@@ -55,7 +56,7 @@ beforeAll(async () => {
     import {ConfirmDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/dialog/confirm-dialog.tsx`)}
     import {DialogWorkspace} from ${JSON.stringify(`/@fs/${appSrc}/components/dialog/dialog-workspace.tsx`)}
     import ${JSON.stringify(`/@fs/${appSrc}/index.css`)}
-    function App(){const dialog=useDialog();return <><button id="long-confirm" onClick={()=>dialog.show(()=><ConfirmDialog title="Confirm directory" description={Array.from({length:200},(_,n)=>"Long destination "+n+" "+"x".repeat(80)).join("\\n")} confirmLabel="Apply directory" tone="warning" onConfirm={()=>window.fixture.selected.push("confirmed")}/>)}>Long confirmation</button><button id="copies" onClick={()=>dialog.show(()=><DialogWorkspace copiesOnly target={{kind:"draft",selection:{mode:"current"},onSelect:value=>window.fixture.selected.push(value)}}/>)}>Choose a Worktree</button><button id="existing" onClick={()=>dialog.show(()=><DialogWorkspace copiesOnly target={{kind:"draft",selection:{mode:"existing",target:window.fixture.existingTarget},onSelect:value=>window.fixture.selected.push(value)}}/>)}>Continue existing Worktree</button><button id="manager" onClick={()=>dialog.show(()=><DialogWorkspace mode="manage"/>)}>Manage directories</button><button id="draft" onClick={()=>dialog.show(()=><DialogWorkspace target={{kind:"draft",selection:{mode:"workspace",workspaceID:"wsp_b",workspaceGeneration:1},onSelect:value=>window.fixture.selected.push(value)}}/>)}>Choose for draft</button><button id="recover" onClick={()=>dialog.show(()=><DialogWorkspace mode="recover" recovery={{workspaceID:"wsp_unverified",reason:"identity_unverified",isCurrent:()=>window.fixture.isCurrent()}} target={{kind:"draft",onSelect:value=>window.fixture.selected.push(value)}}/>)}>Recover draft</button><button id="recover-session" onClick={()=>dialog.show(()=><DialogWorkspace mode="recover" recovery={{workspaceID:"wsp_unverified"}} target={{kind:"session",sessionID:"created-session",onApplied:value=>window.fixture.selected.push(value)}}/>)}>Recover created session</button><button id="select-remote" onClick={()=>dialog.show(()=><DialogWorkspace mode="select" environmentProfile="remote" target={{kind:"draft",onSelect:value=>window.fixture.selected.push(value)}}/>)}>Remote files</button><button id="open" onClick={()=>dialog.show(()=><DialogWorkspace target={{kind:"session",sessionID:"session"}}/>)}>Open</button></>}
+    function App(){const dialog=useDialog();return <><button id="long-confirm" onClick={()=>dialog.show(()=><ConfirmDialog title="Confirm directory" description={Array.from({length:200},(_,n)=>"Long destination "+n+" "+"x".repeat(80)).join("\\n")} confirmLabel="Apply directory" tone="warning" onConfirm={()=>window.fixture.selected.push("confirmed")}/>)}>Long confirmation</button><button id="copies" onClick={()=>dialog.show(()=><DialogWorkspace copiesOnly target={{kind:"draft",selection:{mode:"current"},onSelect:value=>window.fixture.selected.push(value)}}/>)}>Choose a Worktree</button><button id="existing" onClick={()=>dialog.show(()=><DialogWorkspace copiesOnly target={{kind:"draft",selection:{mode:"existing",target:window.fixture.existingTarget},onSelect:value=>window.fixture.selected.push(value)}}/>)}>Continue existing Worktree</button><button id="manager" onClick={()=>dialog.show(()=><DialogWorkspace mode="manage"/>)}>Manage directories</button><button id="draft" onClick={()=>dialog.show(()=><DialogWorkspace target={{kind:"draft",selection:{mode:"workspace",workspaceID:"wsp_b",workspaceGeneration:1},onSelect:value=>window.fixture.selected.push(value)}}/>)}>Choose for draft</button><button id="recover" onClick={()=>dialog.show(()=><DialogWorkspace mode="recover" recovery={{workspaceID:"wsp_unverified",reason:window.fixture.recoveryReason,isCurrent:()=>window.fixture.isCurrent()}} target={{kind:"draft",onSelect:value=>window.fixture.selected.push(value)}}/>)}>Recover draft</button><button id="recover-session" onClick={()=>dialog.show(()=><DialogWorkspace mode="recover" recovery={{workspaceID:"wsp_unverified"}} target={{kind:"session",sessionID:"created-session",onApplied:value=>window.fixture.selected.push(value)}}/>)}>Recover created session</button><button id="select-remote" onClick={()=>dialog.show(()=><DialogWorkspace mode="select" environmentProfile="remote" target={{kind:"draft",onSelect:value=>window.fixture.selected.push(value)}}/>)}>Remote files</button><button id="open" onClick={()=>dialog.show(()=><DialogWorkspace target={{kind:"session",sessionID:"session"}}/>)}>Open</button></>}
     render(()=><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
   `,
   )
@@ -292,6 +293,26 @@ test("a background rebind requires selecting the new generation explicitly", asy
   })
 }, 20_000)
 
+test("confirming a draft directory rebind applies the new generation without a second selection", async () => {
+  await page.goto(base)
+  await page.locator("#draft").click()
+  await workspaceRow("wsp_b").waitFor()
+  await manage()
+  await page.getByLabel("New local directory", { exact: true }).fill("/second")
+  await page.getByRole("button", { name: "Confirm directory", exact: true }).click()
+  await page.getByRole("dialog").last().getByRole("button", { name: "Confirm directory", exact: true }).click()
+  await page.waitForFunction(
+    () => (window as unknown as { fixture: { selected: unknown[] } }).fixture.selected.length === 1,
+    undefined,
+    { timeout: 3000 },
+  )
+  expect(await page.evaluate<SessionWorkspaceSelection[]>("window.fixture.selected")).toEqual([
+    { mode: "workspace", workspaceID: "wsp_b", workspaceGeneration: 2 },
+  ])
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(await page.evaluate<number>("window.fixture.requests.filter(r=>r.kind==='select').length")).toBe(0)
+}, 20_000)
+
 test("the flat list keeps current and main directories first and selection does not reorder it", async () => {
   await page.goto(base)
   await page.locator("#draft").click()
@@ -442,7 +463,7 @@ test("sharing keeps its original revision after an external update and new direc
   expect(errors).toEqual([])
 }, 20_000)
 
-test("unbound history needs an explicit rebind and Escape returns focus", async () => {
+test("unbound history needs one explicit rebind and returns focus after selection", async () => {
   await open()
   await workspaceRow("wsp_history").click()
   expect(await page.getByRole("button", { name: "Use this directory", exact: true }).isDisabled()).toBe(true)
@@ -451,17 +472,18 @@ test("unbound history needs an explicit rebind and Escape returns focus", async 
   await page.evaluate("window.fixture.emit({...window.fixture.rows[2],revision:2})")
   await page.getByRole("button", { name: "Confirm directory", exact: true }).click()
   await page.getByRole("dialog").last().getByRole("button", { name: "Confirm directory", exact: true }).click()
-  await page.getByText("/rebound", { exact: true }).waitFor()
-  expect(await page.getByRole("button", { name: "Use this directory", exact: true }).isEnabled()).toBe(true)
-  expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(await page.evaluate("window.fixture.requests.find(r=>r.kind==='rebind')")).toMatchObject({
     kind: "rebind",
     scopeID: "scope",
     workspaceID: "wsp_history",
     expectedRevision: 1,
     path: "/rebound",
   })
-  await page.keyboard.press("Escape")
-  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
+    kind: "select",
+    sessionWorkspaceSelection: { workspaceID: "wsp_history", workspaceGeneration: 2 },
+  })
   await page.waitForFunction(() => document.activeElement?.id === "open")
   expect(errors).toEqual([])
 }, 20_000)
@@ -476,8 +498,6 @@ test("a bound directory without a verified identity requires rebind before selec
   await page.getByLabel("New local directory", { exact: true }).fill("/verified")
   await page.getByRole("button", { name: "Confirm directory", exact: true }).click()
   await page.getByRole("dialog").last().getByRole("button", { name: "Confirm directory", exact: true }).click()
-  await page.getByText("/verified", { exact: true }).waitFor()
-  await page.getByRole("button", { name: "Use this directory", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "detached" })
   expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
     kind: "select",
@@ -583,7 +603,6 @@ test("hundreds of affected tasks never push binding controls or confirmation off
   expect(await confirmation.textContent()).toContain("230")
   expect(await confirmation.textContent()).not.toContain("Historical task 229")
   await confirm.click()
-  await page.getByRole("button", { name: "Use this directory", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "detached" })
   expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
     kind: "select",
@@ -616,7 +635,6 @@ test.each([false, true])(
     expect(await page.evaluate<boolean>("window.fixture.requests.some(r=>r.kind==='rebind')")).toBe(false)
     await page.getByRole("button", { name: "Confirm directory", exact: true }).click()
     await page.getByRole("dialog").last().getByRole("button", { name: "Confirm directory", exact: true }).click()
-    await page.getByRole("button", { name: "Use this directory", exact: true }).click()
     await page.getByRole("dialog").waitFor({ state: "detached" })
     expect(await page.evaluate<unknown[]>("window.fixture.selected")).toEqual([
       { mode: "workspace", workspaceID: "wsp_unverified", workspaceGeneration: 2 },
@@ -664,7 +682,6 @@ test("rebind failure retains the chosen directory and cancel sends no binding mu
   await page.evaluate("window.fixture.rebindError=null")
   await page.getByRole("button", { name: "Confirm directory", exact: true }).click()
   await page.getByRole("dialog").last().getByRole("button", { name: "Confirm directory", exact: true }).click()
-  await page.getByRole("button", { name: "Use this directory", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "detached" })
   expect(await page.evaluate<unknown[]>("window.fixture.selected")).toEqual([
     { mode: "workspace", workspaceID: "wsp_unverified", workspaceGeneration: 2 },
@@ -682,4 +699,29 @@ test("refresh does not authorize a failed binding and expiration cancels its con
   await page.evaluate("window.fixture.expire()")
   await page.getByRole("dialog").waitFor({ state: "detached" })
   expect(await page.evaluate<boolean>("window.fixture.requests.some(r=>r.kind==='rebind')")).toBe(false)
+}, 20_000)
+
+test("a stale selection recovers by choosing the current directory without rebinding it again", async () => {
+  await page.goto(base)
+  await page.evaluate(() => {
+    const h = (
+      window as unknown as {
+        fixture: {
+          recoveryReason: string
+          rows: { id: string; binding: { physicalID?: string; generation: number } }[]
+        }
+      }
+    ).fixture
+    h.recoveryReason = "binding_changed"
+    const row = h.rows.find((row) => row.id === "wsp_unverified")!
+    row.binding.physicalID = "verified"
+    row.binding.generation = 2
+  })
+  await page.locator("#recover").click()
+  await page.getByRole("button", { name: "Use this directory", exact: true }).click()
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(await page.evaluate<SessionWorkspaceSelection[]>("window.fixture.selected")).toEqual([
+    { mode: "workspace", workspaceID: "wsp_unverified", workspaceGeneration: 2 },
+  ])
+  expect(await page.evaluate<unknown[]>("window.fixture.requests.filter(r=>r.kind==='rebind')")).toEqual([])
 }, 20_000)
