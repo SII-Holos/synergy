@@ -10,6 +10,7 @@ import { Installation } from "../global/installation"
 import { SessionCompat } from "../session/compat-import"
 import { setActiveMigrationContext } from "./context"
 import { UpgradeWork } from "../storage/upgrade-work"
+import { StorageConflictError } from "../storage/errors"
 import type { Migration, MigrationOwner, RunOptions, MigrationContext, MigrationSummary } from "./types"
 
 export { upgradeImportedConfig, upgradeImportedRecord } from "./import"
@@ -697,6 +698,23 @@ export async function prepareOwnerMigrations(owner: MigrationOwner) {
 }
 
 async function prepareMigrations(owner: MigrationOwner, execution: "session" | "owner") {
+  const root =
+    owner.kind === "session"
+      ? ["sessions", owner.scopeID, owner.sessionID]
+      : ["operations", owner.scopeID, owner.operationID]
+  const ownerKey = [...root, ...(owner.kind === "session" ? ["info"] : ["rollout", "journal", "head"])]
+  const migrations = MigrationPlan.ordered(collectByDomain()).filter(
+    ({ migration }) => migration.execution === execution,
+  )
+  if (Storage.inTransaction()) {
+    const [record, ...receipts] = await Storage.readMany([
+      ownerKey,
+      ...migrations.map(({ domain, migration }) => [...root, "migrations", domain, migration.id]),
+    ])
+    if (record && receipts.some((receipt) => receipt === undefined))
+      throw new StorageConflictError("Prepare historical owners before opening a transaction")
+    return
+  }
   const key = JSON.stringify([
     execution,
     owner.kind,
@@ -706,14 +724,8 @@ async function prepareMigrations(owner: MigrationOwner, execution: "session" | "
   const pending = sessionPreparations()
   if (pending.has(key)) return pending.get(key)!
   const task = (async () => {
-    const root =
-      owner.kind === "session"
-        ? ["sessions", owner.scopeID, owner.sessionID]
-        : ["operations", owner.scopeID, owner.operationID]
-    const ownerKey = [...root, ...(owner.kind === "session" ? ["info"] : ["rollout", "journal", "head"])]
     if (!(await Storage.readMany([ownerKey]))[0]) return
-    for (const { domain, migration } of MigrationPlan.ordered(collectByDomain())) {
-      if (migration.execution !== execution) continue
+    for (const { domain, migration } of migrations) {
       UpgradeWork.signal()?.throwIfAborted()
       const receipt = [...root, "migrations", domain, migration.id]
       if ((await Storage.readMany([receipt]))[0]) continue

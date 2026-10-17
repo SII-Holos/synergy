@@ -32,6 +32,7 @@ import { SessionUserMessageMaterialization } from "./user-message-materializatio
 import { SessionRootVariant } from "./root-variant"
 import { SessionInputProgress } from "./input-progress"
 import { AttachmentPreparationError } from "./input-attachment"
+import { prepareSessionMigrations } from "../migration"
 
 export namespace SessionInbox {
   const log = Log.create({ service: "session.inbox" })
@@ -652,6 +653,10 @@ export namespace SessionInbox {
   })
 
   async function persistDelivery(item: StoredItem) {
+    if (item.message?.role === "assistant") {
+      const session = await readSession(item.sessionID)
+      await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+    }
     return Storage.transaction(async () => {
       const stored = await writeItem(item)
       if (stored.message?.role === "assistant") await materializeItem(stored, await latestRootID(stored.sessionID))
@@ -921,12 +926,25 @@ export namespace SessionInbox {
     return item
   }
 
+  async function prepareMutation(input: { sessionID: string; itemID: string }) {
+    if (Storage.inTransaction()) {
+      const item = await getStored(input.sessionID, input.itemID).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return
+        throw error
+      })
+      if (item?.mode !== "task" || item.status === "failed") return
+    }
+    const session = await readSession(input.sessionID)
+    await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+  }
+
   /**
    * Guide: flip mode task↔steer.
    * A task item becomes steer (joins next model call).
    * A steer item becomes task (queues for after-turn).
    */
   export async function guide(input: { sessionID: string; itemID: string }): Promise<Item> {
+    await prepareMutation(input)
     return Storage.transaction(async () => {
       const item = await assertMutable(input)
       if (item.mode === "context") return publicItem(item)
@@ -969,6 +987,7 @@ export namespace SessionInbox {
   }
 
   export async function removeForRestore(input: { sessionID: string; itemID: string }): Promise<void> {
+    await prepareMutation(input)
     await Storage.transaction(async () => {
       const session = await readSession(input.sessionID)
       const scopeID = Identifier.asScopeID(session.scope.id)
