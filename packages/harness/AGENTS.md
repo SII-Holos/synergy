@@ -1,6 +1,6 @@
 # harness Package
 
-Own composition, lifecycle and exports. `context` owns pure attribution; `agent/primary-identity` maps primary names. [Host connections](../../docs/architecture/host-connections.md) owns pairing.
+Own composition, lifecycle and exports. `context` owns pure attribution; `agent/primary-identity` maps primary names. Pairing: [Host connections](../../docs/architecture/host-connections.md).
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - `SessionExecutionOwners` gates queued and retained execution against selected components. Domains check durable references; `MessageV2` derives historical origins and requirements. Preserve blocked records; new human tasks cannot resume an unavailable predecessor. Persist independent root admission and Agent selection, keeping its execution view separate from canonical Session writes.
@@ -9,7 +9,7 @@ Own composition, lifecycle and exports. `context` owns pure attribution; `agent/
 - Supply Host, composition and owned or borrowed storage to `RuntimeHandle`. Registration seals before storage startup; imports cannot register capabilities. Use `run` for owned work and `bind` for native callbacks. Migration listings are detached snapshots. Test independent instances together and entrypoints in isolated child processes.
 - Runtime tests use isolated homes under test/; pure functions need no Runtime. Migration mechanism tests use the unsealed fixture.
 
-Run typecheck, tests and package checks.
+Verify types, tests and packages.
 
 - Hosts register model SDKs and native image codecs through `ProviderSdkSource` and `AttachmentImageInput`. Keep absence explicit; verify `test/attachment/model-input.test.ts`.
 - Keep native PTYs, filesystem watchers and OS sandbox implementations in local-runtime. Harness owns permission policy and `SandboxHost`; missing host registration must fail closed for sandboxed execution.
@@ -31,4 +31,4 @@ Storage transfer callers use the public `storage/compat` convergence guard befor
 
 Session summaries compare Workspace checkpoints across all writers. Keep tool evidence separate. File restoration requires version-checked previews. Verify snapshots, summaries, history and Local Runtime's `test/workspace/change-attribution.test.ts`.
 
-`session/transfer` and `session/transfer-workspace` own paused transfer; test `test/session/transfer.test.ts`.
+Paused transfer: `session/transfer`, `session/transfer-workspace`; verify `test/session/transfer.test.ts`.
