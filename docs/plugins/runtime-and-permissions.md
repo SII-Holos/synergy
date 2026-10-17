@@ -33,6 +33,7 @@ interface PluginInvocationContext {
   asset?: AssetHostService
   shell?: ShellHostService
   runtimeEndpoint?: RuntimeEndpointHostService
+  hostConnection?: HostConnectionHostService
 }
 ```
 
@@ -78,6 +79,8 @@ Capabilities describe Synergy services the host may inject. A contribution's `re
 | `runtime.endpoint.read` | `context.runtimeEndpoint.get()`                                                     |
 
 `runtime.endpoint.read` returns only `{ url, generation }` for the current loopback HTTP listener. The URL has no credentials, token, path, query, or fragment. The Host Service accepts no arguments, requires the capability both at plugin and contribution level, and is not exposed through the HTTP SDK. Loopback binds (`127.0.0.1`, `localhost`, `::1`) and wildcard binds (`0.0.0.0`, `::`) are both served over loopback and return a normalized `http://127.0.0.1:<port>` URL; a bind that excludes loopback (a concrete external address) makes the service unavailable with `PLUGIN_RUNTIME_ENDPOINT_UNSAFE`. It is a generic bridge for plugins that need to point an external local process at Synergy; Core does not manage that process or its configuration.
+
+`host.connection.manage` injects optional `context.hostConnection` only when the plugin and invoking contribution both declare it. Methods are `endpoint`, `configure`, `probe`, `invite`, `pair`, `pending`, `approve`, `finish`, `peers` and `revoke`. `endpoint()` gives the credential-free loopback gateway URL. `configure({ enabled, name, url? })` publishes provider intent and its HTTPS address. The provider discovers network candidates; `probe({ url })` validates a Synergy descriptor. Destination confirmation through `approve({ requestID })` is required after `pair({ target, code })`; `finish({ requestID })` validates that confirmation on the requester. Pairing grants ordinary instance access to the device, so updates adding this capability require the normal added-access review. Agent and remote-gateway invocations cannot manage pairing. No private key, raw SDK client or server bearer token enters plugin code. See [Host connections](../architecture/host-connections.md) for authority and lifecycle.
 
 `task.delegate` may include `agents` and `maxRuntimeMs` constraints. Agent allowlists use public `agent.name` values, never Agent contribution IDs. `start()` launches native Cortex work and returns its handle immediately; `run()` waits for the same native Task to reach a terminal state and returns its `PluginTaskSnapshot`, including structured output when requested. Both paths resolve the target from Synergy's Agent registry and preserve plugin/generation/Scope ownership. A plugin's private `hidden` Agent is callable only by the same plugin ID and active generation. Non-owned targets retain ordinary Agent visibility rules.
 

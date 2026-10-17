@@ -440,6 +440,7 @@ export default function Layout(props: ParentProps) {
       searchOpen={searchOpen()}
       onSearchClose={() => setSearchOpen(false)}
       onSearchOpen={() => setSearchOpen(true)}
+      onCreateProject={createProject}
     >
       {props.children}
     </LayoutContent>
@@ -447,7 +448,12 @@ export default function Layout(props: ParentProps) {
 }
 
 function LayoutContent(
-  props: ParentProps & { searchOpen: boolean; onSearchClose: () => void; onSearchOpen: () => void },
+  props: ParentProps & {
+    searchOpen: boolean
+    onSearchClose: () => void
+    onSearchOpen: () => void
+    onCreateProject: () => void
+  },
 ) {
   const layout = useLayout()
   const platform = usePlatform()
@@ -458,7 +464,13 @@ function LayoutContent(
   const route = createMemo(() => props.children)
   const [builtinMounts, setBuiltinMounts] = createSignal(0)
   const navigation = createMemo(() =>
-    layout.isDesktop() ? <Sidebar integrated={builtinMounts() > 0} onSearchOpen={props.onSearchOpen} /> : null,
+    layout.isDesktop() ? (
+      <Sidebar
+        integrated={builtinMounts() > 0}
+        onSearchOpen={props.onSearchOpen}
+        onCreateProject={props.onCreateProject}
+      />
+    ) : null,
   )
   const shell: PluginShellService = {
     page: () => pluginHost.environment.route().page,

@@ -17,7 +17,7 @@ export type AgentTurnStreamPart = AgentTurnProtocol.StreamEvent
 
 export type AgentTurnLane = "interactive" | "background"
 
-export interface AgentTurnInput extends Omit<LLM.StreamInput, "tools" | "memoryTurn" | "prepared"> {
+export interface AgentTurnInput extends Omit<LLM.StreamInput, "tools" | "memoryTurn"> {
   onPhase?: (phase: "queued_agent" | "waiting_model") => void
   toolDefinitions: ToolCatalog.Definition[]
   contextUsageProvenance?: ContextUsage.Provenance

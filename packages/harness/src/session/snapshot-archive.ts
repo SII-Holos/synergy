@@ -29,29 +29,34 @@ export namespace SnapshotArchive {
     hashes: string[],
     consume: (packs: string[], roots: string[]) => Promise<T>,
   ) {
-    return SnapshotStore.withSession(sessionID, async () => {
-      const operation = SnapshotStore.current()
-      const roots: string[] = []
-      const missing: string[] = []
-      for (const hash of new Set(hashes)) {
-        if (!SnapshotStore.OID.test(hash)) throw new SnapshotStore.StorageError("Invalid snapshot root")
-        if (await SnapshotStore.owns(operation.scopeID, sessionID, hash)) roots.push(hash)
-        else missing.push(hash)
-      }
-      if (roots.length)
-        await temporaryRepository(async (repository) => {
-          await using catalog = await SnapshotTransfer.Catalog.create(repository)
-          await catalog.import(operation.repository, { roots })
-          const directory = path.join(repository, "objects", "pack")
-          const packs = (await fs.readdir(directory)).filter((name) => /^pack-[a-f0-9]{40}\.pack$/.test(name)).sort()
-          if (!packs.length) throw new SnapshotStore.StorageError("Snapshot export produced no objects")
-          await consume(
-            packs.map((name) => path.join(directory, name)),
-            roots,
-          )
-        })
-      return { missing }
-    })
+    return SnapshotStore.withSession(
+      sessionID,
+      async () => {
+        const operation = SnapshotStore.current()
+        const roots: string[] = []
+        const missing: string[] = []
+        for (const hash of new Set(hashes)) {
+          if (!SnapshotStore.OID.test(hash)) throw new SnapshotStore.StorageError("Invalid snapshot root")
+          if (await SnapshotStore.owns(operation.scopeID, sessionID, hash)) roots.push(hash)
+          else missing.push(hash)
+        }
+        if (roots.length)
+          await temporaryRepository(async (repository) => {
+            await using catalog = await SnapshotTransfer.Catalog.create(repository)
+            await catalog.import(operation.repository, { roots })
+            const directory = path.join(repository, "objects", "pack")
+            const packs = (await fs.readdir(directory)).filter((name) => /^pack-[a-f0-9]{40}\.pack$/.test(name)).sort()
+            if (!packs.length) throw new SnapshotStore.StorageError("Snapshot export produced no objects")
+            await consume(
+              packs.map((name) => path.join(directory, name)),
+              roots,
+            )
+          })
+        return { missing }
+      },
+      undefined,
+      { historical: true },
+    )
   }
 
   export async function importSession(sessionID: string, roots: string[], packs: AsyncIterable<Uint8Array>[]) {
@@ -76,15 +81,20 @@ export namespace SnapshotArchive {
         if (type !== "tree") throw new SnapshotStore.StorageError("Archived snapshot root is not a tree")
       }
       await SnapshotGit.checked(repository, ["fsck", "--full"])
-      await SnapshotStore.withSession(sessionID, async () => {
-        const operation = SnapshotStore.current()
-        await SnapshotStore.initialize(operation)
-        await using catalog = await SnapshotTransfer.Catalog.create(operation.repository)
-        const imported = await catalog.import(repository, { roots })
-        await catalog.protect(sessionID, roots)
-        await SnapshotStore.retainMany(operation.scopeID, sessionID, roots)
-        await catalog.releaseKeep(imported.keep)
-      })
+      await SnapshotStore.withSession(
+        sessionID,
+        async () => {
+          const operation = SnapshotStore.current()
+          await SnapshotStore.initialize(operation)
+          await using catalog = await SnapshotTransfer.Catalog.create(operation.repository)
+          const imported = await catalog.import(repository, { roots })
+          await catalog.protect(sessionID, roots)
+          await SnapshotStore.retainMany(operation.scopeID, sessionID, roots)
+          await catalog.releaseKeep(imported.keep)
+        },
+        undefined,
+        { historical: true },
+      )
     })
   }
 

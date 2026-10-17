@@ -262,6 +262,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const sendShortcut = createMemo(() => input.sendShortcut())
   const presentation = new ComposerPresentation()
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const isReadOnly = () => !!props.readOnly || !!info()?.transfer
   const blueprintBinding = createMemo(() => {
     const binding = info()?.blueprint
     const source = binding?.source ?? (info()?.workflow?.kind === "lattice" ? "lattice" : undefined)
@@ -609,7 +610,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const attachmentsUploading = createMemo(() => pendingUploads.blocking())
   const attachmentsFailed = createMemo(() => pendingUploads.pending().some((entry) => entry.status === "failed"))
   const canSubmit = createMemo(() => {
-    if (props.readOnly || props.locationPending || submitPending()) return false
+    if (isReadOnly() || props.locationPending || submitPending()) return false
     const intent = resolvePromptSubmitIntent({
       text: promptText(),
       working: working(),
@@ -648,7 +649,7 @@ export function createPromptInputController(props: PromptInputProps) {
     }),
   )
   const controlDisabled = createMemo(() => {
-    if (props.readOnly || abortStopping() || submitPending() || abandonPending() || (continuePending() && !working()))
+    if (isReadOnly() || abortStopping() || submitPending() || abandonPending() || (continuePending() && !working()))
       return true
     if (controlState() === "pause" || controlState() === "continue") return false
     return !canSubmit()
@@ -720,7 +721,7 @@ export function createPromptInputController(props: PromptInputProps) {
       id: "session.abandon",
       title: i18n._(PI.abandonExecution),
       description: i18n._(PI.abandonDescription),
-      disabled: props.readOnly || !canAbandon() || abandonPending(),
+      disabled: isReadOnly() || !canAbandon() || abandonPending(),
       onSelect: () => {
         const owningSession = sessionKey()
         confirm.show({
@@ -1712,7 +1713,7 @@ export function createPromptInputController(props: PromptInputProps) {
   })
   const { addPart, handleInput } = editor
   composerDocument = new ComposerDocumentController({
-    editable: () => !props.readOnly && prompt.ready(),
+    editable: () => !isReadOnly() && prompt.ready(),
     read: () => ({
       text: editor.documentText(),
       selection: editor.documentSelection(),
@@ -2241,7 +2242,7 @@ export function createPromptInputController(props: PromptInputProps) {
           workspaceSelectionKey={props.newSessionWorkspaceSelectionKey}
           onEnvironmentChange={props.onNewSessionEnvironmentChange}
           startOptions={newSessionStartOptions()}
-          disabled={!!props.readOnly || composerSubmitting() || !!props.sessionTransitionPending}
+          disabled={!!isReadOnly() || composerSubmitting() || !!props.sessionTransitionPending}
         />
       </>
     ),
@@ -2609,7 +2610,7 @@ export function createPromptInputController(props: PromptInputProps) {
     ),
   }
   const requireEditable = () => {
-    if (props.readOnly || !prompt.ready()) throw new Error("Composer is read-only")
+    if (isReadOnly() || !prompt.ready()) throw new Error("Composer is read-only")
   }
   const composerInput: PluginInputService = {
     editor: {
@@ -2629,14 +2630,14 @@ export function createPromptInputController(props: PromptInputProps) {
         }
       },
       beforeInput(event) {
-        if (props.readOnly || (composerSubmitting() && !editor.isApplyingDocumentEdits())) event.preventDefault()
+        if (isReadOnly() || (composerSubmitting() && !editor.isApplyingDocumentEdits())) event.preventDefault()
       },
       input() {
         requireEditable()
         handleInput()
       },
       async paste(event) {
-        if (props.readOnly || composerSubmitting()) {
+        if (isReadOnly() || composerSubmitting()) {
           event.preventDefault()
           return
         }
@@ -2654,7 +2655,7 @@ export function createPromptInputController(props: PromptInputProps) {
         return i18n._({ id: "prompt.placeholder.task", message: "Describe a task, or type / for commands" })
       },
     },
-    readOnly: () => !!props.readOnly,
+    readOnly: () => !!isReadOnly(),
     composing,
     primaryAction: () => (submitStopsSession() ? "stop" : "submit"),
     current() {
@@ -2744,11 +2745,11 @@ export function createPromptInputController(props: PromptInputProps) {
     },
     render: (part) => views[part](),
     dragOver(event) {
-      if (!props.readOnly) handleDragOver(event)
+      if (!isReadOnly()) handleDragOver(event)
     },
     dragLeave: handleDragLeave,
     async drop(event) {
-      if (props.readOnly || composerSubmitting()) {
+      if (isReadOnly() || composerSubmitting()) {
         event.preventDefault()
         return
       }

@@ -430,7 +430,9 @@ export function compilePluginManifest(
       ? PLUGIN_UI_6_BASE_SYNERGY_RANGE
       : definition.compatibility.synergy
           .split("||")
-          .map((range) => `${PLUGIN_UI_6_BASE_SYNERGY_RANGE} ${range.trim()}`)
+          .flatMap((range) =>
+            PLUGIN_UI_6_BASE_SYNERGY_RANGE.split("||").map((baseline) => `${baseline.trim()} ${range.trim()}`),
+          )
           .join(" || ")
   const manifest: PluginManifest = {
     manifestVersion: PLUGIN_MANIFEST_VERSION,

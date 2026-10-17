@@ -51,6 +51,7 @@ export interface PluginHostServiceInvocationInput {
   params: unknown
   signal: AbortSignal
   limits?: RuntimeLimits
+  assertAuthority?: () => void
 }
 
 export type PluginHostServiceDispatcher = (input: PluginHostServiceInvocationInput) => Promise<unknown>
@@ -590,6 +591,15 @@ export class PluginRuntimeManager {
 
   async #hostRequest(record: RuntimeInvocationRecord, input: PluginHostServiceInvocationInput) {
     record.controller.signal.throwIfAborted()
+    const assertAuthority = () => {
+      record.controller.signal.throwIfAborted()
+      if (record.entry.state !== "ready" || this.registry.active(record.entry.pluginId) !== record.entry)
+        throw new PluginRuntimeError("STALE_GENERATION", "Plugin connection authority changed during invocation")
+    }
+    if (input.method.startsWith("host.connection.")) {
+      assertAuthority()
+      input.assertAuthority = assertAuthority
+    }
     const pending = record.run(() => this.hostServices(input))
     record.pending.add(pending)
     try {

@@ -34,6 +34,7 @@ test.skipIf(process.platform !== "darwin")(
         original = await WorkspaceCatalog.register({
           scopeID: "remounted",
           type: "main",
+          generation: 7,
           hostID: await host.workspaceLocation.hostID(),
           path: actual.path,
           physicalID,

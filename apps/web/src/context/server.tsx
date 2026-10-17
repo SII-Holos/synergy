@@ -46,6 +46,17 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     )
 
     const [active, setActiveRaw] = createSignal("")
+    const [peers, setPeers] = createSignal<Array<{ url: string; name: string }>>([], {
+      equals: (left, right) => JSON.stringify(left) === JSON.stringify(right),
+    })
+    async function refreshConnections() {
+      const base = normalizeServerUrl(props.defaultUrl)
+      if (!base) return
+      const client = createSynergyClient({ baseUrl: base, fetch: platform.fetch })
+      const response = await client.hostConnection.peers({ signal: AbortSignal.timeout(3000) }).catch(() => undefined)
+      if (!Array.isArray(response?.data)) return
+      setPeers(response.data.map((peer) => ({ url: `${base}${peer.connectionPath}`, name: peer.name })))
+    }
 
     function setActive(input: string) {
       const url = normalizeServerUrl(input)
@@ -129,7 +140,10 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     const origin = createMemo(() => projectsKey(active()))
     const scopesList = createMemo(() => store.scopes[origin()] ?? [])
     const isLocal = createMemo(
-      () => !!active() && ["localhost", "127.0.0.1", "[::1]"].includes(new URL(active()).hostname),
+      () =>
+        !!active() &&
+        !peers().some((peer) => peer.url === active()) &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(new URL(active()).hostname),
     )
 
     return {
@@ -140,11 +154,22 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         return active()
       },
       get name() {
-        return serverDisplayName(active())
+        return peers().find((peer) => peer.url === active())?.name ?? serverDisplayName(active())
       },
       get list() {
-        return store.list
+        return [...new Set([...store.list, ...peers().map((peer) => peer.url)])]
       },
+      get connections() {
+        return [
+          ...new Set(
+            [normalizeServerUrl(props.defaultUrl)!, ...store.list, ...peers().map((peer) => peer.url)].filter(Boolean),
+          ),
+        ]
+      },
+      displayName(url: string) {
+        return peers().find((peer) => peer.url === url)?.name ?? serverDisplayName(url)
+      },
+      refreshConnections,
       setActive,
       add,
       remove,

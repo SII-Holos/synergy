@@ -49,6 +49,7 @@ test("legacy remount upgrade is bounded to the catalog and preserves replaced, f
       const record = await WorkspaceCatalog.register({
         scopeID: "remount",
         type: "directory",
+        generation: name === "remounted" ? 7 : 1,
         hostID: name === "foreign" ? "foreign-host" : hostID,
         path: actual.path,
         physicalID:

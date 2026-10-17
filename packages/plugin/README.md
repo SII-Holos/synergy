@@ -66,13 +66,15 @@ Capabilities govern Host Services; they do not claim to restrict direct OS acces
 
 `runtime.endpoint.read` exposes `context.runtimeEndpoint.get()`. It accepts no arguments and returns only the current loopback HTTP origin plus an opaque listener generation. It never returns a token, route, SDK client, or wider server configuration. Loopback and wildcard binds are served over loopback and return a normalized `http://127.0.0.1:<port>` URL; a bind that excludes loopback makes the service fail closed. External process management remains plugin-owned.
 
+`host.connection.manage` adds optional `context.hostConnection` for local device discovery providers, gateway configuration and confirmed pairing. Core keeps signing keys and credentials, and denies connection management from Agent or remote invocations. The provider publishes only the gateway endpoint; paired devices appear in native device and paused-task transfer selectors. See [Host connections](../../docs/architecture/host-connections.md).
+
 `task.delegate` is the plugin capability; `task` is the separate runtime permission evaluated by the current control profile. `task.start()` parent binding failures expose `PluginHostServiceErrorCode.TASK_PARENT_REQUIRED` or `TASK_PARENT_SCOPE_MISMATCH`. Host Service error codes survive process IPC.
 
 `agent.call` exposes bounded Sessionless Agent work only to an executable contribution that lists it in `requires`. `context.agent.call()` waits for text; `context.agent.start()` returns a call ID immediately and reports its memory-only terminal result to the same plugin generation and Scope through `agent.call.after`. By default a plugin may call only a hidden Agent owned by its active generation; capability constraints may allow additional Agent names, permitted model roles, and lower host runtime/input/output ceilings. Calls may choose an allowed Synergy role but never a concrete provider/model ID. Neither path has tools, Session history, or Cortex lifecycle.
 
 ## Trusted UI
 
-UI API 5 uses `PluginComponentProps<Context>` with one `context` property for every executable surface. The public service types cover environment/navigation, session collections and messages, draft/editor/submission, workbench resources, commands, overlays and lifetime. Specialized settings values, changes and save status live in `context.settings`. Import host components through `@ericsanchezok/synergy-plugin/components`, semantic icon types through `/icons`, formatting through `/format`, and Skin schemas through `/skin`.
+UI API 6 uses `PluginComponentProps<Context>` with one `context` property for every executable surface. The public service types cover environment/navigation, session collections and messages, draft/editor/submission, workbench resources, commands, overlays and lifetime. Specialized settings values, changes and save status live in `context.settings`. Import host components through `@ericsanchezok/synergy-plugin/components`, semantic icon types through `/icons`, formatting through `/format`, and Skin schemas through `/skin`.
 
 ```tsx
 import type { PluginComponentProps } from "@ericsanchezok/synergy-plugin"

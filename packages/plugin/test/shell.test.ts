@@ -64,3 +64,21 @@ test("UI API 6 artifacts declare the first supporting host release", () => {
   expect(manifest.compatibility.synergy).toBe(PLUGIN_UI_6_BASE_SYNERGY_RANGE)
   expect(compilePluginManifest(definition, { generation: "generation" }).compatibility.synergy).toBe(">=3.0.11")
 })
+
+test("UI compatibility accepts the current release line and intersects explicit feature requirements", () => {
+  const definition = definePlugin({
+    id: "paired-ui",
+    version: "1.0.0",
+    description: "Pairing UI",
+    compatibility: { synergy: ">=1.1.27" },
+    contributions: [],
+  })
+  const manifest = compilePluginManifest(definition, {
+    generation: "generation",
+    ui: { apiVersion: PLUGIN_UI_API_VERSION, entry: "ui/index.js", sha256: "a".repeat(64), exports: {} },
+  })
+  expect(Bun.semver.satisfies("1.1.27", manifest.compatibility.synergy)).toBe(true)
+  expect(Bun.semver.satisfies("1.1.26", manifest.compatibility.synergy)).toBe(false)
+  expect(Bun.semver.satisfies("3.0.24", manifest.compatibility.synergy)).toBe(false)
+  expect(Bun.semver.satisfies("3.0.25", manifest.compatibility.synergy)).toBe(true)
+})

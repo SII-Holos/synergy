@@ -1,3 +1,4 @@
+import { StorageMutationGuard } from "./mutation-guard"
 import { RuntimeContext } from "../lifecycle/context"
 import path from "node:path"
 import { createHash } from "node:crypto"
@@ -47,6 +48,7 @@ export namespace Storage {
     effects?: Array<() => Promise<unknown> | void>
     settled?: Array<(outcome: "committed" | "aborted" | "unknown") => void>
     pending?: Promise<unknown>[]
+    commitGuards?: Array<() => void>
     eventCapture?: Promise<void>
   }
   const context = new AsyncLocalStorage<Context>()
@@ -107,31 +109,48 @@ export namespace Storage {
     const parent = current()
     if (parent.transaction) {
       if (options?.operationID) throw new StorageConflictError("Idempotency belongs to the outer business transaction")
+      if (options?.commitGuard) {
+        if (!parent.commitGuards) throw new StorageConflictError("Commit guards require a write transaction")
+        parent.commitGuards.push(options.commitGuard)
+      }
       return body(parent.transaction)
     }
     let effects: Array<() => Promise<unknown> | void> = []
     const settled: NonNullable<Context["settled"]> = []
+    let commitGuards = options?.commitGuard ? [options.commitGuard] : []
     let outcome: "committed" | "aborted" | "unknown" = "aborted"
     try {
-      const result = await parent.store.transaction(async (tx) => {
-        if (!parent.migrationAccess) tx.restrictToPublishedOwners()
-        effects = []
-        const pending: Promise<unknown>[] = []
-        return RuntimeContext.transaction(() =>
-          context.run(
-            { ...parent, owner: RuntimeContext.current(), transaction: tx, effects, pending, settled },
-            async () => {
-              const result = await body(tx)
-              for (let offset = 0; offset < pending.length; ) {
-                const batch = pending.slice(offset)
-                offset += batch.length
-                await Promise.all(batch)
-              }
-              return result
-            },
-          ),
-        )
-      }, options)
+      const result = await parent.store.transaction(
+        async (tx) => {
+          if (!parent.migrationAccess) {
+            tx.restrictToPublishedOwners()
+            tx.guardMutations((keys, tree) => StorageMutationGuard.assert(tx, keys, tree))
+          }
+          effects = []
+          commitGuards = options?.commitGuard ? [options.commitGuard] : []
+          const pending: Promise<unknown>[] = []
+          return RuntimeContext.transaction(() =>
+            context.run(
+              { ...parent, owner: RuntimeContext.current(), transaction: tx, effects, pending, settled, commitGuards },
+              async () => {
+                const result = await body(tx)
+                for (let offset = 0; offset < pending.length; ) {
+                  const batch = pending.slice(offset)
+                  offset += batch.length
+                  await Promise.all(batch)
+                }
+                return result
+              },
+            ),
+          )
+        },
+        {
+          ...options,
+          commitGuard: () => {
+            for (const guard of commitGuards) guard()
+          },
+        },
+      )
       outcome = "committed"
       for (const effect of effects) {
         try {

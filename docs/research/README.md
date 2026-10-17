@@ -12,6 +12,10 @@ Research documents preserve investigations, measurements, experiments, and desig
 
 ## Preserved Research Summaries
 
+### 跨 Host Session 迁移与任务恢复
+
+[多设备恢复实现调查](2026-10-10-distributed-host-recovery.md) 保存暂停、单 Session 导出、执行排空、Workspace 与 Rollout 的源码证据，以及后续自动恢复的原理边界；第一版设计与验收统一放在[暂停 Session 手动迁移提案](../decisions/implemented/architecture/2026-10-10-distributed-host-runtime.md)，尚未实现。
+
 ### Snapshot ingestion latency
 
 [Snapshot import performance](2026-10-04-snapshot-import-performance.md) records the loose-object synchronization bottleneck, repeated full-capture measurements, concurrent-import ownership and remaining directory pressure. The implementation contract lives in [Workspace and files](../architecture/workspace-and-files.md#snapshots-rollback-and-restore).

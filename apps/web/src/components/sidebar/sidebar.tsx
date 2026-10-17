@@ -27,7 +27,6 @@ import { BRAND_ASSETS, brandAssetPath, holosLogoPath } from "@/utils/brand-asset
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
 import { useHolos } from "@/context/holos"
-import { useCommand } from "@/context/command"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveProjectConfirm } from "@/components/dialog/confirm-copy"
@@ -59,6 +58,7 @@ const ORPHAN_CHAT_GROUP_ID = "__orphan__"
 interface SidebarProps {
   integrated?: boolean
   onSearchOpen: () => void
+  onCreateProject: () => void
 }
 
 function runningChildTasksForEntry(globalSync: ReturnType<typeof useGlobalSync>, entry: NavEntry): boolean {
@@ -96,7 +96,6 @@ export function Sidebar(props: SidebarProps) {
   const newTask = useNewTaskNavigation(navigate)
   const location = useLocation()
   const params = useParams()
-  const command = useCommand()
   const productUpdate = useProductUpdate()
   const { _ } = useLingui()
 
@@ -412,8 +411,6 @@ export function Sidebar(props: SidebarProps) {
   const handleProjectPin = (scope: LocalScope) => {
     layout.scopes.pinScope(scope)
   }
-
-  const handleAddProject = () => command.trigger("project.create")
 
   const handleSessionClick = (scope: LocalScope, entry: NavEntry) => {
     navStart({ dir: base64Encode(scope.id), to: entry.id, scopeID: scope.id, trigger: "sidebar" })
@@ -1006,19 +1003,21 @@ export function Sidebar(props: SidebarProps) {
                         </button>
                       </Tooltip>
                     </Show>
-                    <Tooltip value={_(sidebar.addProject)} placement="top">
-                      <button
-                        type="button"
-                        class="sb-projects-header-plus"
-                        aria-label={_(sidebar.addProject)}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleAddProject()
-                        }}
-                      >
-                        <Icon name={getSemanticIcon("action.add")} size="small" />
-                      </button>
-                    </Tooltip>
+                    <Show when={globalSDK.capabilities.has("workbench")}>
+                      <Tooltip value={_(sidebar.addProject)} placement="top">
+                        <button
+                          type="button"
+                          class="sb-projects-header-plus"
+                          aria-label={_(sidebar.addProject)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            props.onCreateProject()
+                          }}
+                        >
+                          <Icon name={getSemanticIcon("action.add")} size="small" />
+                        </button>
+                      </Tooltip>
+                    </Show>
                   </div>
 
                   <SidebarDisclosure open={projectsSectionOpen()}>

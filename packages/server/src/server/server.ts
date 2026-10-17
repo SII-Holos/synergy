@@ -48,6 +48,8 @@ import type { ContentfulStatusCode } from "hono/utils/http-status"
 import { upgradeWebSocket, websocket } from "hono/bun"
 import { errors, RuntimeShuttingDownError, StorageServiceError } from "./error"
 import { QuestionRoute } from "./question"
+import { SessionTransferRoute } from "./session-transfer"
+import { HostConnectionRoute } from "./host-connection"
 import { SessionExportRoute } from "./session-export"
 import { CortexRoute } from "./cortex"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
@@ -644,8 +646,11 @@ export namespace Server {
             err instanceof Environment.Stale ||
             err instanceof Scope.WorkspaceUnavailableError ||
             err instanceof Session.ForkPointMissingError ||
-            err instanceof SessionExecutionOwners.UnavailableError ||
-            err.name === "SessionModelSelectionConflictError"
+            err.name === "SessionModelSelectionConflictError" ||
+            err.name === "SessionTransferBlocked" ||
+            err.name === "SessionTransferRejected" ||
+            err.name === "HostConnectionRejected" ||
+            err instanceof SessionExecutionOwners.UnavailableError
           )
             status = 409
           else if (err instanceof Environment.Unavailable) status = 503
@@ -707,7 +712,7 @@ export namespace Server {
       )
       .use(async (c, next) => {
         const token = RuntimeContext.current().host.env.SYNERGY_SERVER_TOKEN
-        if (token) {
+        if (token && !c.req.path.startsWith("/host-connection/gateway/")) {
           const expected = Buffer.from(`Bearer ${token}`)
           const actual = Buffer.from(c.req.header("authorization") ?? "")
           if (actual.length !== expected.length || !timingSafeEqual(actual, expected))
@@ -844,6 +849,13 @@ export namespace Server {
           },
         )
       })
+      .route(
+        "/host-connection",
+        HostConnectionRoute({
+          forward: async (request, env) => App().fetch(request, env),
+          originAllowed: (origin, url) => globalEventOriginAllowed(origin, url, [...instanceState._corsWhitelist]),
+        }),
+      )
       .use(compress({ encoding: "gzip" }))
       .use(provideRequestScope)
       .use(cspMiddleware())
@@ -1641,6 +1653,7 @@ export namespace Server {
       .route("", PermissionRoute())
       .route("/question", QuestionRoute())
       .route("/session", SessionExportRoute())
+      .route("/session-transfer", SessionTransferRoute())
       .route("/cortex/tasks", CortexRoute())
 
       .get(

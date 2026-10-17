@@ -1,3 +1,4 @@
+import { SessionTransferGate } from "./transfer-gate"
 import { SessionExecutionOwners } from "./execution-owners"
 import { SessionPauseRecovery } from "./pause-recovery"
 import { prepareSessionMigrations } from "../migration"
@@ -70,6 +71,7 @@ import { SessionUserMessageMaterialization } from "./user-message-materializatio
 import { cacheResult, getCachedResult, evictRecallCache } from "./recall"
 
 import { LLM } from "./llm"
+import { AgentTurn } from "./agent-turn"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import { LoopJob } from "./loop-job"
@@ -783,7 +785,10 @@ export namespace SessionInvoke {
                 }
                 const firedSignals = await LoopJob.detectSignals(jobCtx)
 
-                const preJobs = LoopJob.collect("pre", jobCtx, firedSignals)
+                const deferCompaction = firedSignals.includes("compact") && !(await Agent.get(R.agent)).external
+                const preJobs = LoopJob.collect("pre", jobCtx, firedSignals).filter(
+                  (job) => !deferCompaction || job.type !== "compaction",
+                )
                 if (preJobs.length > 0) {
                   const result = await LoopJob.execute(preJobs, jobCtx)
                   if (result === "stop") break
@@ -1388,14 +1393,47 @@ export namespace SessionInvoke {
                     type: "compaction",
                     auto: true,
                   })
-                  toolDefinitions = []
-                  systemParts = []
-                  lateSystemParts = []
-                  modelSessionMessages = []
-                  preparedMessages = []
-                  promptPlan = undefined
-                  promptDecision = undefined
-                  continue
+                }
+
+                if (shouldInjectCompaction || deferCompaction) {
+                  const catalog = ToolResolver.modelDefinitions(toolAvailability)
+                  const request: SessionCompaction.Request = {
+                    user: R,
+                    modelSelection,
+                    agent,
+                    model,
+                    system: promptPlan.system,
+                    systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
+                    lateSystem: promptPlan.lateSystem,
+                    messages: promptPlan.messages,
+                    toolDefinitions: catalog,
+                    activeToolIDs: catalog.map((definition) => definition.id),
+                    codexReplay: await SessionCompaction.codexReplayPlan({
+                      messages: msgs,
+                      providerID: model.providerID,
+                      modelID: model.id,
+                      profileID: producingProvider?.profileID,
+                      apiModelID: model.api.id,
+                    }),
+                  }
+                  try {
+                    const compacted = await SessionCompaction.process({
+                      parentID: R.id,
+                      messages: msgs,
+                      sessionID,
+                      abort,
+                      auto:
+                        shouldInjectCompaction || RParts!.findLast((part) => part.type === "compaction")?.auto === true,
+                      request,
+                      assistantMessageID: processor.message.id,
+                    })
+                    if (compacted === "stop") break
+                    emergencyCompactionTriggered = false
+                    continue
+                  } catch (error) {
+                    if (RolloutRecordingError.isInstance(error)) throw error
+                    break
+                  }
                 }
 
                 if (promptDecision.contextExceeded) {
@@ -1466,6 +1504,7 @@ export namespace SessionInvoke {
                 })
 
                 let streamInput: SessionProcessor.ProcessInput | undefined
+                let compactionRequest: SessionCompaction.Request | undefined
                 function releaseTurnReferences(mutateStreamInput: boolean) {
                   if (mutateStreamInput) {
                     sessionMessages.length = 0
@@ -1600,6 +1639,9 @@ export namespace SessionInvoke {
                   maxOutputTokens: promptDecision.maxOutputTokens,
                   memoryTurn,
                   lane: session.parentID ? "background" : "interactive",
+                  onModelStreamSettled: (error) => {
+                    if (!SessionCompaction.isContextExceeded(error)) compactionRequest = undefined
+                  },
                 }
                 try {
                   if (promptPruning) {
@@ -1624,7 +1666,16 @@ export namespace SessionInvoke {
                       R = { ...contextRoot, metadata: { ...contextRoot.metadata, runtimeContextTimeRecorded: true } }
                   }
                   const currentStreamInput = streamInput
-                  const process = () => Promise.race([processor.process(currentStreamInput), deadlinePromise])
+                  const process = () =>
+                    Promise.race([
+                      (async () => {
+                        const preparedRequest = await AgentTurn.prepare(currentStreamInput)
+                        combinedAbort.throwIfAborted()
+                        compactionRequest = SessionCompaction.captureRequest(preparedRequest)
+                        return processor.process({ ...currentStreamInput, ...preparedRequest })
+                      })(),
+                      deadlinePromise,
+                    ])
                   result = turnSpan
                     ? await ObservabilityContext.withContextAsync(
                         {
@@ -1674,6 +1725,8 @@ export namespace SessionInvoke {
                   turnDeadline.abort()
                   processTimer.stop()
                   releaseTurnReferences(!turnTimedOut)
+                  if (!processor.message.error || !SessionCompaction.isContextExceeded(processor.message.error))
+                    compactionRequest = undefined
                   if (!turnSpanEnded) {
                     ObservabilitySpans.end(turnSpan, {
                       attributes: {
@@ -1724,20 +1777,16 @@ export namespace SessionInvoke {
                 if (postRequestedStop) break
 
                 if (result === "stop") {
-                  // If the failure was caused by exceeding context limits, inject a
-                  // compaction signal and re-enter the loop. The next iteration will
-                  // detect the signal, run compaction (which now has its own input
-                  // trimming and mechanical fallback), and then retry the user's request.
+                  // Summarize the captured request before terminal-error admission
+                  // can prevent the next iteration from observing compaction.
                   if (
+                    compactionRequest &&
                     !emergencyCompactionTriggered &&
                     processor.message.error &&
                     SessionCompaction.isContextExceeded(processor.message.error)
                   ) {
                     log.warn("context exceeded, injecting emergency compaction", { sessionID })
                     emergencyCompactionTriggered = true
-                    // Attach the compaction part to R so the next iteration detects it
-                    // via lastUserParts (same path as the prompt-budget trigger above)
-                    // and anchors compaction on the task root.
                     await Session.updatePart({
                       id: Identifier.ascending("part"),
                       messageID: R.id,
@@ -1745,6 +1794,16 @@ export namespace SessionInvoke {
                       type: "compaction" as const,
                       auto: true,
                     })
+                    const compacted = await SessionCompaction.process({
+                      parentID: R.id,
+                      messages: msgs,
+                      sessionID,
+                      abort,
+                      auto: true,
+                      request: compactionRequest,
+                    })
+                    compactionRequest = undefined
+                    if (compacted === "stop") break
                     continue
                   }
                   break
@@ -2740,7 +2799,7 @@ export namespace SessionInvoke {
 
   export async function reconcilePausedSession(sessionID: string): Promise<void> {
     using control = await Lock.tryAcquireWrite(`session-control:${sessionID}`)
-    if (!control || SessionManager.isRunning(sessionID)) return
+    if (!control || SessionManager.isRunning(sessionID) || (await SessionTransferGate.isFrozen(sessionID))) return
     try {
       const session = await SessionManager.getSession(sessionID)
       if (!session) return

@@ -1,6 +1,12 @@
 import type { PermissionItem } from "./schema"
 
 const labels: Record<string, { title: string; description: string; category: PermissionItem["category"] }> = {
+  "host.connection.manage": {
+    title: "Pair remote devices",
+    description:
+      "Publish an authenticated remote gateway, discover Hosts and grant or revoke paired devices access to this Synergy instance.",
+    category: "identity",
+  },
   "session.read": {
     title: "Read sessions",
     description: "Read session metadata and content in the active Scope.",

@@ -222,6 +222,7 @@ export class SqliteDriver implements SqlDriver {
       let committing = false
       try {
         const value = await body({ query })
+        options.commitGuard?.()
         committing = true
         await query("COMMIT")
         return value

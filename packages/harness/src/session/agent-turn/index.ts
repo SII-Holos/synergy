@@ -22,6 +22,7 @@ import { RolloutTransport } from "../rollout/transport"
 import { materializeAttachmentInput } from "../../attachment/model-input"
 import { ModelExecution } from "../../execution/model-execution"
 import { InProcessModelExecutor } from "./model-executor"
+import { SecretMask } from "../../secrets/mask"
 
 export namespace AgentTurn {
   export type Input = AgentTurnInput
@@ -85,11 +86,23 @@ export namespace AgentTurn {
     }
   }
 
+  export async function prepare(request: Input): Promise<Input & { prepared: LLM.PreparedTurn }> {
+    const input = { ...request, messages: await materializeAttachmentInput(request.messages, request.abort) }
+    return {
+      ...input,
+      prepared:
+        input.prepared ?? (await LLM.prepare({ ...input, tools: ToolCatalog.modelTools(input.toolDefinitions) })),
+    }
+  }
+
   export async function stream(request: Input): Promise<Stream> {
     const instanceState = runtimeState()
 
     if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
-    const input = { ...request, messages: await materializeAttachmentInput(request.messages, request.abort) }
+    const input = request.prepared
+      ? request
+      : { ...request, messages: await materializeAttachmentInput(request.messages, request.abort) }
+    if (input.promptSuffix) input.promptSuffix = await SecretMask.apply(input.promptSuffix)
     const { contextUsageProvenance, recording, usageRole, retryIndex, onPhase, ...turnInput } = input
     const attribution = recording ?? {
       owner: {
@@ -102,12 +115,14 @@ export namespace AgentTurn {
       runID: input.user.rootID ?? input.user.id,
       purpose: input.agent.name,
     }
-    const prepared = instanceState.inProcessStream
-      ? undefined
-      : await LLM.prepare({
-          ...turnInput,
-          tools: ToolCatalog.modelTools(input.toolDefinitions ?? []),
-        })
+    const prepared =
+      input.prepared ??
+      (instanceState.inProcessStream
+        ? undefined
+        : await LLM.prepare({
+            ...turnInput,
+            tools: ToolCatalog.modelTools(input.toolDefinitions ?? []),
+          }))
     const requestTools = (input.toolDefinitions ?? []).filter(
       (tool) => !input.activeToolIDs || input.activeToolIDs.includes(tool.id),
     )
@@ -139,6 +154,7 @@ export namespace AgentTurn {
                 messages: input.messages,
                 system: prepared?.system ?? input.system,
                 lateSystem: input.lateSystem,
+                promptSuffix: input.promptSuffix,
                 contextSources: provenance
                   ? ContextUsage.sourceIndex({
                       messages: input.messages,

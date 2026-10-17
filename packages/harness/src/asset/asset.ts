@@ -48,11 +48,11 @@ export namespace Asset {
     return id
   }
 
-  export async function publish(id: string, bytes: Uint8Array) {
+  export async function publish(id: string, bytes: Uint8Array, options: { durable?: boolean } = {}) {
     if (!isValidId(id) || !new Bun.CryptoHasher("sha256").update(bytes).digest("hex").startsWith(id.split(".")[0]!))
       throw new Error("Asset content does not match its identifier")
     await state().backend?.write(id, bytes)
-    await AtomicFile.writeFileAtomic(filePath(id), bytes, { private: true })
+    await AtomicFile.writeFileAtomic(filePath(id), bytes, { private: true, durable: options.durable })
   }
 
   export async function read(id: string): Promise<ReturnType<typeof Bun.file> | undefined> {

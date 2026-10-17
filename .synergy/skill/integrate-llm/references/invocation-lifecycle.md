@@ -31,7 +31,7 @@ When an embedded domain must freeze editable state before generation, register `
 
 Use `SessionInvoke` when the caller already owns the target session: direct user/API input, Channel or Agenda execution, workflow continuation, or an in-place loop operation such as compaction.
 
-When an in-place internal operation reuses a root user message only for task identity or attribution while selecting a different model, strip root-owned execution settings that do not belong to the target call. Compaction keeps the persisted root unchanged but clears both `variant` and `thinking` from the ephemeral processor envelope. Keep small-call bypass tests for valid and invalid source selections.
+When an internal operation selects a different model and reuses a root envelope only for attribution, strip root-owned execution settings from that transient envelope, not the persisted root. The external-agent adapter’s dedicated compaction path clears both `variant` and `thinking`; `small: true` sessionless calls ignore them. Native local compaction preserves the original agent/model/user settings and prepared request. Keep small-call bypass tests for valid and invalid source selections.
 
 Use `Cortex.launch()` for new child-agent work. Cortex owns:
 

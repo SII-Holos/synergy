@@ -85,6 +85,8 @@ export const PluginHostServiceErrorCode = {
   AGENT_MODEL_ROLE_INVALID: "PLUGIN_AGENT_MODEL_ROLE_INVALID",
   AGENT_MODEL_ROLE_DENIED: "PLUGIN_AGENT_MODEL_ROLE_DENIED",
   RUNTIME_ENDPOINT_UNAVAILABLE: "PLUGIN_RUNTIME_ENDPOINT_UNAVAILABLE",
+  HOST_CONNECTION_LOCAL_REQUIRED: "PLUGIN_HOST_CONNECTION_LOCAL_REQUIRED",
+  HOST_CONNECTION_HUMAN_REQUIRED: "PLUGIN_HOST_CONNECTION_HUMAN_REQUIRED",
   RUNTIME_ENDPOINT_UNSAFE: "PLUGIN_RUNTIME_ENDPOINT_UNSAFE",
 } as const
 export type PluginHostServiceErrorCode = (typeof PluginHostServiceErrorCode)[keyof typeof PluginHostServiceErrorCode]
@@ -353,6 +355,7 @@ export interface PluginInvocationContext {
   asset?: AssetHostService
   shell?: ShellHostService
   runtimeEndpoint?: RuntimeEndpointHostService
+  hostConnection?: import("./host-connection.js").HostConnectionHostService
 }
 
 export interface PluginActivationContext {

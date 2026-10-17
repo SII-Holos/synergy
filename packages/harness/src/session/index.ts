@@ -1,3 +1,4 @@
+import { SessionTransferState } from "./transfer-state"
 import { SessionPauseRecovery } from "./pause-recovery"
 import { Workspace } from "./workspace-schema"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
@@ -244,7 +245,7 @@ export namespace Session {
   }
 
   export function withoutRuntimeInfo(session: Info): Info {
-    const { working: _working, ...rest } = session
+    const { working: _working, transfer: _transfer, ...rest } = session
     return rest
   }
 
@@ -489,6 +490,13 @@ export namespace Session {
   }
 
   export async function withRuntimeInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
+    return resolveRuntimeInfo(session)
+  }
+
+  async function resolveRuntimeInfo(
+    session: Info,
+    transferRecords?: ReadonlyMap<string, unknown>,
+  ): Promise<Info & { working?: WorkingInfoType }> {
     session = await SessionRecords.hydrate(session)
     const storedRollback = session.history?.rollback
     const [working, history] = await Promise.all([
@@ -497,18 +505,35 @@ export namespace Session {
         ? SessionHistory.storedInfo(session.id).catch(() => session.history)
         : session.history,
     ])
-    const result = { ...withoutRuntimeInfo(session), history }
+    const rawTransfer = transferRecords
+      ? transferRecords.get(session.id)
+      : (await Storage.readMany([["session_transfer_out", session.id]]))[0]
+    const transfer = rawTransfer ? SessionTransferState.parse(rawTransfer) : undefined
+    const result = {
+      ...withoutRuntimeInfo(session),
+      history,
+      transfer: transfer?.phase === "cancelled" ? undefined : transfer,
+    }
     if (!working) return result
     return { ...result, working }
   }
 
-  async function withClientInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
-    const info = await withRuntimeInfo(session)
+  async function withClientInfo(
+    session: Info,
+    transferRecords?: ReadonlyMap<string, unknown>,
+  ): Promise<Info & { working?: WorkingInfoType }> {
+    const info = await resolveRuntimeInfo(session, transferRecords)
     if (info.controlProfile) return info
     return {
       ...info,
       controlProfile: await resolveControlProfile(info.id),
     }
+  }
+
+  async function withClientInfos(sessions: Info[]) {
+    const transfers = await Storage.readMany(sessions.map((session) => ["session_transfer_out", session.id]))
+    const transferRecords = new Map(sessions.map((session, index) => [session.id, transfers[index]]))
+    return workMap(LIST_ENRICH_CONCURRENCY, sessions, (session) => withClientInfo(session, transferRecords))
   }
 
   // Dedup redundant session.updated publishes: a diff limited to time.updated
@@ -1488,7 +1513,7 @@ export namespace Session {
       const total = matched.length
       const offset = options?.offset ?? 0
       const limit = options?.limit ?? total
-      const data = await workMap(LIST_ENRICH_CONCURRENCY, matched.slice(offset, offset + limit), withClientInfo)
+      const data = await withClientInfos(matched.slice(offset, offset + limit))
       return { data, total }
     }
 
@@ -1503,11 +1528,7 @@ export namespace Session {
       scopeID,
       slice.map((e) => e.id),
     )
-    const data = await workMap(
-      LIST_ENRICH_CONCURRENCY,
-      sessions.filter((s): s is Info => s != null && !!s.scope),
-      withClientInfo,
-    )
+    const data = await withClientInfos(sessions.filter((s): s is Info => s != null && !!s.scope))
 
     return { data, total }
   }
@@ -1560,10 +1581,8 @@ export namespace Session {
 
     const keys = slice.map((entry) => StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(entry.id)))
     const sessions = await SessionRecords.readMany(keys)
-    const items = await workMap(
-      LIST_ENRICH_CONCURRENCY,
+    const items = await withClientInfos(
       sessions.filter((session): session is Info => session != null && !!session.scope),
-      withClientInfo,
     )
 
     return { items, nextCursor, total }
