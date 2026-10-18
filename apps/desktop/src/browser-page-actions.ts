@@ -1,5 +1,6 @@
 import {
   BrowserPageActionSchema,
+  BROWSER_MAX_COVER_BYTES,
   type BrowserPageAction,
   type BrowserPageActionResult,
 } from "@ericsanchezok/synergy-browser-core"
@@ -15,6 +16,15 @@ export async function runBrowserPageAction(
   switch (action.type) {
     case "capture":
       throw new Error("Capture requires the native page controller.")
+    case "cover": {
+      const url = contents.getURL()
+      const image = await contents.capturePage()
+      if (image.isEmpty() || contents.isDestroyed() || contents.getURL() !== url)
+        throw new Error("Page changed during capture. Retry.")
+      const bytes = image.toJPEG(75)
+      if (bytes.length > BROWSER_MAX_COVER_BYTES) throw new Error("Page preview exceeds the supported size.")
+      return { type: "cover", url, dataUrl: `data:image/jpeg;base64,${bytes.toString("base64")}` }
+    }
     case "state":
       return {
         type: "state",

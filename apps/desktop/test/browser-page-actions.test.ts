@@ -30,6 +30,45 @@ describe("native browser page actions", () => {
     await expect(runBrowserPageAction(contents as never, { type: "zoom", factor: 100 })).rejects.toThrow()
   })
 
+  test("cover captures a still of the page that is currently shown", async () => {
+    const still = Buffer.from("still")
+    const contents = {
+      getURL: () => "https://example.test/page",
+      isDestroyed: () => false,
+      capturePage: async () => ({
+        isEmpty: () => false,
+        toJPEG: (quality: number) => (quality === 75 ? still : Buffer.alloc(0)),
+      }),
+    }
+    expect(await runBrowserPageAction(contents as never, { type: "cover" })).toEqual({
+      type: "cover",
+      url: "https://example.test/page",
+      dataUrl: `data:image/jpeg;base64,${still.toString("base64")}`,
+    })
+  })
+
+  test("cover refuses an empty capture so a blank still cannot replace the page", async () => {
+    const contents = {
+      getURL: () => "https://example.test/page",
+      isDestroyed: () => false,
+      capturePage: async () => ({ isEmpty: () => true, toJPEG: () => Buffer.alloc(0) }),
+    }
+    await expect(runBrowserPageAction(contents as never, { type: "cover" })).rejects.toThrow()
+  })
+
+  test("cover refuses a capture that raced a navigation", async () => {
+    let url = "https://example.test/page"
+    const contents = {
+      getURL: () => url,
+      isDestroyed: () => false,
+      capturePage: async () => {
+        url = "https://example.test/next"
+        return { isEmpty: () => false, toJPEG: () => Buffer.from("still") }
+      },
+    }
+    await expect(runBrowserPageAction(contents as never, { type: "cover" })).rejects.toThrow()
+  })
+
   test("native keyboard shortcuts use the platform modifier and leave text input alone", () => {
     expect(browserShortcut({ key: "f", type: "keyDown", meta: true }, "darwin")).toBe("find")
     expect(browserShortcut({ key: "f", type: "keyDown", control: true }, "win32")).toBe("find")
