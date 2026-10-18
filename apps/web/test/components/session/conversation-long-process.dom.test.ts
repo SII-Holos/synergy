@@ -1,6 +1,187 @@
 import { expect, test } from "bun:test"
 import { page, url, frames, browser, fixtureServer, observeResizeErrors } from "../../support/conversation-process"
 
+test.each([false, true])(
+  "late evidence above expanded process reading settles before paint (paged=%s)",
+  async (paged) => {
+    await page.goto(`${url}?scrolling&history-controls`)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    if (paged) await page.getByRole("button", { name: "Load earlier messages", exact: true }).click()
+    await page.evaluate(() => window.__conversationProcess.grow(1000))
+    expect(await page.evaluate(() => window.__conversationProcess.locate("more", "many-400"))).toBe(true)
+    await frames()
+    await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
+    const viewport = page.locator('[data-component="process-viewport"]').last()
+    await viewport.evaluate((element) => {
+      element.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }))
+      element.scrollTop -= 1
+    })
+    await page.waitForTimeout(200)
+    await viewport.evaluate((element) => {
+      const node = element.querySelector<HTMLElement>('[data-part-id="many-400"]')!
+      element.scrollTop += node.getBoundingClientRect().top - element.getBoundingClientRect().top
+    })
+    await page.waitForTimeout(200)
+    const samples = await viewport.evaluate(async (element) => {
+      const node = element.querySelector<HTMLElement>('[data-part-id="many-400"]')!
+      const top = node.getBoundingClientRect().top
+      const samples = []
+      await new Promise(requestAnimationFrame)
+      window.__conversationProcess.growToolEvidence("many-399")
+      for (let frame = 0; frame < 40; frame++) {
+        if (frame) await new Promise(requestAnimationFrame)
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        const bounds = element.getBoundingClientRect()
+        const rows = [...element.querySelectorAll<HTMLElement>("[data-display-row]")].filter((row) => {
+          const rect = row.getBoundingClientRect()
+          return row.checkVisibility() && rect.height > 0 && rect.bottom > bounds.top && rect.top < bounds.bottom
+        })
+        samples.push({
+          connected: node.isConnected,
+          drift: node.getBoundingClientRect().top - top,
+          overlap: Math.max(
+            0,
+            ...rows.slice(1).map((row, i) => rows[i].getBoundingClientRect().bottom - row.getBoundingClientRect().top),
+          ),
+        })
+      }
+      return samples
+    })
+    expect(await viewport.locator('[data-part-id="many-399"] [data-slot="activity-evidence"]').count()).toBe(1)
+    expect(samples.every((sample) => sample.connected)).toBe(true)
+    expect(Math.max(...samples.map((sample) => Math.abs(sample.drift)))).toBeLessThanOrEqual(2)
+    expect(Math.max(...samples.map((sample) => sample.overlap))).toBeLessThanOrEqual(1)
+  },
+)
+
+test.each([
+  { kind: "split", width: 700, mode: "full" },
+  { kind: "continuous", width: 700, mode: "full" },
+  { kind: "split", width: 375, mode: "full" },
+  { kind: "continuous", width: 375, mode: "full" },
+  { kind: "split", width: 700, mode: "balanced" },
+  { kind: "continuous", width: 700, mode: "balanced" },
+  { kind: "split", width: 375, mode: "balanced" },
+  { kind: "continuous", width: 375, mode: "balanced" },
+] as const)(
+  "loading earlier process history preserves expanded content within the current turn (%j)",
+  async ({ kind, width, mode }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(`${url}?scrolling&history-controls&keep-history-control&process-history=${kind}`)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    await page.evaluate((mode) => {
+      window.__conversationProcess.reasoning(
+        "Check evidence\n\n" + "Detailed evidence remains expanded.\n\n".repeat(30),
+        "thought",
+      )
+      window.__conversationProcess.stream("The final answer stays below the expanded process. ".repeat(120))
+      window.__conversationProcess.terminal()
+      window.__conversationProcess.mode(mode)
+    }, mode)
+    const process = page.locator('[data-slot="turn-process-trigger"]').first()
+    if ((await process.getAttribute("aria-expanded")) === "false") await process.click()
+    const batch = page.locator('[data-slot="activity-batch-trigger"]').first()
+    if ((await batch.getAttribute("aria-expanded")) === "false") await batch.click()
+    const reasoning = page.locator('[data-part-id="thought"] [data-slot="process-reasoning-trigger"]').first()
+    if ((await reasoning.getAttribute("aria-expanded")) !== "true") await reasoning.click()
+    await page.getByText("Check evidence", { exact: false }).first().waitFor()
+    await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
+    await page.locator("[data-scroller]").evaluate((v) => {
+      v.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }))
+      v.scrollTop = 0
+    })
+    await frames()
+    const recording = page.evaluate(async () => {
+      const node = document.querySelector<HTMLElement>('[data-reasoning-part="thought"]')!
+      const top = node.getBoundingClientRect().top
+      const opacity = () => {
+        let value = 1
+        for (let element: HTMLElement | null = node; element; element = element.parentElement)
+          value *= Number(getComputedStyle(element).opacity)
+        return value
+      }
+      const initialOpacity = opacity()
+      await new Promise<void>((resolve) =>
+        document.querySelector("[data-history-load]")!.addEventListener("click", () => resolve(), { once: true }),
+      )
+      const samples = []
+      for (let frame = 0; frame < 60; frame++) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+        samples.push({
+          connected: node.isConnected,
+          faded: opacity() < initialOpacity - 0.01,
+          drift: node.getBoundingClientRect().top - top,
+          expanded: document.querySelector('[data-part-id="thought"] [aria-expanded]')?.getAttribute("aria-expanded"),
+        })
+      }
+      return samples
+    })
+    await page.getByRole("button", { name: "Load earlier messages", exact: true }).click()
+    const samples = await recording
+    expect(samples.every((sample) => sample.connected && !sample.faded && sample.expanded === "true")).toBe(true)
+    expect(Math.max(...samples.map((sample) => Math.abs(sample.drift)))).toBeLessThanOrEqual(2)
+    await page.locator("[data-scroller]").evaluate((v) => {
+      v.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }))
+      v.scrollTop = 0
+    })
+    const earlierBatch = page.locator('[data-slot="activity-batch-trigger"]').first()
+    if ((await earlierBatch.getAttribute("aria-expanded")) === "false") {
+      const opening = await earlierBatch.evaluate(async (button) => {
+        const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+        ;(button as HTMLButtonElement).click()
+        const samples = []
+        for (let frame = 0; frame < 45; frame++) {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+          const bounds = viewport.getBoundingClientRect()
+          const rows = [...viewport.querySelectorAll<HTMLElement>("[data-display-row]")].filter(
+            (row) =>
+              !row.closest('[data-component="process-viewport"]') &&
+              row.checkVisibility({ visibilityProperty: true, opacityProperty: true }) &&
+              row.getBoundingClientRect().bottom > bounds.top &&
+              row.getBoundingClientRect().top < bounds.bottom,
+          )
+          samples.push({
+            rows: rows.length,
+            overlap: Math.max(
+              0,
+              ...rows
+                .slice(1)
+                .map((row, i) => rows[i].getBoundingClientRect().bottom - row.getBoundingClientRect().top),
+            ),
+          })
+        }
+        return samples
+      })
+      expect(opening.every((sample) => sample.rows > 0)).toBe(true)
+      expect(Math.max(...opening.map((sample) => sample.overlap))).toBeLessThanOrEqual(1)
+    }
+    const earlier = page.locator('[data-part-id="earlier-thought"] [data-slot="process-reasoning-trigger"]').first()
+    if (kind === "continuous") {
+      await page.locator('[data-component="process-viewport"]').first().hover()
+      await page.mouse.wheel(0, -10000)
+    }
+    await earlier.waitFor()
+    expect(await earlier.getAttribute("aria-expanded")).toBe("false")
+    await earlier.click()
+    await page.getByText("Earlier reasoning remains available.", { exact: true }).waitFor()
+    const opening = await earlier.evaluate(async (trigger) => {
+      const body = trigger.closest('[data-part-id="earlier-thought"]')!.querySelector("[data-reasoning-part]")!
+      const samples = []
+      for (let frame = 0; frame < 30; frame++) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+        samples.push({
+          retained: body.isConnected && trigger.isConnected,
+          open: trigger.getAttribute("aria-expanded") === "true",
+          text: body.textContent?.includes("Earlier reasoning remains available."),
+        })
+      }
+      return samples
+    })
+    expect(opening.every((sample) => sample.retained && sample.open && sample.text)).toBe(true)
+  },
+  30000,
+)
+
 test.each([
   { width: 700, rate: 1, reducedMotion: "no-preference" },
   { width: 375, rate: 4, reducedMotion: "no-preference" },
@@ -344,11 +525,16 @@ test.each([0, 16, 80])(
   30000,
 )
 
-test.each([false, true])(
-  "cold long replies prepended above the reader publish their heights with their bodies (%s)",
-  async (keep) => {
+test.each([
+  { keep: false, frame: false },
+  { keep: true, frame: false },
+  { keep: false, frame: true },
+  { keep: true, frame: true },
+])(
+  "cold long replies prepended above the reader publish their heights with their bodies (%j)",
+  async ({ keep, frame }) => {
     await page.goto(
-      `${url}?content=long-history&scrolling&history-controls&body-delay=80${keep ? "&keep-history-control" : ""}`,
+      `${url}?content=long-history&scrolling&history-controls&body-delay=80${frame ? "&body-frame" : ""}${keep ? "&keep-history-control" : ""}`,
     )
     await page.getByText("Current history anchor.", { exact: false }).waitFor()
     const viewport = page.locator("[data-scroller]")

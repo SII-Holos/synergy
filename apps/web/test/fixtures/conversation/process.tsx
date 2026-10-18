@@ -120,6 +120,7 @@ const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
 const [rowsReady, setRowsReady] = createSignal(false)
 const [scroll, setScroll] = createSignal<HTMLDivElement>()
 const [versions, setVersions] = createStore<Record<string, string>>({})
+const [historyMode, setHistoryMode] = createSignal<"latest" | "history">("latest")
 const [historyMore, setHistoryMore] = createSignal(true)
 const historyControls = new URL(location.href).searchParams.has("history-controls")
 const [hasPage, setHasPage] = createSignal(true)
@@ -381,6 +382,8 @@ const client = createSynergyClient({
           signal?.addEventListener("abort", abort, { once: true })
           if (signal?.aborted) abort()
         })
+      if (new URL(location.href).searchParams.has("body-frame"))
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       const fault = faults.get(id)
       if (fault === "conflict" || fault === "stalled") {
         if (fault === "conflict") faults.delete(id)
@@ -461,6 +464,7 @@ let locate: ((messageID: string, behavior?: ScrollBehavior, partID?: string) => 
 const turnProjection = createMemo(() => buildSessionTurnProjection(data.message.session))
 const context: Partial<PluginConversationService> = {
   sessionID: "session",
+  historyMode,
   timeline: () => data.message.session.filter((message) => message.role === "user" && message.isRoot) as UserMessage[],
   lastUserMessage: () => root,
   turnProjection,
@@ -772,10 +776,28 @@ window.__conversationProcess = {
     )
   },
   latest() {
+    setHistoryMode("latest")
     scroll()?.dispatchEvent(new Event("conversation-location-reset"))
     context.autoScroll?.forceScrollToBottom()
   },
   prependTurns(count: number, more = false) {
+    setHistoryMode("history")
+    const processHistory = new URL(location.href).searchParams.get("process-history")
+    if (processHistory) {
+      const message = assistant("earlier-process")
+      batch(() => {
+        setData("part", message.id, [
+          part(message.id, "earlier-thought", "reasoning", "Earlier reasoning remains available."),
+          ...Array.from({ length: 30 }, (_, index) => part(message.id, `earlier-tool-${index}`, "tool")),
+          ...(processHistory === "split"
+            ? [part(message.id, "earlier-prose", "text", "Earlier intermediate explanation. ".repeat(80))]
+            : []),
+        ])
+        setData("message", "session", (current) => [root, message, ...current.filter((item) => item.id !== root.id)])
+        setHistoryMore(more)
+      })
+      return
+    }
     context.autoScroll?.handleInteraction(new Event("history-load"))
     const older = Array.from(
       { length: count },
@@ -968,6 +990,7 @@ function Scroller(props: ParentProps) {
           <Show when={historyControls && historyMore()}>
             <button
               type="button"
+              data-history-load
               style="height:40px;display:block;margin-bottom:20px"
               onClick={async () => {
                 await Promise.resolve()

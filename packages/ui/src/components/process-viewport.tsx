@@ -163,7 +163,8 @@ export function ProcessViewport(
   let disclosureGeneration = 0
   let disposed = false
   let restoredOffset: number | undefined
-  const capture = (target?: Element) => props.anchor?.(target) ?? captureProcessReadingAnchor(viewport, target)
+  const capture = (target?: Element) =>
+    props.anchor ? props.anchor(target) : captureProcessReadingAnchor(viewport, target)
   const notifyReading = (value: boolean) => {
     if (notifiedReading === value) return
     notifiedReading = value
@@ -180,6 +181,10 @@ export function ProcessViewport(
       readingAnchor = capture()
       captureFrame = requestAnimationFrame(() => {
         captureFrame = undefined
+        if (!readingAnchor && viewActive() && !restoring && !disclosureAnchor && !layoutPending) {
+          readingAnchor = capture()
+          capturedOffset = viewport.scrollTop
+        }
       })
     } else if (viewport.scrollTop !== capturedOffset) {
       readingAnchor = capture()
@@ -191,10 +196,15 @@ export function ProcessViewport(
     if (props.restoreAnchor) measured = props.restoreAnchor(anchor)
     else restoreProcessReadingAnchor(viewport, anchor)
     restoredOffset = viewport.scrollTop
+    if (movementPending) capturedOffset = restoredOffset
     return measured !== false
   }
   const preserve = () => {
-    if (disposed || !viewActive() || !viewport?.clientWidth || restoreFrame !== undefined) return
+    if (disposed || !viewActive() || !viewport?.clientWidth) return
+    if (movementPending && Math.abs(viewport.scrollTop - capturedOffset) > 0.5) return
+    const anchor = disclosureAnchor ?? readingAnchor
+    if (anchor && !following()) restore(anchor)
+    if (restoreFrame !== undefined) return
     if (layoutReleaseFrame !== undefined) cancelAnimationFrame(layoutReleaseFrame)
     layoutReleaseFrame = undefined
     layoutPending = true
@@ -209,6 +219,7 @@ export function ProcessViewport(
       layoutReleaseFrame = requestAnimationFrame(() => {
         layoutReleaseFrame = undefined
         layoutPending = false
+        if (!readingAnchor) refreshAnchor()
       })
     })
   }

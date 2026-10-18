@@ -252,6 +252,21 @@ export function createAutoScroll(options: AutoScrollOptions) {
     clearReadingAnchor()
   }
 
+  const restoreReadingLayout = () => {
+    if (movementOffset !== undefined && scroll && Math.abs(scroll.scrollTop - movementOffset) > 0.5) {
+      scheduleMeasure()
+      return
+    }
+    readingAnchor?.restore()
+    if (!readingAnchor || !readingAnchor.owner.isConnected) preserveReadingAnchor()
+    if (scroll && readingAnchor) {
+      anchoredScrollTop = scroll.scrollTop
+      anchoredScrollHeight = scroll.scrollHeight
+      if (movementOffset !== undefined) movementOffset = scroll.scrollTop
+    }
+    scheduleMeasure()
+  }
+
   const resizeObserver = makeResizeObserver(
     () => {
       if (!enabled()) return
@@ -265,18 +280,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
         flushScrollToBottom()
         return
       }
-      if (movementOffset !== undefined && scroll && Math.abs(scroll.scrollTop - movementOffset) > 0.5) {
-        scheduleMeasure()
-        return
-      }
-      readingAnchor?.restore()
-      if (!readingAnchor || !readingAnchor.owner.isConnected) preserveReadingAnchor()
-      if (scroll && readingAnchor) {
-        anchoredScrollTop = scroll.scrollTop
-        anchoredScrollHeight = scroll.scrollHeight
-        if (movementOffset !== undefined) movementOffset = scroll.scrollTop
-      }
-      scheduleMeasure()
+      restoreReadingLayout()
     },
     { box: "border-box" },
   )
@@ -288,6 +292,18 @@ export function createAutoScroll(options: AutoScrollOptions) {
     onCleanup(() => {
       for (const target of targets) if (target) resizeObserver.unobserve(target)
     })
+  })
+
+  createEffect(() => {
+    const owner = readingAnchorOwner()
+    if (!enabled() || !owner) return
+    // Virtual placement can change an anchor's offset without resizing it or the content extent.
+    const observer = new MutationObserver(() => {
+      if (enabled()) restoreReadingLayout()
+    })
+    for (let element: HTMLElement | null = owner; element && element !== scroll; element = element.parentElement)
+      observer.observe(element, { attributes: true, attributeFilter: ["style"] })
+    onCleanup(() => observer.disconnect())
   })
 
   createEffect(

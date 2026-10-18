@@ -231,7 +231,7 @@ test.each(["initial", "reversed"])(
   },
 )
 
-test("manual disclosure animates only its connected mount and releases it on collapse", async () => {
+test("manual disclosure fades only its connected mount and releases it on collapse", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   const batch = page.locator('[data-component="conversation-activity"] > button').first()
@@ -260,12 +260,13 @@ test("manual disclosure animates only its connected mount and releases it on col
       }
       return media
     }
-    const calls: { connected: boolean; height: number[] }[] = []
+    const calls: { connected: boolean; resizing: boolean; opacity: number[] }[] = []
     Element.prototype.animate = function (frames, options) {
       if (this.matches('[data-slot="activity-batch-content"]'))
         calls.push({
           connected: this.isConnected,
-          height: Array.isArray(frames) ? frames.map((frame) => parseFloat(String(frame.height))) : [],
+          resizing: Array.isArray(frames) && frames.some((frame) => frame.height !== undefined),
+          opacity: Array.isArray(frames) ? frames.map((frame) => Number(frame.opacity)) : [],
         })
       return animate.call(this, frames, options)
     }
@@ -296,10 +297,11 @@ test("manual disclosure animates only its connected mount and releases it on col
   })
   expect(result.calls.map((call) => call.connected)).toEqual([true, true, true])
   for (const call of result.calls) {
-    expect(call.height).toHaveLength(2)
-    expect(call.height.every(Number.isFinite)).toBe(true)
-    expect(Math.max(...call.height)).toBeGreaterThan(0)
-    expect(Math.min(...call.height)).toBe(0)
+    expect(call.resizing).toBe(false)
+    expect(call.opacity).toHaveLength(2)
+    expect(call.opacity.every(Number.isFinite)).toBe(true)
+    expect(Math.max(...call.opacity)).toBe(1)
+    expect(Math.min(...call.opacity)).toBeLessThan(1)
   }
   expect(result.open).toBe("true")
   expect(result.mounted).toBe(true)

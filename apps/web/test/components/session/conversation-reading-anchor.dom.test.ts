@@ -18,6 +18,8 @@ type Fixture = {
   offscreenAnchor(): { before?: string; after?: string }
   contentFailure(): void
   freezeExtent(): void
+  virtualize(): void
+  moveVirtualRow(): void
   recoverContent(): void
   recoverPosition(): { restored: boolean; before: number; after: number }
   facts(): {
@@ -58,7 +60,7 @@ beforeAll(async () => {
     const [width,setWidth]=createSignal(800),[folded,setFolded]=createSignal(false),[owner,setOwner]=createSignal(1),[image,setImage]=createSignal(2),[working,setWorking]=createSignal(true)
     let viewport,marker,fold,img,auto
     const h=window.fixture={
-      detach(){auto.handleInteraction();viewport.scrollTop=marker.offsetTop-viewport.offsetTop-50;auto.handleScroll()},
+      detach(){auto.handleInteraction();viewport.scrollTop+=marker.getBoundingClientRect().top-viewport.getBoundingClientRect().top-50;auto.handleScroll()},
       prepend(){auto.handleInteraction();const older=document.createElement("div");older.style.height="320px";older.textContent="Earlier accepted fallback messages";viewport.firstElementChild.prepend(older)},
       resize(){setWidth(350)},fold(){setFolded(true)},image(){setImage(200)},replaceOwner(){setOwner(owner()+1)},
       latest(){setWorking(false);auto.forceScrollToBottom({untilInteraction:true})},
@@ -89,6 +91,12 @@ beforeAll(async () => {
         auto.handleInteraction();viewport.scrollTop=error.offsetTop-viewport.offsetTop-40;auto.handleScroll();
       },
       freezeExtent(){const content=viewport.firstElementChild;content.style.height=content.getBoundingClientRect().height+'px'},
+      virtualize(){
+        h.freezeExtent();const row=marker.parentElement;
+        const wrapper=document.createElement('div');wrapper.style.cssText='position:relative;height:'+row.getBoundingClientRect().height+'px';
+        row.before(wrapper);const item=document.createElement('div');item.dataset.virtualItem='';item.style.cssText='position:absolute;top:0;width:100%';wrapper.append(item);item.append(row);
+      },
+      moveVirtualRow(){viewport.querySelector('[data-virtual-item]').style.top='160px'},
       recoverContent(){viewport.querySelector('[data-content-error]').remove()},
       recoverPosition(){
         const position=captureConversationReadingPosition(viewport),before=marker.getBoundingClientRect().top-viewport.getBoundingClientRect().top;
@@ -175,6 +183,32 @@ test("removing a recovered content error preserves the visible body paragraph", 
   await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.recoverContent())
   await frames()
   expect(Math.abs((await facts()).offset - before)).toBeLessThan(1)
+})
+
+test("a virtual row offset change preserves reading before paint without changing the content extent", async () => {
+  await page.goto(base)
+  await page.getByText("Current reading paragraph", { exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.virtualize())
+  await frames()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.detach())
+  await frames()
+  const samples = await page.evaluate(async () => {
+    const fixture = (window as unknown as { fixture: Fixture }).fixture
+    const before = fixture.facts().offset
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => {
+        fixture.moveVirtualRow()
+        resolve()
+      }),
+    )
+    const samples = []
+    for (let frame = 0; frame < 20; frame++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+      samples.push(fixture.facts().offset - before)
+    }
+    return samples
+  })
+  expect(Math.max(...samples.map(Math.abs))).toBeLessThan(1)
 })
 
 test("a reading row resize is compensated while the virtual content extent remains unchanged", async () => {

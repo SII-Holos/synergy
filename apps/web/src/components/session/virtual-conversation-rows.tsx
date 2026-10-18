@@ -540,7 +540,12 @@ export function VirtualConversationRows(
               itemKey={(key) => key}
               observeContent={(key) => {
                 const row = byKey().get(key)
-                return active() && row?.kind === "body" && !row.exiting
+                if (!active() || !row || row.exiting) return false
+                if (row.kind === "activity") return "sync"
+                if (row.kind !== "body") return false
+                return props.historyMode() === "history" || (row.message.role === "assistant" && props.scrolledUp())
+                  ? "sync"
+                  : true
               }}
               shift={rowLayout().shift}
               scrollRef={input.scrollRef}
@@ -629,7 +634,8 @@ function ConversationDisplayRow(
     visible: () => !!row().activity?.open,
     animate: () => manualDisclosure || motionReady(),
     appear: () => manualDisclosure,
-    resize: true,
+    resize: false,
+    content: true,
     onHidden: () => setActivityMounted(false),
     onSettled: () => {
       manualDisclosure = false
@@ -1145,12 +1151,21 @@ function ConversationActivityBody(
     onReadingInteraction?: (key: string) => void
   },
 ) {
+  const active = useViewActivity()
   const [scroll, setScroll] = createSignal<HTMLDivElement>()
   const [width, setWidth] = createSignal(0)
   const [handle, setHandle] = createSignal<VirtualizerHandle>()
   const [retained, setRetained] = createSignal<number[]>([], { equals: sameItems })
   const entries = () => input.row().activity?.entries ?? []
-  const keys = createMemo(() => entries().map((entry) => entry.key))
+  const entryLayout = createMemo<{ keys: string[]; shift: boolean }>((previous) => {
+    const keys = entries().map((entry) => entry.key)
+    const added = keys.length - (previous?.keys.length ?? 0)
+    return {
+      keys,
+      shift: added > 0 && !!previous?.keys.length && previous.keys.every((key, index) => keys[added + index] === key),
+    }
+  })
+  const keys = () => entryLayout().keys
   const estimatedSize = createMemo(() => {
     const rows = entries()
     return rows.length ? rows.reduce((total, row) => total + estimateConversationRowSize(row), 0) / rows.length : 28
@@ -1190,6 +1205,11 @@ function ConversationActivityBody(
   const captureAnchor = (target?: Element) => {
     if (!viewport) return
     anchor = captureProcessReadingAnchor(viewport, target)
+    const virtual = handle()
+    if (!target && anchor && virtual) {
+      const index = keys().indexOf(anchor.key)
+      if (index > 0 && virtual.getItemOffset(index) > viewport.scrollTop + 1) anchor = undefined
+    }
   }
   const restoreAnchor = (saved: ProcessReadingAnchor) => {
     anchor = saved
@@ -1216,10 +1236,7 @@ function ConversationActivityBody(
       )
       // Virtua retries imperative targets on later measurements; aligned anchors must not leave a stale request.
       if (Math.abs(viewport.scrollTop - legalOffset) < 0.5) return true
-      virtual.scrollToIndex(targetIndex, {
-        align: "start",
-        offset,
-      })
+      virtual.scrollToIndex(targetIndex, { align: "start", offset })
       return true
     }
     if (align()) return measured
@@ -1334,7 +1351,11 @@ function ConversationActivityBody(
           ref={layout.ref}
           data={keys()}
           itemKey={(key) => key}
+          observeContent={() =>
+            active() && (input.context.historyMode() === "history" || input.context.scrolledUp()) && "sync"
+          }
           scrollRef={scroll()}
+          shift={entryLayout().shift}
           overscan={2}
           itemSize={estimatedSize()}
           keepMounted={retained()}
