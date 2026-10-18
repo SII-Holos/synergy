@@ -94,13 +94,13 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
 
   // Native views sit above the renderer; overlays reveal the decoded still already painted underneath.
   async function captureCover(pageId: string) {
-    const native = platform.browserNative
-    if (!native?.pageAction) return
+    const pageAction = platform.browserNative?.pageAction
+    if (!pageAction) return
     const sequence = ++captureSequence
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       const capture = async () => {
-        const result = await native.pageAction({
+        const result = await pageAction({
           protocolVersion: BROWSER_PROTOCOL_VERSION,
           ownerKey: props.ownerKey,
           pageId,
