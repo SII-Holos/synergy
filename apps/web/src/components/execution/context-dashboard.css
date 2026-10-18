@@ -377,46 +377,51 @@
 }
 .context-history-plot {
   position: relative;
-  height: 136px;
-  display: flex;
-  gap: 8px;
+  direction: ltr;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-rows: 136px auto;
+  column-gap: 8px;
+}
+.context-history-plot[data-timing="true"] {
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
 }
 .context-chart-scale {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  width: 36px;
-  flex-shrink: 0;
+  display: grid;
+  grid-template-rows: repeat(5, 0px);
+  align-content: space-between;
+  min-width: 36px;
+  white-space: nowrap;
   text-align: right;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: var(--text-weak);
+}
+.context-chart-scale > span {
+  align-self: center;
 }
 .context-chart-bars {
   position: relative;
   display: flex;
-  flex: 1;
   min-width: 0;
-  overflow-x: auto;
-  gap: 3px;
   justify-content: flex-start;
   align-items: stretch;
-  padding: 3px 3px 0;
-  border-bottom: 1px solid var(--border-weak-base);
+  box-shadow: inset 0 -1px var(--border-weak-base);
   background: repeating-linear-gradient(
     to top,
     transparent 0,
-    transparent calc(50% - 1px),
-    var(--border-weak-base) calc(50% - 1px),
-    var(--border-weak-base) 50%
+    transparent calc(25% - 1px),
+    var(--border-weak-base) calc(25% - 1px),
+    var(--border-weak-base) 25%
   );
 }
 .context-history-bar {
   position: relative;
   display: flex;
-  flex: 1 0 8px;
+  flex: 1;
   flex-direction: column;
   align-items: center;
-  min-width: 8px;
+  min-width: 0;
   height: 100%;
   padding: 0;
   border: 0;
@@ -428,9 +433,9 @@
 }
 .context-timing-overlay {
   position: absolute;
-  inset: 3px 3px 0;
-  width: calc(100% - 6px);
-  height: calc(100% - 3px);
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   overflow: visible;
 }
@@ -475,7 +480,7 @@
   flex-shrink: 0;
   display: block;
   width: 100%;
-  min-height: 1px;
+  min-height: 0;
   transition: height var(--motion-duration-base) var(--motion-ease-standard);
 }
 .context-history-bar[data-gap="true"]::after {
@@ -500,9 +505,13 @@
   font-size: 14px;
 }
 .context-chart-caption {
-  margin: 7px 0 0 44px;
+  grid-column: 2;
+  grid-row: 2;
+  margin-top: 10px;
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   color: var(--text-weak);
   font-size: 12px;
 }
@@ -975,8 +984,8 @@
 }
 .context-history-target {
   display: flex;
-  flex: 1 0 8px;
-  min-width: 8px;
+  flex: 1;
+  min-width: 0;
   height: 100%;
 }
 .context-history-target .context-history-bar {

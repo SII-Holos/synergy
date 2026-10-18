@@ -80,6 +80,17 @@ beforeAll(async () => {
         <ContextHistoryChart items={history.state.items} selectedSnapshot={history.snapshot()} selected={selected()} onSelect={setSelected} grouping="request" onGrouping={()=>{}} delta={false} onDelta={()=>{}}/>
       </div>
     }
+    function Chart(){
+      const [items,setItems]=createSignal([])
+      const [selected,setSelected]=createSignal("")
+      const [grouping,setGrouping]=createSignal("request")
+      const [delta,setDelta]=createSignal(false)
+      Object.assign(window,{chart:{
+        samples:values=>setItems(values.map((value,index)=>({...first,callID:String(index),nodeID:String(index),started:index,requestNumber:index+1,roundNumber:Math.floor(index/2)+1,runID:"round-"+Math.floor(index/2),inputTokens:value.tokens,estimate:value.tokens==null?undefined:estimate(value.tokens),elapsedMs:value.elapsedMs}))),
+        locale:locale=>{i18n.load(locale,{});i18n.activate(locale)},
+      }})
+      return <div class="context-dashboard"><ContextHistoryChart items={items()} selected={selected()} onSelect={setSelected} grouping={grouping()} onGrouping={setGrouping} delta={delta()} onDelta={setDelta}/></div>
+    }
     const Layout=()=><div class="context-dashboard-shell" style="height:100dvh"><div class="context-dashboard"><ContextDashboardLayout
       composition={<ContextComposition snapshot={snapshot} category="" onCategory={()=>{}}/>}
       metrics={<section class="context-usage-stats"><div class="context-usage-body"><ContextRing segments={[]} total={null} label="Cumulative usage" value={ring().value} caption="累计用量" fitValue={{alternatives:ring().alternatives,accessible:ring().accessible}}/><div/></div><div class="context-metrics">{["Cost","Time","Cache"].map(name=><button class="context-metric"><span>{name}</span><strong>1,234</strong></button>)}</div></section>}
@@ -89,7 +100,7 @@ beforeAll(async () => {
       events={<section class="context-events"><h2>Events</h2></section>}
       activity={<section class="context-activity"><h2>Task activity</h2></section>}
     /></div></div>
-    render(()=><I18nProvider i18n={i18n}><Router><Route path="/" component={Layout}/><Route path="/metrics" component={Metrics}/><Route path="/session/:id" component={Live}/></Router></I18nProvider>, document.getElementById("root"))
+    render(()=><I18nProvider i18n={i18n}><Router><Route path="/" component={Layout}/><Route path="/metrics" component={Metrics}/><Route path="/chart" component={Chart}/><Route path="/session/:id" component={Live}/></Router></I18nProvider>, document.getElementById("root"))
   `,
   )
   const options = {
@@ -492,4 +503,161 @@ test("changing layout retains the reader node, typed search and keyboard focus",
     expect(await search.getAttribute("data-retained")).toBe("yes")
     expect(await search.evaluate((element) => document.activeElement === element)).toBe(true)
   }
+})
+
+async function chartSamples(samples: Array<{ tokens: number | null; elapsedMs: number | null }>) {
+  await page.evaluate((values) => Reflect.get(window, "chart").samples(values), samples)
+  await settleChart()
+}
+
+async function settleChart() {
+  await page.waitForFunction(
+    () =>
+      !document
+        .getAnimations()
+        .some(
+          (animation) =>
+            animation.playState === "running" && animation.effect?.getComputedTiming().iterations !== Infinity,
+        ),
+  )
+}
+
+async function chartGeometry() {
+  return page.evaluate(() => {
+    const plot = document.querySelector(".context-chart-bars")!
+    const bounds = plot.getBoundingClientRect()
+    const svg = document.querySelector<SVGSVGElement>(".context-timing-overlay")
+    const svgBounds = svg?.getBoundingClientRect()
+    return {
+      width: plot.clientWidth,
+      scrollWidth: plot.scrollWidth,
+      bounds: { left: bounds.left, right: bounds.right, top: bounds.top, height: bounds.height },
+      bars: [...plot.querySelectorAll(".context-history-bar")].map((bar) => {
+        const rect = bar.getBoundingClientRect()
+        const positive = [...bar.querySelectorAll(".context-bar-positive > span")].map(
+          (segment) => segment.getBoundingClientRect().height,
+        )
+        const negative = [...bar.querySelectorAll(".context-bar-negative > span")].map(
+          (segment) => segment.getBoundingClientRect().height,
+        )
+        return {
+          x: rect.x + rect.width / 2,
+          positive: positive.reduce((a, b) => a + b, 0),
+          negative: negative.reduce((a, b) => a + b, 0),
+        }
+      }),
+      points: [...plot.querySelectorAll(".context-timing-point")].map((point) => {
+        const [x, y] = point.getAttribute("d")!.slice(1).split(" ")[0].split(",").map(Number)
+        return { x: svgBounds!.left + (x / 100) * svgBounds!.width, y: svgBounds!.top + (y / 100) * svgBounds!.height }
+      }),
+      tokenTicks: [...document.querySelectorAll(".context-chart-scale:not(.context-time-scale) > span")].map(
+        (el) => el.textContent,
+      ),
+      timeTicks: [...document.querySelectorAll(".context-time-scale > span")].map((el) => el.textContent),
+    }
+  })
+}
+
+test("long request histories share one visible plot for token bars and elapsed points", async () => {
+  await page.setViewportSize({ width: 560, height: 800 })
+  await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
+  await chartSamples(
+    Array.from({ length: 231 }, (_, i) => ({ tokens: (i + 1) * 1000, elapsedMs: i === 0 ? 154000 : 18000 })),
+  )
+  const geometry = await chartGeometry()
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width + 1)
+  expect(geometry.bars).toHaveLength(231)
+  for (let i = 0; i < geometry.bars.length; i++) {
+    expect(geometry.bars[i].x).toBeGreaterThanOrEqual(geometry.bounds.left)
+    expect(geometry.bars[i].x).toBeLessThanOrEqual(geometry.bounds.right)
+    expect(Math.abs(geometry.bars[i].x - geometry.points[i].x)).toBeLessThan(1)
+  }
+  expect(geometry.bars.at(-1)!.positive / geometry.bounds.height).toBeGreaterThan(0.9)
+  expect((geometry.points[0].y - geometry.bounds.top) / geometry.bounds.height).toBeLessThan(0.05)
+})
+
+test("five aligned ticks and independent vertical scales survive updates, timing visibility and narrow locales", async () => {
+  await page.setViewportSize({ width: 560, height: 800 })
+  await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
+  const samples = [
+    { tokens: 425000, elapsedMs: 154000 },
+    { tokens: 210000, elapsedMs: 40000 },
+    { tokens: 148000, elapsedMs: 18000 },
+  ]
+  await chartSamples(samples)
+  const original = await chartGeometry()
+  expect(original.tokenTicks).toHaveLength(5)
+  expect(original.timeTicks).toHaveLength(5)
+  await chartSamples(samples.map((item) => ({ ...item, elapsedMs: item.elapsedMs * 60 })))
+  const longer = await chartGeometry()
+  expect(longer.tokenTicks).toEqual(original.tokenTicks)
+  expect(longer.bars.map((bar) => bar.positive)).toEqual(original.bars.map((bar) => bar.positive))
+  await chartSamples(samples.map((item) => ({ ...item, tokens: item.tokens * 100 })))
+  const larger = await chartGeometry()
+  expect(larger.timeTicks).toEqual(original.timeTicks)
+  expect(larger.points.map((point) => point.y)).toEqual(original.points.map((point) => point.y))
+  await page.locator(".context-timing-toggle").click()
+  expect((await chartGeometry()).bars.map((bar) => bar.positive)).toEqual(larger.bars.map((bar) => bar.positive))
+  await page.locator(".context-timing-toggle").click()
+  for (const settings of [
+    { width: 320, zoom: 1, direction: "ltr" },
+    { width: 375, zoom: 1, direction: "ltr" },
+    { width: 560, zoom: 1, direction: "ltr" },
+    { width: 640, zoom: 2, direction: "ltr" },
+    { width: 375, zoom: 1, direction: "rtl" },
+  ]) {
+    await page.setViewportSize({ width: settings.width, height: 800 })
+    await page.evaluate(({ zoom, direction }) => {
+      Reflect.get(window, "chart").locale("zh-CN")
+      document.body.style.zoom = String(zoom)
+      document.body.dir = direction
+    }, settings)
+    const labels = await page.locator(".context-chart-scale > span").evaluateAll((elements) =>
+      elements.map((el) => {
+        const rect = el.getBoundingClientRect()
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        return {
+          lines: range.getClientRects().length,
+          inside: rect.left >= 0 && rect.right <= innerWidth,
+          y: rect.top + rect.height / 2,
+        }
+      }),
+    )
+    expect(labels.every((label) => label.lines === 1 && label.inside)).toBe(true)
+    const geometry = await chartGeometry()
+    for (let i = 0; i < geometry.bars.length; i++) {
+      expect(Math.abs(geometry.bars[i].x - geometry.points[i].x)).toBeLessThan(1)
+    }
+    for (let i = 0; i < 5; i++) {
+      expect(Math.abs(labels[i].y - labels[i + 5].y)).toBeLessThan(1)
+      expect(Math.abs(labels[i].y - (geometry.bounds.top + (geometry.bounds.height * i) / 4))).toBeLessThan(1.5)
+    }
+  }
+})
+
+test("signed token changes retain their own zero while elapsed timing remains nonnegative", async () => {
+  await page.setViewportSize({ width: 560, height: 800 })
+  await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
+  await chartSamples([
+    { tokens: 100, elapsedMs: null },
+    { tokens: 300, elapsedMs: 0 },
+    { tokens: 100, elapsedMs: 4000 },
+    { tokens: 200, elapsedMs: 2000 },
+  ])
+  const full = await chartGeometry()
+  await page.getByRole("button", { name: "Change", exact: true }).click()
+  await settleChart()
+  const delta = await chartGeometry()
+  expect(delta.tokenTicks).toHaveLength(5)
+  expect(delta.tokenTicks[2]).toBe("0")
+  expect(delta.timeTicks).toEqual(full.timeTicks)
+  expect(delta.points).toEqual(full.points)
+  expect(Math.abs(delta.bars[1].positive - delta.bounds.height / 2)).toBeLessThan(1)
+  expect(Math.abs(delta.bars[2].negative - delta.bounds.height / 2)).toBeLessThan(1)
+  await page.getByRole("button", { name: "Rounds", exact: true }).click()
+  const rounds = await chartGeometry()
+  expect(rounds.bars).toHaveLength(2)
+  expect(rounds.points).toHaveLength(2)
+  expect(rounds.timeTicks).toHaveLength(5)
 })

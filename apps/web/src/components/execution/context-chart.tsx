@@ -8,6 +8,8 @@ import { executionDuration } from "@ericsanchezok/synergy-ui/execution-completio
 import { E } from "./i18n"
 import { D } from "./context-categories"
 
+const tickFractions = [0, 0.25, 0.5, 0.75, 1]
+
 export function ContextHistoryChart(props: {
   items: ExecutionContextSnapshot[]
   selectedSnapshot?: ExecutionContextSnapshot
@@ -25,16 +27,20 @@ export function ContextHistoryChart(props: {
   const [hovered, setHovered] = createSignal("")
   const [timing, setTiming] = createSignal(true)
   const bars = createMemo(() => contextHistoryBars(props.items, props.grouping, props.delta))
-  const maximum = createMemo(() =>
-    Math.max(
+  const tokenMaximum = createMemo(() => {
+    const divisions = props.delta ? 2 : 4
+    const maximum = Math.max(
       1,
       ...bars().flatMap((bar) => [
         bar.values.reduce((sum, value) => sum + Math.max(0, value.tokens), 0),
         bar.values.reduce((sum, value) => sum + Math.max(0, -value.tokens), 0),
       ]),
-    ),
+    )
+    return Math.ceil(maximum / divisions) * divisions
+  })
+  const timingMaximum = createMemo(
+    () => Math.max(1, Math.ceil(Math.max(0, ...bars().map((bar) => bar.snapshot.elapsedMs ?? 0)) / 4000)) * 4000,
   )
-  const timingMaximum = createMemo(() => Math.max(1, ...bars().map((bar) => bar.snapshot.elapsedMs ?? 0)))
   const timingPath = createMemo(() => {
     let previous: { x: number; y: number; ordinal: number; sessionID: string } | undefined
     return bars()
@@ -49,7 +55,7 @@ export function ContextHistoryChart(props: {
           previous = undefined
         const point = {
           x: ((index + 0.5) / bars().length) * 100,
-          y: 100 - (elapsed / timingMaximum()) * 94,
+          y: 100 - (elapsed / timingMaximum()) * 100,
           ordinal,
           sessionID: bar.snapshot.sessionID,
         }
@@ -115,11 +121,11 @@ export function ContextHistoryChart(props: {
           </Button>
         </div>
       </div>
-      <div class="context-history-plot" data-delta={props.delta}>
+      <div class="context-history-plot" data-delta={props.delta} data-timing={timing()}>
         <div class="context-chart-scale" aria-hidden="true">
-          <span>{number(maximum())}</span>
-          <span>{props.delta ? "0" : number(maximum() / 2)}</span>
-          <span>{props.delta ? number(-maximum()) : "0"}</span>
+          <For each={tickFractions}>
+            {(fraction) => <span>{number(tokenMaximum() * (1 - fraction * (props.delta ? 2 : 1)))}</span>}
+          </For>
         </div>
         <div
           class="context-chart-bars"
@@ -197,7 +203,8 @@ export function ContextHistoryChart(props: {
                           <span
                             style={{
                               height:
-                                ((bar().values.find((value) => value.category === category)?.tokens ?? 0) / maximum()) *
+                                ((bar().values.find((value) => value.category === category)?.tokens ?? 0) /
+                                  tokenMaximum()) *
                                   100 +
                                 "%",
                               background: bar().values.find((value) => value.category === category)?.color,
@@ -218,7 +225,7 @@ export function ContextHistoryChart(props: {
                               style={{
                                 height:
                                   (-(bar().values.find((value) => value.category === category)?.tokens ?? 0) /
-                                    maximum()) *
+                                    tokenMaximum()) *
                                     100 +
                                   "%",
                                 background: bar().values.find((value) => value.category === category)?.color,
@@ -246,7 +253,7 @@ export function ContextHistoryChart(props: {
                   <Show when={bar.snapshot.elapsedMs != null}>
                     <path
                       class="context-timing-point"
-                      d={`M${((index() + 0.5) / bars().length) * 100},${100 - (bar.snapshot.elapsedMs! / timingMaximum()) * 94} l0,0`}
+                      d={`M${((index() + 0.5) / bars().length) * 100},${100 - (bar.snapshot.elapsedMs! / timingMaximum()) * 100} l0,0`}
                       data-active={bar.snapshot.callID === hovered() || bar.snapshot.callID === props.selected}
                     />
                   </Show>
@@ -257,14 +264,17 @@ export function ContextHistoryChart(props: {
         </div>
         <Show when={timing()}>
           <div class="context-chart-scale context-time-scale" aria-hidden="true">
-            <span>{executionDuration(timingMaximum(), false)}</span>
-            <span>0</span>
+            <For each={tickFractions}>
+              {(fraction) => (
+                <span>{fraction === 1 ? "0" : executionDuration(timingMaximum() * (1 - fraction), false)}</span>
+              )}
+            </For>
           </div>
         </Show>
-      </div>
-      <div class="context-chart-caption">
-        <span>{bars().length ? label(0) : "—"}</span>
-        <span>{bars().length ? label(bars().length - 1) : "—"}</span>
+        <div class="context-chart-caption">
+          <span>{bars().length ? label(0) : "—"}</span>
+          <span>{bars().length ? label(bars().length - 1) : "—"}</span>
+        </div>
       </div>
       <div class="context-history-preview">
         <Show when={preview()}>
