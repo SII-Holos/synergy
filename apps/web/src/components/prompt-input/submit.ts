@@ -44,12 +44,7 @@ import { sendSessionCommand } from "./session-command"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
 import { buildLightLoopInstructions } from "./light-loop-instructions"
 import { getPendingLightLoopSlashBlock, resolveSlashCommandIntent, type SlashUiCommand } from "./slash-command-intent"
-import {
-  resolvePromptSubmitIntent,
-  shouldAllowPromptSubmit,
-  shouldBlockSubmitForUploadingAttachments,
-  shouldRunComposerBeforeSubmit,
-} from "./submit-intent"
+import { resolvePromptSubmitIntent, shouldAllowPromptSubmit, shouldRunComposerBeforeSubmit } from "./submit-intent"
 import { acquireNewSessionSubmitLock } from "./new-session-submit-lock"
 import {
   createNewSessionWorkspaceAcceptedProgress,
@@ -121,7 +116,6 @@ type PromptSubmitInput = {
   addToHistory: (prompt: Prompt, mode: PromptInputMode) => void
   frontendCommands: Accessor<SlashUiCommand[]>
   working: Accessor<boolean>
-  abort: () => void
   editor: () => HTMLDivElement | undefined
   queueScroll: () => void
   onWorkspaceUnavailable: (request: WorkspaceRecoveryRequest) => void
@@ -241,10 +235,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         working: input.working(),
         hasBlueprintSlot: !!blueprintSlot,
       })
-      if (submitIntent === "abort") {
-        input.abort()
-        return
-      }
       if (
         [...prompt.current(), ...prompt.context.items()].some(
           (part) => part.type === "file" && part.originScopeID && part.originScopeID !== sdk.scopeID,
@@ -253,7 +243,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         showToast({ type: "warning", title: i18n._(projectFlowCopy.unavailableReference) })
         return
       }
-      if (shouldBlockSubmitForUploadingAttachments({ uploading: input.attachmentsUploading(), intent: submitIntent })) {
+      if (input.attachmentsUploading()) {
         if (input.attachmentsFailed?.()) {
           showToast({
             type: "warning",

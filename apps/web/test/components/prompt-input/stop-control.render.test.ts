@@ -3,7 +3,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test"
 import { plugin } from "bun"
 import { transformAsync } from "@babel/core"
 import { setupI18n } from "@lingui/core"
-import { createComponent, createSignal } from "solid-js"
+import { createComponent, createSignal, onCleanup } from "solid-js"
 import { render } from "solid-js/web"
 import type { Prompt } from "../../../src/context/prompt"
 import type { LoopTerminal } from "../../../src/components/prompt-input/loop-status"
@@ -253,7 +253,15 @@ mock.module("../../../src/context/prompt", () => ({
       draftResets++
       setPromptParts([])
     },
-    capture: () => ({ draft: {}, isCurrent: () => true, release() {} }),
+    capture: () => ({
+      draft: {
+        current: promptParts,
+        context: { items: () => [] },
+        revision: () => 0,
+      },
+      isCurrent: () => true,
+      release() {},
+    }),
     context: { items: () => [], add: () => {}, set: () => {}, reset: () => {}, remove: () => {} },
     attach: () => {},
     shell: () => {},
@@ -283,7 +291,7 @@ mock.module("../../../src/context/workbench", () => ({
 
 mock.module("../../../src/context/session-transition", () => ({
   draftTransitionKey: () => "draft:fixture",
-  useSessionTransition: () => ({ getRecovery: () => undefined, clearRecovery: () => {} }),
+  useSessionTransition: () => ({ get: () => undefined, getRecovery: () => undefined, clearRecovery: () => {} }),
 }))
 
 mock.module("../../../src/context/platform", () => ({
@@ -354,7 +362,13 @@ function Toolbar() {
       return transitionError()
     },
   })
+  const editor = document.createElement("div")
+  editor.contentEditable = "true"
+  editor.setAttribute("role", "textbox")
+  editor.addEventListener("keydown", controller.input.editor.keyDown)
+  onCleanup(controller.input.editor.mount(editor, editor))
   return [
+    editor,
     composerPresentation(controller.input)?.status?.(),
     controller.input.render("context"),
     controller.input.render("toolbar"),
@@ -622,6 +636,25 @@ describe("single composer control", () => {
       control!.click()
       await settle()
 
+      expect(abortCalls).toEqual([{ sessionID: "ses_prompt" }])
+    } finally {
+      harness.dispose()
+    }
+  })
+
+  test("Enter on the cleared composer never turns a repeated send into a pause", async () => {
+    setStatusType("busy")
+    const harness = mount()
+    try {
+      const editor = harness.root.querySelector<HTMLElement>('[role="textbox"]')!
+      for (const repeat of [false, true]) {
+        editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, repeat }))
+        await settle()
+      }
+      expect(abortCalls).toEqual([])
+      expect(primaryControl(PI.pauseControl.message)?.disabled).toBe(false)
+      primaryControl(PI.pauseControl.message)!.click()
+      await settle()
       expect(abortCalls).toEqual([{ sessionID: "ses_prompt" }])
     } finally {
       harness.dispose()

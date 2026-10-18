@@ -527,9 +527,9 @@ describe("createAutoScroll", () => {
     }
   })
 
-  test.each([false, true])(
-    "native movement before scroll delivery survives resize (prior compensation: %s)",
-    async (compensate) => {
+  test.each([false, true].flatMap((compensate) => [false, true].map((beforeWheel) => ({ compensate, beforeWheel }))))(
+    "native movement before scroll delivery survives resize (%j)",
+    async ({ compensate, beforeWheel }) => {
       const harness = createScrollHarness()
       let dispose = () => {}
       try {
@@ -558,7 +558,7 @@ describe("createAutoScroll", () => {
         autoScroll.handleInteraction()
         const wheel = new Event("wheel")
         Object.defineProperty(wheel, "deltaY", { value: -100 })
-        element.dispatchEvent(wheel)
+        if (!beforeWheel) element.dispatchEvent(wheel)
         if (compensate) {
           contentOffset += 30
           element.scrollHeight += 30
@@ -568,6 +568,7 @@ describe("createAutoScroll", () => {
         }
         const readingTop = compensate ? 30 : 0
         element.scrollTop = readingTop
+        if (beforeWheel) element.dispatchEvent(wheel)
         element.scrollHeight += 100
         harness.lastObserver()!.fire(element)
         expect(element.scrollTop).toBe(readingTop)

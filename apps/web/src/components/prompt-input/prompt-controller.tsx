@@ -88,11 +88,7 @@ import { usePromptSubmit } from "@/components/prompt-input/submit"
 import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
 import { inlineLength, inlineText } from "@/components/prompt-input/content"
-import {
-  resolvePromptSubmitIntent,
-  shouldAllowPromptSubmit,
-  shouldBlockSubmitForUploadingAttachments,
-} from "@/components/prompt-input/submit-intent"
+import { resolvePromptSubmitIntent, shouldAllowPromptSubmit } from "@/components/prompt-input/submit-intent"
 import { createPendingAttachmentTracker } from "@/components/prompt-input/pending-attachments"
 import {
   resolvePromptControlState,
@@ -617,7 +613,7 @@ export function createPromptInputController(props: PromptInputProps) {
       hasBlueprintSlot: !!availableLocalLoop(),
     })
     if (intent === "blocked") return false
-    if (shouldBlockSubmitForUploadingAttachments({ uploading: attachmentsUploading(), intent })) return false
+    if (attachmentsUploading()) return false
     return shouldAllowPromptSubmit({
       intent,
       variantReady: local.model.variant.ready(),
@@ -2122,7 +2118,6 @@ export function createPromptInputController(props: PromptInputProps) {
     addToHistory,
     frontendCommands: () => command.options,
     working,
-    abort,
     editor: editorElement,
     queueScroll,
     onWorkspaceUnavailable: (request) => {

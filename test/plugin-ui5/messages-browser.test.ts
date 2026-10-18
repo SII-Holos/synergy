@@ -448,6 +448,7 @@ describe("production conversation history", () => {
         footerKey: string | undefined
         footerState: string | undefined
         geometry: number[] | undefined
+        scrollRange: number[] | undefined
         stationary: boolean
         sameViewport: boolean
       }
@@ -463,6 +464,8 @@ describe("production conversation history", () => {
           const response = await route.fetch()
           bodyRequested.resolve()
           await bodies.promise
+          if (!new URL(route.request().url()).pathname.includes(`/message/${messageID}/`))
+            await new Promise((resolve) => setTimeout(resolve, 300))
           await route.fulfill({ response })
           if (new URL(route.request().url()).pathname.includes(`/message/${messageID}/`)) latestBodyDelivered.resolve()
         })
@@ -479,13 +482,12 @@ describe("production conversation history", () => {
             const state: Probe = { frames: [], phase: "cold", stopped: false }
             Object.assign(window, { switchFrames: state })
             const presentation = (element: HTMLElement | null | undefined) => {
-              let visible = !!element
+              let visible = !!element && getComputedStyle(element).visibility === "visible"
               let opacity = 1
               for (let current = element; current; current = current.parentElement) {
                 const style = getComputedStyle(current)
                 opacity *= Number(style.opacity)
-                visible &&=
-                  style.display !== "none" && style.visibility === "visible" && style.contentVisibility !== "hidden"
+                visible &&= style.display !== "none" && style.contentVisibility !== "hidden"
               }
               return { visible: visible && opacity > 0, opacity }
             }
@@ -509,6 +511,7 @@ describe("production conversation history", () => {
               const shown = presentation(motion ?? viewport)
               const viewportBounds = viewport?.getBoundingClientRect()
               const footerBounds = footer?.getBoundingClientRect()
+              const bodyBounds = body?.getBoundingClientRect()
               const items = [
                 motion,
                 body,
@@ -527,8 +530,22 @@ describe("production conversation history", () => {
                 completeText: text.endsWith("End of paragraph 5.") && expectedText.includes(text),
                 textLength: text.length,
                 pending:
-                  !!viewport?.querySelector("[data-markdown-pending],[data-content-pending]") ||
-                  document.fonts.status === "loading",
+                  [
+                    ...(viewport?.querySelectorAll<HTMLElement>("[data-markdown-pending],[data-content-pending]") ??
+                      []),
+                  ].some((element) => {
+                    const bounds = element.getBoundingClientRect()
+                    return (
+                      viewportBounds &&
+                      bounds.width > 0 &&
+                      bounds.height > 0 &&
+                      bounds.bottom > viewportBounds.top &&
+                      bounds.top < viewportBounds.bottom &&
+                      bounds.right > viewportBounds.left &&
+                      bounds.left < viewportBounds.right &&
+                      presentation(element).visible
+                    )
+                  }) || document.fonts.status === "loading",
                 footerKey: footer?.dataset.displayRow,
                 footerState: footer
                   ? JSON.stringify({
@@ -542,18 +559,20 @@ describe("production conversation history", () => {
                     })
                   : undefined,
                 geometry:
-                  footerBounds && viewportBounds && viewport && motion && body
+                  footerBounds && viewportBounds && viewport && bodyBounds
                     ? [
                         footerBounds.bottom - viewportBounds.bottom,
                         footerBounds.height,
                         footerBounds.width,
-                        body.getBoundingClientRect().height,
-                        motion.getBoundingClientRect().height,
-                        viewport.scrollTop,
-                        viewport.scrollHeight,
+                        bodyBounds.top - viewportBounds.top,
+                        bodyBounds.height,
                         viewport.clientHeight,
                         viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
                       ]
+                    : undefined,
+                scrollRange:
+                  viewport && motion
+                    ? [motion.getBoundingClientRect().height, viewport.scrollTop, viewport.scrollHeight]
                     : undefined,
                 stationary: items.every((element) => {
                   const transform = getComputedStyle(element).transform
@@ -561,9 +580,26 @@ describe("production conversation history", () => {
                 }),
                 sameViewport: viewport === state.retainedViewport,
               })
-              requestAnimationFrame(sample)
             }
-            sample()
+            // ResizeObserver samples after frame callbacks, within the rendering update:
+            // https://www.w3.org/TR/resize-observer/#html-processing-model-event-loop
+            const probe = document.createElement("div")
+            probe.style.cssText =
+              "position:fixed;top:0;left:0;width:1px;height:1px;visibility:hidden;pointer-events:none;contain:strict"
+            document.body.append(probe)
+            const observer = new ResizeObserver(sample)
+            observer.observe(probe)
+            let tick = 0
+            const frame = () => {
+              if (state.stopped) {
+                observer.disconnect()
+                probe.remove()
+                return
+              }
+              probe.style.height = `${1 + (++tick % 2)}px`
+              requestAnimationFrame(frame)
+            }
+            requestAnimationFrame(frame)
           },
           { sessionID: target.id, rootID: target.messages.at(-2)!.info.id, messageID, expectedText },
         )
