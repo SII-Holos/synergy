@@ -62,7 +62,9 @@ export function ContextHistoryChart(props: {
   })
   const scroll = () => {
     if (!width()) return
-    const position = Math.min(lastStart(), (scroller.scrollLeft * windowSize) / width())
+    const measured = Math.min(lastStart(), (scroller.scrollLeft * windowSize) / width())
+    const nearest = Math.round(measured)
+    const position = Math.abs(measured - nearest) <= windowSize / width() ? nearest : measured
     if (Math.abs(position - start() - fraction()) < windowSize / width()) return
     const index = Math.floor(position + 0.0001)
     const latest = scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft < 1

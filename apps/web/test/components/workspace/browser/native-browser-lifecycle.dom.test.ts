@@ -98,3 +98,98 @@ test("a retained native surface hides for overlays and detaches while its sessio
     await rm(directory, { recursive: true, force: true })
   }
 }, 60000)
+
+test("native covers keep the newest image and discard failed or inactive captures", async () => {
+  const directory = await mkdtemp(path.join(import.meta.dir, ".native-cover-"))
+  const native = path.resolve(
+    import.meta.dir,
+    "../../../../src/components/workspace/browser/native-browser-surface.tsx",
+  )
+  const stub = path.join(directory, "stub.ts")
+  await Bun.write(
+    stub,
+    `
+    import {createSignal} from 'solid-js'
+    export const [active,setActive]=createSignal(true)
+    export const [page,setPage]=createSignal({id:'page',url:'https://example.test',status:'active',isLoading:false})
+    export const calls=[],pending=[]
+    let listener
+    export const emit=event=>listener?.({...event,pageId:page().id,protocolVersion:7})
+    export const useBrowser=()=>({presentation:()=>({kind:'native'}),page,pageId:()=>page().id,hostStatus:()=>'ready',fileChooserRequest:()=>null,dialogRequest:()=>null,controlsOpen:()=>false,addressSuggestionsOpen:()=>false,browserError:()=>null,annotationTarget:()=>null,setBrowserError(){}})
+    export const useDialog=()=>({active:false})
+    export const usePlatform=()=>({browserNative:{
+      attachView:async input=>calls.push(input),resizeView:async()=>{},detachView:async()=>{},
+      onEvent:fn=>{listener=fn;return ()=>{listener=undefined}},
+      pageAction:input=>new Promise(resolve=>pending.push({input,resolve}))
+    }})
+  `,
+  )
+  await Bun.write(
+    path.join(directory, "index.html"),
+    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+  )
+  await Bun.write(
+    path.join(directory, "main.tsx"),
+    `
+    import {render} from 'solid-js/web'
+    import {NativeBrowserSurface} from ${JSON.stringify(native)}
+    import {ViewActivityProvider} from '@/context/view-residency'
+    import {active,setActive,page,setPage,emit,pending,calls} from './stub'
+    const container=document.getElementById('root');container.style.cssText='width:800px;height:600px;position:relative'
+    const image=color=>{const canvas=document.createElement('canvas');canvas.width=2;canvas.height=2;const ctx=canvas.getContext('2d');ctx.fillStyle=color;ctx.fillRect(0,0,2,2);return canvas.toDataURL('image/png')}
+    window.fixture={setActive,setPage,pending,calls,emit,old:image('red'),fresh:image('blue'),
+      resolve:(index,dataUrl)=>pending[index].resolve({type:'cover',url:page().url,dataUrl})}
+    render(()=><ViewActivityProvider active={active}><NativeBrowserSurface container={()=>container} ownerKey="scope"/></ViewActivityProvider>,container)
+  `,
+  )
+  const server = await createBrowserFixture({
+    root: directory,
+    aliases: [
+      { find: "./browser-store", replacement: stub },
+      { find: "@/context/platform", replacement: stub },
+      { find: "@ericsanchezok/synergy-ui/context/dialog", replacement: stub },
+      { find: "@", replacement: path.resolve(import.meta.dir, "../../../../src") },
+    ],
+  })
+  const browser = await chromium.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    const errors: string[] = []
+    page.on("pageerror", (error) => errors.push(error.message))
+    await page.goto(server.url)
+    await page.waitForFunction(() => Reflect.get(window, "fixture")?.pending.length === 1)
+    const fresh = await page.evaluate(() => {
+      const f = Reflect.get(window, "fixture")
+      f.emit({ type: "native.cover", url: "https://example.test", dataUrl: f.fresh })
+      f.resolve(0, f.old)
+      return f.fresh as string
+    })
+    await page.waitForTimeout(80)
+    expect(await page.locator("#root img").getAttribute("src")).toBe(fresh)
+    await page.evaluate(() =>
+      Reflect.get(window, "fixture").setPage({ id: "invalid", url: "https://invalid.test", status: "active" }),
+    )
+    await page.waitForFunction(() => Reflect.get(window, "fixture").pending.length === 2)
+    await page.evaluate(() => Reflect.get(window, "fixture").resolve(1, "data:image/jpeg;base64,broken"))
+    await page.waitForTimeout(80)
+    expect(await page.locator("#root img").count()).toBe(0)
+    await page.evaluate(() =>
+      Reflect.get(window, "fixture").setPage({ id: "inactive", url: "https://inactive.test", status: "active" }),
+    )
+    await page.waitForFunction(() => Reflect.get(window, "fixture").pending.length === 3)
+    await page.evaluate(() => {
+      const f = Reflect.get(window, "fixture")
+      f.setActive(false)
+      f.resolve(2, f.old)
+    })
+    await page.waitForTimeout(80)
+    expect(await page.locator("#root img").count()).toBe(0)
+    await page.waitForTimeout(300)
+    expect(await page.evaluate(() => Reflect.get(window, "fixture").pending.length)).toBe(3)
+    expect(errors).toEqual([])
+  } finally {
+    await browser.close()
+    await server.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+}, 60000)

@@ -109,6 +109,8 @@ Reading-anchor candidates must intersect the viewport; check both its upper and 
 
 Cold latest navigation and return-to-latest establish viewport-owned follow intent rather than extending a component settling timeout. Delay body reads beyond that timeout and verify the latest reply remains visible, then exercise reading input and viewport replacement. Cancel queued jumps when reading begins; a pending forced frame cannot restore following after the user navigates away.
 
+For horizontally windowed execution charts, include viewport widths that do not divide evenly into the column count. Exercise native scrolling after a prepend while retaining keyboard focus; rounding at a column boundary must not add an extra visible request or move its anchor.
+
 ## Execution details
 
 When a structured file-change result already represents its receipt, render it once using the shared Review diff renderer: file headers, change counts, line numbers and syntax highlighting. Keep bounded code readable during highlighter startup. Use separately recorded per-file diffs for multi-file tools; do not reconstruct actual effects from requested edits or invent line positions across synthetic files. Omit per-file outcome prose and operation ledgers from Result. Preserve partial and unconfirmed outcomes in the header and keep complete receipts, execution metadata and diagnostics copyable in Parameters and diagnostics. Historical diffs may use their recorded file identity, never a guessed destination. Verify edit, revise_file and apply_patch, including partial/error, missing preview, long content and narrow layouts through the real renderer and App shell.

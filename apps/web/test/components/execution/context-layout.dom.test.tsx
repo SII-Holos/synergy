@@ -737,6 +737,8 @@ test("history navigation follows the latest requests and anchors manual browsing
 test("prepending earlier requests keeps the manually viewed window and its focused bar", async () => {
   await page.setViewportSize({ width: 560, height: 800 })
   await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
+  await page.locator(".context-chart-scroll").evaluate((el) => (el.style.width = "399px"))
+  await settleChart()
   const samples = Array.from({ length: 30 }, (_, i) => ({ tokens: 100 + i, elapsedMs: 4000 }))
   await chartSamples(samples, 100)
   await page.locator(".context-chart-scroll").evaluate((el) => el.scrollTo({ left: 0 }))

@@ -92,39 +92,34 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
     setBounds(active() && container ? nativeBounds(container.getBoundingClientRect()) : null)
   }
 
-  /**
-   * Electron composites the native WebContentsView above this document, so hiding it reveals
-   * whatever the document has already painted underneath. The manager's own still is produced
-   * only after the hide, which leaves one or two blank frames on every menu open. Keep one
-   * decoded still captured while the page is still shown and mounted beneath the native view
-   * instead, so the hide uncovers an already-painted image and adds no interaction latency.
-   */
+  // Native views sit above the renderer; overlays reveal the decoded still already painted underneath.
   async function captureCover(pageId: string) {
     const native = platform.browserNative
     if (!native?.pageAction) return
     const sequence = ++captureSequence
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
+      const capture = async () => {
+        const result = await native.pageAction({
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          ownerKey: props.ownerKey,
+          pageId,
+          action: { type: "cover" },
+        })
+        if (result.type !== "cover") return
+        const image = new Image()
+        image.src = result.dataUrl
+        await image.decode()
+        return { pageId, url: result.url, dataUrl: result.dataUrl }
+      }
       const result = await Promise.race([
-        native
-          .pageAction({
-            protocolVersion: BROWSER_PROTOCOL_VERSION,
-            ownerKey: props.ownerKey,
-            pageId,
-            action: { type: "cover" },
-          })
-          .catch(() => undefined),
+        capture().catch(() => undefined),
         new Promise<undefined>((resolve) => {
           timer = setTimeout(() => resolve(undefined), COVER_CAPTURE_TIMEOUT_MS)
         }),
       ])
-      if (disposed || sequence !== captureSequence || result?.type !== "cover") return
-      if (browser.pageId() !== pageId) return
-      const image = new Image()
-      image.src = result.dataUrl
-      await image.decode().catch(() => undefined)
-      if (disposed || sequence !== captureSequence || browser.pageId() !== pageId) return
-      setCover({ pageId, url: result.url, dataUrl: result.dataUrl })
+      if (disposed || sequence !== captureSequence || !coverMatchesPage(result, browser.page())) return
+      setCover(result)
     } finally {
       clearTimeout(timer)
     }
@@ -256,7 +251,10 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
       if (disposed || !visible() || browser.pageId() !== pageId) return
       void captureCover(pageId)
     }, COVER_SETTLE_MS)
-    onCleanup(() => clearTimeout(timer))
+    onCleanup(() => {
+      clearTimeout(timer)
+      captureSequence++
+    })
   })
 
   onCleanup(() => {

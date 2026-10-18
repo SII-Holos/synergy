@@ -12,6 +12,8 @@ Electron composites a page's `WebContentsView` above the renderer document, so a
 
 A capture is gated on an active, non-loading, non-blank page with finite bounds, a ready host and a visible surface. It is sequence-guarded against concurrent captures and page changes, races a 400 ms deadline so a stalled page cannot delay a later hide, and is rejected above `BROWSER_MAX_COVER_BYTES` (1.4 MB). Desktop re-verifies the page URL before and after capture and refuses an empty or navigated image. The hide-time still from Desktop still replaces the cached one once it arrives, so the visible image converges to the exact pre-hide content.
 
+Capture and image decoding share one deadline. A newer native cover, visibility change or page change invalidates the pending result; failed decoding cannot replace accepted content. Regression coverage holds an older response across a newer cover and across deactivation.
+
 ## Alternatives considered
 
 **Capture synchronously, then hide.** Rejected because the overlay would wait for an IPC round trip, a compositor capture and a decode before appearing. A 400 ms bound would still make routine menu opens feel unresponsive, and the delay would apply to every blocker including keyboard-driven ones.

@@ -12,6 +12,8 @@ The plot fits 24 requests or grouped rounds into its visible width and renders t
 
 Both vertical ranges use only the visible entries, retaining five independently calculated ticks. Category changes are calculated from the complete retained sequence before selecting the visible window, preserving the first visible request's predecessor and all recorded gaps. The existing bounded history storage and on-demand paging remain unchanged.
 
+Native scroll offsets within one CSS pixel of a request boundary resolve to that boundary. Fractional column widths and browser rounding must not add a phantom visible entry or move the saved anchor by a request. The prepend regression uses a viewport width that does not divide evenly into 24 columns.
+
 ## Alternatives considered
 
 **Compress every retained request into the viewport.** It preserves an overview but makes individual requests impractical to inspect as history grows.

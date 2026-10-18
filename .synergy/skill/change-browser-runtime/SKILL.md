@@ -75,6 +75,8 @@ For asynchronous Workspace opening, project a renderer-local tab before expansio
 
 Report the implemented behavior, local commits, generated contracts, automated checks and observed Desktop acceptance. Do not substitute mock-only checks for native behavior.
 
+For native still covers, hold prefetch replies across hide-time covers, page changes and deactivation. Require successful image decoding within the same deadline as capture, retain newer evidence, and verify inactive panels neither publish late images nor start retries.
+
 ## Local browser data
 
 Keep password values inside Desktop’s OS-encrypted store and native form operation. Never return them through IPC results, logs or Agent tools; sanitize page-controlled exceptions from filling. Filling requires the exact website origin and never submits. Website data clearing preserves saved passwords and history; profile removal explicitly clears them. File imports are bounded, cancellable, preserve duplicates by default and report unsupported rows without secret values. Test temporary profiles, interrupted imports, exact-origin matching and unavailable system encryption.
