@@ -456,6 +456,7 @@ export namespace SessionInbox {
     if (options?.allowSteer === false) return false
     if (items.some((item) => item.admission === "idle_no_reply" && item.status !== "failed")) return true
     if (!items.some((item) => item.mode === "steer" && item.status !== "failed")) return false
+    if ((await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback) return false
     return !!(await latestRootID(sessionID))
   }
 

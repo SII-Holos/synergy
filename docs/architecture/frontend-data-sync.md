@@ -474,6 +474,8 @@ Settings and the session toolbar use the same thinking choice component. Default
 
 ## Composer Interaction State
 
+Submitting an empty composer never pauses execution, including repeated Enter after an accepted send clears the draft. Pause belongs to the explicit primary control or stop shortcut; sending, model-readiness checks and attachment uploads do not own cancellation.
+
 The active Web Composer owns one in-memory document controller. A snapshot contains a monotonic revision, editable text, UTF-16 selection offsets, optional Session identity, and normal/shell mode. File pills and other non-editable nodes remain in the controller's private DOM mapping and edits crossing them are rejected. Completion, decoration, and edit APIs share this revision boundary, so an asynchronous result cannot mutate a newer draft.
 
 Composer snapshots, settled-draft notifications, selected-text snapshots, completion, and decorations are transient interaction state. They are not server snapshots, Scope store buckets, persisted records, global events, replay items, or reconnect-recovery inputs, and their text is not written to diagnostic logs. Scope/Session navigation and component or plugin-generation disposal cancel active callbacks instead of replaying them after remount.

@@ -69,7 +69,8 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
     const canResume = idleNoReply || (await SessionExecutionOwners.allowsResume(session))
     const newTask = !canResume && MessageV2.isHumanInput(input)
     if (!canResume && !newTask) await SessionExecutionOwners.assertResume(session)
-    const rootID = paused && canResume ? await SessionInbox.latestRootID(input.sessionID) : undefined
+    const rolledBack = paused && (await SessionHistory.storedInfo(input.sessionID))?.rollback?.canUnrollback === true
+    const rootID = paused && canResume && !rolledBack ? await SessionInbox.latestRootID(input.sessionID) : undefined
     item = await SessionInbox.enqueueUser(
       input,
       idleNoReply
@@ -126,7 +127,8 @@ export async function restoreInput(input: { sessionID: string; itemID: string })
 async function takeSessionBack(sessionID: string): Promise<void> {
   const session = await Session.get(sessionID)
   if (session.paused) await SessionManager.waitForIdle(sessionID)
-  if (session.paused && !SessionManager.isRunning(sessionID)) {
+  const rolledBack = session.paused && (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
+  if (session.paused && !rolledBack && !SessionManager.isRunning(sessionID)) {
     const runID = await SessionInbox.latestRootID(sessionID)
     if (runID) await RolloutLedger.resumeRun(RolloutLifecycle.owner(session), runID)
   }

@@ -3,7 +3,6 @@ import {
   canSubmitPrompt,
   resolvePromptSubmitIntent,
   shouldAllowPromptSubmit,
-  shouldBlockSubmitForUploadingAttachments,
   shouldRunComposerBeforeSubmit,
 } from "../../../src/components/prompt-input/submit-intent"
 
@@ -28,11 +27,12 @@ describe("prompt submit intent", () => {
     expect(resolvePromptSubmitIntent({ text: "Start this plan", working: false, hasBlueprintSlot: true })).toBe(
       "blueprint",
     )
-    expect(resolvePromptSubmitIntent({ text: "", working: true, hasBlueprintSlot: true })).toBe("abort")
+    expect(resolvePromptSubmitIntent({ text: "", working: true, hasBlueprintSlot: true })).toBe("blocked")
   })
 
-  test("treats empty submit while running as abort", () => {
-    expect(resolvePromptSubmitIntent({ text: "", working: true, hasBlueprintSlot: false })).toBe("abort")
+  test("an empty or repeated submit cannot pause the running task", () => {
+    expect(resolvePromptSubmitIntent({ text: "", working: true, hasBlueprintSlot: false })).toBe("blocked")
+    expect(resolvePromptSubmitIntent({ text: "  ", working: true, hasBlueprintSlot: false })).toBe("blocked")
   })
 })
 
@@ -42,26 +42,13 @@ describe("prompt submit readiness", () => {
   })
 
   test("keeps variant-independent submits available while intent is unresolved", () => {
-    expect(shouldAllowPromptSubmit({ intent: "abort", variantReady: false, requiresVariant: true })).toBe(true)
     expect(shouldAllowPromptSubmit({ intent: "message", variantReady: false, requiresVariant: false })).toBe(true)
     expect(shouldAllowPromptSubmit({ intent: "blueprint", variantReady: false, requiresVariant: false })).toBe(true)
   })
 
   test("allows variant-dependent submits after intent resolves", () => {
     expect(shouldAllowPromptSubmit({ intent: "message", variantReady: true, requiresVariant: true })).toBe(true)
-  })
-})
-
-describe("uploading attachment submit gate", () => {
-  test("blocks message and blueprint submits while attachments upload", () => {
-    expect(shouldBlockSubmitForUploadingAttachments({ uploading: true, intent: "message" as const })).toBe(true)
-    expect(shouldBlockSubmitForUploadingAttachments({ uploading: true, intent: "blueprint" as const })).toBe(true)
-    expect(shouldBlockSubmitForUploadingAttachments({ uploading: true, intent: "blocked" as const })).toBe(true)
-  })
-
-  test("keeps stop-session available and idle uploads sendable", () => {
-    expect(shouldBlockSubmitForUploadingAttachments({ uploading: true, intent: "abort" as const })).toBe(false)
-    expect(shouldBlockSubmitForUploadingAttachments({ uploading: false, intent: "message" as const })).toBe(false)
+    expect(shouldAllowPromptSubmit({ intent: "blocked", variantReady: true, requiresVariant: false })).toBe(false)
   })
 })
 
@@ -78,11 +65,10 @@ describe("shouldRunComposerBeforeSubmit", () => {
     expect(shouldRunComposerBeforeSubmit(ordinary)).toBe(true)
   })
 
-  test("excludes shell, commands, empty/abort, Blueprint, and Light Loop starts", () => {
+  test("excludes shell, commands, empty input, Blueprint, and Light Loop starts", () => {
     expect(shouldRunComposerBeforeSubmit({ ...ordinary, mode: "shell" })).toBe(false)
     expect(shouldRunComposerBeforeSubmit({ ...ordinary, slashKind: "backend-action" })).toBe(false)
     expect(shouldRunComposerBeforeSubmit({ ...ordinary, intent: "blocked" })).toBe(false)
-    expect(shouldRunComposerBeforeSubmit({ ...ordinary, intent: "abort" })).toBe(false)
     expect(shouldRunComposerBeforeSubmit({ ...ordinary, hasBlueprintSlot: true })).toBe(false)
     expect(shouldRunComposerBeforeSubmit({ ...ordinary, pendingLightLoop: true })).toBe(false)
   })

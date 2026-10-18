@@ -1883,8 +1883,7 @@ export namespace SessionInvoke {
                 })
               }
 
-              const rollbackActive = (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
-              if (await SessionInbox.hasRunnableItem(sessionID, { allowSteer: !rollbackActive })) {
+              if (await SessionInbox.hasRunnableItem(sessionID)) {
                 log.info("runnable inbox items detected, re-entering loop", { sessionID })
                 return true
               }
