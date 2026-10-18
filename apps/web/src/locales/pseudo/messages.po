@@ -8306,6 +8306,10 @@ msgid "app.rawMessages.title"
 msgstr "⟦Raw messages⟧"
 
 #. js-lingui-explicit-id
+msgid "app.reference.assetSource"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.reference.browserUnavailable"
 msgstr ""
 
@@ -8319,6 +8323,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.reference.fileSource"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.imageSource"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -8346,6 +8354,10 @@ msgid "app.reference.open"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.reference.openAttachment"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.reference.openBrowser"
 msgstr ""
 
@@ -8362,7 +8374,15 @@ msgid "app.reference.openFile"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.reference.openImage"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.reference.openNote"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.openWebsite"
 msgstr ""
 
 #. js-lingui-explicit-id

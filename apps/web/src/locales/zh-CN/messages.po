@@ -8306,6 +8306,10 @@ msgid "app.rawMessages.title"
 msgstr "原始消息"
 
 #. js-lingui-explicit-id
+msgid "app.reference.assetSource"
+msgstr "附件"
+
+#. js-lingui-explicit-id
 msgid "app.reference.browserUnavailable"
 msgstr "应用内浏览器正在重新连接。你可以重试，或在系统浏览器中打开此链接。"
 
@@ -8320,6 +8324,10 @@ msgstr "复制引用"
 #. js-lingui-explicit-id
 msgid "app.reference.fileSource"
 msgstr "工作区文件"
+
+#. js-lingui-explicit-id
+msgid "app.reference.imageSource"
+msgstr "图片"
 
 #. js-lingui-explicit-id
 msgid "app.reference.invalid"
@@ -8343,7 +8351,11 @@ msgstr "原工作区不可用，请选择工作区来打开这条引用。"
 
 #. js-lingui-explicit-id
 msgid "app.reference.open"
-msgstr "打开引用"
+msgstr "打开"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openAttachment"
+msgstr "打开文件"
 
 #. js-lingui-explicit-id
 msgid "app.reference.openBrowser"
@@ -8362,8 +8374,16 @@ msgid "app.reference.openFile"
 msgstr "在文件中打开"
 
 #. js-lingui-explicit-id
+msgid "app.reference.openImage"
+msgstr "打开图片"
+
+#. js-lingui-explicit-id
 msgid "app.reference.openNote"
 msgstr "在笔记中打开"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openWebsite"
+msgstr "打开网页"
 
 #. js-lingui-explicit-id
 msgid "app.reference.outsideWorkspace"
@@ -8375,11 +8395,11 @@ msgstr "引用的页码超出了文档范围，已显示最后一页。"
 
 #. js-lingui-explicit-id
 msgid "app.reference.previewSignIn"
-msgstr "请打开此页面以查看需要登录的内容。"
+msgstr "需要登录"
 
 #. js-lingui-explicit-id
 msgid "app.reference.previewUnavailable"
-msgstr "暂无预览，你仍可打开这条引用。"
+msgstr "暂无预览"
 
 #. js-lingui-explicit-id
 msgid "app.reference.searchWorkspace"

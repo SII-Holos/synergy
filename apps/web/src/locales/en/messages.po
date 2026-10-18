@@ -8306,6 +8306,10 @@ msgid "app.rawMessages.title"
 msgstr "Raw messages"
 
 #. js-lingui-explicit-id
+msgid "app.reference.assetSource"
+msgstr "Attachment"
+
+#. js-lingui-explicit-id
 msgid "app.reference.browserUnavailable"
 msgstr "The in-app browser is unavailable. Retry or open this link in your system browser."
 
@@ -8320,6 +8324,10 @@ msgstr "Copy reference"
 #. js-lingui-explicit-id
 msgid "app.reference.fileSource"
 msgstr "Workspace file"
+
+#. js-lingui-explicit-id
+msgid "app.reference.imageSource"
+msgstr "Image"
 
 #. js-lingui-explicit-id
 msgid "app.reference.invalid"
@@ -8343,7 +8351,11 @@ msgstr "The source workspace is unavailable. Choose a workspace to open this ref
 
 #. js-lingui-explicit-id
 msgid "app.reference.open"
-msgstr "Open reference"
+msgstr "Open"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openAttachment"
+msgstr "Open file"
 
 #. js-lingui-explicit-id
 msgid "app.reference.openBrowser"
@@ -8362,8 +8374,16 @@ msgid "app.reference.openFile"
 msgstr "Open in Files"
 
 #. js-lingui-explicit-id
+msgid "app.reference.openImage"
+msgstr "Open image"
+
+#. js-lingui-explicit-id
 msgid "app.reference.openNote"
 msgstr "Open in Notes"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openWebsite"
+msgstr "Open website"
 
 #. js-lingui-explicit-id
 msgid "app.reference.outsideWorkspace"
@@ -8375,11 +8395,11 @@ msgstr "The requested page is outside this document. Showing the last page."
 
 #. js-lingui-explicit-id
 msgid "app.reference.previewSignIn"
-msgstr "Open this page to view content that requires sign-in."
+msgstr "Sign-in required"
 
 #. js-lingui-explicit-id
 msgid "app.reference.previewUnavailable"
-msgstr "A preview isn’t available. You can still open the reference."
+msgstr "Preview unavailable"
 
 #. js-lingui-explicit-id
 msgid "app.reference.searchWorkspace"
