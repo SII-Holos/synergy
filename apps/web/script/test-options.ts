@@ -70,6 +70,7 @@ const playwrightIsolated = [
   "test/components/session/conversation-reading-anchor.dom.test.ts",
   "test/components/session/conversation-background-return.dom.test.ts",
   "test/components/session/conversation-process-disclosure.dom.test.ts",
+  "test/components/session/conversation-long-process.dom.test.ts",
   "test/components/session/conversation-process-reading.dom.test.ts",
   "test/components/session/conversation-process-virtualization.dom.test.ts",
   "test/components/session/conversation-presentation.dom.test.ts",

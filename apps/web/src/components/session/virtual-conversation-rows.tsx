@@ -538,6 +538,10 @@ export function VirtualConversationRows(
               ref={layout.ref}
               data={keys()}
               itemKey={(key) => key}
+              observeContent={(key) => {
+                const row = byKey().get(key)
+                return active() && row?.kind === "body" && !row.exiting
+              }}
               shift={rowLayout().shift}
               scrollRef={input.scrollRef}
               startMargin={margin()}
@@ -639,7 +643,8 @@ function ConversationDisplayRow(
     visible: () => !row().exiting,
     animate: () => !!row().motion || (motionReady() && !props.scrolledUp()),
     appear: () => !!entrance && row().motion === entrance,
-    resize: () => !!row().motion || row().kind !== "activity",
+    // Shrinking each virtual row during manual disclosure admits offscreen bodies and corrupts placement.
+    resize: () => !row().motion && row().kind !== "activity",
     onHidden: () => input.onExit(row().key),
     onSettled: () => input.onMotionReleased?.(row().motion),
   })

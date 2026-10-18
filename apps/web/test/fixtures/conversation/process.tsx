@@ -164,7 +164,14 @@ if (scenario) {
     part("work", "command-0", "tool"),
   ])
   if (scenario === "pending-refresh") faults.set("progress", "pending")
-  else if (scenario !== "late-reconnect" && scenario !== "tool-follow" && scenario !== "background")
+  else if (
+    scenario !== "late-reconnect" &&
+    scenario !== "tool-follow" &&
+    scenario !== "background" &&
+    scenario !== "long-prose" &&
+    scenario !== "previous-answer" &&
+    scenario !== "long-history"
+  )
     faults.set(
       "progress",
       scenario === "mixed"
@@ -198,6 +205,72 @@ if (scenario === "cold-process") {
   setStatus("completed")
   for (const item of data.part.more) faults.set(item.id, "pending")
 }
+if (scenario === "long-prose") {
+  setData(
+    "part",
+    "more",
+    Array.from({ length: 120 }, (_, index) =>
+      part(
+        "more",
+        `long-${index}`,
+        "text",
+        `中间过程 ${index}。\n\n${"检查已有证据，保留当前阅读位置，继续分析下一处实现。".repeat(12 + (index % 6) * 7)}\n\n[证据 ${index}](https://example.com/evidence/${index})`,
+      ),
+    ),
+  )
+  if (new URL(location.href).searchParams.has("mixed-history")) {
+    setData(
+      "part",
+      "more",
+      Array.from({ length: 12 }, (_, index) => [
+        part("more", `mixed-tool-${index}`, "tool"),
+        part(
+          "more",
+          `mixed-text-${index}`,
+          "text",
+          `中间记录 ${index}。${"检查已有证据，继续分析下一处实现。".repeat(3 + (index % 4))}`,
+        ),
+      ]).flat(),
+    )
+    setData("part", "final", [part("final", "answer", "text", "最终结果。\n\n" + "完整的结果保持可见。".repeat(150))])
+    setData("message", "session", [root, more, { ...final, time: { created: 2, completed: 10 } }])
+    setStatus("completed")
+    if (new URL(location.href).searchParams.has("hold-answer")) faults.set("answer", "pending")
+  }
+  if (new URL(location.href).searchParams.has("collapsed")) setExpanded("turn-process:root", false)
+}
+if (scenario === "previous-answer") {
+  const previous = { ...root, id: "previous-root", rootID: "previous-root", time: { created: 0 } }
+  const previousAnswer = {
+    ...assistant("previous-answer", "stop"),
+    rootID: previous.id,
+    parentID: previous.id,
+    time: { created: 0, completed: 1 },
+  }
+  setData("part", previous.id, [part(previous.id, "previous-request", "text", "Earlier request")])
+  setData("part", previousAnswer.id, [
+    part(
+      previousAnswer.id,
+      "previous-answer-body",
+      "text",
+      Array.from(
+        { length: 40 },
+        (_, index) => `## Evidence ${index}\n\n${"Earlier accepted evidence remains readable. ".repeat(8)}`,
+      ).join("\n\n"),
+    ),
+  ])
+  setData("part", "final", [
+    part(
+      "final",
+      "answer",
+      "text",
+      "Current result remains visible.\n\n" + "Current accepted evidence remains readable. ".repeat(100),
+    ),
+  ])
+  setData("message", "session", [previous, previousAnswer, root, { ...final, time: { created: 2, completed: 10 } }])
+  setStatus("completed")
+  faults.set("previous-answer-body", "pending")
+}
 if (scenario === "cold-user") {
   setData(
     "part",
@@ -224,16 +297,35 @@ if (new URL(location.href).searchParams.has("initial-page")) {
   setData("part", "root", [])
   setPendingPage("root")
 }
+if (scenario === "long-history") {
+  setData("message", "session", [root, { ...final, time: { created: 2, completed: 3 } }])
+  setData("part", "final", [
+    part(
+      "final",
+      "history-answer",
+      "text",
+      "Current history anchor. " + "Keep the accepted reply readable. ".repeat(100),
+    ),
+  ])
+  setStatus("completed")
+  setActivity(undefined)
+}
+
 const canonicalParts =
   scenario === "background" ||
   scenario === "late-reconnect" ||
   scenario === "pending-refresh" ||
   scenario === "cold-process" ||
+  scenario === "long-prose" ||
+  scenario === "previous-answer" ||
+  scenario === "long-history" ||
   scenario === "cold-user"
     ? new Map(Object.entries(data.part).map(([id, parts]) => [id, [...parts]]))
     : undefined
 if (scenario === "pending-refresh") setData("part", "work", (parts) => parts.filter((part) => part.id !== "progress"))
 if (scenario === "cold-process") setData("part", "more", [])
+if (scenario === "long-prose") setData("part", "more", [])
+if (scenario === "previous-answer") setData("part", "previous-answer", [])
 if (scenario === "cold-user") setData("part", "root", [])
 const scrolling = new URL(location.href).searchParams.has("scrolling")
 let summaryReads = 0
@@ -246,7 +338,10 @@ const summaries = createMemo(() =>
         preview: "",
         status: p.type === "tool" ? p.state.status : undefined,
         reasoningKey: p.type === "reasoning" ? reasoningItemKey(p.metadata) : undefined,
-        content: { version: versions[p.id] ?? "v1", bytes: 64 },
+        content: {
+          version: versions[p.id] ?? "v1",
+          bytes: scenario === "long-prose" ? new TextEncoder().encode(JSON.stringify(p)).length : 64,
+        },
       })),
     ]),
   ),
@@ -270,6 +365,22 @@ const client = createSynergyClient({
       const url = new URL(request instanceof Request ? request.url : String(request))
       const id = url.pathname.split("/").at(-2)!
       reads.set(id, (reads.get(id) ?? 0) + 1)
+      const delay = Number(new URL(location.href).searchParams.get("body-delay"))
+      if (delay > 0)
+        await new Promise<void>((resolve, reject) => {
+          const signal = request instanceof Request ? request.signal : undefined
+          const timer = setTimeout(() => {
+            signal?.removeEventListener("abort", abort)
+            resolve()
+          }, delay)
+          const abort = () => {
+            clearTimeout(timer)
+            aborts.set(id, (aborts.get(id) ?? 0) + 1)
+            reject(signal?.reason)
+          }
+          signal?.addEventListener("abort", abort, { once: true })
+          if (signal?.aborted) abort()
+        })
       const fault = faults.get(id)
       if (fault === "conflict" || fault === "stalled") {
         if (fault === "conflict") faults.delete(id)
@@ -376,7 +487,10 @@ const context: Partial<PluginConversationService> = {
         preview: "",
         status: p.type === "tool" ? p.state.status : undefined,
         reasoningKey: p.type === "reasoning" ? reasoningItemKey(p.metadata) : undefined,
-        content: { version: versions[p.id] ?? "v1", bytes: 64 },
+        content: {
+          version: versions[p.id] ?? "v1",
+          bytes: scenario === "long-prose" ? new TextEncoder().encode(JSON.stringify(p)).length : 64,
+        },
       }))
     },
     page: (id) =>
@@ -672,9 +786,29 @@ window.__conversationProcess = {
         time: { created: -count + index },
       }),
     )
-    for (const message of older)
+    const messages: (UserMessage | AssistantMessage)[] = []
+    for (const [index, message] of older.entries()) {
       setData("part", message.id, [part(message.id, `${message.id}-text`, "text", `Earlier turn ${message.id}`)])
-    setData("message", "session", (messages) => [...older, ...messages])
+      messages.push(message)
+      if (scenario !== "long-history" || index < count - 3) continue
+      const reply = {
+        ...assistant(`${message.id}-reply`, "stop"),
+        parentID: message.id,
+        rootID: message.id,
+        time: { created: message.time.created + 0.1, completed: message.time.created + 0.2 },
+      }
+      canonicalParts!.set(reply.id, [
+        part(
+          reply.id,
+          `${reply.id}-body`,
+          "text",
+          `Earlier accepted reply ${index}. ` + "Historical evidence remains readable. ".repeat(300),
+        ),
+      ])
+      setData("part", reply.id, [])
+      messages.push(reply)
+    }
+    setData("message", "session", (current) => [...messages, ...current])
     setHistoryMore(more)
   },
   prepend(count: number) {
@@ -827,6 +961,7 @@ function Scroller(props: ParentProps) {
         "max-width": "100%",
       }}
       data-scroller
+      data-hydrated={hydrated()}
     >
       <div ref={(element) => autoScroll?.contentRef(element)} style={{ overflow: "clip" }}>
         <div ref={setMotionTarget} data-follow-motion>
