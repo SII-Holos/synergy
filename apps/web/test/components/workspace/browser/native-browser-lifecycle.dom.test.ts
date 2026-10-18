@@ -18,7 +18,7 @@ test("a retained native surface hides for overlays and detaches while its sessio
     export const [active,setActive]=createSignal(true),[overlay,setOverlay]=createSignal(false)
     export const calls=[]
     const page={id:'page',url:'https://example.test'}
-    const browser={presentation:()=>({kind:'native'}),page:()=>page,pageId:()=>page.id,fileChooserRequest:()=>null,dialogRequest:()=>null,controlsOpen:()=>false,addressSuggestionsOpen:()=>false,browserError:()=>null,annotationTarget:()=>null,viewportWidth:()=>800,viewportHeight:()=>600,setBrowserError(){}}
+    const browser={presentation:()=>({kind:'native'}),page:()=>page,pageId:()=>page.id,hostStatus:()=>'ready',fileChooserRequest:()=>null,dialogRequest:()=>null,controlsOpen:()=>false,addressSuggestionsOpen:()=>false,browserError:()=>null,annotationTarget:()=>null,viewportWidth:()=>800,viewportHeight:()=>600,setBrowserError(){}}
     export const useBrowser=()=>browser
     export const useDialog=()=>({get active(){return overlay()}})
     export const usePlatform=()=>({browserNative:{attachView:async input=>{calls.push(['attach',input.visible])},resizeView:async()=>{},detachView:async()=>{calls.push(['detach'])}}})

@@ -10,6 +10,7 @@ export const BrowserPageActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("zoom"), factor: z.number().min(0.25).max(5) }).strict(),
   z.object({ type: z.literal("print") }).strict(),
   z.object({ type: z.literal("pdf") }).strict(),
+  z.object({ type: z.literal("cover") }).strict(),
   z.object({ type: z.literal("capture"), fullPage: z.boolean() }).strict(),
 ])
 export type BrowserPageAction = z.infer<typeof BrowserPageActionSchema>
@@ -21,6 +22,7 @@ export type BrowserPageActionResult =
   | { type: "state"; back: boolean; forward: boolean; zoom: number }
   | { type: "find"; matches: number; active: number }
   | { type: "zoom"; factor: number }
+  | { type: "cover"; dataUrl: string; url: string }
   | { type: "capture"; dataUrl: string; width: number; height: number; url: string; title: string; capturedAt: number }
   | { type: "done"; cancelled?: boolean }
 

@@ -1,5 +1,6 @@
 const WINDOWS_RESERVED_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i
 export const BROWSER_MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
+export const BROWSER_MAX_COVER_BYTES = 1_400_000
 
 export function browserDownloadExceedsLimit(...values: number[]): boolean {
   return values.some((value) => Number.isFinite(value) && value > BROWSER_MAX_DOWNLOAD_BYTES)

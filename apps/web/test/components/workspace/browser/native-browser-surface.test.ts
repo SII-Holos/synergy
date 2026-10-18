@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 import {
   nativeBounds,
   nativeBrowserViewVisible,
+  shouldCaptureCover,
+  coverMatchesPage,
 } from "../../../../src/components/workspace/browser/native-browser-surface"
 
 describe("nativeBounds", () => {
@@ -58,4 +60,41 @@ test("native presentation stays hidden until every Browser overlay closes", () =
   expect(nativeBrowserViewVisible({ ...base, workspaceMenuOpen: false, controlsOpen: true })).toBe(false)
   expect(nativeBrowserViewVisible({ ...base, workspaceMenuOpen: true, controlsOpen: false })).toBe(false)
   expect(nativeBrowserViewVisible({ ...base, controlsOpen: false, annotationOpen: false })).toBe(true)
+})
+
+describe("shouldCaptureCover", () => {
+  const ready = {
+    visible: true,
+    hostReady: true,
+    hasBounds: true,
+    page: { status: "active", isLoading: false, url: "https://example.test" },
+  }
+
+  test("precaptures only while a settled page is actually shown", () => {
+    expect(shouldCaptureCover(ready)).toBe(true)
+    expect(shouldCaptureCover({ ...ready, visible: false })).toBe(false)
+    expect(shouldCaptureCover({ ...ready, hostReady: false })).toBe(false)
+    expect(shouldCaptureCover({ ...ready, hasBounds: false })).toBe(false)
+    expect(shouldCaptureCover({ ...ready, page: null })).toBe(false)
+  })
+
+  test("skips pages that cannot produce a useful still", () => {
+    expect(shouldCaptureCover({ ...ready, page: { status: "suspended", url: "https://example.test" } })).toBe(false)
+    expect(
+      shouldCaptureCover({ ...ready, page: { status: "active", isLoading: true, url: "https://example.test" } }),
+    ).toBe(false)
+    expect(shouldCaptureCover({ ...ready, page: { status: "active", url: "about:blank" } })).toBe(false)
+    expect(shouldCaptureCover({ ...ready, page: { status: "active", url: "" } })).toBe(false)
+  })
+})
+
+describe("coverMatchesPage", () => {
+  test("accepts a still only for the page and URL it was captured from", () => {
+    const page = { id: "page-1", url: "https://example.test" }
+    expect(coverMatchesPage({ pageId: "page-1", url: "https://example.test" }, page)).toBe(true)
+    expect(coverMatchesPage({ pageId: "page-2", url: "https://example.test" }, page)).toBe(false)
+    expect(coverMatchesPage({ pageId: "page-1", url: "https://example.test/next" }, page)).toBe(false)
+    expect(coverMatchesPage(undefined, page)).toBe(false)
+    expect(coverMatchesPage({ pageId: "page-1", url: "https://example.test" }, null)).toBe(false)
+  })
 })
