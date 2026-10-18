@@ -116,7 +116,7 @@ Migration execution is independent of data scope. `startup` admits only required
 
 Record-only migrations may declare `emptyInput` prefixes only when absence of every input guarantees that their body has no effects. Startup checks those prefixes and writes consecutive completion markers in one ownership-fenced transaction. Each ordinary migration ends the batch, so newly introduced records are checked again. Deferred historical input and existing cohorts disable the shortcut; filesystem, snapshot ownership, configuration and schema preparation still use their own migration bodies. On-access registrations may share the same completion transaction without running their per-Session transformations. A failed commit does not publish any completion from the batch.
 
-Startup migrations with a read-only `isApplied` proof can join that completion transaction. A false proof preserves the ordinary body and a failed proof rolls back the group. The immediate-root index can prove a nested input absent; an existing root still requires the exact prefix probe. These proofs are local to the transaction and cannot skip later changes made by an ordinary migration.
+Startup migrations with a read-only `isApplied` proof can join that completion transaction. A false proof preserves the ordinary body and a failed proof rolls back the group. Empty-input proofs query each declared prefix directly with a one-record limit, without enumerating unrelated storage roots. These proofs are local to the transaction and cannot skip later changes made by an ordinary migration.
 
 ## Full tool outputs
 
