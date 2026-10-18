@@ -307,39 +307,66 @@ test("opening cold long prose bounds body demand instead of reading the entire h
   expect(Math.max(...Object.values(reads))).toBe(1)
 }, 30000)
 
-test.each(["index.mjs", "index.jsx"] as const)(
-  "cold history body admission moves neighbouring rows in the same painted frame (%s)",
-  async (entry) => {
+test.each([
+  { entry: "index.mjs", delay: 0 },
+  { entry: "index.mjs", delay: 80 },
+  { entry: "index.jsx", delay: 0 },
+  { entry: "index.jsx", delay: 80 },
+] as const)(
+  "cold body admission moves neighbouring rows in the same rendered frame (%j)",
+  async ({ entry, delay }) => {
     const alternate = entry === "index.jsx" ? await fixtureServer(entry) : undefined
     const target = alternate ? await browser.newPage() : page
     await observeResizeErrors(target)
     try {
-      await target.goto(`${alternate?.url ?? url}?content=long-prose&collapsed&body-delay=80`)
+      await target.goto(`${alternate?.url ?? url}?content=long-prose&collapsed&body-delay=${delay}`)
       await target.locator('[data-scroller][data-hydrated="true"]').waitFor()
       await target.locator('[data-slot="turn-process-trigger"]').waitFor()
       const trace = await target.evaluate(async () => {
-        document.querySelector<HTMLButtonElement>('[data-slot="turn-process-trigger"]')!.click()
+        // ResizeObserver samples this rendering update after frame callbacks, before paint.
+        // https://www.w3.org/TR/resize-observer/#html-processing-model-event-loop
+        const probe = document.createElement("div")
+        probe.style.cssText = "position:fixed;left:-100px;top:0;width:1px;height:1px;visibility:hidden;contain:strict"
+        document.body.append(probe)
+        let onLayout: (() => void) | undefined
+        const observer = new ResizeObserver(() => {
+          const ready = onLayout
+          onLayout = undefined
+          ready?.()
+        })
+        observer.observe(probe)
         const trace = []
-        for (let frame = 0; frame < 90; frame++) {
-          await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
-          const view = document.querySelector("[data-scroller]")!.getBoundingClientRect()
-          const rows = [...document.querySelectorAll<HTMLElement>("[data-display-row]")].filter(
-            (row) =>
-              row.checkVisibility({ visibilityProperty: true, opacityProperty: true }) &&
-              row.getBoundingClientRect().bottom > view.top &&
-              row.getBoundingClientRect().top < view.bottom,
-          )
-          trace.push(
-            rows.map((row) => ({
-              key: row.dataset.displayRow,
-              top: row.getBoundingClientRect().top,
-              bottom: row.getBoundingClientRect().bottom,
-              pending: row.hasAttribute("data-content-pending"),
-              transform: getComputedStyle(row).transform,
-            })),
-          )
+        try {
+          document.querySelector<HTMLButtonElement>('[data-slot="turn-process-trigger"]')!.click()
+          for (let frame = 0; frame < 90; frame++) {
+            await new Promise<void>((resolve) =>
+              requestAnimationFrame(() => {
+                onLayout = resolve
+                probe.style.width = `${2 - (frame % 2)}px`
+              }),
+            )
+            const view = document.querySelector("[data-scroller]")!.getBoundingClientRect()
+            const rows = [...document.querySelectorAll<HTMLElement>("[data-display-row]")].filter(
+              (row) =>
+                row.checkVisibility({ visibilityProperty: true, opacityProperty: true }) &&
+                row.getBoundingClientRect().bottom > view.top &&
+                row.getBoundingClientRect().top < view.bottom,
+            )
+            trace.push(
+              rows.map((row) => ({
+                key: row.dataset.displayRow,
+                top: row.getBoundingClientRect().top,
+                bottom: row.getBoundingClientRect().bottom,
+                pending: row.hasAttribute("data-content-pending"),
+                transform: getComputedStyle(row).transform,
+              })),
+            )
+          }
+          return trace
+        } finally {
+          observer.disconnect()
+          probe.remove()
         }
-        return trace
       })
       expect(trace.every((rows) => rows.length > 0)).toBe(true)
       expect(
