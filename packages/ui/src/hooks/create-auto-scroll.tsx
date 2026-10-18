@@ -153,6 +153,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const beginMovement = () => {
     navigating = false
+    if (scroll && Math.abs(scroll.scrollTop - (anchoredScrollTop ?? previousOffset)) > 0.5) clearReadingAnchor()
     anchoredScrollTop = undefined
     movementOffset = scroll?.scrollTop
   }

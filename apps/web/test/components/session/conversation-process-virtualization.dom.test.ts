@@ -10,6 +10,58 @@ import {
   frames,
 } from "../../support/conversation-process"
 
+test.each(
+  (["index.mjs", "index.jsx"] as const).flatMap((entry) => [false, true].map((prepend) => ({ entry, prepend }))),
+)(
+  "content measurement preserves native wheel movement before scroll delivery (%j)",
+  async ({ entry, prepend }) => {
+    const alternate = entry === "index.jsx" ? await fixtureServer(entry) : undefined
+    const target = alternate ? await browser.newPage() : page
+    try {
+      await target.goto(`${alternate?.url ?? url}keyed.html?native-movement`)
+      await target.waitForFunction(() => window.keyedLayout?.measure()[0]?.size === 2600)
+      const positions = await target.evaluate(async (prepend) => {
+        const view = window.keyedLayout.viewport()
+        view.scrollTop = 3000
+        for (let frame = 0; frame < 3; frame++) await new Promise(requestAnimationFrame)
+        if (prepend) {
+          window.keyedLayout.prepend()
+          for (let frame = 0; frame < 2; frame++) await new Promise(requestAnimationFrame)
+        }
+        view.scrollTop = 0
+        view.dispatchEvent(new WheelEvent("wheel", { deltaY: -3000, bubbles: true }))
+        document.querySelector<HTMLElement>('[data-row="prefix"] > div')!.style.height = "2800px"
+        const positions = []
+        for (let frame = 0; frame < 24; frame++) {
+          await new Promise(requestAnimationFrame)
+          positions.push(view.scrollTop)
+        }
+        return positions
+      }, prepend)
+      expect(Math.max(...positions)).toBeLessThanOrEqual(1)
+      expect(await target.evaluate(() => window.keyedLayout.measure().find((row) => row.id === "prefix")!.size)).toBe(
+        2800,
+      )
+      const compensated = await target.evaluate(async () => {
+        const view = window.keyedLayout.viewport()
+        view.scrollTop = 3000
+        for (let frame = 0; frame < 3; frame++) await new Promise(requestAnimationFrame)
+        view.dispatchEvent(new WheelEvent("wheel", { deltaY: -500, bubbles: true }))
+        document.querySelector<HTMLElement>('[data-row="prefix"] > div')!.style.height = "3000px"
+        for (let frame = 0; frame < 24; frame++) await new Promise(requestAnimationFrame)
+        return view.scrollTop
+      })
+      expect(compensated).toBe(3200)
+    } finally {
+      if (alternate) {
+        await target.close()
+        await alternate.close()
+      }
+    }
+  },
+  30000,
+)
+
 test.each(["index.mjs", "index.jsx"] as const)(
   "keyed middle edits preserve retained measurements before the next resize (%s)",
   async (entry) => {

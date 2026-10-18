@@ -13,6 +13,7 @@ const answer = { id: "answer", height: 2034.75 }
 const footer = { id: "footer", height: 40 }
 const following = new URL(location.href).searchParams.has("following")
 const underflow = new URL(location.href).searchParams.has("underflow")
+const nativeMovement = new URL(location.href).searchParams.has("native-movement")
 const [rows, setRows] = createSignal(
   underflow
     ? [{ id: "history-11", height: 580 }]
@@ -48,6 +49,7 @@ render(() => {
             scrollRef={viewport}
             data={rows()}
             itemKey={(row) => row.id}
+            observeContent={nativeMovement ? () => "sync" : undefined}
             shift={shift()}
             keepMounted={rows().map((_, index) => index)}
           >

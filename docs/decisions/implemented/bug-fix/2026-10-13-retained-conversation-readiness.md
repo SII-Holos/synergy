@@ -40,4 +40,6 @@ Cold transcript visibility waits for real dependencies rather than a fixed delay
 
 The [background-return browser regression](../../../../apps/web/test/components/session/conversation-background-return.dom.test.ts) combines working/completed tasks, following/reading and immediate/delayed bodies. The [production acceptance](../../../../apps/web/test/fixtures/workbench/verify-background-return.ts) runs the complete application, generated SDK, inference stream and storage with frame capture and body-read counts.
 
+Production cold-return frame checks include delayed neighbouring bodies and sample during rendering updates. They require complete visible content and stable viewport-relative body/footer geometry, while recording total scroll extent separately. Overscan preparation can change extent and scroll offset together without moving the reader's content; requiring both values to remain constant would reject correct compensation. Visible pending content and transient position changes remain failures under the same pixel threshold.
+
 The [conversation owner regression](../../../../apps/web/test/components/session/conversation-row-retention.test.ts) holds a real execution-summary controller pending through cold admission and retained hydration, then fails and cancels its reads. It preserves root-execution readiness, transcript nodes and bounded request counts.
