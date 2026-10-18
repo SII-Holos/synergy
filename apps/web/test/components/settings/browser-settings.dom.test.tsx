@@ -20,6 +20,7 @@ interface FixtureWindow extends Window {
     finishImport(): void
     openUnrelated(): void
     closeUnrelated(): void
+    importError(error: string): void
   }
 }
 beforeAll(async () => {
@@ -31,7 +32,7 @@ beforeAll(async () => {
     `
     import { batch, createSignal } from "solid-js"
     const [selection,setSelection]=createSignal(), [managed,setManaged]=createSignal(true), [status,setStatus]=createSignal("ready"), [serverUrl,setServerUrl]=createSignal("http://same-url.test")
-    const counts={requests:[],native:[],probes:0,settledImports:0};let hold=false,finish=()=>{},holdImport=false,finishImport=()=>{}
+    const counts={requests:[],native:[],probes:0,settledImports:0};let hold=false,finish=()=>{},holdImport=false,finishImport=()=>{},importError=null
     const profile={id:"personal",name:"Personal",enabled:true,kind:"persistent",revision:1,createdAt:1,origins:{}}
     const other={...profile,id:"other",name:"Other"}
     export const sdk={get url(){return serverUrl()},capabilities:{current:selection,has:id=>id==="browser" && selection()?.features.includes(id)},client:{browser:{
@@ -43,12 +44,12 @@ beforeAll(async () => {
     const bridge={
       presentationCapability:async ()=>{counts.probes++;const reply={protocolVersion:${BROWSER_PROTOCOL_VERSION},managedLocal:managed(),status:status()};if(hold) await new Promise(resolve=>finish=resolve);return reply},
       createPresentationTicket:async ()=>({ok:true,protocolVersion:${BROWSER_PROTOCOL_VERSION},ticket:"fixture-ticket"}),
-      profileDataAction:async input=>{counts.native.push(input.action.type);if(status()!=="ready" && input.action.type!=="closeContext") throw new Error("Desktop Browser is reconnecting. Retry.");if(input.action.type==="import" && holdImport){await new Promise(resolve=>finishImport=resolve);counts.settledImports++}return input.action.type==="state" ? {type:"state",passwordStorage:true,passwords:[{id:"login",origin:"https://fixture.test",username:"fixture-account"}],history:[]} : input.action.type==="importSources" ? {type:"sources",sources:[{id:"file",browser:"file",mode:"file",kinds:["passwords","cookies"]}]} : input.action.type==="importProgress" ? {type:"progress",phase:"reading",processed:0,total:1} : input.action.type==="import" ? {type:"import",imported:1,skipped:0,failed:0,cancelled:false,issues:[],items:[{kind:"passwords",imported:1,skipped:0,failed:0}]} : {type:"done"}}
+      profileDataAction:async input=>{counts.native.push(input.action.type);if(status()!=="ready" && input.action.type!=="closeContext") throw new Error("Desktop Browser is reconnecting. Retry.");if(input.action.type==="import" && holdImport){await new Promise(resolve=>finishImport=resolve);counts.settledImports++}return input.action.type==="state" ? {type:"state",passwordStorage:true,passwords:[{id:"login",origin:"https://fixture.test",username:"fixture-account"}],history:[]} : input.action.type==="importSources" ? {type:"sources",sources:[{id:"file",browser:"file",mode:"file",kinds:["passwords","cookies"]}]} : input.action.type==="importProgress" ? {type:"progress",phase:"reading",processed:0,total:1} : input.action.type==="import" ? importError ? {type:"import",imported:0,skipped:0,failed:0,cancelled:false,issues:[],items:[{kind:"passwords",imported:0,skipped:0,failed:0,error:importError}]} : {type:"import",imported:1,skipped:0,failed:0,cancelled:false,issues:[],items:[{kind:"passwords",imported:1,skipped:0,failed:0}]} : {type:"done"}}
     }
     export function useGlobalSDK(){return sdk}
     export function usePlatform(){return {browserNative:bridge}}
     export function select(state){setManaged(state!=="remote");setStatus(state==="restarting" ? "restarting" : "ready");setSelection(state==="unknown" ? undefined : {features:state==="absent" ? [] : ["browser"]})}
-    export function fixture(){return {select,counts:()=>structuredClone(counts),hold:value=>hold=value,finish:()=>{hold=false;finish()},changeServer:()=>batch(()=>{setServerUrl("http://another-server.test");select("selected")}),holdImport:()=>holdImport=true,finishImport:()=>{holdImport=false;finishImport()}}}
+    export function fixture(){return {select,importError:value=>importError=value,counts:()=>structuredClone(counts),hold:value=>hold=value,finish:()=>{hold=false;finish()},changeServer:()=>batch(()=>{setServerUrl("http://another-server.test");select("selected")}),holdImport:()=>holdImport=true,finishImport:()=>{holdImport=false;finishImport()}}}
     sdk.capabilities.load=async ()=>selection()
     sdk.event={listen:()=>()=>{}}
     sdk.client.config={global:async ()=>({data:{}}),diagnostics:async ()=>({data:{issues:[]}}),domain:{list:async ()=>({data:[]})},instructions:{get:async ()=>({data:{content:"saved instructions",maxBytes:100000,source:"global",filename:"AGENTS.md",hasOverride:false}})}}
@@ -135,6 +136,80 @@ async function open(state: State) {
 }
 const counts = () => page.evaluate(() => (window as unknown as FixtureWindow).fixture.counts())
 
+test("Browser action rows open from their text and return keyboard focus when dismissed", async () => {
+  await open("selected")
+  await page.getByRole("button", { name: "Browser", exact: true }).click()
+  const settings = page.locator("[data-settings-page=browser]")
+  await settings.getByText("Manage saved passwords", { exact: true }).click()
+  await page.getByText("fixture-account", { exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  const manage = settings.getByRole("button", { name: "Manage saved passwords", exact: true })
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Manage saved passwords")
+  await manage.press("Space")
+  await page.getByText("fixture-account", { exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  await settings.getByText("View and delete logins saved or imported in the in-app browser.", { exact: true }).click()
+  await page.getByText("fixture-account", { exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  await settings.getByText("Import passwords and cookies from supported browsers.", { exact: true }).click()
+  await page.getByRole("button", { name: "Choose file and import", exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Import browser data")
+  expect(errors).toEqual([])
+})
+
+test("import has aligned content insets and reachable actions on short, narrow and RTL layouts", async () => {
+  await open("selected")
+  await page.getByRole("button", { name: "Browser", exact: true }).click()
+  await page
+    .locator("[data-settings-page=browser]")
+    .getByRole("button", { name: "Import browser data", exact: true })
+    .click()
+  await page.getByRole("button", { name: "Choose file and import", exact: true }).waitFor()
+  for (const [width, height, direction, scheme] of [
+    [1440, 900, "ltr", "light"],
+    [1280, 540, "ltr", "dark"],
+    [320, 568, "ltr", "light"],
+    [375, 667, "rtl", "dark"],
+  ] as const) {
+    await page.setViewportSize({ width, height })
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" })
+    await page.waitForFunction((scheme) => document.documentElement.dataset.colorScheme === scheme, scheme)
+    await page.evaluate((direction) => (document.documentElement.dir = direction), direction)
+    await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"))
+    const layout = await page.getByRole("dialog", { name: "Import browser data", exact: true }).evaluate((dialog) => {
+      const rect = dialog.getBoundingClientRect()
+      const types = dialog.querySelector(".browser-import-types")!.getBoundingClientRect()
+      const picker = dialog.querySelector<HTMLElement>('[aria-label^="Save to:"]')!.getBoundingClientRect()
+      const source = dialog.querySelectorAll(".browser-import-source-trigger")[1]!.getBoundingClientRect()
+      const footer = dialog.querySelector(".browser-import-footer")!.getBoundingClientRect()
+      return {
+        left: types.left - rect.left,
+        right: rect.right - types.right,
+        pickerLeft: picker.left - source.left,
+        pickerRight: picker.right - source.right,
+        footerBottom: rect.bottom - footer.bottom,
+        fits: rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight,
+        overflow: dialog.scrollWidth > dialog.clientWidth,
+      }
+    })
+    expect(layout.left).toBeGreaterThanOrEqual(16)
+    expect(layout.left).toBeLessThanOrEqual(25)
+    expect(layout.right).toBeGreaterThanOrEqual(16)
+    expect(layout.right).toBeLessThanOrEqual(25)
+    expect(Math.abs(layout.pickerLeft)).toBeLessThan(1)
+    expect(Math.abs(layout.pickerRight)).toBeLessThan(1)
+    expect(layout.footerBottom).toBeLessThanOrEqual(1)
+    expect(layout.fits).toBe(true)
+    expect(layout.overflow).toBe(false)
+    await page.getByRole("button", { name: "Choose file and import", exact: true }).click({ trial: true })
+  }
+  await page.getByRole("button", { name: "Choose file and import", exact: true }).click()
+  await page.getByText("1 imported · 0 skipped · 0 failed", { exact: true }).waitFor()
+  await page.getByRole("button", { name: "Done", exact: true }).click()
+  expect(errors).toEqual([])
+})
+
 test("unknown, absent and remote Browser settings have no navigation, search or deep link and zero data requests", async () => {
   await open("unknown")
   for (const state of ["unknown", "absent", "remote"] as State[]) {
@@ -181,10 +256,10 @@ test("Browser settings has exactly two immediate actions and reuses import with 
   await page.getByLabel("Search settings...").fill("autofill")
   await page.getByRole("button", { name: "Browser", exact: true }).click()
   await page.getByRole("heading", { name: "In-app browser", exact: true }).waitFor()
-  expect(await page.locator("[data-settings-page=browser] .ds-setting-row").count()).toBe(2)
+  expect(await page.locator("[data-settings-page=browser] .browser-settings-action").count()).toBe(2)
   expect(await page.getByRole("button", { name: "Browser profile", exact: true }).count()).toBe(0)
-  await page.getByRole("button", { name: "Import", exact: true }).click()
-  const picker = page.getByRole("button", { name: /^Browser profile:/ })
+  await page.getByRole("button", { name: "Import browser data", exact: true }).click()
+  const picker = page.getByRole("button", { name: /^Save to:/ })
   await picker.waitFor()
   await page.getByRole("button", { name: "Choose file and import", exact: true }).waitFor()
   expect((await counts()).native).not.toContain("import")
@@ -262,7 +337,10 @@ for (const invalidation of ["absent", "same-URL reconnect", "server change"] as 
     await page.getByLabel("Global custom instructions", { exact: true }).fill("retained-import-draft")
     await page.getByRole("button", { name: "Browser", exact: true }).click()
     await page.getByRole("heading", { name: "In-app browser", exact: true }).waitFor()
-    await page.locator("[data-settings-page=browser]").getByRole("button", { name: "Import", exact: true }).click()
+    await page
+      .locator("[data-settings-page=browser]")
+      .getByRole("button", { name: "Import browser data", exact: true })
+      .click()
     await page.getByRole("button", { name: "Choose file and import", exact: true }).waitFor()
     await page.evaluate(() => (window as unknown as FixtureWindow).fixture.holdImport())
     await page.getByRole("button", { name: "Choose file and import", exact: true }).click()
@@ -291,6 +369,36 @@ for (const invalidation of ["absent", "same-URL reconnect", "server change"] as 
     expect(await page.getByLabel("Global custom instructions", { exact: true }).inputValue()).toBe(
       "retained-import-draft",
     )
+    expect(errors).toEqual([])
+  })
+}
+
+for (const [error, message] of [
+  ["busy", "The source data kept changing. Try again. If this continues, quit the source browser and retry."],
+  ["unsupported", "This browser data format or encryption is not supported. Use an exported file."],
+  ["corrupt", "The browser data could not be verified. Try again, or use an exported file."],
+  ["limit", "The selected data exceeds the import limit. Import a smaller exported file."],
+] as const) {
+  test(`source ${error} failure shows its recovery action instead of zero failed entries`, async () => {
+    await open("selected")
+    await page.evaluate((error) => (window as unknown as FixtureWindow).fixture.importError(error), error)
+    await page.getByRole("button", { name: "Browser", exact: true }).click()
+    await page
+      .locator("[data-settings-page=browser]")
+      .getByRole("button", { name: "Import browser data", exact: true })
+      .click()
+    try {
+      await page.getByRole("button", { name: "Choose file and import", exact: true }).waitFor()
+    } catch (failure) {
+      throw new Error(
+        JSON.stringify({ errors, counts: await counts(), body: await page.locator("body").innerText() }),
+        { cause: failure },
+      )
+    }
+    await page.getByRole("button", { name: "Choose file and import", exact: true }).click()
+    await page.getByText(message, { exact: true }).waitFor()
+    expect(await page.getByText("Import failed", { exact: true }).count()).toBe(1)
+    expect(await page.getByText("0 imported · 0 skipped · 0 failed", { exact: true }).count()).toBe(0)
     expect(errors).toEqual([])
   })
 }

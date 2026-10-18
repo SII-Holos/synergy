@@ -28,6 +28,8 @@ import { BrowserNativePagePool } from "./browser-native-page-pool.js"
 import { runBrowserPageAction } from "./browser-page-actions.js"
 import { BrowserDataStore } from "./browser-data-store.js"
 import { BrowserDataActions } from "./browser-data-actions.js"
+import { BrowserImportSources } from "./browser-import-sources.js"
+import { createBrowserImportLogger } from "./browser-import-diagnostics.js"
 import { BrowserDataContexts } from "./browser-data-contexts.js"
 import {
   BrowserFileActionSchema,
@@ -719,6 +721,7 @@ function registerIpcHandlers() {
   const dataActions = () => {
     browserDataActions ??= new BrowserDataActions({
       store: localBrowserData(),
+      sources: new BrowserImportSources({ log: createBrowserImportLogger(desktopLogDir()) }),
       profileTarget: (contextId) => browserDataContexts.target(contextId),
       closeProfileContext: (contextId) => browserDataContexts.close(contextId),
       target(ownerKey, pageId) {

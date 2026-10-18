@@ -9,6 +9,7 @@ import { browserDataAccess, createBrowserDataContext } from "../workspace/browse
 import { BrowserDataSettings } from "../workspace/browser/browser-data-settings"
 import type { BrowserProfile } from "@ericsanchezok/synergy-browser-core"
 import { browserSettingsCopy } from "./panels/BrowserPanel"
+import "../workspace/browser/browser-import-dialog.css"
 
 const ImportForm = lazy(() =>
   import("../workspace/browser/browser-import-dialog").then((module) => ({ default: module.BrowserImportForm })),
@@ -87,42 +88,69 @@ export function BrowserProfileDataDialog(props: { section: "import" | "passwords
     }
   }
   onMount(() => void load())
-  return (
-    <Dialog title={_(props.section === "import" ? browserSettingsCopy.import : browserSettingsCopy.manage)} size="form">
-      <div class="flex min-h-0 flex-col gap-4 overflow-y-auto p-5">
-        <Show when={profiles().length > 1}>
-          <MenuField
-            value={target()?.profile.id ?? profileId ?? ""}
-            ariaLabel={_({ id: "settings.browser.target", message: "Browser profile" })}
-            options={profiles().map((profile) => ({ value: profile.id, label: profile.name }))}
-            disabled={busy()}
-            onChange={(id) => void load(id)}
-          />
-        </Show>
-        <Show when={busy()}>
-          <p role="status">{_({ id: "settings.browser.preparing", message: "Preparing browser data…" })}</p>
-        </Show>
-        <Show when={error()}>
-          <p role="alert">{error()}</p>
-          <Button size="small" onClick={() => void load()}>
-            {_({ id: "settings.browser.retry", message: "Retry" })}
-          </Button>
-        </Show>
-        <Show when={target()} keyed>
-          {(destination) =>
-            props.section === "import" ? (
-              <Suspense>
-                <ImportForm
-                  resolveTarget={Object.assign(async () => destination, { current: destination.current })}
-                  signal={preparation.signal}
-                />
-              </Suspense>
-            ) : (
-              <BrowserDataSettings managementTarget={destination} section="passwords" />
-            )
-          }
-        </Show>
+  const targetLabel = () =>
+    _(
+      props.section === "import"
+        ? { id: "settings.browser.destination", message: "Save to" }
+        : { id: "settings.browser.target", message: "Browser profile" },
+    )
+  const TargetPicker = () => (
+    <Show when={profiles().length > 1}>
+      <div class="browser-import-source">
+        <span>{targetLabel()}</span>
+        <MenuField
+          value={target()?.profile.id ?? profileId ?? ""}
+          ariaLabel={targetLabel()}
+          options={profiles().map((profile) => ({ value: profile.id, label: profile.name }))}
+          disabled={busy()}
+          triggerClass="browser-import-source-trigger"
+          surfaceClass="browser-import-source-menu"
+          onChange={(id) => void load(id)}
+        />
       </div>
+    </Show>
+  )
+  return (
+    <Dialog
+      title={_(props.section === "import" ? browserSettingsCopy.import : browserSettingsCopy.manage)}
+      size="form"
+      class="browser-import-dialog"
+    >
+      <Show
+        when={target()}
+        keyed
+        fallback={
+          <div class="browser-import-body browser-profile-data-body">
+            <TargetPicker />
+            <Show when={busy()}>
+              <p role="status">{_({ id: "settings.browser.preparing", message: "Preparing browser data…" })}</p>
+            </Show>
+            <Show when={error()}>
+              <p role="alert">{error()}</p>
+              <Button size="small" onClick={() => void load()}>
+                {_({ id: "settings.browser.retry", message: "Retry" })}
+              </Button>
+            </Show>
+          </div>
+        }
+      >
+        {(destination) =>
+          props.section === "import" ? (
+            <Suspense>
+              <ImportForm
+                resolveTarget={Object.assign(async () => destination, { current: destination.current })}
+                signal={preparation.signal}
+                destination={<TargetPicker />}
+              />
+            </Suspense>
+          ) : (
+            <div class="browser-import-body browser-profile-data-body">
+              <TargetPicker />
+              <BrowserDataSettings managementTarget={destination} section="passwords" />
+            </div>
+          )
+        }
+      </Show>
     </Dialog>
   )
 }

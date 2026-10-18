@@ -4,10 +4,15 @@ import { lstat, open, realpath } from "node:fs/promises"
 import path from "node:path"
 import { homedir } from "node:os"
 import { z } from "zod"
-import type { BrowserImportKind, BrowserImportSource } from "@ericsanchezok/synergy-browser-core"
+import type { BrowserImportError, BrowserImportKind, BrowserImportSource } from "@ericsanchezok/synergy-browser-core"
 import type { ImportedPassword } from "./browser-data-store.js"
+import {
+  BrowserImportFailure,
+  browserImportFailure,
+  type BrowserImportDiagnostic,
+} from "./browser-import-diagnostics.js"
+import { readBrowserSnapshot, type BrowserImportDatabase } from "./browser-import-snapshot.js"
 
-type Database = { prepare(sql: string): { all(): unknown[] }; close(): void }
 type Source = {
   public: BrowserImportSource
   directory: string
@@ -19,7 +24,7 @@ export type NativeImportBatch = {
   kind: BrowserImportKind
   rows: unknown[]
   failed: number
-  error?: "unavailable" | "format"
+  error?: BrowserImportError
 }
 const browsers = [
   { browser: "chrome", directory: "Google/Chrome", service: "Chrome Safe Storage" },
@@ -41,7 +46,11 @@ const cookieRow = z.object({
   value: z.string().max(64_000),
   encrypted_value: blob,
   path: z.string().max(4_000),
-  expires_utc: z.number().finite(),
+  expires_utc: z
+    .string()
+    .regex(/^\d{1,19}$/)
+    .transform(BigInt)
+    .refine((value) => value <= 9_223_372_036_854_775_807n),
   is_secure: z.number(),
   is_httponly: z.number(),
   samesite: z.number().min(-1).max(2),
@@ -101,7 +110,8 @@ function keychain(service: string, signal: AbortSignal): Promise<Buffer> {
 // https://chromium.googlesource.com/chromium/src/+/main/components/os_crypt/async/browser/keychain_key_provider.mm
 // https://chromium.googlesource.com/chromium/src/+/main/net/extras/sqlite/sqlite_persistent_cookie_store.cc
 function decrypt(value: Buffer, key: Buffer, host?: string) {
-  if (value.length > 64_000 || value.subarray(0, 3).toString() !== "v10") throw new Error("Unsupported encryption.")
+  if (value.length > 64_000 || value.subarray(0, 3).toString() !== "v10")
+    throw new BrowserImportFailure("unsupported", "decrypt")
   const decipher = createDecipheriv("aes-128-cbc", key, Buffer.alloc(16, 32))
   const plain = Buffer.concat([decipher.update(value.subarray(3)), decipher.final()])
   try {
@@ -124,7 +134,8 @@ export class BrowserImportSources {
       home?: string
       platform?: NodeJS.Platform
       readKey?(service: string, signal: AbortSignal): Promise<Buffer>
-      openDatabase?(file: string): Promise<Database>
+      openDatabase?(file: string): Promise<BrowserImportDatabase>
+      log?(entry: BrowserImportDiagnostic): Promise<void>
     } = {},
   ) {}
 
@@ -190,21 +201,36 @@ export class BrowserImportSources {
     signal.throwIfAborted()
     const source = this.sources.get(id)
     if (!source || kinds.some((kind) => !source.public.kinds.includes(kind)))
-      throw new Error("Browser source is unavailable. Choose it again.")
+      throw new BrowserImportFailure("unavailable", "snapshot")
     const validate = async (file: string) => {
+      const info = await lstat(file)
+      if (info.size > 128 * 1024 * 1024) throw new BrowserImportFailure("limit", "snapshot")
       if (
-        !(await regularFile(file)) ||
+        !info.isFile() ||
         (await realpath(source.directory)) !== source.canonicalDirectory ||
         (await realpath(file)) !== path.join(source.canonicalDirectory, path.relative(source.directory, file))
       )
-        throw new Error("Browser source changed. Choose it again.")
+        throw new BrowserImportFailure("unavailable", "snapshot")
     }
-    for (const kind of kinds) for (const file of source.files[kind]!) await validate(file)
+    for (const kind of kinds) {
+      for (const file of source.files[kind]!) {
+        try {
+          await validate(file)
+        } catch (error) {
+          const failure = browserImportFailure(error, "snapshot")
+          await this.options.log?.({ browser: source.public.browser, kind, stage: failure.stage, error: failure.code })
+          throw failure
+        }
+      }
+    }
     let secret: Buffer
     try {
       secret = await (this.options.readKey ?? keychain)(source.service, signal)
     } catch {
-      throw new Error("Browser access was not granted. Retry or import an exported file.")
+      signal.throwIfAborted()
+      for (const kind of kinds)
+        await this.options.log?.({ browser: source.public.browser, kind, stage: "access", error: "access" })
+      throw new BrowserImportFailure("access", "access")
     }
     const key = pbkdf2Sync(secret, "saltysalt", 1003, 16, "sha1")
     secret.fill(0)
@@ -215,90 +241,113 @@ export class BrowserImportSources {
         const batch: NativeImportBatch = { kind, rows: [], failed: 0 }
         let bytes = 0
         for (const file of source.files[kind]!) {
-          let db: Database | undefined
           try {
             signal.throwIfAborted()
             await validate(file)
-            db = await (
-              this.options.openDatabase ??
-              (async (file) => {
-                const { DatabaseSync } = await import("node:sqlite")
-                return new DatabaseSync(file, { readOnly: true })
-              })
-            )(file)
-            db.prepare("BEGIN").all()
-            const query =
-              kind === "passwords"
-                ? "SELECT origin_url, username_value, password_value FROM logins WHERE blacklisted_by_user = 0 LIMIT 10001"
-                : "SELECT host_key, name, value, encrypted_value, path, expires_utc, is_secure, is_httponly, samesite, top_frame_site_key FROM cookies LIMIT 10001"
-            const sizes =
-              kind === "passwords"
-                ? "length(CAST(origin_url AS BLOB)) + length(CAST(username_value AS BLOB)) + length(password_value)"
-                : "length(CAST(host_key AS BLOB)) + length(CAST(name AS BLOB)) + length(CAST(value AS BLOB)) + length(encrypted_value) + length(CAST(path AS BLOB)) + length(CAST(top_frame_site_key AS BLOB))"
-            const budget = z
-              .object({ count: z.number(), bytes: z.number().nullable() })
-              .parse(db.prepare(`SELECT count(*) AS count, sum(${sizes}) AS bytes FROM (${query})`).all()[0])
-            if (
-              budget.count + batch.rows.length + batch.failed > 10_000 ||
-              (budget.bytes ?? 0) + bytes > 32 * 1024 * 1024
-            )
-              throw new Error("Import exceeds the supported limit.")
-            const version =
-              kind === "cookies"
-                ? Number(
-                    z
-                      .object({ value: z.union([z.string(), z.number()]) })
-                      .parse(db.prepare("SELECT value FROM meta WHERE key = 'version'").all()[0]).value,
-                  )
-                : 0
-            if (kind === "cookies" && (!Number.isInteger(version) || version !== 24))
-              throw new Error("Unsupported cookie database.")
-            const rows = db.prepare(query).all()
-            for (const [index, raw] of rows.entries()) {
-              signal.throwIfAborted()
-              try {
-                if (kind === "passwords") {
-                  const row = passwordRow.parse(raw)
-                  const value: ImportedPassword = {
-                    origin: row.origin_url,
-                    username: row.username_value,
-                    password: decrypt(row.password_value, key),
+            await readBrowserSnapshot({
+              file,
+              signal,
+              validate,
+              openDatabase:
+                this.options.openDatabase ??
+                (async (file) => {
+                  const { DatabaseSync } = await import("node:sqlite")
+                  return new DatabaseSync(file)
+                }),
+              read: async (db) => {
+                const query =
+                  kind === "passwords"
+                    ? "SELECT origin_url, username_value, password_value FROM logins WHERE blacklisted_by_user = 0 LIMIT 10001"
+                    : "SELECT host_key, name, value, encrypted_value, path, CAST(expires_utc AS TEXT) AS expires_utc, is_secure, is_httponly, samesite, top_frame_site_key FROM cookies LIMIT 10001"
+                const sizes =
+                  kind === "passwords"
+                    ? "length(CAST(origin_url AS BLOB)) + length(CAST(username_value AS BLOB)) + length(password_value)"
+                    : "length(CAST(host_key AS BLOB)) + length(CAST(name AS BLOB)) + length(CAST(value AS BLOB)) + length(encrypted_value) + length(CAST(path AS BLOB)) + length(CAST(top_frame_site_key AS BLOB))"
+                const budget = z
+                  .object({ count: z.number(), bytes: z.number().nullable() })
+                  .parse(db.prepare(`SELECT count(*) AS count, sum(${sizes}) AS bytes FROM (${query})`).all()[0])
+                if (
+                  budget.count + batch.rows.length + batch.failed > 10_000 ||
+                  (budget.bytes ?? 0) + bytes > 32 * 1024 * 1024
+                )
+                  throw new BrowserImportFailure("limit", "query")
+                const version =
+                  kind === "cookies"
+                    ? Number(
+                        z
+                          .object({ value: z.union([z.string(), z.number()]) })
+                          .parse(db.prepare("SELECT value FROM meta WHERE key = 'version'").all()[0]).value,
+                      )
+                    : 0
+                if (kind === "cookies" && (!Number.isInteger(version) || version !== 24))
+                  throw new BrowserImportFailure("unsupported", "query")
+                const rows = db.prepare(query).all()
+                for (const [index, raw] of rows.entries()) {
+                  signal.throwIfAborted()
+                  try {
+                    if (kind === "passwords") {
+                      const row = passwordRow.parse(raw)
+                      const value: ImportedPassword = {
+                        origin: row.origin_url,
+                        username: row.username_value,
+                        password: decrypt(row.password_value, key),
+                      }
+                      bytes += value.origin.length + value.username.length + value.password.length
+                      batch.rows.push(value)
+                    } else {
+                      const row = cookieRow.parse(raw)
+                      if (row.encrypted_value.length && row.value) throw new Error("Ambiguous cookie value.")
+                      const value = row.encrypted_value.length
+                        ? decrypt(row.encrypted_value, key, row.host_key)
+                        : row.value
+                      bytes += value.length + row.host_key.length + row.name.length + row.path.length
+                      batch.rows.push({
+                        domain: row.host_key,
+                        name: row.name,
+                        value,
+                        path: row.path,
+                        expires:
+                          row.expires_utc === 0n
+                            ? -1
+                            : Number(row.expires_utc / 1_000_000n - 11_644_473_600n) +
+                              Number(row.expires_utc % 1_000_000n) / 1_000_000,
+                        secure: Boolean(row.is_secure),
+                        httpOnly: Boolean(row.is_httponly),
+                        sameSite: ["None", "Lax", "Strict"][row.samesite] ?? undefined,
+                        ...(row.top_frame_site_key ? { partitionKey: row.top_frame_site_key } : {}),
+                      })
+                    }
+                  } catch (error) {
+                    batch.failed++
+                    if (error instanceof BrowserImportFailure) batch.error ??= error.code
                   }
-                  bytes += value.origin.length + value.username.length + value.password.length
-                  batch.rows.push(value)
-                } else {
-                  const row = cookieRow.parse(raw)
-                  if (row.encrypted_value.length && row.value) throw new Error("Ambiguous cookie value.")
-                  const value = row.encrypted_value.length ? decrypt(row.encrypted_value, key, row.host_key) : row.value
-                  bytes += value.length + row.host_key.length + row.name.length + row.path.length
-                  batch.rows.push({
-                    domain: row.host_key,
-                    name: row.name,
-                    value,
-                    path: row.path,
-                    expires: row.expires_utc ? row.expires_utc / 1_000_000 - 11_644_473_600 : -1,
-                    secure: Boolean(row.is_secure),
-                    httpOnly: Boolean(row.is_httponly),
-                    sameSite: ["None", "Lax", "Strict"][row.samesite] ?? undefined,
-                    ...(row.top_frame_site_key ? { partitionKey: row.top_frame_site_key } : {}),
-                  })
+                  if (bytes > 32 * 1024 * 1024) throw new BrowserImportFailure("limit", "query")
+                  if (index % 50 === 0) await new Promise((resolve) => setTimeout(resolve, 0))
                 }
-              } catch {
-                batch.failed++
-              }
-              if (bytes > 32 * 1024 * 1024) throw new Error("Too much data.")
-              if (index % 50 === 0) await new Promise((resolve) => setTimeout(resolve, 0))
-            }
-          } catch {
+              },
+            })
+          } catch (error) {
             signal.throwIfAborted()
-            batch.error = "unavailable"
-          } finally {
-            try {
-              db?.prepare("ROLLBACK").all()
-            } catch {}
-            db?.close()
+            const failure = browserImportFailure(error, "snapshot")
+            batch.error = failure.code
+            await this.options.log?.({
+              browser: source.public.browser,
+              kind,
+              stage: failure.stage,
+              error: failure.code,
+              sqliteCode: failure.sqliteCode,
+              attempt: failure.attempt,
+            })
           }
         }
+        await this.options.log?.({
+          browser: source.public.browser,
+          kind,
+          stage: "complete",
+          error: batch.error,
+          rows: batch.rows.length,
+          failed: batch.failed,
+        })
         batches.push(batch)
       }
       return batches

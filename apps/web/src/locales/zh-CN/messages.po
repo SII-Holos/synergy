@@ -10761,6 +10761,10 @@ msgid "browser.import.access"
 msgstr "未获得访问权限。请重新授权，或选择导出的文件。"
 
 #. js-lingui-explicit-id
+msgid "browser.import.busy"
+msgstr "来源数据持续变化，请重试。若仍无法导入，请退出来源浏览器后重试。"
+
+#. js-lingui-explicit-id
 msgid "browser.import.choose"
 msgstr "选择文件并导入"
 
@@ -10771,6 +10775,10 @@ msgstr "网站登录状态和偏好设置"
 #. js-lingui-explicit-id
 msgid "browser.import.cookies"
 msgstr "Cookie"
+
+#. js-lingui-explicit-id
+msgid "browser.import.corrupt"
+msgstr "浏览器数据未通过完整性检查。请重试，或使用导出的文件。"
 
 #. js-lingui-explicit-id
 msgid "browser.import.desktopUnavailable"
@@ -10813,6 +10821,10 @@ msgid "browser.import.importing"
 msgstr "正在导入…"
 
 #. js-lingui-explicit-id
+msgid "browser.import.limit"
+msgstr "所选数据超出导入限制，请使用较小的导出文件。"
+
+#. js-lingui-explicit-id
 msgid "browser.import.loading"
 msgstr "正在查找浏览器…"
 
@@ -10823,6 +10835,10 @@ msgstr "Mac 可能会请求访问权限。导入的密码会在此设备上加�
 #. js-lingui-explicit-id
 msgid "browser.import.locked"
 msgstr "请使用非临时浏览器配置，并解锁系统密码存储。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.notImported"
+msgstr "导入失败"
 
 #. js-lingui-explicit-id
 msgid "browser.import.options"
@@ -10886,11 +10902,15 @@ msgstr "导入已停止，已经导入的条目已保留。"
 
 #. js-lingui-explicit-id
 msgid "browser.import.unavailable"
-msgstr "无法读取这些数据。请退出来源浏览器后重试，或使用导出的文件。"
+msgstr "来源数据已不可用。请重新选择浏览器，或使用导出的文件。"
 
 #. js-lingui-explicit-id
 msgid "browser.import.unsupported"
 msgstr "此来源不支持"
+
+#. js-lingui-explicit-id
+msgid "browser.import.unsupportedData"
+msgstr "暂不支持此浏览器数据的格式或加密方式，请使用导出的文件。"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.assets"
@@ -19318,6 +19338,10 @@ msgstr "浏览器数据访问状态已更改，请关闭并重新打开此对话
 #. js-lingui-explicit-id
 msgid "settings.browser.data"
 msgstr "浏览器数据"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.destination"
+msgstr "保存到"
 
 #. js-lingui-explicit-id
 msgid "settings.browser.import.action"

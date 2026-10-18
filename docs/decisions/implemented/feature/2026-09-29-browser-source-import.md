@@ -26,6 +26,8 @@ This extends the file-transfer decision in [Native browser product controls](../
 
 ## Consequences
 
+The direct acquisition choice is superseded by [Import from an active browser](../bug-fix/2026-10-18-active-browser-import.md), which retains this record's source selection, authorization and data ownership decisions.
+
 Direct macOS import depends on Chromium database and encryption versions; unsupported records produce partial results or an actionable file-export path. Cookie transfer cannot guarantee a website will accept a session. The native reader does not copy source databases, launch external browsers, change Keychain permissions or obtain elevated privileges.
 
 Behavioral fixtures verify metadata-only discovery, profile path validation, account databases, encryption failure, cancellation, per-type results, duplicates and cookie scope. A real Electron fixture covers the Node SQLite reader, destination password encryption and Chromium cookie writes using disposable source data; it does not import personal credentials. UI acceptance covers the source picker, independent switches, Safari guidance, narrow layouts, theme polarity and focus return.

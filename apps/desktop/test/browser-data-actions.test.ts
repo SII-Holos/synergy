@@ -7,6 +7,7 @@ import { zipSync, strToU8 } from "fflate"
 import { BrowserDataStore } from "../src/browser-data-store"
 import { BrowserDataActions, readBrowserImport } from "../src/browser-data-actions"
 import { BrowserImportSources } from "../src/browser-import-sources"
+import { BrowserImportFailure } from "../src/browser-import-diagnostics"
 
 const roots: string[] = []
 afterEach(async () => {
@@ -237,4 +238,26 @@ test("native read failures retain rejected record counts even when no rows can b
       action: { type: "import", sourceId: "chrome", kinds: ["passwords"], overwrite: false, requestId: "partial" },
     }),
   ).toMatchObject({ failed: 2, items: [{ kind: "passwords", failed: 2, error: "unavailable" }] })
+})
+
+test("native acquisition failures preserve their category without exposing exception details", async () => {
+  const root = await fixture()
+  const sources = new BrowserImportSources()
+  sources.list = async () => [{ id: "chrome", browser: "chrome", mode: "direct", kinds: ["passwords"] }]
+  sources.read = async () => {
+    throw new BrowserImportFailure("limit", "snapshot")
+  }
+  const contents = {} as Electron.WebContents
+  const actions = new BrowserDataActions({
+    store: new BrowserDataStore(root, encryption),
+    target: () => ({ partition: "persist:one", contents }),
+    sources,
+    chooseFile: async () => undefined,
+  })
+  expect(
+    await actions.execute({
+      ...request,
+      action: { type: "import", sourceId: "chrome", kinds: ["passwords"], overwrite: false, requestId: "limit" },
+    }),
+  ).toMatchObject({ imported: 0, items: [{ kind: "passwords", error: "limit" }] })
 })

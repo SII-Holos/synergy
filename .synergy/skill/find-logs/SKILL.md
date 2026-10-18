@@ -58,6 +58,8 @@ rg '^ERROR|service=(server-runtime|session|cortex)' "$LOG_FILE"
 
 For an installed managed service, `synergy logs` reads `$INSTANCE_HOME/.synergy/state/daemon/logs/server.log`, where the service captures the server's printed output. Resolve current paths from [Storage and paths](../../../docs/reference/storage-and-paths.md) rather than copying paths from an unrelated home.
 
+Browser import runs inside Desktop. Locate `browser-import.log` beside the Desktop-managed `server.log`: `SYNERGY_DESKTOP_LOG_DIR` when explicitly configured, otherwise `app.getPath("logs")/desktop` (source Electron on macOS commonly uses `~/Library/Logs/Electron/desktop`). Match the actual Desktop process and import time before reading it. JSON lines report browser family, data kind, phase, fixed error category, optional SQLite code/retry attempt and aggregate counts; source paths, websites, credentials and raw errors are deliberately absent. Backend `dev.log` alone cannot diagnose native import. Follow [change-browser-runtime](../change-browser-runtime/SKILL.md#local-browser-data) for isolated reproduction.
+
 Use structured observability when a trace, session, or tool call is known. These commands still require the resolved home:
 
 ```bash

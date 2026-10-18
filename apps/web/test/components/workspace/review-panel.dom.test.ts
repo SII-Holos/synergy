@@ -414,7 +414,7 @@ test("wide and narrow file controls have a visible effect without replacing the 
   expect(await page.getByRole("button", { name: "Show files", exact: true }).getAttribute("aria-pressed")).toBe("false")
   await page.getByRole("button", { name: "Show files", exact: true }).click()
   expect(await page.locator(".review-sidebar").count()).toBe(1)
-  for (const width of [375, 320, 700, 1100]) {
+  for (const width of [375, 320, 560, 658, 700, 1100]) {
     await page.setViewportSize({ width, height: 850 })
     if (width < 800) {
       await page.getByRole("button", { name: "Show files", exact: true }).click()
@@ -432,6 +432,10 @@ test("wide and narrow file controls have a visible effect without replacing the 
     expect(geometry).toEqual(geometry.map((item) => ({ ...item, width: 32, height: 32, icon: 16 })))
     expect(geometry.every((item) => item.x >= 0 && item.x + item.width <= width)).toBe(true)
     expect(new Set(geometry.map((item) => item.y)).size).toBe(1)
+    const source = await page.getByRole("button", { name: "Comparison: Session", exact: true }).boundingBox()
+    expect(source).not.toBeNull()
+    if (width >= 560) expect(geometry[0]!.y + 16).toBeCloseTo(source!.y + source!.height / 2)
+    else expect(geometry[0]!.y).toBeGreaterThanOrEqual(source!.y + source!.height)
     expect(await viewer.getAttribute("data-retained")).toBe("yes")
   }
   expect(errors).toEqual([])
@@ -508,8 +512,27 @@ test("comparison references edit through one compact control and retain API para
   await page.getByRole("textbox", { name: "Base reference", exact: true }).fill(" origin/main ")
   await page.getByRole("textbox", { name: "Target reference", exact: true }).fill(" feature ")
   await page.getByRole("button", { name: "Compare", exact: true }).click()
-  await page.getByRole("button", { name: "Comparison: origin/main → feature", exact: true }).waitFor()
+  const changed = page.getByRole("button", { name: "Comparison: origin/main → feature", exact: true })
+  await changed.waitFor()
   expect(compared).toEqual({ from: "origin/main", to: "feature" })
+  await changed.click()
+  const from = "origin/a-long-base-reference-for-review-toolbar-layout"
+  const to = "feature/a-long-target-reference-for-review-toolbar-layout"
+  await page.getByRole("textbox", { name: "Base reference", exact: true }).fill(from)
+  await page.getByRole("textbox", { name: "Target reference", exact: true }).fill(to)
+  await page.getByRole("button", { name: "Compare", exact: true }).click()
+  const long = page.getByRole("button", { name: `Comparison: ${from} → ${to}`, exact: true })
+  await long.waitFor()
+  for (const width of [320, 700]) {
+    await page.setViewportSize({ width, height: 850 })
+    const bounds = await page
+      .locator(".review-toolbar button, .review-totals")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().toJSON()))
+    expect(bounds.every((box) => box.width > 0 && box.x >= 0 && box.right <= width)).toBe(true)
+    await long.click()
+    expect(await page.getByRole("textbox", { name: "Base reference", exact: true }).inputValue()).toBe(from)
+    await page.keyboard.press("Escape")
+  }
   expect(errors).toEqual([])
 }, 30_000)
 
@@ -747,6 +770,9 @@ test("theme, 200 percent scaling and reduced motion keep the reading surface rea
     .locator(".review-toolbar-tools button")
     .evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().right))
   expect(boxes.every((right) => right <= 1100)).toBe(true)
+  const source = await page.getByRole("button", { name: "Comparison: Session", exact: true }).boundingBox()
+  const tools = await wrap.boundingBox()
+  expect(source && tools && Math.abs(source.y + source.height / 2 - tools.y - tools.height / 2)).toBeLessThan(1)
   await wrap.click()
   expect(await wrap.getAttribute("aria-pressed")).toBe("false")
   expect(errors).toEqual([])
