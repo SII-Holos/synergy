@@ -22,6 +22,15 @@ describe("shouldOpenProjectDisclosure", () => {
     ).toBe(true)
   })
 
+  test("opens a failed initial load for retry while keeping collapsed projects closed", () => {
+    expect(
+      shouldOpenProjectDisclosure({ expanded: true, isSupplemental: false, navLoaded: false, navError: true }),
+    ).toBe(true)
+    expect(
+      shouldOpenProjectDisclosure({ expanded: false, isSupplemental: false, navLoaded: false, navError: true }),
+    ).toBe(false)
+  })
+
   test("keeps supplemental projects open so their load-sessions action remains available", () => {
     expect(
       shouldOpenProjectDisclosure({

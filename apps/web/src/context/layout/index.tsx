@@ -1,6 +1,6 @@
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { createStore, produce } from "solid-js/store"
-import { batch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { batch, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createMediaQuery } from "@solid-primitives/media"
 import { useGlobalSync } from "../global-sync"
@@ -312,6 +312,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     const [scopeIndex, setScopeIndex] = createSignal<ScopeNavEntry[]>([])
     const [navEntries, setNavEntries] = createStore<Record<string, NavListState>>({})
+    const [scopeNavRequests, setScopeNavRequests] = createStore<Record<string, NavRequestState | undefined>>({})
     const [rootNavStore, setRootNavStore] = createStore<Record<RootNavSectionKey, NavListState>>({
       home: emptyNavList(),
       channel: emptyNavList(),
@@ -340,10 +341,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     })
     const scopeLoader = createNavRequest({ owner: () => globalSdk.client, publish: setScopeIndexRequest })
     const recentLoader = createNavRequest({ owner: () => globalSdk.client, publish: setRecentRequest })
+    const scopeNavLoaders = new Map<string, typeof scopeLoader>()
     const scopeIndexLoaded = () => scopeIndexRequest().loaded
     onCleanup(() => {
       scopeLoader.dispose()
       recentLoader.dispose()
+      for (const loader of scopeNavLoaders.values()) loader.dispose()
     })
 
     const channelProjection = createMemo(() => {
@@ -366,40 +369,51 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     async function loadScopeNav(directory: string, cursor?: NavCursor) {
-      if (navPending.has(directory)) return
-      navPending.add(directory)
-      try {
-        const res = await globalSdk.client.session.index({
-          scopeID: directory,
-          parentOnly: "true",
-          limit: NAV_FIRST_PAGE_LIMIT,
-          ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+      if (scopeNavRequests[directory]?.loading) return
+      let loader = scopeNavLoaders.get(directory)
+      if (!loader) {
+        loader = createNavRequest({
+          owner: () => globalSdk.client,
+          publish: (state) => setScopeNavRequests(directory, state),
         })
-        if (!res.data) return
-        const data = res.data
-        if (cursor) {
-          const existing = navEntries[directory]
-          const merged = [
-            ...(existing?.items ?? []),
-            ...data.items.filter((e) => !(existing?.items ?? []).some((x) => x.id === e.id)),
-          ] as NavEntry[]
-          setNavEntries(
-            directory,
-            mergeNavListByID(existing, { items: merged, nextCursor: data.nextCursor, total: data.total }),
-          )
-        } else {
-          setNavEntries(
-            directory,
-            mergeNavListByID(navEntries[directory], {
-              items: data.items as NavEntry[],
-              nextCursor: data.nextCursor,
-              total: data.total,
-            }),
-          )
-        }
-      } finally {
-        navPending.delete(directory)
+        scopeNavLoaders.set(directory, loader)
       }
+      await loader.run(
+        async (client, signal) =>
+          (
+            await client.session.index(
+              {
+                scopeID: directory,
+                parentOnly: "true",
+                limit: NAV_FIRST_PAGE_LIMIT,
+                ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+              },
+              { throwOnError: true, signal },
+            )
+          ).data,
+        (data) => {
+          if (cursor) {
+            const existing = navEntries[directory]
+            const merged = [
+              ...(existing?.items ?? []),
+              ...data.items.filter((e) => !(existing?.items ?? []).some((x) => x.id === e.id)),
+            ] as NavEntry[]
+            setNavEntries(
+              directory,
+              mergeNavListByID(existing, { items: merged, nextCursor: data.nextCursor, total: data.total }),
+            )
+          } else {
+            setNavEntries(
+              directory,
+              mergeNavListByID(navEntries[directory], {
+                items: data.items as NavEntry[],
+                nextCursor: data.nextCursor,
+                total: data.total,
+              }),
+            )
+          }
+        },
+      )
     }
 
     async function fetchChannelPage(channelType: ChannelNavType, limit: number, cursor?: NavCursor) {
@@ -722,6 +736,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     function applyScopeRemoval(scopeID: string, directory?: string) {
       const removed = removeScopeFromIndex(scopeIndex(), scopeID, directory)
       server.scopes.close(scopeID)
+      scopeNavLoaders.get(scopeID)?.dispose()
+      scopeNavLoaders.delete(scopeID)
+      setScopeNavRequests(scopeID, undefined)
+      setNavEntries(
+        produce((entries) => {
+          delete entries[scopeID]
+        }),
+      )
       if (removed.removed) setScopeIndex(removed.entries)
 
       const navigation = removeScopeFromLoadedNavigation(
@@ -995,20 +1017,31 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return !server.scopes.list().some((s) => s.id === scope.id)
     }
 
+    createEffect(() => {
+      if (!scopeIndexLoaded()) return
+      const expanded = server.scopes
+        .list()
+        .filter((scope) => scope.expanded)
+        .map((scope) => scope.id)
+      untrack(() => {
+        for (const id of expanded) {
+          if (!navEntries[id] && !scopeNavRequests[id]) void loadScopeNav(id)
+        }
+      })
+    })
+
     onMount(() => {
       loadScopeIndex().then(() => {
         loadGlobalRecent()
         for (const category of ROOT_NAV_SECTION_KEYS) {
           loadRootNavSection(category)
         }
-        const projects = list()
-        const loaded = new Set<string>()
-        for (const project of projects) {
-          if (project.expanded) {
-            loadScopeNav(project.id)
-            loaded.add(project.id)
-          }
-        }
+        const loaded = new Set(
+          server.scopes
+            .list()
+            .filter((scope) => scope.expanded)
+            .map((scope) => scope.id),
+        )
         let count = 0
         for (const entry of scopeIndex()) {
           if (count >= 3) break
@@ -1326,6 +1359,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         unreadCompletionCount,
         loadScopeNav: (directory: string) => loadScopeNav(directory),
         navEntries: () => navEntries,
+        scopeRequestState: (id: string) => scopeNavRequests[id],
         navEntryForSession,
         scopeIndexLoaded,
         recentLoaded: () => recentRequest().loaded,
