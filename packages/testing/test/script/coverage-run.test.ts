@@ -76,6 +76,7 @@ describe("coverage batch splitting", () => {
       "packages/harness/test/session/retry.test.ts",
       "packages/harness/test/storage/storage-retry.test.ts",
       "packages/harness/test/storage/storage-silent-not-found.test.ts",
+      "packages/harness/test/storage/storage-worker-suspend.test.ts",
       "packages/holos/test/holos/legacy-data-migration.test.ts",
       "packages/holos/test/holos/mailbox.test.ts",
       "packages/holos/test/holos/runtime.test.ts",

@@ -178,6 +178,8 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/cli/test/daemon/spec.test.ts",
   "packages/harness/test/storage/storage-retry.test.ts",
   "packages/harness/test/storage/storage-silent-not-found.test.ts",
+  // Host-suspension fixtures replace the process-wide monotonic clock and deadline timers.
+  "packages/harness/test/storage/storage-worker-suspend.test.ts",
   "packages/presets/test/tool/auto-expand.test.ts",
   "packages/media/test/tools/openai-image-gen.test.ts",
   "packages/local-runtime/test/tools/session-search.test.ts",
