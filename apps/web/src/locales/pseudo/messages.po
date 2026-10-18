@@ -12857,10 +12857,6 @@ msgid "execution.usage.firstContent"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "execution.usage.generationRate"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "execution.usage.reasoning"
 msgstr ""
 

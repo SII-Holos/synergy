@@ -5,16 +5,25 @@ import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { tokenMetricText } from "./task-details-model"
 import { E } from "./i18n"
 
+export function UsageRate(props: { value: number | null }) {
+  const { _, i18n } = useLingui()
+  return (
+    <>
+      {props.value == null
+        ? "—"
+        : _({
+            ...E.tokenRate,
+            values: { value: new Intl.NumberFormat(i18n().locale, { maximumFractionDigits: 1 }).format(props.value) },
+          })}
+    </>
+  )
+}
+
 export function ExecutionPerformance(props: { summary: ExecutionSummary }) {
   const { _, i18n } = useLingui()
-  const rate = () => props.summary.rates.generation
+  const rate = () => props.summary.rates.endToEnd
   const cache = () => props.summary.cache
   const ratio = () => cache().ratio ?? cache().observedRatio
-  const rateText = () =>
-    _({
-      ...E.tokenRate,
-      values: { value: new Intl.NumberFormat(i18n().locale, { maximumFractionDigits: 1 }).format(rate().value!) },
-    })
   const cacheText = () =>
     new Intl.NumberFormat(i18n().locale, { style: "percent", maximumFractionDigits: 1 }).format(ratio()!)
   return (
@@ -22,8 +31,10 @@ export function ExecutionPerformance(props: { summary: ExecutionSummary }) {
       <dl class="execution-performance">
         <Show when={rate().value != null}>
           <div>
-            <dt>{_(E.generationRate)}</dt>
-            <dd>{rateText()}</dd>
+            <dt>{_(E.requestRate)}</dt>
+            <dd>
+              <UsageRate value={rate().value} />
+            </dd>
           </div>
         </Show>
         <Show when={ratio() != null}>
@@ -132,9 +143,7 @@ function UsageBreakdown(props: { summary: ExecutionSummary }) {
           <div>
             <dt>{_(E.requestRate)}</dt>
             <dd>
-              {props.summary.rates.endToEnd.value == null
-                ? "—"
-                : _({ ...E.tokenRate, values: { value: number(props.summary.rates.endToEnd.value!) } })}
+              <UsageRate value={props.summary.rates.endToEnd.value} />
             </dd>
           </div>
           <div>

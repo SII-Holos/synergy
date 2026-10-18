@@ -12857,10 +12857,6 @@ msgid "execution.usage.firstContent"
 msgstr "Average first content"
 
 #. js-lingui-explicit-id
-msgid "execution.usage.generationRate"
-msgstr "Avg generation"
-
-#. js-lingui-explicit-id
 msgid "execution.usage.reasoning"
 msgstr "Reasoning (included in output)"
 
@@ -12874,7 +12870,7 @@ msgstr "Requests and tools"
 
 #. js-lingui-explicit-id
 msgid "execution.usage.requestRate"
-msgstr "Avg request throughput"
+msgstr "Output speed"
 
 #. js-lingui-explicit-id
 msgid "execution.usage.requests"

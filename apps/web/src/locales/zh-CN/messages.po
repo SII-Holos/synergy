@@ -12857,10 +12857,6 @@ msgid "execution.usage.firstContent"
 msgstr "平均首个内容耗时"
 
 #. js-lingui-explicit-id
-msgid "execution.usage.generationRate"
-msgstr "平均生成"
-
-#. js-lingui-explicit-id
 msgid "execution.usage.reasoning"
 msgstr "推理（计入输出）"
 
@@ -12874,7 +12870,7 @@ msgstr "请求与工具"
 
 #. js-lingui-explicit-id
 msgid "execution.usage.requestRate"
-msgstr "平均请求吞吐"
+msgstr "输出速度"
 
 #. js-lingui-explicit-id
 msgid "execution.usage.requests"

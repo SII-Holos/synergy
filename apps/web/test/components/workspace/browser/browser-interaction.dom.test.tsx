@@ -685,5 +685,7 @@ test("partial import keeps successful counts visible alongside the recovery reas
   const dialog = page.getByRole("dialog", { name: "Import browser data", exact: true })
   await dialog.getByRole("button", { name: "Import", exact: true }).click()
   expect(await dialog.getByRole("status").textContent()).toContain("3 imported · 0 skipped · 0 failed")
-  expect(await dialog.getByRole("status").textContent()).toContain("This data could not be read.")
+  expect(await dialog.getByRole("status").textContent()).toContain(
+    "The source data is no longer available. Choose the browser again or use an exported file.",
+  )
 })

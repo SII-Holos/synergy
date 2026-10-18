@@ -53,15 +53,16 @@ beforeAll(async () => {
     import ${JSON.stringify(path.join(source, "context-dashboard.css"))}
     const categories=["systemInstructions","toolDefinitions","userMessages","injectedContext","skills","assistantMessages","toolResults","attachments"].map((category,index)=>({category,precision:"source",items:index,estimatedTokens:100,attributedTokens:100}))
     const snapshot={callID:"selected",requestNumber:1,roundNumber:1,modelID:"test-model",inputTokens:1000,contextLimit:10000,usage:{categories,overhead:{attributedTokens:200}}}
-    const i18n=setupI18n({locale:"en",messages:{en:{"context.dashboard.historical":["Context for request ",["number"]]}}})
+    const i18n=setupI18n({locale:"en",messages:{en:{"context.dashboard.historical":["Context for request ",["number"]],"execution.usage.tokenRate":[["value"]," tok/s"]}}})
     const [ring,setRing]=createSignal({value:"≥ 826.1万",alternatives:["≥ 826万"],accessible:"≥ 8,261,000"})
     Object.assign(window,{setRing})
     function Metrics(){
       const measured=known=>({known,unknown:0,total:known})
       const [tokens,setTokens]=createSignal({input:measured(1000),uncached:measured(200),cacheRead:measured(800),cacheWrite:{known:0,unknown:1,total:null},output:measured(200),reasoning:measured(50),total:measured(1200)})
       const [duration,setDuration]=createSignal(118000)
-      const summary=()=>({accounting:{calls:2,attempts:2,tokens:tokens()},cost:{state:"recorded",reported:[],estimates:[],missing:0,equivalent:null},cache:{ratio:0.8},elapsedMs:duration(),elapsedActive:false,latency:{ttft:{totalMs:duration()/4,samples:1},generation:{totalMs:duration()/4,samples:1}},tools:[{durationMs:duration()/2,timedSamples:1}],rates:{generation:{value:null}},outcomes:{retries:0}})
-      Object.assign(window,{setTokens,setDuration})
+      const [rates,setRates]=createSignal({generation:{value:95.9321},endToEnd:{value:41.2718}})
+      const summary=()=>({accounting:{calls:2,attempts:2,tokens:tokens()},own:{tokens:tokens()},descendants:{tokens:tokens()},cost:{state:"recorded",reported:[],estimates:[],missing:0,equivalent:null},cache:{ratio:0.8},elapsedMs:duration(),elapsedActive:false,latency:{ttft:{totalMs:duration()/4,samples:1,meanMs:duration()/4},generation:{totalMs:duration()/4,samples:1},request:{meanMs:duration()/2}},tools:[{calls:1,durationMs:duration()/2,timedSamples:1}],rates:rates(),outcomes:{retries:0}})
+      Object.assign(window,{setTokens,setDuration,setRates})
       return <div class="context-dashboard"><ContextUsageStats summary={summary()} now={0}/><ContextTiming summary={summary()}/></div>
     }
     function Live(){
@@ -254,6 +255,36 @@ test("known token components remain visible with incomplete usage and never doub
   )
   expect(await arcs.count()).toBe(0)
   expect(await page.locator(".context-usage-stats .context-ring").getAttribute("aria-label")).toContain(": 0")
+})
+
+test("timing and usage details share one output speed without falling back to generation speed", async () => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto(new URL("metrics", server.resolvedUrls!.local[0]!).href)
+  await page.getByRole("button", { name: "Token usage details", exact: true }).click()
+  const detail = page.locator(".execution-usage-popover")
+  const speed = detail
+    .locator("dl > div")
+    .filter({ has: page.getByText("Output speed", { exact: true }) })
+    .locator("dd")
+  expect(await page.locator(".context-timing-rate").textContent()).toContain("Output speed")
+  for (const value of [41.2718, null, 0]) {
+    await page.evaluate(
+      (value) => Reflect.get(window, "setRates")({ generation: { value: 95.9321 }, endToEnd: { value } }),
+      value,
+    )
+    const expected = value == null ? "—" : value === 0 ? "0 tok/s" : "41.3 tok/s"
+    expect(await page.locator(".context-timing-rate strong").textContent()).toBe(expected)
+    expect(await speed.textContent()).toBe(expected)
+    expect(await detail.locator("dd").filter({ hasText: "tok/s" }).count()).toBe(value == null ? 0 : 1)
+  }
+  await page.setViewportSize({ width: 375, height: 667 })
+  await page.waitForFunction(() => {
+    const box = document.querySelector(".execution-usage-popover")!.getBoundingClientRect()
+    return box.x >= 0 && box.right <= innerWidth
+  })
+  expect(await detail.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await page.keyboard.press("Escape")
+  await detail.waitFor({ state: "hidden" })
 })
 
 test("recorded durations use the token ring type scale and fit long values without overflow", async () => {

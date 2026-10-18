@@ -73,6 +73,49 @@ test("cache uses all input and reasoning is not additive", () => {
   expect(summary.context).toMatchObject({ inputTokens: 1000, ratio: 0.5 })
 })
 
+test("rates pair final output with eligible durations and count reasoning only once", () => {
+  const attempt = facts()[1]
+  if (attempt.kind !== "attempt") throw new Error("fixture")
+  const first = {
+    ...attempt,
+    usage: RolloutUsage.normalize("openai", {
+      prompt_tokens: 10,
+      completion_tokens: 100,
+      completion_tokens_details: { reasoning_tokens: 40 },
+    }),
+    timing: { ...attempt.timing!, reasoningObserved: true, generationMs: 1000, requestMs: 4000 },
+  }
+  const second = {
+    ...first,
+    id: "second",
+    entityID: "second",
+    usage: RolloutUsage.normalize("openai", {
+      prompt_tokens: 10,
+      completion_tokens: 900,
+      completion_tokens_details: { reasoning_tokens: 300 },
+    }),
+    timing: { ...first.timing, generationMs: 3000, requestMs: 6000 },
+  }
+  const summary = UsageQuery.summarize([
+    first,
+    second,
+    { ...first, id: "hidden", entityID: "hidden", timing: { ...first.timing, reasoningObserved: false } },
+    { ...first, id: "no-usage", entityID: "no-usage", usage: undefined },
+    { ...first, id: "no-timing", entityID: "no-timing", timing: undefined },
+  ])
+  expect(summary.accounting.tokens.output.known).toBe(1200)
+  expect(summary.accounting.tokens.reasoning.known).toBe(420)
+  expect(summary.rates.generation).toMatchObject({
+    value: 250,
+    tokens: 1000,
+    milliseconds: 4000,
+    samples: 2,
+    excluded: 3,
+  })
+  expect(summary.rates.endToEnd).toMatchObject({ tokens: 1100, milliseconds: 14000, samples: 3, excluded: 2 })
+  expect(summary.rates.endToEnd.value).toBeCloseTo(1100 / 14)
+})
+
 test("journal gaps retain uncertainty without counting as legacy evidence", () => {
   const summary = UsageQuery.summarize([
     ...facts(),

@@ -10,7 +10,7 @@ Task summaries expose cumulative consumption without the breakdown needed to und
 
 Compact and full task summaries share a subordinate generation-speed and cache-hit row plus a Token disclosure. The disclosure separates input and its cache breakdown, output and its reasoning subset, main-task and descendant totals, request timing, retries and cumulative tool durations. Missing measurements are unavailable, measured zero remains visible and partial counts retain their lower bounds. Observed cache ratios identify their measured population; rates describe eligible request aggregates rather than instantaneous output speed.
 
-Metric presentation uses concise names, values and necessary scope qualifiers. Calculation formulas, sample-coverage explanations and introductory paragraphs belong in the usage documentation; icon tooltips only identify their metric. Measured context category counts remain available in the full overview.
+Metric presentation uses concise names, values and necessary scope qualifiers. [Consistent output speed](../bug-fix/2026-10-18-consistent-output-speed.md) supersedes the generation-speed presentation with one canonical request-rate value across summaries, timing cards and disclosures. Calculation formulas, sample-coverage explanations and introductory paragraphs belong in the usage documentation; icon tooltips only identify their metric. Measured context category counts remain available in the full overview.
 
 Workbench projects canonical latency, outcomes and tool statistics into the existing session execution summary and its revisioned events. Harness keeps accounting and rate formulas. Existing snapshot and event reconciliation carries all metrics without another polling or request lifecycle.
 
