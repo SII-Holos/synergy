@@ -1835,7 +1835,7 @@ msgstr "浏览器控件"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.menu.followAgent"
-msgstr "跟随智能体"
+msgstr "查看智能体页面"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.menu.open"
@@ -11713,10 +11713,6 @@ msgid "context.dashboard.historical"
 msgstr "请求 {number} 的上下文"
 
 #. js-lingui-explicit-id
-msgid "context.dashboard.historyRange"
-msgstr "历史范围"
-
-#. js-lingui-explicit-id
 msgid "context.dashboard.indexTruncated"
 msgstr "部分来源超出索引预算，可在执行记录中查看完整请求。"
 
@@ -11735,10 +11731,6 @@ msgstr "仅展示已知分类；灰色部分为未分类用量。"
 #. js-lingui-explicit-id
 msgid "context.dashboard.latest"
 msgstr "最近一次请求"
-
-#. js-lingui-explicit-id
-msgid "context.dashboard.latestWindow"
-msgstr "最新"
 
 #. js-lingui-explicit-id
 msgid "context.dashboard.loading"
@@ -11761,10 +11753,6 @@ msgid "context.dashboard.moreItems"
 msgstr "加载更多条目"
 
 #. js-lingui-explicit-id
-msgid "context.dashboard.nextWindow"
-msgstr "较新"
-
-#. js-lingui-explicit-id
 msgid "context.dashboard.noEvents"
 msgstr "已加载的历史中没有压缩记录。"
 
@@ -11775,10 +11763,6 @@ msgstr "没有匹配的来源。"
 #. js-lingui-explicit-id
 msgid "context.dashboard.noRequests"
 msgstr "首次模型请求后显示上下文。"
-
-#. js-lingui-explicit-id
-msgid "context.dashboard.previousWindow"
-msgstr "较早"
 
 #. js-lingui-explicit-id
 msgid "context.dashboard.reasoning"

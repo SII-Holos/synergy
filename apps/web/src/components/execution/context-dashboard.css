@@ -400,7 +400,17 @@
 .context-chart-scale > span {
   align-self: center;
 }
+.context-chart-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.context-chart-scroll::-webkit-scrollbar {
+  display: none;
+}
 .context-chart-bars {
+  height: 100%;
   position: relative;
   display: flex;
   min-width: 0;
@@ -514,24 +524,6 @@
   gap: 4px 8px;
   color: var(--text-weak);
   font-size: 12px;
-}
-.context-history-navigation {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-  direction: ltr;
-}
-.context-history-navigation input {
-  flex: 1;
-  min-width: 0;
-  height: 28px;
-  accent-color: var(--text-base);
-  cursor: pointer;
-}
-.context-history-navigation input:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 2px;
 }
 .context-history-preview {
   margin-top: 12px;

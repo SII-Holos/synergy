@@ -88,7 +88,7 @@ beforeAll(async () => {
       const [windowStart,setWindowStart]=createSignal("")
       Object.assign(window,{chart:{
         samples:(values,start=0)=>setItems(values.map((value,position)=>{const index=position+start;return {...first,callID:String(index),nodeID:String(index),started:index,requestNumber:index+1,roundNumber:Math.floor(index/2)+1,runID:"round-"+Math.floor(index/2),inputTokens:value.tokens,estimate:value.tokens==null?undefined:estimate(value.tokens),elapsedMs:value.elapsedMs}})),
-        select:setSelected,
+        select:setSelected,latest:()=>{setSelected("");setWindowStart("")},
         locale:locale=>{i18n.load(locale,{});i18n.activate(locale)},
       }})
       return <div class="context-dashboard"><ContextHistoryChart items={items()} windowStart={windowStart()} onWindowStart={setWindowStart} selected={selected()} onSelect={setSelected} grouping={grouping()} onGrouping={setGrouping} delta={delta()} onDelta={setDelta}/></div>
@@ -530,31 +530,40 @@ async function settleChart() {
 async function chartGeometry() {
   return page.evaluate(() => {
     const plot = document.querySelector(".context-chart-bars")!
-    const bounds = plot.getBoundingClientRect()
+    const viewport = document.querySelector(".context-chart-scroll") ?? plot
+    const bounds = viewport.getBoundingClientRect()
+    const visible = (x: number) => x >= bounds.left && x <= bounds.right
     const svg = document.querySelector<SVGSVGElement>(".context-timing-overlay")
     const svgBounds = svg?.getBoundingClientRect()
     return {
-      width: plot.clientWidth,
-      scrollWidth: plot.scrollWidth,
+      width: viewport.clientWidth,
+      scrollWidth: viewport.scrollWidth,
       bounds: { left: bounds.left, right: bounds.right, top: bounds.top, height: bounds.height },
-      bars: [...plot.querySelectorAll(".context-history-bar")].map((bar) => {
-        const rect = bar.getBoundingClientRect()
-        const positive = [...bar.querySelectorAll(".context-bar-positive > span")].map(
-          (segment) => segment.getBoundingClientRect().height,
-        )
-        const negative = [...bar.querySelectorAll(".context-bar-negative > span")].map(
-          (segment) => segment.getBoundingClientRect().height,
-        )
-        return {
-          x: rect.x + rect.width / 2,
-          positive: positive.reduce((a, b) => a + b, 0),
-          negative: negative.reduce((a, b) => a + b, 0),
-        }
-      }),
-      points: [...plot.querySelectorAll(".context-timing-point")].map((point) => {
-        const [x, y] = point.getAttribute("d")!.slice(1).split(" ")[0].split(",").map(Number)
-        return { x: svgBounds!.left + (x / 100) * svgBounds!.width, y: svgBounds!.top + (y / 100) * svgBounds!.height }
-      }),
+      bars: [...plot.querySelectorAll(".context-history-bar")]
+        .map((bar) => {
+          const rect = bar.getBoundingClientRect()
+          const positive = [...bar.querySelectorAll(".context-bar-positive > span")].map(
+            (segment) => segment.getBoundingClientRect().height,
+          )
+          const negative = [...bar.querySelectorAll(".context-bar-negative > span")].map(
+            (segment) => segment.getBoundingClientRect().height,
+          )
+          return {
+            x: rect.x + rect.width / 2,
+            positive: positive.reduce((a, b) => a + b, 0),
+            negative: negative.reduce((a, b) => a + b, 0),
+          }
+        })
+        .filter((bar) => visible(bar.x)),
+      points: [...plot.querySelectorAll(".context-timing-point")]
+        .map((point) => {
+          const [x, y] = point.getAttribute("d")!.slice(1).split(" ")[0].split(",").map(Number)
+          return {
+            x: svgBounds!.left + (x / 100) * svgBounds!.width,
+            y: svgBounds!.top + (y / 100) * svgBounds!.height,
+          }
+        })
+        .filter((point) => visible(point.x)),
       tokenTicks: [...document.querySelectorAll(".context-chart-scale:not(.context-time-scale) > span")].map(
         (el) => el.textContent,
       ),
@@ -570,7 +579,8 @@ test("long histories show the latest 24 aligned requests with scales limited to 
     Array.from({ length: 231 }, (_, i) => ({ tokens: (i + 1) * 1000, elapsedMs: i === 0 ? 154000 : 18000 })),
   )
   const geometry = await chartGeometry()
-  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width + 1)
+  expect(geometry.scrollWidth).toBeGreaterThan(geometry.width * 9)
+  expect(await page.getByRole("slider").count()).toBe(0)
   expect(geometry.bars).toHaveLength(24)
   for (let i = 0; i < geometry.bars.length; i++) {
     expect(geometry.bars[i].x).toBeGreaterThanOrEqual(geometry.bounds.left)
@@ -675,9 +685,11 @@ test("history navigation follows the latest requests and anchors manual browsing
   await chartSamples(samples)
   const caption = page.locator(".context-chart-caption")
   expect(await caption.textContent()).toBe("Request 37Request 60")
-  const slider = page.getByRole("slider", { name: "History range" })
-  await slider.focus()
-  await page.keyboard.press("Home")
+  await page.locator(".context-chart-scroll").hover()
+  await page.mouse.wheel(-10000, 0)
+  await page.waitForFunction(
+    () => document.querySelector(".context-chart-caption")?.textContent === "Request 1Request 24",
+  )
   expect(await caption.textContent()).toBe("Request 1Request 24")
   await page
     .locator(".context-history-bar")
@@ -687,9 +699,15 @@ test("history navigation follows the latest requests and anchors manual browsing
   expect(await caption.textContent()).toBe("Request 1Request 24")
   expect(await page.locator(".context-history-bar").first().getAttribute("data-retained")).toBe("yes")
   expect((await chartGeometry()).timeTicks[0]).toBe("00:04")
-  await page.getByRole("button", { name: "Later", exact: true }).click()
+  await page.locator(".context-chart-scroll").evaluate((el) => el.scrollTo({ left: el.clientWidth }))
+  await page.waitForFunction(
+    () => document.querySelector(".context-chart-caption")?.textContent === "Request 25Request 48",
+  )
   expect(await caption.textContent()).toBe("Request 25Request 48")
-  await page.getByRole("button", { name: "Latest", exact: true }).click()
+  await page.locator(".context-chart-scroll").evaluate((el) => el.scrollTo({ left: el.scrollWidth }))
+  await page.waitForFunction(
+    () => document.querySelector(".context-chart-caption")?.textContent === "Request 38Request 61",
+  )
   expect(await caption.textContent()).toBe("Request 38Request 61")
   await chartSamples([...samples, { tokens: 10000, elapsedMs: 120000 }, { tokens: 20000, elapsedMs: 8000 }])
   expect(await caption.textContent()).toBe("Request 39Request 62")
@@ -700,15 +718,17 @@ test("history navigation follows the latest requests and anchors manual browsing
   expect(await caption.textContent()).toBe("Request 10Request 33")
   await page.getByRole("button", { name: "Change", exact: true }).click()
   await settleChart()
-  expect(await page.locator(".context-history-bar").first().getAttribute("data-gap")).toBe("false")
+  expect(await page.getByRole("button", { name: /^Request 10 ·/ }).getAttribute("data-gap")).toBe("false")
   expect((await chartGeometry()).bars[0].positive).toBeGreaterThan(0)
-  await page.getByRole("button", { name: "Earlier", exact: true }).click()
-  expect(await caption.textContent()).toBe("Request 1Request 24")
-  await page.locator(".context-history-bar").last().focus()
+  await page.locator(".context-chart-scroll").evaluate((el) => el.scrollTo({ left: 0 }))
+  await page.waitForFunction(
+    () => document.querySelector(".context-chart-caption")?.textContent === "Request 1Request 24",
+  )
+  await page.getByRole("button", { name: /^Request 24 ·/ }).focus()
   await page.keyboard.press("ArrowRight")
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label")?.startsWith("Request 25 ·"))
   expect(await caption.textContent()).toBe("Request 2Request 25")
-  await page.locator(".context-history-bar").first().focus()
+  await page.getByRole("button", { name: /^Request 2 ·/ }).focus()
   await page.keyboard.press("ArrowLeft")
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label")?.startsWith("Request 1 ·"))
   expect(await caption.textContent()).toBe("Request 1Request 24")
@@ -719,18 +739,18 @@ test("prepending earlier requests keeps the manually viewed window and its focus
   await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
   const samples = Array.from({ length: 30 }, (_, i) => ({ tokens: 100 + i, elapsedMs: 4000 }))
   await chartSamples(samples, 100)
-  const slider = page.getByRole("slider", { name: "History range" })
-  await slider.focus()
-  await page.keyboard.press("Home")
+  await page.locator(".context-chart-scroll").evaluate((el) => el.scrollTo({ left: 0 }))
+  await page.waitForFunction(
+    () => document.querySelector(".context-chart-caption")?.textContent === "Request 101Request 124",
+  )
   await page.locator(".context-history-bar").first().focus()
   await chartSamples([...samples, ...samples], 70)
   expect(await page.locator(".context-chart-caption").textContent()).toBe("Request 101Request 124")
   expect(
-    await page
-      .locator(".context-history-bar")
-      .first()
-      .evaluate((el) => document.activeElement === el),
+    await page.getByRole("button", { name: /^Request 101 ·/ }).evaluate((el) => document.activeElement === el),
   ).toBe(true)
-  await page.getByRole("button", { name: "Earlier", exact: true }).click()
-  expect(await page.locator(".context-chart-caption").textContent()).toBe("Request 77Request 100")
+  await page.locator(".context-chart-scroll").evaluate((el) => el.scrollBy({ left: -el.clientWidth }))
+  await page.waitForFunction(
+    () => document.querySelector(".context-chart-caption")?.textContent === "Request 77Request 100",
+  )
 })

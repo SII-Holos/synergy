@@ -65,13 +65,14 @@ beforeAll(async () => {
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
     const i18n = setupI18n({locale:"en",messages:{en:messages}})
     const browserCatalog = createBrowserStore()
-    const store = browserCatalog.forPage(() => "page-one", () => {})
+    window.selections = []; window.browserCatalog = browserCatalog
+    const store = browserCatalog.forPage(() => "page-one", id => window.selections.push(id), () => "current")
     browserCatalog.replacePages([{id:"page-one",profileId:"personal",status:"active",url:"about:blank",title:"Test",isLoading:false,lastActiveAt:null}])
     browserCatalog.setHostStatus("page-one", "ready")
     browserCatalog.setPresentation({kind:"native",protocolVersion:4,capabilities:{native:true},reason:"desktop-local"})
     browserCatalog._setSend(command => { window.commands.push(command) })
     window.browserFixture = store
-    window.pageStateReplies = []
+    window.pageStateReplies = []; window.zoomReplies = []
     function App() {
       let container
       const dialog = useDialog()
@@ -89,7 +90,7 @@ beforeAll(async () => {
         <button onClick={() => dialog.show(() => <BrowserDataDialog ownerKey="owner-one" pageId="page-one" url="https://example.test/login" section="passwords" />)}>Open passwords</button>
         <button onClick={() => dialog.show(() => <BrowserResultDialog initial={{type:"capture", dataUrl:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4xkAAAAASUVORK5CYII=",width:100,height:100,url:"https://example.test/page",title:"Capture",capturedAt:1}} recapture={async () => {throw new Error("Unused")}} attach={async (file,text) => {window.captureResult = {name:file.name,type:file.type,text}}} />)}>Open screenshot</button>
         <div class="browser-workspace" style="height:500px">
-          <Show when={addressMounted()}><AddressBar recent={recent} onExternal={() => window.commands.push({type:"external"})} onPageAction={async action => {window.commands.push(action);if(action.type === "state" && window.holdPageState) return await new Promise(resolve => window.pageStateReplies.push(resolve));if(action.type === "zoom") return {type:"zoom",factor:action.factor};return {type:"state",back:false,forward:false,zoom:1}}} activeUrl={() => store.page()?.url ?? ""} isLoading={() => false} hasPage={() => true} onNavigate={url => window.commands.push({type:"navigate",url})} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} /></Show>
+          <Show when={addressMounted()}><AddressBar recent={recent} onExternal={() => window.commands.push({type:"external"})} onPageAction={async action => {window.commands.push(action);if(action.type === "state" && window.holdPageState) return await new Promise(resolve => window.pageStateReplies.push(resolve));if(action.type === "zoom" && window.holdZoom) return await new Promise(resolve => window.zoomReplies.push(resolve));if(action.type === "zoom") return {type:"zoom",factor:action.factor};return {type:"state",back:false,forward:false,zoom:1}}} activeUrl={() => store.page()?.url ?? ""} isLoading={() => false} hasPage={() => true} onNavigate={url => window.commands.push({type:"navigate",url})} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} /></Show>
           <div ref={container} style="position:relative;height:400px"><NativeBrowserSurface container={() => container} ownerKey="owner-one" /></div>
         </div>
         <Show when={newTab()}><div class="browser-workspace" style="height:360px"><BrowserNewTab onNavigate={url => window.commands.push({type:"navigate",url})} onImport={() => dialog.show(() => <BrowserImportDialog ownerKey="owner-one" pageId="page-one" />)} /></div></Show>
@@ -137,9 +138,23 @@ afterAll(async () => {
 
 type Fixture = Window & {
   holdPageState?: boolean
+  holdZoom?: boolean
+  selections: string[]
+  browserCatalog: {
+    applyAgentActivity(activity: {
+      sessionID: string
+      operationID: string
+      tool: string
+      pageId: string
+      url: string
+      kind: "acting"
+      label: string
+    }): void
+  }
+  zoomReplies: Array<(state: { type: "zoom"; factor: number }) => void>
   pageStateReplies: Array<(state: { type: "state"; back: boolean; forward: boolean; zoom: number }) => void>
   captureResult?: { name: string; type: string; text: string }
-  commands: Array<{ accept?: boolean; promptText?: string; type?: string; url?: string }>
+  commands: Array<{ accept?: boolean; promptText?: string; type?: string; url?: string; factor?: number }>
   initialRecent?: Array<{ url: string; title: string }>
   setRecent(entries: Array<{ url: string; title: string }>): void
   setAddressMounted(value: boolean): void
@@ -493,15 +508,15 @@ test("shared Browser menu returns focus on Escape and native view resumes only a
   const menu = page.getByRole("button", { name: "Browser options", exact: true })
   await menu.click()
   await page.getByText("Developer tools", { exact: true }).click()
-  await page.getByRole("switch").waitFor()
+  await page.getByRole("button", { name: "Fit", exact: true }).waitFor()
   expect(await page.evaluate(() => (window as unknown as Fixture).attachments.at(-1)?.visible)).toBe(false)
   await page.evaluate(() => {
     const fixture = window as unknown as Fixture
     fixture.browserFixture.setBrowserError({ severity: "error", message: "Test error" })
     fixture.browserFixture.setAnnotationTarget({ displayX: 20, displayY: 20, pageX: 20, pageY: 20 })
   })
-  await page.getByRole("switch").press("Escape")
-  await page.getByRole("switch").waitFor({ state: "hidden" })
+  await page.getByRole("button", { name: "Fit", exact: true }).press("Escape")
+  await page.getByRole("button", { name: "Fit", exact: true }).waitFor({ state: "hidden" })
   expect(await menu.evaluate((node) => document.activeElement === node)).toBe(true)
   expect(await page.evaluate(() => (window as unknown as Fixture).attachments.at(-1)?.visible)).toBe(false)
   await page.evaluate(() => (window as unknown as Fixture).browserFixture.setAnnotationTarget(null))
@@ -688,4 +703,131 @@ test("partial import keeps successful counts visible alongside the recovery reas
   expect(await dialog.getByRole("status").textContent()).toContain(
     "The source data is no longer available. Choose the browser again or use an exported file.",
   )
+})
+
+test("zoom dismisses the native cover and rapid changes retain the latest requested scale", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Browser options", exact: true }).waitFor()
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.holdZoom = true
+    fixture.browserFixture.replacePages([
+      { id: "page-one", profileId: "personal", status: "active", url: "https://example.test/zoom", title: "Zoom" },
+    ])
+  })
+  const menu = page.getByRole("button", { name: "Browser options", exact: true })
+  await menu.click()
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click()
+  await page.getByRole("dialog", { name: "Browser options", exact: true }).waitFor({ state: "hidden", timeout: 2000 })
+  await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === true)
+  await menu.click()
+  expect(await page.getByRole("button", { name: "Reset zoom", exact: true }).innerText()).toBe("110%")
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click()
+  expect(
+    await page.evaluate(() =>
+      (window as unknown as Fixture).commands.filter((c) => c.type === "zoom").map((c) => c.factor),
+    ),
+  ).toEqual([1.1, 1.2])
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.zoomReplies[1]({ type: "zoom", factor: 1.2 })
+    fixture.zoomReplies[0]({ type: "zoom", factor: 1.1 })
+  })
+  await menu.click()
+  expect(await page.getByRole("button", { name: "Reset zoom", exact: true }).innerText()).toBe("120%")
+})
+
+test("a zoom reply from the previous navigation cannot replace the current page scale", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Browser options", exact: true }).waitFor()
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.holdZoom = true
+    fixture.browserFixture.replacePages([
+      { id: "page-one", profileId: "personal", status: "active", url: "https://example.test/first", title: "First" },
+    ])
+  })
+  await page.getByRole("button", { name: "Browser options", exact: true }).click()
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click()
+  await page.keyboard.press("Escape")
+  await page.evaluate(() =>
+    (window as unknown as Fixture).browserFixture.replacePages([
+      { id: "page-one", profileId: "personal", status: "active", url: "https://example.test/second", title: "Second" },
+    ]),
+  )
+  await page.waitForFunction(
+    () => (window as unknown as Fixture).commands.filter((c) => c.type === "state").length >= 2,
+  )
+  await page.evaluate(async () => {
+    ;(window as unknown as Fixture).zoomReplies[0]({ type: "zoom", factor: 1.1 })
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  })
+  await page.getByRole("button", { name: "Browser options", exact: true }).click()
+  expect(await page.getByRole("button", { name: "Reset zoom", exact: true }).innerText()).toBe("100%")
+})
+
+test("viewport presets close the menu and dispatch fixed or fit sizing", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Browser options", exact: true }).waitFor()
+  await page.evaluate(() =>
+    (window as unknown as Fixture).browserFixture.replacePages([
+      { id: "page-one", profileId: "personal", status: "active", url: "https://example.test/page", title: "Page" },
+    ]),
+  )
+  for (const label of ["Desktop", "Tablet", "Mobile", "Fit"]) {
+    await page.getByRole("button", { name: "Browser options", exact: true }).click()
+    const disclosure = page.locator(".browser-options-menu summary")
+    if (!(await disclosure.evaluate((el) => (el.parentElement as HTMLDetailsElement).open))) await disclosure.click()
+    await page.getByRole("button", { name: label, exact: true }).click()
+    await page.getByRole("dialog", { name: "Browser options", exact: true }).waitFor({ state: "hidden", timeout: 2000 })
+  }
+  expect(
+    await page.evaluate(() => (window as unknown as Fixture).commands.filter((c) => c.type === "input.resize")),
+  ).toMatchObject([
+    { width: 1280, height: 720 },
+    { width: 768, height: 1024 },
+    { width: 375, height: 667 },
+    { mode: "fit" },
+  ])
+})
+
+test("viewing the agent page is an explicit action and is unavailable without a current-task target", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Browser options", exact: true }).click()
+  await page.locator(".browser-options-menu summary").click()
+  const action = page.getByRole("button", { name: "View agent page", exact: true })
+  await action.waitFor({ timeout: 2000 })
+  expect(await action.isDisabled()).toBe(true)
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.browserFixture.replacePages([
+      { id: "page-one", profileId: "personal", status: "active", url: "https://example.test/one", title: "One" },
+      { id: "page-two", profileId: "personal", status: "active", url: "https://example.test/two", title: "Two" },
+    ])
+    fixture.browserCatalog.applyAgentActivity({
+      sessionID: "other",
+      operationID: "other",
+      tool: "browser_action",
+      pageId: "page-two",
+      url: "https://example.test/two",
+      kind: "acting",
+      label: "Acting",
+    })
+  })
+  expect(await action.isDisabled()).toBe(true)
+  await page.evaluate(() =>
+    (window as unknown as Fixture).browserCatalog.applyAgentActivity({
+      sessionID: "current",
+      operationID: "current",
+      tool: "browser_action",
+      pageId: "page-two",
+      url: "https://example.test/two",
+      kind: "acting",
+      label: "Acting",
+    }),
+  )
+  expect(await page.evaluate(() => (window as unknown as Fixture).selections)).toEqual([])
+  await action.click()
+  expect(await page.evaluate(() => (window as unknown as Fixture).selections)).toEqual(["page-two"])
+  await page.getByRole("dialog", { name: "Browser options", exact: true }).waitFor({ state: "hidden" })
 })

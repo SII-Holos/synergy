@@ -89,7 +89,7 @@ For explicitly authorized personal-profile acceptance, launch ordinary Electron 
 
 For page-independent management, use backend-issued opaque profile data contexts and Protocol v7; never accept a renderer partition or create an about:blank page. Test zero-page Settings listing/import, strict rejection of save/fill, profile revision and broker-epoch revocation, OS-return races, owned job cancellation and fixture-secret absence from API/IPC/log results. Keep the two-action global Settings surface separate from advanced Browser options and unrelated draft state. Anonymous reference preview uses no native context or website credentials: test pinned public DNS, every redirect, cancellation, body limits and blocked-target request counts independently from Chromium browsing.
 
-Bind asynchronous navigation-state replies to the page and reactive request lifetime. Ignore replies after navigation, page selection or disposal supersedes them. Verify out-of-order replies through rendered back, forward and zoom controls.
+Bind asynchronous navigation-state replies to the page and reactive request lifetime. Ignore replies after navigation, page selection or disposal supersedes them. Verify out-of-order replies through rendered back, forward and zoom controls, including rapid zoom input and a reply after navigation. Zoom and viewport choices must release the native cover so their result is visible. Verify system print cancellation separately from printer failures. Present explicit agent-page selection as an action disabled without a current-task target, never as an inert persistent-follow switch.
 
 ## Shared project pages
 

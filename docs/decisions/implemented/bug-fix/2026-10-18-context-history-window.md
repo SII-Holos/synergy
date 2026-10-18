@@ -8,13 +8,15 @@ Fitting hundreds of retained requests into a narrow trend chart makes individual
 
 ## Decision
 
-The chart renders at most 24 requests or grouped rounds. Its window defaults to the latest entries, moves by one entry through a native range slider and by 24 through Earlier/Later actions. Latest clears historical selection and reloads the current tail. The dashboard saves the first visible request identity alongside its existing navigation state. Incoming updates and prepends retain a manually browsed window; explicit request selection reveals the selected entry. Keyboard focus pins the window, and arrow navigation across an edge advances it while retaining focus. Successful earlier-page reads open the oldest loaded window; failed or superseded reads do not move it.
+The plot fits 24 requests or grouped rounds into its visible width and renders the retained history on one horizontally scrollable track. Token bars and elapsed points share that track; axes and the existing controls stay outside it. Native trackpad/touch scrolling and keyboard navigation move through history without another slider or navigation row. The viewport defaults to the latest entries. Scrolling back to its latest edge or choosing Return to latest clears historical selection and reloads the current tail. The dashboard saves the first visible request identity alongside its existing navigation state. Incoming updates and prepends retain a manually browsed position; explicit request selection reveals the selected entry. Keyboard focus pins the viewport, and arrow navigation across an edge advances it while retaining focus. Successful earlier-page reads open the oldest loaded window; failed or superseded reads do not move it.
 
 Both vertical ranges use only the visible entries, retaining five independently calculated ticks. Category changes are calculated from the complete retained sequence before selecting the visible window, preserving the first visible request's predecessor and all recorded gaps. The existing bounded history storage and on-demand paging remain unchanged.
 
 ## Alternatives considered
 
 **Compress every retained request into the viewport.** It preserves an overview but makes individual requests impractical to inspect as history grows.
+
+**Add a separate slider and paging toolbar.** This duplicates native scrolling and changes the established chart layout. Direct plot scrolling keeps the existing surface.
 
 **Sample or aggregate requests to keep a fixed number of columns.** That can hide spikes, gaps and individual request details. A bounded window preserves every recorded entry.
 

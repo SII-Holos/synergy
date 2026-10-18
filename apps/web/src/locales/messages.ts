@@ -177,7 +177,7 @@ export const browser = {
   recentAddresses: { id: "app.browser.address.recent", message: "Recently opened" },
   options: { id: "app.browser.menu.options", message: "Browser options" },
   controls: { id: "app.browser.menu.controls", message: "Browser controls" },
-  followAgent: { id: "app.browser.menu.followAgent", message: "Follow agent" },
+  followAgent: { id: "app.browser.menu.followAgent", message: "View agent page" },
   agentNavigation: { id: "app.browser.menu.agentNavigation", message: "Agent navigation" },
   viewport: { id: "app.browser.menu.viewport", message: "Viewport" },
   fit: { id: "app.browser.viewport.fit", message: "Fit" },
