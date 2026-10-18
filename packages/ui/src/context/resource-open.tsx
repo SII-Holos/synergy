@@ -31,6 +31,7 @@ export interface ResourcePreview {
   source: string
   description?: string
   path?: string
+  image?: { src: string; alt: string }
   code?: { text: string; language?: string; startLine?: number }
   meta?: string
   unavailable?: string

@@ -399,6 +399,7 @@
 }
 
 [data-component="markdown"] [data-slot="markdown-resource-image"] {
+  cursor: zoom-in;
   display: block;
   width: fit-content;
   max-width: 100%;

@@ -49,12 +49,15 @@ beforeAll(async () => {
     configureClipboard({ writer: value => { window.copies.push(value); return true } })
     const resources = {
       contextKey,
+      resolveUrl: () => "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
       openLabel: () => "Open in workspace",
       open: async (resource, options) => { window.opens.push({resource, options: {prefer: options?.prefer, newTab: options?.newTab}}); return {status:"opened"} },
       preview: async (resource, options) => {
         window.previews.push(resource)
         options?.signal?.addEventListener("abort", () => window.aborted++)
         if(window.hold) await new Promise(resolve => window.release = resolve)
+        if(window.emptyPreview) return {title:"Archive.zip",source:"File",unavailable:"Preview unavailable"}
+        if(resource.kind === "asset") return {title:resource.filename,source:"Image",image:{src:window.brokenImage ? "/missing.png" : resources.resolveUrl(),alt:resource.filename}}
         return {title: resource.kind === "note" ? "Note title" : resource.url, source:"example.org", path: resource.kind === "note" ? "note://" + resource.id + "#" + resource.location.id : undefined, description:"A readable preview", code:{text:window.longCode ? "long_source_identifier_".repeat(200) : "const value = 1",language:"ts",startLine:289}, meta:"fixed commit"}
       }
     }
@@ -200,7 +203,8 @@ for (const crossing of [
     const card = page.locator('[data-component="resource-preview"]')
     expect(await card.count()).toBe(1)
     expect(await card.getByRole("heading").textContent()).toBe(crossing.target)
-    expect(await card.locator('[data-slot="resource-preview-target"]').textContent()).toBe(crossing.target)
+    await card.getByRole("button", { name: "Copy link", exact: true }).click()
+    expect(await page.evaluate(() => (window as unknown as { copies: string[] }).copies.at(-1))).toBe(crossing.target)
     await card.getByRole("button", { name: "Close preview", exact: true }).focus()
     await page.keyboard.press("Escape")
     await page.clock.runFor(1000)
@@ -295,19 +299,100 @@ test("stream settlement does not duplicate icons or replace selected original UR
   expect(errors).toEqual([])
 })
 
-test("Note preview shows its canonical URI once and retains copy and destination actions", async () => {
+test("Note preview shows content without internal addresses and retains copy and destination actions", async () => {
   await page.locator('a[data-resource-kind="note"]').hover()
   const card = page.locator('[data-component="resource-preview"]')
   await card.getByRole("heading", { name: "Note title", exact: true }).waitFor()
   expect(await card.locator('[data-slot="resource-preview-path"]').count()).toBe(0)
-  expect(await card.locator('[data-slot="resource-preview-target"]').textContent()).toBe(
-    "note://nte_example#stable-block",
-  )
+  expect(await card.textContent()).not.toContain("note://")
   await card.getByRole("button", { name: "Copy link", exact: true }).click()
   expect(await page.evaluate(() => (window as unknown as { copies: string[] }).copies)).toEqual([
     "note://nte_example#stable-block",
   ])
   expect(await card.getByRole("button", { name: "Open in workspace", exact: true }).isVisible()).toBe(true)
+  expect(errors).toEqual([])
+})
+
+for (const wrapped of [false, true]) {
+  test(`body images ${wrapped ? "inside an explicit link" : "on their own"} open directly without a hover or focus preview`, async () => {
+    await page.evaluate((wrapped) => {
+      const image = "![Keyboard sequence](asset://0123456789abcdef.png)"
+      ;(window as unknown as { setText(text: string): void }).setText(
+        wrapped ? `[${image}](asset://0123456789abcdef.png)` : image,
+      )
+    }, wrapped)
+    const link = page.locator("a[data-resource-bound]").first()
+    await link.locator("img").waitFor()
+    await link.hover()
+    await page.waitForTimeout(500)
+    await link.focus()
+    await page.waitForTimeout(500)
+    expect(await page.locator('[data-component="resource-preview"]').count()).toBe(0)
+    expect(await page.evaluate(() => (window as unknown as { previews: unknown[] }).previews)).toEqual([])
+    expect(await link.getAttribute("title")).toBeNull()
+    await link.click()
+    expect(await page.evaluate(() => (window as unknown as { opens: unknown[] }).opens)).toMatchObject([
+      { resource: { kind: "asset", filename: "Keyboard sequence" }, options: { prefer: "preview" } },
+    ])
+    expect(errors).toEqual([])
+  })
+}
+
+test("image text references show their thumbnail and authored name while copying the original target", async () => {
+  await page.evaluate(() =>
+    (window as unknown as { setText(text: string): void }).setText("[Keyboard sequence](asset://0123456789abcdef.png)"),
+  )
+  await page.locator("a[data-resource-bound]").first().hover()
+  const card = page.locator('[data-component="resource-preview"]')
+  await card.getByRole("img", { name: "Keyboard sequence" }).waitFor()
+  expect(await card.getByRole("heading").textContent()).toBe("Keyboard sequence")
+  expect(await card.textContent()).not.toContain("asset://")
+  await card.getByRole("button", { name: "Copy link", exact: true }).click()
+  expect(await page.evaluate(() => (window as unknown as { copies: string[] }).copies)).toEqual([
+    "asset://0123456789abcdef.png",
+  ])
+  expect(errors).toEqual([])
+})
+
+test("unavailable content leaves no passive card but remains explicitly accessible", async () => {
+  await page.close()
+  page = await browser.newPage({ viewport: { width: 375, height: 650 }, isMobile: true, hasTouch: true })
+  await page.goto(server.resolvedUrls!.local[0]!)
+  await page.locator("a[data-resource-bound]").first().waitFor()
+  await page.evaluate(() => Object.assign(window, { emptyPreview: true }))
+  const link = page.locator("a[data-resource-bound]").first()
+  await link.hover()
+  await page.waitForFunction(() => (window as unknown as { previews: unknown[] }).previews.length === 1)
+  expect(await page.locator('[data-component="resource-preview"]').count()).toBe(0)
+  await link.locator("+ button[data-resource-info]").tap()
+  const card = page.locator('[data-component="resource-preview"]')
+  await card.getByText("Preview unavailable", { exact: true }).waitFor()
+  expect(await card.getByRole("button", { name: "Open in workspace", exact: true }).isVisible()).toBe(true)
+  await card.getByRole("button", { name: "Close preview", exact: true }).click()
+  await link.click()
+  expect(await page.evaluate(() => (window as unknown as { opens: unknown[] }).opens.length)).toBe(1)
+})
+
+test("keyboard focus inside the card keeps it open when the pointer leaves", async () => {
+  await page.locator("a[data-resource-bound]").first().hover()
+  const card = page.locator('[data-component="resource-preview"]')
+  await card.locator("pre").focus()
+  await page.mouse.move(850, 650)
+  await page.waitForTimeout(200)
+  expect(await card.isVisible()).toBe(true)
+  expect(await card.locator('[data-slot="resource-preview-line-number"]').textContent()).toBe("289")
+  await page.keyboard.press("Escape")
+  await card.waitFor({ state: "detached" })
+})
+
+test("a failed image thumbnail dismisses a passive preview", async () => {
+  await page.evaluate(() => {
+    Object.assign(window, { brokenImage: true })
+    ;(window as unknown as { setText(text: string): void }).setText("[Missing image](asset://0123456789abcdef.png)")
+  })
+  await page.locator("a[data-resource-bound]").first().hover()
+  await page.waitForFunction(() => (window as unknown as { previews: unknown[] }).previews.length === 1)
+  await page.locator('[data-component="resource-preview"]').waitFor({ state: "detached" })
   expect(errors).toEqual([])
 })
 
@@ -348,11 +433,9 @@ test("long source previews keep their destination and footer actions visible wit
   const bounds = await page.locator('[data-component="resource-preview"]').evaluate((card) => {
     const popup = card.closest<HTMLElement>('[data-component="popover-content"]')!
     const footer = card.querySelector("footer")!.getBoundingClientRect()
-    const target = card.querySelector('[data-slot="resource-preview-target"]')!.getBoundingClientRect()
     const frame = popup.getBoundingClientRect()
     return {
       footer: footer.bottom,
-      target: target.bottom,
       bottom: frame.bottom,
       height: frame.height,
       scroll: popup.scrollTop,
@@ -360,7 +443,6 @@ test("long source previews keep their destination and footer actions visible wit
   })
   expect(bounds.scroll).toBe(0)
   expect(bounds.footer).toBeLessThanOrEqual(bounds.bottom)
-  expect(bounds.target).toBeLessThanOrEqual(bounds.bottom)
   expect(bounds.height).toBeLessThanOrEqual(560)
   await page.setViewportSize({ width: 375, height: 500 })
   await page.locator('[data-component="resource-preview"]').hover()

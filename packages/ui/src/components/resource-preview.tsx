@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/solid"
-import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js"
+import { createEffect, createSignal, For, onCleanup, Show, untrack } from "solid-js"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import type { ResourceOpenController, ResourceOpenOptions, ResourcePreview } from "../context/resource-open"
 import { useResourcePreviewOwner } from "../context/resource-open"
@@ -28,10 +28,19 @@ export function ResourcePreviewCard(props: {
   loading?: boolean
   resources: ResourceOpenController
   options?: ResourceOpenOptions
+  onImageError?(): void
   close(): void
 }) {
   const { _ } = useLingui()
   const target = () => ResourceReference.format(props.reference)
+  const path = () => {
+    const value = props.preview.path
+    return value && value !== props.preview.title && !/^(asset|note):\/\//i.test(value) ? value : undefined
+  }
+  const highlighted = (line: number) => {
+    const location = props.options?.location ?? ("location" in props.reference ? props.reference.location : undefined)
+    return location?.kind === "text" && line >= location.line && line <= (location.endLine ?? location.line)
+  }
   const open = (prefer?: "external") => {
     void props.resources.open(props.reference, { ...props.options, signal: undefined, ...(prefer ? { prefer } : {}) })
     props.close()
@@ -52,19 +61,44 @@ export function ResourcePreviewCard(props: {
       </header>
       <h3>{props.preview.title}</h3>
       <div data-slot="resource-preview-details">
-        <Show when={props.preview.path && props.preview.path !== target()}>
-          <p data-slot="resource-preview-path">{props.preview.path}</p>
+        <Show when={path()}>
+          <p data-slot="resource-preview-path">{path()}</p>
         </Show>
         <Show when={props.loading}>
           <p role="status">{_(resourcePreviewDescriptors.loading)}</p>
         </Show>
         <Show when={props.preview.description}>
-          <p>{props.preview.description}</p>
+          <p data-slot="resource-preview-description">{props.preview.description}</p>
+        </Show>
+        <Show when={props.preview.image}>
+          {(image) => (
+            <img
+              data-slot="resource-preview-image"
+              src={image().src}
+              alt={image().alt}
+              decoding="async"
+              onError={() => props.onImageError?.()}
+            />
+          )}
         </Show>
         <Show when={props.preview.code}>
           {(code) => (
             <pre data-language={code().language} tabIndex={0}>
-              <code>{code().text}</code>
+              <code>
+                <For each={code().text.split("\n")}>
+                  {(line, index) => (
+                    <span
+                      data-slot="resource-preview-line"
+                      data-highlighted={highlighted((code().startLine ?? 1) + index()) || undefined}
+                    >
+                      <span data-slot="resource-preview-line-number" aria-hidden="true">
+                        {(code().startLine ?? 1) + index()}
+                      </span>
+                      <span>{line || "\u00a0"}</span>
+                    </span>
+                  )}
+                </For>
+              </code>
             </pre>
           )}
         </Show>
@@ -75,18 +109,13 @@ export function ResourcePreviewCard(props: {
           <p role="status">{props.preview.unavailable}</p>
         </Show>
       </div>
-      <a
-        data-slot="resource-preview-target"
-        href={props.reference.kind === "url" ? target() : undefined}
-        onClick={(event) => {
-          event.preventDefault()
-          open()
-        }}
-      >
-        {target()}
-      </a>
       <footer>
-        <Button size="small" variant="secondary" icon={getSemanticIcon("action.open")} onClick={() => open()}>
+        <Button
+          data-slot="resource-preview-open"
+          variant="ghost"
+          icon={getSemanticIcon("action.open")}
+          onClick={() => open()}
+        >
           {props.resources.openLabel?.(props.reference) ?? _(resourcePreviewDescriptors.open)}
         </Button>
         <Show when={props.reference.kind === "url" && /^https?:/i.test(props.reference.url)}>
@@ -124,6 +153,9 @@ export function MarkdownResourcePreview(props: {
   let release: (() => void) | undefined
   let restoring: HTMLElement | undefined
   let occurrence = 0
+  let explicit = false
+  const hasContent = (value: ResourcePreview) =>
+    Boolean(value.image || value.description?.trim() || value.code?.text.trim())
   const focusTarget = () => {
     const element = anchor()
     if (element?.isConnected) return element
@@ -160,10 +192,13 @@ export function MarkdownResourcePreview(props: {
     signal: pending?.signal,
   })
   const open = (element: HTMLElement, focus = false) => {
-    if (!active() || !element.isConnected || element.closest("[inert]")) return
+    if (!active() || !element.isConnected || element.closest("[inert]") || element.querySelector("img")) return
     if (anchor() === element) {
       clearTimers()
-      if (focus) popup?.querySelector<HTMLElement>("button")?.focus()
+      if (focus) {
+        explicit = true
+        popup?.querySelector<HTMLElement>("button")?.focus()
+      }
       return
     }
     close()
@@ -172,8 +207,11 @@ export function MarkdownResourcePreview(props: {
     occurrence = [...props.root().querySelectorAll<HTMLElement>("a[data-resource-reference]")]
       .filter((peer) => peer.dataset.resourceReference === value)
       .indexOf(element)
-    const resource = ResourceReference.parse(value)
-    if (resource.kind === "anchor" || resource.kind === "unavailable" || resource.kind === "image") return
+    const parsed = ResourceReference.parse(value)
+    if (parsed.kind === "anchor" || parsed.kind === "unavailable") return
+    if (!props.resources.preview && !focus) return
+    const resource = { ...parsed, filename: element.dataset.resourceLabel ?? element.textContent?.trim() }
+    explicit = focus
     release = owner?.claim(() => close())
     const display = resourceDisplay(resource)
     setReference(resource)
@@ -192,17 +230,20 @@ export function MarkdownResourcePreview(props: {
         .preview(resource, options())
         .then((result) => {
           if (request.signal.aborted || anchor() !== element) return
+          if (!hasContent(result) && !explicit) return close()
           setPreview(result)
           setLoading(false)
         })
         .catch(() => {
           if (request.signal.aborted || anchor() !== element) return
+          if (!explicit) return close()
           setPreview((value) => ({ ...value!, unavailable: _(resourcePreviewDescriptors.unavailable) }))
           setLoading(false)
         })
     if (focus) queueMicrotask(() => popup?.querySelector<HTMLElement>("button")?.focus())
   }
   const schedule = (element: HTMLElement) => {
+    if (element.querySelector("img")) return
     clearTimeout(closing)
     if (anchor() === element || intended === element) return
     close()
@@ -214,7 +255,11 @@ export function MarkdownResourcePreview(props: {
     clearTimeout(opening)
     intended = undefined
     clearTimeout(closing)
-    closing = setTimeout(() => close(), 120)
+    closing = setTimeout(() => {
+      const focused = props.root().ownerDocument.activeElement
+      if (popup?.contains(focused) || anchor() === focused) return
+      close()
+    }, 120)
   }
   createEffect(() => {
     props.context()
@@ -314,6 +359,13 @@ export function MarkdownResourcePreview(props: {
               loading={loading()}
               resources={props.resources}
               options={options()}
+              onImageError={() => {
+                const value = preview()
+                if (!value) return
+                const fallback = { ...value, image: undefined, unavailable: _(resourcePreviewDescriptors.unavailable) }
+                if (!explicit && !hasContent(fallback)) return close()
+                setPreview(fallback)
+              }}
               close={() => close(true)}
             />
           </Show>
