@@ -118,7 +118,10 @@ for (const restart of [false, true]) {
               expect(await Session.resolveSessionControlProfile(session.id)).toBe("autonomous")
               const deadline = Date.now() + 3000
               let current = await AgendaStore.get("home", seed.id)
-              while (current.state.runCount === seed.state.runCount && Date.now() < deadline) {
+              while (
+                (current.state.runCount === seed.state.runCount || AgendaClock.active() === 0) &&
+                Date.now() < deadline
+              ) {
                 await Bun.sleep(10)
                 current = await AgendaStore.get("home", seed.id)
               }

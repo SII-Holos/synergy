@@ -179,7 +179,7 @@ function WorkbenchPanelContent(props: {
 }
 
 function WorkbenchSortableTab(props: {
-  tab: WorkbenchPanelTab
+  tab: () => WorkbenchPanelTab
   tabs: WorkbenchPanelTab[]
   active: boolean
   title: string
@@ -194,7 +194,7 @@ function WorkbenchSortableTab(props: {
   onFocusIndex: (index: number) => void
 }) {
   const lingui = useLingui()
-  const sortable = createSortable(props.tab.id)
+  const sortable = createSortable(props.tab().id)
   let main!: HTMLButtonElement
   createEffect(
     on(
@@ -204,8 +204,8 @@ function WorkbenchSortableTab(props: {
       },
     ),
   )
-  const currentIndex = () => props.tabs.findIndex((tab) => tab.id === props.tab.id)
-  const description = () => props.entry?.tabDescription?.(props.tab)
+  const currentIndex = () => props.tabs.findIndex((tab) => tab.id === props.tab().id)
+  const description = () => props.entry?.tabDescription?.(props.tab())
   return (
     <div
       use:sortable
@@ -249,7 +249,7 @@ function WorkbenchSortableTab(props: {
         }}
       >
         <Show when={props.entry}>
-          {(entry) => entry().tabIcon?.(props.tab) ?? <Icon name={entry().icon as IconName} size="small" />}
+          {(entry) => entry().tabIcon?.(props.tab()) ?? <Icon name={entry().icon as IconName} size="small" />}
         </Show>
         <span>{props.title}</span>
       </button>
@@ -290,7 +290,7 @@ function WorkbenchSortableTab(props: {
             values: { title: props.title },
           })}
         >
-          <For each={props.entry?.tabActions?.(props.tab)}>
+          <For each={props.entry?.tabActions?.(props.tab())}>
             {(action) => (
               <button
                 type="button"
@@ -805,26 +805,41 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; modalH
                     .tabs()
                     .map((tab) => tab.id)}
                 >
-                  <For each={state().tabs()}>
-                    {(tab) => (
-                      <WorkbenchSortableTab
-                        tab={tab}
-                        tabs={state().tabs()}
-                        active={state().active() === tab.id}
-                        title={workbench.panelTitle(tab)}
-                        entry={workbench.panelForTab(tab)}
-                        onActivate={() => workbench.activateTab(props.surface, tab.id)}
-                        onClose={() => void workbench.closeTab(tab.id)}
-                        onCloseOthers={() => void workbench.closeOtherTabsOnSurface(props.surface, tab.id)}
-                        onCloseRight={() => void workbench.closeOtherTabsOnSurface(props.surface, tab.id, "right")}
-                        onContextMenu={() => setLocal("menuTabId", tab.id)}
-                        onContextMenuOpenChange={(open) => {
-                          if (!open) setLocal("menuTabId", undefined)
-                        }}
-                        menuOpen={local.menuTabId === tab.id}
-                        onFocusIndex={focusTab}
-                      />
-                    )}
+                  <For
+                    each={state()
+                      .tabs()
+                      .map((tab) => tab.id)}
+                  >
+                    {(tabId) => {
+                      const tab = createMemo(() =>
+                        state()
+                          .tabs()
+                          .find((candidate) => candidate.id === tabId),
+                      )
+                      return (
+                        <Show when={tab()}>
+                          {(resolved) => (
+                            <WorkbenchSortableTab
+                              tab={resolved}
+                              tabs={state().tabs()}
+                              active={state().active() === tabId}
+                              title={workbench.panelTitle(resolved())}
+                              entry={workbench.panelForTab(resolved())}
+                              onActivate={() => workbench.activateTab(props.surface, tabId)}
+                              onClose={() => void workbench.closeTab(tabId)}
+                              onCloseOthers={() => void workbench.closeOtherTabsOnSurface(props.surface, tabId)}
+                              onCloseRight={() => void workbench.closeOtherTabsOnSurface(props.surface, tabId, "right")}
+                              onContextMenu={() => setLocal("menuTabId", tabId)}
+                              onContextMenuOpenChange={(open) => {
+                                if (!open) setLocal("menuTabId", undefined)
+                              }}
+                              menuOpen={local.menuTabId === tabId}
+                              onFocusIndex={focusTab}
+                            />
+                          )}
+                        </Show>
+                      )
+                    }}
                   </For>
                 </SortableProvider>
               </div>

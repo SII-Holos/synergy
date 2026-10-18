@@ -174,7 +174,7 @@ test("account password databases are included and excessive source rows are refu
   )
   local.close()
   const result = await f.sources.read(source.id, ["passwords"], new AbortController().signal)
-  expect(result[0]).toMatchObject({ error: "unavailable", rows: [{ username: "account" }] })
+  expect(result[0]).toMatchObject({ error: "limit", rows: [{ username: "account" }] })
 })
 
 test("cancellation while OS access is pending never opens a source database", async () => {
@@ -196,4 +196,33 @@ test("cancellation while OS access is pending never opens a source database", as
   const source = (await sources.list()).find((source) => source.browser === "chrome")!
   await expect(sources.read(source.id, ["passwords"], abort.signal)).rejects.toThrow()
   expect(reads).toBe(0)
+})
+
+test("imports a source held open with an exclusive database lock without changing it", async () => {
+  const f = await fixture()
+  const file = path.join(f.profile, "Login Data")
+  const owner = new Database(file)
+  owner.exec("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT")
+  const before = await Bun.file(file).arrayBuffer()
+  try {
+    const source = (await f.sources.list()).find((source) => source.browser === "chrome")!
+    const result = await f.sources.read(source.id, ["passwords"], new AbortController().signal)
+    expect(result).toMatchObject([{ failed: 0, rows: [{ username: "fixture" }] }])
+    expect(result[0]?.error).toBeUndefined()
+    expect(await Bun.file(file).arrayBuffer()).toEqual(before)
+    expect(owner.query("SELECT count(*) AS count FROM logins").get()).toEqual({ count: 1 })
+  } finally {
+    owner.close()
+  }
+})
+
+test("unsupported cookie schemas are distinguished from an unreadable source", async () => {
+  const f = await fixture()
+  const db = new Database(path.join(f.profile, "Cookies"))
+  db.exec("UPDATE meta SET value = '99' WHERE key = 'version'")
+  db.close()
+  const source = (await f.sources.list()).find((source) => source.browser === "chrome")!
+  expect(await f.sources.read(source.id, ["cookies"], new AbortController().signal)).toMatchObject([
+    { error: "unsupported", rows: [], failed: 0 },
+  ])
 })

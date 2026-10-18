@@ -11,6 +11,7 @@ import { shouldOpenProjectDisclosure } from "./project-disclosure"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
+import type { NavRequestState } from "@/context/layout/nav-request"
 import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -938,6 +939,7 @@ export function Sidebar(props: SidebarProps) {
                                     currentDirectory={currentDirectory()}
                                     isSupplemental={(scope) => layout.scopes.isSupplemental(scope)}
                                     navLoaded={(scope) => !!layout.nav.navEntries()[scope.id]}
+                                    navRequest={(scope) => layout.nav.scopeRequestState(scope.id)}
                                     projectNavEntries={(scope) => filterEntries(layout.nav.projectNavEntries(scope))}
                                     hasMoreForProject={hasMoreForProject}
                                     managedProject={project.managedProject}
@@ -1030,6 +1032,7 @@ export function Sidebar(props: SidebarProps) {
                             currentDirectory={currentDirectory()}
                             isSupplemental={(scope) => layout.scopes.isSupplemental(scope)}
                             navLoaded={(scope) => !!layout.nav.navEntries()[scope.id]}
+                            navRequest={(scope) => layout.nav.scopeRequestState(scope.id)}
                             projectNavEntries={(scope) => filterEntries(layout.nav.projectNavEntries(scope))}
                             hasMoreForProject={hasMoreForProject}
                             onProjectToggle={handleProjectToggle}
@@ -1105,6 +1108,7 @@ function SidebarProjectGroup(props: {
   currentDirectory?: string
   isSupplemental: (scope: LocalScope) => boolean
   navLoaded: (scope: LocalScope) => boolean
+  navRequest: (scope: LocalScope) => NavRequestState | undefined
   projectNavEntries: (scope: LocalScope) => NavEntry[]
   hasMoreForProject: (scope: LocalScope) => boolean
   managedProject?: NonNullable<ScopeNavEntry["managedProject"]>
@@ -1121,6 +1125,7 @@ function SidebarProjectGroup(props: {
   _: ReturnType<typeof useLingui>["_"]
 }) {
   const [menuOpen, setMenuOpen] = createSignal(false)
+  let toggle: HTMLButtonElement | undefined
   const isSupplemental = createMemo(() => {
     const scope = props.scope()
     return scope ? props.isSupplemental(scope) : false
@@ -1129,14 +1134,19 @@ function SidebarProjectGroup(props: {
     const scope = props.scope()
     return scope ? props.navLoaded(scope) : false
   })
+  const navRequest = createMemo(() => {
+    const scope = props.scope()
+    return scope ? props.navRequest(scope) : undefined
+  })
   const disclosureOpen = createMemo(() =>
     shouldOpenProjectDisclosure({
       expanded: !!props.scope()?.expanded,
       isSupplemental: isSupplemental(),
       navLoaded: navLoaded(),
+      navError: navRequest()?.error,
     }),
   )
-  const sessionsLoading = createMemo(() => !!props.scope()?.expanded && !isSupplemental() && !navLoaded())
+  const sessionsLoading = createMemo(() => !!props.scope()?.expanded && !!navRequest()?.loading && !navLoaded())
   const entries = createMemo(() => {
     const scope = props.scope()
     return scope ? props.projectNavEntries(scope) : []
@@ -1166,6 +1176,7 @@ function SidebarProjectGroup(props: {
           <button
             type="button"
             class="sb-project-chevron-btn"
+            ref={toggle}
             aria-label={props.scope()?.expanded ? props._(sidebar.collapseProject) : props._(sidebar.expandProject)}
             aria-expanded={props.scope()?.expanded}
             aria-busy={sessionsLoading() || undefined}
@@ -1261,78 +1272,48 @@ function SidebarProjectGroup(props: {
         </div>
 
         <SidebarDisclosure open={disclosureOpen()}>
-          <Show
-            when={!isSupplemental()}
-            fallback={
-              <Show
-                when={navLoaded()}
-                fallback={
-                  <div class="sb-sessions">
-                    <button
-                      type="button"
-                      class="sb-load-more-btn"
-                      onClick={() => {
-                        const scope = props.scope()
-                        if (scope) props.onLoadScopeNav(scope)
-                      }}
-                    >
-                      {props._(sidebar.loadSessions)}
-                    </button>
-                  </div>
-                }
-              >
-                <GroupedSessionList
-                  entries={entries()}
-                  scope={props.scope()}
-                  activeID={props.activeID}
-                  managedProject={props.managedProject}
-                  onSessionClick={(entry) => {
-                    const scope = props.scope()
-                    if (scope) props.onSessionClick(scope, entry)
-                  }}
-                />
-                <Show when={props.scope() && props.hasMoreForProject(props.scope()!)}>
-                  <div class="sb-sessions">
-                    <button
-                      type="button"
-                      class="sb-load-more-btn"
-                      onClick={() => {
-                        const scope = props.scope()
-                        if (scope) props.onLoadMore(scope)
-                      }}
-                    >
-                      {props._(sidebar.loadMore)}
-                    </button>
-                  </div>
-                </Show>
-              </Show>
-            }
-          >
-            <Show when={navLoaded()}>
-              <GroupedSessionList
-                entries={entries()}
-                scope={props.scope()}
-                activeID={props.activeID}
-                managedProject={props.managedProject}
-                onSessionClick={(entry) => {
+          <Show when={!navLoaded() && (isSupplemental() || navRequest()?.error)}>
+            <div class="sb-sessions">
+              <button
+                type="button"
+                class="sb-load-more-btn"
+                disabled={sessionsLoading()}
+                onClick={() => {
                   const scope = props.scope()
-                  if (scope) props.onSessionClick(scope, entry)
+                  if (scope) {
+                    toggle?.focus()
+                    props.onLoadScopeNav(scope)
+                  }
                 }}
-              />
-              <Show when={props.scope() && props.hasMoreForProject(props.scope()!)}>
-                <div class="sb-sessions">
-                  <button
-                    type="button"
-                    class="sb-load-more-btn"
-                    onClick={() => {
-                      const scope = props.scope()
-                      if (scope) props.onLoadMore(scope)
-                    }}
-                  >
-                    {props._(sidebar.loadMore)}
-                  </button>
-                </div>
-              </Show>
+              >
+                {props._(navRequest()?.error ? sidebar.retryNavigation : sidebar.loadSessions)}
+              </button>
+            </div>
+          </Show>
+          <Show when={navLoaded()}>
+            <GroupedSessionList
+              entries={entries()}
+              scope={props.scope()}
+              activeID={props.activeID}
+              managedProject={props.managedProject}
+              onSessionClick={(entry) => {
+                const scope = props.scope()
+                if (scope) props.onSessionClick(scope, entry)
+              }}
+            />
+            <Show when={props.scope() && props.hasMoreForProject(props.scope()!)}>
+              <div class="sb-sessions">
+                <button
+                  type="button"
+                  class="sb-load-more-btn"
+                  onClick={() => {
+                    const scope = props.scope()
+                    if (scope) props.onLoadMore(scope)
+                  }}
+                >
+                  {props._(sidebar.loadMore)}
+                </button>
+              </div>
             </Show>
           </Show>
         </SidebarDisclosure>

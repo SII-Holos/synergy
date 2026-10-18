@@ -32,6 +32,7 @@ interface ResourceHomeWindow extends Window {
     features(features: string[] | undefined): void
     restore(tabs: WorkbenchPanelTab[]): void
     draft(tabID: string): void
+    retitle(tabID: string, title: string): void
     followTitle(tabID: string): string[]
     open(panelId: string): Promise<void>
     close(tabId: string): Promise<void>
@@ -130,6 +131,7 @@ beforeAll(async () => {
         saved: () => workbench.surface("side").savedTabs(), features: setFeatures,
         restore: tabs => useLayout().surface(workbench.sessionKey(), "side").setTabs(tabs),
         draft: tabID => workbench.updateTab(tabID, { dirty: true, state: { title: "Retained draft" } }),
+        retitle: (tabID, title) => workbench.updateTab(tabID, { title }),
         followTitle: tabID => { const calls = []; createRoot(dispose => createEffect(() => {
           const title = workbench.surface("side").tabs().find(tab => tab.id === tabID)?.title;
           calls.push(title); if (calls.length > 3) { dispose(); return }
@@ -428,6 +430,25 @@ test("the tab body still supports drag reordering while its close button does no
     await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.tabs().map((tab) => tab.panelId)),
   ).toEqual(["file", "context"])
   expect(await page.getByRole("tab", { name: "Files", exact: true }).getAttribute("aria-selected")).toBe("true")
+})
+
+test("a republished tab title keeps its node and stays clickable", async () => {
+  await cards().getByText("Context", { exact: true }).click()
+  await page.getByText("Context content", { exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as ResourceHomeWindow).fixture.open("file"))
+  await page.getByText("Files content", { exact: true }).waitFor()
+  const original = await page.getByRole("tab", { name: "Context", exact: true }).elementHandle()
+  await page.evaluate(() => {
+    const fixture = (window as unknown as ResourceHomeWindow).fixture
+    const tab = fixture.tabs().find((candidate) => candidate.panelId === "context")!
+    fixture.retitle(tab.id, "Context updated")
+  })
+  const renamed = page.getByRole("tab", { name: "Context updated", exact: true })
+  await renamed.waitFor()
+  expect(await renamed.evaluate((element, node) => element === node, original)).toBe(true)
+  await renamed.click()
+  await page.getByText("Context content", { exact: true }).waitFor()
+  expect(await renamed.getAttribute("aria-selected")).toBe("true")
 })
 
 for (const colorScheme of ["light", "dark"] as const) {

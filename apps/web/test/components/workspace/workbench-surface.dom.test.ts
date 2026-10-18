@@ -295,7 +295,7 @@ for (const width of [375, 1200]) {
     expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible)).toBe(false)
     await page.evaluate(() => (window as unknown as WorkbenchWindow).setBrowserControlsOpen(false))
     await page.waitForFunction(() => (window as unknown as WorkbenchWindow).attachments.at(-1)?.visible === true)
-    expect(await page.locator("[data-native-surface] img").count()).toBe(0)
+    expect(await page.locator("[data-native-surface] img").count()).toBe(1)
 
     await resource.click()
     await page.getByRole("menuitem", { name: "extra", exact: true }).click()

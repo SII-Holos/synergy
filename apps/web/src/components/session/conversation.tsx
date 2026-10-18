@@ -435,6 +435,7 @@ function SessionConversationView(input: SessionConversationProps) {
               size="large"
               class="text-12-medium opacity-50"
               disabled={props.historyLoading()}
+              data-history-load
               onClick={props.onLoadMore}
             >
               {props.historyLoading() ? _(S.convLoadingEarlier) : _(S.convLoadEarlier)}

@@ -254,7 +254,8 @@ describe("Markdown managed resources", () => {
       await flush()
       const images = [...f.root.querySelectorAll("img")]
       expect(images.map((image) => image.getAttribute("src"))).toEqual(urls)
-      expect(images.map((image) => image.parentElement?.getAttribute("title"))).toEqual(["Chart", "Chart"])
+      expect(images.map((image) => image.getAttribute("alt"))).toEqual(["Chart", "Chart"])
+      expect(images.map((image) => image.parentElement?.getAttribute("title"))).toEqual([null, null])
       for (const image of images) image.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }))
       expect(f.references).toHaveLength(2)
       expect(f.references[0]).toMatchObject({ resource: { kind: "image", url: urls[0], filename: "Chart" } })

@@ -218,9 +218,6 @@ describe("SQLite worker deadline across host suspension", () => {
       const driver = await openDriver()
       const recorded: RecordedMetric[] = []
       const raised: string[] = []
-      using _metrics = spyOn(ObservabilityMetrics, "record").mockImplementation((input: RecordedMetric) => {
-        recorded.push({ name: input.name, value: input.value, module: input.module })
-      })
       using _issues = spyOn(ObservabilityIssues, "raise").mockImplementation((input: { code: string }) => {
         raised.push(input.code)
         return undefined
@@ -248,9 +245,26 @@ describe("SQLite worker deadline across host suspension", () => {
         responses.push(setTimeout(deliver, 25))
       })
 
-      // The caller learns why its request failed rather than waiting on a silence
-      // only the probe path knew about.
-      expect(await failure(query(driver, OWED_QUERY))).toBeInstanceOf(StorageBusyError)
+      // An independent connection can publish the same metric while this request waits.
+      const independent = Promise.withResolvers<void>()
+      responses.push(
+        setTimeout(() => {
+          ObservabilityMetrics.record({
+            name: "storage.worker.probe.timeout",
+            value: 1,
+            unit: "count",
+            module: "storage",
+          })
+          independent.resolve()
+        }, 0),
+      )
+      expect(
+        await ObservabilityMetrics.withForwarder(
+          (input) => recorded.push({ name: input.name, value: input.value, module: input.module }),
+          () => failure(query(driver, OWED_QUERY)),
+        ),
+      ).toBeInstanceOf(StorageBusyError)
+      await independent.promise
 
       // Every unanswered probe is counted under the published name, so the reason a
       // probe failed survives past the point the probe settles.

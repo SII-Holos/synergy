@@ -6,6 +6,15 @@ const requestId = z.string().min(1).max(200)
 export const BROWSER_DATA_CONTEXT_TTL_MS = 15 * 60_000
 const importKind = z.enum(["passwords", "cookies"])
 export type BrowserImportKind = z.infer<typeof importKind>
+export type BrowserImportError =
+  | "access"
+  | "unavailable"
+  | "format"
+  | "storage"
+  | "busy"
+  | "unsupported"
+  | "limit"
+  | "corrupt"
 export type BrowserImportSource = {
   id: string
   browser: "chrome" | "edge" | "brave" | "safari" | "file"
@@ -84,7 +93,7 @@ export type BrowserImportResult = {
     imported: number
     skipped: number
     failed: number
-    error?: "access" | "unavailable" | "format" | "storage"
+    error?: BrowserImportError
   }>
 }
 export type BrowserDataResult =

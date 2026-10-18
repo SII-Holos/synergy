@@ -175,9 +175,9 @@ test("running icons rotate and stop for reduced motion and terminal state", asyn
 
 test("usage exposes token subsets, measured performance and nested keyboard dismissal", async () => {
   const performance = page.locator(".execution-performance")
-  expect(await performance.textContent()).toContain("25 tok/s")
+  expect(await performance.textContent()).toContain("20 tok/s")
   expect(await performance.textContent()).toContain("80%")
-  expect(await performance.locator("dt").allTextContents()).toEqual(["Avg generation", "Cache hit"])
+  expect(await performance.locator("dt").allTextContents()).toEqual(["Output speed", "Cache hit"])
   const trigger = page.getByRole("button", { name: "Token usage details", exact: true })
   await trigger.focus()
   await page.keyboard.press("Enter")
@@ -189,6 +189,8 @@ test("usage exposes token subsets, measured performance and nested keyboard dism
   expect(await row("Reasoning (included in output)").locator("dd").textContent()).toBe("50")
   expect(await row("Total tokens").locator("dd").textContent()).toBe("≥ 1,200")
   expect(await row("Average first content").locator("dd").textContent()).toContain("0.6 s")
+  expect(await row("Output speed").locator("dd").textContent()).toBe("20 tok/s")
+  expect(await detail.locator("dd").filter({ hasText: "tok/s" }).count()).toBe(1)
   expect(await row("Retries").locator("dd").textContent()).toBe("1")
   expect(await row("Tool calls").locator("dd").textContent()).toBe("3")
   await page.setViewportSize({ width: 375, height: 667 })
@@ -213,7 +215,7 @@ test("missing measurements stay unavailable while valid zero remains visible dur
       window,
       "updateUsage",
     )({
-      rates: { generation: { value: null, samples: 0, excluded: 3 } },
+      rates: { endToEnd: { value: null, samples: 0, excluded: 3 } },
       cache: { ratio: null, observedRatio: null, samples: 0, excluded: 3 },
     }),
   )
@@ -223,7 +225,7 @@ test("missing measurements stay unavailable while valid zero remains visible dur
       window,
       "updateUsage",
     )({
-      rates: { generation: { value: 0, samples: 1, excluded: 0 } },
+      rates: { endToEnd: { value: 0, samples: 1, excluded: 0 } },
       cache: { ratio: 0, observedRatio: 0, samples: 1, excluded: 0 },
     }),
   )
@@ -231,10 +233,11 @@ test("missing measurements stay unavailable while valid zero remains visible dur
   expect(await page.locator(".execution-performance").textContent()).toContain("0%")
   expect(await page.locator(".execution-performance").textContent()).not.toContain("measured")
   await page.evaluate(() => Reflect.get(window, "selectLocale")("zh-CN"))
-  expect(await page.locator(".execution-performance").textContent()).toContain("平均生成")
+  expect(await page.locator(".execution-performance").textContent()).toContain("输出速度")
   expect(await page.locator(".execution-performance").textContent()).toContain("缓存命中")
   await page.getByRole("button", { name: "Token 用量明细", exact: true }).click()
   expect(await page.locator(".execution-usage-popover").textContent()).toContain("推理（计入输出）")
+  expect(await page.locator(".execution-usage-popover").getByText("输出速度", { exact: true }).count()).toBe(1)
 })
 
 test("flat sections show inbox immediately and auxiliary tasks stay in the full trajectory", async () => {

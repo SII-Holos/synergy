@@ -25,26 +25,19 @@ describe("Synergy CI test runner", () => {
     ])
   })
 
-  test("planShards deals the main batch by hash and runs isolated files alone", () => {
-    const plan = planShards([
-      "test/a.test.ts",
-      "test/b.test.ts",
-      "packages/library/test/vector/embedding-standalone.test.ts",
-    ])
+  test.each([
+    "packages/library/test/vector/embedding-standalone.test.ts",
+    "packages/harness/test/storage/storage-worker-suspend.test.ts",
+  ])("planShards deals the main batch by hash and runs %s alone", (isolatedFile) => {
+    const plan = planShards(["test/a.test.ts", "test/b.test.ts", isolatedFile])
     const flattened = plan.batches
       .map((batch) => batch.files)
       .flat()
       .toSorted()
-    expect(flattened).toEqual([
-      "packages/library/test/vector/embedding-standalone.test.ts",
-      "test/a.test.ts",
-      "test/b.test.ts",
-    ])
+    expect(flattened).toEqual([isolatedFile, "test/a.test.ts", "test/b.test.ts"])
     expect(plan.batches.map((batch) => batch.shard)).toEqual([1, 2, 3])
-    const isolatedBatch = plan.batches.find((batch) =>
-      batch.files.includes("packages/library/test/vector/embedding-standalone.test.ts"),
-    )
-    expect(isolatedBatch?.files).toEqual(["packages/library/test/vector/embedding-standalone.test.ts"])
+    const isolatedBatch = plan.batches.find((batch) => batch.files.includes(isolatedFile))
+    expect(isolatedBatch?.files).toEqual([isolatedFile])
   })
 
   test("planShards honors SYNERGY_BATCH_SHARDS", () => {

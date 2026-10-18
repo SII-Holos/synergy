@@ -78,9 +78,15 @@ export function captureConversationReadingAnchor(container: HTMLElement, isCurre
     const rect = node.getBoundingClientRect()
     return rect.height > 0 && rect.bottom > viewportTop && rect.top < viewport.bottom && !node.closest("[hidden]")
   }
+  const history = target?.closest("[data-history-load]")
+    ? [...container.querySelectorAll<HTMLElement>('[data-row-kind="activity"],[data-process-body]')].find(
+        (node) => !node.closest('[data-component="process-viewport"]') && visible(node),
+      )
+    : undefined
   const messages = Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]")).filter(visible)
   const message = messages.find((node) => readingBlocks(node).some(visible)) ?? messages[0]
   const row =
+    history ??
     target?.closest<HTMLElement>('[data-component="process-window"]') ??
     target?.closest<HTMLElement>("[data-scroll-anchor]") ??
     Array.from((message ?? container).querySelectorAll<HTMLElement>("[data-scroll-anchor]")).find(visible) ??

@@ -917,11 +917,10 @@ test.each(["outer", "process"] as const)(
       const viewport = document.querySelector(
         owner === "outer" ? "[data-scroller]" : '[data-component="process-viewport"]',
       )!
-      return (
-        [...viewport.querySelectorAll("[data-display-row]")].filter(
-          (row) => owner === "process" || !row.closest('[data-component="process-viewport"]'),
-        ).length >= 9
+      const rows = [...viewport.querySelectorAll("[data-display-row]")].filter(
+        (row) => owner === "process" || !row.closest('[data-component="process-viewport"]'),
       )
+      return rows.length >= 9 && rows[8].querySelector("button, a")?.checkVisibility({ visibilityProperty: true })
     }, owner)
     await viewport.evaluate((element, owner) => {
       const rows = [...element.querySelectorAll<HTMLElement>("[data-display-row]")]
@@ -945,7 +944,9 @@ test.each(["outer", "process"] as const)(
           getRangeAt: (index: number) => ranges[index],
         }),
       })
-      rows[8].querySelector<HTMLElement>("button, a")?.focus({ preventScroll: true })
+      const control = rows[8].querySelector<HTMLElement>("button, a")!
+      control.focus({ preventScroll: true })
+      if (document.activeElement !== control) throw new Error("The retained row control did not receive focus")
       document.dispatchEvent(new Event("selectionchange"))
     }, owner)
     await viewport.evaluate((element) => {

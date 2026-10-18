@@ -1,6 +1,7 @@
 import { toolFeatureAvailable, toolRequiredFeatures } from "@ericsanchezok/synergy-ui/tool-result-presentation"
 import { useGlobalSDK } from "./global-sdk"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { catalogFileWorkspace } from "./file/workspace"
 import { buildWorkspaceFileBrowserUrl } from "@/utils/workspace-file-url"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
@@ -569,18 +570,20 @@ export function ResourceOpenProvider(props: ParentProps) {
   }
 
   const preview = async (resource: OpenableResource, options: ResourceOpenOptions = {}): Promise<ResourcePreview> => {
-    if (resource.kind === "url") resource = ResourceReference.parse(resource.url)
+    if (resource.kind === "url") resource = { ...ResourceReference.parse(resource.url), filename: resource.filename }
     const captured = contextKey()
     const client = sdk.client
     const scopeID = sdk.scopeID
     const location = options.location ?? ("location" in resource ? resource.location : undefined)
     const missing = _({
       id: "app.reference.previewUnavailable",
-      message: "A preview isn’t available. You can still open the reference.",
+      message: "Preview unavailable",
     })
     const base: ResourcePreview = {
       title:
-        resource.kind === "attachment" ? (resource.file.filename ?? "") : ResourceReference.format(resource, location),
+        resource.kind === "attachment"
+          ? (resource.file.filename ?? "")
+          : resource.filename || ResourceReference.format(resource, location),
       source: "",
       unavailable: missing,
     }
@@ -591,6 +594,69 @@ export function ResourceOpenProvider(props: ParentProps) {
     }
     try {
       options.signal?.throwIfAborted()
+      if (resource.kind === "asset" || resource.kind === "image") {
+        const file = attachmentFromReference(resource.url, resource.filename)
+        const asset = AssetReference.parse(resource.url)
+        const kind = classifyResourcePreview(file?.mime ?? resource.mime ?? "image/*", asset?.id).kind
+        base.source = _({ id: "app.reference.assetSource", message: "Attachment" })
+        const imageSource = _({ id: "app.reference.imageSource", message: "Image" })
+        base.title =
+          resource.filename && resource.filename !== resource.url
+            ? resource.filename
+            : kind === "image" || kind === "svg"
+              ? imageSource
+              : base.source
+        if (kind === "image" || kind === "svg") {
+          const src = resolveUrl(resource, options.context)
+          return src ? { title: base.title, source: imageSource, image: { src, alt: base.title } } : base
+        }
+        if (!asset || !["source", "markdown", "html"].includes(kind)) return base
+        const title = base.title
+        const start = location?.kind === "text" ? Math.max(0, location.line - 4) : 0
+        const value = await previewCache.read(
+          key("asset", asset.id, start),
+          async (signal) => {
+            const result = await client.asset.get(
+              { id: asset.id, scopeID },
+              { signal, throwOnError: true, parseAs: "stream" },
+            )
+            if (!(result.data instanceof ReadableStream)) return base
+            const reader = result.data.getReader()
+            const decoder = new TextDecoder()
+            let text = ""
+            let remaining = 24 * 1024
+            try {
+              while (remaining > 0 && text.split("\n").length <= start + 11) {
+                const chunk = await reader.read()
+                signal.throwIfAborted()
+                if (chunk.done) break
+                if (!(chunk.value instanceof Uint8Array)) return base
+                const bytes = chunk.value.subarray(0, remaining)
+                remaining -= bytes.byteLength
+                text += decoder.decode(bytes, { stream: true })
+              }
+            } finally {
+              await reader.cancel().catch(() => {})
+              reader.releaseLock()
+            }
+            return {
+              title,
+              source: base.source,
+              code: {
+                text: text
+                  .split("\n")
+                  .slice(start, start + 11)
+                  .join("\n")
+                  .slice(0, 6000),
+                startLine: start + 1,
+              },
+            }
+          },
+          options.signal,
+        )
+        assertCurrent()
+        return { ...value, title }
+      }
       if (resource.kind === "note") {
         base.source = _({ id: "app.reference.noteSource", message: "Note" })
         if (!globalSDK.capabilities.has("note")) return base
@@ -637,9 +703,12 @@ export function ResourceOpenProvider(props: ParentProps) {
         return latest ? project(latest.title(), latest.content()) : value
       }
       if (resource.kind === "workspace-file") {
+        const reference = resource
         base.source = _({ id: "app.reference.fileSource", message: "Workspace file" })
         if (!options.context || options.context.state !== "bound") return base
         const target = workspaceTarget(resource.path, options.context)
+        base.title = filenameFor(target)
+        base.path = ResourceReference.format(resource, location)
         const start = location?.kind === "text" ? Math.max(0, location.line - 4) : 0
         const project = (text: string, startLine: number): ResourcePreview => ({
           title: filenameFor(target),
@@ -673,7 +742,15 @@ export function ResourceOpenProvider(props: ParentProps) {
               path: target.path,
             }
             const stat = await client.workspace.files.stat(query, { signal, throwOnError: true })
-            if (!stat.data || stat.data.type === "directory" || stat.data.binary) return base
+            if (!stat.data || stat.data.type === "directory") return base
+            const kind = classifyResourcePreview("", target.path).kind
+            if (kind === "image" || kind === "svg") {
+              const src = resolveUrl(reference, options.context)
+              return src
+                ? { title: base.title, source: base.source, path: base.path, image: { src, alt: base.title } }
+                : base
+            }
+            if (stat.data.binary) return base
             const result = await client.workspace.files.read(
               { ...query, offset: start, limit: 11, mode: "range" },
               { signal, throwOnError: true },
@@ -703,7 +780,7 @@ export function ResourceOpenProvider(props: ParentProps) {
               ? metadata.unavailable === "authentication_required"
                 ? _({
                     id: "app.reference.previewSignIn",
-                    message: "Open this page to view content that requires sign-in.",
+                    message: "Sign-in required",
                   })
                 : missing
               : undefined
@@ -726,7 +803,14 @@ export function ResourceOpenProvider(props: ParentProps) {
     if (resource.kind === "workspace-file") return _({ id: "app.reference.openFile", message: "Open in Files" })
     if (resource.kind === "url" && globalSDK.capabilities.has("browser") && platform.browserNative)
       return _({ id: "app.reference.openBrowser", message: "Open in Browser" })
-    return _({ id: "app.reference.open", message: "Open reference" })
+    if (resource.kind === "asset" || resource.kind === "image") {
+      const file = attachmentFromReference(resource.url)
+      if (resource.kind === "image" || (file && isImageAttachment(file)))
+        return _({ id: "app.reference.openImage", message: "Open image" })
+      return _({ id: "app.reference.openAttachment", message: "Open file" })
+    }
+    if (resource.kind === "url") return _({ id: "app.reference.openWebsite", message: "Open website" })
+    return _({ id: "app.reference.open", message: "Open" })
   }
 
   const nativeLink = (reference: ResourceReference.Target) =>

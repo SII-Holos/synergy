@@ -262,3 +262,57 @@ test("late history pages merge newer events and closed readers ignore late repli
     setup.dispose()
   }
 })
+
+test("only accepted history pages authorize moving the chart window", async () => {
+  const replies: ((response: Response) => void)[] = []
+  const client = createSynergyClient({
+    baseUrl: "http://fixture.test",
+    fetch: Object.assign(() => new Promise<Response>((resolve) => replies.push(resolve)), {
+      preconnect: fetch.preconnect,
+    }),
+  })
+  const setup = createRoot((dispose) => ({
+    dispose,
+    history: createExecutionContext({
+      client,
+      sessionID: () => "session",
+      runID: () => "",
+      active: () => true,
+      selected: () => "",
+      connectionVersion: () => 1,
+      subscribe: () => () => {},
+    }),
+  }))
+  const reply = (index: number, id: string, revision: number) =>
+    replies[index](
+      Response.json({
+        sessionID: "session",
+        revision,
+        items: [item(id, revision)],
+        total: 10,
+        nextCursor: "older",
+      }),
+    )
+  try {
+    await Bun.sleep(0)
+    reply(0, "initial", 1)
+    await Bun.sleep(0)
+    const older = setup.history.load(true)
+    await Bun.sleep(0)
+    const latest = setup.history.load(false, true)
+    await Bun.sleep(0)
+    reply(1, "stale", 2)
+    expect(await older).toBeUndefined()
+    reply(2, "latest", 3)
+    expect(await latest).toBe(true)
+    expect(setup.history.state.items.map((entry) => entry.callID)).toEqual(["latest"])
+    const failed = setup.history.load(true)
+    await Bun.sleep(0)
+    replies[3](new Response("unavailable", { status: 503 }))
+    expect(await failed).toBeUndefined()
+    expect(setup.history.state.error).toBe(true)
+    expect(setup.history.state.items.map((entry) => entry.callID)).toEqual(["latest"])
+  } finally {
+    setup.dispose()
+  }
+})

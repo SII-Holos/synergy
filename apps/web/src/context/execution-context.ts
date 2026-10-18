@@ -127,6 +127,7 @@ export function createExecutionContext(input: {
       ).length
       setState({ revision: Math.max(page.revision, state.revision), total: Math.max(state.total, page.total + added) })
       if (older || !browsingEarlier) setState("nextCursor", page.nextCursor)
+      return true
     } catch {
       if (current === request && !controller.signal.aborted) setState("error", true)
     } finally {

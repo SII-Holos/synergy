@@ -34,12 +34,30 @@ class FakeResizeObserver {
   }
 }
 
+class FakeMutationObserver {
+  static instances: FakeMutationObserver[] = []
+  readonly targets = new Set<unknown>()
+  constructor(readonly dispatch: () => void) {
+    FakeMutationObserver.instances.push(this)
+  }
+  observe(element: unknown) {
+    this.targets.add(element)
+  }
+  disconnect() {
+    this.targets.clear()
+  }
+  fire(element: unknown) {
+    if (this.targets.has(element)) this.dispatch()
+  }
+}
+
 function createScrollHarness() {
   const originalRequest = globalThis.requestAnimationFrame
   const originalCancel = globalThis.cancelAnimationFrame
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window")
   const originalElement = Object.getOwnPropertyDescriptor(globalThis, "Element")
   const originalResizeObserver = (globalThis as { ResizeObserver?: unknown }).ResizeObserver
+  const originalMutationObserver = (globalThis as { MutationObserver?: unknown }).MutationObserver
   const frames = new Map<number, FrameCallback>()
   let nextFrame = 0
 
@@ -51,6 +69,7 @@ function createScrollHarness() {
   ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = FakeResizeObserver as unknown as
     | typeof ResizeObserver
     | undefined
+  ;(globalThis as { MutationObserver?: unknown }).MutationObserver = FakeMutationObserver
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     writable: true,
@@ -65,6 +84,7 @@ function createScrollHarness() {
   Object.defineProperty(globalThis, "Element", { configurable: true, writable: true, value: Target })
 
   FakeResizeObserver.instances = []
+  FakeMutationObserver.instances = []
 
   const flushFrames = () => {
     while (frames.size > 0) {
@@ -117,6 +137,7 @@ function createScrollHarness() {
   }
 
   const lastObserver = () => FakeResizeObserver.instances.at(-1)
+  const lastMutationObserver = () => FakeMutationObserver.instances.at(-1)
 
   const restore = () => {
     globalThis.requestAnimationFrame = originalRequest
@@ -126,7 +147,9 @@ function createScrollHarness() {
     if (originalElement) Object.defineProperty(globalThis, "Element", originalElement)
     else Reflect.deleteProperty(globalThis, "Element")
     ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = originalResizeObserver
+    ;(globalThis as { MutationObserver?: unknown }).MutationObserver = originalMutationObserver
     FakeResizeObserver.instances = []
+    FakeMutationObserver.instances = []
   }
 
   const key = (shiftKey = false, target?: string) => {
@@ -138,7 +161,7 @@ function createScrollHarness() {
     })
     return event
   }
-  return { flushFrames, tick, makeScroller, lastObserver, key, restore }
+  return { flushFrames, tick, makeScroller, lastObserver, lastMutationObserver, key, restore }
 }
 
 describe("createAutoScroll", () => {
@@ -1205,28 +1228,34 @@ test("paused retained view ignores resize and scroll work without losing reading
     await harness.tick()
     harness.lastObserver()?.fire(reading)
     expect(restores).toBe(1)
+    harness.lastMutationObserver()?.fire(reading)
+    expect(restores).toBe(2)
     setEnabled(false)
     await harness.tick()
     const before = measures
     element.scrollHeight = 0
     harness.lastObserver()?.fire(element)
     harness.lastObserver()?.fire(reading)
+    harness.lastMutationObserver()?.fire(reading)
     auto.forceScrollToBottom()
     harness.flushFrames()
     expect(element.scrollTop).toBe(240)
     expect(measures).toBe(before)
-    expect(restores).toBe(1)
+    expect(restores).toBe(2)
     expect(auto.userScrolled()).toBe(true)
     element.scrollHeight = 1000
     setEnabled(true)
     await harness.tick()
     harness.flushFrames()
     harness.lastObserver()?.fire(reading)
-    expect(restores).toBe(2)
+    expect(restores).toBe(3)
+    harness.lastMutationObserver()?.fire(reading)
+    expect(restores).toBe(4)
     expect(auto.userScrolled()).toBe(true)
     expect(element.scrollTop).toBe(240)
     dispose()
     expect(harness.lastObserver()?.targets.size).toBe(0)
+    expect(harness.lastMutationObserver()?.targets.size).toBe(0)
   } finally {
     dispose()
     harness.restore()

@@ -45,6 +45,7 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
   const [previewRequest, setPreviewRequest] = createSignal("")
   const [grouping, setGrouping] = createSignal(initial.grouping)
   const [delta, setDelta] = createSignal(initial.delta)
+  const [historyStart, setHistoryStart] = createSignal(initial.historyStart)
   const [records, setRecords] = createSignal(initial.records)
   const [diagnosticTab, setDiagnosticTab] = createSignal<WorkbenchPanelContentProps["tab"]>({
     ...props.tab,
@@ -80,6 +81,7 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
     category: category(),
     grouping: grouping(),
     delta: delta(),
+    historyStart: historyStart(),
     scroll,
     records: records(),
   })
@@ -88,7 +90,7 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
     setDiagnosticTab((tab) => ({ ...tab, state: { ...record(tab.state), ...state } }))
     panels.updateTab(tabID, { state: { ...tabState, ...state, contextDashboard: savedDashboard() } })
   }
-  createEffect(on([runID, selected, category, grouping, delta, records], remember))
+  createEffect(on([runID, selected, category, grouping, delta, historyStart, records], remember))
   createEffect(
     on([runID, active, execution.connectionVersion, () => params.id], async () => {
       summaryAbort?.abort()
@@ -126,10 +128,29 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
     unsubscribe()
     remember()
   })
-  const select = (id: string) => setSelected(id)
+  const select = (id: string) => {
+    setSelected(id)
+    if (!id) {
+      setHistoryStart("")
+      void history.load(false, true)
+    }
+  }
+  const loadEarlier = async () => {
+    const sessionID = params.id
+    const round = runID()
+    const connection = execution.connectionVersion()
+    if (
+      (await history.load(true)) &&
+      params.id === sessionID &&
+      runID() === round &&
+      execution.connectionVersion() === connection
+    )
+      setHistoryStart(history.state.items.at(-1)?.callID ?? "")
+  }
   const selectRound = (value: string) =>
     batch(() => {
       setRunID(value)
+      setHistoryStart("")
       setPreviewRequest("")
       setSelected("")
       setCategory("")
@@ -293,7 +314,9 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
               <ContextHistoryChart
                 onPreview={setPreviewRequest}
                 items={history.state.items}
-                selected={snapshot()?.callID ?? ""}
+                windowStart={historyStart()}
+                onWindowStart={setHistoryStart}
+                selected={selected()}
                 selectedSnapshot={snapshot()}
                 rounds={summary()?.rounds}
                 onSelect={select}
@@ -308,7 +331,7 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
                   type="button"
                   class="context-link context-load-history"
                   disabled={history.state.loading}
-                  onClick={() => void history.load(true)}
+                  onClick={() => void loadEarlier()}
                 >
                   {_(D.earlier)}
                 </button>
@@ -321,7 +344,7 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
               snapshot={displayed()}
               selected={selected()}
               previewing={!!previewRequest()}
-              onSelect={setSelected}
+              onSelect={select}
               history={history.state.items}
               category={category()}
               highlight={highlight()}

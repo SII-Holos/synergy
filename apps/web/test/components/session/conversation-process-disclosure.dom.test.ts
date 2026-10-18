@@ -152,7 +152,7 @@ test("cold process disclosure keeps a bounded reading window while tool bodies a
   })
   expect(contraction.connected).toBe(true)
   expect(contraction.during).toBeGreaterThan(0)
-  expect(contraction.during).toBeLessThan(contraction.before - 2)
+  expect(contraction.during).toBeCloseTo(contraction.before, 1)
   await parent.press("Enter")
   await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
   expect(await page.locator('[data-part-id="cold-prose"]').count()).toBe(1)
@@ -169,9 +169,8 @@ test.each(["initial", "reversed"])(
       window.__conversationProcess.complete()
       window.__conversationProcess.prependTurns(80)
       window.__conversationProcess.reading(true)
-      const scroller = document.querySelector<HTMLElement>("[data-scroller]")!
-      scroller.scrollTop = scroller.scrollHeight
     })
+    await page.locator("[data-outside-control]").scrollIntoViewIfNeeded()
     const parent = page.locator('[data-slot="turn-process-trigger"]').last()
     await parent.waitFor()
     if ((await parent.getAttribute("aria-expanded")) === "true") await parent.click()
@@ -232,7 +231,7 @@ test.each(["initial", "reversed"])(
   },
 )
 
-test("manual disclosure animates only its connected mount and releases it on collapse", async () => {
+test("manual disclosure fades only its connected mount and releases it on collapse", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   const batch = page.locator('[data-component="conversation-activity"] > button').first()
@@ -261,12 +260,13 @@ test("manual disclosure animates only its connected mount and releases it on col
       }
       return media
     }
-    const calls: { connected: boolean; height: number[] }[] = []
+    const calls: { connected: boolean; resizing: boolean; opacity: number[] }[] = []
     Element.prototype.animate = function (frames, options) {
       if (this.matches('[data-slot="activity-batch-content"]'))
         calls.push({
           connected: this.isConnected,
-          height: Array.isArray(frames) ? frames.map((frame) => parseFloat(String(frame.height))) : [],
+          resizing: Array.isArray(frames) && frames.some((frame) => frame.height !== undefined),
+          opacity: Array.isArray(frames) ? frames.map((frame) => Number(frame.opacity)) : [],
         })
       return animate.call(this, frames, options)
     }
@@ -297,10 +297,11 @@ test("manual disclosure animates only its connected mount and releases it on col
   })
   expect(result.calls.map((call) => call.connected)).toEqual([true, true, true])
   for (const call of result.calls) {
-    expect(call.height).toHaveLength(2)
-    expect(call.height.every(Number.isFinite)).toBe(true)
-    expect(Math.max(...call.height)).toBeGreaterThan(0)
-    expect(Math.min(...call.height)).toBe(0)
+    expect(call.resizing).toBe(false)
+    expect(call.opacity).toHaveLength(2)
+    expect(call.opacity.every(Number.isFinite)).toBe(true)
+    expect(Math.max(...call.opacity)).toBe(1)
+    expect(Math.min(...call.opacity)).toBeLessThan(1)
   }
   expect(result.open).toBe("true")
   expect(result.mounted).toBe(true)
@@ -309,7 +310,7 @@ test("manual disclosure animates only its connected mount and releases it on col
   expect(result.reopenedListeners).toBe(result.openedListeners)
 }, 30000)
 
-test("manual parent disclosure owns bounded space motion without replacing the answer", async () => {
+test("manual parent disclosure fades its rows without replacing the answer", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()
   await page.evaluate(() => {
@@ -321,10 +322,10 @@ test("manual parent disclosure owns bounded space motion without replacing the a
     const parent = document.querySelector<HTMLButtonElement>('[data-slot="turn-process-trigger"]')!
     const answer = document.querySelector('[data-part-id="answer"]')
     const animate = Element.prototype.animate
-    const space: number[][] = []
+    const opacity: number[][] = []
     Element.prototype.animate = function (frames, options) {
       if (this.matches("[data-display-row]") && Array.isArray(frames))
-        space.push(frames.map((frame) => parseFloat(String(frame.height))))
+        opacity.push(frames.map((frame) => parseFloat(String(frame.opacity))))
       return animate.call(this, frames, options)
     }
     const settle = async (count = 36) => {
@@ -338,7 +339,7 @@ test("manual parent disclosure owns bounded space motion without replacing the a
       parent.click()
       await settle()
       return {
-        space,
+        opacity,
         open: parent.getAttribute("aria-expanded"),
         activities: document.querySelectorAll('[data-row-kind="activity"]').length,
         sameAnswer: answer === document.querySelector('[data-part-id="answer"]'),
@@ -348,8 +349,8 @@ test("manual parent disclosure owns bounded space motion without replacing the a
       Element.prototype.animate = animate
     }
   })
-  expect(result.space.length).toBeGreaterThan(0)
-  expect(result.space.every((frames) => frames.length === 2 && frames.every(Number.isFinite))).toBe(true)
+  expect(result.opacity.length).toBeGreaterThan(0)
+  expect(result.opacity.every((frames) => frames.length === 2 && frames.every(Number.isFinite))).toBe(true)
   expect(result.open).toBe("true")
   expect(result.activities).toBe(2)
   expect(result.sameAnswer).toBe(true)

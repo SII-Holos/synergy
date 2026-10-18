@@ -1835,7 +1835,7 @@ msgstr "Browser controls"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.menu.followAgent"
-msgstr "Follow agent"
+msgstr "View agent page"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.menu.open"
@@ -8306,6 +8306,10 @@ msgid "app.rawMessages.title"
 msgstr "Raw messages"
 
 #. js-lingui-explicit-id
+msgid "app.reference.assetSource"
+msgstr "Attachment"
+
+#. js-lingui-explicit-id
 msgid "app.reference.browserUnavailable"
 msgstr "The in-app browser is unavailable. Retry or open this link in your system browser."
 
@@ -8320,6 +8324,10 @@ msgstr "Copy reference"
 #. js-lingui-explicit-id
 msgid "app.reference.fileSource"
 msgstr "Workspace file"
+
+#. js-lingui-explicit-id
+msgid "app.reference.imageSource"
+msgstr "Image"
 
 #. js-lingui-explicit-id
 msgid "app.reference.invalid"
@@ -8343,7 +8351,11 @@ msgstr "The source workspace is unavailable. Choose a workspace to open this ref
 
 #. js-lingui-explicit-id
 msgid "app.reference.open"
-msgstr "Open reference"
+msgstr "Open"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openAttachment"
+msgstr "Open file"
 
 #. js-lingui-explicit-id
 msgid "app.reference.openBrowser"
@@ -8362,8 +8374,16 @@ msgid "app.reference.openFile"
 msgstr "Open in Files"
 
 #. js-lingui-explicit-id
+msgid "app.reference.openImage"
+msgstr "Open image"
+
+#. js-lingui-explicit-id
 msgid "app.reference.openNote"
 msgstr "Open in Notes"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openWebsite"
+msgstr "Open website"
 
 #. js-lingui-explicit-id
 msgid "app.reference.outsideWorkspace"
@@ -8375,11 +8395,11 @@ msgstr "The requested page is outside this document. Showing the last page."
 
 #. js-lingui-explicit-id
 msgid "app.reference.previewSignIn"
-msgstr "Open this page to view content that requires sign-in."
+msgstr "Sign-in required"
 
 #. js-lingui-explicit-id
 msgid "app.reference.previewUnavailable"
-msgstr "A preview isn’t available. You can still open the reference."
+msgstr "Preview unavailable"
 
 #. js-lingui-explicit-id
 msgid "app.reference.searchWorkspace"
@@ -10761,6 +10781,10 @@ msgid "browser.import.access"
 msgstr "Access was not granted. Retry the system prompt or choose an exported file."
 
 #. js-lingui-explicit-id
+msgid "browser.import.busy"
+msgstr "The source data kept changing. Try again. If this continues, quit the source browser and retry."
+
+#. js-lingui-explicit-id
 msgid "browser.import.choose"
 msgstr "Choose file and import"
 
@@ -10771,6 +10795,10 @@ msgstr "Website logins and preferences"
 #. js-lingui-explicit-id
 msgid "browser.import.cookies"
 msgstr "Cookies"
+
+#. js-lingui-explicit-id
+msgid "browser.import.corrupt"
+msgstr "The browser data could not be verified. Try again, or use an exported file."
 
 #. js-lingui-explicit-id
 msgid "browser.import.desktopUnavailable"
@@ -10813,6 +10841,10 @@ msgid "browser.import.importing"
 msgstr "Importing…"
 
 #. js-lingui-explicit-id
+msgid "browser.import.limit"
+msgstr "The selected data exceeds the import limit. Import a smaller exported file."
+
+#. js-lingui-explicit-id
 msgid "browser.import.loading"
 msgstr "Finding browsers…"
 
@@ -10823,6 +10855,10 @@ msgstr "Your Mac may ask for permission. Imported passwords stay encrypted on th
 #. js-lingui-explicit-id
 msgid "browser.import.locked"
 msgstr "Use a persistent browser profile and unlock the system password store."
+
+#. js-lingui-explicit-id
+msgid "browser.import.notImported"
+msgstr "Import failed"
 
 #. js-lingui-explicit-id
 msgid "browser.import.options"
@@ -10886,11 +10922,15 @@ msgstr "Import stopped. Entries already imported have been kept."
 
 #. js-lingui-explicit-id
 msgid "browser.import.unavailable"
-msgstr "This data could not be read. Quit the source browser and retry, or use an exported file."
+msgstr "The source data is no longer available. Choose the browser again or use an exported file."
 
 #. js-lingui-explicit-id
 msgid "browser.import.unsupported"
 msgstr "Not available from this source"
+
+#. js-lingui-explicit-id
+msgid "browser.import.unsupportedData"
+msgstr "This browser data format or encryption is not supported. Use an exported file."
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.assets"
@@ -12837,10 +12877,6 @@ msgid "execution.usage.firstContent"
 msgstr "Average first content"
 
 #. js-lingui-explicit-id
-msgid "execution.usage.generationRate"
-msgstr "Avg generation"
-
-#. js-lingui-explicit-id
 msgid "execution.usage.reasoning"
 msgstr "Reasoning (included in output)"
 
@@ -12854,7 +12890,7 @@ msgstr "Requests and tools"
 
 #. js-lingui-explicit-id
 msgid "execution.usage.requestRate"
-msgstr "Avg request throughput"
+msgstr "Output speed"
 
 #. js-lingui-explicit-id
 msgid "execution.usage.requests"
@@ -19318,6 +19354,10 @@ msgstr "Browser data access changed. Close this dialog and reopen it to retry."
 #. js-lingui-explicit-id
 msgid "settings.browser.data"
 msgstr "Browser data"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.destination"
+msgstr "Save to"
 
 #. js-lingui-explicit-id
 msgid "settings.browser.import.action"

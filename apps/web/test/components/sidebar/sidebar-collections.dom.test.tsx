@@ -47,6 +47,7 @@ beforeAll(async () => {
       {id:"project-one",name:"Project one",expanded:false},
     ] : [{id:"project-one",name:"Project one",expanded:true}])
     const [projectLoaded, setProjectLoaded] = createSignal(query.get("lazy") !== "1")
+    const [projectRequest, setProjectRequest] = createSignal({loading:false,loaded:projectLoaded(),error:false})
     const entry = (id, category, title) => ({id,category,title,scopeID:category === "project" ? "project-one" : "home",scopeType:category === "project" ? "project" : "home",lastActivityAt:1,pinned:0,archived:false,tags:["review"]})
     const recent = Array.from({length:60},(_,i)=>entry("recent-"+i,"home","Recent session "+i+" with a deliberately long title to exercise truncation"))
     const home = [entry("home-one","home","Home session")]
@@ -55,11 +56,15 @@ beforeAll(async () => {
     const projectEntries = scope => motion
       ? Array.from({length:scope.id === "project-one" ? 10 : 2},(_,i)=>entry(scope.id+"-session-"+i,"project",scope.name+" session "+i))
       : [entry("project-session","project","Project session")]
-    const expand = (id, expanded) => setProjects(previous=>previous.map(scope=>scope.id===id ? {...scope,expanded}:scope))
+    const expand = (id, expanded) => {
+      setProjects(previous=>previous.map(scope=>scope.id===id ? {...scope,expanded}:scope))
+      if (id === "project-one" && expanded && !projectLoaded()) setProjectRequest({loading:true,loaded:false,error:false})
+    }
     window.sidebarFixture = {
       refresh:()=>setProjects(previous=>previous.map(scope=>({...scope}))),
       reorder:()=>setProjects(previous=>[previous.at(-1),...previous.slice(0,-1)]),
-      finishLoad:()=>setProjectLoaded(true),
+      finishLoad:()=>{setProjectLoaded(true);setProjectRequest({loading:false,loaded:true,error:false})},
+      failLoad:()=>setProjectRequest({loading:false,loaded:projectLoaded(),error:true}),
     }
     export const useLayout = () => ({
       sidebar:{opened,width,resize,setOccupiedWidth:()=>{},close:()=>setOpened(false),toggle:()=>setOpened(!opened())},
@@ -71,7 +76,8 @@ beforeAll(async () => {
         scopeIndexLoaded:()=>true,navEntries:()=>Object.fromEntries(projects().filter(scope=>scope.id!=="project-one"||projectLoaded()).map(scope=>[scope.id,{items:projectEntries(scope)}])),
         projectNavEntries:scope=>scope.id!=="project-one"||projectLoaded() ? projectEntries(scope) : [],
         unreadCompletionCount:unread,acknowledgeAllCompletionNotices:async()=>{setUnread(0);return {acknowledgedCount:1}},
-        loadScopeNav:()=>{},
+        scopeRequestState:scope=>scope === "project-one" ? projectRequest() : {loading:false,loaded:true,error:false},
+        loadScopeNav:()=>setProjectRequest({loading:true,loaded:projectLoaded(),error:false}),
       },
       scopes:{list:()=>projects().map(scope=>({...scope,time:{created:1,updated:1}})),isSupplemental:()=>false,expand:id=>expand(id,true),collapse:id=>expand(id,false)},
       channelProjection:()=>({channelAccounts:[]}),
@@ -211,7 +217,7 @@ async function open(query = "") {
   expect(errors).toEqual([])
 }
 
-async function projectAction(action: "refresh" | "reorder" | "finishLoad") {
+async function projectAction(action: "refresh" | "reorder" | "finishLoad" | "failLoad") {
   await page.evaluate((action) => {
     const fixture = (window as unknown as { sidebarFixture: Record<typeof action, () => void> }).sidebarFixture
     fixture[action]()
@@ -300,6 +306,24 @@ for (const lazy of [false, true])
     expect(await toggle.evaluate((element) => document.activeElement === element)).toBe(true)
     expect(errors).toEqual([])
   })
+
+test("an unloaded project spins only while requested and offers retry after failure", async () => {
+  await page.goto(url + "?lazy=1")
+  const group = page.locator('[data-scope-id="project-one"]')
+  const toggle = group.locator(".sb-project-chevron-btn")
+  await toggle.waitFor()
+  expect(await toggle.getAttribute("aria-busy")).toBeNull()
+  await projectAction("failLoad")
+  const retry = group.getByRole("button", { name: "重试", exact: true })
+  await retry.click()
+  expect(await toggle.getAttribute("aria-busy")).toBe("true")
+  expect(await toggle.evaluate((element) => document.activeElement === element)).toBe(true)
+  await projectAction("finishLoad")
+  expect(await toggle.getAttribute("aria-busy")).toBeNull()
+  expect(await page.locator('[data-session-id="project-session"]').isVisible()).toBe(true)
+  expect(await retry.count()).toBe(0)
+  expect(errors).toEqual([])
+})
 
 test("equivalent project refresh after scrolling does not animate existing rows", async () => {
   await prepareProjectMotion()

@@ -1835,7 +1835,7 @@ msgstr "浏览器控件"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.menu.followAgent"
-msgstr "跟随智能体"
+msgstr "查看智能体页面"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.menu.open"
@@ -8306,6 +8306,10 @@ msgid "app.rawMessages.title"
 msgstr "原始消息"
 
 #. js-lingui-explicit-id
+msgid "app.reference.assetSource"
+msgstr "附件"
+
+#. js-lingui-explicit-id
 msgid "app.reference.browserUnavailable"
 msgstr "应用内浏览器正在重新连接。你可以重试，或在系统浏览器中打开此链接。"
 
@@ -8320,6 +8324,10 @@ msgstr "复制引用"
 #. js-lingui-explicit-id
 msgid "app.reference.fileSource"
 msgstr "工作区文件"
+
+#. js-lingui-explicit-id
+msgid "app.reference.imageSource"
+msgstr "图片"
 
 #. js-lingui-explicit-id
 msgid "app.reference.invalid"
@@ -8343,7 +8351,11 @@ msgstr "原工作区不可用，请选择工作区来打开这条引用。"
 
 #. js-lingui-explicit-id
 msgid "app.reference.open"
-msgstr "打开引用"
+msgstr "打开"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openAttachment"
+msgstr "打开文件"
 
 #. js-lingui-explicit-id
 msgid "app.reference.openBrowser"
@@ -8362,8 +8374,16 @@ msgid "app.reference.openFile"
 msgstr "在文件中打开"
 
 #. js-lingui-explicit-id
+msgid "app.reference.openImage"
+msgstr "打开图片"
+
+#. js-lingui-explicit-id
 msgid "app.reference.openNote"
 msgstr "在笔记中打开"
+
+#. js-lingui-explicit-id
+msgid "app.reference.openWebsite"
+msgstr "打开网页"
 
 #. js-lingui-explicit-id
 msgid "app.reference.outsideWorkspace"
@@ -8375,11 +8395,11 @@ msgstr "引用的页码超出了文档范围，已显示最后一页。"
 
 #. js-lingui-explicit-id
 msgid "app.reference.previewSignIn"
-msgstr "请打开此页面以查看需要登录的内容。"
+msgstr "需要登录"
 
 #. js-lingui-explicit-id
 msgid "app.reference.previewUnavailable"
-msgstr "暂无预览，你仍可打开这条引用。"
+msgstr "暂无预览"
 
 #. js-lingui-explicit-id
 msgid "app.reference.searchWorkspace"
@@ -10761,6 +10781,10 @@ msgid "browser.import.access"
 msgstr "未获得访问权限。请重新授权，或选择导出的文件。"
 
 #. js-lingui-explicit-id
+msgid "browser.import.busy"
+msgstr "来源数据持续变化，请重试。若仍无法导入，请退出来源浏览器后重试。"
+
+#. js-lingui-explicit-id
 msgid "browser.import.choose"
 msgstr "选择文件并导入"
 
@@ -10771,6 +10795,10 @@ msgstr "网站登录状态和偏好设置"
 #. js-lingui-explicit-id
 msgid "browser.import.cookies"
 msgstr "Cookie"
+
+#. js-lingui-explicit-id
+msgid "browser.import.corrupt"
+msgstr "浏览器数据未通过完整性检查。请重试，或使用导出的文件。"
 
 #. js-lingui-explicit-id
 msgid "browser.import.desktopUnavailable"
@@ -10813,6 +10841,10 @@ msgid "browser.import.importing"
 msgstr "正在导入…"
 
 #. js-lingui-explicit-id
+msgid "browser.import.limit"
+msgstr "所选数据超出导入限制，请使用较小的导出文件。"
+
+#. js-lingui-explicit-id
 msgid "browser.import.loading"
 msgstr "正在查找浏览器…"
 
@@ -10823,6 +10855,10 @@ msgstr "Mac 可能会请求访问权限。导入的密码会在此设备上加�
 #. js-lingui-explicit-id
 msgid "browser.import.locked"
 msgstr "请使用非临时浏览器配置，并解锁系统密码存储。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.notImported"
+msgstr "导入失败"
 
 #. js-lingui-explicit-id
 msgid "browser.import.options"
@@ -10886,11 +10922,15 @@ msgstr "导入已停止，已经导入的条目已保留。"
 
 #. js-lingui-explicit-id
 msgid "browser.import.unavailable"
-msgstr "无法读取这些数据。请退出来源浏览器后重试，或使用导出的文件。"
+msgstr "来源数据已不可用。请重新选择浏览器，或使用导出的文件。"
 
 #. js-lingui-explicit-id
 msgid "browser.import.unsupported"
 msgstr "此来源不支持"
+
+#. js-lingui-explicit-id
+msgid "browser.import.unsupportedData"
+msgstr "暂不支持此浏览器数据的格式或加密方式，请使用导出的文件。"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.assets"
@@ -12837,10 +12877,6 @@ msgid "execution.usage.firstContent"
 msgstr "平均首个内容耗时"
 
 #. js-lingui-explicit-id
-msgid "execution.usage.generationRate"
-msgstr "平均生成"
-
-#. js-lingui-explicit-id
 msgid "execution.usage.reasoning"
 msgstr "推理（计入输出）"
 
@@ -12854,7 +12890,7 @@ msgstr "请求与工具"
 
 #. js-lingui-explicit-id
 msgid "execution.usage.requestRate"
-msgstr "平均请求吞吐"
+msgstr "输出速度"
 
 #. js-lingui-explicit-id
 msgid "execution.usage.requests"
@@ -19318,6 +19354,10 @@ msgstr "浏览器数据访问状态已更改，请关闭并重新打开此对话
 #. js-lingui-explicit-id
 msgid "settings.browser.data"
 msgstr "浏览器数据"
+
+#. js-lingui-explicit-id
+msgid "settings.browser.destination"
+msgstr "保存到"
 
 #. js-lingui-explicit-id
 msgid "settings.browser.import.action"

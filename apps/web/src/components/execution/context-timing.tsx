@@ -5,6 +5,7 @@ import type { ExecutionSummary } from "@ericsanchezok/synergy-sdk/client"
 import { D } from "./context-categories"
 import { E } from "./i18n"
 import { ContextRing } from "./context-ring"
+import { UsageRate } from "./usage"
 
 export function ContextTiming(props: { summary: ExecutionSummary }) {
   const { _, i18n } = useLingui()
@@ -37,11 +38,9 @@ export function ContextTiming(props: { summary: ExecutionSummary }) {
       <div class="context-section-heading">
         <h3>{_(D.timing)}</h3>
         <span class="context-timing-rate">
-          {_(E.generationRate)}{" "}
+          {_(E.requestRate)}{" "}
           <strong>
-            {props.summary.rates.generation.value == null
-              ? "—"
-              : _({ ...E.tokenRate, values: { value: number(props.summary.rates.generation.value) } })}
+            <UsageRate value={props.summary.rates.endToEnd.value} />
           </strong>
         </span>
       </div>

@@ -20,10 +20,12 @@ Rationale: `docs/decisions/`.
 - **Summary** — failure details.
 - **Timeline** — observations and timing.
 - **Root cause** — mechanism and missing safeguards.
-- **Guardrails** — linked tests, documentation and gates.
+- **Guardrails** — tests, documentation and gates.
 - **Lessons** — durable takeaways.
 
 ## Index
+
+- [0080](0080-virtual-process-disclosure-demand.md)
 
 - [0079](0079-remount-and-confirmed-selection.md)
 

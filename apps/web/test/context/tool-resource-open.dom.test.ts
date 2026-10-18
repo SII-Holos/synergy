@@ -123,7 +123,8 @@ beforeAll(async () => {
     export const useSDK=()=>({get url(){return server()},get scopeKey(){return scope()},get scopeID(){return scope()},client:{
       note:{async listMeta({archived}){reads.push("notes");return {data:notes.filter(group=>!!group.archived===(archived==="true"))}},async get(){reads.push("note-body");return {data:{title:"Saved note",content:{type:"doc",content:[{type:"paragraph",attrs:{blockId:"block"},content:[{type:"text",text:"Saved note body"}]}]}}}}},
       browser:{async preview(input){reads.push("web-preview");if(hold){hold=false;await new Promise(resolve=>complete=resolve)}return {data:{title:"Public article",source:"example.test",description:"Anonymous summary"}}},async session(){return {data:{ownerKey:"browser-owner",pages:catalog.session.pages}}},async control({browserControlRequest}){controls.push(browserControlRequest);if(browserControlRequest.command.type!=="navigate")throw new Error("Unsupported fixture navigation");setCatalog("session","pages",page=>page.id===browserControlRequest.pageId,"url",browserControlRequest.command.url);return {data:{}}}},
-      workspace:{files:{async stat(input){reads.push("file-stat");return {data:{type:"file",binary:false}}},async read(input){reads.push(JSON.stringify(input));return {data:{kind:"text",content:"Saved file body",range:{startLine:input.offset+1}}}}}},
+      asset:{async get(input,options){reads.push("asset-body");return {data:new ReadableStream({pull(controller){controller.enqueue(new TextEncoder().encode("Asset excerpt\\n".repeat(4000)))},cancel(){reads.push("asset-cancelled")}})}}},
+      workspace:{files:{async stat(input){reads.push("file-stat");return {data:{type:"file",binary:input.path.endsWith(".png")}}},async read(input){reads.push(JSON.stringify(input));return {data:{kind:"text",content:"Saved file body",range:{startLine:input.offset+1}}}}}},
       session:{async toolActivity(){reads.push("evidence");return {data:{part:evidence}}}}
     }})
     export const useParams=()=>({get id(){return session()},get dir(){return scope()+server()}})
@@ -804,6 +805,65 @@ test("anonymous URL preview uses one lazy request, never opens a page, and respe
   expect(preview.absent.unavailable).toBeTruthy()
   expect((await facts()).reads).toEqual(["web-preview"])
   expect((await facts()).tabs).toHaveLength(0)
+})
+
+test("image references expose a resolved thumbnail and authored name without allocating a reader", async () => {
+  await load()
+  const previews = await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    return {
+      asset: await f.preview({ kind: "asset", url: "asset://0123456789abcdef.png", filename: "Keyboard sequence" }),
+      file: await f.preview(
+        { kind: "workspace-file", path: "screens/example.png" },
+        {
+          context: { state: "bound", workspace: { id: "wsp_fixture", generation: 2, root: "/fixture" }, directory: "" },
+        },
+      ),
+    }
+  })
+  expect(previews.asset).toMatchObject({
+    title: "Keyboard sequence",
+    image: { src: "http://fixture.test/asset/0123456789abcdef.png", alt: "Keyboard sequence" },
+  })
+  expect(previews.file.image?.src).toContain("wsp_fixture")
+  expect(previews.file.image?.src).toContain("/wsp_fixture/2/screens/example.png")
+  expect(previews.file.title).toBe("example.png")
+  expect((await facts()).reads).toEqual(["file-stat"])
+  expect((await facts()).tabs).toHaveLength(0)
+})
+
+test("text Assets provide a bounded excerpt and cancel the remaining stream", async () => {
+  await load()
+  const preview = await page.evaluate(() =>
+    (window as unknown as FixtureWindow).fixture.preview({
+      kind: "asset",
+      url: "asset://0123456789abcdef.txt",
+      filename: "Notes.txt",
+    }),
+  )
+  expect(preview.title).toBe("Notes.txt")
+  expect(preview.code?.text).toBe(Array(11).fill("Asset excerpt").join("\n"))
+  expect((await facts()).reads).toEqual(["asset-body", "asset-cancelled"])
+  expect((await facts()).tabs).toHaveLength(0)
+})
+
+test("text Asset excerpts follow the cited line and retain each link's authored title", async () => {
+  await load()
+  const previews = await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    const target = {
+      kind: "asset" as const,
+      url: "asset://0123456789abcdef.txt",
+      location: { kind: "text" as const, line: 42 },
+    }
+    return [
+      await f.preview({ ...target, filename: "First excerpt" }),
+      await f.preview({ ...target, filename: "Second excerpt" }),
+    ]
+  })
+  expect(previews.map((preview) => preview.code?.startLine)).toEqual([39, 39])
+  expect(previews.map((preview) => preview.title)).toEqual(["First excerpt", "Second excerpt"])
+  expect((await facts()).reads).toEqual(["asset-body", "asset-cancelled"])
 })
 
 test("a late preview response cannot transfer across an A-to-B-to-A Session change", async () => {

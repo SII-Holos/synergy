@@ -85,6 +85,7 @@ export function SubmissionFixture(props: { locale(): void }) {
     turnProjection: projection,
     activityDisplay: () => "balanced",
     isWorking: () => status().type === "busy",
+    historyMode: () => "latest",
     scrolledUp: () => false,
     compactReasoning: () => false,
     canRewind: () => false,
