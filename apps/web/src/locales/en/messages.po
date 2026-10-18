@@ -11713,6 +11713,10 @@ msgid "context.dashboard.historical"
 msgstr "Context for request {number}"
 
 #. js-lingui-explicit-id
+msgid "context.dashboard.historyRange"
+msgstr "History range"
+
+#. js-lingui-explicit-id
 msgid "context.dashboard.indexTruncated"
 msgstr "Some sources exceed the index budget. Open execution records for the complete request."
 
@@ -11731,6 +11735,10 @@ msgstr "Known token categories only; gray shows unclassified usage."
 #. js-lingui-explicit-id
 msgid "context.dashboard.latest"
 msgstr "Latest recorded request"
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.latestWindow"
+msgstr "Latest"
 
 #. js-lingui-explicit-id
 msgid "context.dashboard.loading"
@@ -11753,6 +11761,10 @@ msgid "context.dashboard.moreItems"
 msgstr "Load more items"
 
 #. js-lingui-explicit-id
+msgid "context.dashboard.nextWindow"
+msgstr "Later"
+
+#. js-lingui-explicit-id
 msgid "context.dashboard.noEvents"
 msgstr "No compaction recorded in the loaded history."
 
@@ -11763,6 +11775,10 @@ msgstr "No matching sources."
 #. js-lingui-explicit-id
 msgid "context.dashboard.noRequests"
 msgstr "Context appears after the first model request."
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.previousWindow"
+msgstr "Earlier"
 
 #. js-lingui-explicit-id
 msgid "context.dashboard.reasoning"

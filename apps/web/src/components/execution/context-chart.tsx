@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { useLingui } from "@lingui/solid"
@@ -8,9 +8,12 @@ import { executionDuration } from "@ericsanchezok/synergy-ui/execution-completio
 import { E } from "./i18n"
 import { D } from "./context-categories"
 
+const windowSize = 24
 const tickFractions = [0, 0.25, 0.5, 0.75, 1]
 
 export function ContextHistoryChart(props: {
+  windowStart: string
+  onWindowStart: (id: string) => void
   items: ExecutionContextSnapshot[]
   selectedSnapshot?: ExecutionContextSnapshot
   rounds?: ExecutionSummary["rounds"]
@@ -26,7 +29,43 @@ export function ContextHistoryChart(props: {
   const { _, i18n } = useLingui()
   const [hovered, setHovered] = createSignal("")
   const [timing, setTiming] = createSignal(true)
-  const bars = createMemo(() => contextHistoryBars(props.items, props.grouping, props.delta))
+  const history = createMemo(() => contextHistoryBars(props.items, props.grouping, props.delta))
+  const lastStart = () => Math.max(0, history().length - windowSize)
+  const start = createMemo(() => {
+    if (!props.windowStart) return lastStart()
+    const anchor = props.items.find((entry) => entry.callID === props.windowStart)
+    const index = history().findIndex(
+      (bar) =>
+        bar.snapshot.callID === props.windowStart ||
+        (props.grouping === "round" && bar.snapshot.runID === anchor?.runID),
+    )
+    return Math.max(0, Math.min(index, lastStart()))
+  })
+  const bars = createMemo(() => history().slice(start(), start() + windowSize))
+  const moveWindow = (index: number) => {
+    setHovered("")
+    props.onPreview?.("")
+    props.onWindowStart(index >= lastStart() ? "" : (history()[Math.max(0, index)]?.snapshot.callID ?? ""))
+  }
+  let revealed = props.windowStart ? props.selected : ""
+  createEffect(() => {
+    const id = props.selected
+    const entries = history()
+    if (!id) {
+      revealed = ""
+      return
+    }
+    if (id === revealed) return
+    const selected = props.selectedSnapshot ?? props.items.find((entry) => entry.callID === id)
+    const index = entries.findIndex(
+      (bar) => bar.snapshot.callID === id || (props.grouping === "round" && bar.snapshot.runID === selected?.runID),
+    )
+    if (index < 0) return
+    revealed = id
+    if (index < start() || index >= start() + windowSize) moveWindow(index)
+    if (!props.windowStart && history().length > windowSize) props.onWindowStart(bars()[0].snapshot.callID)
+  })
+  const selectedID = () => props.selected || props.selectedSnapshot?.callID
   const tokenMaximum = createMemo(() => {
     const divisions = props.delta ? 2 : 4
     const maximum = Math.max(
@@ -161,10 +200,10 @@ export function ContextHistoryChart(props: {
                   <button
                     type="button"
                     class="context-history-bar"
-                    data-selected={bar().snapshot.callID === props.selected}
+                    data-selected={bar().snapshot.callID === selectedID()}
                     data-gap={bar().gap}
                     data-preview={hovered() === id}
-                    aria-pressed={bar().snapshot.callID === props.selected}
+                    aria-pressed={bar().snapshot.callID === selectedID()}
                     aria-label={
                       label(index()) +
                       " · " +
@@ -176,6 +215,8 @@ export function ContextHistoryChart(props: {
                       props.onPreview?.(bar().snapshot.callID)
                     }}
                     onFocus={() => {
+                      if (!props.windowStart && history().length > windowSize)
+                        props.onWindowStart(bars()[0].snapshot.callID)
                       setHovered(bar().snapshot.callID)
                       props.onPreview?.(bar().snapshot.callID)
                     }}
@@ -190,7 +231,19 @@ export function ContextHistoryChart(props: {
                       const target = event.currentTarget.closest(".context-history-target")
                       const neighbor =
                         event.key === "ArrowLeft" ? target?.previousElementSibling : target?.nextElementSibling
-                      neighbor?.querySelector<HTMLButtonElement>(".context-history-bar")?.focus()
+                      if (neighbor?.matches(".context-history-target")) {
+                        neighbor.querySelector<HTMLButtonElement>(".context-history-bar")?.focus()
+                        return
+                      }
+                      const step = event.key === "ArrowLeft" ? -1 : 1
+                      const next = start() + index() + step
+                      if (next < 0 || next >= history().length) return
+                      const plot = event.currentTarget.closest(".context-chart-bars")
+                      moveWindow(start() + step)
+                      requestAnimationFrame(() => {
+                        if (plot?.isConnected)
+                          plot.querySelectorAll<HTMLButtonElement>(".context-history-bar")[next - start()]?.focus()
+                      })
                     }}
                   >
                     <span class="context-bar-positive" aria-hidden="true">
@@ -254,7 +307,7 @@ export function ContextHistoryChart(props: {
                     <path
                       class="context-timing-point"
                       d={`M${((index() + 0.5) / bars().length) * 100},${100 - (bar.snapshot.elapsedMs! / timingMaximum()) * 100} l0,0`}
-                      data-active={bar.snapshot.callID === hovered() || bar.snapshot.callID === props.selected}
+                      data-active={bar.snapshot.callID === hovered() || bar.snapshot.callID === selectedID()}
                     />
                   </Show>
                 )}
@@ -276,6 +329,52 @@ export function ContextHistoryChart(props: {
           <span>{bars().length ? label(bars().length - 1) : "—"}</span>
         </div>
       </div>
+      <Show when={history().length > windowSize || props.windowStart}>
+        <div class="context-history-navigation">
+          <Button
+            size="small"
+            variant="ghost"
+            disabled={start() === 0}
+            onClick={() => moveWindow(start() - windowSize)}
+          >
+            {_(D.previousWindow)}
+          </Button>
+          <input
+            type="range"
+            min="0"
+            max={lastStart()}
+            step="1"
+            value={start()}
+            disabled={!lastStart()}
+            aria-label={_(D.historyRange)}
+            aria-valuetext={bars().length ? `${label(0)} – ${label(bars().length - 1)}` : "—"}
+            onInput={(event) => moveWindow(event.currentTarget.valueAsNumber)}
+          />
+          <Button
+            size="small"
+            variant="ghost"
+            disabled={start() === lastStart()}
+            onClick={() => moveWindow(start() + windowSize)}
+          >
+            {_(D.nextWindow)}
+          </Button>
+          <Button
+            size="small"
+            variant="ghost"
+            onClick={(event: MouseEvent & { currentTarget: HTMLButtonElement }) => {
+              const button = event.currentTarget
+              const chart = button.closest(".context-history")
+              moveWindow(lastStart())
+              props.onSelect("")
+              requestAnimationFrame(() => {
+                if (!button.isConnected) chart?.querySelector<HTMLButtonElement>(".context-timing-toggle")?.focus()
+              })
+            }}
+          >
+            {_(D.latestWindow)}
+          </Button>
+        </div>
+      </Show>
       <div class="context-history-preview">
         <Show when={preview()}>
           {(bar) => (

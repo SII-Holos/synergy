@@ -11713,6 +11713,10 @@ msgid "context.dashboard.historical"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "context.dashboard.historyRange"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "context.dashboard.indexTruncated"
 msgstr ""
 
@@ -11730,6 +11734,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "context.dashboard.latest"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.latestWindow"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -11753,6 +11761,10 @@ msgid "context.dashboard.moreItems"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "context.dashboard.nextWindow"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "context.dashboard.noEvents"
 msgstr ""
 
@@ -11762,6 +11774,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "context.dashboard.noRequests"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "context.dashboard.previousWindow"
 msgstr ""
 
 #. js-lingui-explicit-id

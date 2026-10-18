@@ -53,7 +53,7 @@ beforeAll(async () => {
     import ${JSON.stringify(path.join(source, "context-dashboard.css"))}
     const categories=["systemInstructions","toolDefinitions","userMessages","injectedContext","skills","assistantMessages","toolResults","attachments"].map((category,index)=>({category,precision:"source",items:index,estimatedTokens:100,attributedTokens:100}))
     const snapshot={callID:"selected",requestNumber:1,roundNumber:1,modelID:"test-model",inputTokens:1000,contextLimit:10000,usage:{categories,overhead:{attributedTokens:200}}}
-    const i18n=setupI18n({locale:"en",messages:{en:{"context.dashboard.historical":["Context for request ",["number"]],"execution.usage.tokenRate":[["value"]," tok/s"]}}})
+    const i18n=setupI18n({locale:"en",messages:{en:{"context.dashboard.request":["Request ",["number"]],"context.dashboard.round":["Round ",["number"]," · last request"],"context.dashboard.historical":["Context for request ",["number"]],"execution.usage.tokenRate":[["value"]," tok/s"]}}})
     const [ring,setRing]=createSignal({value:"≥ 826.1万",alternatives:["≥ 826万"],accessible:"≥ 8,261,000"})
     Object.assign(window,{setRing})
     function Metrics(){
@@ -66,7 +66,7 @@ beforeAll(async () => {
       return <div class="context-dashboard"><ContextUsageStats summary={summary()} now={0}/><ContextTiming summary={summary()}/></div>
     }
     function Live(){
-      const [selected,setSelected]=createSignal("");const [category,setCategory]=createSignal("")
+      const [selected,setSelected]=createSignal("");const [category,setCategory]=createSignal("");const [windowStart,setWindowStart]=createSignal("")
       let receive;let revision=1
       const history=createExecutionContext({client:useSDK().client,sessionID:()=>"session",runID:()=>"",active:()=>true,selected,connectionVersion:()=>1,subscribe:callback=>{receive=callback;return ()=>{}}})
       Object.assign(window,{live:{requests,send:(callID,number,tokens,actual)=>{
@@ -77,7 +77,7 @@ beforeAll(async () => {
       return <div id="live" class="context-dashboard" style="height:600px;overflow:auto">
         <ContextComposition snapshot={history.state.displayedLatest} category={category()} onCategory={setCategory}/>
         <ContextBrowser selected={selected()} onSelect={setSelected} snapshot={history.snapshot()} history={history.state.items} category={category()} onCategory={setCategory} active={true}/>
-        <ContextHistoryChart items={history.state.items} selectedSnapshot={history.snapshot()} selected={selected()} onSelect={setSelected} grouping="request" onGrouping={()=>{}} delta={false} onDelta={()=>{}}/>
+        <ContextHistoryChart items={history.state.items} selectedSnapshot={history.snapshot()} windowStart={windowStart()} onWindowStart={setWindowStart} selected={selected()} onSelect={setSelected} grouping="request" onGrouping={()=>{}} delta={false} onDelta={()=>{}}/>
       </div>
     }
     function Chart(){
@@ -85,11 +85,13 @@ beforeAll(async () => {
       const [selected,setSelected]=createSignal("")
       const [grouping,setGrouping]=createSignal("request")
       const [delta,setDelta]=createSignal(false)
+      const [windowStart,setWindowStart]=createSignal("")
       Object.assign(window,{chart:{
-        samples:values=>setItems(values.map((value,index)=>({...first,callID:String(index),nodeID:String(index),started:index,requestNumber:index+1,roundNumber:Math.floor(index/2)+1,runID:"round-"+Math.floor(index/2),inputTokens:value.tokens,estimate:value.tokens==null?undefined:estimate(value.tokens),elapsedMs:value.elapsedMs}))),
+        samples:(values,start=0)=>setItems(values.map((value,position)=>{const index=position+start;return {...first,callID:String(index),nodeID:String(index),started:index,requestNumber:index+1,roundNumber:Math.floor(index/2)+1,runID:"round-"+Math.floor(index/2),inputTokens:value.tokens,estimate:value.tokens==null?undefined:estimate(value.tokens),elapsedMs:value.elapsedMs}})),
+        select:setSelected,
         locale:locale=>{i18n.load(locale,{});i18n.activate(locale)},
       }})
-      return <div class="context-dashboard"><ContextHistoryChart items={items()} selected={selected()} onSelect={setSelected} grouping={grouping()} onGrouping={setGrouping} delta={delta()} onDelta={setDelta}/></div>
+      return <div class="context-dashboard"><ContextHistoryChart items={items()} windowStart={windowStart()} onWindowStart={setWindowStart} selected={selected()} onSelect={setSelected} grouping={grouping()} onGrouping={setGrouping} delta={delta()} onDelta={setDelta}/></div>
     }
     const Layout=()=><div class="context-dashboard-shell" style="height:100dvh"><div class="context-dashboard"><ContextDashboardLayout
       composition={<ContextComposition snapshot={snapshot} category="" onCategory={()=>{}}/>}
@@ -505,8 +507,11 @@ test("changing layout retains the reader node, typed search and keyboard focus",
   }
 })
 
-async function chartSamples(samples: Array<{ tokens: number | null; elapsedMs: number | null }>) {
-  await page.evaluate((values) => Reflect.get(window, "chart").samples(values), samples)
+async function chartSamples(samples: Array<{ tokens: number | null; elapsedMs: number | null }>, start = 0) {
+  await page.evaluate(({ values, start }) => Reflect.get(window, "chart").samples(values, start), {
+    values: samples,
+    start,
+  })
   await settleChart()
 }
 
@@ -558,7 +563,7 @@ async function chartGeometry() {
   })
 }
 
-test("long request histories share one visible plot for token bars and elapsed points", async () => {
+test("long histories show the latest 24 aligned requests with scales limited to the visible window", async () => {
   await page.setViewportSize({ width: 560, height: 800 })
   await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
   await chartSamples(
@@ -566,14 +571,15 @@ test("long request histories share one visible plot for token bars and elapsed p
   )
   const geometry = await chartGeometry()
   expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.width + 1)
-  expect(geometry.bars).toHaveLength(231)
+  expect(geometry.bars).toHaveLength(24)
   for (let i = 0; i < geometry.bars.length; i++) {
     expect(geometry.bars[i].x).toBeGreaterThanOrEqual(geometry.bounds.left)
     expect(geometry.bars[i].x).toBeLessThanOrEqual(geometry.bounds.right)
     expect(Math.abs(geometry.bars[i].x - geometry.points[i].x)).toBeLessThan(1)
   }
   expect(geometry.bars.at(-1)!.positive / geometry.bounds.height).toBeGreaterThan(0.9)
-  expect((geometry.points[0].y - geometry.bounds.top) / geometry.bounds.height).toBeLessThan(0.05)
+  expect(geometry.timeTicks[0]).toBe("00:20")
+  expect(await page.locator(".context-chart-caption").textContent()).toBe("Request 208Request 231")
 })
 
 test("five aligned ticks and independent vertical scales survive updates, timing visibility and narrow locales", async () => {
@@ -660,4 +666,71 @@ test("signed token changes retain their own zero while elapsed timing remains no
   expect(rounds.bars).toHaveLength(2)
   expect(rounds.points).toHaveLength(2)
   expect(rounds.timeTicks).toHaveLength(5)
+})
+
+test("history navigation follows the latest requests and anchors manual browsing during incoming updates", async () => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
+  const samples = Array.from({ length: 60 }, (_, i) => ({ tokens: 100 + i, elapsedMs: 1000 + i * 100 }))
+  await chartSamples(samples)
+  const caption = page.locator(".context-chart-caption")
+  expect(await caption.textContent()).toBe("Request 37Request 60")
+  const slider = page.getByRole("slider", { name: "History range" })
+  await slider.focus()
+  await page.keyboard.press("Home")
+  expect(await caption.textContent()).toBe("Request 1Request 24")
+  await page
+    .locator(".context-history-bar")
+    .first()
+    .evaluate((el) => (el.dataset.retained = "yes"))
+  await chartSamples([...samples, { tokens: 10000, elapsedMs: 120000 }])
+  expect(await caption.textContent()).toBe("Request 1Request 24")
+  expect(await page.locator(".context-history-bar").first().getAttribute("data-retained")).toBe("yes")
+  expect((await chartGeometry()).timeTicks[0]).toBe("00:04")
+  await page.getByRole("button", { name: "Later", exact: true }).click()
+  expect(await caption.textContent()).toBe("Request 25Request 48")
+  await page.getByRole("button", { name: "Latest", exact: true }).click()
+  expect(await caption.textContent()).toBe("Request 38Request 61")
+  await chartSamples([...samples, { tokens: 10000, elapsedMs: 120000 }, { tokens: 20000, elapsedMs: 8000 }])
+  expect(await caption.textContent()).toBe("Request 39Request 62")
+  await page.evaluate(() => Reflect.get(window, "chart").select("9"))
+  expect(await page.locator(".context-history-bar[aria-pressed=true]").getAttribute("aria-label")).toContain(
+    "Request 10",
+  )
+  expect(await caption.textContent()).toBe("Request 10Request 33")
+  await page.getByRole("button", { name: "Change", exact: true }).click()
+  await settleChart()
+  expect(await page.locator(".context-history-bar").first().getAttribute("data-gap")).toBe("false")
+  expect((await chartGeometry()).bars[0].positive).toBeGreaterThan(0)
+  await page.getByRole("button", { name: "Earlier", exact: true }).click()
+  expect(await caption.textContent()).toBe("Request 1Request 24")
+  await page.locator(".context-history-bar").last().focus()
+  await page.keyboard.press("ArrowRight")
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label")?.startsWith("Request 25 ·"))
+  expect(await caption.textContent()).toBe("Request 2Request 25")
+  await page.locator(".context-history-bar").first().focus()
+  await page.keyboard.press("ArrowLeft")
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label")?.startsWith("Request 1 ·"))
+  expect(await caption.textContent()).toBe("Request 1Request 24")
+})
+
+test("prepending earlier requests keeps the manually viewed window and its focused bar", async () => {
+  await page.setViewportSize({ width: 560, height: 800 })
+  await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
+  const samples = Array.from({ length: 30 }, (_, i) => ({ tokens: 100 + i, elapsedMs: 4000 }))
+  await chartSamples(samples, 100)
+  const slider = page.getByRole("slider", { name: "History range" })
+  await slider.focus()
+  await page.keyboard.press("Home")
+  await page.locator(".context-history-bar").first().focus()
+  await chartSamples([...samples, ...samples], 70)
+  expect(await page.locator(".context-chart-caption").textContent()).toBe("Request 101Request 124")
+  expect(
+    await page
+      .locator(".context-history-bar")
+      .first()
+      .evaluate((el) => document.activeElement === el),
+  ).toBe(true)
+  await page.getByRole("button", { name: "Earlier", exact: true }).click()
+  expect(await page.locator(".context-chart-caption").textContent()).toBe("Request 77Request 100")
 })
