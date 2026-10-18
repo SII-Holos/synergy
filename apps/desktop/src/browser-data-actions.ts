@@ -13,6 +13,7 @@ import {
 } from "@ericsanchezok/synergy-browser-core"
 import { BrowserDataStore, parseCookieImport, parsePasswordCSV } from "./browser-data-store.js"
 import { BrowserImportSources, type NativeImportBatch } from "./browser-import-sources.js"
+import { browserImportFailure } from "./browser-import-diagnostics.js"
 import type { BrowserProfileDataTarget } from "./browser-data-contexts.js"
 
 const MAX_IMPORT_BYTES = 32 * 1024 * 1024
@@ -294,9 +295,10 @@ export class BrowserDataActions {
       if (source.mode === "direct" && kinds.length) {
         try {
           native = await this.sources.read(source.id, kinds, job.abort.signal)
-        } catch {
+        } catch (error) {
           if (job.cancelled) return { ...result, cancelled: true }
-          for (const kind of kinds) result.items.push({ kind, imported: 0, skipped: 0, failed: 0, error: "access" })
+          const failure = browserImportFailure(error, "access")
+          for (const kind of kinds) result.items.push({ kind, imported: 0, skipped: 0, failed: 0, error: failure.code })
           return result
         }
       }

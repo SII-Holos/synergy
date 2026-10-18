@@ -12,8 +12,8 @@
   line-height: 20px;
 }
 .review-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px 12px;
   padding: 8px 12px;
@@ -31,14 +31,15 @@
   min-width: 0;
 }
 .review-toolbar-source {
+  flex: 1 1 auto;
   overflow: hidden;
 }
 .review-toolbar-tools {
+  flex: none;
   gap: 2px;
   padding: 2px;
   border-radius: var(--radius-full);
   background: var(--surface-inset-base);
-  justify-self: end;
 }
 .review-toolbar-tools [data-component="icon-button"],
 .review-layout-trigger {
@@ -578,12 +579,7 @@
 }
 @container review-panel (max-width: 760px) {
   .review-toolbar {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
     padding: 8px;
-  }
-  .review-toolbar-tools {
-    justify-self: start;
   }
 }
 @container review-panel (max-width: 540px) {

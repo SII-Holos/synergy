@@ -30,6 +30,21 @@ describe("native browser page actions", () => {
     await expect(runBrowserPageAction(contents as never, { type: "zoom", factor: 100 })).rejects.toThrow()
   })
 
+  test("print cancellation settles normally while printer failures remain errors", async () => {
+    const contents = (reason: string) => ({
+      print: (_options: unknown, callback: (success: boolean, reason: string) => void) => callback(false, reason),
+    })
+    for (const reason of ["cancelled", "Print job canceled"]) {
+      expect(await runBrowserPageAction(contents(reason) as never, { type: "print" })).toEqual({
+        type: "done",
+        cancelled: true,
+      })
+    }
+    await expect(
+      runBrowserPageAction(contents("Invalid printer settings") as never, { type: "print" }),
+    ).rejects.toThrow("Invalid printer settings")
+  })
+
   test("native keyboard shortcuts use the platform modifier and leave text input alone", () => {
     expect(browserShortcut({ key: "f", type: "keyDown", meta: true }, "darwin")).toBe("find")
     expect(browserShortcut({ key: "f", type: "keyDown", control: true }, "win32")).toBe("find")

@@ -2,22 +2,29 @@
   --dialog-body-padding: 0;
   [data-slot="dialog-body"] {
     min-height: 0;
+    overflow: hidden;
   }
 }
 .browser-import-body {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   padding: 4px 24px 0;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-base);
 }
 .browser-import-source {
-  display: flex;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: 4.5em minmax(0, 1fr);
+  gap: 12px;
   align-items: center;
+}
+.browser-profile-data-body {
+  padding-bottom: 24px;
 }
 .browser-import-source > span {
   flex: none;
@@ -35,7 +42,7 @@
   border-radius: 8px;
   background: var(--surface-inset-base);
   border: 1px solid var(--border-weak-base);
-  text-align: left;
+  text-align: start;
 }
 .browser-import-source-trigger > span {
   overflow: hidden;
@@ -59,7 +66,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 15px 0;
+  padding: 12px 0;
 }
 .browser-import-type + .browser-import-type {
   border-top: 1px solid var(--border-weak-base);
@@ -114,7 +121,7 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 24px;
+  padding: 16px 24px 20px;
   flex: none;
 }
 @media (max-width: 480px) {
@@ -122,6 +129,6 @@
     padding-inline: 16px;
   }
   .browser-import-footer {
-    padding: 20px 16px;
+    padding: 16px;
   }
 }

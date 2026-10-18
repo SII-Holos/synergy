@@ -62,7 +62,7 @@ export async function runBrowserPageAction(
       return new Promise((resolve, reject) =>
         contents.print({}, (success, reason) => {
           if (success) resolve({ type: "done" })
-          else if (reason === "cancelled") resolve({ type: "done", cancelled: true })
+          else if (reason === "cancelled" || reason === "Print job canceled") resolve({ type: "done", cancelled: true })
           else reject(new Error(reason || "Printing failed."))
         }),
       )

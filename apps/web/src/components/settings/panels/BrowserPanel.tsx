@@ -1,10 +1,11 @@
-import { createSignal, onCleanup, Show } from "solid-js"
+import { createSignal, createUniqueId, onCleanup, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
-import { SettingRow } from "../components/SettingsSettingRow"
+import "../browser-settings.css"
 
 export const browserSettingsCopy = {
   title: { id: "settings.browser.title", message: "In-app browser" },
@@ -25,6 +26,8 @@ export function BrowserPanel() {
     dialog = useDialog()
   const [loading, setLoading] = createSignal(false)
   const [failed, setFailed] = createSignal<"import" | "passwords">()
+  const importHintId = createUniqueId(),
+    manageHintId = createUniqueId()
   let disposed = false
   let childId: string | undefined
   onCleanup(() => {
@@ -71,31 +74,47 @@ export function BrowserPanel() {
         )}
       </Show>
       <SettingsSection title={_(browserSettingsCopy.data)}>
-        <SettingRow
-          title={_(browserSettingsCopy.import)}
-          description={_(browserSettingsCopy.importHint)}
-          trailing={
-            <Button variant="secondary" size="small" disabled={loading()} onClick={() => void show("import")}>
-              {_(browserSettingsCopy.importAction)}
-            </Button>
-          }
-        />
+        <Button
+          variant="ghost"
+          class="browser-settings-action"
+          aria-label={_(browserSettingsCopy.import)}
+          aria-describedby={importHintId}
+          aria-disabled={loading()}
+          aria-busy={loading()}
+          onClick={() => void show("import")}
+        >
+          <span class="browser-settings-action-copy">
+            <span class="browser-settings-action-title">{_(browserSettingsCopy.import)}</span>
+            <span id={importHintId} class="browser-settings-action-hint">
+              {_(browserSettingsCopy.importHint)}
+            </span>
+          </span>
+          <span class="browser-settings-action-trailing" aria-hidden="true">
+            {_(browserSettingsCopy.importAction)}
+            <Icon name={getSemanticIcon("navigation.expand")} size="small" />
+          </span>
+        </Button>
       </SettingsSection>
       <SettingsSection title={_(browserSettingsCopy.passwords)}>
-        <SettingRow
-          title={_(browserSettingsCopy.manage)}
-          description={_(browserSettingsCopy.manageHint)}
-          trailing={
-            <Button
-              variant="ghost"
-              size="small"
-              icon={getSemanticIcon("navigation.expand")}
-              aria-label={_(browserSettingsCopy.manage)}
-              disabled={loading()}
-              onClick={() => void show("passwords")}
-            />
-          }
-        />
+        <Button
+          variant="ghost"
+          class="browser-settings-action"
+          aria-label={_(browserSettingsCopy.manage)}
+          aria-describedby={manageHintId}
+          aria-disabled={loading()}
+          aria-busy={loading()}
+          onClick={() => void show("passwords")}
+        >
+          <span class="browser-settings-action-copy">
+            <span class="browser-settings-action-title">{_(browserSettingsCopy.manage)}</span>
+            <span id={manageHintId} class="browser-settings-action-hint">
+              {_(browserSettingsCopy.manageHint)}
+            </span>
+          </span>
+          <span class="browser-settings-action-trailing" aria-hidden="true">
+            <Icon name={getSemanticIcon("navigation.expand")} size="small" />
+          </span>
+        </Button>
       </SettingsSection>
     </SettingsPage>
   )

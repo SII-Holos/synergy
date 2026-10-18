@@ -72,6 +72,8 @@ export function AddressBar(props: AddressBarProps) {
   const [matches, setMatches] = createSignal({ active: 0, matches: 0 })
   const [zoom, setZoom] = createSignal(1)
   const [history, setHistory] = createSignal({ back: false, forward: false })
+  let navigationGeneration = 0
+  let zoomGeneration = 0
   let findGeneration = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   const realPage = () =>
@@ -128,19 +130,22 @@ export function AddressBar(props: AddressBarProps) {
   createEffect(() => {
     const pageID = browser.page()?.id
     props.activeUrl()
+    navigationGeneration++
+    const zoomRevision = zoomGeneration
     let current = true
     onCleanup(() => {
       current = false
     })
     if (!realPage()) {
       setHistory({ back: false, forward: false })
+      setZoom(1)
       return
     }
     if (props.isLoading()) return
     void props.onPageAction?.({ type: "state" }).then((result) => {
       if (!current || browser.page()?.id !== pageID || result?.type !== "state") return
       setHistory({ back: result.back, forward: result.forward })
-      setZoom(result.zoom)
+      if (zoomRevision === zoomGeneration) setZoom(result.zoom)
     })
   })
 
@@ -176,11 +181,22 @@ export function AddressBar(props: AddressBarProps) {
     if (generation === findGeneration && result?.type === "find") setMatches(result)
   }
   async function scale(factor: number) {
+    const generation = ++zoomGeneration
+    const navigation = navigationGeneration
+    const current = () => generation === zoomGeneration && navigation === navigationGeneration && realPage()
+    const requested = Math.min(5, Math.max(0.25, Math.round(factor * 100) / 100))
+    setZoom(requested)
     const result = await props.onPageAction?.({
       type: "zoom",
-      factor: Math.min(5, Math.max(0.25, Math.round(factor * 100) / 100)),
+      factor: requested,
     })
-    if (result?.type === "zoom") setZoom(result.factor)
+    if (!current()) return
+    if (result?.type === "zoom") {
+      setZoom(result.factor)
+      return
+    }
+    const state = await props.onPageAction?.({ type: "state" })
+    if (current() && state?.type === "state") setZoom(state.zoom)
   }
   function shortcut(action: BrowserShortcut) {
     if (action === "address") {
@@ -415,18 +431,26 @@ export function AddressBar(props: AddressBarProps) {
               <div class="browser-menu-zoom">
                 <span>{_(B.zoom)}</span>
                 <div class="browser-zoom-controls">
-                  <button aria-label={_(B.zoomOut)} disabled={!realPage()} onClick={() => void scale(zoom() - 0.1)}>
+                  <button
+                    aria-label={_(B.zoomOut)}
+                    disabled={!realPage()}
+                    onClick={() => menu(() => void scale(zoom() - 0.1))}
+                  >
                     −
                   </button>
                   <button
                     title={_(B.zoomReset)}
                     aria-label={_(B.zoomReset)}
                     disabled={!realPage()}
-                    onClick={() => void scale(1)}
+                    onClick={() => menu(() => void scale(1))}
                   >
                     {Math.round(zoom() * 100)}%
                   </button>
-                  <button aria-label={_(B.zoomIn)} disabled={!realPage()} onClick={() => void scale(zoom() + 0.1)}>
+                  <button
+                    aria-label={_(B.zoomIn)}
+                    disabled={!realPage()}
+                    onClick={() => menu(() => void scale(zoom() + 0.1))}
+                  >
                     +
                   </button>
                 </div>
@@ -500,7 +524,7 @@ export function AddressBar(props: AddressBarProps) {
                   class="browser-segment-item"
                   aria-pressed={browser.viewportMode() === "fit"}
                   onClick={() =>
-                    browser.setViewport(browser.viewportWidth(), browser.viewportHeight(), { mode: "fit" })
+                    menu(() => browser.setViewport(browser.viewportWidth(), browser.viewportHeight(), { mode: "fit" }))
                   }
                 >
                   {_(B.fit)}
@@ -515,7 +539,7 @@ export function AddressBar(props: AddressBarProps) {
                   {(preset) => (
                     <button
                       class="browser-segment-item"
-                      onClick={() => browser.setViewport(preset.width, preset.height)}
+                      onClick={() => menu(() => browser.setViewport(preset.width, preset.height))}
                     >
                       {preset.label}
                     </button>
@@ -524,9 +548,8 @@ export function AddressBar(props: AddressBarProps) {
               </div>
               <button
                 class="browser-menu-row"
-                role="switch"
-                aria-checked={browser.followAgent()}
-                onClick={() => (browser.followAgent() ? browser.setFollowAgent(false) : browser.followAgentNow())}
+                disabled={!browser.agentActivity().pageId}
+                onClick={() => menu(() => browser.followAgentNow())}
               >
                 {_(B.followAgent)}
               </button>

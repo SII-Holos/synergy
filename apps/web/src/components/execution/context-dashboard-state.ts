@@ -6,6 +6,7 @@ const Saved = z.object({
   category: z.string().default(""),
   grouping: z.enum(["request", "round"]).default("request"),
   delta: z.boolean().default(false),
+  historyStart: z.string().default(""),
   scroll: z.number().nonnegative().default(0),
   records: z.boolean().default(false),
 })

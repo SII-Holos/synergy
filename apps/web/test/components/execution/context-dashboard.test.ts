@@ -137,3 +137,10 @@ test("a diagnostic round does not replace the saved whole-task dashboard scope",
   ).toBe("")
   expect(contextDashboardState({ runID: "entry-round" }).runID).toBe("entry-round")
 })
+
+test("dashboard restores its history anchor without changing request selection", () => {
+  expect(
+    contextDashboardState({ contextDashboard: { historyStart: "first-visible", selected: "selected" } }),
+  ).toMatchObject({ historyStart: "first-visible", selected: "selected" })
+  expect(contextDashboardState({}).historyStart).toBe("")
+})

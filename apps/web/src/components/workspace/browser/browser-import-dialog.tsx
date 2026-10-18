@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
@@ -76,8 +76,25 @@ const M = {
   },
   unavailable: {
     id: "browser.import.unavailable",
-    message: "This data could not be read. Quit the source browser and retry, or use an exported file.",
+    message: "The source data is no longer available. Choose the browser again or use an exported file.",
   },
+  busy: {
+    id: "browser.import.busy",
+    message: "The source data kept changing. Try again. If this continues, quit the source browser and retry.",
+  },
+  unsupportedData: {
+    id: "browser.import.unsupportedData",
+    message: "This browser data format or encryption is not supported. Use an exported file.",
+  },
+  limit: {
+    id: "browser.import.limit",
+    message: "The selected data exceeds the import limit. Import a smaller exported file.",
+  },
+  corrupt: {
+    id: "browser.import.corrupt",
+    message: "The browser data could not be verified. Try again, or use an exported file.",
+  },
+  notImported: { id: "browser.import.notImported", message: "Import failed" },
   format: {
     id: "browser.import.format",
     message: "Choose a supported file under 32 MB: password CSV, Safari ZIP or Cookie JSON.",
@@ -87,7 +104,11 @@ const M = {
 }
 const names = { chrome: "Google Chrome", edge: "Microsoft Edge", brave: "Brave", safari: "Safari" }
 
-export function BrowserImportForm(props: { resolveTarget: BrowserImportTargetResolver; signal: AbortSignal }) {
+export function BrowserImportForm(props: {
+  resolveTarget: BrowserImportTargetResolver
+  signal: AbortSignal
+  destination?: JSX.Element
+}) {
   const dialog = useDialog(),
     confirm = useConfirm(),
     { _ } = useLingui()
@@ -255,11 +276,16 @@ export function BrowserImportForm(props: { resolveTarget: BrowserImportTargetRes
     if (error === "access") return _(M.access)
     if (error === "unavailable") return _(M.unavailable)
     if (error === "format") return _(M.format)
+    if (error === "busy") return _(M.busy)
+    if (error === "unsupported") return _(M.unsupportedData)
+    if (error === "limit") return _(M.limit)
+    if (error === "corrupt") return _(M.corrupt)
     return _(M.locked)
   }
   return (
     <>
       <div class="browser-import-body">
+        {props.destination}
         <Show when={loading()}>
           <p role="status">{_(preparing() ? importPreparing : M.loading)}</p>
         </Show>
@@ -346,7 +372,12 @@ export function BrowserImportForm(props: { resolveTarget: BrowserImportTargetRes
                 {(item) => (
                   <div>
                     <span class="browser-import-type-name">{kindLabel(item.kind)}</span>
-                    <p>{_({ ...M.result, values: item })}</p>
+                    <Show
+                      when={!item.error || item.imported + item.skipped + item.failed > 0}
+                      fallback={<p>{_(M.notImported)}</p>}
+                    >
+                      <p>{_({ ...M.result, values: item })}</p>
+                    </Show>
                     <Show when={item.error}>{(error) => <p>{failure(error())}</p>}</Show>
                   </div>
                 )}

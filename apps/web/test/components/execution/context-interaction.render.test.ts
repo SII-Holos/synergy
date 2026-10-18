@@ -96,6 +96,8 @@ test("chart preview never selects a request and updates preserve keyboard focus"
   const [selected, setSelected] = createSignal("1")
   const host = mount(() =>
     createComponent(ContextHistoryChart, {
+      windowStart: "",
+      onWindowStart: () => {},
       get items() {
         return items()
       },
@@ -129,6 +131,8 @@ test("switching and previewing requests never changes other historical segments"
   const [preview, setPreview] = createSignal("")
   const host = mount(() =>
     createComponent(ContextHistoryChart, {
+      windowStart: "",
+      onWindowStart: () => {},
       items: values,
       get selected() {
         return selected()
@@ -259,6 +263,8 @@ test("round grouping keeps the selected request details instead of previewing an
   const old = snapshot(1, 20)
   const host = mount(() =>
     createComponent(ContextHistoryChart, {
+      windowStart: "",
+      onWindowStart: () => {},
       items: [snapshot(2, 30), old],
       selected: "1",
       selectedSnapshot: old,

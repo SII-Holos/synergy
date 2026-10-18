@@ -53,19 +53,20 @@ beforeAll(async () => {
     import ${JSON.stringify(path.join(source, "context-dashboard.css"))}
     const categories=["systemInstructions","toolDefinitions","userMessages","injectedContext","skills","assistantMessages","toolResults","attachments"].map((category,index)=>({category,precision:"source",items:index,estimatedTokens:100,attributedTokens:100}))
     const snapshot={callID:"selected",requestNumber:1,roundNumber:1,modelID:"test-model",inputTokens:1000,contextLimit:10000,usage:{categories,overhead:{attributedTokens:200}}}
-    const i18n=setupI18n({locale:"en",messages:{en:{"context.dashboard.historical":["Context for request ",["number"]]}}})
+    const i18n=setupI18n({locale:"en",messages:{en:{"context.dashboard.request":["Request ",["number"]],"context.dashboard.round":["Round ",["number"]," · last request"],"context.dashboard.historical":["Context for request ",["number"]],"execution.usage.tokenRate":[["value"]," tok/s"]}}})
     const [ring,setRing]=createSignal({value:"≥ 826.1万",alternatives:["≥ 826万"],accessible:"≥ 8,261,000"})
     Object.assign(window,{setRing})
     function Metrics(){
       const measured=known=>({known,unknown:0,total:known})
       const [tokens,setTokens]=createSignal({input:measured(1000),uncached:measured(200),cacheRead:measured(800),cacheWrite:{known:0,unknown:1,total:null},output:measured(200),reasoning:measured(50),total:measured(1200)})
       const [duration,setDuration]=createSignal(118000)
-      const summary=()=>({accounting:{calls:2,attempts:2,tokens:tokens()},cost:{state:"recorded",reported:[],estimates:[],missing:0,equivalent:null},cache:{ratio:0.8},elapsedMs:duration(),elapsedActive:false,latency:{ttft:{totalMs:duration()/4,samples:1},generation:{totalMs:duration()/4,samples:1}},tools:[{durationMs:duration()/2,timedSamples:1}],rates:{generation:{value:null}},outcomes:{retries:0}})
-      Object.assign(window,{setTokens,setDuration})
+      const [rates,setRates]=createSignal({generation:{value:95.9321},endToEnd:{value:41.2718}})
+      const summary=()=>({accounting:{calls:2,attempts:2,tokens:tokens()},own:{tokens:tokens()},descendants:{tokens:tokens()},cost:{state:"recorded",reported:[],estimates:[],missing:0,equivalent:null},cache:{ratio:0.8},elapsedMs:duration(),elapsedActive:false,latency:{ttft:{totalMs:duration()/4,samples:1,meanMs:duration()/4},generation:{totalMs:duration()/4,samples:1},request:{meanMs:duration()/2}},tools:[{calls:1,durationMs:duration()/2,timedSamples:1}],rates:rates(),outcomes:{retries:0}})
+      Object.assign(window,{setTokens,setDuration,setRates})
       return <div class="context-dashboard"><ContextUsageStats summary={summary()} now={0}/><ContextTiming summary={summary()}/></div>
     }
     function Live(){
-      const [selected,setSelected]=createSignal("");const [category,setCategory]=createSignal("")
+      const [selected,setSelected]=createSignal("");const [category,setCategory]=createSignal("");const [windowStart,setWindowStart]=createSignal("")
       let receive;let revision=1
       const history=createExecutionContext({client:useSDK().client,sessionID:()=>"session",runID:()=>"",active:()=>true,selected,connectionVersion:()=>1,subscribe:callback=>{receive=callback;return ()=>{}}})
       Object.assign(window,{live:{requests,send:(callID,number,tokens,actual)=>{
@@ -76,8 +77,21 @@ beforeAll(async () => {
       return <div id="live" class="context-dashboard" style="height:600px;overflow:auto">
         <ContextComposition snapshot={history.state.displayedLatest} category={category()} onCategory={setCategory}/>
         <ContextBrowser selected={selected()} onSelect={setSelected} snapshot={history.snapshot()} history={history.state.items} category={category()} onCategory={setCategory} active={true}/>
-        <ContextHistoryChart items={history.state.items} selectedSnapshot={history.snapshot()} selected={selected()} onSelect={setSelected} grouping="request" onGrouping={()=>{}} delta={false} onDelta={()=>{}}/>
+        <ContextHistoryChart items={history.state.items} selectedSnapshot={history.snapshot()} windowStart={windowStart()} onWindowStart={setWindowStart} selected={selected()} onSelect={setSelected} grouping="request" onGrouping={()=>{}} delta={false} onDelta={()=>{}}/>
       </div>
+    }
+    function Chart(){
+      const [items,setItems]=createSignal([])
+      const [selected,setSelected]=createSignal("")
+      const [grouping,setGrouping]=createSignal("request")
+      const [delta,setDelta]=createSignal(false)
+      const [windowStart,setWindowStart]=createSignal("")
+      Object.assign(window,{chart:{
+        samples:(values,start=0)=>setItems(values.map((value,position)=>{const index=position+start;return {...first,callID:String(index),nodeID:String(index),started:index,requestNumber:index+1,roundNumber:Math.floor(index/2)+1,runID:"round-"+Math.floor(index/2),inputTokens:value.tokens,estimate:value.tokens==null?undefined:estimate(value.tokens),elapsedMs:value.elapsedMs}})),
+        select:setSelected,latest:()=>{setSelected("");setWindowStart("")},
+        locale:locale=>{i18n.load(locale,{});i18n.activate(locale)},
+      }})
+      return <div class="context-dashboard"><ContextHistoryChart items={items()} windowStart={windowStart()} onWindowStart={setWindowStart} selected={selected()} onSelect={setSelected} grouping={grouping()} onGrouping={setGrouping} delta={delta()} onDelta={setDelta}/></div>
     }
     const Layout=()=><div class="context-dashboard-shell" style="height:100dvh"><div class="context-dashboard"><ContextDashboardLayout
       composition={<ContextComposition snapshot={snapshot} category="" onCategory={()=>{}}/>}
@@ -88,7 +102,7 @@ beforeAll(async () => {
       events={<section class="context-events"><h2>Events</h2></section>}
       activity={<section class="context-activity"><h2>Task activity</h2></section>}
     /></div></div>
-    render(()=><I18nProvider i18n={i18n}><Router><Route path="/" component={Layout}/><Route path="/metrics" component={Metrics}/><Route path="/session/:id" component={Live}/></Router></I18nProvider>, document.getElementById("root"))
+    render(()=><I18nProvider i18n={i18n}><Router><Route path="/" component={Layout}/><Route path="/metrics" component={Metrics}/><Route path="/chart" component={Chart}/><Route path="/session/:id" component={Live}/></Router></I18nProvider>, document.getElementById("root"))
   `,
   )
   const options = {
@@ -254,6 +268,36 @@ test("known token components remain visible with incomplete usage and never doub
   )
   expect(await arcs.count()).toBe(0)
   expect(await page.locator(".context-usage-stats .context-ring").getAttribute("aria-label")).toContain(": 0")
+})
+
+test("timing and usage details share one output speed without falling back to generation speed", async () => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto(new URL("metrics", server.resolvedUrls!.local[0]!).href)
+  await page.getByRole("button", { name: "Token usage details", exact: true }).click()
+  const detail = page.locator(".execution-usage-popover")
+  const speed = detail
+    .locator("dl > div")
+    .filter({ has: page.getByText("Output speed", { exact: true }) })
+    .locator("dd")
+  expect(await page.locator(".context-timing-rate").textContent()).toContain("Output speed")
+  for (const value of [41.2718, null, 0]) {
+    await page.evaluate(
+      (value) => Reflect.get(window, "setRates")({ generation: { value: 95.9321 }, endToEnd: { value } }),
+      value,
+    )
+    const expected = value == null ? "—" : value === 0 ? "0 tok/s" : "41.3 tok/s"
+    expect(await page.locator(".context-timing-rate strong").textContent()).toBe(expected)
+    expect(await speed.textContent()).toBe(expected)
+    expect(await detail.locator("dd").filter({ hasText: "tok/s" }).count()).toBe(value == null ? 0 : 1)
+  }
+  await page.setViewportSize({ width: 375, height: 667 })
+  await page.waitForFunction(() => {
+    const box = document.querySelector(".execution-usage-popover")!.getBoundingClientRect()
+    return box.x >= 0 && box.right <= innerWidth
+  })
+  expect(await detail.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await page.keyboard.press("Escape")
+  await detail.waitFor({ state: "hidden" })
 })
 
 test("recorded durations use the token ring type scale and fit long values without overflow", async () => {
@@ -461,4 +505,252 @@ test("changing layout retains the reader node, typed search and keyboard focus",
     expect(await search.getAttribute("data-retained")).toBe("yes")
     expect(await search.evaluate((element) => document.activeElement === element)).toBe(true)
   }
+})
+
+async function chartSamples(samples: Array<{ tokens: number | null; elapsedMs: number | null }>, start = 0) {
+  await page.evaluate(({ values, start }) => Reflect.get(window, "chart").samples(values, start), {
+    values: samples,
+    start,
+  })
+  await settleChart()
+}
+
+async function settleChart() {
+  await page.waitForFunction(
+    () =>
+      !document
+        .getAnimations()
+        .some(
+          (animation) =>
+            animation.playState === "running" && animation.effect?.getComputedTiming().iterations !== Infinity,
+        ),
+  )
+}
+
+async function chartGeometry() {
+  return page.evaluate(() => {
+    const plot = document.querySelector(".context-chart-bars")!
+    const viewport = document.querySelector(".context-chart-scroll") ?? plot
+    const bounds = viewport.getBoundingClientRect()
+    const visible = (x: number) => x >= bounds.left && x <= bounds.right
+    const svg = document.querySelector<SVGSVGElement>(".context-timing-overlay")
+    const svgBounds = svg?.getBoundingClientRect()
+    return {
+      width: viewport.clientWidth,
+      scrollWidth: viewport.scrollWidth,
+      bounds: { left: bounds.left, right: bounds.right, top: bounds.top, height: bounds.height },
+      bars: [...plot.querySelectorAll(".context-history-bar")]
+        .map((bar) => {
+          const rect = bar.getBoundingClientRect()
+          const positive = [...bar.querySelectorAll(".context-bar-positive > span")].map(
+            (segment) => segment.getBoundingClientRect().height,
+          )
+          const negative = [...bar.querySelectorAll(".context-bar-negative > span")].map(
+            (segment) => segment.getBoundingClientRect().height,
+          )
+          return {
+            x: rect.x + rect.width / 2,
+            positive: positive.reduce((a, b) => a + b, 0),
+            negative: negative.reduce((a, b) => a + b, 0),
+          }
+        })
+        .filter((bar) => visible(bar.x)),
+      points: [...plot.querySelectorAll(".context-timing-point")]
+        .map((point) => {
+          const [x, y] = point.getAttribute("d")!.slice(1).split(" ")[0].split(",").map(Number)
+          return {
+            x: svgBounds!.left + (x / 100) * svgBounds!.width,
+            y: svgBounds!.top + (y / 100) * svgBounds!.height,
+          }
+        })
+        .filter((point) => visible(point.x)),
+      tokenTicks: [...document.querySelectorAll(".context-chart-scale:not(.context-time-scale) > span")].map(
+        (el) => el.textContent,
+      ),
+      timeTicks: [...document.querySelectorAll(".context-time-scale > span")].map((el) => el.textContent),
+    }
+  })
+}
+
+test("long histories show the latest 24 aligned requests with scales limited to the visible window", async () => {
+  await page.setViewportSize({ width: 560, height: 800 })
+  await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
+  await chartSamples(
+    Array.from({ length: 231 }, (_, i) => ({ tokens: (i + 1) * 1000, elapsedMs: i === 0 ? 154000 : 18000 })),
+  )
+  const geometry = await chartGeometry()
+  expect(geometry.scrollWidth).toBeGreaterThan(geometry.width * 9)
+  expect(await page.getByRole("slider").count()).toBe(0)
+  expect(geometry.bars).toHaveLength(24)
+  for (let i = 0; i < geometry.bars.length; i++) {
+    expect(geometry.bars[i].x).toBeGreaterThanOrEqual(geometry.bounds.left)
+    expect(geometry.bars[i].x).toBeLessThanOrEqual(geometry.bounds.right)
+    expect(Math.abs(geometry.bars[i].x - geometry.points[i].x)).toBeLessThan(1)
+  }
+  expect(geometry.bars.at(-1)!.positive / geometry.bounds.height).toBeGreaterThan(0.9)
+  expect(geometry.timeTicks[0]).toBe("00:20")
+  expect(await page.locator(".context-chart-caption").textContent()).toBe("Request 208Request 231")
+})
+
+test("five aligned ticks and independent vertical scales survive updates, timing visibility and narrow locales", async () => {
+  await page.setViewportSize({ width: 560, height: 800 })
+  await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
+  const samples = [
+    { tokens: 425000, elapsedMs: 154000 },
+    { tokens: 210000, elapsedMs: 40000 },
+    { tokens: 148000, elapsedMs: 18000 },
+  ]
+  await chartSamples(samples)
+  const original = await chartGeometry()
+  expect(original.tokenTicks).toHaveLength(5)
+  expect(original.timeTicks).toHaveLength(5)
+  await chartSamples(samples.map((item) => ({ ...item, elapsedMs: item.elapsedMs * 60 })))
+  const longer = await chartGeometry()
+  expect(longer.tokenTicks).toEqual(original.tokenTicks)
+  expect(longer.bars.map((bar) => bar.positive)).toEqual(original.bars.map((bar) => bar.positive))
+  await chartSamples(samples.map((item) => ({ ...item, tokens: item.tokens * 100 })))
+  const larger = await chartGeometry()
+  expect(larger.timeTicks).toEqual(original.timeTicks)
+  expect(larger.points.map((point) => point.y)).toEqual(original.points.map((point) => point.y))
+  await page.locator(".context-timing-toggle").click()
+  expect((await chartGeometry()).bars.map((bar) => bar.positive)).toEqual(larger.bars.map((bar) => bar.positive))
+  await page.locator(".context-timing-toggle").click()
+  for (const settings of [
+    { width: 320, zoom: 1, direction: "ltr" },
+    { width: 375, zoom: 1, direction: "ltr" },
+    { width: 560, zoom: 1, direction: "ltr" },
+    { width: 640, zoom: 2, direction: "ltr" },
+    { width: 375, zoom: 1, direction: "rtl" },
+  ]) {
+    await page.setViewportSize({ width: settings.width, height: 800 })
+    await page.evaluate(({ zoom, direction }) => {
+      Reflect.get(window, "chart").locale("zh-CN")
+      document.body.style.zoom = String(zoom)
+      document.body.dir = direction
+    }, settings)
+    const labels = await page.locator(".context-chart-scale > span").evaluateAll((elements) =>
+      elements.map((el) => {
+        const rect = el.getBoundingClientRect()
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        return {
+          lines: range.getClientRects().length,
+          inside: rect.left >= 0 && rect.right <= innerWidth,
+          y: rect.top + rect.height / 2,
+        }
+      }),
+    )
+    expect(labels.every((label) => label.lines === 1 && label.inside)).toBe(true)
+    const geometry = await chartGeometry()
+    for (let i = 0; i < geometry.bars.length; i++) {
+      expect(Math.abs(geometry.bars[i].x - geometry.points[i].x)).toBeLessThan(1)
+    }
+    for (let i = 0; i < 5; i++) {
+      expect(Math.abs(labels[i].y - labels[i + 5].y)).toBeLessThan(1)
+      expect(Math.abs(labels[i].y - (geometry.bounds.top + (geometry.bounds.height * i) / 4))).toBeLessThan(1.5)
+    }
+  }
+})
+
+test("signed token changes retain their own zero while elapsed timing remains nonnegative", async () => {
+  await page.setViewportSize({ width: 560, height: 800 })
+  await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
+  await chartSamples([
+    { tokens: 100, elapsedMs: null },
+    { tokens: 300, elapsedMs: 0 },
+    { tokens: 100, elapsedMs: 4000 },
+    { tokens: 200, elapsedMs: 2000 },
+  ])
+  const full = await chartGeometry()
+  await page.getByRole("button", { name: "Change", exact: true }).click()
+  await settleChart()
+  const delta = await chartGeometry()
+  expect(delta.tokenTicks).toHaveLength(5)
+  expect(delta.tokenTicks[2]).toBe("0")
+  expect(delta.timeTicks).toEqual(full.timeTicks)
+  expect(delta.points).toEqual(full.points)
+  expect(Math.abs(delta.bars[1].positive - delta.bounds.height / 2)).toBeLessThan(1)
+  expect(Math.abs(delta.bars[2].negative - delta.bounds.height / 2)).toBeLessThan(1)
+  await page.getByRole("button", { name: "Rounds", exact: true }).click()
+  const rounds = await chartGeometry()
+  expect(rounds.bars).toHaveLength(2)
+  expect(rounds.points).toHaveLength(2)
+  expect(rounds.timeTicks).toHaveLength(5)
+})
+
+test("history navigation follows the latest requests and anchors manual browsing during incoming updates", async () => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
+  const samples = Array.from({ length: 60 }, (_, i) => ({ tokens: 100 + i, elapsedMs: 1000 + i * 100 }))
+  await chartSamples(samples)
+  const caption = page.locator(".context-chart-caption")
+  expect(await caption.textContent()).toBe("Request 37Request 60")
+  await page.locator(".context-chart-scroll").hover()
+  await page.mouse.wheel(-10000, 0)
+  await page.waitForFunction(
+    () => document.querySelector(".context-chart-caption")?.textContent === "Request 1Request 24",
+  )
+  expect(await caption.textContent()).toBe("Request 1Request 24")
+  await page
+    .locator(".context-history-bar")
+    .first()
+    .evaluate((el) => (el.dataset.retained = "yes"))
+  await chartSamples([...samples, { tokens: 10000, elapsedMs: 120000 }])
+  expect(await caption.textContent()).toBe("Request 1Request 24")
+  expect(await page.locator(".context-history-bar").first().getAttribute("data-retained")).toBe("yes")
+  expect((await chartGeometry()).timeTicks[0]).toBe("00:04")
+  await page.locator(".context-chart-scroll").evaluate((el) => el.scrollTo({ left: el.clientWidth }))
+  await page.waitForFunction(
+    () => document.querySelector(".context-chart-caption")?.textContent === "Request 25Request 48",
+  )
+  expect(await caption.textContent()).toBe("Request 25Request 48")
+  await page.locator(".context-chart-scroll").evaluate((el) => el.scrollTo({ left: el.scrollWidth }))
+  await page.waitForFunction(
+    () => document.querySelector(".context-chart-caption")?.textContent === "Request 38Request 61",
+  )
+  expect(await caption.textContent()).toBe("Request 38Request 61")
+  await chartSamples([...samples, { tokens: 10000, elapsedMs: 120000 }, { tokens: 20000, elapsedMs: 8000 }])
+  expect(await caption.textContent()).toBe("Request 39Request 62")
+  await page.evaluate(() => Reflect.get(window, "chart").select("9"))
+  expect(await page.locator(".context-history-bar[aria-pressed=true]").getAttribute("aria-label")).toContain(
+    "Request 10",
+  )
+  expect(await caption.textContent()).toBe("Request 10Request 33")
+  await page.getByRole("button", { name: "Change", exact: true }).click()
+  await settleChart()
+  expect(await page.getByRole("button", { name: /^Request 10 ·/ }).getAttribute("data-gap")).toBe("false")
+  expect((await chartGeometry()).bars[0].positive).toBeGreaterThan(0)
+  await page.locator(".context-chart-scroll").evaluate((el) => el.scrollTo({ left: 0 }))
+  await page.waitForFunction(
+    () => document.querySelector(".context-chart-caption")?.textContent === "Request 1Request 24",
+  )
+  await page.getByRole("button", { name: /^Request 24 ·/ }).focus()
+  await page.keyboard.press("ArrowRight")
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label")?.startsWith("Request 25 ·"))
+  expect(await caption.textContent()).toBe("Request 2Request 25")
+  await page.getByRole("button", { name: /^Request 2 ·/ }).focus()
+  await page.keyboard.press("ArrowLeft")
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label")?.startsWith("Request 1 ·"))
+  expect(await caption.textContent()).toBe("Request 1Request 24")
+})
+
+test("prepending earlier requests keeps the manually viewed window and its focused bar", async () => {
+  await page.setViewportSize({ width: 560, height: 800 })
+  await page.goto(new URL("chart", server.resolvedUrls!.local[0]!).href)
+  const samples = Array.from({ length: 30 }, (_, i) => ({ tokens: 100 + i, elapsedMs: 4000 }))
+  await chartSamples(samples, 100)
+  await page.locator(".context-chart-scroll").evaluate((el) => el.scrollTo({ left: 0 }))
+  await page.waitForFunction(
+    () => document.querySelector(".context-chart-caption")?.textContent === "Request 101Request 124",
+  )
+  await page.locator(".context-history-bar").first().focus()
+  await chartSamples([...samples, ...samples], 70)
+  expect(await page.locator(".context-chart-caption").textContent()).toBe("Request 101Request 124")
+  expect(
+    await page.getByRole("button", { name: /^Request 101 ·/ }).evaluate((el) => document.activeElement === el),
+  ).toBe(true)
+  await page.locator(".context-chart-scroll").evaluate((el) => el.scrollBy({ left: -el.clientWidth }))
+  await page.waitForFunction(
+    () => document.querySelector(".context-chart-caption")?.textContent === "Request 77Request 100",
+  )
 })

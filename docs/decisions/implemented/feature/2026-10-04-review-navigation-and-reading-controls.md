@@ -8,6 +8,8 @@ Review navigation shared a filter with the diff projection, so quick lookup coul
 
 ## Decision
 
+The narrow-pane row allocation below is superseded by [content-based toolbar wrapping](../bug-fix/2026-10-18-review-toolbar-wrapping.md). The navigation, target sizes and reading-state decisions remain active.
+
 The existing [versioned review surface](2026-10-04-review-frontend-optimization.md) retains its HTTP and persistence contracts. Comparison scope, totals and editable references share one metadata group. Reading tools have fixed ordering and dedicated semantic icons. Layout opens explicit Auto, Unified and Split choices; Wrap and Files expose complete pressed states. More owns advanced display, comments, adjacent-file navigation, exports and historical restoration.
 
 Quick jump uses a virtualized flat list with basename, directory and workspace labels. It supports directional selection, explicit Enter activation, composing-input protection and Escape focus recovery. The directory remains a separate browser on the right of wide diffs and opens as a popover in narrow panes. Neither navigation query changes diff membership, content caches or selected lines. Viewer items retain identity when their content and display projections have not changed. Highlight-cache identities include captured content versions and projection settings, so placeholder metadata cannot collide with a later full file. Same-comparison refresh retains content through pending and failure; successful comparisons revalidate loaded versions under the existing cancellation and bounded-read owner.
