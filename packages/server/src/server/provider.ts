@@ -44,6 +44,7 @@ function providerConnectionError(error: unknown) {
   if (error instanceof ProviderConnection.NotFound) return error.toObject()
   if (error instanceof ProviderConnection.NotManaged) return error.toObject()
   if (error instanceof ProviderConnection.InUse) return error.toObject()
+  if (error instanceof ProviderConnection.CustomValidation) return error.toObject()
 }
 
 export function createProviderRoute(contributions: Hono = new Hono()) {
@@ -151,6 +152,38 @@ export function createProviderRoute(contributions: Hono = new Hono()) {
         try {
           const { connection, change } = await ProviderConnection.create(c.req.valid("json"))
           await reloadProviderConnections(change, `provider connection created: ${connection.id}`)
+          return c.json(connection)
+        } catch (error) {
+          const failure = providerConnectionError(error)
+          if (failure) return c.json(failure, 400)
+          throw error
+        }
+      },
+    )
+    .post(
+      "/connections/custom",
+      describeRoute({
+        summary: "Create custom model provider connection",
+        description:
+          "Create an endpoint-backed provider connection with a manually declared model list. Credentials are connected separately.",
+        operationId: "provider.connection.createCustom",
+        responses: {
+          200: {
+            description: "Custom provider connection created",
+            content: {
+              "application/json": {
+                schema: resolver(ProviderConnection.Info),
+              },
+            },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("json", ProviderConnection.CustomInput),
+      async (c) => {
+        try {
+          const { connection, change } = await ProviderConnection.createCustom(c.req.valid("json"))
+          await reloadProviderConnections(change, `custom provider connection created: ${connection.id}`)
           return c.json(connection)
         } catch (error) {
           const failure = providerConnectionError(error)

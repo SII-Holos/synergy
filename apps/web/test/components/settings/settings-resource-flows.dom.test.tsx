@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:te
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
+import type { ProviderConnectionCustomInput, ProviderConnectionUpdateInput } from "@ericsanchezok/synergy-sdk/client"
 import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
@@ -13,6 +14,7 @@ const errors: string[] = []
 type FixtureFlags = {
   __failRead?: boolean
   __failWrite?: boolean
+  __failCredentials?: boolean
   __catalogFailure?: boolean
   __loseCreateResponse?: boolean
   __pauseWrite?: boolean
@@ -20,13 +22,16 @@ type FixtureFlags = {
 }
 interface FixtureWindow extends Window, FixtureFlags {
   __resourceCalls: {
-    writes: { providerID: string }[]
+    writes: { providerID: string; auth?: { type: "api"; key: string } }[]
+    credentialAttempts: { providerID: string }[]
     creations: { id: string }[]
+    customCreations: { providerConnectionCustomInput: ProviderConnectionCustomInput }[]
     authorizations: { providerID: string }[]
+    refreshes: number
     toasts: unknown[]
     updates: {
       providerID: string
-      providerConnectionUpdateInput: { name?: string; endpoint?: string | null; enabled?: boolean }
+      providerConnectionUpdateInput: ProviderConnectionUpdateInput
     }[]
     removals: { providerID: string }[]
   }
@@ -35,10 +40,9 @@ interface FixtureWindow extends Window, FixtureFlags {
   __releaseUpdate(): void
   __disableDefault(): void
   __configureFirstAccount(): void
+  __configureCustomAccount(): void
 }
-function calls(key: "writes"): Promise<{ providerID: string }[]>
-function calls(key: "creations"): Promise<{ id: string }[]>
-function calls(key: "writes" | "creations") {
+function calls<Key extends keyof FixtureWindow["__resourceCalls"]>(key: Key) {
   return page.evaluate((key) => (window as unknown as FixtureWindow).__resourceCalls[key], key)
 }
 const flags = (value: FixtureFlags) =>
@@ -53,6 +57,16 @@ async function addAnotherAccount(name = "DeepSeek") {
     .getByRole("button", { name: "Account actions", exact: true })
     .click()
   await page.getByRole("menuitem", { name: "Add another account", exact: true }).click()
+}
+
+async function fillCustomProviderIdentity() {
+  await page.getByLabel("Display name", { exact: true }).first().fill("Research gateway")
+  await page.getByLabel("Provider ID", { exact: true }).fill("research-gateway")
+  await page.getByLabel("API base URL", { exact: true }).fill("https://gateway.example.com/v1")
+  await page.getByLabel("API key", { exact: true }).fill("custom-fixture-key")
+  const model = page.getByRole("group", { name: "Model 1", exact: true })
+  await model.getByLabel("Model ID", { exact: true }).fill("reasoner")
+  await model.getByLabel("Display name", { exact: true }).fill("Research model")
 }
 
 beforeAll(async () => {
@@ -73,19 +87,34 @@ beforeAll(async () => {
     const base = (id, connected) => ({ id, name: id === "deepseek" ? "DeepSeek" : id === "openai-codex" ? "OpenAI Codex" : "Test Service", profile: { name: id === "deepseek" ? "DeepSeek" : id === "openai-codex" ? "OpenAI Codex" : "Test Service" }, profileID: id, catalogProviderID: id, configured: connected, enabled: true, removable: false, canCreateSibling: true, connected, modelCount: 1, models: { chat: model }, catalog: { source: "live", refreshing: false, lastVerifiedAt: 1791028800000 }, health: { status: connected ? "connected" : "unconfigured", source: "api" } })
     const [data, setData] = createStore({ provider: { all: [base("deepseek", true), base("test-service", false), base("openai-codex", false)], connected: ["deepseek"], profiles: {}, default: { deepseek: "chat" } }, provider_auth: { deepseek: [{ type: "api", label: "API key" }], "test-service": [{ type: "api", label: "API key" }], "openai-codex": [{ type: "oauth", label: "Login with ChatGPT" }, { type: "import", label: "Import Codex CLI credentials" }] } })
     setData("provider", "connections", Object.fromEntries(data.provider.all.map(item => [item.id, item])))
-    const writes = []; const creations = []; const authorizations = []; const toasts = []; const updates = []; const removals = []; const authenticated = new Set(["deepseek"])
-    window.__resourceCalls = { writes, creations, authorizations, toasts, updates, removals }
+    const writes = []; const credentialAttempts = []; const creations = []; const customCreations = []; const authorizations = []; const toasts = []; const updates = []; const removals = []; const authenticated = new Set(["deepseek"])
+    window.__resourceCalls = { writes, credentialAttempts, creations, customCreations, authorizations, toasts, updates, removals, refreshes: 0 }
+    function publishCustom(account) {
+      const models = Object.fromEntries(account.models.map(spec => [spec.id, { ...model, id: spec.id, name: spec.name || spec.id, capabilities: { ...capabilities, toolcall: spec.toolCall, reasoning: spec.reasoning, input: { ...capabilities.input, image: spec.image } }, limit: { context: spec.context, output: spec.output } }]))
+      const provider = { ...account, models, modelCount: account.models.length, health: { status: account.enabled ? "unconfigured" : "disabled", source: "api" } }
+      if (data.provider.connections[account.id]) setData("provider", "all", item => item.id === account.id, provider)
+      else setData("provider", "all", [...data.provider.all, provider])
+      setData("provider", "connections", account.id, account)
+    }
     window.__useImport = () => setData("provider_auth", "test-service", [{ type: "import", label: "Import credentials" }])
     window.__configureFirstAccount = () => { const value = { name: "Configured key", endpoint: "https://configured.example.com/v1", enabled: false, configured: true }; setData("provider", "all", item => item.id === "test-service", value); setData("provider", "connections", "test-service", value) }
+    window.__configureCustomAccount = () => {
+      const id = "lab-gateway"
+      authenticated.add(id)
+      publishCustom({ id, name: "Lab gateway", profileID: id, catalogProviderID: id, endpoint: "https://lab.example.com/v1", enabled: false, configured: true, removable: true, canCreateSibling: false, protocol: "openai-completions", models: [
+        { id: "chat", name: "Lab chat", context: 131072, output: 16384, toolCall: true, image: false, reasoning: false },
+        { id: "vision", name: "Lab vision", context: 262144, output: 8192, toolCall: true, image: true, reasoning: false },
+      ] })
+    }
     window.__disableDefault = () => { authenticated.delete("deepseek"); setData("provider", "connected", []); setData("provider", "all", item => item.id === "deepseek", { enabled: false, health: { status: "disabled", source: "api" } }); setData("provider", "connections", "deepseek", "enabled", false) }
     window.__publishModelCatalog = () => setData("provider", "all", 0, "models", {
       chat: model,
       "new-model": { ...model, id: "new-model", name: "Test New Model" },
     })
-    export const summaries = () => data.provider.all.map(provider => ({ ...provider, connected: data.provider.connected.includes(provider.id) }))
-    export function useGlobalSync() { return { data, refreshProviders: async () => { if (window.__failRead) { window.__failRead = false; throw new Error("Refresh failed") } setData("provider", "connected", [...authenticated]); setData("provider", "all", item => ({ ...item, health: { ...item.health, status: authenticated.has(item.id) ? "connected" : "unconfigured" } })) } } }
+    export const summaries = () => data.provider.all.map(provider => ({ ...provider, ...(data.provider.connections[provider.id]?.protocol ? data.provider.connections[provider.id] : {}), connected: data.provider.connected.includes(provider.id) }))
+    export function useGlobalSync() { return { data, refreshProviders: async () => { window.__resourceCalls.refreshes++; if (window.__failRead) { window.__failRead = false; throw new Error("Refresh failed") } setData("provider", "connected", [...authenticated].filter(id => data.provider.connections[id]?.enabled !== false)); setData("provider", "all", item => ({ ...item, health: { ...item.health, status: item.enabled === false ? "disabled" : authenticated.has(item.id) ? "connected" : "unconfigured" } })) } } }
     export function useGlobalSDK() { return { client: {
-      auth: { set: async input => { if (window.__pauseWrite) await new Promise(resolve => { window.__releaseWrite = resolve }); if (window.__failWrite) throw { data: { message: "Credential rejected" } }; writes.push(input); authenticated.add(input.providerID) } },
+      auth: { set: async input => { credentialAttempts.push(input); if (window.__pauseWrite) await new Promise(resolve => { window.__releaseWrite = resolve }); if (window.__failWrite || window.__failCredentials) throw { data: { message: "Credential rejected" } }; writes.push(input); authenticated.add(input.providerID) } },
       provider: { oauth: {
         authorize: async input => { authorizations.push(input); return { data: { method: "auto", url: "https://example.com/authorize", instructions: "Code: FIXTURE" } } },
         callback: async (input, options) => { await new Promise(resolve => { window.__finishOAuth = resolve }); authenticated.add(input.providerID); return {} }
@@ -96,7 +125,8 @@ beforeAll(async () => {
         return { data: catalog }
       } }, connection: {
         create: async ({ providerConnectionCreateInput: input }) => { creations.push(input); const account = { ...base(input.profileID, false), id: input.id, name: input.name, removable: true }; setData("provider", "all", [...data.provider.all, account]); setData("provider", "connections", input.id, account); if (window.__loseCreateResponse) { window.__loseCreateResponse = false; throw new Error("Response lost") } return { data: account } },
-        update: async input => { if (window.__pauseUpdate) await new Promise(resolve => { window.__releaseUpdate = resolve }); if (window.__failWrite) throw { data: { message: "Account update rejected" } }; updates.push(input); const account = { ...data.provider.connections[input.providerID], ...input.providerConnectionUpdateInput }; setData("provider", "all", item => item.id === input.providerID, account); setData("provider", "connections", input.providerID, account); return { data: account } },
+        createCustom: async input => { customCreations.push(input); const account = { ...input.providerConnectionCustomInput, profileID: input.providerConnectionCustomInput.id, catalogProviderID: input.providerConnectionCustomInput.id, enabled: true, configured: true, removable: true, canCreateSibling: false }; publishCustom(account); return { data: account } },
+        update: async input => { if (window.__pauseUpdate) await new Promise(resolve => { window.__releaseUpdate = resolve }); if (window.__failWrite) throw { data: { message: "Account update rejected" } }; updates.push(input); const account = { ...data.provider.connections[input.providerID], ...input.providerConnectionUpdateInput }; if (account.protocol) publishCustom(account); else { setData("provider", "all", item => item.id === input.providerID, account); setData("provider", "connections", input.providerID, account) } return { data: account } },
         remove: async input => { removals.push(input); authenticated.delete(input.providerID); setData("provider", "all", data.provider.all.filter(item => item.id !== input.providerID)); } }, disconnect: async () => {} }
     } } }
     export function useProviders() { return { all: () => data.provider.all, connected: () => data.provider.all.filter(provider => data.provider.connected.includes(provider.id)), default: () => data.provider.default, ensureCatalog: async () => {} } }
@@ -159,6 +189,14 @@ beforeAll(async () => {
       })),
       { find: "@/hooks/use-providers", replacement: path.join(fixture, "api.ts") },
       { find: "@ericsanchezok/synergy-ui/toast", replacement: path.join(fixture, "toast.ts") },
+      {
+        find: "@ericsanchezok/synergy-plugin/theme",
+        replacement: path.resolve(app, "../../../packages/plugin/src/theme/index.ts"),
+      },
+      {
+        find: "@ericsanchezok/synergy-plugin/icons",
+        replacement: path.resolve(app, "../../../packages/plugin/src/icons.ts"),
+      },
       { find: "@/", replacement: app + "/" },
     ],
   })
@@ -186,6 +224,309 @@ afterAll(async () => {
   await server?.close()
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
+
+test("custom API setup keeps routine copy inside aligned fields and leaves errors contextual", async () => {
+  await page.setViewportSize({ width: 1600, height: 1100 })
+  await page.getByRole("button", { name: "Add custom model API", exact: true }).click()
+  const form = page.locator(".custom-provider-form")
+  const name = form.getByLabel("Display name", { exact: true }).first()
+  const id = form.getByLabel("Provider ID", { exact: true })
+  const endpoint = form.getByLabel("API base URL", { exact: true })
+  const protocol = form.getByRole("button", { name: "API protocol: OpenAI Chat Completions", exact: true })
+  const first = page.getByRole("group", { name: "Model 1", exact: true })
+  expect(await form.locator("p:visible").count()).toBe(0)
+  expect(await form.locator('[data-slot="input-description"]:visible').count()).toBe(0)
+  expect(await name.isVisible()).toBe(true)
+  expect(await id.isVisible()).toBe(true)
+  expect(await endpoint.getAttribute("placeholder")).toBe("https://gateway.example.com/v1")
+  const pair = async (left: typeof name, right: typeof name) => {
+    const a = await left.boundingBox()
+    const b = await right.boundingBox()
+    expect(a).not.toBeNull()
+    expect(b).not.toBeNull()
+    expect(Math.abs(a!.y - b!.y)).toBeLessThanOrEqual(1)
+    expect(Math.abs(a!.height - b!.height)).toBeLessThanOrEqual(2)
+  }
+  await pair(name, id)
+  await pair(endpoint, protocol)
+  await pair(
+    first.getByLabel("Context window (tokens)", { exact: true }),
+    first.getByLabel("Maximum output (tokens)", { exact: true }),
+  )
+  const title = await first.getByText("Model 1", { exact: true }).last().boundingBox()
+  const remove = await first.getByRole("button", { name: "Remove model 1", exact: true }).boundingBox()
+  expect(title).not.toBeNull()
+  expect(remove).not.toBeNull()
+  expect(Math.abs(title!.y + title!.height / 2 - remove!.y - remove!.height / 2)).toBeLessThanOrEqual(1)
+  await page.setViewportSize({ width: 375, height: 900 })
+  const narrowEndpoint = await endpoint.boundingBox()
+  const narrowProtocol = await protocol.boundingBox()
+  expect(narrowProtocol!.y).toBeGreaterThanOrEqual(narrowEndpoint!.y + narrowEndpoint!.height)
+  expect(Math.abs(narrowProtocol!.x - narrowEndpoint!.x)).toBeLessThanOrEqual(1)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await form.getByRole("button", { name: "Create provider", exact: true }).click()
+  await form.getByRole("alert").waitFor()
+  expect(await calls("customCreations")).toHaveLength(0)
+  expect(errors).toEqual([])
+})
+
+test("peer provider entries separate known service setup from custom protocol, limits and credentials", async () => {
+  const thirdParty = page.getByRole("button", { name: "Add third-party provider", exact: true })
+  const custom = page.getByRole("button", { name: "Add custom model API", exact: true })
+  expect(await thirdParty.isVisible()).toBe(true)
+  expect(await custom.isVisible()).toBe(true)
+  await thirdParty.click()
+  await page.getByRole("textbox", { name: "Search providers...", exact: true }).waitFor()
+  expect(await page.getByLabel("Provider ID", { exact: true }).count()).toBe(0)
+  await page.locator(".providers-row").filter({ hasText: "Test Service" }).click()
+  await page.getByLabel("Test Service API key", { exact: true }).waitFor()
+  expect(await page.getByLabel("API base URL", { exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Create provider", exact: true }).count()).toBe(0)
+  await page.getByRole("button", { name: "Back to services", exact: true }).click()
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+  await custom.click()
+  await page.getByRole("heading", { name: "Custom model API", exact: true }).waitFor()
+  expect(await page.getByRole("textbox", { name: "Search providers...", exact: true }).count()).toBe(0)
+  expect(await page.getByLabel("Account remark (optional)", { exact: true }).count()).toBe(0)
+  await fillCustomProviderIdentity()
+  await page.getByRole("button", { name: "API protocol: OpenAI Chat Completions", exact: true }).click()
+  await page.getByRole("option", { name: "OpenAI Responses", exact: true }).click()
+  const first = page.getByRole("group", { name: "Model 1", exact: true })
+  expect(await first.getByLabel("Context window (tokens)", { exact: true }).inputValue()).toBe("")
+  expect(await first.getByLabel("Maximum output (tokens)", { exact: true }).inputValue()).toBe("")
+  await page.getByRole("button", { name: "Create provider", exact: true }).click()
+  await page
+    .getByRole("alert")
+    .getByText("Enter positive whole numbers for the model's context and output limits.", { exact: true })
+    .waitFor()
+  expect(await calls("customCreations")).toHaveLength(0)
+  expect(await calls("writes")).toHaveLength(0)
+  await first.getByLabel("Context window (tokens)", { exact: true }).fill("1048576")
+  await first.getByLabel("Maximum output (tokens)", { exact: true }).fill("131072")
+  await first.getByRole("switch", { name: "Tool calling", exact: true }).press("Space")
+  await first.getByRole("switch", { name: "Image input", exact: true }).press("Space")
+  await first.getByRole("switch", { name: "Reasoning", exact: true }).press("Space")
+  await page.getByRole("button", { name: "Add model", exact: true }).click()
+  const second = page.getByRole("group", { name: "Model 2", exact: true })
+  await second.getByLabel("Model ID", { exact: true }).fill("plain-chat")
+  await second.getByLabel("Context window (tokens)", { exact: true }).fill("32768")
+  await second.getByLabel("Maximum output (tokens)", { exact: true }).fill("4096")
+  await page.getByRole("button", { name: "Create provider", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).waitFor()
+  expect(await page.getByRole("button", { name: "Save changes", exact: true }).isDisabled()).toBe(true)
+  expect(await calls("customCreations")).toEqual([
+    {
+      providerConnectionCustomInput: {
+        id: "research-gateway",
+        name: "Research gateway",
+        endpoint: "https://gateway.example.com/v1",
+        protocol: "openai-responses",
+        models: [
+          {
+            id: "reasoner",
+            name: "Research model",
+            context: 1048576,
+            output: 131072,
+            toolCall: false,
+            image: true,
+            reasoning: true,
+          },
+          { id: "plain-chat", context: 32768, output: 4096, toolCall: true, image: false, reasoning: false },
+        ],
+      },
+    },
+  ])
+  expect(await calls("writes")).toEqual([
+    { providerID: "research-gateway", auth: { type: "api", key: "custom-fixture-key" } },
+  ])
+  expect(await calls("creations")).toHaveLength(0)
+  expect(await calls("updates")).toHaveLength(0)
+  expect(await page.getByLabel("API key", { exact: true }).inputValue()).toBe("")
+  expect(await page.getByRole("button", { name: "API protocol: OpenAI Responses", exact: true }).isVisible()).toBe(true)
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+  const account = page.locator(".providers-connected-account").filter({ hasText: "Research gateway" })
+  await account.waitFor()
+  expect(await account.innerText()).not.toContain("Test Service")
+  await account.getByRole("button", { name: "Account actions", exact: true }).click()
+  expect(await page.getByRole("menuitem", { name: "Add another account", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("menuitem", { name: "Remove account", exact: true }).isVisible()).toBe(true)
+  await page.keyboard.press("Escape")
+  expect(errors).toEqual([])
+})
+
+test("custom edits survive section changes and the visible enabled switch persists a disabled account", async () => {
+  await page.evaluate(() => (window as unknown as FixtureWindow).__configureCustomAccount())
+  const account = page.locator(".providers-connected-account").filter({ hasText: "Lab gateway" })
+  await account.getByRole("button", { name: "Edit account", exact: true }).click()
+  const enabled = page.getByRole("switch", { name: "Enabled", exact: true })
+  const first = page.getByRole("group", { name: "Model 1", exact: true })
+  const second = page.getByRole("group", { name: "Model 2", exact: true })
+  expect(await page.getByLabel("Provider ID", { exact: true }).isDisabled()).toBe(true)
+  expect(await page.getByRole("button", { name: "Save changes", exact: true }).isDisabled()).toBe(true)
+  expect(await page.getByText("Enabled", { exact: true }).isVisible()).toBe(true)
+  expect(await enabled.isChecked()).toBe(false)
+  await page.getByLabel("Display name", { exact: true }).first().fill("Work gateway")
+  await page.getByLabel("API base URL", { exact: true }).fill("https://work.example.com/api")
+  await page.getByRole("button", { name: "API protocol: OpenAI Chat Completions", exact: true }).click()
+  await page.getByRole("option", { name: "Anthropic Messages", exact: true }).click()
+  await first.getByLabel("Display name", { exact: true }).fill("Lab reasoning")
+  await first.getByLabel("Context window (tokens)", { exact: true }).fill("1048576")
+  await first.getByLabel("Maximum output (tokens)", { exact: true }).fill("131072")
+  await first.getByRole("switch", { name: "Reasoning", exact: true }).press("Space")
+  await enabled.press("Space")
+  await page.getByRole("button", { name: "Models page", exact: true }).click()
+  await page.getByRole("button", { name: "Providers page", exact: true }).click()
+  expect(await page.getByLabel("Display name", { exact: true }).first().inputValue()).toBe("Work gateway")
+  expect(await page.getByLabel("Provider ID", { exact: true }).inputValue()).toBe("lab-gateway")
+  expect(await page.getByLabel("API base URL", { exact: true }).inputValue()).toBe("https://work.example.com/api")
+  expect(await page.getByRole("button", { name: "API protocol: Anthropic Messages", exact: true }).isVisible()).toBe(
+    true,
+  )
+  expect(await first.getByLabel("Display name", { exact: true }).inputValue()).toBe("Lab reasoning")
+  expect(await first.getByLabel("Context window (tokens)", { exact: true }).inputValue()).toBe("1048576")
+  expect(await first.getByLabel("Maximum output (tokens)", { exact: true }).inputValue()).toBe("131072")
+  expect(await first.getByRole("switch", { name: "Reasoning", exact: true }).isChecked()).toBe(true)
+  expect(await second.getByLabel("Model ID", { exact: true }).inputValue()).toBe("vision")
+  expect(await second.getByRole("switch", { name: "Image input", exact: true }).isChecked()).toBe(true)
+  expect(await enabled.isChecked()).toBe(true)
+  expect(await calls("updates")).toHaveLength(0)
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+  await page.getByRole("dialog", { name: "Discard unsaved changes?", exact: true }).waitFor()
+  await page.getByRole("button", { name: "Keep Editing", exact: true }).click()
+  await page.getByRole("button", { name: "Save changes", exact: true }).click()
+  await page.locator(".custom-provider-footer button[type=submit]:disabled").waitFor()
+  expect(await calls("updates")).toEqual([
+    {
+      providerID: "lab-gateway",
+      providerConnectionUpdateInput: {
+        name: "Work gateway",
+        endpoint: "https://work.example.com/api",
+        protocol: "anthropic-messages",
+        enabled: true,
+        models: [
+          {
+            id: "chat",
+            name: "Lab reasoning",
+            context: 1048576,
+            output: 131072,
+            toolCall: true,
+            image: false,
+            reasoning: true,
+          },
+          {
+            id: "vision",
+            name: "Lab vision",
+            context: 262144,
+            output: 8192,
+            toolCall: true,
+            image: true,
+            reasoning: false,
+          },
+        ],
+      },
+    },
+  ])
+  expect(await calls("writes")).toHaveLength(0)
+  expect(await calls("customCreations")).toHaveLength(0)
+  expect(await calls("creations")).toHaveLength(0)
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+  await page.getByRole("button", { name: "Add custom model API", exact: true }).waitFor()
+  expect(await page.getByRole("dialog").count()).toBe(0)
+  await page
+    .locator(".providers-connected-account")
+    .filter({ hasText: "Work gateway" })
+    .getByRole("button", { name: "Edit account", exact: true })
+    .click()
+  expect(await enabled.isChecked()).toBe(true)
+  expect(await first.getByLabel("Context window (tokens)", { exact: true }).inputValue()).toBe("1048576")
+  expect(await second.getByLabel("Maximum output (tokens)", { exact: true }).inputValue()).toBe("8192")
+  expect(await page.getByRole("button", { name: "API protocol: Anthropic Messages", exact: true }).isVisible()).toBe(
+    true,
+  )
+  expect(await page.getByRole("button", { name: "Save changes", exact: true }).isDisabled()).toBe(true)
+  expect(errors).toEqual([])
+})
+
+for (const editing of [false, true]) {
+  test(`saved custom ${editing ? "edits" : "creation"} retry credentials and reads without repeating config writes`, async () => {
+    if (editing) {
+      await page.evaluate(() => (window as unknown as FixtureWindow).__configureCustomAccount())
+      await page
+        .locator(".providers-connected-account")
+        .filter({ hasText: "Lab gateway" })
+        .getByRole("button", { name: "Edit account", exact: true })
+        .click()
+      await page.getByLabel("Display name", { exact: true }).first().fill("Research gateway")
+      await page.getByLabel("API key", { exact: true }).fill("custom-fixture-key")
+    } else {
+      await page.getByRole("button", { name: "Add custom model API", exact: true }).click()
+      await fillCustomProviderIdentity()
+      await page.getByLabel("Context window (tokens)", { exact: true }).fill("1048576")
+      await page.getByLabel("Maximum output (tokens)", { exact: true }).fill("131072")
+    }
+    const configWrites = editing ? "updates" : "customCreations"
+    const providerID = editing ? "lab-gateway" : "research-gateway"
+    await flags({ __failCredentials: true })
+    await page.getByRole("button", { name: editing ? "Save changes" : "Create provider", exact: true }).click()
+    await page.getByRole("alert").getByText("Credential rejected", { exact: true }).waitFor()
+    await page
+      .getByRole("status")
+      .getByText("Provider configuration saved. Retry to finish storing credentials or refreshing the list.", {
+        exact: true,
+      })
+      .waitFor()
+    expect(await calls(configWrites)).toHaveLength(1)
+    expect(await calls("credentialAttempts")).toHaveLength(1)
+    expect(await calls("writes")).toHaveLength(0)
+    expect(await calls("refreshes")).toBe(0)
+    expect(await page.getByLabel("API key", { exact: true }).inputValue()).toBe("custom-fixture-key")
+    expect(await page.getByLabel("API base URL", { exact: true }).isDisabled()).toBe(true)
+    await page.getByRole("button", { name: "Models page", exact: true }).click()
+    await page.getByRole("button", { name: "Providers page", exact: true }).click()
+    await page.getByRole("button", { name: "Continue setup", exact: true }).waitFor()
+    expect(await page.getByLabel("API key", { exact: true }).inputValue()).toBe("custom-fixture-key")
+    expect(await page.getByLabel("Display name", { exact: true }).first().isDisabled()).toBe(true)
+    await flags({ __failCredentials: false, __failRead: true })
+    await page.getByRole("button", { name: "Continue setup", exact: true }).click()
+    await page.getByRole("alert").getByText("Refresh failed", { exact: true }).waitFor()
+    expect(await calls(configWrites)).toHaveLength(1)
+    expect(await calls("credentialAttempts")).toHaveLength(2)
+    expect(await calls("writes")).toEqual([{ providerID, auth: { type: "api", key: "custom-fixture-key" } }])
+    expect(await calls("refreshes")).toBe(1)
+    expect(await page.getByLabel("API key", { exact: true }).inputValue()).toBe("")
+    expect(await page.getByLabel("API key", { exact: true }).isDisabled()).toBe(true)
+    await page.getByRole("button", { name: "Models page", exact: true }).click()
+    await page.getByRole("button", { name: "Providers page", exact: true }).click()
+    await page.getByRole("button", { name: "Continue setup", exact: true }).click()
+    await page.locator(".custom-provider-footer button[type=submit]:disabled").waitFor()
+    expect(await page.getByRole("button", { name: "Save changes", exact: true }).isDisabled()).toBe(true)
+    expect(await page.getByRole("button", { name: "Continue setup", exact: true }).count()).toBe(0)
+    expect(await page.getByRole("alert").count()).toBe(0)
+    expect(await calls(configWrites)).toHaveLength(1)
+    expect(await calls(editing ? "customCreations" : "updates")).toHaveLength(0)
+    expect(await calls("creations")).toHaveLength(0)
+    expect(await calls("credentialAttempts")).toHaveLength(2)
+    expect(await calls("writes")).toHaveLength(1)
+    expect(await calls("refreshes")).toBe(2)
+    await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+    await page.getByRole("button", { name: "Add custom model API", exact: true }).waitFor()
+    expect(await page.getByRole("dialog").count()).toBe(0)
+    await page
+      .locator(".providers-connected-account")
+      .filter({ hasText: "Research gateway" })
+      .getByRole("button", { name: "Edit account", exact: true })
+      .click()
+    expect(await page.getByLabel("Provider ID", { exact: true }).inputValue()).toBe(providerID)
+    expect(await page.getByLabel("API key", { exact: true }).inputValue()).toBe("")
+    expect(await page.getByRole("button", { name: "Save changes", exact: true }).isDisabled()).toBe(true)
+    await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+    await page.getByRole("button", { name: "Add custom model API", exact: true }).click()
+    expect(await page.getByLabel("Provider ID", { exact: true }).inputValue()).toBe("")
+    expect(await page.getByLabel("API key", { exact: true }).inputValue()).toBe("")
+    expect(await page.getByRole("dialog").count()).toBe(0)
+    expect(errors).toEqual([])
+  })
+}
 
 test("default accounts open a focused editor and save an optional remark without changing identity", async () => {
   await page.locator(".providers-connected-account").getByRole("button", { name: "Edit account", exact: true }).click()
@@ -250,7 +591,7 @@ test("credential replacement stays on the account and does not discard an unsave
 })
 
 test("choosing a connected service uses the same add flow and allocates a separate account", async () => {
-  await page.getByRole("button", { name: "Add model service", exact: true }).click()
+  await page.getByRole("button", { name: "Add third-party provider", exact: true }).click()
   await page.locator(".providers-row").filter({ hasText: "DeepSeek" }).click()
   await page.getByLabel("Account remark (optional)", { exact: true }).fill("Work key")
   await page.getByLabel("DeepSeek API key", { exact: true }).fill("fixture-key")
@@ -260,7 +601,7 @@ test("choosing a connected service uses the same add flow and allocates a separa
   expect(await calls("creations")).toHaveLength(1)
   expect((await calls("writes"))[0].providerID).not.toBe("deepseek")
   await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
-  await page.getByRole("button", { name: "Add model service", exact: true }).click()
+  await page.getByRole("button", { name: "Add third-party provider", exact: true }).click()
   expect(await page.locator(".providers-row").filter({ hasText: "DeepSeek" }).count()).toBe(1)
   expect(errors).toEqual([])
 })
@@ -300,7 +641,7 @@ test("an in-flight account update stays locked across section remounts", async (
 
 test("first sign-in preserves a configured endpoint and enabled state while changing its remark", async () => {
   await page.evaluate(() => (window as unknown as FixtureWindow).__configureFirstAccount())
-  await page.getByRole("button", { name: "Add model service", exact: true }).click()
+  await page.getByRole("button", { name: "Add third-party provider", exact: true }).click()
   await page.locator(".providers-row").filter({ hasText: "Test Service" }).click()
   expect(await page.getByLabel("Account remark (optional)", { exact: true }).inputValue()).toBe("Configured key")
   await page.locator(".providers-advanced > summary").click()
@@ -323,7 +664,7 @@ test("first sign-in preserves a configured endpoint and enabled state while chan
 test("provider discovery separates connected accounts and restores search and entry focus on return", async () => {
   expect(await page.locator(".providers-connected-account").count()).toBe(1)
   expect(await page.locator(".providers-directory").count()).toBe(0)
-  await page.getByRole("button", { name: "Add model service", exact: true }).click()
+  await page.getByRole("button", { name: "Add third-party provider", exact: true }).click()
   await page.getByRole("textbox", { name: "Search providers..." }).fill("Test Service")
   expect(await page.locator(".providers-row").count()).toBe(1)
   await page.locator(".providers-row").click()
@@ -336,7 +677,7 @@ test("provider discovery separates connected accounts and restores search and en
   expect(errors).toEqual([])
 })
 test("credential failure remains in the flow and a failed refresh survives section changes without another write", async () => {
-  await page.getByRole("button", { name: "Add model service", exact: true }).click()
+  await page.getByRole("button", { name: "Add third-party provider", exact: true }).click()
   await page.locator(".providers-row").filter({ hasText: "Test Service" }).click()
   await page.getByLabel("Test Service API key", { exact: true }).fill("fixture-key")
   await page.evaluate(() => {
@@ -456,7 +797,7 @@ test("a lost creation response is recovered using the same account identity", as
 })
 
 test("first OAuth sign-in does not allocate a sibling and disposed callbacks cannot complete the view", async () => {
-  await page.getByRole("button", { name: "Add model service", exact: true }).click()
+  await page.getByRole("button", { name: "Add third-party provider", exact: true }).click()
   await page.locator(".providers-row").filter({ hasText: "OpenAI Codex" }).click()
   expect(await calls("creations")).toHaveLength(0)
   expect(await page.locator(".provider-method-title").allTextContents()).toEqual([
@@ -474,7 +815,7 @@ test("first OAuth sign-in does not allocate a sibling and disposed callbacks can
 })
 
 test("completed first sign-in clears its setup and additional OAuth targets a separate connection", async () => {
-  await page.getByRole("button", { name: "Add model service", exact: true }).click()
+  await page.getByRole("button", { name: "Add third-party provider", exact: true }).click()
   await page.locator(".providers-row").filter({ hasText: "OpenAI Codex" }).click()
   await page.locator(".provider-method-row").first().click()
   await page.getByText("Waiting for authorization", { exact: false }).waitFor()
@@ -497,7 +838,7 @@ test("completed first sign-in clears its setup and additional OAuth targets a se
 })
 
 test("a late credential write does not complete a disposed connection view", async () => {
-  await page.getByRole("button", { name: "Add model service", exact: true }).click()
+  await page.getByRole("button", { name: "Add third-party provider", exact: true }).click()
   await page.locator(".providers-row").filter({ hasText: "Test Service" }).click()
   await page.getByLabel("Test Service API key", { exact: true }).fill("fixture-key")
   await flags({ __pauseWrite: true })
@@ -596,7 +937,7 @@ test("a completed credential import survives section changes and retries only ac
     ;(window as unknown as { __useImport(): void; __failRead: boolean }).__useImport()
     ;(window as unknown as { __failRead: boolean }).__failRead = true
   })
-  await page.getByRole("button", { name: "Add model service", exact: true }).click()
+  await page.getByRole("button", { name: "Add third-party provider", exact: true }).click()
   await page.locator(".providers-row").filter({ hasText: "Test Service" }).click()
   await page.getByRole("button", { name: "Refresh connection", exact: true }).waitFor()
   await page.getByRole("button", { name: "Models page", exact: true }).click()

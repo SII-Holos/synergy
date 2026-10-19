@@ -19790,6 +19790,76 @@
         ]
       }
     },
+    "/provider/connections/custom": {
+      "post": {
+        "operationId": "provider.connection.createCustom",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Create custom model provider connection",
+        "description": "Create an endpoint-backed provider connection with a manually declared model list. Credentials are connected separately.",
+        "responses": {
+          "200": {
+            "description": "Custom provider connection created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConnection"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConnectionCustomInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.connection.createCustom({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/provider/connections/{providerID}": {
       "patch": {
         "operationId": "provider.connection.update",
@@ -53683,6 +53753,39 @@
         "required": ["id", "name"],
         "additionalProperties": false
       },
+      "ProviderConnectionCustomModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string"
+          },
+          "context": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "output": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolCall": {
+            "type": "boolean"
+          },
+          "image": {
+            "type": "boolean"
+          },
+          "reasoning": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "context", "output", "toolCall", "image", "reasoning"],
+        "additionalProperties": false
+      },
       "ProviderConnection": {
         "type": "object",
         "properties": {
@@ -53712,6 +53815,16 @@
           },
           "canCreateSibling": {
             "type": "boolean"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": ["openai-completions", "openai-responses", "anthropic-messages"]
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderConnectionCustomModel"
+            }
           }
         },
         "required": [
@@ -72155,6 +72268,37 @@
         "required": ["profileID", "name"],
         "additionalProperties": false
       },
+      "ProviderConnectionCustomInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{1,63}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "endpoint": {
+            "type": "string",
+            "format": "uri"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": ["openai-completions", "openai-responses", "anthropic-messages"]
+          },
+          "models": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderConnectionCustomModel"
+            }
+          }
+        },
+        "required": ["id", "name", "endpoint", "protocol", "models"],
+        "additionalProperties": false
+      },
       "ProviderConnectionUpdateInput": {
         "type": "object",
         "properties": {
@@ -72176,6 +72320,17 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": ["openai-completions", "openai-responses", "anthropic-messages"]
+          },
+          "models": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderConnectionCustomModel"
+            }
           }
         },
         "additionalProperties": false

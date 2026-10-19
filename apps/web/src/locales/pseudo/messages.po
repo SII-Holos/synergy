@@ -23244,8 +23244,12 @@ msgid "settings.providers.accounts.search"
 msgstr "⟦Search connected accounts⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.addService"
-msgstr "⟦Add service⟧"
+msgid "settings.providers.addCustom"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.addThirdParty"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.providers.back"
@@ -23298,6 +23302,142 @@ msgstr "⟦Connection saved. Could not refresh the account.⟧"
 #. js-lingui-explicit-id
 msgid "settings.providers.connection.title"
 msgstr "⟦Connect {provider}⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.addModel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.context"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.endpoint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.endpointPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.existingKey"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.id"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.idPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.image"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.key"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.keyPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.modelID"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.modelNumber"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.modelPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.models"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.namePlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.output"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.protocol"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.protocol.anthropic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.protocol.chat"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.protocol.responses"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.reasoning"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.removeModel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.tools"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.validation.capacity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.validation.duplicate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.validation.endpoint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.validation.id"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.validation.model"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.validation.taken"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.providers.empty.description"

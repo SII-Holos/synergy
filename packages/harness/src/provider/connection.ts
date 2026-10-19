@@ -13,6 +13,38 @@ import type { Provider as ConfigProvider } from "../config/schema"
 export namespace ProviderConnection {
   const ID_PATTERN = /^[a-z0-9][a-z0-9._-]{1,63}$/
 
+  export const Protocol = z.enum(["openai-completions", "openai-responses", "anthropic-messages"])
+  export type Protocol = z.infer<typeof Protocol>
+
+  const NPM = {
+    "openai-completions": "@ai-sdk/openai-compatible",
+    "openai-responses": "@ai-sdk/openai",
+    "anthropic-messages": "@ai-sdk/anthropic",
+  } as const satisfies Record<Protocol, string>
+
+  const CUSTOM_ENDPOINT = z.url({ protocol: /^https?$/i })
+
+  export const CustomModel = z
+    .object({
+      id: z.string().trim().min(1),
+      name: z.string().trim().optional(),
+      context: z.number().int().positive(),
+      output: z.number().int().positive(),
+      toolCall: z.boolean(),
+      image: z.boolean(),
+      reasoning: z.boolean(),
+    })
+    .strict()
+    .meta({ ref: "ProviderConnectionCustomModel" })
+  export type CustomModel = z.infer<typeof CustomModel>
+
+  const CustomModels = z
+    .array(CustomModel)
+    .min(1)
+    .refine((models) => new Set(models.map((model) => model.id)).size === models.length, {
+      message: "Custom model ids must be unique",
+    })
+
   export const Info = z
     .object({
       id: z.string(),
@@ -24,6 +56,8 @@ export namespace ProviderConnection {
       configured: z.boolean(),
       removable: z.boolean(),
       canCreateSibling: z.boolean(),
+      protocol: Protocol.optional(),
+      models: z.array(CustomModel).optional(),
     })
     .strict()
     .meta({ ref: "ProviderConnection" })
@@ -41,11 +75,25 @@ export namespace ProviderConnection {
     .meta({ ref: "ProviderConnectionCreateInput" })
   export type CreateInput = z.infer<typeof CreateInput>
 
+  export const CustomInput = z
+    .object({
+      id: z.string().regex(ID_PATTERN),
+      name: z.string().trim().min(1).max(80),
+      endpoint: CUSTOM_ENDPOINT,
+      protocol: Protocol,
+      models: CustomModels,
+    })
+    .strict()
+    .meta({ ref: "ProviderConnectionCustomInput" })
+  export type CustomInput = z.infer<typeof CustomInput>
+
   export const UpdateInput = z
     .object({
       name: z.string().trim().min(1).max(80).optional(),
       endpoint: z.string().url().nullable().optional(),
       enabled: z.boolean().optional(),
+      protocol: Protocol.optional(),
+      models: CustomModels.optional(),
     })
     .strict()
     .refine((input) => Object.keys(input).length > 0, { message: "At least one account field must be provided" })
@@ -78,6 +126,10 @@ export namespace ProviderConnection {
     "ProviderConnectionInUseError",
     z.object({ providerID: z.string(), references: z.array(z.string()) }),
   )
+  export const CustomValidation = NamedError.create(
+    "ProviderConnectionCustomValidationError",
+    z.object({ providerID: z.string(), message: z.string() }),
+  )
 
   type ProviderConfig = NonNullable<Config.Info["provider"]>[string]
 
@@ -91,11 +143,89 @@ export namespace ProviderConnection {
     return provider?.api ?? (typeof provider?.options?.baseURL === "string" ? provider.options.baseURL : undefined)
   }
 
+  function protocolFromNpm(npm: string | undefined): Protocol | undefined {
+    if (!npm) return
+    return Protocol.options.find((protocol) => NPM[protocol] === npm)
+  }
+
+  // A connection is "custom" only when it is config-defined with a canonical
+  // protocol package, an HTTP(S) endpoint and a complete manual model list.
+  // That boundary decides editability and removability, so partial hand-written
+  // config-only providers keep their existing non-managed behavior.
+  function customMetadata(
+    provider: ProviderConfig | undefined,
+  ): { protocol: Protocol; models: CustomModel[] } | undefined {
+    if (!provider || provider.profile !== undefined || provider.modelsDevProviderID !== undefined) return
+    const protocol = protocolFromNpm(provider.npm)
+    if (!protocol || typeof provider.api !== "string" || !provider.api) return
+    const entries = Object.entries(provider.models ?? {})
+    if (entries.length === 0) return
+    const models: CustomModel[] = []
+    for (const [modelID, model] of entries) {
+      if (typeof model.id === "string" && model.id !== modelID) return
+      const context = model.limit?.context
+      const output = model.limit?.output
+      if (typeof context !== "number" || !Number.isInteger(context) || context <= 0) return
+      if (typeof output !== "number" || !Number.isInteger(output) || output <= 0) return
+      if (typeof model.tool_call !== "boolean" || typeof model.reasoning !== "boolean") return
+      models.push({
+        id: modelID,
+        ...(model.name ? { name: model.name } : {}),
+        context,
+        output,
+        toolCall: model.tool_call,
+        image: model.modalities?.input?.includes("image") ?? false,
+        reasoning: model.reasoning,
+      })
+    }
+    return { protocol, models }
+  }
+
+  type Modality = "text" | "audio" | "image" | "video" | "pdf"
+
+  function modelsFrom(
+    models: CustomModel[],
+    existing?: ProviderConfig["models"],
+  ): NonNullable<ProviderConfig["models"]> {
+    return Object.fromEntries(
+      models.map((model) => {
+        const { name: _name, ...previous } = existing?.[model.id] ?? {}
+        const input: Modality[] = [...(previous?.modalities?.input ?? ["text"])].filter((value) => value !== "image")
+        if (model.image) input.splice(Math.min(1, input.length), 0, "image")
+        const output: Modality[] = previous?.modalities?.output ?? ["text"]
+        return [
+          model.id,
+          {
+            ...previous,
+            ...(model.name ? { name: model.name } : {}),
+            limit: { ...previous?.limit, context: model.context, output: model.output },
+            tool_call: model.toolCall,
+            reasoning: model.reasoning,
+            modalities: { input, output },
+          },
+        ]
+      }),
+    )
+  }
+
+  function customConnection(
+    providerID: string,
+    provider: ProviderConfig | undefined,
+    catalog: Record<string, ModelsDev.Provider>,
+  ) {
+    const metadata = customMetadata(provider)
+    if (!metadata) return
+    if (catalog[providerID] !== undefined) return
+    if (ProviderProfile.get(providerID) !== undefined) return
+    return metadata
+  }
+
   function connectionInfo(providerID: string, config: Config.Info, catalog: Record<string, ModelsDev.Provider>): Info {
     const configured = config.provider?.[providerID]
     const profile = ProviderProfile.resolve(providerID, configured?.profile)
     const profileID = profile?.id ?? configured?.profile ?? configured?.modelsDevProviderID ?? providerID
     const catalogProviderID = configured?.modelsDevProviderID ?? profile?.modelsDevProviderID ?? profileID
+    const custom = customConnection(providerID, configured, catalog)
     return {
       id: providerID,
       name: configured?.name ?? catalog[providerID]?.name ?? profile?.name ?? providerID,
@@ -105,10 +235,12 @@ export namespace ProviderConnection {
       enabled: enabled(providerID, config),
       configured: configured !== undefined,
       removable:
-        configured !== undefined &&
-        (configured.profile !== undefined || configured.modelsDevProviderID !== undefined) &&
-        providerID !== profileID,
+        custom !== undefined ||
+        (configured !== undefined &&
+          (configured.profile !== undefined || configured.modelsDevProviderID !== undefined) &&
+          providerID !== profileID),
       canCreateSibling: catalog[catalogProviderID] !== undefined,
+      ...(custom ? { protocol: custom.protocol, models: custom.models } : {}),
     }
   }
 
@@ -253,6 +385,47 @@ export namespace ProviderConnection {
     }
   }
 
+  export async function createCustom(input: CustomInput) {
+    const parsed = CustomInput.parse(input)
+    let catalog: Record<string, ModelsDev.Provider> = {}
+    const { change } = await Config.domainMutateWithChange(
+      "providers",
+      async (domain) => {
+        const resolved = await Config.globalResolved()
+        catalog = await ProviderCatalog.resolve({ config: resolved, includeLive: false })
+        const occupied = new Set([
+          ...Object.keys(catalog),
+          ...Object.keys(domain.provider ?? {}),
+          ...ProviderProfile.all().map((item) => item.id),
+        ])
+        if (occupied.has(parsed.id) || ProviderProfile.canonicalID(parsed.id) !== parsed.id)
+          throw new AlreadyExists({ providerID: parsed.id })
+        const provider: ProviderConfig = {
+          name: parsed.name,
+          api: parsed.endpoint,
+          npm: NPM[parsed.protocol],
+          models: modelsFrom(parsed.models),
+        }
+        return withEnabledState(
+          {
+            ...domain,
+            provider: {
+              ...(domain.provider ?? {}),
+              [parsed.id]: provider,
+            },
+          },
+          parsed.id,
+          true,
+        )
+      },
+      { mode: "replace-domain" },
+    )
+    return {
+      connection: connectionInfo(parsed.id, change.config, catalog),
+      change,
+    }
+  }
+
   export async function update(providerID: string, input: UpdateInput) {
     const parsedProviderID = z.string().min(1).parse(providerID)
     const parsed = UpdateInput.parse(input)
@@ -266,13 +439,32 @@ export namespace ProviderConnection {
         if (!current && !Object.hasOwn(canonicalCatalog, parsedProviderID)) {
           throw new NotFound({ providerID: parsedProviderID })
         }
+        const custom = customConnection(parsedProviderID, current, canonicalCatalog)
+        if ((parsed.protocol !== undefined || parsed.models !== undefined) && !custom)
+          throw new CustomValidation({
+            providerID: parsedProviderID,
+            message: "Protocol and models can only be edited on a custom provider connection",
+          })
         const provider: ProviderConfig = {
           ...current,
           ...(parsed.name !== undefined ? { name: parsed.name } : {}),
         }
         if (parsed.endpoint !== undefined) {
-          if (parsed.endpoint === null) delete provider.api
-          else provider.api = parsed.endpoint
+          if (parsed.endpoint === null) {
+            if (custom)
+              throw new CustomValidation({
+                providerID: parsedProviderID,
+                message: "A custom provider connection requires an endpoint",
+              })
+            delete provider.api
+          } else {
+            if (custom && !CUSTOM_ENDPOINT.safeParse(parsed.endpoint).success)
+              throw new CustomValidation({
+                providerID: parsedProviderID,
+                message: "A custom provider connection requires an HTTP(S) endpoint",
+              })
+            provider.api = parsed.endpoint
+          }
           if (provider.options && "baseURL" in provider.options) {
             const options = { ...provider.options }
             delete options.baseURL
@@ -280,6 +472,8 @@ export namespace ProviderConnection {
             else provider.options = options
           }
         }
+        if (custom && parsed.protocol !== undefined) provider.npm = NPM[parsed.protocol]
+        if (custom && parsed.models !== undefined) provider.models = modelsFrom(parsed.models, current?.models)
         let next: Config.Info = {
           ...domain,
           provider: {
@@ -304,8 +498,11 @@ export namespace ProviderConnection {
     const config = await Config.globalResolved()
     const current = config.provider?.[parsedProviderID]
     if (!current) throw new NotFound({ providerID: parsedProviderID })
+    const catalog = await ProviderCatalog.resolve({ config, includeLive: false })
+    const owned = (provider: ProviderConfig) => customConnection(parsedProviderID, provider, catalog) !== undefined
     const ownerID = current.profile ?? current.modelsDevProviderID
-    if (!ownerID || parsedProviderID === ownerID) throw new NotManaged({ providerID: parsedProviderID })
+    const managed = owned(current)
+    if (!managed && (!ownerID || parsedProviderID === ownerID)) throw new NotManaged({ providerID: parsedProviderID })
     const referencedBy = references(config, parsedProviderID)
     if (referencedBy.length > 0) throw new InUse({ providerID: parsedProviderID, references: referencedBy })
     const { change } = await Config.domainMutateWithChange(
@@ -313,8 +510,10 @@ export namespace ProviderConnection {
       (domain) => {
         const current = domain.provider?.[parsedProviderID]
         if (!current) throw new NotFound({ providerID: parsedProviderID })
+        const managed = owned(current)
         const ownerID = current.profile ?? current.modelsDevProviderID
-        if (!ownerID || parsedProviderID === ownerID) throw new NotManaged({ providerID: parsedProviderID })
+        if (!managed && (!ownerID || parsedProviderID === ownerID))
+          throw new NotManaged({ providerID: parsedProviderID })
         const providers = { ...(domain.provider ?? {}) }
         delete providers[parsedProviderID]
         return withoutEnabledState({ ...domain, provider: providers }, parsedProviderID)
