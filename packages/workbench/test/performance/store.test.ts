@@ -1,5 +1,5 @@
 import path from "node:path"
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { Observability } from "@ericsanchezok/synergy-harness/observability"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { ObservabilityLiveEvents } from "@ericsanchezok/synergy-harness/observability/live-events"
@@ -350,22 +350,52 @@ describe.serial("performance observability store", () => {
       expect(traces.items[0].traceId).toBe("trace_distinct_tool")
     }))
 
+  test("summary shares an in-flight read across telemetry writes and refreshes after it settles", () =>
+    runtime.run(async () => {
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const readCounts = ObservabilityStore.queryMetricCounts.bind(ObservabilityStore)
+      const counts = spyOn(ObservabilityStore, "queryMetricCounts").mockImplementation(async (query) => {
+        entered.resolve()
+        await release.promise
+        return readCounts(query)
+      })
+      try {
+        const first = PerformanceDashboard.summary()
+        await entered.promise
+        ObservabilityMetrics.record({ name: "http.request.duration", value: 20, unit: "ms", module: "server" })
+        ObservabilityStore.flush()
+        const second = PerformanceDashboard.summary()
+        expect(second).toBe(first)
+        expect(counts).toHaveBeenCalledTimes(1)
+        release.resolve()
+        await first
+        const refreshed = PerformanceDashboard.summary()
+        expect(refreshed).not.toBe(first)
+        expect((await refreshed).backend.requestCount).toBe(1)
+        expect(counts).toHaveBeenCalledTimes(2)
+      } finally {
+        release.resolve()
+        counts.mockRestore()
+      }
+    }))
+
   test("timeline honors the current configured bucket limit", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       ObservabilityConfig.refresh({ observability: { performance: { maxTimelineBuckets: 50 } } })
 
-      expect(() =>
+      await expect(
         PerformanceTimeline.get({
           metric: "http.request.duration",
           windowMs: 100_000,
           bucketMs: 1_000,
         }),
-      ).toThrow("configured bucket limit")
+      ).rejects.toThrow("configured bucket limit")
     }))
 
   test("timeline auto-bucketing stays within the configured inclusive point limit", () =>
-    runtime.run(() => {
-      const timeline = PerformanceTimeline.get({
+    runtime.run(async () => {
+      const timeline = await PerformanceTimeline.get({
         metric: "http.request.duration",
         windowMs: 15 * 60 * 1000,
       })
@@ -374,7 +404,7 @@ describe.serial("performance observability store", () => {
     }))
 
   test("timeline accepts the storage retention and queue metrics instead of rejecting the query", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       // `normalizeMetrics` rejects the whole query when any requested name is not
       // in the catalog, so a storage series missing from the catalog would make
       // the timeline endpoint return 400 rather than an empty series. These six
@@ -387,13 +417,13 @@ describe.serial("performance observability store", () => {
         "storage.retention.deleted_records",
         "storage.retention.budget_ratio",
       ]
-      const timeline = PerformanceTimeline.get({ metric: storageMetrics, windowMs: 60_000 })
+      const timeline = await PerformanceTimeline.get({ metric: storageMetrics, windowMs: 60_000 })
       expect(timeline.series.map((entry) => entry.name)).toEqual(storageMetrics)
 
       // The gate is only meaningful if an unknown name still fails the query.
-      expect(() => PerformanceTimeline.get({ metric: ["storage.queue.depth", "storage.not.a.metric"] })).toThrow(
-        "Timeline metric is not allowed",
-      )
+      await expect(
+        PerformanceTimeline.get({ metric: ["storage.queue.depth", "storage.not.a.metric"] }),
+      ).rejects.toThrow("Timeline metric is not allowed")
     }))
 
   test("coalesces repeated issue events while preserving occurrence counts", () =>
@@ -590,7 +620,7 @@ test(
         `INSERT INTO obs_metrics(metric_id,time,name,value,unit,source,module,scope_id)
     VALUES ('early', ?, 'http.request.duration', 100, 'ms', 'backend', 'server', ?)`,
       ).run(now - 2000, scopeID)
-      const timeline = PerformanceTimeline.get({
+      const timeline = await PerformanceTimeline.get({
         from: new Date(now - 2500).toISOString(),
         to: new Date(now).toISOString(),
         bucketMs: 1000,

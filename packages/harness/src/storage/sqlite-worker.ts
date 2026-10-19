@@ -115,9 +115,13 @@ process.on("message", (request: SqliteRequest) => {
     } else {
       const connection = writer
       if (!connection) throw new Error("SQLite connection is not open")
-      response.rows = connection.query(request.statement!).all(...(request.values ?? [])) as NonNullable<
-        SqliteResponse["rows"]
-      >
+      const statement =
+        request.cacheStatement === false ? connection.prepare(request.statement!) : connection.query(request.statement!)
+      try {
+        response.rows = statement.all(...(request.values ?? [])) as NonNullable<SqliteResponse["rows"]>
+      } finally {
+        if (request.cacheStatement === false) statement.finalize()
+      }
     }
   } catch (error) {
     response.error = {

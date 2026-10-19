@@ -5,7 +5,7 @@ import { PerformanceError } from "./error"
 import { PerformanceSchema } from "./schema"
 
 export namespace PerformanceTimeline {
-  export function get(query: PerformanceSchema.TimelineQuery): PerformanceSchema.Timeline {
+  export async function get(query: PerformanceSchema.TimelineQuery): Promise<PerformanceSchema.Timeline> {
     const now = Date.now()
     const to = parseTime(query.to, now)
     const from = parseTime(query.from, query.windowMs ? to - query.windowMs : to - 15 * 60 * 1000)
@@ -23,43 +23,45 @@ export namespace PerformanceTimeline {
 
     const metrics = normalizeMetrics(query.metric)
     const buckets = bucketStarts(from, to, bucketMs)
-    const series = metrics.map((name) => {
-      const info = PerformanceCatalog.get(name)
-      if (!info) throw new PerformanceError("PERF_INVALID_QUERY", "Timeline metric is not allowed.", 400)
-      const stat = query.stat ?? info.defaultStat
-      const rows = ObservabilityStore.queryMetricBuckets({
-        since: from,
-        until: to,
-        names: [name],
-        module: query.module,
-        scopeID: query.scopeID,
-        sessionID: query.sessionID,
-        tool: query.tool,
-        providerID: query.providerID,
-        bucketMs,
-      })
-      const bucketed = new Map(rows.map((row) => [row.bucket, row]))
-      const points = buckets.map((time, index) => {
-        const bucket = bucketed.get(index)
-        return {
-          time,
-          value: bucket ? (stat === "rate" ? bucket.sum / Math.max(1, bucketMs / 1000) : bucket[stat]) : null,
-          sampleCount: bucket?.count ?? 0,
-        }
-      })
-      const sampleCount = points.reduce((total, point) => total + (point.sampleCount ?? 0), 0)
-      return PerformanceSchema.TimelineSeries.parse({
-        name,
-        label: info.label,
-        unit: info.unit,
-        kind: info.kind,
-        stat,
-        sampleCount,
-        module: info.module,
-        source: info.source,
-        points,
-      })
-    })
+    const series = await Promise.all(
+      metrics.map(async (name) => {
+        const info = PerformanceCatalog.get(name)
+        if (!info) throw new PerformanceError("PERF_INVALID_QUERY", "Timeline metric is not allowed.", 400)
+        const stat = query.stat ?? info.defaultStat
+        const rows = await ObservabilityStore.queryMetricBuckets({
+          since: from,
+          until: to,
+          names: [name],
+          module: query.module,
+          scopeID: query.scopeID,
+          sessionID: query.sessionID,
+          tool: query.tool,
+          providerID: query.providerID,
+          bucketMs,
+        })
+        const bucketed = new Map(rows.map((row) => [row.bucket, row]))
+        const points = buckets.map((time, index) => {
+          const bucket = bucketed.get(index)
+          return {
+            time,
+            value: bucket ? (stat === "rate" ? bucket.sum / Math.max(1, bucketMs / 1000) : bucket[stat]) : null,
+            sampleCount: bucket?.count ?? 0,
+          }
+        })
+        const sampleCount = points.reduce((total, point) => total + (point.sampleCount ?? 0), 0)
+        return PerformanceSchema.TimelineSeries.parse({
+          name,
+          label: info.label,
+          unit: info.unit,
+          kind: info.kind,
+          stat,
+          sampleCount,
+          module: info.module,
+          source: info.source,
+          points,
+        })
+      }),
+    )
     return PerformanceSchema.Timeline.parse({
       generatedAt: new Date().toISOString(),
       from,

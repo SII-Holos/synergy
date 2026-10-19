@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceFileStatus } from "../../src/workspace-file/status"
+import { WorktreeProcess } from "../../src/workspace/process"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -25,6 +26,42 @@ async function withWorkspace<T>(init: (dir: string) => Promise<void>, fn: (dir: 
 }
 
 describe("WorkspaceFileStatus", () => {
+  test("reads renamed, modified and untracked paths with at most two native commands", () =>
+    runtime.run(async () => {
+      await withWorkspace(
+        async (dir) => {
+          await Bun.write(path.join(dir, "before.txt"), "same\n".repeat(30))
+          await Bun.write(path.join(dir, "modified.txt"), "old\n")
+          for (const args of [
+            ["add", "."],
+            ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-m", "fixture"],
+          ]) {
+            const child = Bun.spawn(["git", ...args], { cwd: dir, stdout: "ignore", stderr: "pipe" })
+            expect(await child.exited).toBe(0)
+          }
+          await fs.rename(path.join(dir, "before.txt"), path.join(dir, "after.txt"))
+          const stage = Bun.spawn(["git", "add", "-A"], { cwd: dir, stdout: "ignore", stderr: "pipe" })
+          expect(await stage.exited).toBe(0)
+          await Bun.write(path.join(dir, "modified.txt"), "new\nextra\n")
+          await Bun.write(path.join(dir, "untracked\tfile.txt"), "untracked\n")
+        },
+        async () => {
+          const commands = spyOn(WorktreeProcess, "run")
+          try {
+            const summary = await WorkspaceFileStatus.summary({ force: true })
+            expect(summary.files).toEqual([
+              expect.objectContaining({ path: "after.txt", status: "renamed" }),
+              expect.objectContaining({ path: "modified.txt", status: "modified", added: 2, removed: 1 }),
+              expect.objectContaining({ path: "untracked\tfile.txt", status: "untracked" }),
+            ])
+            expect(commands.mock.calls.length).toBeLessThanOrEqual(2)
+          } finally {
+            commands.mockRestore()
+          }
+        },
+      )
+    }))
+
   test("cached status retains the event watermark from its original read", () =>
     runtime.run(async () => {
       await withWorkspace(

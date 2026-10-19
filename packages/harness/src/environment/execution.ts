@@ -332,10 +332,10 @@ export namespace EnvironmentExecution {
         environmentID: info.target.environmentID,
         message: "Executor returned a mismatched operation or allocation",
       })
-    return update(info, {
-      status,
-      state: ExecutionProtocol.terminal(status) ? "exited" : status.state === "unknown" ? "unknown" : "running",
-    })
+    const state = ExecutionProtocol.terminal(status) ? "exited" : status.state === "unknown" ? "unknown" : "running"
+    const unchangedState = info.state === state || (info.state === "cancel_requested" && state === "running")
+    if (unchangedState && JSON.stringify(info.status) === JSON.stringify(status)) return info
+    return update(info, { status, state })
   }
 
   function verifyInput(

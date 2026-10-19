@@ -10,6 +10,9 @@ import { ObservabilityPaths } from "./paths"
 import { ObservabilityDbWrites } from "./db-writes"
 import { ObservabilityTelemetryClient } from "./telemetry-client"
 import { TelemetryProtocol } from "./telemetry-protocol"
+import type { SqliteWorkerClient } from "../storage/sqlite-worker-client"
+import { StorageQueue } from "../storage/queue"
+import { StorageClosedError } from "../storage/errors"
 
 export namespace ObservabilityStore {
   export const schemaVersion = ObservabilityDbSchema.schemaVersion
@@ -19,6 +22,7 @@ export namespace ObservabilityStore {
     stopped: false,
     db: undefined as Database | undefined,
     readonlyDb: undefined as Database | undefined,
+    metricReader: undefined as { ready: Promise<SqliteWorkerClient>; queue: StorageQueue } | undefined,
     clientActive: false,
     checkpointTimer: undefined as ReturnType<typeof setInterval> | undefined,
     compactTimer: undefined as ReturnType<typeof setInterval> | undefined,
@@ -246,7 +250,19 @@ export namespace ObservabilityStore {
       instanceState.readonlyDb?.close(false)
       instanceState.readonlyDb = undefined
       instanceState.clientActive = false
-      return ObservabilityTelemetryClient.stop()
+      const reader = instanceState.metricReader
+      instanceState.metricReader = undefined
+      return Promise.all([
+        ObservabilityTelemetryClient.stop(),
+        reader &&
+          Promise.all([
+            reader.queue.close(),
+            reader.ready.then(
+              (client) => client.close(),
+              () => {},
+            ),
+          ]),
+      ]).then(() => {})
     }
     // Stop every producer before draining the queue. A timer firing between
     // flush() and close() can otherwise retain a statement and make SQLite's
@@ -514,11 +530,8 @@ export namespace ObservabilityStore {
   }
 
   export function queryMetricBuckets(opts: Parameters<typeof queryMetrics>[0] & { bucketMs: number }) {
-    flush()
-    const conn = queryConnection()
-    if (!conn) return []
     const { filters, params } = metricFilters(opts)
-    return allRows<{
+    return metricRows<{
       bucket: number
       count: number
       sum: number
@@ -530,7 +543,6 @@ export namespace ObservabilityStore {
       p99: number
       errors: number
     }>(
-      conn,
       `WITH samples AS (
       SELECT value, time, metric_id, labels_json, CAST((time - ?) / ? AS INTEGER) AS bucket
       FROM obs_metrics WHERE ${filters.join(" AND ")}
@@ -552,12 +564,8 @@ export namespace ObservabilityStore {
   }
 
   export function queryMetricHighlights(opts: Parameters<typeof queryMetrics>[0]) {
-    flush()
-    const conn = queryConnection()
-    if (!conn) return [] as StoredMetric[]
     const { filters, params } = metricFilters(opts)
-    return allRows<StoredMetric>(
-      conn,
+    return metricRows<StoredMetric>(
       `WITH ranked AS (
       SELECT *, ROW_NUMBER() OVER (PARTITION BY name ORDER BY value DESC, metric_id DESC) AS slow,
         ROW_NUMBER() OVER (PARTITION BY name, CASE WHEN name = 'frontend.web_vital' THEN json_extract(labels_json, '$.name') END ORDER BY time DESC, metric_id DESC) AS recent
@@ -568,12 +576,8 @@ export namespace ObservabilityStore {
   }
 
   export function queryMetricSums(opts: Parameters<typeof queryMetrics>[0]) {
-    flush()
-    const conn = queryConnection()
-    if (!conn) return [] as Array<Pick<StoredMetric, "name" | "tool" | "labels_json" | "value">>
     const { filters, params } = metricFilters(opts)
-    return allRows<Pick<StoredMetric, "name" | "tool" | "labels_json" | "value">>(
-      conn,
+    return metricRows<Pick<StoredMetric, "name" | "tool" | "labels_json" | "value">>(
       `SELECT name, tool, labels_json, SUM(value) AS value
       FROM obs_metrics WHERE ${filters.join(" AND ")} GROUP BY name, tool, labels_json`,
       ...params,
@@ -581,30 +585,24 @@ export namespace ObservabilityStore {
   }
 
   export function queryMetricCounts(opts: Parameters<typeof queryMetrics>[0]) {
-    flush()
-    const conn = queryConnection()
-    if (!conn) return []
     const { filters, params } = metricFilters(opts)
-    return allRows<{ name: string; module: string; count: number }>(
-      conn,
+    return metricRows<{ name: string; module: string; count: number }>(
       `SELECT name, module, COUNT(*) AS count FROM obs_metrics
       WHERE ${filters.join(" AND ")} GROUP BY name, module`,
       ...params,
     )
   }
 
-  export function countMetricSessions(opts: Parameters<typeof queryMetrics>[0]) {
-    flush()
-    const conn = queryConnection()
-    if (!conn) return 0
+  export async function countMetricSessions(opts: Parameters<typeof queryMetrics>[0]) {
     const { filters, params } = metricFilters(opts)
     return (
-      getRow<{ count: number }>(
-        conn,
-        `SELECT COUNT(DISTINCT session_id) AS count FROM obs_metrics
+      (
+        await metricRows<{ count: number }>(
+          `SELECT COUNT(DISTINCT session_id) AS count FROM obs_metrics
       WHERE ${filters.join(" AND ")}`,
-        ...params,
-      )?.count ?? 0
+          ...params,
+        )
+      )[0]?.count ?? 0
     )
   }
 
@@ -1006,6 +1004,58 @@ export namespace ObservabilityStore {
   }
 
   type SqlBinding = string | number | bigint | boolean | null | Uint8Array
+
+  async function metricRows<Row>(sql: string, ...params: SqlBinding[]): Promise<Row[]> {
+    flush()
+    if (inlineMode()) {
+      const conn = queryConnection()
+      return conn ? allRows<Row>(conn, sql, ...params) : []
+    }
+    const state = runtimeState()
+    if (state.stopped) throw new StorageClosedError()
+    if (!state.metricReader) {
+      if (!fsSync.existsSync(pathName())) return []
+      const queue = new StorageQueue("observability.reader")
+      // The supervised client records telemetry; load it after the observability module graph has initialized.
+      const ready = import("../storage/sqlite-worker-client").then(async ({ SqliteWorkerClient }) => {
+        const client = new SqliteWorkerClient("observability-reader")
+        client.onUnavailable(() => {
+          if (state.metricReader?.queue === queue) state.metricReader = undefined
+          void queue.close()
+        })
+        try {
+          await client.request({ action: "open", filename: pathName(), readonly: true })
+          await client.request({ action: "query", statement: "PRAGMA mmap_size = 0" })
+          await client.request({ action: "query", statement: "PRAGMA cache_size = -8192" })
+          return client
+        } catch (error) {
+          await client.close()
+          throw error
+        }
+      })
+      const reader = { ready, queue }
+      state.metricReader = reader
+      void ready.catch(() => {
+        if (state.metricReader === reader) state.metricReader = undefined
+        void queue.close()
+      })
+    }
+    const reader = state.metricReader
+    return reader.queue.run(async () => {
+      const client = await reader.ready
+      const { rows } = await client.request({
+        action: "query",
+        statement: sql,
+        cacheStatement: false,
+        values: params.map((value) => (typeof value === "boolean" ? Number(value) : value)),
+      })
+      return rows.map((row) =>
+        Object.fromEntries(
+          Object.entries(row).map(([key, value]) => [key, typeof value === "bigint" ? Number(value) : value]),
+        ),
+      ) as Row[]
+    })
+  }
 
   function allRows<Row>(conn: Database, sql: string, ...params: SqlBinding[]): Row[] {
     const statement = conn.prepare(sql)

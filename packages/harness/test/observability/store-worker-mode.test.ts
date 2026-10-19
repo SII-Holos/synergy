@@ -61,6 +61,47 @@ describe("ObservabilityStore worker mode", () => {
       expect(ObservabilityStore.stats().checkpointIntervalMs).toBe(60_000)
     }))
 
+  test("metric aggregation yields to the host and retains numeric bucket results", () =>
+    runtime.run(async () => {
+      ObservabilityStore.open()
+      await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
+      for (const value of [10, 20, 30])
+        ObservabilityMetrics.record({ name: "reader.metric", value, unit: "ms", module: "observability" })
+      await ObservabilityTelemetryClient.flushAndWait()
+      const tick = new Promise<string>((resolve) => setTimeout(() => resolve("host"), 0))
+      const query = Promise.resolve(
+        ObservabilityStore.queryMetricBuckets({ since: 0, names: ["reader.metric"], bucketMs: Date.now() + 1 }),
+      )
+      expect(await Promise.race([query.then(() => "query"), tick])).toBe("host")
+      expect(await query).toEqual([expect.objectContaining({ count: 3, sum: 60, p50: 20, p95: 30, errors: 0 })])
+      await ObservabilityStore.close()
+      ObservabilityStore.open()
+      expect(await ObservabilityStore.queryMetricCounts({ since: 0, names: ["reader.metric"] })).toEqual([
+        { name: "reader.metric", module: "observability", count: 3 },
+      ])
+    }))
+
+  test("close drains the active metric read and rejects queued reads", () =>
+    runtime.run(async () => {
+      ObservabilityStore.open()
+      await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
+      const first = ObservabilityStore.queryMetricCounts({ since: 0 })
+      const second = ObservabilityStore.queryMetricCounts({ since: 0 })
+      const results = Promise.allSettled([first, second])
+      await ObservabilityStore.close()
+      expect((await results).map((result) => result.status)).toEqual(["fulfilled", "rejected"])
+      ObservabilityStore.open()
+      expect(await ObservabilityStore.queryMetricCounts({ since: 0 })).toBeArray()
+    }))
+
+  test("a stopped store cannot reopen the metric reader", () =>
+    runtime.run(async () => {
+      ObservabilityStore.open()
+      await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
+      await ObservabilityStore.stop()
+      await expect(ObservabilityStore.queryMetricCounts({ since: 0 })).rejects.toThrow("closed")
+    }))
+
   test("close stops the worker", () =>
     runtime.run(async () => {
       ObservabilityStore.open()
