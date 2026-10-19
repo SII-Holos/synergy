@@ -352,7 +352,7 @@ test("a resolved execution tool is denied before resource acquisition or dispatc
             await expect(
               resolved.executionTools.compute_probe.execute!(
                 { value: "input" },
-                { toolCallId: "call_probe", messages: [] },
+                { context: {}, toolCallId: "call_probe", messages: [] },
               ),
             ).rejects.toBeInstanceOf(ToolPolicySource.DeniedError)
             expect(calls).toBe(0)

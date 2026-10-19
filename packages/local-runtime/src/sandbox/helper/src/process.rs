@@ -231,7 +231,7 @@ const HANDLE_FLAG_INHERIT: u32 = 0x0000_0001;
 const DRAIN_SHUTDOWN_TIMEOUT_MS: u32 = 1_000;
 
 fn error_with_last_win32(message: &'static str) -> Error {
-    let hr = HRESULT::from_win32(unsafe { GetLastError() });
+    let hr = windows_result::WIN32_ERROR(unsafe { GetLastError() }).to_hresult();
     Error::new(hr, message)
 }
 
@@ -239,14 +239,14 @@ fn error_with_message(message: String) -> Error {
     // Errors originating in a drain thread no longer have a meaningful
     // thread-local GetLastError value. Preserve the diagnostic text while
     // returning a normal windows-result error to the caller.
-    Error::new(HRESULT::from_win32(1), message)
+    Error::new(windows_result::WIN32_ERROR(1).to_hresult(), message)
 }
 
 /// Create a Job Object with KILL_ON_JOB_CLOSE and a bounded process count.
 pub unsafe fn create_sandbox_job() -> windows_result::Result<HANDLE> {
     let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
     if job.is_null() {
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(Error::new(hr, "CreateJobObjectW failed"));
     }
 
@@ -264,7 +264,7 @@ pub unsafe fn create_sandbox_job() -> windows_result::Result<HANDLE> {
     );
     if ok == 0 {
         CloseHandle(job);
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(Error::new(hr, "SetInformationJobObject failed"));
     }
 
@@ -362,7 +362,7 @@ unsafe fn create_sandboxed_process_conpty(
         crate::conpty::close_pseudo_console(hpcon);
         CloseHandle(input_write);
         CloseHandle(output_read);
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(ConptyProcessError::before_spawn(Error::new(
             hr,
             "InitializeProcThreadAttributeList failed",
@@ -385,7 +385,7 @@ unsafe fn create_sandboxed_process_conpty(
         crate::conpty::close_pseudo_console(hpcon);
         CloseHandle(input_write);
         CloseHandle(output_read);
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(ConptyProcessError::before_spawn(Error::new(
             hr,
             "UpdateProcThreadAttribute(PSEUDOCONSOLE) failed",
@@ -422,7 +422,7 @@ unsafe fn create_sandboxed_process_conpty(
         crate::conpty::close_pseudo_console(hpcon);
         close_if_valid(input_write);
         close_if_valid(output_read);
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(ConptyProcessError::before_spawn(Error::new(
             hr,
             "CreateProcessAsUserW (ConPTY) failed",
@@ -438,7 +438,7 @@ unsafe fn create_sandboxed_process_conpty(
         crate::conpty::close_pseudo_console(hpcon);
         close_if_valid(input_write);
         close_if_valid(output_read);
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(ConptyProcessError::after_spawn(Error::new(
             hr,
             "AssignProcessToJobObject failed",
@@ -582,7 +582,7 @@ unsafe fn make_handle_non_inheritable(
     description: &'static str,
 ) -> windows_result::Result<()> {
     if SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) == 0 {
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(Error::new(hr, description));
     }
     Ok(())
@@ -605,7 +605,7 @@ unsafe fn duplicate_inheritable_handle(handle: HANDLE) -> windows_result::Result
         DUPLICATE_SAME_ACCESS,
     ) == 0
     {
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(Error::new(hr, "DuplicateHandle for child stdin failed"));
     }
     Ok(duplicate)
@@ -961,14 +961,14 @@ unsafe fn create_sandboxed_process_pipes(
     let mut stderr_write: HANDLE = INVALID_HANDLE_VALUE;
 
     if CreatePipe(&mut stdout_read, &mut stdout_write, &sa, 0) == 0 {
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(Error::new(hr, "CreatePipe for stdout failed"));
     }
 
     if CreatePipe(&mut stderr_read, &mut stderr_write, &sa, 0) == 0 {
         close_if_valid(stdout_read);
         close_if_valid(stdout_write);
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(Error::new(hr, "CreatePipe for stderr failed"));
     }
 
@@ -1046,7 +1046,7 @@ unsafe fn create_sandboxed_process_pipes(
         close_if_valid(stderr_read);
         close_if_valid(stderr_write);
         close_if_valid(child_stdin);
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(Error::new(hr, "CreateProcessAsUserW failed"));
     }
 
@@ -1064,7 +1064,7 @@ unsafe fn create_sandboxed_process_pipes(
         close_if_valid(process_info.hThread);
         close_if_valid(stdout_read);
         close_if_valid(stderr_read);
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(Error::new(hr, "AssignProcessToJobObject failed"));
     }
 

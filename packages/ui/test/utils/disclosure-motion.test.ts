@@ -8,11 +8,13 @@ function fixture(reduced = false) {
   Object.defineProperty(element, "getBoundingClientRect", { configurable: true, value: () => ({ height: 28 }) })
   const animations: { finish: () => void; cancelled: boolean; frames: Keyframe[]; duration: number }[] = []
   element.animate = (frames, options) => {
+    const completion = Promise.withResolvers<void>()
     let finish: (() => void) | undefined
     let playState = "running"
     const record = {
       finish: () => {
         playState = "finished"
+        completion.resolve()
         finish?.()
       },
       cancelled: false,
@@ -30,8 +32,9 @@ function fixture(reduced = false) {
       cancel: () => {
         playState = "idle"
         record.cancelled = true
+        completion.reject(new DOMException("The animation was canceled.", "AbortError"))
       },
-      finished: Promise.resolve(),
+      finished: completion.promise,
     } as unknown as Animation
   }
   const listeners = new Set<() => void>()

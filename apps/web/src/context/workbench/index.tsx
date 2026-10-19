@@ -1,3 +1,4 @@
+import { BROWSER_PAGE_PREPARE_TIMEOUT_MS } from "@ericsanchezok/synergy-browser-core"
 import { executionDetailAvailable } from "@/components/session/execution-detail-model"
 import { runtimeFeatureAvailable } from "@/components/runtime-features"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -380,7 +381,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
                   }),
                 ),
               )
-            }, 15_000)
+            }, BROWSER_PAGE_PREPARE_TIMEOUT_MS)
           })
           task.pending = Promise.race([
             resolvePanel(entry, panelId, options, boundSession, { id, context, task }),
@@ -410,7 +411,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         setOpenings(id, {
           session: boundSession,
           surface: entry.surface,
-          tab: { id, panelId, title: entry.label },
+          tab: { ...options.init, id, panelId, title: options.init?.title ?? entry.label },
           index: options.replaceTab
             ? layout
                 .surface(boundSession, entry.surface)

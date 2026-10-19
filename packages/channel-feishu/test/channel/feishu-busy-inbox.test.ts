@@ -411,7 +411,7 @@ describe("Feishu attachment durable prompt parts", () => {
           const assetPath = Asset.resolvePath(attachmentPart.url.slice("asset://".length))
           expect(attachmentPart.localPath).toBe(assetPath)
           expect(await Bun.file(attachmentPart.localPath!).text()).toBe("%PDF-1.4 test pdf content")
-          const modelInput = JSON.stringify(MessageV2.toModelMessage([materialized]))
+          const modelInput = JSON.stringify(await MessageV2.toModelMessage([materialized]))
           expect(modelInput).toContain(assetPath!)
           expect(modelInput).not.toContain(filepath)
         },

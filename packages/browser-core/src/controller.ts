@@ -3,6 +3,7 @@ import { redactBrowserHeaders, redactBrowserText, redactBrowserURL } from "./red
 import { BrowserStagingLeasePool } from "./staging.js"
 import {
   BROWSER_ACTION_SETTLE_TIMEOUT_MS,
+  BROWSER_NATIVE_INIT_TIMEOUT_MS,
   BROWSER_BEST_EFFORT_SNAPSHOT_TIMEOUT_MS,
   BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS,
   BROWSER_SETTLE_QUIET_MS,
@@ -32,7 +33,16 @@ export interface CdpTransport {
 export function withCdpCommandTimeout<T>(command: Promise<T>, method: string, timeoutMs = 10_000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error(`CDP command ${method} timed out after ${timeoutMs / 1_000} seconds.`)),
+      () =>
+        reject(
+          new BrowserProtocolError({
+            code: "browser_cdp_timeout",
+            message: `CDP command ${method} timed out after ${timeoutMs / 1_000} seconds.`,
+            retryable: false,
+            suggestedAction:
+              "The command outcome is unknown. Inspect the current page before deciding whether to retry.",
+          }),
+        ),
       timeoutMs,
     )
     timer.unref?.()
@@ -246,6 +256,9 @@ export interface CdpPageControllerOptions {
 }
 
 export class CdpPageController {
+  private cancellation = new AbortController()
+  private executing = 0
+  private initializationDeadline: number | undefined
   private generation = 0
   private snapshotSequence = 0
   private refs = new Map<string, RefEntry>()
@@ -272,11 +285,67 @@ export class CdpPageController {
   private now: () => number
 
   constructor(private options: CdpPageControllerOptions) {
+    const transport = options.transport
+    this.options = {
+      ...options,
+      transport: {
+        send: <T>(method: string, params?: Record<string, unknown>) => {
+          this.cancellation.signal.throwIfAborted()
+          const operation = transport.send<T>(method, params)
+          return this.interruptible(
+            this.initializationDeadline === undefined
+              ? operation
+              : withCdpCommandTimeout(operation, method, Math.max(1, this.initializationDeadline - this.now())),
+          )
+        },
+        on: (event, listener) => transport.on(event, listener),
+      },
+    }
     this.now = options.now ?? Date.now
     this.installEventListeners()
   }
 
+  cancelPending(): void {
+    if (!this.executing) return
+    this.cancellation.abort(
+      new BrowserProtocolError({
+        code: "browser_command_cancelled",
+        message: "Waiting was cancelled. An already dispatched operation may have taken effect.",
+        retryable: false,
+        pageId: this.options.pageId,
+        suggestedAction: "Inspect the current page before deciding whether another operation is needed.",
+      }),
+    )
+  }
+
+  private interruptible<T>(operation: Promise<T>): Promise<T> {
+    const signal = this.cancellation.signal
+    return new Promise<T>((resolve, reject) => {
+      const abort = () => reject(signal.reason)
+      signal.addEventListener("abort", abort, { once: true })
+      operation.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort))
+      if (signal.aborted) abort()
+    })
+  }
+
   async execute(input: BrowserBackendCommand): Promise<BrowserBackendResult> {
+    if (!this.executing && this.cancellation.signal.aborted) this.cancellation = new AbortController()
+    const signal = this.cancellation.signal
+    signal.throwIfAborted()
+    this.executing++
+    try {
+      const result = await this.executeCommand(input)
+      signal.throwIfAborted()
+      return result
+    } catch (error) {
+      signal.throwIfAborted()
+      throw error
+    } finally {
+      this.executing--
+    }
+  }
+
+  private async executeCommand(input: BrowserBackendCommand): Promise<BrowserBackendResult> {
     const command = BrowserBackendCommandSchema.parse(input)
     await this.ensureInitialized()
 
@@ -513,6 +582,7 @@ export class CdpPageController {
   }
 
   async dispose(): Promise<void> {
+    this.cancelPending()
     const failures: unknown[] = []
     for (const dispose of this.disposers.splice(0)) {
       try {
@@ -696,26 +766,31 @@ export class CdpPageController {
 
   private async ensureInitialized() {
     this.initialized ??= (async () => {
-      await Promise.all([
-        this.options.transport.send("Page.enable"),
-        this.options.transport.send("Runtime.enable"),
-        this.options.transport.send("DOM.enable"),
-        this.options.transport.send("Accessibility.enable"),
-        this.options.transport.send("Network.enable", {
-          maxTotalBufferSize: 50 * 1024 * 1024,
-          maxResourceBufferSize: 10 * 1024 * 1024,
-          maxPostDataSize: 200 * 1024,
-        }),
-        this.options.transport.send("Log.enable"),
-        this.options.transport.send("Performance.enable"),
-        this.options.transport.send("Page.setLifecycleEventsEnabled", { enabled: true }),
-      ])
-      const tree = await this.options.transport.send<{ frameTree?: { frame?: { id?: string } } }>("Page.getFrameTree")
-      this.mainFrameId = tree?.frameTree?.frame?.id ?? this.mainFrameId
-      await this.options.transport.send("Page.addScriptToEvaluateOnNewDocument", {
-        source: webVitalsBootstrap,
-      })
-      await this.runtimeEvaluate(webVitalsBootstrap, { returnByValue: true }).catch(() => undefined)
+      this.initializationDeadline = this.now() + BROWSER_NATIVE_INIT_TIMEOUT_MS
+      try {
+        await Promise.all([
+          this.options.transport.send("Page.enable"),
+          this.options.transport.send("Runtime.enable"),
+          this.options.transport.send("DOM.enable"),
+          this.options.transport.send("Accessibility.enable"),
+          this.options.transport.send("Network.enable", {
+            maxTotalBufferSize: 50 * 1024 * 1024,
+            maxResourceBufferSize: 10 * 1024 * 1024,
+            maxPostDataSize: 200 * 1024,
+          }),
+          this.options.transport.send("Log.enable"),
+          this.options.transport.send("Performance.enable"),
+          this.options.transport.send("Page.setLifecycleEventsEnabled", { enabled: true }),
+        ])
+        const tree = await this.options.transport.send<{ frameTree?: { frame?: { id?: string } } }>("Page.getFrameTree")
+        this.mainFrameId = tree?.frameTree?.frame?.id ?? this.mainFrameId
+        await this.options.transport.send("Page.addScriptToEvaluateOnNewDocument", {
+          source: webVitalsBootstrap,
+        })
+        await this.runtimeEvaluate(webVitalsBootstrap, { returnByValue: true }).catch(() => undefined)
+      } finally {
+        this.initializationDeadline = undefined
+      }
     })()
     try {
       return await this.initialized
@@ -2339,7 +2414,12 @@ export class CdpPageController {
   }
 
   private sleep(ms: number) {
-    return new Promise<void>((resolve) => setTimeout(resolve, ms))
+    let timer: ReturnType<typeof setTimeout> | undefined
+    return this.interruptible(
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, ms)
+      }),
+    ).finally(() => clearTimeout(timer))
   }
 }
 

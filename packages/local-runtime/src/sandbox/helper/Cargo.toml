@@ -5,7 +5,7 @@ rust-version = "1.82"
 edition = "2021"
 
 [dependencies]
-windows-sys = { version = "0.59", features = [
+windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_Security_Authorization",
@@ -22,9 +22,9 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Registry",
     "Win32_UI_Shell",
 ]}
-windows-result = "0.4"
+windows-result = "0.100.0"
 serde = { version = "1", features = ["derive"] }
-rand = "0.8"
+rand = "0.10.3"
 serde_json = "1"
 log = "0.4"
 env_logger = "0.11"

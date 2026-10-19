@@ -48,7 +48,7 @@ test("directed AX text and values do not require a process keyboard route", asyn
     await runtime.execute("task", { type: "action", input })
     expect(calls.at(-1)).toMatchObject({
       name: action === "type" ? "type_text" : "set_value",
-      args: { pid: 10, window_id: 20, element_index: 3, snapshot_id: "s12345678" },
+      args: { pid: 10, window_id: 20, element_token: "s12345678:3" },
     })
   }
 })

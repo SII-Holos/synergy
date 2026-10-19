@@ -10,11 +10,12 @@ import {
   wrapLanguageModel,
   type ModelMessage,
   type StreamTextResult,
+  type OutputInterface,
   type Tool,
   type ToolSet,
   extractReasoningMiddleware,
 } from "ai"
-import type { LanguageModelV2ToolCall } from "@ai-sdk/provider"
+import type { LanguageModelV4ToolCall } from "@ai-sdk/provider"
 import { clone, mergeDeep, pipe } from "remeda"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
@@ -40,11 +41,12 @@ export namespace LLM {
 
   export const OUTPUT_TOKEN_MAX = ModelLimit.OUTPUT_TOKEN_MAX
 
-  function cancelResidualStream<TOOLS extends ToolSet, PARTIAL_OUTPUT>(
-    result: StreamTextResult<TOOLS, PARTIAL_OUTPUT>,
+  function cancelResidualStream<TOOLS extends ToolSet, OUTPUT extends OutputInterface>(
+    result: StreamTextResult<TOOLS, Record<string, unknown>, OUTPUT>,
   ) {
-    const residual = (result as StreamTextResult<TOOLS, PARTIAL_OUTPUT> & { baseStream?: ReadableStream<unknown> })
-      .baseStream
+    const residual = (
+      result as StreamTextResult<TOOLS, Record<string, unknown>, OUTPUT> & { baseStream?: ReadableStream<unknown> }
+    ).baseStream
     let cancellation: Promise<void> | undefined
     try {
       // AI SDK implements fullStream with tee() and retains the second branch as baseStream.
@@ -59,8 +61,8 @@ export namespace LLM {
     return cancellation
   }
 
-  function ownStream<TOOLS extends ToolSet, PARTIAL_OUTPUT, STREAM>(
-    result: StreamTextResult<TOOLS, PARTIAL_OUTPUT>,
+  function ownStream<TOOLS extends ToolSet, OUTPUT extends OutputInterface, STREAM>(
+    result: StreamTextResult<TOOLS, Record<string, unknown>, OUTPUT>,
     stream: STREAM,
   ) {
     const cancellation = cancelResidualStream(result)
@@ -72,14 +74,14 @@ export namespace LLM {
     }
   }
 
-  export function takeFullStream<TOOLS extends ToolSet, PARTIAL_OUTPUT>(
-    result: StreamTextResult<TOOLS, PARTIAL_OUTPUT>,
+  export function takeFullStream<TOOLS extends ToolSet, OUTPUT extends OutputInterface>(
+    result: StreamTextResult<TOOLS, Record<string, unknown>, OUTPUT>,
   ) {
     return ownStream(result, result.fullStream)
   }
 
-  export function takeTextStream<TOOLS extends ToolSet, PARTIAL_OUTPUT>(
-    result: StreamTextResult<TOOLS, PARTIAL_OUTPUT>,
+  export function takeTextStream<TOOLS extends ToolSet, OUTPUT extends OutputInterface>(
+    result: StreamTextResult<TOOLS, Record<string, unknown>, OUTPUT>,
   ) {
     return ownStream(result, result.textStream)
   }
@@ -103,11 +105,11 @@ export namespace LLM {
    *    unparseable input; we treat that as failure.
    */
   export type RepairArgs = {
-    toolCall: LanguageModelV2ToolCall
+    toolCall: LanguageModelV4ToolCall
     error: { message: string }
   }
 
-  export type RepairedToolCall = LanguageModelV2ToolCall | null
+  export type RepairedToolCall = LanguageModelV4ToolCall | null
 
   export function repairToolCall(failed: RepairArgs, toolNames: ReadonlySet<string>): RepairedToolCall {
     const lower = failed.toolCall.toolName.toLowerCase()
@@ -231,24 +233,20 @@ export namespace LLM {
 
   export function promptMessages(input: PromptLayoutInput): ModelMessage[] {
     const suffix: ModelMessage[] = input.promptSuffix ? [{ role: "user", content: input.promptSuffix }] : []
-    const systemMessages = input.system.map(
-      (content): ModelMessage => ({
-        role: "system",
-        content,
-      }),
-    )
+    const systemMessages = input.system.map((content): ModelMessage => ({
+      role: "system",
+      content,
+    }))
     const lateSystem = (input.lateSystem ?? []).filter((content) => content.length > 0)
     if (lateSystem.length === 0) return [...systemMessages, ...input.messages, ...suffix]
 
     if (PromptCachePolicy.layout(input.model, input.profileID) === "system") {
       return [
         ...systemMessages,
-        ...lateSystem.map(
-          (content): ModelMessage => ({
-            role: "system",
-            content,
-          }),
-        ),
+        ...lateSystem.map((content): ModelMessage => ({
+          role: "system",
+          content,
+        })),
         ...input.messages,
         ...suffix,
       ]
@@ -269,7 +267,7 @@ export namespace LLM {
     return ["<runtime-context>", parts.join("\n\n"), "</runtime-context>"].join("\n")
   }
 
-  export type StreamOutput = StreamTextResult<ToolSet, unknown>
+  export type StreamOutput = StreamTextResult<ToolSet, Record<string, unknown>, OutputInterface>
 
   export async function prepare(input: StreamInput): Promise<PreparedTurn> {
     const [{ Config }, { withPreambleSection }, { SystemPrompt }] = await Promise.all([
@@ -609,7 +607,7 @@ export namespace LLM {
             extractReasoningMiddleware({ tagName: "think", startWithReasoning: false }),
           ],
         }),
-        experimental_telemetry: { isEnabled: prepared.telemetryEnabled },
+        telemetry: { isEnabled: prepared.telemetryEnabled },
       })
       streamTextTimer.stop()
       ObservabilitySpans.end(llmSpan, { attributes: { provider: input.model.providerID, model: input.model.id } })

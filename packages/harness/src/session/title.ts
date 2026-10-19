@@ -103,7 +103,7 @@ export async function ensureTitle(input: {
         role: "user",
         content: "Generate a title for this conversation:\n",
       },
-      ...MessageV2.toModelMessage(contextMessages),
+      ...(await MessageV2.toModelMessage(contextMessages)),
     ],
   }).catch((error) => {
     log.error("failed to generate title", { error })

@@ -78,7 +78,7 @@ export const EmbedDownloadCommand = cmd({
         await download
 
         if (failure) {
-          spinner.stop("✗ Download failed", 1)
+          spinner.error("✗ Download failed")
           prompts.log.error(`Failed to download: ${failure instanceof Error ? failure.message : String(failure)}`)
           prompts.log.info("Troubleshooting:")
           prompts.log.info("  1. Check your network connection")

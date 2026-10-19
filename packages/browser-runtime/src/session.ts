@@ -71,7 +71,15 @@ export class BrowserSessionImpl implements BrowserSession {
     const page = entry.live
     return {
       ...entry.state,
-      ...(page ? { url: page.url, title: page.title, isLoading: page.loading, lastActiveAt: page.lastActiveAt } : {}),
+      ...(page
+        ? {
+            url: page.url,
+            title: page.title,
+            isLoading: page.loading,
+            lastActiveAt: page.lastActiveAt,
+            navigation: page.navigation,
+          }
+        : {}),
     }
   }
 
@@ -305,6 +313,7 @@ export class BrowserSessionImpl implements BrowserSession {
       url: page.url,
       title: page.title,
       isLoading: page.loading,
+      navigation: page.navigation,
       lastActiveAt: page.lastActiveAt,
     }
     void this.save().catch((error) =>
@@ -344,7 +353,7 @@ export class BrowserSessionImpl implements BrowserSession {
         this.updatePage(page)
         BrowserEvent.publish(this.owner, { type: "page.updated", page: this.describe(page.id) })
       },
-      onError: (page, message) => {
+      onError: (page, message, navigation) => {
         const entry = this.entries.get(id)
         if (!entry) return
         const errorMessage =
@@ -367,6 +376,7 @@ export class BrowserSessionImpl implements BrowserSession {
           pageId: page.id,
           url: page.url.slice(0, 20_000),
           message: errorMessage,
+          ...(navigation ? { navigation } : {}),
         })
       },
       onCrashed: (page, message) => {

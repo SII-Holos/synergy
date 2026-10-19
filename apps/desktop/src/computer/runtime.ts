@@ -172,6 +172,9 @@ export class ComputerRuntime {
               max_depth: 20,
               timeout_ms: 3000,
               max_image_dimension: 2048,
+              // Compact Cua observations omit the element list used for action admission.
+              // https://github.com/trycua/cua/blob/d752c6a63e412f42ec1c7a1bdf098eb7f8b67c91/libs/cua-driver/rust/crates/cua-driver-core/src/window_state_view.rs
+              tree_format: "both",
               query: command.query,
               synergy: true,
               include_accessibility_tree: permissions.accessibility,
@@ -283,7 +286,7 @@ export class ComputerRuntime {
             "computer_snapshot_missing",
             "This element was not returned by the observation. Observe again and use a returned element index.",
           )
-        Object.assign(args, { element_index: target.elementIndex, snapshot_id: observed.snapshotId })
+        args.element_token = `${observed.snapshotId}:${target.elementIndex}`
       }
       if (target && "x" in target) Object.assign(args, target)
       if (points.length) args.capture_id = observed.captureId

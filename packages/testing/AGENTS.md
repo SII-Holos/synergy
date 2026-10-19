@@ -12,5 +12,6 @@ This private package owns deterministic test environments, the pinned model cata
 - Fixtures stay under `SYNERGY_TEST_ROOT` until owned asynchronous work settles. Dispose child processes, timers, and runtimes before deleting the process fixture root.
 - The shared `script/run.ts` executor owns stable batches, per-batch isolation, JUnit/lcov/timing reports and diagnostic file selection. `test-ci.ts` and `coverage-run.ts` preserve the package command entry points.
 - Keep the pinned model catalog deterministic; source and release builds may resolve its exported JSON path without initializing test code.
+- CI planning installs only this workspace's dependency closure. Declare its compiler, Compiler API and TypeScript configuration here; verify planning and the CI tsconfig without the root development dependencies.
 
 Run `bun run test`, `bun run typecheck`, and `bun run test:coverage`. Test files belong under `test/`; root coverage policy owns thresholds and exemptions.

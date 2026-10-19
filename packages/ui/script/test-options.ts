@@ -3,6 +3,10 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 export const testOptions = {
   timeoutMs: 120000,
   isolated: [
+    "test/components/tool/lattice-tool-renders.test.tsx",
+    "test/components/tool/browser-tool-renders.test.tsx",
+    "test/components/tool/renders/response-card.test.tsx",
+    "test/components/tool/renders/agent-config.test.tsx",
     "test/components/resource-preview.browser.test.ts",
     "test/markdown-resources.test.ts",
     "test/markdown-sanitize.test.ts",

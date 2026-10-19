@@ -13,6 +13,7 @@ import type { DesktopStartupStatus } from "./startup-page.js"
 
 type WorkProgress = Exclude<RuntimeStartupProgress, StorageMaintenanceEvent | RuntimeStartupEvent>
 const runtimeLabels: Record<RuntimeStartupStage, string> = {
+  installation: "Preparing installed modules.",
   initializing: "Preparing the runtime.",
   storage: "Opening saved data.",
   migrations: "Updating saved data.",
@@ -222,7 +223,7 @@ export class DesktopServerStartup {
       if (event.stage !== this.runtimeStage) this.stepStartedAt = this.now()
       this.runtimeStage = event.stage
       this.runtimeCurrent = current
-      this.presentationPhase = ["initializing", "storage"].includes(event.stage)
+      this.presentationPhase = ["installation", "initializing", "storage"].includes(event.stage)
         ? "storage"
         : ["migrations", "storage-recovery", "configuration"].includes(event.stage)
           ? "migration"

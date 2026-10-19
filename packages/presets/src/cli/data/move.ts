@@ -242,7 +242,7 @@ export async function executeMove(opts: MoveOptions) {
               )
               libraryMerged = true
             } catch (e) {
-              librarySpinner.stop("Failed to merge library.db", 1)
+              librarySpinner.error("Failed to merge library.db")
               errors.push(`library.db: ${e instanceof Error ? e.message : String(e)}`)
             }
           }
@@ -270,7 +270,7 @@ export async function executeMove(opts: MoveOptions) {
           const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
           spinner.stop(`Moved ${subdir}/${skippedNote}`)
         } catch (e) {
-          spinner.stop(`Failed to move ${subdir}/`, 1)
+          spinner.error(`Failed to move ${subdir}/`)
           errors.push(`${subdir}: ${e instanceof Error ? e.message : String(e)}`)
         }
       }
@@ -290,7 +290,7 @@ export async function executeMove(opts: MoveOptions) {
         await fs.rm(sourceRoot, { recursive: true, force: true })
         rmSpinner.stop("Original data removed")
       } catch (e) {
-        rmSpinner.stop("Failed to remove original data", 1)
+        rmSpinner.error("Failed to remove original data")
         prompts.log.warn("Remove manually after verification: " + shortenPath(sourceRoot))
       }
     }

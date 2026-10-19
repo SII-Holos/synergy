@@ -19,7 +19,7 @@
     "./http": "./src/http.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/browser-runtime",
     "test:ci": "bun ../testing/script/test-ci.ts",
@@ -28,7 +28,7 @@
   "dependencies": {
     "@ericsanchezok/synergy-browser-core": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
-    "@hono/standard-validator": "^0.2.0",
+    "@hono/standard-validator": "0.4.0",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
     "zod": "catalog:"
@@ -39,8 +39,7 @@
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "7.0.0-dev.20251207.1",
-    "playwright-core": "1.61.0",
+    "playwright-core": "1.64.1",
     "typescript": "catalog:"
   },
   "peerDependencies": {

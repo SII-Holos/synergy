@@ -1,6 +1,8 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator"
 
+const runtimeTimers = { setTimeout, clearTimeout, setInterval, clearInterval }
 GlobalRegistrator.register()
+Object.assign(globalThis, runtimeTimers)
 
 const originalGetContext = HTMLCanvasElement.prototype.getContext
 // @ts-expect-error - we're overriding with a simplified mock

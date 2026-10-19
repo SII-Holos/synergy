@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "@ericsanchezok/synergy-plugin": "^1.1.26",
-    "zod": "^4.0.0",
-    "solid-js": "^1.9.0"
+    "solid-js": "1.9.17",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@ericsanchezok/synergy-plugin-kit": "^1.1.26",

@@ -9,6 +9,8 @@ import { ObservabilityResourceSchema } from "./resource-schema"
 import { ObservabilityStore } from "./store"
 
 export namespace ObservabilityMigration {
+  // Reserve the writer before inspecting a schema or rows; a deferred WAL read
+  // cannot upgrade after another connection commits: https://www.sqlite.org/isolation.html
   const BATCH_SIZE = 500
   export const schemaVersion = ObservabilityStore.schemaVersion
   const schemaMetadataVersion = 4
@@ -37,17 +39,19 @@ export namespace ObservabilityMigration {
         () => copyIssues(legacy, target),
         () => copyBrowserBatches(legacy, target),
       ]
-      target.transaction(() => {
-        steps.forEach((step, index) => {
-          step()
-          progress(index + 1, steps.length)
+      target
+        .transaction(() => {
+          steps.forEach((step, index) => {
+            step()
+            progress(index + 1, steps.length)
+          })
+          runStatement(
+            target,
+            "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('legacyPerfMigratedAt', ?)",
+            String(Date.now()),
+          )
         })
-        runStatement(
-          target,
-          "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('legacyPerfMigratedAt', ?)",
-          String(Date.now()),
-        )
-      })()
+        .immediate()
     } finally {
       legacy.close(true)
     }
@@ -68,12 +72,14 @@ export namespace ObservabilityMigration {
       () => redactIssues(target),
       () => redactBrowserBatches(target),
     ]
-    target.transaction(() => {
-      steps.forEach((step, index) => {
-        step()
-        progress(index + 1, steps.length)
+    target
+      .transaction(() => {
+        steps.forEach((step, index) => {
+          step()
+          progress(index + 1, steps.length)
+        })
       })
-    })()
+      .immediate()
   }
 
   export async function synchronizeSchemaMetadata(progress: (current: number, total: number) => void = () => {}) {
@@ -88,39 +94,43 @@ export namespace ObservabilityMigration {
 
   export async function addResourceCgroupColumns(progress: (current: number, total: number) => void = () => {}) {
     const target = ObservabilityStore.initializeForMigration()
-    target.transaction(() => {
-      ObservabilityResourceSchema.applyV5(target)
-      runStatement(
-        target,
-        "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)",
-        String(schemaVersion),
-      )
-    })()
+    target
+      .transaction(() => {
+        ObservabilityResourceSchema.applyV5(target)
+        runStatement(
+          target,
+          "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)",
+          String(schemaVersion),
+        )
+      })
+      .immediate()
     progress(1, 1)
   }
 
   export async function slimMetrics(progress: (current: number, total: number) => void = () => {}) {
     const target = ObservabilityStore.initializeForMigration()
-    target.transaction(() => {
-      for (const index of [
-        "idx_obs_metrics_module_time",
-        "idx_obs_metrics_correlation_time",
-        "idx_obs_metrics_scope_time",
-      ]) {
-        runStatement(target, `DROP INDEX IF EXISTS ${index}`)
-      }
-      const columns = new Set(allRows<{ name: string }>(target, "PRAGMA table_info(obs_metrics)").map((r) => r.name))
-      for (const column of ["iso", "redaction_json"]) {
-        if (columns.has(column)) {
-          runStatement(target, `ALTER TABLE obs_metrics DROP COLUMN ${column}`)
+    target
+      .transaction(() => {
+        for (const index of [
+          "idx_obs_metrics_module_time",
+          "idx_obs_metrics_correlation_time",
+          "idx_obs_metrics_scope_time",
+        ]) {
+          runStatement(target, `DROP INDEX IF EXISTS ${index}`)
         }
-      }
-      runStatement(
-        target,
-        "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)",
-        String(schemaVersion),
-      )
-    })()
+        const columns = new Set(allRows<{ name: string }>(target, "PRAGMA table_info(obs_metrics)").map((r) => r.name))
+        for (const column of ["iso", "redaction_json"]) {
+          if (columns.has(column)) {
+            runStatement(target, `ALTER TABLE obs_metrics DROP COLUMN ${column}`)
+          }
+        }
+        runStatement(
+          target,
+          "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)",
+          String(schemaVersion),
+        )
+      })
+      .immediate()
     progress(1, 1)
   }
 

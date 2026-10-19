@@ -233,15 +233,14 @@ describe("desktop preload bridge", () => {
     nativeListener!.wrapped(null, { type: "bogus" })
     expect(events).toEqual([])
 
-    nativeListener!.wrapped(null, {
-      type: "native.loaded",
+    const event = {
+      type: "native.page",
       protocolVersion: BROWSER_PROTOCOL_VERSION,
       pageId: "p1",
-      url: "https://example.com",
-    })
-    expect(events).toEqual([
-      { type: "native.loaded", protocolVersion: BROWSER_PROTOCOL_VERSION, pageId: "p1", url: "https://example.com" },
-    ])
+      page: { id: "p1", url: "https://example.com", title: "Example", isLoading: false, lastActiveAt: null },
+    }
+    nativeListener!.wrapped(null, event)
+    expect(events).toEqual([event])
   })
 
   test("routes browser native control invocations", async () => {

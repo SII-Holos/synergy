@@ -1,4 +1,4 @@
-import type { LanguageModelV2Middleware } from "@ai-sdk/provider"
+import type { LanguageModelV4Middleware } from "@ai-sdk/provider"
 
 /**
  * Keep malformed reasoning event sequences from terminating streamText.
@@ -8,9 +8,9 @@ import type { LanguageModelV2Middleware } from "@ai-sdk/provider"
  * streamText treats that sequence as fatal. Repair only the missing boundary;
  * well-formed streams pass through unchanged.
  */
-export function reasoningStreamGuardMiddleware(): LanguageModelV2Middleware {
+export function reasoningStreamGuardMiddleware(): LanguageModelV4Middleware {
   return {
-    middlewareVersion: "v2",
+    specificationVersion: "v4",
     async wrapStream({ doStream }) {
       const result = await doStream()
       const activeReasoning = new Set<string>()

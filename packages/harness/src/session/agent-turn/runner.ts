@@ -223,7 +223,7 @@ export function startAgentWorker() {
               })
               ownedStream = LLM.takeFullStream(stream)
               await streamEvents(turn, ownedStream.stream)
-              usage = await stream.usage.catch(() => undefined)
+              usage = await Promise.resolve(stream.usage).catch(() => undefined)
             },
           ),
       })

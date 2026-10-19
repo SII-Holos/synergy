@@ -27,15 +27,7 @@ export type BrowserPageActionResult =
   | { type: "done"; cancelled?: boolean }
 
 export type BrowserShortcut =
-  | "newTab"
-  | "closeTab"
-  | "address"
-  | "find"
-  | "reload"
-  | "zoomIn"
-  | "zoomOut"
-  | "zoomReset"
-  | "print"
+  "newTab" | "closeTab" | "address" | "find" | "reload" | "zoomIn" | "zoomOut" | "zoomReset" | "print"
 
 export function browserShortcut(
   input: { type?: string; key: string; meta?: boolean; control?: boolean; alt?: boolean; shift?: boolean },

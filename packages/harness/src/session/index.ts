@@ -1921,9 +1921,7 @@ export namespace Session {
   }
 
   type UpdatePartInternalInput =
-    | MessageV2.Part
-    | { part: MessageV2.TextPart; delta: string }
-    | { part: MessageV2.ReasoningPart; delta: string }
+    MessageV2.Part | { part: MessageV2.TextPart; delta: string } | { part: MessageV2.ReasoningPart; delta: string }
 
   export async function preparePart(input: MessageV2.Part, ownerScopeID?: string): Promise<MessageV2.Part> {
     let part = input
@@ -2075,34 +2073,31 @@ export namespace Session {
         ["openai-compatible", "prompt_cache_miss_tokens"],
         ["openai", "prompt_cache_miss_tokens"],
       ])
-      const cachedInputTokens = input.usage.cachedInputTokens ?? usageCacheHitTokens ?? providerCacheHitTokens ?? 0
-      const excludesCachedTokens = !!(input.metadata?.["anthropic"] || input.metadata?.["bedrock"])
+      const cachedInputTokens =
+        input.usage.inputTokenDetails.cacheReadTokens ?? usageCacheHitTokens ?? providerCacheHitTokens ?? 0
+      const cacheWriteTokens =
+        input.usage.inputTokenDetails.cacheWriteTokens ??
+        providerMetadataNumber(input.metadata, [
+          ["anthropic", "cacheCreationInputTokens"],
+          ["bedrock", "usage", "cacheWriteInputTokens"],
+        ]) ??
+        0
       const safe = (value: number) => {
         if (!Number.isFinite(value)) return 0
         return value
       }
       const adjustedInputTokens =
+        input.usage.inputTokenDetails.noCacheTokens ??
         usageCacheMissTokens ??
         providerCacheMissTokens ??
-        (excludesCachedTokens ? (input.usage.inputTokens ?? 0) : (input.usage.inputTokens ?? 0) - cachedInputTokens)
-
-      // @ai-sdk/google 2.0.49 reports candidatesTokenCount separately from thoughtsTokenCount;
-      // OpenAI 2.0.111 already includes reasoning in output_tokens/completion_tokens.
-      const separateReasoning =
-        (input.model.api.npm === "@ai-sdk/google" || input.model.api.npm === "@ai-sdk/google-vertex") &&
-        input.model.providerID !== "google-vertex-anthropic"
+        Math.max(0, (input.usage.inputTokens ?? 0) - cachedInputTokens - cacheWriteTokens)
 
       const tokens = {
         input: safe(adjustedInputTokens),
-        output: safe((input.usage.outputTokens ?? 0) + (separateReasoning ? (input.usage.reasoningTokens ?? 0) : 0)),
-        reasoning: safe(input.usage?.reasoningTokens ?? 0),
+        output: safe(input.usage.outputTokens ?? 0),
+        reasoning: safe(input.usage?.outputTokenDetails.reasoningTokens ?? 0),
         cache: {
-          write: safe(
-            (input.metadata?.["anthropic"]?.["cacheCreationInputTokens"] ??
-              // @ts-expect-error
-              input.metadata?.["bedrock"]?.["usage"]?.["cacheWriteInputTokens"] ??
-              0) as number,
-          ),
+          write: safe(cacheWriteTokens),
           read: safe(cachedInputTokens),
         },
       }

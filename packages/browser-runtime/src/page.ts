@@ -1,4 +1,5 @@
 import type {
+  BrowserNavigation,
   BrowserBackendCommand,
   BrowserBackendResult,
   BrowserHostDownloadEntry,
@@ -23,7 +24,7 @@ export interface BrowserPageEventHandlers {
   onLoading?: (page: BrowserPageBackend, url: string) => void
   onLoaded?: (page: BrowserPageBackend) => void
   onUpdated?: (page: BrowserPageBackend) => void
-  onError?: (page: BrowserPageBackend, message: string) => void
+  onError?: (page: BrowserPageBackend, message: string, navigation?: BrowserNavigation) => void
   onCrashed?: (page: BrowserPageBackend, message: string) => void
   onDownload?: (page: BrowserPageBackend, entry: BrowserHostDownloadEntry) => void
   onFileChooser?: (page: BrowserPageBackend, request: BrowserFileChooserRequest) => void
@@ -36,6 +37,7 @@ export interface BrowserPageBackend {
   url: string
   title: string
   loading: boolean
+  navigation?: BrowserNavigation
   lastActiveAt: number | null
   isAlive(): boolean
   execute(command: BrowserBackendCommand, agentSessionID?: string): Promise<BrowserBackendResult>

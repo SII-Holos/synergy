@@ -1,6 +1,6 @@
 import { mock } from "bun:test"
 import * as childProcess from "node:child_process"
-import ts from "typescript"
+import ts from "@typescript/typescript6"
 
 const [root, base, head, serializedTasks, repetitions, fault] = process.argv.slice(2)
 const counts = { inventory: 0, batch: 0, blobs: 0, parse: 0 }
@@ -25,7 +25,7 @@ mock.module("node:child_process", () => ({
     return output
   },
 }))
-mock.module("typescript", () => ({
+mock.module("@typescript/typescript6", () => ({
   default: {
     ...ts,
     createSourceFile(...args: Parameters<typeof ts.createSourceFile>) {

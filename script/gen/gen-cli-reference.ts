@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import ts from "typescript"
+import ts from "@typescript/typescript6"
 
 /**
  * Generates docs/reference/cli.md from the static CLI registration in

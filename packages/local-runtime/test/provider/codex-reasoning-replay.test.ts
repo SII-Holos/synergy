@@ -92,7 +92,7 @@ test("same-model Codex replay reaches the SDK wire as encrypted reasoning before
         })
       }) as typeof fetch,
     })
-    const prompt = MessageV2.toModelMessage(history, {
+    const prompt = await MessageV2.toModelMessage(history, {
       model: { providerID: "openai-codex", modelID: "gpt-5", profileID: "openai-codex", apiModelID: "gpt-5" },
     })
     try {

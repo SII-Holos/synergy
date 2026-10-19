@@ -1,4 +1,4 @@
-import type { ModelMessage, ToolResultPart } from "ai"
+import type { FilePart, ModelMessage, ToolResultPart } from "ai"
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Asset } from "../asset/asset"
@@ -15,6 +15,13 @@ export async function materializeAttachmentInput(
   signal: AbortSignal,
 ): Promise<ModelMessage[]> {
   signal.throwIfAborted()
+  const fileData = (data: FilePart["data"]) => {
+    if (data !== null && typeof data === "object" && "type" in data) {
+      if (data.type === "url") return data.url
+      if (data.type === "data") return data.data
+    }
+    return data
+  }
   const resolved = new Map<string, Promise<Uint8Array>>()
   const resolve = (value: unknown): Promise<Uint8Array | undefined> => {
     const reference = typeof value === "string" ? value : value instanceof URL ? value.href : undefined
@@ -71,7 +78,10 @@ export async function materializeAttachmentInput(
     if (part.output.type !== "content") return part
     const value: typeof part.output.value = []
     for (const item of part.output.value) {
-      if (item.type !== "media" || !item.mediaType.toLowerCase().startsWith("image/")) {
+      if (
+        (item.type !== "file-data" && item.type !== "image-data") ||
+        !item.mediaType.toLowerCase().startsWith("image/")
+      ) {
         value.push(item)
         continue
       }
@@ -87,7 +97,13 @@ export async function materializeAttachmentInput(
   return Promise.all(
     messages.map(async (message): Promise<ModelMessage> => {
       if (message.role === "system" || typeof message.content === "string") return message
-      if (message.role === "tool") return { ...message, content: await Promise.all(message.content.map(toolResult)) }
+      if (message.role === "tool")
+        return {
+          ...message,
+          content: await Promise.all(
+            message.content.map((part) => (part.type === "tool-result" ? toolResult(part) : part)),
+          ),
+        }
       const content = []
       for (const part of message.content) {
         if (part.type === "tool-result") {
@@ -95,7 +111,7 @@ export async function materializeAttachmentInput(
           continue
         }
         if (part.type === "image" || (part.type === "file" && part.mediaType.toLowerCase().startsWith("image/"))) {
-          const result = await image(part.type === "image" ? part.image : part.data)
+          const result = await image(part.type === "image" ? part.image : fileData(part.data))
           if ("remote" in result)
             content.push(part.type === "image" ? { ...part, image: result.remote } : { ...part, data: result.remote })
           else if (!result.ok) content.push(omitted(result.reason))
@@ -111,7 +127,7 @@ export async function materializeAttachmentInput(
           continue
         }
         if (part.type === "file") {
-          const bytes = await resolve(part.data)
+          const bytes = await resolve(fileData(part.data))
           content.push({
             ...part,
             data: bytes

@@ -7,14 +7,7 @@ import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 
 export type TemplateName =
-  | "tool-ui"
-  | "workbench-panel"
-  | "navigation"
-  | "api-connector"
-  | "theme-icon"
-  | "slot"
-  | "shell"
-  | "skin"
+  "tool-ui" | "workbench-panel" | "navigation" | "api-connector" | "theme-icon" | "slot" | "shell" | "skin"
 
 export const PLUGIN_TEMPLATES: readonly TemplateName[] = [
   "tool-ui",
@@ -56,7 +49,11 @@ function packageJson(name: string, usesSolid: boolean) {
         zod: "^4.0.0",
         ...(usesSolid ? { "solid-js": "^1.9.0" } : {}),
       },
-      devDependencies: { "@ericsanchezok/synergy-plugin-kit": version, typescript: "^5.8.0" },
+      devDependencies: {
+        "@ericsanchezok/synergy-plugin-kit": version,
+        "@types/bun": "^1.4.3",
+        typescript: "^7.0.2",
+      },
     },
     null,
     2,
@@ -70,6 +67,7 @@ function tsconfig() {
         target: "ESNext",
         module: "ESNext",
         moduleResolution: "bundler",
+        types: ["bun"],
         strict: true,
         skipLibCheck: true,
         jsx: "preserve",
@@ -226,6 +224,7 @@ export function scaffoldPluginProject(name: string, template: TemplateName, targ
   if (template === "shell") {
     files.set("src/session.tsx", shellSessionSource)
     files.set("src/shell.css", shellCSS)
+    files.set("src/assets.d.ts", 'declare module "*.css" {}\n')
   }
   if (template === "skin") {
     files.set(

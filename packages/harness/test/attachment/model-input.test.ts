@@ -83,8 +83,8 @@ test("inline image representations, assistant files and tool media use the same 
               type: "content",
               value: [
                 { type: "text", text: "Screenshot" },
-                { type: "media", data: base64, mediaType: "image/jpeg" },
-                { type: "media", data: "AUDIO_DATA", mediaType: "audio/wav" },
+                { type: "file-data", data: base64, mediaType: "image/jpeg" },
+                { type: "file-data", data: "AUDIO_DATA", mediaType: "audio/wav" },
               ],
             },
           },
@@ -107,8 +107,8 @@ test("inline image representations, assistant files and tool media use the same 
           output: {
             value: [
               { type: "text", text: "Screenshot" },
-              { type: "media", data: base64, mediaType: "image/png" },
-              { type: "media", data: "AUDIO_DATA", mediaType: "audio/wav" },
+              { type: "file-data", data: base64, mediaType: "image/png" },
+              { type: "file-data", data: "AUDIO_DATA", mediaType: "audio/wav" },
             ],
           },
         },
@@ -143,8 +143,8 @@ test("bad image data is replaced individually without losing text, other images 
                 type: "content",
                 value: [
                   { type: "text", text: "Tool result retained" },
-                  { type: "media", data: "!!!!", mediaType: "image/png" },
-                  { type: "media", data: "https://example.org/not-base64.png", mediaType: "image/png" },
+                  { type: "file-data", data: "!!!!", mediaType: "image/png" },
+                  { type: "file-data", data: "https://example.org/not-base64.png", mediaType: "image/png" },
                 ],
               },
             },

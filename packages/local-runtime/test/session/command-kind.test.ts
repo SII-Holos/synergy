@@ -118,7 +118,7 @@ describe("command kind architecture", () => {
     }))
 
   test("non-prompt-visible command records are excluded from model prompt history", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const messages: MessageV2.WithParts[] = [
         userMessage("msg_visible_user", "real question"),
         assistantMessage("msg_visible_assistant", "msg_visible_user", "real answer"),
@@ -130,7 +130,7 @@ describe("command kind architecture", () => {
         }),
       ]
 
-      const modelMessages = MessageV2.toModelMessage(messages) as Array<{ role: string; content: string }>
+      const modelMessages = (await MessageV2.toModelMessage(messages)) as Array<{ role: string; content: string }>
       const text = JSON.stringify(modelMessages)
       expect(text).toContain("real question")
       expect(text).toContain("real answer")
@@ -182,7 +182,7 @@ describe("command kind architecture", () => {
           expect((messages[0].info.metadata as any)?.promptVisible).toBe(false)
           expect((messages[1].info.metadata as any)?.promptVisible).toBe(false)
 
-          const modelMessages = MessageV2.toModelMessage(messages) as Array<{ role: string; content: string }>
+          const modelMessages = (await MessageV2.toModelMessage(messages)) as Array<{ role: string; content: string }>
           expect(JSON.stringify(modelMessages)).not.toContain("/worktree list")
           const snapshot = await RolloutSnapshot.read({ kind: "session", scopeID: scope.id, sessionID: session.id })
           expect(snapshot.intervals.length).toBeGreaterThan(0)

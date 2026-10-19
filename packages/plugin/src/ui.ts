@@ -12,13 +12,7 @@ export interface PluginComponentProps<C extends object = PluginSurfaceContext> {
 }
 
 export type PluginHostViewId =
-  | "navigation"
-  | "route"
-  | "footer"
-  | "conversation"
-  | "composer"
-  | "workbench.side"
-  | "workbench.bottom"
+  "navigation" | "route" | "footer" | "conversation" | "composer" | "workbench.side" | "workbench.bottom"
 
 export interface PluginShellService {
   page(): PluginPageId

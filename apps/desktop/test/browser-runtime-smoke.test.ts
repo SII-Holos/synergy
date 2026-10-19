@@ -15,11 +15,25 @@ afterEach(async () => {
 describe("Electron Browser Host broker contract", () => {
   for (const fixture of [
     "browser-native-page-pool",
+    "browser-navigation",
+    "browser-network",
+    "browser-initialization",
+    "browser-presentation",
     "browser-multi-page",
     "browser-native-import",
     "browser-profile-data",
   ])
-    runtimeTest(
+    (process.env.SYNERGY_DESKTOP_BACKGROUND_TEST === "1" &&
+      ![
+        "browser-navigation",
+        "browser-network",
+        "browser-initialization",
+        "browser-profile-data",
+        "browser-multi-page",
+        "browser-presentation",
+      ].includes(fixture)
+      ? test.skip
+      : runtimeTest)(
       `validates native browser contract: ${fixture}`,
       async () => {
         const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-browser-native-smoke-"))
@@ -59,7 +73,11 @@ describe("Electron Browser Host broker contract", () => {
         const stderr = captureOutput(child.stderr)
         let exitCode: number
         try {
-          exitCode = await withTimeout(child.exited, 30_000, "Native Browser page pool smoke")
+          exitCode = await withTimeout(
+            child.exited,
+            fixture === "browser-initialization" ? 40_000 : 30_000,
+            "Native Browser page pool smoke",
+          )
         } catch (error) {
           child.kill("SIGTERM")
           await Promise.race([child.exited, new Promise((resolve) => setTimeout(resolve, 2_000))])
@@ -150,6 +168,9 @@ async function isolatedElectronEntry(directory: string, entry: string): Promise<
     [
       'import { app } from "electron";',
       'import { pathToFileURL } from "node:url";',
+      ...(process.env.SYNERGY_DESKTOP_BACKGROUND_TEST === "1"
+        ? ['app.once("ready", () => app.setActivationPolicy?.("accessory"));']
+        : []),
       `app.setPath("userData", ${JSON.stringify(path.join(directory, "user-data"))});`,
       `await import(pathToFileURL(${JSON.stringify(entry)}).href);`,
     ].join("\n"),

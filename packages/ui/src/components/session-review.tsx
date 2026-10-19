@@ -37,7 +37,7 @@ export interface SessionReviewProps {
   actions?: JSX.Element
   notice?: JSX.Element
   recordingIncomplete?: boolean
-  diffs: (FileDiff & { preloaded?: PreloadMultiFileDiffResult<any> })[]
+  diffs: (FileDiff & { preloaded?: PreloadMultiFileDiffResult<unknown, undefined> })[]
   onViewFile?: (file: string, diff: FileDiff) => void
   canViewFile?: (diff: FileDiff) => boolean
   selectedFile?: string

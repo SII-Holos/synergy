@@ -108,7 +108,7 @@ test("network tools pass real tool resolution without touching an unavailable na
             })
             const execute = resolved.executionTools.webfetch.execute!
             expect(
-              await execute({ url: "https://example.invalid" }, { toolCallId: "call_api", messages: [] }),
+              await execute({ url: "https://example.invalid" }, { context: {}, toolCallId: "call_api", messages: [] }),
             ).toMatchObject({ output: "API result" })
           } finally {
             processor.dispose("fixture")

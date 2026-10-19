@@ -14,7 +14,7 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "build": "rm -rf dist && tsc -p tsconfig.build.json"
   },
   "exports": {
@@ -129,7 +129,6 @@
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@tsconfig/node22": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "solid-js": "catalog:",
     "typescript": "catalog:",
     "zod": "catalog:"

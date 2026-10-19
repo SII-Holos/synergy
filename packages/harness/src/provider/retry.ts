@@ -94,6 +94,8 @@ export function providerRetryable(error: unknown): boolean | undefined {
     return status === 409 && source?.isRetryable === true
   }
   if (codes.some((code) => TRANSIENT_CODES.has(code))) return true
+  if (source?.name === "AI_InvalidResponseDataError" && message === "Response stream ended without a finish reason.")
+    return true
   if (
     [message, ...entries.map((entry) => entry?.message)].some(
       (value) =>

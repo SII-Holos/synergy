@@ -31,17 +31,17 @@
     "@ericsanchezok/synergy-browser-core": "workspace:*",
     "@ericsanchezok/synergy-computer-protocol": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
-    "@trycua/cua-driver": "0.30.4",
-    "electron-updater": "6.6.8",
+    "@trycua/cua-driver": "0.36.0",
+    "electron-updater": "6.8.10",
     "fflate": "0.8.3",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@types/node": "catalog:",
-    "electron": "42.5.0",
-    "electron-builder": "26.15.7",
-    "electron-builder-squirrel-windows": "26.15.7",
+    "electron": "44.9.0",
+    "electron-builder": "26.17.0",
+    "electron-builder-squirrel-windows": "26.17.0",
     "typescript": "catalog:"
   },
   "exports": {}

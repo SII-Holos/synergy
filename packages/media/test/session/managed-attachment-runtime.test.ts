@@ -25,14 +25,9 @@ runtime.run(() => {
   AgentTurn.configure({ size: 1 })
 })
 const model = { providerID: "attachment-test", modelID: "text" }
-const png = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS1kAAAAASUVORK5CYII=",
-  "base64",
-)
+const png = imagePng(1, 1)
 
-function largePng() {
-  const width = 3200
-  const height = 2048
+function imagePng(width: number, height: number) {
   const header = Buffer.alloc(13)
   header.writeUInt32BE(width, 0)
   header.writeUInt32BE(height, 4)
@@ -47,7 +42,7 @@ function largePng() {
     return result
   }
   return Buffer.concat([
-    png.subarray(0, 8),
+    Buffer.from("89504e470d0a1a0a", "hex"),
     chunk("IHDR", header),
     chunk("IDAT", deflateSync(Buffer.alloc((width * 3 + 1) * height))),
     chunk("IEND", Buffer.alloc(0)),
@@ -133,7 +128,7 @@ test("workspace file content policy preserves native selected-line reading", () 
               },
             ],
           })
-          const projected = JSON.stringify(MessageV2.toModelMessage([message]))
+          const projected = JSON.stringify(await MessageV2.toModelMessage([message]))
           expect(projected).toContain("SELECTED_CONTENT")
           expect(projected).not.toContain("BEFORE_SELECTION")
           expect(projected).not.toContain("AFTER_SELECTION")
@@ -178,7 +173,7 @@ test(
   () =>
     runtime.run(() =>
       withProvider(async (requests) => {
-        const original = largePng()
+        const original = imagePng(3200, 2048)
         const id = await Asset.write(original, "image/png", "sheet.png")
         const session = await Session.create({ workspace: null, title: "Bounded image transport" })
         const message = await createUserMessage({

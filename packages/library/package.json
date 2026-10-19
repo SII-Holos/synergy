@@ -33,24 +33,24 @@
     "./http": "./src/http.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/library",
     "test:ci": "bun ../testing/script/test-ci.ts",
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "1.0.42",
-    "@clack/prompts": "1.0.0-alpha.1",
+    "@ai-sdk/openai-compatible": "3.0.71",
+    "@clack/prompts": "1.8.1",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
-    "@hono/standard-validator": "^0.2.0",
-    "@huggingface/transformers": "4.2.0",
+    "@hono/standard-validator": "0.4.0",
+    "@huggingface/transformers": "4.3.1",
     "ai": "catalog:",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
-    "onnxruntime-web": "1.26.0-dev.20260416-b7804b056c",
-    "sqlite-vec": "0.1.7-alpha.2",
+    "onnxruntime-web": "1.30.0",
+    "sqlite-vec": "0.1.9",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -58,12 +58,11 @@
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "7.0.0-dev.20251207.1",
-    "sqlite-vec-darwin-arm64": "0.1.7-alpha.2",
-    "sqlite-vec-darwin-x64": "0.1.7-alpha.2",
-    "sqlite-vec-linux-arm64": "0.1.7-alpha.2",
-    "sqlite-vec-linux-x64": "0.1.7-alpha.2",
-    "sqlite-vec-windows-x64": "0.1.7-alpha.2",
+    "sqlite-vec-darwin-arm64": "0.1.9",
+    "sqlite-vec-darwin-x64": "0.1.9",
+    "sqlite-vec-linux-arm64": "0.1.9",
+    "sqlite-vec-linux-x64": "0.1.9",
+    "sqlite-vec-windows-x64": "0.1.9",
     "typescript": "catalog:"
   },
   "peerDependencies": {

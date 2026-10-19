@@ -492,6 +492,7 @@ describe("retained panel keyboard ownership", () => {
       await owner.getByRole("button", { name: "Notes list options", exact: true }).press("Enter")
       await page.getByRole("menuitem", { name: "Select notes", exact: true }).press("Enter")
       await page.getByRole("menu").waitFor({ state: "hidden" })
+      await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Notes list options")
       await owner.locator(".note-resource-row").press("Space")
       expect(await owner.locator(".note-resource-row").getAttribute("aria-pressed")).toBe("true")
       const original = await owner.locator(".note-list-search input").elementHandle()

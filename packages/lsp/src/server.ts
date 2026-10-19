@@ -9,6 +9,7 @@ import fs from "fs/promises"
 import { Filesystem } from "@ericsanchezok/synergy-harness/util/filesystem"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Flag } from "@ericsanchezok/synergy-harness/flag/flag"
+import { z } from "zod"
 
 export namespace LSPServer {
   const log = Log.create({ service: "lsp.server" })
@@ -100,7 +101,24 @@ export namespace LSPServer {
     ),
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"],
     async resolve(root) {
-      const tsserver = await Bun.resolve("typescript/lib/tsserver.js", ScopeContext.current.directory).catch(() => {})
+      const manifest = await Bun.resolve("typescript/package.json", root).catch(() => {})
+      if (!manifest) return
+      const metadata = z
+        .object({ version: z.string(), bin: z.object({ tsc: z.string() }).optional() })
+        .parse(await Bun.file(manifest).json())
+      // TypeScript 7 exposes its own stdio LSP through the published compiler entry:
+      // https://github.com/microsoft/typescript-go/blob/main/cmd/tsgo/lsp.go
+      if (Number.parseInt(metadata.version, 10) >= 7 && metadata.bin?.tsc) {
+        return {
+          command: {
+            command: BunProc.which(),
+            args: [path.resolve(path.dirname(manifest), metadata.bin.tsc), "--lsp", "--stdio"],
+            cwd: root,
+            env: { ...RuntimeContext.current().host.env, BUN_BE_BUN: "1" },
+          },
+        }
+      }
+      const tsserver = await Bun.resolve("typescript/lib/tsserver.js", root).catch(() => {})
       log.info("typescript server", { tsserver })
       if (!tsserver) return
       const proc = {

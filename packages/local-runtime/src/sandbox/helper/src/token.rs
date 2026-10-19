@@ -49,7 +49,7 @@ pub unsafe fn create_restricted_token() -> windows_result::Result<HANDLE> {
         &mut current_token,
     );
     if ok == 0 {
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(Error::new(hr, "OpenProcessToken failed"));
     }
 
@@ -128,7 +128,7 @@ pub unsafe fn create_restricted_token() -> windows_result::Result<HANDLE> {
     CloseHandle(current_token);
 
     if ok == 0 {
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(Error::new(hr, "CreateRestrictedToken failed"));
     }
 
@@ -152,7 +152,7 @@ pub unsafe fn create_restricted_token() -> windows_result::Result<HANDLE> {
     );
     if ok == 0 {
         CloseHandle(new_token);
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(Error::new(hr, "AllocateAndInitializeSid for Low IL failed"));
     }
 
@@ -173,7 +173,7 @@ pub unsafe fn create_restricted_token() -> windows_result::Result<HANDLE> {
 
     if ok == 0 {
         CloseHandle(new_token);
-        let hr = HRESULT::from_win32(GetLastError());
+        let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
         return Err(Error::new(hr, "SetTokenInformation IntegrityLevel failed"));
     }
 

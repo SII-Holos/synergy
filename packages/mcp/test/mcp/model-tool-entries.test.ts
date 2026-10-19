@@ -62,6 +62,7 @@ require("node:readline").createInterface({input:process.stdin}).on("line", line 
           const args = { query: "fixture query", max_results: 2 }
           const result = await search.tool.execute!(args, {
             toolCallId: "fixture",
+            context: {},
             messages: [],
             abortSignal: new AbortController().signal,
           })

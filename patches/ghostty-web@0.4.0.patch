@@ -1,0 +1,38 @@
+--- a/dist/ghostty-web.js
++++ b/dist/ghostty-web.js
+@@ -1296,7 +1296,7 @@
+         continue;
+       }
+       const C = E.getCodepoint();
+-      C === 0 || C < 32 ? B.push(" ") : B.push(String.fromCodePoint(C));
++      C === 0 || C < 32 || C > 1114111 || (C >= 55296 && C <= 57343) ? B.push(" ") : B.push(String.fromCodePoint(C));
+     }
+     return B.join("");
+   }
+@@ -1535,7 +1535,7 @@
+     A.flags & e.FAINT && (this.ctx.globalAlpha = 0.5);
+     const w = E, s = C + this.metrics.baseline;
+     let N;
+-    if (A.grapheme_len > 0 && ((k = this.currentBuffer) != null && k.getGraphemeString) ? N = this.currentBuffer.getGraphemeString(g, B) : N = String.fromCodePoint(A.codepoint || 32), this.ctx.fillText(N, w, s), A.flags & e.FAINT && (this.ctx.globalAlpha = 1), A.flags & e.UNDERLINE) {
++    if (A.grapheme_len > 0 && ((k = this.currentBuffer) != null && k.getGraphemeString) ? N = this.currentBuffer.getGraphemeString(g, B) : N = (A.codepoint == null || A.codepoint <= 0 || A.codepoint > 1114111 || (A.codepoint >= 55296 && A.codepoint <= 57343) ? " " : String.fromCodePoint(A.codepoint)), this.ctx.fillText(N, w, s), A.flags & e.FAINT && (this.ctx.globalAlpha = 1), A.flags & e.UNDERLINE) {
+       const M = C + this.metrics.baseline + 2;
+       this.ctx.strokeStyle = this.ctx.fillStyle, this.ctx.lineWidth = 1, this.ctx.beginPath(), this.ctx.moveTo(E, M), this.ctx.lineTo(E + I, M), this.ctx.stroke();
+     }
+@@ -1787,7 +1787,7 @@
+               h = this.wasmTerm.getGraphemeString(G, M);
+             }
+           else
+-            h = String.fromCodePoint(a.codepoint);
++            h = (a.codepoint < 0 || a.codepoint > 1114111 || (a.codepoint >= 55296 && a.codepoint <= 57343) ? " " : String.fromCodePoint(a.codepoint));
+           k += h, h.trim() && (w = k.length);
+         } else
+           k += " ";
+@@ -2053,7 +2053,7 @@
+     const E = (D) => {
+       if (!D || D.codepoint === 0)
+         return !1;
+-      const i = String.fromCodePoint(D.codepoint);
++      const i = (D.codepoint < 0 || D.codepoint > 1114111 || (D.codepoint >= 55296 && D.codepoint <= 57343) ? " " : String.fromCodePoint(D.codepoint));
+       return /[\w-]/.test(i);
+     };
+     if (!E(g[A]))

@@ -158,7 +158,17 @@ test("canonical execution strips common intent, preserves native values, and rep
                 yield {
                   type: "finish-step" as const,
                   finishReason: "tool-calls" as const,
-                  usage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+                  usage: {
+                    inputTokens: 1,
+                    outputTokens: 0,
+                    totalTokens: 1,
+                    inputTokenDetails: {
+                      noCacheTokens: undefined,
+                      cacheReadTokens: undefined,
+                      cacheWriteTokens: undefined,
+                    },
+                    outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+                  },
                 }
                 yield { type: "finish" as const }
               })(),
@@ -206,7 +216,7 @@ test("canonical execution strips common intent, preserves native values, and rep
         expect(JSON.stringify(parts)).not.toContain(secret)
         expect(parts.map((part) => part.state.input)).toEqual(proposed.map((call) => call.business))
         expect(parts.at(-1)?.state.status).toBe("error")
-        const replay = MessageV2.toModelMessage([{ info: user.info, parts: user.parts }, message])
+        const replay = await MessageV2.toModelMessage([{ info: user.info, parts: user.parts }, message])
         const modelCalls = replay
           .filter((item) => item.role === "assistant")
           .flatMap((item) =>

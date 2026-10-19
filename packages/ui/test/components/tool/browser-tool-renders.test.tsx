@@ -82,7 +82,7 @@ beforeAll(async () => {
     },
   }))
 
-  await import("../../../src/components/tool/renders/browser" + "?browser-tool-renders")
+  await import("../../../src/components/tool/renders/browser")
 })
 
 function render(name: string, props: Record<string, any>) {

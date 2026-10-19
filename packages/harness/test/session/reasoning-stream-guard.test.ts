@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import type { LanguageModelV2StreamPart } from "@ai-sdk/provider"
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider"
 import { extractReasoningMiddleware } from "ai"
 import { reasoningStreamGuardMiddleware } from "../../src/session/reasoning-stream-guard"
 
-function stream(parts: LanguageModelV2StreamPart[]) {
-  return new ReadableStream<LanguageModelV2StreamPart>({
+function stream(parts: LanguageModelV4StreamPart[]) {
+  return new ReadableStream<LanguageModelV4StreamPart>({
     start(controller) {
       for (const part of parts) controller.enqueue(part)
       controller.close()
@@ -12,8 +12,8 @@ function stream(parts: LanguageModelV2StreamPart[]) {
   })
 }
 
-async function collect(input: ReadableStream<LanguageModelV2StreamPart>) {
-  const result: LanguageModelV2StreamPart[] = []
+async function collect(input: ReadableStream<LanguageModelV4StreamPart>) {
+  const result: LanguageModelV4StreamPart[] = []
   const reader = input.getReader()
   while (true) {
     const item = await reader.read()
@@ -25,7 +25,7 @@ async function collect(input: ReadableStream<LanguageModelV2StreamPart>) {
 
 async function applyMiddleware(
   middleware: ReturnType<typeof reasoningStreamGuardMiddleware> | ReturnType<typeof extractReasoningMiddleware>,
-  input: ReadableStream<LanguageModelV2StreamPart>,
+  input: ReadableStream<LanguageModelV4StreamPart>,
 ) {
   const wrapped = await middleware.wrapStream!({
     doStream: async () => ({ stream: input }),
@@ -39,7 +39,7 @@ async function applyMiddleware(
 }
 
 describe("reasoningStreamGuardMiddleware", () => {
-  test("drops the orphan reasoning-end produced by an empty think block", async () => {
+  test("preserves balanced reasoning around an empty think block", async () => {
     const extracted = await applyMiddleware(
       extractReasoningMiddleware({ tagName: "think", startWithReasoning: false }),
       stream([
@@ -51,7 +51,12 @@ describe("reasoningStreamGuardMiddleware", () => {
     const guarded = await applyMiddleware(reasoningStreamGuardMiddleware(), extracted)
     const parts = await collect(guarded)
 
-    expect(parts.some((part) => part.type === "reasoning-end")).toBe(false)
+    const active = new Set<string>()
+    for (const part of parts) {
+      if (part.type === "reasoning-start") active.add(part.id)
+      if (part.type === "reasoning-end") expect(active.delete(part.id)).toBe(true)
+    }
+    expect(active.size).toBe(0)
     expect(parts.filter((part) => part.type === "text-delta")).toEqual([
       { type: "text-delta", id: "txt-0", delta: "summary" },
     ])

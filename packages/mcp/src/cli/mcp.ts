@@ -333,7 +333,7 @@ export const McpAuthCommand = cmd({
           if (status.status === "connected") {
             spinner.stop("Authentication successful!")
           } else if (status.status === "needs_client_registration") {
-            spinner.stop("Authentication failed", 1)
+            spinner.error("Authentication failed")
             Log.Default.error("mcp auth failed: needs client registration", { serverName, error: status.error })
             prompts.log.error(status.error)
             prompts.log.info("Add clientId to your MCP server config:")
@@ -349,14 +349,14 @@ export const McpAuthCommand = cmd({
     }
   }`)
           } else if (status.status === "failed") {
-            spinner.stop("Authentication failed", 1)
+            spinner.error("Authentication failed")
             Log.Default.error("mcp auth failed", { serverName, error: status.error })
             prompts.log.error(status.error)
           } else {
-            spinner.stop("Unexpected status: " + status.status, 1)
+            spinner.error("Unexpected status: " + status.status)
           }
         } catch (error) {
-          spinner.stop("Authentication failed", 1)
+          spinner.error("Authentication failed")
           Log.Default.error("mcp auth failed", {
             serverName,
             error: error instanceof Error ? error.message : String(error),
@@ -767,7 +767,7 @@ export const McpDebugCommand = cmd({
             }
           }
         } catch (error) {
-          spinner.stop("Connection failed", 1)
+          spinner.error("Connection failed")
           prompts.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
         }
 
@@ -812,7 +812,7 @@ export const McpConnectCommand = cmd({
 
     const connection = await sdk.mcp.connect({ name: serverName })
     if (connection.error) {
-      spinner.stop("Connect failed", 1)
+      spinner.error("Connect failed")
       prompts.log.error(describeError(connection.error))
       prompts.outro("Done")
       process.exitCode = 1
@@ -821,7 +821,7 @@ export const McpConnectCommand = cmd({
 
     const result = await sdk.mcp.test({ name: serverName })
     if (!result.data) {
-      spinner.stop("Connect failed", 1)
+      spinner.error("Connect failed")
       prompts.log.error(describeError(result.error))
       prompts.outro("Done")
       process.exitCode = 1
@@ -829,7 +829,8 @@ export const McpConnectCommand = cmd({
     }
 
     const connected = result.data.status === "connected"
-    spinner.stop(connected ? "Connect complete" : "Connect did not complete", connected ? 0 : 1)
+    if (connected) spinner.stop("Connect complete")
+    else spinner.error("Connect did not complete")
     reportStatus(serverName, result.data)
     if (!connected) process.exitCode = 1
     prompts.outro("Done")

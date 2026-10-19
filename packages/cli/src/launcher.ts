@@ -4,6 +4,7 @@ import os from "node:os"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { z } from "zod"
 import { serialize } from "node:v8"
+import { runtimeStartupLine } from "@ericsanchezok/synergy-util/runtime-startup"
 import {
   prepareInstalledLaunch,
   verifyInstalledWorkerPlan,
@@ -40,6 +41,8 @@ export async function launch() {
     throw new Error("An installed worker requires its parent installation pin")
   const installationRoot =
     runner && process.env.SYNERGY_INSTALLATION_PIN ? path.resolve(process.env.SYNERGY_INSTALLATION_ROOT ?? root) : root
+  if (!runner && process.env.SYNERGY_DESKTOP_STARTUP_PROGRESS === "1")
+    process.stdout.write(runtimeStartupLine({ phase: "runtime", state: "opening", stage: "installation" }))
   const generation = await prepareInstalledLaunch(installationRoot, {
     version,
     ...(!standalone ? { installedCore: path.dirname(fileURLToPath(new URL("../package.json", import.meta.url))) } : {}),

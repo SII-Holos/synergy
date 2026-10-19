@@ -47,7 +47,7 @@ describe.skipIf(!linuxGlibc)("built Linux watcher in Bun", () => {
           directory,
           order,
         ])
-        expect(JSON.parse(output)).toEqual({ patch: "parcel-2.5.6-eintr-1", onnx: "loaded", event: "observed" })
+        expect(JSON.parse(output)).toEqual({ patch: "parcel-2.6.0-eintr-1", onnx: "loaded", event: "observed" })
       } finally {
         await fs.rm(directory, { recursive: true, force: true })
       }
@@ -64,7 +64,7 @@ describe.skipIf(!linuxGlibc)("built Linux watcher in Bun", () => {
         [process.execPath, path.join(fixtures, "watcher-interrupt.cjs"), binding, path.join(directory, "files")],
         { ...process.env, WATCHER_INTERRUPTED: path.join(directory, "signal"), LD_PRELOAD: preload },
       )
-      expect(JSON.parse(output)).toEqual({ poll: "EINTR", event: "observed", patch: "parcel-2.5.6-eintr-1" })
+      expect(JSON.parse(output)).toEqual({ poll: "EINTR", event: "observed", patch: "parcel-2.6.0-eintr-1" })
     } finally {
       await fs.rm(directory, { recursive: true, force: true })
     }

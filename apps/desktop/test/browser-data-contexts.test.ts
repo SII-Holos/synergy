@@ -64,7 +64,7 @@ async function fixture() {
 
 test("profile management imports passwords and cookies with zero page targets and metadata-only results", async () => {
   const f = await fixture()
-  expect(BROWSER_PROTOCOL_VERSION).toBe(7)
+  expect(BROWSER_PROTOCOL_VERSION).toBe(8)
   const imported = await f.actions.executeProfile({
     ...f.request,
     action: {

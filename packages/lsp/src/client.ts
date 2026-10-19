@@ -1,7 +1,12 @@
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import path from "path"
-import { createMessageConnection, StreamMessageReader, StreamMessageWriter } from "vscode-jsonrpc/node"
+import {
+  CancellationTokenSource,
+  createMessageConnection,
+  StreamMessageReader,
+  StreamMessageWriter,
+} from "vscode-jsonrpc/node"
 import type { Diagnostic as VSCodeDiagnostic } from "vscode-languageserver-types"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { LANGUAGE_EXTENSIONS } from "./language"
@@ -90,40 +95,44 @@ export namespace LSPClient {
     input.signal?.addEventListener("abort", abort, { once: true })
     if (input.signal?.aborted) abort()
     l.info("sending initialize")
-    await withTimeout(
-      connection.sendRequest("initialize", {
-        rootUri: LSPPaths.url(input.root),
-        processId: input.server.process.pid,
-        workspaceFolders: [
-          {
-            name: "workspace",
-            uri: LSPPaths.url(input.root),
+    const initialized = await withTimeout(
+      connection.sendRequest<{ capabilities?: { diagnosticProvider?: boolean | { identifier?: string } } }>(
+        "initialize",
+        {
+          rootUri: LSPPaths.url(input.root),
+          processId: input.server.process.pid,
+          workspaceFolders: [
+            {
+              name: "workspace",
+              uri: LSPPaths.url(input.root),
+            },
+          ],
+          initializationOptions: {
+            ...input.server.initialization,
           },
-        ],
-        initializationOptions: {
-          ...input.server.initialization,
+          capabilities: {
+            window: {
+              workDoneProgress: true,
+            },
+            workspace: {
+              configuration: true,
+              didChangeWatchedFiles: {
+                dynamicRegistration: true,
+              },
+            },
+            textDocument: {
+              diagnostic: { relatedDocumentSupport: false },
+              synchronization: {
+                didOpen: true,
+                didChange: true,
+              },
+              publishDiagnostics: {
+                versionSupport: true,
+              },
+            },
+          },
         },
-        capabilities: {
-          window: {
-            workDoneProgress: true,
-          },
-          workspace: {
-            configuration: true,
-            didChangeWatchedFiles: {
-              dynamicRegistration: true,
-            },
-          },
-          textDocument: {
-            synchronization: {
-              didOpen: true,
-              didChange: true,
-            },
-            publishDiagnostics: {
-              versionSupport: true,
-            },
-          },
-        },
-      }),
+      ),
       45_000,
     )
       .catch((err) => {
@@ -150,6 +159,33 @@ export namespace LSPClient {
     const files: {
       [path: string]: number
     } = {}
+
+    // Provenance: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_diagnostic
+    // Local adaptation: native TypeScript uses pull diagnostics; document versions reject stale edit responses.
+    async function pullDiagnostics(file: string, version: number) {
+      const provider = initialized.capabilities?.diagnosticProvider
+      if (!provider) return
+      const cancellation = new CancellationTokenSource()
+      try {
+        const report = await withTimeout(
+          connection.sendRequest<{ kind: "full"; items: Diagnostic[] } | { kind: "unchanged" }>(
+            "textDocument/diagnostic",
+            {
+              textDocument: { uri: LSPPaths.url(file) },
+              ...(typeof provider === "object" && provider.identifier ? { identifier: provider.identifier } : {}),
+            },
+            cancellation.token,
+          ),
+          3000,
+        )
+        if (files[file] !== version || report.kind !== "full") return
+        diagnostics.set(file, report.items)
+        Bus.publish(Event.Diagnostics, { path: file, serverID: input.serverID })
+      } finally {
+        cancellation.cancel()
+        cancellation.dispose()
+      }
+    }
 
     let shutdown: Promise<void> | undefined
     const result = {
@@ -195,6 +231,7 @@ export namespace LSPClient {
               },
               contentChanges: [{ text }],
             })
+            await pullDiagnostics(input.path, next)
             return
           }
 
@@ -219,6 +256,7 @@ export namespace LSPClient {
             },
           })
           files[input.path] = 0
+          await pullDiagnostics(input.path, 0)
           return
         },
       },

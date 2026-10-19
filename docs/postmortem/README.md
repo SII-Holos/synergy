@@ -16,7 +16,7 @@ Rationale: `docs/decisions/`.
 
 `NNNN-kebab-case-title.md` sections:
 
-- **Executive summary** — failure, cause, escaped safeguard, lesson.
+- **Executive summary** — failure, cause, lesson.
 - **Summary** — failure details.
 - **Timeline** — observations and timing.
 - **Root cause** — mechanism and missing safeguards.
@@ -24,6 +24,8 @@ Rationale: `docs/decisions/`.
 - **Lessons** — durable takeaways.
 
 ## Index
+
+- [0081](0081-browser-navigation-timeouts.md)
 
 - [0080](0080-virtual-process-disclosure-demand.md)
 

@@ -1,3 +1,4 @@
+import { ObservabilityBrowserTelemetry } from "@ericsanchezok/synergy-harness/observability/browser-metrics"
 import { BrowserProfiles } from "../src/profiles"
 import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import { BROWSER_PROTOCOL_VERSION, type BrowserHostMessage } from "@ericsanchezok/synergy-browser-core"
@@ -133,6 +134,26 @@ describe("Browser Host broker authentication", () => {
         event: { type: "host.status", pageId: "page-test", status: "restarting" },
       })
 
+      const telemetry = spyOn(ObservabilityBrowserTelemetry, "emitBrowserEvent")
+      const stage = {
+        type: "page.stage" as const,
+        pageId: "page-test",
+        requestId: "request-test",
+        navigationId: "navigation-test",
+        generation: 1,
+        stage: "dom-ready" as const,
+        elapsedMs: 42,
+      }
+      BrowserBroker.handle(host, {
+        type: "page.event",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey: "scope:scope-test:session:session-test",
+        pageId: "page-test",
+        event: stage,
+      })
+      expect(telemetry).toHaveBeenCalledWith("browser.navigation.stage", owner, stage)
+      expect(host.closed).toBeNull()
+      telemetry.mockRestore()
       expect(statuses).toEqual(["page-test:restarting"])
       unsubscribe()
       BrowserEvent.remove(owner)

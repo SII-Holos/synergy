@@ -10681,6 +10681,42 @@ msgid "browser.downloads.waiting"
 msgstr "Waiting"
 
 #. js-lingui-explicit-id
+msgid "browser.failure.address"
+msgstr "The website could not be found. Check the address and try again."
+
+#. js-lingui-explicit-id
+msgid "browser.failure.certificate"
+msgstr "A secure connection could not be established. Check the website address and your device’s date and time."
+
+#. js-lingui-explicit-id
+msgid "browser.failure.denied"
+msgstr "This address cannot be opened with the current browser permissions."
+
+#. js-lingui-explicit-id
+msgid "browser.failure.details"
+msgstr "Diagnostic details"
+
+#. js-lingui-explicit-id
+msgid "browser.failure.offline"
+msgstr "You appear to be offline. Check your connection, then retry this page."
+
+#. js-lingui-explicit-id
+msgid "browser.failure.proxy"
+msgstr "The proxy connection failed. Check your proxy settings, then retry."
+
+#. js-lingui-explicit-id
+msgid "browser.failure.request"
+msgstr "The page could not complete this request. Check the page and try again."
+
+#. js-lingui-explicit-id
+msgid "browser.failure.unavailable"
+msgstr "The browser page is unavailable. Retry opening it."
+
+#. js-lingui-explicit-id
+msgid "browser.failure.uncertain"
+msgstr "The operation took too long. The page is still available; check it before trying again."
+
+#. js-lingui-explicit-id
 msgid "browser.identities.access"
 msgstr "Access"
 
@@ -10959,6 +10995,18 @@ msgstr "timeout"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
 msgstr "unsettled"
+
+#. js-lingui-explicit-id
+msgid "browser.navigation.opening"
+msgstr "Opening page…"
+
+#. js-lingui-explicit-id
+msgid "browser.navigation.slow"
+msgstr "This page is taking longer than usual. You can keep waiting or stop loading."
+
+#. js-lingui-explicit-id
+msgid "browser.navigation.stop"
+msgstr "Stop loading"
 
 #. js-lingui-explicit-id
 msgid "browser.page.back"

@@ -33,12 +33,7 @@ export interface DesktopUpdateStatus {
 export type DesktopUpdateEvent = { type: "status"; status: DesktopUpdateStatus }
 
 type BackendEvent =
-  | "update-available"
-  | "update-not-available"
-  | "download-progress"
-  | "update-downloaded"
-  | "update-cancelled"
-  | "error"
+  "update-available" | "update-not-available" | "download-progress" | "update-downloaded" | "update-cancelled" | "error"
 
 export interface DesktopUpdateBackend {
   checkForUpdates(): Promise<{ version: string | null }>

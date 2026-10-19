@@ -28,6 +28,7 @@ import { browser as B } from "@/locales/messages"
 import { resolveBrowserClientPresentation, type BrowserClientPresentationMode } from "./native-presentation-coordinator"
 import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import { resolvePendingBrowserNavigation } from "./browser-view-command"
+import { BrowserErrorMessage } from "./browser-error-message"
 import { BrowserPreparingPanel } from "./browser-preparing"
 import { useBrowserImportEntry } from "./browser-import"
 const ConsolePanel = lazy(() => import("./console-panel").then((module) => ({ default: module.ConsolePanel })))
@@ -64,15 +65,7 @@ export function BrowserPanel(props: { tab: WorkbenchPanelTab }) {
     <Show
       keyed
       when={!initial.loading ? initial() : undefined}
-      fallback={
-        <BrowserPreparingPanel
-          tab={props.tab}
-          error={
-            initial.error ? normalizeBrowserError(initial.error, lingui._(B.bootstrapFailed.id)).message : undefined
-          }
-          onRetry={() => void refetch()}
-        />
-      }
+      fallback={<BrowserPreparingPanel tab={props.tab} error={initial.error} onRetry={() => void refetch()} />}
     >
       {(state) => (
         <BrowserPanelInner catalog={state.catalog} clientPresentation={state.clientPresentation} tab={props.tab} />
@@ -306,7 +299,9 @@ function BrowserPanelInner(props: {
       <div class="browser-workspace flex h-full flex-col">
         <AddressBar
           recent={recent}
-          activeUrl={() => page()?.url ?? ""}
+          activeUrl={() =>
+            page()?.isLoading ? (page()?.navigation?.requestedURL ?? page()?.url ?? "") : (page()?.url ?? "")
+          }
           isLoading={() => page()?.isLoading ?? false}
           hasPage={() => Boolean(page())}
           onHistory={(direction) => sendPageCommand({ type: "history", direction })}
@@ -366,6 +361,26 @@ function BrowserPanelInner(props: {
             </Button>
           </div>
         </Show>
+        <Show when={page()?.navigation?.slow}>
+          <div role="status" class="flex items-center gap-2 px-3 py-2 text-text-weak">
+            <span class="flex-1">
+              {_({
+                id: "browser.navigation.slow",
+                message: "This page is taking longer than usual. You can keep waiting or stop loading.",
+              })}
+            </span>
+            <Button size="small" variant="ghost" onClick={() => sendPageCommand({ type: "stop" })}>
+              {_({ id: "browser.navigation.stop", message: "Stop loading" })}
+            </Button>
+            <Button
+              size="small"
+              variant="ghost"
+              onClick={() => browser.navigate(page()?.navigation?.requestedURL ?? page()?.url ?? "about:blank")}
+            >
+              <Trans id={B.retry.id} message={B.retry.message} />
+            </Button>
+          </div>
+        </Show>
         <Show when={browser.browserError()}>
           {(error) => (
             <div
@@ -373,7 +388,18 @@ function BrowserPanelInner(props: {
               class="flex shrink-0 items-center gap-2 border-b border-border-weak-base bg-surface-raised-base px-3 py-2 text-12 text-text-strong"
             >
               <span class="font-medium">{error().severity === "critical" ? _(B.unavailable.id) : _(B.issue.id)}</span>
-              <span class="min-w-0 flex-1 break-words text-text-weak">{error().message}</span>
+              <BrowserErrorMessage error={error()} />
+              <Show when={page()?.navigation?.phase === "failed"}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    browser.setBrowserError(null)
+                    browser.navigate(page()?.navigation?.requestedURL ?? page()?.url ?? "about:blank")
+                  }}
+                >
+                  <Trans id={B.retry.id} message={B.retry.message} />
+                </Button>
+              </Show>
               <Show
                 when={
                   error().code?.startsWith("browser_native_") &&
@@ -396,7 +422,11 @@ function BrowserPanelInner(props: {
             when={showDevPanel()}
             fallback={
               <Show
-                when={page() && page()?.url !== "about:blank"}
+                when={
+                  page() &&
+                  (page()?.url !== "about:blank" ||
+                    (page()?.navigation?.requestedURL && page()?.navigation?.requestedURL !== "about:blank"))
+                }
                 fallback={<BrowserNewTab onNavigate={browser.navigate} onImport={() => openData("import")} />}
               >
                 <BrowserSurface

@@ -1,3 +1,4 @@
+import { BrowserToolbar } from "./browser-toolbar"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { For, Show, createEffect, createMemo, createSignal, createUniqueId, onCleanup, onMount } from "solid-js"
 import { useLingui } from "@lingui/solid"
@@ -214,7 +215,7 @@ export function AddressBar(props: AddressBarProps) {
     if (action === "zoomReset") void scale(1)
   }
   onMount(() => {
-    if (!realPage()) focusAddress()
+    if (!props.activeUrl() || props.activeUrl() === "about:blank") focusAddress()
     const remove = props.onShortcut?.(shortcut)
     const key = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || !root.parentElement?.contains(event.target as Node)) return
@@ -241,7 +242,7 @@ export function AddressBar(props: AddressBarProps) {
 
   return (
     <div ref={root} class="shrink-0">
-      <div class="browser-address-bar">
+      <BrowserToolbar loading={props.isLoading()}>
         <Tooltip value={_(B.navBack)}>
           <IconButton
             class="browser-nav-button"
@@ -561,10 +562,7 @@ export function AddressBar(props: AddressBarProps) {
             </div>
           </div>
         </Popover>
-      </div>
-      <Show when={props.isLoading()}>
-        <div role="progressbar" aria-label={_(B.connecting)} class="h-0.5 animate-pulse bg-border-interactive-base" />
-      </Show>
+      </BrowserToolbar>
       <Show when={findOpen()}>
         <div class="browser-find-bar">
           <input

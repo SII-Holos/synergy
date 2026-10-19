@@ -179,7 +179,8 @@ test("official artifact verification checks reviewed signatures and repairs corr
       await Bun.write(path.join(stage, file), file === "plugin.json" ? JSON.stringify(manifest) : "{}")
     const artifact = path.join(tmp.path, "artifact.tgz")
     expect(Bun.spawnSync(["tar", "-czf", artifact, "-C", stage, ...PluginArtifact.requiredFiles]).exitCode).toBe(0)
-    const keys = (await subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair
+    const keys = await subtle.generateKey("Ed25519", true, ["sign", "verify"])
+    if (!("publicKey" in keys)) throw new Error("Ed25519 key generation did not return a key pair")
     const signer = Buffer.from(await subtle.exportKey("raw", keys.publicKey)).toString("hex")
     const payload = {
       tarballHash: sha256File(artifact),

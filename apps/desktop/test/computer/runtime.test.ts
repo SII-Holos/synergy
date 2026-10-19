@@ -27,6 +27,29 @@ function fixture() {
   return { runtime, calls }
 }
 
+test("compact native observations retain semantic targets when screenshot capture is unavailable", async () => {
+  const actions: Record<string, unknown>[] = []
+  const runtime = new ComputerRuntime(async (name, args) => {
+    if (name === "get_window_state") {
+      const { elements: _elements, ...compact } = metadata
+      return {
+        content: [],
+        structuredContent: args.tree_format === "both" ? metadata : compact,
+      }
+    }
+    actions.push(args)
+    return { content: [], structuredContent: {} }
+  })
+  const observed = await runtime.execute("background", { type: "observe", pid: 10, windowId: 20 })
+  expect(observed.observation?.actions.set_value.available).toBe(true)
+  expect(observed.images).toHaveLength(0)
+  await runtime.execute("background", {
+    type: "action",
+    input: { action: "set_value", observationId: observed.observationId!, target: { elementIndex: 0 }, value: "65" },
+  })
+  expect(actions).toEqual([expect.objectContaining({ element_token: "s12345678:0", pid: 10, window_id: 20 })])
+})
+
 test("reset rejects a late observation and a fresh observation remains usable", async () => {
   const pending = Promise.withResolvers<void>()
   const entered = Promise.withResolvers<void>()
@@ -72,8 +95,7 @@ test("actions bind to the owning task and latest exact window observation", asyn
     args: expect.objectContaining({
       pid: 10,
       window_id: 20,
-      snapshot_id: "s12345678",
-      element_index: 0,
+      element_token: "s12345678:0",
       delivery_mode: "background",
     }),
   })

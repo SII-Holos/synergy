@@ -1,7 +1,15 @@
 import fs from "fs/promises"
 import path from "path"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
-import { Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter, type Entry, type FileEntry } from "@zip.js/zip.js"
+import {
+  ERR_UNSAFE_FILENAME,
+  Uint8ArrayReader,
+  Uint8ArrayWriter,
+  ZipReader,
+  ZipWriter,
+  type Entry,
+  type FileEntry,
+} from "@zip.js/zip.js"
 import { z } from "zod"
 import { ConfigMarkdown } from "@ericsanchezok/synergy-harness/config/markdown"
 import { isPathContained } from "@ericsanchezok/synergy-harness/util/path-contain"
@@ -412,6 +420,13 @@ export namespace SkillArchive {
       try {
         entries = await reader.getEntries()
       } catch (error) {
+        if (error instanceof Error && error.message === ERR_UNSAFE_FILENAME) {
+          invalid(
+            "skill.archive_path_invalid",
+            "Archive entry path is invalid",
+            "filename" in error && typeof error.filename === "string" ? error.filename : undefined,
+          )
+        }
         invalid("skill.archive_invalid_zip", error instanceof Error ? error.message : "Invalid ZIP archive")
       }
       const shape = validateEntries(entries!, policy)

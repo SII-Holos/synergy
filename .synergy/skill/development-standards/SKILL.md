@@ -35,6 +35,10 @@ description: Route a Synergy source change to the current repository development
 4. Run the narrowest verification first, then expand according to the affected workflow.
 5. When a regression repeats after earlier fixes, trace the common owner across every producer and consumer before adding another special case. For startup/persistence changes, load both `change-persistence` and `develop-synergy`; verify real driver operations as well as parsed progress records.
 
+## Upgrade dependency groups
+
+Inventory registry versions, release channels, native artifacts and local patches before updating. Upgrade stable compatible groups together; document the smallest retained group when generated APIs or tested product behavior break. A passing compiler does not validate renamed runtime assets, compiler APIs or language-server protocols. Exercise lazy tool initialization, generated SDK calls, a real model turn with tools and image input, and actual native binaries. Keep compiler-API dependencies separate when the compiler no longer exposes that API. Reapply patches against installed sources and verify a frozen-lockfile install before acceptance.
+
 ## Capture New Rules
 
 A durable development convention is part of the implementation deliverable, not review folklore.

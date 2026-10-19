@@ -41,15 +41,15 @@
     "./launcher": "./src/launcher.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/cli dist/modules",
     "test:ci": "bun ../testing/script/test-ci.ts",
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "1.0.42",
-    "@clack/prompts": "1.0.0-alpha.1",
+    "@ai-sdk/openai-compatible": "3.0.71",
+    "@clack/prompts": "1.8.1",
     "@ericsanchezok/synergy-agent-runtime": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
@@ -57,13 +57,13 @@
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "ai": "catalog:",
-    "boxen": "8.0.1",
-    "figlet": "1.11.0",
+    "boxen": "9.0.0",
+    "figlet": "1.12.0",
     "gradient-string": "3.0.0",
     "jsonc-parser": "3.3.1",
-    "open": "10.1.2",
+    "open": "11.0.4",
     "remeda": "catalog:",
-    "yargs": "18.0.0",
+    "yargs": "18.2.0",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -71,8 +71,8 @@
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@types/yargs": "17.0.33",
-    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "@types/yargs": "17.0.35",
+    "@typescript/typescript6": "catalog:",
     "typescript": "catalog:"
   },
   "bin": {

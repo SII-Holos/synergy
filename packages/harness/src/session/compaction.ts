@@ -594,15 +594,17 @@ export namespace SessionCompaction {
       session,
       agent: { name: input.agentName },
     })
-    const modelMessages = MessageV2.projectModelMessages(projected, {
-      maxHistoryImages: input.maxHistoryImages,
-      model: {
-        providerID: input.providerID,
-        modelID: input.modelID,
-        profileID: input.profileID,
-        apiModelID: input.apiModelID,
-      },
-    }).messages
+    const modelMessages = (
+      await MessageV2.projectModelMessages(projected, {
+        maxHistoryImages: input.maxHistoryImages,
+        model: {
+          providerID: input.providerID,
+          modelID: input.modelID,
+          profileID: input.profileID,
+          apiModelID: input.apiModelID,
+        },
+      })
+    ).messages
     const items = modelMessagesToItems(modelMessages)
     if (!prior) return items
     // Chain the prior opaque artifact (which already ends in a `compaction`
@@ -906,7 +908,7 @@ export namespace SessionCompaction {
       msg.path = { cwd: directory, root: directory }
       msg = (await Session.updateMessage(msg)) as MessageV2.Assistant
       abort.throwIfAborted()
-      const modelMessages = input.request?.messages ?? MessageV2.toModelMessage(input.messages)
+      const modelMessages = input.request?.messages ?? (await MessageV2.toModelMessage(input.messages))
       const producingProvider = await awaitLocal(Provider.getProvider(model.providerID))
       if (producingProvider?.profileID) msg.profileID = producingProvider.profileID
       if (model.api.id) msg.apiModelID = model.api.id

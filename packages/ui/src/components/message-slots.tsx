@@ -18,8 +18,7 @@ export interface ExternalMessageSlotEntry {
 }
 
 export let externalMessageSlotLookup:
-  | ((slot: MessageSlotName) => readonly ExternalMessageSlotEntry[] | undefined)
-  | undefined
+  ((slot: MessageSlotName) => readonly ExternalMessageSlotEntry[] | undefined) | undefined
 
 export function setExternalMessageSlotLookup(
   fn: (slot: MessageSlotName) => readonly ExternalMessageSlotEntry[] | undefined,

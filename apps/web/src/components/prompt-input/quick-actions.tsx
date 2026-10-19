@@ -16,8 +16,7 @@ type QuickActionBase = {
 }
 
 type QuickAction =
-  | (QuickActionBase & { type: "ui"; commandId: string })
-  | (QuickActionBase & { type: "runtime"; command: string })
+  (QuickActionBase & { type: "ui"; commandId: string }) | (QuickActionBase & { type: "runtime"; command: string })
 
 type QuickActionGroup = { actions: QuickAction[] }
 

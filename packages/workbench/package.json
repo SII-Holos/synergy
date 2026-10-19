@@ -35,7 +35,7 @@
     "./http": "./src/http.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/workbench",
     "test:ci": "bun ../testing/script/test-ci.ts",
@@ -45,11 +45,11 @@
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
-    "@hono/standard-validator": "^0.2.0",
+    "@hono/standard-validator": "0.4.0",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
     "web-push": "3.6.7",
-    "yargs": "18.0.0",
+    "yargs": "18.2.0",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -58,8 +58,7 @@
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "@types/web-push": "3.6.4",
-    "@types/yargs": "17.0.33",
-    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "@types/yargs": "17.0.35",
     "typescript": "catalog:"
   },
   "peerDependencies": {

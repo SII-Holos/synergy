@@ -156,6 +156,10 @@ function findBlockStart(css: string, start: number, end: number): number {
       else if (char === quote) quote = undefined
       continue
     }
+    if (char === "\\") {
+      index++
+      continue
+    }
     if (char === '"' || char === "'") {
       quote = char
       continue
@@ -177,6 +181,10 @@ function findBlockEnd(css: string, blockStart: number, end: number): number {
     if (quote) {
       if (char === "\\") index++
       else if (char === quote) quote = undefined
+      continue
+    }
+    if (char === "\\") {
+      index++
       continue
     }
     if (char === '"' || char === "'") {
@@ -240,6 +248,10 @@ function isReducedMotionAtRule(prelude: string): boolean {
 }
 
 describe("CSS rule collection", () => {
+  test("keeps escaped selector delimiters separate from rule blocks", () => {
+    const css = String.raw`.\[\{\"\]{color:red}.target{width:100%}`
+    expect(collectRootRuleBodies(css, ".target")).toEqual(["width:100%"])
+  })
   test("keeps media-query rules out of root selector results", () => {
     const selector = "[data-component=compaction-card][data-status=running]:before"
     const css = `/*! generated CSS */@layer base{${selector}{animation:compaction-card-shimmer}@media (prefers-reduced-motion: reduce){${selector}{animation:none}}}`
@@ -879,14 +891,14 @@ describe("app production build contract", () => {
         declarations: ["overflow:auto", "overflow-anchor:none"],
       })
       expect(collectRootRuleBodies(css, "[data-component=process-viewport]").join(";")).toMatch(
-        /max-height:min\(20rem,var\(--process-viewport-limit,\s*45dvh\)\)/,
+        /max-height:min\(20rem,\s*var\(--process-viewport-limit,\s*45dvh\)\)/,
       )
       const runningProcessRules = collectRuleMatches(css, "[data-slot=process-event-icon][data-running]")
       const rootMotion = runningProcessRules
         .filter((rule) => !rule.ancestors.some((ancestor) => ancestor.startsWith("@media")))
         .map((rule) => rule.body)
         .join(";")
-      expect(rootMotion, "Missing running process icon animation").toContain("animation:process-event-spin")
+      expect(rootMotion, "Missing running process icon animation").toMatch(/animation:[^;]*\bprocess-event-spin\b/)
 
       const reducedMotion = runningProcessRules
         .filter((rule) => rule.ancestors.some(isReducedMotionAtRule))

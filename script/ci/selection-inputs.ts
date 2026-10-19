@@ -1,6 +1,6 @@
 import path from "node:path"
 import { isDeepStrictEqual } from "node:util"
-import ts from "typescript"
+import ts from "@typescript/typescript6"
 import type { SourceSnapshot } from "./revision"
 import { coverageChanges } from "./coverage-selection"
 import type { WorkspaceInput } from "./plan"

@@ -1,5 +1,6 @@
+import type { LanguageModelV2, ProviderV2 } from "@ai-sdk/provider"
 import { expect, mock, spyOn, test } from "bun:test"
-import { simulateReadableStream, type LanguageModel as Model, type Provider } from "ai"
+import { simulateReadableStream } from "ai"
 import { z } from "zod"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -35,7 +36,7 @@ for (const scenario of [
     const releasePost = Promise.withResolvers<void>()
     let toolSignal: AbortSignal | undefined
     let toolFinished = false
-    type LanguageModel = Exclude<Model, string>
+    type LanguageModel = LanguageModelV2
     type Stream = Awaited<ReturnType<LanguageModel["doStream"]>>["stream"]
     type StreamPart = Stream extends ReadableStream<infer Part> ? Part : never
     const stream = (chunks: StreamPart[]) => ({
@@ -72,7 +73,7 @@ for (const scenario of [
       },
     }
     const auxiliary: LanguageModel = { ...model, modelId: "auxiliary", doStream: async () => stream(reply()) }
-    const sdk: Provider = {
+    const sdk: ProviderV2 = {
       languageModel: (id) => (id === "auxiliary" ? auxiliary : model),
       textEmbeddingModel() {
         throw new Error("Unexpected embedding call")

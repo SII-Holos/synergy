@@ -5,6 +5,9 @@ import {
   browserNativeRecoveryFailureMessage,
   isSafeBrowserObservation,
   withCdpCommandTimeout,
+  BROWSER_NATIVE_INIT_TIMEOUT_MS,
+  type BrowserNavigation,
+  type BrowserNavigationStage,
   type BrowserBackendCommand,
   type BrowserBackendResult,
   type BrowserHostPageEvent,
@@ -15,6 +18,7 @@ import { BrowserWebContentsControl } from "./browser-webcontents-control.js"
 
 export interface BrowserNativePageInput {
   ownerKey: string
+  requestId?: string
   profile: { id: string; partition: string; revision: number }
   onPopup?(input: { page: BrowserPage; openerId: string }, page: BrowserNativePageHandle): void
   page: BrowserPage
@@ -32,6 +36,8 @@ export interface BrowserNativePageHandle {
 
 interface Generation {
   id: number
+  requestId: string
+  startedAt: number
   view: WebContentsView
   contents: WebContents
   control: BrowserWebContentsControl
@@ -41,7 +47,8 @@ interface Generation {
   cleanupEvents: () => void
   state(): BrowserPage
   navigationTimer: ReturnType<typeof setTimeout> | null
-  navigationRetries: number
+  navigation: BrowserNavigation
+  navigationURLs: Set<string>
   unresponsiveTimer: ReturnType<typeof setTimeout> | null
   capture?: { window: BrowserWindow; users: number; visible: boolean }
 }
@@ -78,6 +85,7 @@ export class BrowserNativePagePool {
 
   constructor(
     private readonly options: {
+      backgroundColor?(): string
       recoveryDelaysMs?: readonly number[]
       unresponsiveGraceMs?: number
       navigationTimeoutMs?: number
@@ -86,6 +94,32 @@ export class BrowserNativePagePool {
       onVisit?(partition: string, url: string, title: string): Promise<void>
     } = {},
   ) {}
+
+  refreshTheme(): void {
+    const color = this.options.backgroundColor?.()
+    if (!color) return
+    for (const entry of this.entries.values()) entry.generation.view.setBackgroundColor(color)
+  }
+
+  private recordStage(
+    input: BrowserNativePageInput,
+    generation: Pick<Generation, "id" | "requestId" | "startedAt" | "navigation">,
+    stage: BrowserNavigationStage,
+    errorCode?: string,
+    failurePhase?: BrowserNavigationStage,
+  ): void {
+    input.emit({
+      type: "page.stage",
+      pageId: input.page.id,
+      requestId: generation.requestId,
+      navigationId: generation.navigation.id,
+      generation: generation.id,
+      stage,
+      elapsedMs: Math.max(0, performance.now() - generation.startedAt),
+      ...(errorCode ? { errorCode } : {}),
+      ...(failurePhase ? { failurePhase } : {}),
+    })
+  }
 
   async create(input: BrowserNativePageInput, existingView?: WebContentsView): Promise<BrowserNativePageHandle> {
     const key = `${input.ownerKey}:${input.page.id}`
@@ -133,6 +167,7 @@ export class BrowserNativePagePool {
     window.contentView.addChildView(entry.generation.view)
     if (!entry.attached) {
       entry.attached = true
+      this.recordStage(entry.input, entry.generation, "mounted")
       this.updateNativeViewport(entry)
     }
     return entry.generation.view
@@ -201,10 +236,11 @@ export class BrowserNativePagePool {
     }
     const releaseCapture = command.type === "screenshot" ? this.retainCapture(entry) : undefined
     try {
-      return await entry.generation.control.execute(command, agentSessionID)
+      const result = await entry.generation.control.execute(command, agentSessionID)
+      return result.type === "page" || result.type === "navigation" ? { ...result, page: entry.state() } : result
     } catch (error) {
       if (isRecoverableWebContentsError(error, entry.generation.view.webContents)) {
-        void this.recover(entry, isCdpTimeout(error) ? "cdp-timeout" : "command-failure").catch(() => undefined)
+        void this.recover(entry, "command-failure").catch(() => undefined)
         throw restartingError(entry.state().id, "restarting", error)
       }
       throw error
@@ -264,12 +300,50 @@ export class BrowserNativePagePool {
         },
       })
     view.setBounds(bounds)
+    const color = this.options.backgroundColor?.()
+    if (color) view.setBackgroundColor(color)
     const contents = view.webContents
     const releaseLogin = registerProxyLogin(contents, input.networkProxy)
     let diagnostics: BrowserHostDiagnostics | undefined
     let control: BrowserWebContentsControl | undefined
     let cleanupEvents: (() => void) | undefined
+    const initialNavigation: BrowserNavigation = {
+      id: crypto.randomUUID(),
+      generation: id,
+      revision: 0,
+      requestedURL: restoreURL || input.page.url,
+      phase: existingView && contents.isLoading() ? "loading" : "completed",
+      slow: false,
+    }
+    const context = {
+      id,
+      requestId: input.requestId ?? crypto.randomUUID(),
+      startedAt: performance.now(),
+      navigation: initialNavigation,
+    }
+    this.recordStage(input, context, "received")
+    const deadline = Date.now() + BROWSER_NATIVE_INIT_TIMEOUT_MS
+    const initialize = async <T>(operation: Promise<T>, phase: BrowserNavigationStage): Promise<T> => {
+      try {
+        const result = await withCdpCommandTimeout(operation, phase, Math.max(1, deadline - Date.now()))
+        this.recordStage(input, context, phase)
+        return result
+      } catch (cause) {
+        this.recordStage(input, context, "failed", "browser_native_init_failed", phase)
+        throw new BrowserProtocolError(
+          {
+            code: "browser_native_init_failed",
+            message: "The browser page could not be prepared.",
+            retryable: true,
+            pageId: input.page.id,
+            suggestedAction: "Retry opening the page.",
+          },
+          { cause },
+        )
+      }
+    }
     try {
+      let generation: Generation | undefined
       let lastState = input.page
       const state = (): BrowserPage =>
         contents.isDestroyed()
@@ -278,7 +352,8 @@ export class BrowserNativePagePool {
               id: input.page.id,
               url: (contents.getURL() || restoreURL || input.page.url).slice(0, 20_000),
               title: contents.getTitle().slice(0, 20_000),
-              isLoading: contents.isLoading(),
+              isLoading: ["loading", "committed"].includes((generation?.navigation ?? initialNavigation).phase),
+              navigation: { ...(generation?.navigation ?? initialNavigation) },
               lastActiveAt: null,
             })
       const createControl = () =>
@@ -289,22 +364,26 @@ export class BrowserNativePagePool {
           pageState: state,
           initialNavigationURL: existingView ? restoreURL : undefined,
           onWindowOpen: (details) => this.openPopup(input, details),
+          onNavigationRequested: (url) => {
+            if (generation) this.beginNavigation(input, generation, url)
+          },
           onNavigationBlocked: (url, reason) =>
             input.emit({ type: "page.error", pageId: input.page.id, url, message: reason }),
         })
       if (existingView) control = createControl()
-      await configureProfileProxy(contents.session, input.networkProxy)
-      if (!existingView) await contents.loadURL("about:blank")
+      await initialize(configureProfileProxy(contents.session, input.networkProxy), "native.proxy")
+      if (!existingView) await initialize(contents.loadURL("about:blank"), "native.bootstrap")
       diagnostics = new BrowserHostDiagnostics({
         pageId: input.page.id,
         contents,
         downloadDir: input.downloadDir,
         emitHostEvent: input.emit,
       })
-      await diagnostics.start()
+      await initialize(diagnostics.start(), "native.guards")
       control ??= createControl()
-      await control.setNativeViewport({ width: bounds.width, height: bounds.height })
-      const generation: Generation = {
+      await initialize(control.setNativeViewport({ width: bounds.width, height: bounds.height }), "native.viewport")
+      generation = {
+        ...context,
         id,
         view,
         contents,
@@ -315,11 +394,13 @@ export class BrowserNativePagePool {
         cleanupEvents: () => undefined,
         state,
         navigationTimer: null,
-        navigationRetries: 0,
+        navigation: initialNavigation,
+        navigationURLs: new Set([initialNavigation.requestedURL]),
         unresponsiveTimer: null,
       }
       cleanupEvents = this.bindPageEvents(input, generation)
       generation.cleanupEvents = cleanupEvents
+      this.recordStage(input, generation, "ready")
       if (!existingView && restoreURL && restoreURL !== "about:blank") {
         await control.execute({ type: "navigate", url: restoreURL, source: "user" }, undefined, false)
       }
@@ -327,8 +408,11 @@ export class BrowserNativePagePool {
     } catch (error) {
       cleanupEvents?.()
       releaseLogin()
-      const cleanup = await Promise.allSettled([control?.dispose(), diagnostics?.dispose()].filter(Boolean))
-      if (!contents.isDestroyed()) contents.close()
+      const cleanup = await Promise.allSettled([
+        control?.dispose(),
+        diagnostics?.dispose(),
+        closeWebContents(contents, 1_000),
+      ])
       const failures = cleanup.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
       if (failures.length) {
         throw new AggregateError([error, ...failures], "Native Browser page creation and cleanup both failed.")
@@ -374,6 +458,7 @@ export class BrowserNativePagePool {
         let ready = false
         const input = {
           ...parent,
+          requestId: crypto.randomUUID(),
           page,
           emit: (event: BrowserHostPageEvent) => (ready ? parent.emit(event) : pending.push(event)),
         }
@@ -396,46 +481,112 @@ export class BrowserNativePagePool {
     }
   }
 
-  private bindPageEvents(input: BrowserNativePageInput, generation: Generation): () => void {
-    const contents = generation.view.webContents
-    const loading = () => {
-      input.emit({ type: "page.loading", pageId: input.page.id, url: contents.getURL().slice(0, 20_000) })
-      this.armNavigationWatchdog(input, generation)
+  private beginNavigation(input: BrowserNativePageInput, generation: Generation, url: string): void {
+    this.clearNavigationWatchdog(generation)
+    generation.navigationURLs = new Set([url])
+    generation.navigation = {
+      id: crypto.randomUUID(),
+      generation: generation.id,
+      revision: generation.navigation.revision + 1,
+      requestedURL: url.slice(0, 20_000),
+      phase: "loading",
+      slow: false,
     }
-    const loaded = () => {
+    this.recordStage(input, generation, "dispatched")
+    input.emit({ type: "page.updated", page: generation.state() })
+    this.armNavigationWatchdog(input, generation)
+  }
+
+  private updateNavigation(
+    input: BrowserNativePageInput,
+    generation: Generation,
+    patch: Partial<BrowserNavigation>,
+  ): void {
+    generation.navigation = { ...generation.navigation, ...patch, revision: generation.navigation.revision + 1 }
+    input.emit({ type: "page.updated", page: generation.state() })
+  }
+
+  private bindPageEvents(input: BrowserNativePageInput, generation: Generation): () => void {
+    const contents = generation.contents
+    const navigating = (_event: Electron.Event, url: string, inPage: boolean, mainFrame: boolean) => {
+      if (!mainFrame || inPage) return
+      if (generation.navigation.phase !== "loading" || generation.navigation.requestedURL !== url)
+        this.beginNavigation(input, generation, url)
+    }
+    const loading = () => {
+      if (!["loading", "committed"].includes(generation.navigation.phase))
+        this.beginNavigation(input, generation, contents.getURL() || input.page.url)
+      else this.armNavigationWatchdog(input, generation)
+    }
+    const redirected = (_event: Electron.Event, url: string, _inPage: boolean, mainFrame: boolean) => {
+      if (mainFrame) generation.navigationURLs.add(url)
+    }
+    const committed = (_event: Electron.Event, url: string) => {
+      generation.navigationURLs.add(url)
+      this.recordStage(input, generation, "committed")
+      this.updateNavigation(input, generation, { phase: "committed" })
+    }
+    const inPage = (_event: Electron.Event, _url: string, mainFrame: boolean) => {
+      if (!mainFrame) return
       this.clearNavigationWatchdog(generation)
-      // A completed navigation (or terminal failure) ends one navigation
-      // attempt. Loading events fired mid-navigation — including redirects —
-      // must never reset this counter, or a redirect loop would bypass the
-      // single automatic retry and reload forever.
-      generation.navigationRetries = 0
+      this.updateNavigation(input, generation, { phase: "completed", slow: false })
+    }
+    const finished = () => {
+      if (!generation.navigationURLs.has(contents.getURL())) return
+      this.clearNavigationWatchdog(generation)
+      if (generation.navigation.phase === "failed") return
+      this.updateNavigation(input, generation, { phase: "completed", slow: false })
+      this.recordStage(input, generation, "completed")
       input.emit({ type: "page.loaded", page: generation.state() })
       void this.options.onVisit?.(input.profile.partition, contents.getURL(), contents.getTitle()).catch(() => {
-        input.emit({ type: "page.error", pageId: input.page.id, message: "Recent browser history could not be saved." })
+        console.warn("Recent browser history could not be saved.")
       })
     }
-    const updated = () => input.emit({ type: "page.updated", page: generation.state() })
-    const failed = (_event: Electron.Event, _code: number, message: string, url: string) => {
+    const stopped = () => {
+      if (contents.isLoading()) return
       this.clearNavigationWatchdog(generation)
-      generation.navigationRetries = 0
+      if (["loading", "committed"].includes(generation.navigation.phase)) this.recordStage(input, generation, "stopped")
+      if (["loading", "committed"].includes(generation.navigation.phase))
+        this.updateNavigation(input, generation, { phase: "stopped", slow: false })
+    }
+    const updated = () => this.updateNavigation(input, generation, {})
+    const failed = (_event: Electron.Event, code: number, message: string, url: string, mainFrame: boolean) => {
+      if (!mainFrame || code === -3 || (url && !generation.navigationURLs.has(url))) return
+      this.clearNavigationWatchdog(generation)
+      this.recordStage(input, generation, "failed", `browser_load_${code}`)
+      this.updateNavigation(input, generation, {
+        phase: "failed",
+        slow: false,
+        error: { code: `browser_load_${code}`, message: message.slice(0, 100_000) },
+      })
       input.emit({
         type: "page.error",
         pageId: input.page.id,
         url: url.slice(0, 20_000),
         message: message.slice(0, 100_000),
+        navigation: { ...generation.navigation },
       })
     }
+    const domReady = () => this.recordStage(input, generation, "dom-ready")
+    contents.on("dom-ready", domReady)
+    contents.on("did-start-navigation", navigating)
     contents.on("did-start-loading", loading)
-    contents.on("did-stop-loading", loaded)
-    contents.on("did-navigate", updated)
-    contents.on("did-navigate-in-page", updated)
+    contents.on("did-finish-load", finished)
+    contents.on("did-stop-loading", stopped)
+    contents.on("did-redirect-navigation", redirected)
+    contents.on("did-navigate", committed)
+    contents.on("did-navigate-in-page", inPage)
     contents.on("page-title-updated", updated)
     contents.on("did-fail-load", failed)
     return () => {
+      contents.off("dom-ready", domReady)
+      contents.off("did-start-navigation", navigating)
       contents.off("did-start-loading", loading)
-      contents.off("did-stop-loading", loaded)
-      contents.off("did-navigate", updated)
-      contents.off("did-navigate-in-page", updated)
+      contents.off("did-finish-load", finished)
+      contents.off("did-stop-loading", stopped)
+      contents.off("did-redirect-navigation", redirected)
+      contents.off("did-navigate", committed)
+      contents.off("did-navigate-in-page", inPage)
       contents.off("page-title-updated", updated)
       contents.off("did-fail-load", failed)
       this.clearGenerationTimers(generation)
@@ -469,33 +620,22 @@ export class BrowserNativePagePool {
       }, this.options.unresponsiveGraceMs ?? DEFAULT_UNRESPONSIVE_GRACE_MS)
     })
     contents.on("responsive", () => {
-      if (!generation.unresponsiveTimer) return
-      clearTimeout(generation.unresponsiveTimer)
+      if (generation.unresponsiveTimer) clearTimeout(generation.unresponsiveTimer)
       generation.unresponsiveTimer = null
+      if (entry.closing || entry.generation !== generation) return
+      const stillLoading = ["loading", "committed"].includes(generation.navigation.phase)
+      if (generation.navigation.slow && (!stillLoading || generation.navigationTimer))
+        this.updateNavigation(entry.input, generation, { slow: false })
     })
   }
 
   private async handleUnresponsive(entry: Entry, generation: Generation): Promise<void> {
     if (entry.closing || entry.generation !== generation) return
-    if (!(await probeWebContents(generation.view.webContents))) {
-      await this.recover(entry, "unresponsive")
-      return
-    }
-    // A live CDP channel does not prove the main thread is healthy: a wedged
-    // page can answer probes forever. Bound the healthy-reload path with the
-    // shared recovery budget so it cannot reload indefinitely.
-    if (!this.consumeRecoveryBudget(entry)) {
-      this.markFailed(entry, browserNativeRecoveryFailureMessage("unresponsive"))
-      return
-    }
-    entry.input.emit({ type: "host.status", pageId: entry.state().id, status: "restarting" })
-    generation.view.webContents.stop()
-    generation.view.webContents.reload()
-    entry.input.emit({ type: "host.status", pageId: entry.state().id, status: "ready" })
+    this.updateNavigation(entry.input, generation, { slow: true })
   }
 
   private armNavigationWatchdog(input: BrowserNativePageInput, generation: Generation): void {
-    this.clearNavigationWatchdog(generation)
+    if (generation.navigationTimer) return
     generation.navigationTimer = setTimeout(() => {
       generation.navigationTimer = null
       void this.handleNavigationTimeout(input, generation).catch(() => undefined)
@@ -505,30 +645,7 @@ export class BrowserNativePagePool {
   private async handleNavigationTimeout(input: BrowserNativePageInput, generation: Generation): Promise<void> {
     const entry = this.entries.get(`${input.ownerKey}:${input.page.id}`)
     if (!entry || entry.closing || entry.generation !== generation) return
-    const contents = generation.view.webContents
-    contents.stop()
-    if (!(await probeWebContents(contents))) {
-      await this.recover(entry, "navigation-liveness")
-      return
-    }
-    if (generation.navigationRetries === 0) {
-      // The single automatic retry is also bounded by the shared recovery
-      // budget so a navigation loop can never reload the page forever.
-      if (!this.consumeRecoveryBudget(entry)) {
-        this.markFailed(entry, browserNativeRecoveryFailureMessage("budget"))
-        return
-      }
-      generation.navigationRetries++
-      contents.reload()
-      this.armNavigationWatchdog(input, generation)
-      return
-    }
-    input.emit({
-      type: "page.error",
-      pageId: input.page.id,
-      url: contents.getURL().slice(0, 20_000),
-      message: "The main document did not finish loading after one automatic retry.",
-    })
+    this.updateNavigation(input, generation, { slow: true })
   }
 
   private recover(entry: Entry, reason: string): Promise<void> {
@@ -577,7 +694,10 @@ export class BrowserNativePagePool {
         if (entry.closing) return
         const previous = entry.generation
         const bounds = previous.view.getBounds()
-        const restoreURL = previous.state().url || entry.input.page.url
+        const restoreURL =
+          previous.navigation.phase === "failed" || previous.navigation.phase === "loading"
+            ? previous.navigation.requestedURL
+            : previous.state().url || entry.input.page.url
         try {
           const next = await this.createGeneration(entry.input, ++entry.generationSequence, restoreURL, bounds)
           entry.generation = next
@@ -704,39 +824,8 @@ export class BrowserNativePagePool {
   }
 }
 
-async function probeWebContents(contents: WebContents): Promise<boolean> {
-  if (contents.isDestroyed()) return false
-  let attached = false
-  try {
-    if (!contents.debugger.isAttached()) {
-      contents.debugger.attach("1.3")
-      attached = true
-    }
-    await withCdpCommandTimeout(
-      contents.debugger.sendCommand("Runtime.evaluate", { expression: "1", returnByValue: true }),
-      "Runtime.evaluate",
-      5_000,
-    )
-    return true
-  } catch {
-    return false
-  } finally {
-    // Detach only when this probe performed the attach; a transport-owned
-    // attachment (control transport) must be left untouched.
-    if (attached && !contents.isDestroyed() && contents.debugger.isAttached()) contents.debugger.detach()
-  }
-}
-
-function isCdpTimeout(error: unknown): boolean {
-  return error instanceof Error && /CDP command .* timed out/i.test(error.message)
-}
-
 function isRecoverableWebContentsError(error: unknown, contents: WebContents): boolean {
-  return (
-    contents.isDestroyed() ||
-    isCdpTimeout(error) ||
-    (error instanceof Error && /webcontents is unavailable/i.test(error.message))
-  )
+  return contents.isDestroyed() || (error instanceof Error && /webcontents is unavailable/i.test(error.message))
 }
 
 function restartingError(pageId: string, state: "restarting" | "failed", cause?: unknown): BrowserProtocolError {
@@ -811,12 +900,12 @@ function configureProfileProxy(
 const proxyLogins = new Map<WebContents, { username: string; password: string }>()
 const onProxyLogin: (
   event: Electron.Event,
-  contents: WebContents,
+  contents: WebContents | null,
   details: Electron.AuthenticationResponseDetails,
   authInfo: Electron.AuthInfo,
   callback: (username?: string, password?: string) => void,
 ) => void = (event, contents, _details, authInfo, callback) => {
-  const credentials = proxyLogins.get(contents)
+  const credentials = contents ? proxyLogins.get(contents) : undefined
   if (!credentials || !authInfo.isProxy) return
   event.preventDefault()
   callback(credentials.username, credentials.password)

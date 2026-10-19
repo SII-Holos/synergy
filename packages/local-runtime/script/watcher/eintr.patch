@@ -8,5 +8,5 @@
 +++ b/src/binding.cc
 @@ -248,2 +248,3 @@
  Object Init(Env env, Object exports) {
-+  exports.Set("synergyWatcherPatch", String::New(env, "parcel-2.5.6-eintr-1"));
++  exports.Set("synergyWatcherPatch", String::New(env, "parcel-2.6.0-eintr-1"));
    exports.Set(

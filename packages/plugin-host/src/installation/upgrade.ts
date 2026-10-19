@@ -1,17 +1,19 @@
 import path from "node:path"
 import { computeManifestHash } from "@ericsanchezok/synergy-plugin/integrity"
 import { PluginActivationJournal } from "./activation-journal"
-import { FULL_COMPONENTS, PRESET_IDS } from "./catalog"
+import { ASSEMBLY_PRESET_IDS, PRESET_IDS, presetPackage } from "./catalog"
 import { readPluginManifest } from "./plugin-manifest"
 import type { InstalledGeneration } from "./generations"
 import type { prepareInstallation } from "./manager"
 import { legacyComponentSelections } from "./selection-upgrade"
 
-const official = new Set(
-  [...FULL_COMPONENTS, ...PRESET_IDS, "workflows", "connections", "web-app", "desktop-app"].map(
-    (id) => `@ericsanchezok/synergy-${id}`,
-  ),
-)
+const official = new Set([
+  ...ASSEMBLY_PRESET_IDS.map((id) => `@ericsanchezok/synergy-${id}`),
+  ...PRESET_IDS.flatMap((id) => {
+    const preset = presetPackage(id, "local")
+    return [preset.name, ...Object.keys(preset.dependencies)]
+  }),
+])
 
 export function upgradeInstallationRoots(previous: InstalledGeneration, version: string) {
   const roots = Object.fromEntries(

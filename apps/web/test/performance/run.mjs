@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises"
 const [repository, output, panels] = process.argv.slice(2)
 if (!repository || !output)
   throw new Error("Usage: bun test/performance/run.mjs <repository> <fresh temporary run directory> [panels]")
-if (Bun.version !== "1.4.2") throw new Error("Use the pinned Bun 1.4.2 runtime")
+if (Bun.version !== "1.4.3") throw new Error("Use the pinned Bun 1.4.3 runtime")
 const repo = path.resolve(repository),
   home = path.resolve(output)
 await mkdir(home, { recursive: true })

@@ -44,12 +44,20 @@ export async function stageEmbeddingRuntimeAssets(options: {
 export function standaloneEmbeddingBuildPlugin(): BunPlugin {
   const nativeStub = path.join(import.meta.dir, "embedding-native-stub.ts")
   const onnxRuntime = path.join(import.meta.dir, "embedding-onnxruntime-web.ts")
+  const require = createRequire(path.resolve(import.meta.dir, "../package.json"))
+  // The distributed bundle hides this gateway behind createRequire; source bundling keeps WASM substitution visible.
+  // Upstream: https://unpkg.com/@huggingface/transformers@4.3.1/src/backends/onnx-node.js
+  const transformers = path.resolve(
+    path.dirname(require.resolve("@huggingface/transformers")),
+    "../src/transformers.js",
+  )
   return {
     name: "standalone-embedding-runtime",
     setup(build) {
-      build.onResolve({ filter: /^(onnxruntime-node|sharp)$/ }, (args) => {
+      build.onResolve({ filter: /^@huggingface\/transformers$/ }, () => ({ path: transformers }))
+      build.onResolve({ filter: /^(\.\/onnx-node\.js|onnxruntime-node|sharp)$/ }, (args) => {
         if (!args.importer.replaceAll("\\", "/").includes("/@huggingface/transformers/")) return
-        return { path: args.path === "onnxruntime-node" ? onnxRuntime : nativeStub }
+        return { path: args.path === "sharp" ? nativeStub : onnxRuntime }
       })
     },
   }

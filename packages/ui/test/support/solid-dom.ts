@@ -1,6 +1,8 @@
 import { plugin } from "bun"
 import { transformAsync } from "@babel/core"
 import { JSDOM } from "jsdom"
+import solid from "babel-preset-solid"
+import typescript from "@babel/preset-typescript"
 
 export async function setupSolidDOM() {
   const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "https://example.test" })
@@ -24,9 +26,10 @@ export async function setupSolidDOM() {
       build.onLoad({ filter: /\.tsx$/ }, async ({ path }) => ({
         contents: (await transformAsync(await Bun.file(path).text(), {
           filename: path,
+          parserOpts: { plugins: ["jsx"] },
           presets: [
-            [import.meta.resolve("babel-preset-solid"), { generate: "dom" }],
-            [import.meta.resolve("@babel/preset-typescript"), { isTSX: true, allExtensions: true }],
+            [solid, { generate: "dom" }],
+            [typescript, { ignoreExtensions: true, onlyRemoveTypeImports: false }],
           ],
           sourceMaps: "inline",
         }))!.code!,

@@ -1,7 +1,7 @@
 import { DiffLineAnnotation, FileContents, FileDiffOptions } from "@pierre/diffs"
 import { ComponentProps } from "solid-js"
 
-export type DiffProps<T = {}> = FileDiffOptions<T> & {
+export type DiffProps<T = {}> = FileDiffOptions<T, undefined> & {
   before: FileContents
   after: FileContents
   annotations?: DiffLineAnnotation<T>[]
@@ -62,7 +62,7 @@ const unsafeCSS = `
   }
 }`
 
-export function createDefaultOptions<T>(style: FileDiffOptions<T>["diffStyle"]) {
+export function createDefaultOptions<T>(style: FileDiffOptions<T, undefined>["diffStyle"]) {
   return {
     theme: "Synergy",
     themeType: "system",

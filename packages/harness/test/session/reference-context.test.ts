@@ -164,17 +164,14 @@ test("migration refreshes materialized history across batches and records alread
         const session = await Session.create({})
         const scopeID = Identifier.asScopeID(session.scope.id)
         const sessionID = Identifier.asSessionID(session.id)
-        const infos = Array.from(
-          { length: 205 },
-          (_, index): MessageV2.User => ({
-            id: Identifier.ascending("message"),
-            sessionID,
-            role: "user",
-            agent: "test",
-            model: { providerID: "test", modelID: "test" },
-            time: { created: index + 1 },
-          }),
-        )
+        const infos = Array.from({ length: 205 }, (_, index): MessageV2.User => ({
+          id: Identifier.ascending("message"),
+          sessionID,
+          role: "user",
+          agent: "test",
+          model: { providerID: "test", modelID: "test" },
+          time: { created: index + 1 },
+        }))
         await Storage.transaction((tx) =>
           tx.writeMany(
             infos.map((value) => ({

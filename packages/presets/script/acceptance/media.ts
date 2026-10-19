@@ -92,7 +92,7 @@ export function media(settings: Settings): Driver {
               },
             ],
           })
-          const projected = JSON.stringify(MessageV2.toModelMessage([request]))
+          const projected = JSON.stringify(await MessageV2.toModelMessage([request]))
           const policy: Array<{ filename: string; original: string; stored: string; retainedBinary: boolean }> = []
           const binarySession = await Session.create({ workspace: null, title: "Binary transport policy" })
           for (const [filename, mime, prefix] of [

@@ -378,12 +378,23 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           break
         }
         case "page.error": {
+          const navigation = store.session.pages.find((page) => page.id === msg.pageId)?.navigation
+          if (
+            msg.navigation &&
+            navigation &&
+            (msg.navigation.generation !== navigation.generation ||
+              msg.navigation.id !== navigation.id ||
+              navigation.phase !== "failed")
+          )
+            break
           if (msg.epoch !== catalogSnapshot.epoch || msg.seq > catalogSnapshot.seq)
             store.setPageLoading(msg.pageId, false)
           store.setBrowserError({
             pageId: msg.pageId,
             severity: "error",
             message: msg.message ?? "Browser page error",
+            navigation: msg.navigation,
+            code: msg.navigation?.error?.code,
           })
           break
         }

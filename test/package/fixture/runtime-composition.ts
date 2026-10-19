@@ -81,18 +81,16 @@ const runtime = full
       network: { hostname: "127.0.0.1", port: 0 },
     })
 
-const { Config, ConfigExtensions, ConfigRegistrationLockedError } = await import(
-  "@ericsanchezok/synergy-harness/config"
-)
+const { Config, ConfigExtensions, ConfigRegistrationLockedError } =
+  await import("@ericsanchezok/synergy-harness/config")
 const { ToolRegistry } = await import("@ericsanchezok/synergy-harness/tools")
 const { Scope } = await import("@ericsanchezok/synergy-harness/scope")
 const { ScopeContext } = await import("@ericsanchezok/synergy-harness/context")
 const { Session } = await import("@ericsanchezok/synergy-harness/session")
 const { Identifier } = await import("@ericsanchezok/synergy-harness/id/id")
 const { ServerProcessLock } = await import("@ericsanchezok/synergy-harness/util/server-process-lock")
-const { MigrationRegistry, MigrationRegistrationLockedError } = await import(
-  "@ericsanchezok/synergy-harness/persistence"
-)
+const { MigrationRegistry, MigrationRegistrationLockedError } =
+  await import("@ericsanchezok/synergy-harness/persistence")
 let database: { query(sql: string): { get(): unknown } } | undefined
 try {
   await runtime.run(async () => {
@@ -171,8 +169,8 @@ try {
       ["plugin-host", "plugin"],
       ["mcp", "mcp"],
       ["lsp", "lsp"],
-    ]) {
-      assert.equal(field! in Config.Info.shape, enabled(domain!), `unexpected config owner ${domain}`)
+    ] as const) {
+      assert.equal(field in Config.Info.shape, enabled(domain), `unexpected config owner ${domain}`)
     }
     for (const domain of ["browser", "library", "note", "channel-feishu"]) {
       assert.equal(ToolRegistry.toolProviderIDs().includes(domain), enabled(domain), `unexpected tool owner ${domain}`)

@@ -190,8 +190,17 @@ export class BrowserHostBrokerClient {
       this.socket?.close(4008, "Browser Host received a message for the wrong protocol role")
       return
     }
-    // A page command can be waiting synchronously for this response.
-    if (message.type === "page.command" && message.command.type === "dialog.respond") {
+    const existingKey = message.type === "page.create" ? undefined : `${message.ownerKey}:${message.pageId}`
+    const interrupt =
+      existingKey &&
+      this.pages.has(existingKey) &&
+      (message.type === "page.close" ||
+        (message.type === "page.command" &&
+          (message.command.type === "stop" ||
+            (["navigate", "history", "reload"].includes(message.command.type) &&
+              "source" in message.command &&
+              message.command.source === "user"))))
+    if (interrupt || (message.type === "page.command" && message.command.type === "dialog.respond")) {
       await this.dispatch(message, epoch)
       return
     }
@@ -289,6 +298,7 @@ export class BrowserHostBrokerClient {
     if (!this.options.nativePool) throw new Error("This Browser Host has no native page capability.")
     return this.options.nativePool.create({
       ownerKey: message.ownerKey,
+      requestId: message.requestId,
       page: message.page,
       profile: message.profile,
       onPopup: (input, page) => {

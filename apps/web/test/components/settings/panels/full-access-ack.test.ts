@@ -1,3 +1,5 @@
+import solid from "babel-preset-solid"
+import typescript from "@babel/preset-typescript"
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { plugin } from "bun"
 import { transformAsync } from "@babel/core"
@@ -17,9 +19,10 @@ await plugin({
     build.onLoad({ filter: /\.tsx$/ }, async ({ path }) => ({
       contents: (await transformAsync(await Bun.file(path).text(), {
         filename: path,
+        parserOpts: { plugins: ["jsx"] },
         presets: [
-          [import.meta.resolve("babel-preset-solid"), { generate: "dom" }],
-          [import.meta.resolve("@babel/preset-typescript"), { isTSX: true, allExtensions: true }],
+          [solid, { generate: "dom" }],
+          [typescript, { ignoreExtensions: true, onlyRemoveTypeImports: false }],
         ],
         sourceMaps: "inline",
       }))!.code!,

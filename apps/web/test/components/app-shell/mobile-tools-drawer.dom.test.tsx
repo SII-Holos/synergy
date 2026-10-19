@@ -113,6 +113,7 @@ test("Escape closes settings before tools and restores each entry", async () => 
   await page.getByRole("button", { name: "Open tools" }).click()
   await page.getByRole("button", { name: "Settings", exact: true }).click()
   await page.getByRole("dialog", { name: "Settings fixture" }).waitFor()
+  await page.getByRole("dialog", { name: "Tools", exact: true }).waitFor({ state: "hidden" })
   expect(await page.getByRole("dialog", { name: "Tools", exact: true }).count()).toBe(0)
   await page.keyboard.press("Escape")
   await page.getByRole("dialog", { name: "Tools", exact: true }).waitFor()

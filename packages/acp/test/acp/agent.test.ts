@@ -273,8 +273,14 @@ describe("ACP agent lifecycle", () => {
         } as never)
 
         expect(result.sessionId).toBe("session-/tmp/acp")
-        expect(result.models.availableModels).toEqual([{ modelId: "p1/m1", name: "Provider One/Model One" }])
-        expect(result.models.currentModelId).toBe("p1/m1")
+        expect(result.configOptions).toContainEqual({
+          id: "model",
+          name: "Model",
+          category: "model",
+          type: "select",
+          currentValue: "p1/m1",
+          options: [{ value: "p1/m1", name: "Provider One/Model One" }],
+        })
         expect(result.modes.availableModes).toEqual([
           { id: TEST_AGENT_NAME, name: TEST_AGENT_NAME, description: "Primary agent" },
         ])
@@ -387,12 +393,19 @@ describe("ACP agent lifecycle", () => {
       ])
     }))
 
-  test("setSessionModel and setSessionMode mutate session state", () =>
+  test("setSessionConfigOption and setSessionMode mutate session state", () =>
     runtime.run(async () => {
       await runAgent({}, async (agent) => {
         await agent.newSession(newSessionArgs())
-        const result = await agent.setSessionModel({ sessionId: "session-/tmp/acp", modelId: "p1/m1" } as never)
-        expect(result._meta).toEqual({})
+        await expect(
+          agent.setSessionConfigOption({ sessionId: "session-/tmp/acp", configId: "model", value: "p1/missing" }),
+        ).rejects.toThrow("Unknown model")
+        const result = await agent.setSessionConfigOption({
+          sessionId: "session-/tmp/acp",
+          configId: "model",
+          value: "p1/m1",
+        })
+        expect(result.configOptions[0]).toMatchObject({ id: "model", currentValue: "p1/m1" })
         await agent.setSessionMode({ sessionId: "session-/tmp/acp", modeId: TEST_AGENT_NAME } as never)
         const session = (
           agent as never as { sessionManager: { get: (id: string) => { model: unknown; modeId: string } } }

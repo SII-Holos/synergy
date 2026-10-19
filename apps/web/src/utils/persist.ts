@@ -208,7 +208,7 @@ export function persisted<T>(
     },
   }
 
-  const [state, setState, init] = makePersisted(store, { name: config.key, storage })
+  const [state, setState, init] = makePersisted<T, typeof store>(store, { name: config.key, storage })
 
   const isAsync = init instanceof Promise
   const [ready] = createResource(

@@ -109,6 +109,43 @@ type Fixture = Window & {
   switchTask(id: string): void
 }
 
+test("catalog synchronization retains the requested title before the document commits", async () => {
+  await page.goto(url)
+  await page.waitForFunction(() => typeof (window as unknown as Fixture).completeSnapshot === "function")
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.openPage("loading")
+    fixture.completeSnapshot({
+      data: {
+        pages: [
+          {
+            id: "loading",
+            profileId: "personal",
+            title: "",
+            url: "about:blank",
+            status: "active",
+            isLoading: true,
+            lastActiveAt: null,
+            navigation: {
+              id: "navigation",
+              generation: 1,
+              revision: 1,
+              requestedURL: "https://example.com/slow",
+              phase: "loading",
+              slow: false,
+            },
+          },
+        ],
+        seq: 1,
+        epoch: "one",
+        ownerKey: "owner-one",
+      },
+    })
+  })
+  await page.getByRole("tab", { name: "old", exact: true }).waitFor({ state: "hidden" })
+  expect(await page.getByRole("tab", { name: "loading", exact: true }).getAttribute("title")).toBe("example.com")
+})
+
 test("Agent-created pages reconcile silently on bootstrap, task switching and navigation", async () => {
   await page.goto(url)
   await page.waitForFunction(() => typeof (window as unknown as Fixture).completeSnapshot === "function")

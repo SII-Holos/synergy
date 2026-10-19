@@ -12,6 +12,38 @@ import { BrowserEvent } from "../src/event"
 import { BrowserCommandService } from "../src/command-service"
 import { BrowserSessionImpl } from "../src/session"
 
+test("a held Scope browser command leaves catalog reads and stop admission available", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const owner = BrowserOwner.shared()
+        const browser = await BrowserRuntime.getOrCreateSession(owner)
+        let release!: () => void
+        let entered!: () => void
+        const started = new Promise<void>((resolve) => (entered = resolve))
+        const held = new Promise<void>((resolve) => (release = resolve))
+        const command = BrowserRuntime.withinOwner(owner, async () => {
+          entered()
+          await held
+        })
+        await started
+        try {
+          const available = await Promise.race([
+            BrowserRuntime.getOrCreateSession(owner).then((value) => value === browser),
+            Bun.sleep(200).then(() => false),
+          ])
+          expect(available).toBe(true)
+          await BrowserRuntime.withinOwner(owner, async () => release())
+        } finally {
+          release()
+          await command
+        }
+      },
+    })
+  }))
+
 const runtime = await testRuntime(registerLocalRuntime)
 afterAll(() => runtime.close())
 

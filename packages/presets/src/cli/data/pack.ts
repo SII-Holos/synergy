@@ -97,7 +97,7 @@ export const DataPackCommand = cmd({
       const packedSize = (await fs.stat(packed)).size
       spinner.stop(`Packed to ${shortenPath(packed)} (${formatSize(packedSize)})`)
     } catch (e) {
-      spinner.stop("Packing failed", 1)
+      spinner.error("Packing failed")
       prompts.log.error(`Failed to pack: ${e instanceof Error ? e.message : String(e)}`)
       prompts.outro("Failed")
       process.exitCode = 1

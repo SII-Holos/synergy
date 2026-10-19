@@ -174,3 +174,22 @@ test("Google SDK fallback rejects conflicting complete output components and agg
   expect(usage!.input.total).toBeNull()
   expect(usage!.output.total).toBeNull()
 })
+
+test.each(["@ai-sdk/google", "@ai-sdk/anthropic", "@ai-sdk/amazon-bedrock"])(
+  "current SDK totals include reasoning and cached input for %s",
+  (sdk) => {
+    const usage = RolloutUsage.normalizeSdk(
+      {
+        inputTokens: 600,
+        outputTokens: 100,
+        totalTokens: 700,
+        inputTokenDetails: { noCacheTokens: 100, cacheReadTokens: 200, cacheWriteTokens: 300 },
+        outputTokenDetails: { textTokens: 20, reasoningTokens: 80 },
+      },
+      sdk,
+    )!
+    expect(usage.input).toEqual({ total: 600, uncached: 100, cacheRead: 200, cacheWrite: 300 })
+    expect(usage.output).toEqual({ total: 100, reasoning: 80 })
+    expect(usage.complete).toBe(true)
+  },
+)

@@ -19,7 +19,7 @@ import { decodePoString } from "./po-string"
  * Preserves zh-CN translations, translator comments, and file/line locations.
  */
 
-import ts from "typescript"
+import ts from "@typescript/typescript6"
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs"
 import path from "node:path"
 

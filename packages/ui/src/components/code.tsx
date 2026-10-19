@@ -13,7 +13,7 @@ import { getWorkerPool } from "../pierre/worker"
 
 type SelectionSide = "additions" | "deletions"
 
-export type CodeProps<T = {}> = FileOptions<T> & {
+export type CodeProps<T = {}> = FileOptions<T, undefined> & {
   file: FileContents
   annotations?: LineAnnotation<T>[]
   selectedLines?: SelectedLineRange | null

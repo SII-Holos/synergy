@@ -20,6 +20,7 @@ for (const mode of ["zero-complete", "override-complete", "zero-cancel", "tool-d
     const entered = Promise.withResolvers<void>()
     const release = Promise.withResolvers<void>()
     let observedAbort: unknown
+    let toolEntered = false
     let calls = 0
     const text: LanguageModelV2StreamPart[] = [
       { type: "text-start", id: "reply" },
@@ -118,6 +119,7 @@ for (const mode of ["zero-complete", "override-complete", "zero-cancel", "tool-d
             description: "Wait for an explicitly owned fixture event.",
             parameters: z.object({}),
             async execute(_, context) {
+              toolEntered = true
               entered.resolve()
               const abort = Promise.withResolvers<never>()
               const onAbort = () => {
@@ -154,7 +156,7 @@ for (const mode of ["zero-complete", "override-complete", "zero-cancel", "tool-d
           await createUserMessage(input)
           const pending = SessionInvoke.invoke(input)
           try {
-            if (mode !== "step-deadline") {
+            if (mode !== "step-deadline" && mode !== "tool-deadline") {
               await Promise.race([
                 entered.promise,
                 pending.then(() => {
@@ -189,11 +191,17 @@ for (const mode of ["zero-complete", "override-complete", "zero-cancel", "tool-d
               expect(parts.some((part) => part.type === "tool" && part.state.status === "completed")).toBe(true)
               expect(parts.some((part) => part.type === "text" && part.text === "Complete.")).toBe(true)
             } else {
-              expect(observedAbort).toBeInstanceOf(DOMException)
-              expect((observedAbort as DOMException).name).toBe(
-                mode === "tool-deadline" ? "TimeoutError" : "AbortError",
-              )
-              expect(parts.some((part) => part.type === "tool" && part.state.status === "error")).toBe(true)
+              const failed = parts.find((part) => part.type === "tool" && part.state.status === "error")
+              expect(failed).toBeDefined()
+              if (mode === "tool-deadline") {
+                expect(failed).toMatchObject({ state: { error: expect.stringContaining("timed out after 20ms") } })
+              }
+              if (toolEntered) {
+                expect(observedAbort).toBeInstanceOf(DOMException)
+                expect((observedAbort as DOMException).name).toBe(
+                  mode === "tool-deadline" ? "TimeoutError" : "AbortError",
+                )
+              }
             }
           } finally {
             release.resolve()

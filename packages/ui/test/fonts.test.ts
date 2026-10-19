@@ -1,28 +1,39 @@
-import { expect, test } from "bun:test"
-import { JSDOM } from "jsdom"
+import { afterAll, beforeAll, expect, test } from "bun:test"
+import { chromium, type Browser } from "playwright"
 import { appFonts, fontStyles } from "../src/fonts"
 
-function faces(css: string) {
-  const dom = new JSDOM(`<style>${css}</style>`)
+let browser: Browser
+beforeAll(async () => {
+  browser = await chromium.launch({ headless: true })
+})
+afterAll(async () => {
+  await browser?.close()
+})
+
+async function faces(css: string) {
+  const page = await browser.newPage()
   try {
-    return Array.from(dom.window.document.styleSheets[0]!.cssRules).map((rule) => {
-      const style = (rule as CSSFontFaceRule).style
-      return {
-        family: style.getPropertyValue("font-family"),
-        weight: style.getPropertyValue("font-weight"),
-        source: style.getPropertyValue("src"),
-        display: style.getPropertyValue("font-display"),
-      }
-    })
+    await page.setContent(`<style>${css}</style>`)
+    return await page.evaluate(() =>
+      Array.from(document.styleSheets[0]!.cssRules).map((rule) => {
+        const style = (rule as CSSFontFaceRule).style
+        return {
+          family: style.getPropertyValue("font-family"),
+          weight: style.getPropertyValue("font-weight"),
+          source: style.getPropertyValue("src"),
+          display: style.getPropertyValue("font-display"),
+        }
+      }),
+    )
   } finally {
-    dom.window.close()
+    await page.close()
   }
 }
 
 test("active font faces resolve to packaged WOFF2 assets with local fallbacks", async () => {
-  const result = faces(fontStyles())
+  const result = await faces(fontStyles())
   expect(result.map(({ family, weight }) => [family, weight])).toEqual([
-    ['"Inter"', "100 900"],
+    ["Inter", "100 900"],
     ['"IBM Plex Mono"', "400"],
     ['"IBM Plex Mono"', "500"],
     ['"IBM Plex Mono"', "700"],
@@ -37,10 +48,10 @@ test("active font faces resolve to packaged WOFF2 assets with local fallbacks", 
   expect(result.slice(4).map((face) => face.source)).toEqual(['local("Arial")', 'local("Courier New")'])
 })
 
-test("standalone font sources can be remapped without changing the host faces", () => {
-  const original = faces(fontStyles())
+test("standalone font sources can be remapped without changing the host faces", async () => {
+  const original = await faces(fontStyles())
   const resolved = new Map<string, string>()
-  const exported = faces(
+  const exported = await faces(
     fontStyles((source) => {
       const url = `https://fonts.example.test/${resolved.size}.woff2`
       resolved.set(source, url)
@@ -53,5 +64,5 @@ test("standalone font sources can be remapped without changing the host faces", 
   )
   expect(exported.map(({ source, ...face }) => face)).toEqual(original.map(({ source, ...face }) => face))
   expect(exported.slice(4)).toEqual(original.slice(4))
-  expect(faces(fontStyles())).toEqual(original)
+  expect(await faces(fontStyles())).toEqual(original)
 })

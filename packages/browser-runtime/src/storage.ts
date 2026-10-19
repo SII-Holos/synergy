@@ -4,7 +4,11 @@ import fs from "fs/promises"
 import { z } from "zod"
 import { BrowserOwner } from "./owner.js"
 import { Global } from "@ericsanchezok/synergy-harness/global"
-import { BrowserSessionPageSchema, BrowserPageIdSchema } from "@ericsanchezok/synergy-browser-core"
+import {
+  BrowserSessionPageSchema,
+  BrowserPageIdSchema,
+  type BrowserSessionPage,
+} from "@ericsanchezok/synergy-browser-core"
 
 const StoredAnnotationSchema = z
   .object({
@@ -37,7 +41,7 @@ const StoredDownloadSchema = z
 const StoredSessionSchema = z
   .object({
     version: z.literal(6),
-    pages: z.array(BrowserSessionPageSchema).max(64),
+    pages: z.array(BrowserSessionPageSchema.omit({ navigation: true })).max(64),
     timestamp: z.number().int().nonnegative(),
     annotations: z.array(StoredAnnotationSchema).max(10_000).optional(),
     downloads: z.array(StoredDownloadSchema).max(10_000).optional(),
@@ -48,7 +52,10 @@ export namespace BrowserStorage {
   export const CURRENT_VERSION = 6
 
   export type StoredAnnotation = z.infer<typeof StoredAnnotationSchema>
-  export type SessionState = Omit<z.infer<typeof StoredSessionSchema>, "version"> & { version?: number }
+  export type SessionState = Omit<z.infer<typeof StoredSessionSchema>, "version" | "pages"> & {
+    version?: number
+    pages: BrowserSessionPage[]
+  }
 
   export function keyForOwner(owner: BrowserOwner.Info): string[] {
     BrowserOwner.assertValid(owner)
@@ -98,7 +105,11 @@ export namespace BrowserStorage {
     const sanitized = StoredSessionSchema.parse({
       ...state,
       version: CURRENT_VERSION,
-      pages: state.pages.map((page) => ({ ...page, isLoading: false, url: sanitizeUrl(page.url) })),
+      pages: state.pages.map(({ navigation: _navigation, ...page }) => ({
+        ...page,
+        isLoading: false,
+        url: sanitizeUrl(page.url),
+      })),
     })
     await Storage.write(keyForOwner(owner), sanitized)
   }

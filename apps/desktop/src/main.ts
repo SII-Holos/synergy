@@ -4,6 +4,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  ClipboardItem,
   dialog,
   ipcMain,
   Menu,
@@ -346,6 +347,7 @@ async function createWindow() {
   }
   nativePagePool ??= new BrowserNativePagePool({
     captureWindow: () => mainWindow,
+    backgroundColor: () => desktopThemeBackground(getDesktopThemeSnapshot()),
     onVisit: (partition, url, title) => localBrowserData().visit(partition, url, title),
   })
   nativeViews = new BrowserNativeViewManager(mainWindow, nativePagePool, (event) => {
@@ -542,6 +544,7 @@ function updateDesktopThemeSnapshot(
   if (mainWindow) applyDesktopThemeToWindow(mainWindow, snapshot)
   startupOverlay?.setTheme(snapshot)
   browserBroker?.setTheme(snapshot)
+  nativePagePool?.refreshTheme()
   if (options.broadcast !== false) broadcastDesktopTheme(snapshot)
   return snapshot
 }
@@ -701,7 +704,9 @@ function registerIpcHandlers() {
       if (request.mime !== "image/png") throw new Error("Only PNG images can be copied.")
       const image = nativeImage.createFromBuffer(data)
       if (image.isEmpty()) throw new Error("Image could not be read.")
-      clipboard.writeImage(image)
+      await clipboard.write([
+        new ClipboardItem({ "image/png": new Blob([new Uint8Array(image.toPNG())], { type: "image/png" }) }),
+      ])
       return { cancelled: false }
     }
     const filename = sanitizeBrowserFilename(request.filename, "download")
@@ -1001,9 +1006,9 @@ function registerIpcHandlers() {
     const url = parseExternalUrl(input)
     await shell.openExternal(url)
   })
-  ipcMain.handle("desktop.clipboard.writeText", (_event, input: unknown) => {
+  ipcMain.handle("desktop.clipboard.writeText", async (_event, input: unknown) => {
     const text = parseClipboardWriteText(input)
-    clipboard.writeText(text)
+    await clipboard.writeText(text)
     return true
   })
   ipcMain.handle("dialog:select-directory", async (event, input: unknown) => {
@@ -1073,7 +1078,7 @@ function nativeTicketFailure(
 
 function registerNativeViewHandlers(channel: string, handler: (input: unknown) => unknown | Promise<unknown>) {
   ipcMain.handle(channel, async (event, input: unknown) => {
-    if (!mainWindow || event.sender !== mainWindow.webContents)
+    if (!trustedServerFrame(event, mainWindow?.webContents, currentAppURL, null))
       throw new Error("Browser native IPC sender is not trusted.")
     return handler(input)
   })

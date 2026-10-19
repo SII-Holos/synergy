@@ -149,6 +149,8 @@ describe("AgentTurnProtocol", () => {
       inputTokens: 12,
       outputTokens: 3,
       totalTokens: 15,
+      inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+      outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
     }
     const providerMetadata = {
       codex: {

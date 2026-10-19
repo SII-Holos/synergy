@@ -216,7 +216,7 @@ mod ffi {
         let mut input_read: HANDLE = INVALID_HANDLE_VALUE;
         let mut input_write: HANDLE = INVALID_HANDLE_VALUE;
         if CreatePipe(&mut input_read, &mut input_write, &sa, 0) == 0 {
-            let hr = HRESULT::from_win32(GetLastError());
+            let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
             return Err(Error::new(hr, "CreatePipe for ConPTY input failed"));
         }
 
@@ -226,7 +226,7 @@ mod ffi {
         if CreatePipe(&mut output_read, &mut output_write, &sa, 0) == 0 {
             CloseHandle(input_read);
             CloseHandle(input_write);
-            let hr = HRESULT::from_win32(GetLastError());
+            let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
             return Err(Error::new(hr, "CreatePipe for ConPTY output failed"));
         }
 

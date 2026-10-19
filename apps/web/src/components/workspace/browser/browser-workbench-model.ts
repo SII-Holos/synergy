@@ -1,4 +1,7 @@
 import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
+import type { BrowserPage } from "@ericsanchezok/synergy-browser-core"
+
+type BrowserTabPage = Pick<BrowserPage, "id" | "title" | "url" | "navigation">
 
 type BrowserRouteBase = {
   path_directory: string
@@ -37,17 +40,24 @@ export function sameBrowserCatalog(left: BrowserWorkbenchRoute, right: BrowserWo
   return left.mode === right.mode && left.scopeID === right.scopeID && left.sessionID === right.sessionID
 }
 
-export function browserPageTab(
-  page: { id: string; title: string; url: string },
-  route: BrowserWorkbenchRoute,
-): WorkbenchPanelTab {
+export function browserURLTitle(url: string): string {
+  try {
+    return new URL(url).host || url
+  } catch {
+    return url
+  }
+}
+
+export function browserPageTab(page: BrowserTabPage, route: BrowserWorkbenchRoute): WorkbenchPanelTab {
   const identity = route.ownerKey && route.serverUrl ? JSON.stringify([route.serverUrl, route.ownerKey]) : undefined
+  const url =
+    (!page.url || page.url === "about:blank") && page.navigation?.requestedURL ? page.navigation.requestedURL : page.url
   return {
     id: identity ? `browser:${identity}:${page.id}` : `browser:${page.id}`,
     panelId: "browser",
     resourceId: page.id,
-    title: page.title || page.url,
-    state: { browserRoute: route, browserURL: page.url },
+    title: page.title && page.title !== "about:blank" ? page.title : browserURLTitle(url),
+    state: { browserRoute: route, browserURL: url },
     source: identity ?? "browser",
   }
 }
@@ -55,7 +65,7 @@ export function browserPageTab(
 export function reconcileBrowserTabs(input: {
   tabs: WorkbenchPanelTab[]
   active: string | undefined
-  pages: Array<{ id: string; title: string; url: string; openerId?: string; createdBySessionID?: string }>
+  pages: Array<BrowserTabPage & { openerId?: string; createdBySessionID?: string }>
   route: BrowserWorkbenchRoute
   knownPageIds?: ReadonlySet<string>
   sessionID?: string
@@ -94,7 +104,7 @@ export function reconcileBrowserTabs(input: {
     if (
       tab.resourceId === next.resourceId &&
       tab.title === next.title &&
-      browserTabURL(tab) === page.url &&
+      browserTabURL(tab) === browserTabURL(next) &&
       previous?.ownerKey === input.route.ownerKey &&
       previous?.serverUrl === input.route.serverUrl &&
       previous?.mode === input.route.mode &&
@@ -114,7 +124,7 @@ export function reconcileBrowserTabs(input: {
         state: {
           ...(typeof tab.state === "object" && tab.state ? tab.state : {}),
           browserRoute: input.route,
-          browserURL: page.url,
+          browserURL: browserTabURL(next),
         },
       },
     ]

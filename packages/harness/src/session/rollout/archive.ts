@@ -4,7 +4,15 @@ import { SessionSchemaRegistry } from "../schema-registry"
 import { SessionExecutionContributions } from "../execution-contributions"
 import { RolloutAttachment } from "./attachment"
 import z from "zod"
-import { BlobReader, Uint8ArrayReader, ZipReader, ZipWriter, type FileEntry, type Writer } from "@zip.js/zip.js"
+import {
+  ERR_UNSAFE_FILENAME,
+  BlobReader,
+  Uint8ArrayReader,
+  ZipReader,
+  ZipWriter,
+  type FileEntry,
+  type Writer,
+} from "@zip.js/zip.js"
 import { Identifier } from "../../id/id"
 import { ScopeContext } from "../../scope/context"
 import { Storage } from "../../storage/storage"
@@ -438,6 +446,9 @@ export namespace RolloutArchive {
       return { reader, manifest, bytes }
     } catch (error) {
       await reader.close()
+      if (error instanceof Error && error.message === ERR_UNSAFE_FILENAME) {
+        throw new Error("Invalid rollout ZIP entry path", { cause: error })
+      }
       throw error
     }
   }

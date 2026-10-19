@@ -110,7 +110,7 @@ test.each([
               includeMCP: false,
             })
             const execute = resolved.executionTools[tool].execute!
-            expect(await execute({ filePath }, { toolCallId: "call_api", messages: [] })).toMatchObject({
+            expect(await execute({ filePath }, { context: {}, toolCallId: "call_api", messages: [] })).toMatchObject({
               output: "API result",
             })
           } finally {

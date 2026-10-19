@@ -30,6 +30,7 @@ test("Agent pages join only their creating Session, including blank pages and re
 })
 import {
   browserPageTab,
+  browserTabURL,
   reconcileBrowserTabs,
 } from "../../../../src/components/workspace/browser/browser-workbench-model"
 const route = { mode: "session" as const, sessionID: "session-one", path_directory: "home", scopeID: "home" }
@@ -41,6 +42,33 @@ const shared = {
   serverUrl: "http://one",
 }
 const page = (id: string, title = id) => ({ id, title, url: `https://${id}.test` })
+test("opening a link retains its tab title and address before the first native document commits", () => {
+  const pending = {
+    ...page("one", ""),
+    url: "about:blank",
+    navigation: {
+      id: "navigation",
+      generation: 1,
+      revision: 1,
+      requestedURL: "https://example.test/slow",
+      phase: "loading" as const,
+      slow: false,
+    },
+  }
+  const tab = browserPageTab(pending, shared)
+  expect(tab.title).toBe("example.test")
+  expect(browserTabURL(tab)).toBe("https://example.test/slow")
+  const next = reconcileBrowserTabs({ tabs: [tab], active: tab.id, pages: [pending], route: shared })
+  expect(next.tabs[0]).toBe(tab)
+  const committed = reconcileBrowserTabs({
+    ...next,
+    pages: [{ ...page("one", "Website"), url: "https://example.test/slow" }],
+    route: shared,
+  })
+  expect(committed.tabs[0]?.title).toBe("Website")
+  expect(committed.active).toBe(tab.id)
+  expect(browserPageTab({ ...page("blank", ""), url: "about:blank" }, shared).title).toBe("about:blank")
+})
 test("shared pages update only the browser tabs opened in each task", () => {
   const one = browserPageTab(page("one"), shared)
   const two = browserPageTab(page("two"), shared)

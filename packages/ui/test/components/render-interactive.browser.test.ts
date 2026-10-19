@@ -632,7 +632,7 @@ test("native dark exports preserve page polarity and native control color scheme
 test("native state adopts canonical updates received while a save response is pending", async () => {
   await native()
   await page.evaluate(() => (window as unknown as { __renderTest: { holdWrites(): void } }).__renderTest.holdWrites())
-  const slider = page.getByRole("slider", { name: "Seats" })
+  const slider = page.getByRole("figure").getByRole("slider", { name: "Seats" })
   try {
     await slider.fill("9")
     await page.waitForFunction(

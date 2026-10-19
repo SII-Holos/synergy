@@ -215,6 +215,34 @@ export namespace RolloutUsage {
       return normalize("openai", { prompt_tokens: count(usage.tokens), total_tokens: count(usage.tokens) }, kind)
     const input = count(usage.inputTokens)
     const google = sdk === "@ai-sdk/google" || sdk === "@ai-sdk/google-vertex"
+    if ("inputTokenDetails" in usage || "outputTokenDetails" in usage) {
+      const inputDetails = object(usage.inputTokenDetails)
+      const outputDetails = object(usage.outputTokenDetails)
+      const output = count(usage.outputTokens)
+      if (input === null && output === null) return null
+      const cacheRead = count(inputDetails.cacheReadTokens)
+      const cacheWrite = count(inputDetails.cacheWriteTokens)
+      return validate(
+        {
+          version: 1,
+          protocol: google ? "google" : sdk.includes("anthropic") ? "anthropic" : "openai",
+          raw: (raw ?? null) as Info["raw"],
+          input: {
+            total: input,
+            uncached: count(inputDetails.noCacheTokens) ?? difference(input, cacheRead, cacheWrite),
+            cacheRead,
+            cacheWrite,
+          },
+          output: { total: output, reasoning: count(outputDetails.reasoningTokens) },
+          cacheWrites: {},
+          units: [],
+          billing: "tokens",
+          reported: null,
+          complete: false,
+        },
+        count(usage.totalTokens),
+      )
+    }
     const reasoning = count(usage.reasoningTokens)
     // The locked Google SDK maps candidatesTokenCount and thoughtsTokenCount separately.
     const output = google

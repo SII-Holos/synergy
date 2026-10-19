@@ -321,16 +321,57 @@ describe("Browser WebContents control", () => {
     expect(diagnostics.calls.download).toEqual(["download-1"])
   })
 
-  test("navigates through the CDP controller with user settle semantics", async () => {
+  test("dispatches human navigation without waiting for the document or initializing CDP", async () => {
     const contents = new MockContents()
+    contents.loadURL = (url) => {
+      contents.loadedUrls.push(url)
+      return new Promise<void>(() => {})
+    }
     const control = new BrowserWebContentsControl(targetFor(contents) as never)
 
     const result = await control.execute({ type: "navigate", url: "https://example.com", source: "user" })
 
     expect(result).toMatchObject({ type: "navigation", settleReason: "none" })
-    const navigate = contents.debugger.commands.find((command) => command.method === "Page.navigate")
-    expect(navigate?.params).toEqual({ url: "https://example.com" })
+    expect(contents.loadedUrls).toEqual(["https://example.com"])
+    expect(contents.debugger.commands).toEqual([])
+    await control.dispose()
   })
+
+  test("checks human navigation policy before programmatic native dispatch", async () => {
+    const contents = new MockContents()
+    const control = new BrowserWebContentsControl(targetFor(contents) as never)
+    await expect(
+      control.execute({ type: "navigate", url: "javascript:alert(1)", source: "user" }),
+    ).rejects.toMatchObject({
+      code: "browser_navigation_denied",
+    })
+    expect(contents.loadedUrls).toEqual([])
+    await control.dispose()
+  })
+
+  for (const type of ["history", "reload"] as const) {
+    test(`checks navigation policy before native ${type}`, async () => {
+      const dispatched: string[] = []
+      const contents = Object.assign(new MockContents(), {
+        getURL: () => "javascript:alert(1)",
+        reload: () => dispatched.push("reload"),
+        navigationHistory: {
+          canGoToOffset: () => true,
+          getActiveIndex: () => 1,
+          getEntryAtIndex: () => ({ url: "javascript:alert(1)" }),
+          goToOffset: () => dispatched.push("history"),
+        },
+      })
+      const control = new BrowserWebContentsControl(targetFor(contents) as never)
+      const command =
+        type === "history"
+          ? { type, direction: "back" as const, source: "user" as const }
+          : { type, source: "user" as const }
+      await expect(control.execute(command)).rejects.toMatchObject({ code: "browser_navigation_denied" })
+      expect(dispatched).toEqual([])
+      await control.dispose()
+    })
+  }
 
   test("requires a checkpoint target for restore commands", async () => {
     const contents = new MockContents()
@@ -633,7 +674,12 @@ describe("Browser WebContents control", () => {
     const target = targetFor(contents)
     const control = new BrowserWebContentsControl(target as never)
 
-    const pending = control.execute({ type: "navigate", url: "https://example.com", source: "user" })
+    const pending = control.execute({
+      type: "navigate",
+      url: "https://example.com",
+      source: "agent",
+      settleMode: "none",
+    })
     await Bun.sleep(0)
     const event = {
       prevented: false,
@@ -703,7 +749,7 @@ describe("Browser WebContents control", () => {
   test("disposes listeners, handlers, and the debugger attachment", async () => {
     const contents = new MockContents()
     const control = new BrowserWebContentsControl(targetFor(contents) as never)
-    await control.execute({ type: "navigate", url: "https://example.com", source: "user" })
+    await control.execute({ type: "navigate", url: "https://example.com", source: "agent", settleMode: "none" })
     const before = contents.debugger.listenerCount("message")
 
     await control.dispose()
@@ -750,4 +796,36 @@ describe("Browser WebContents control input normalization", () => {
     const event = contents.inputEvents.at(-1) as { type: string; button: string }
     expect(event.button).toBe("left")
   })
+})
+
+test("stop cancels a pending Agent command promptly without replaying it", async () => {
+  let dispatched!: () => void
+  const sent = new Promise<void>((resolve) => (dispatched = resolve))
+  const contents = new MockContents({
+    handler: (method) => {
+      if (method === "Page.navigate") {
+        dispatched()
+        return new Promise(() => {})
+      }
+      if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main" } } }
+      if (method === "Runtime.evaluate") return { result: { value: { url: "https://example.com", title: "Example" } } }
+      return {}
+    },
+  })
+  Object.assign(contents, { stop() {} })
+  const control = new BrowserWebContentsControl(targetFor(contents) as never)
+  const operation = control
+    .execute({ type: "navigate", source: "agent", url: "https://example.com/slow" })
+    .catch((error) => error)
+  await sent
+  await control.execute({ type: "stop" })
+  const result = await Promise.race([
+    operation,
+    new Promise((resolve) => setTimeout(() => resolve("still waiting"), 100)),
+  ])
+  expect(result).toMatchObject({ code: "browser_command_cancelled", retryable: false })
+  expect(contents.debugger.commands.filter((command) => command.method === "Page.navigate")).toHaveLength(1)
+  await control.execute({ type: "navigate", source: "user", url: "https://example.com/new" })
+  expect(contents.loadedUrls).toEqual(["https://example.com/new"])
+  await control.dispose()
 })

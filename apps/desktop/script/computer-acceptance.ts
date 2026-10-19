@@ -57,7 +57,6 @@ export async function runComputerAcceptance(options: {
       await client.session.prompt(
         {
           sessionID: session.id,
-          agent: "synergy",
           model: { providerID: options.providerID, modelID: options.modelID },
           parts: [
             {
@@ -124,17 +123,27 @@ export async function runComputerAcceptance(options: {
     const attachments = observes.flatMap((part) =>
       part.state.status === "completed" ? (part.state.attachments ?? []) : [],
     )
-    check(
-      "exact image bytes submitted to the model",
-      attachments.some((part) => {
+    const submittedImages = await Promise.all(
+      attachments.map(async (part) => {
         const receipt = part.metadata?.imageInput
+        if (receipt?.stage !== "submitted") return false
         const match = /^data:image\/[^;]+;base64,(.+)$/.exec(part.url)
+        if (match?.[1])
+          return receipt.sha256 === createHash("sha256").update(Buffer.from(match[1], "base64")).digest("hex")
+        if (!part.localPath || part.artifact?.sha256 !== receipt.sha256) return false
+        const file = await realpath(part.localPath)
+        if (!file.startsWith(home + path.sep)) return false
         return (
-          receipt?.stage === "submitted" &&
-          match?.[1] !== undefined &&
-          receipt.sha256 === createHash("sha256").update(Buffer.from(match[1], "base64")).digest("hex")
+          receipt.sha256 ===
+          createHash("sha256")
+            .update(await Bun.file(file).bytes())
+            .digest("hex")
         )
       }),
+    )
+    check(
+      "exact image bytes submitted to the model",
+      submittedImages.some(Boolean),
       "An observed attachment must have a durable submitted receipt for the exact bytes",
     )
     const admission = z

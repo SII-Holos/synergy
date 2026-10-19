@@ -1,5 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { BROWSER_PROTOCOL_VERSION, BrowserProtocolError } from "@ericsanchezok/synergy-browser-core"
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
+import {
+  BROWSER_PROTOCOL_VERSION,
+  BrowserProtocolError,
+  browserBackendCommandTimeoutMs,
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserBroker, type BrowserBrokerSocket } from "../src/broker"
 import { BrowserCommandService } from "../src/command-service"
 import { BrowserEvent } from "../src/event"
@@ -243,61 +247,69 @@ describe("Browser native broker telemetry", () => {
     }),
   )
 
-  test(
-    "records broker timeouts with requestType and commandType, then cleanup outcome",
-    () =>
-      runtime.run(async () => {
-        const socket = new (class extends BrokerSocket {
-          override send(data: string): void {
-            super.send(data)
-            const message = JSON.parse(data) as { type: string; requestId: string }
-            if (message.type === "page.create" || message.type === "page.close") {
-              queueMicrotask(() =>
-                BrowserBroker.handle(this, {
-                  type: "page.result",
-                  protocolVersion: BROWSER_PROTOCOL_VERSION,
-                  requestId: message.requestId,
-                  result: { type: "void" },
-                }),
-              )
-            }
+  test("records broker timeouts with requestType and commandType, then cleanup outcome", () =>
+    runtime.run(async () => {
+      const socket = new (class extends BrokerSocket {
+        override send(data: string): void {
+          super.send(data)
+          const message = JSON.parse(data) as { type: string; requestId: string }
+          if (message.type === "page.create" || message.type === "page.close") {
+            queueMicrotask(() =>
+              BrowserBroker.handle(this, {
+                type: "page.result",
+                protocolVersion: BROWSER_PROTOCOL_VERSION,
+                requestId: message.requestId,
+                result: { type: "void" },
+              }),
+            )
           }
-        })()
-        BrowserBroker.attach(socket, {
-          type: "host.register",
-          protocolVersion: BROWSER_PROTOCOL_VERSION,
-          hostId: "host-timeout",
-          token: BrowserBroker.secret(),
-          capabilities: { native: true },
-        })
-        BrowserBroker.prepare(owner, "home", "native")
-        await BrowserBroker.createPage({
-          profile: await BrowserProfiles.defaultProfile(),
-          owner,
-          routeDirectory: "home",
-          presentation: "native",
-          pageId: "page-1",
-        })
+        }
+      })()
+      BrowserBroker.attach(socket, {
+        type: "host.register",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        hostId: "host-timeout",
+        token: BrowserBroker.secret(),
+        capabilities: { native: true },
+      })
+      BrowserBroker.prepare(owner, "home", "native")
+      await BrowserBroker.createPage({
+        profile: await BrowserProfiles.defaultProfile(),
+        owner,
+        routeDirectory: "home",
+        presentation: "native",
+        pageId: "page-1",
+      })
 
-        await expect(
-          BrowserBroker.command(owner, "page-1", { type: "wait", condition: { type: "load" } }),
-        ).rejects.toMatchObject({
+      const command = { type: "wait", condition: { type: "load" } } as const
+      const timeout = browserBackendCommandTimeoutMs(command)
+      const schedule = globalThis.setTimeout
+      const timer = spyOn(globalThis, "setTimeout").mockImplementation(
+        new Proxy(schedule, {
+          apply(target, thisArg, [handler, delay, ...args]) {
+            return Reflect.apply(target, thisArg, [handler, delay === timeout ? 1 : delay, ...args])
+          },
+        }),
+      )
+      try {
+        await expect(BrowserBroker.command(owner, "page-1", command)).rejects.toMatchObject({
           code: "browser_host_timeout",
         })
+      } finally {
+        timer.mockRestore()
+      }
 
-        const timeouts = metricRows(["browser.broker.timeout.count"])
-        expect(timeouts).toHaveLength(1)
-        const timeoutLabels = labelsOf(timeouts[0])
-        expect(timeoutLabels.requestType).toBe("page.command")
-        expect(timeoutLabels.commandType).toBe("wait")
+      const timeouts = metricRows(["browser.broker.timeout.count"])
+      expect(timeouts).toHaveLength(1)
+      const timeoutLabels = labelsOf(timeouts[0])
+      expect(timeoutLabels.requestType).toBe("page.command")
+      expect(timeoutLabels.commandType).toBe("wait")
 
-        await BrowserBroker.closePage(owner, "page-1")
-        const cleanups = metricRows(["browser.resource.cleanup"])
-        expect(cleanups.length).toBeGreaterThanOrEqual(1)
-        expect(labelsOf(cleanups[0]).outcome).toBe("ok")
-      }),
-    45_000,
-  )
+      await BrowserBroker.closePage(owner, "page-1")
+      const cleanups = metricRows(["browser.resource.cleanup"])
+      expect(cleanups.length).toBeGreaterThanOrEqual(1)
+      expect(labelsOf(cleanups[0]).outcome).toBe("ok")
+    }))
 
   test("records host disconnect on broker detach", () =>
     runtime.run(async () => {

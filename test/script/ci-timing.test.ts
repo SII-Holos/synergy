@@ -16,7 +16,7 @@ import os from "node:os"
 import path from "node:path"
 import { suiteSeconds } from "../../script/ci/suites"
 
-const profile = timingProfile("linux", "x64", "1.4.2")
+const profile = timingProfile("linux", "x64", "1.4.3")
 const empty = (): Timings => ({ version: 1, profiles: {} })
 
 test("browser weights follow a shared fixture while keeping ordinary isolated tests separate", async () => {
@@ -151,16 +151,14 @@ test("invalid measured times are rejected rather than becoming scheduling weight
 })
 
 test("execution units estimate two worker finish times rather than summing both lanes", () => {
-  const tasks = [100, 99, 98, 97, 2, 2].map(
-    (seconds, index): Task => ({
-      id: String(index),
-      kind: "benchmark-native",
-      pool: "docker",
-      seconds,
-      owners: [],
-      needs: [],
-    }),
-  )
+  const tasks = [100, 99, 98, 97, 2, 2].map((seconds, index): Task => ({
+    id: String(index),
+    kind: "benchmark-native",
+    pool: "docker",
+    seconds,
+    owners: [],
+    needs: [],
+  }))
   const units = buildUnits(tasks, "full")
   for (const unit of units) {
     const lanes = [0, 0]
@@ -218,14 +216,14 @@ test("admitted timings retain the executed platform and immutable plan snapshot"
       exitCode: 0,
       started: "2026-10-04T00:00:00.000Z",
       completed: "2026-10-04T00:01:00.000Z",
-      runtime: { platform: "linux", arch: "x64", bun: "1.4.2" },
+      runtime: { platform: "linux", arch: "x64", bun: "1.4.3" },
       reports: [{ kind: "timing", path: "batch.json", sha256: "admitted" }],
       steps: [],
     }
     const snapshot = empty()
     const collected = await collectTimings(snapshot, root, path.join(root, "reports"), plan, [
       result,
-      { ...result, status: "failure", runtime: { platform: "darwin", arch: "arm64", bun: "1.4.2" } },
+      { ...result, status: "failure", runtime: { platform: "darwin", arch: "arm64", bun: "1.4.3" } },
       { ...result, runtime: undefined },
     ])
     expect(snapshot).toEqual(empty())

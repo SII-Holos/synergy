@@ -139,33 +139,8 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
           if (coverMatchesPage(event, browser.page())) setCover(event)
           break
         }
-        case "native.loading": {
-          browser.setPageLoading(event.pageId, true)
-          if (event.url) browser.setPageUrl(event.pageId, event.url)
-          break
-        }
-        case "native.loaded": {
-          browser.setPageLoading(event.pageId, false)
-          if (event.url) browser.setPageUrl(event.pageId, event.url)
-          if (event.title) browser.setPageTitle(event.pageId, event.title)
-          break
-        }
-        case "native.navigated": {
-          browser.setPageUrl(event.pageId, event.url)
-          break
-        }
-        case "native.title": {
-          browser.setPageTitle(event.pageId, event.title)
-          break
-        }
-        case "native.error": {
-          browser.setPageLoading(event.pageId, false)
-          browser.setBrowserError({
-            pageId: event.pageId,
-            severity: "error",
-            message: event.message,
-            code: String(event.code ?? ""),
-          })
+        case "native.page": {
+          browser.upsertPage(event.page)
           break
         }
       }

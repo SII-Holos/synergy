@@ -276,18 +276,15 @@ if (scenario === "cold-user") {
   setData(
     "part",
     "root",
-    Array.from(
-      { length: 32 },
-      (_, index): Part => ({
-        id: `file-${index}`,
-        sessionID: "session",
-        messageID: "root",
-        type: "attachment",
-        mime: "text/plain",
-        filename: `Document ${index}.txt`,
-        url: `https://example.com/document-${index}.txt`,
-      }),
-    ),
+    Array.from({ length: 32 }, (_, index): Part => ({
+      id: `file-${index}`,
+      sessionID: "session",
+      messageID: "root",
+      type: "attachment",
+      mime: "text/plain",
+      filename: `Document ${index}.txt`,
+      url: `https://example.com/document-${index}.txt`,
+    })),
   )
   setData("part", "final", [part("final", "answer", "text", "Final answer stays mounted.")])
   setData("message", "session", [root, { ...final, time: { created: 2, completed: 10 } }])
@@ -799,15 +796,12 @@ window.__conversationProcess = {
       return
     }
     context.autoScroll?.handleInteraction(new Event("history-load"))
-    const older = Array.from(
-      { length: count },
-      (_, index): UserMessage => ({
-        ...root,
-        id: `earlier-turn-${index}`,
-        rootID: `earlier-turn-${index}`,
-        time: { created: -count + index },
-      }),
-    )
+    const older = Array.from({ length: count }, (_, index): UserMessage => ({
+      ...root,
+      id: `earlier-turn-${index}`,
+      rootID: `earlier-turn-${index}`,
+      time: { created: -count + index },
+    }))
     const messages: (UserMessage | AssistantMessage)[] = []
     for (const [index, message] of older.entries()) {
       setData("part", message.id, [part(message.id, `${message.id}-text`, "text", `Earlier turn ${message.id}`)])

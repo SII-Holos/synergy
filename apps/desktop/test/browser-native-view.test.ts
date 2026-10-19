@@ -19,7 +19,7 @@ describe("Browser native view manager", () => {
       setVisible() {},
     }
     const manager = new BrowserNativeViewManager(
-      { webContents: { getZoomFactor: () => 1 } } as never,
+      { webContents: { getZoomFactor: () => 1, on() {}, off() {} } } as never,
       { attach: () => view, detach() {} } as never,
       (event) => events.push(event),
     )
@@ -64,7 +64,7 @@ describe("Browser native view manager", () => {
       },
     }
     const manager = new BrowserNativeViewManager(
-      { webContents: { getZoomFactor: () => 1 } } as never,
+      { webContents: { getZoomFactor: () => 1, on() {}, off() {} } } as never,
       pool as never,
       () => {},
     )
@@ -105,7 +105,7 @@ describe("Browser native view manager", () => {
       detach() {},
     }
     const manager = new BrowserNativeViewManager(
-      { webContents: { getZoomFactor: () => 1 } } as never,
+      { webContents: { getZoomFactor: () => 1, on() {}, off() {} } } as never,
       pool as never,
       () => {},
     )
@@ -160,7 +160,7 @@ describe("Browser native view manager", () => {
       },
     }
     const manager = new BrowserNativeViewManager(
-      { webContents: { getZoomFactor: () => 1 }, contentView: window.contentView } as never,
+      { webContents: { getZoomFactor: () => 1, on() {}, off() {} }, contentView: window.contentView } as never,
       pool as never,
       () => {},
     )

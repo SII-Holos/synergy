@@ -160,27 +160,24 @@ export function markdownSliceSpans(spans: readonly MarkdownSourceSpan[], start: 
 }
 
 function codeRanges(raw: string): MarkdownSourceRange[] {
-  // Provenance: https://github.com/markedjs/marked/blob/v17.0.1/src/Tokenizer.ts
+  // Provenance: https://github.com/markedjs/marked/blob/v18.1.1/src/Tokenizer.ts
   // Local adaptation: preserve consumed offsets through the owning lexer's code normalization.
   const fence =
     /^ {0,3}(`{3,}(?=[^`\n]*(?:\n|$))|~{3,})([^\n]*)(?:\n|$)(?:|([\s\S]*?)(?:\n|$))(?: {0,3}\1[~`]* *(?=\n|$)|$)/.exec(
       raw,
     )
   const start = fence ? raw.indexOf("\n") + 1 : 0
-  let end = fence ? start + (fence[3]?.length ?? 0) : raw.length
-  if (!fence) while (raw[end - 1] === "\n") end--
+  const end = fence ? start + (fence[3]?.length ?? 0) : raw.length
   const indent = fence ? (/^(\s+)(?:```)/.exec(raw)?.[1].length ?? 0) : undefined
   const ranges: MarkdownSourceRange[] = []
-  for (let line = start; line < end; ) {
+  for (let line = start; line < end;) {
     const newline = raw.indexOf("\n", line)
     const finish = newline < 0 ? end : Math.min(end, newline + 1)
     const text = raw.slice(line, finish)
     const removed =
       indent === undefined
-        ? (/^(?: {1,4}| {0,3}\t)/.exec(text)?.[0].length ?? 0)
-        : (/^[^\S\n]+/.exec(text)?.[0].length ?? 0) >= indent
-          ? indent
-          : 0
+        ? (/^(?: {0,3}\t| {1,4})/.exec(text)?.[0].length ?? 0)
+        : Math.min(/^[^\S\n]+/.exec(text)?.[0].length ?? 0, indent)
     ranges.push({ start: line + removed, end: finish })
     line = finish
   }

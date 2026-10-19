@@ -14,7 +14,7 @@ The page menu provides find, webpage zoom, printing and PDF saving. Zoom and vie
 
 The tab context menu offers reload, copy address, external opening, close, close others and close tabs to the right. Batch closing stays within that task's selected workbench surface and respects each resource's close policy. Downloads and diagnostic views provide a direct return to the webpage. Suspended pages wait for recovery before querying native navigation controls.
 
-Clicking an ordinary webpage reference in a message opens Browser in the right Workspace on managed-local Desktop. Reopening the same target reuses a unique suitable tab in that task, while an explicit new-tab action preserves peers and different query targets. The preview offers system-browser opening and copying the full link. Hovering only reads anonymous public metadata after a short delay; it never opens a page or uses website login state. Private and unavailable metadata retain the source and normal opening action.
+Clicking an ordinary webpage reference in a message opens Browser in the right Workspace on managed-local Desktop. The same tab shows the target address immediately and keeps progress visible until the website loads; New tab appears only when opening a blank page. Slow websites remain open with working stop and navigation controls. Reopening the same target reuses a unique suitable tab in that task, while an explicit new-tab action preserves peers and different query targets. The preview offers system-browser opening and copying the full link. Hovering only reads anonymous public metadata after a short delay; it never opens a page or uses website login state. Private and unavailable metadata retain the source and normal opening action.
 
 ## Saved website logins
 
@@ -38,7 +38,7 @@ Human clicks, typing, scrolling and navigation are combined into a change notice
 
 ## Recovery and evidence
 
-Project and historical task pages restore as suspended after restart. Task completion, cancellation, archiving and Workspace changes preserve shared project pages; explicit page close destroys them. Resume restores the address and identity when available. A failed page offers a local retry without changing other tabs. Browser storage can preserve a website login; unsaved forms, JavaScript state, navigation history and one-use login transactions are not recovery guarantees.
+Project and historical task pages restore as suspended after restart. Task completion, cancellation, archiving and Workspace changes preserve shared project pages; explicit page close destroys them. Resume restores the address and identity when available. A failed page offers a local retry without changing other tabs. Slow loading and an automation command timeout preserve the live page; they do not discard its forms by recreating it. Browser storage can preserve a website login; unsaved forms, JavaScript state, navigation history and one-use login transactions are not recovery guarantees.
 
 Page errors appear above the webpage with Dismiss and applicable recovery actions. A failed operation, including a popup that cannot open, does not by itself hide an otherwise usable page. Menus and dialogs still temporarily cover the page until they close.
 

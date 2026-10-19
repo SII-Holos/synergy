@@ -8,6 +8,7 @@ import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
 import tailwindcss from "@tailwindcss/vite"
 import { lingui } from "@lingui/vite-plugin"
+import type { BrowserStoreAPI } from "../../../../src/components/workspace/browser/browser-store"
 
 let browser: Browser
 let page: Page
@@ -178,18 +179,7 @@ type Fixture = Window & {
   resizes: Array<{ pageId: string; bounds: { y: number; height: number } }>
   commands: Array<{ type: string; pageId: string }>
   replaceMetadata(id: string, title: string, url: string): void
-  store: {
-    setBrowserError(error: { pageId: string; severity: "error"; message: string }): void
-    applyAgentActivity(activity: {
-      sessionID: string
-      operationID: string
-      tool: string
-      pageId: string
-      url: string
-      kind: "acting" | "idle"
-      label: string
-    }): void
-  }
+  store: BrowserStoreAPI
 }
 
 test("catalog metadata initializes presentation without waiting for an event or allocating a view", async () => {
@@ -356,6 +346,10 @@ test("a popup failure leaves its parent visible and the error outside native pag
       message: "Popup could not open",
     }),
   )
+  await page
+    .getByText("The page could not complete this request. Check the page and try again.", { exact: true })
+    .waitFor()
+  await page.getByText("Diagnostic details", { exact: true }).click()
   await page.getByText("Popup could not open", { exact: true }).waitFor()
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
   expect(await page.evaluate(() => (window as unknown as Fixture).attachments.at(-1)?.visible)).toBe(true)
@@ -401,4 +395,24 @@ test("missing native data capability and native failures stay visible through th
   await page.getByRole("button", { name: "Retry", exact: true }).click()
   await page.getByRole("button", { name: "Choose file and import", exact: true }).waitFor()
   expect(errors).toEqual([])
+})
+
+test("loading and completion keep content bounds stable and do not focus the address", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Open first", exact: true }).click()
+  await page.waitForFunction(() => (window as unknown as Fixture).attachments.some((item) => item.visible))
+  const before = await page.locator(".browser-surface").boundingBox()
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.store.upsertPage({ ...fixture.store.session.pages[0]!, isLoading: true })
+  })
+  await page.getByRole("progressbar").waitFor()
+  expect(await page.locator(".browser-surface").boundingBox()).toEqual(before)
+  expect(await page.locator(".browser-address-input").evaluate((node) => node === document.activeElement)).toBe(false)
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.store.upsertPage({ ...fixture.store.session.pages[0]!, isLoading: false })
+  })
+  await page.getByRole("progressbar").waitFor({ state: "hidden" })
+  expect(await page.locator(".browser-surface").boundingBox()).toEqual(before)
 })

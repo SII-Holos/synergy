@@ -377,6 +377,9 @@ test("inbox detail keeps contextual messages read-only and removal has a recover
   await page.locator(".session-inbox-row-tooltip").waitFor({ state: "hidden" })
   await row.locator(".execution-row-main").click()
   await page.getByText("Full inbox message 0", { exact: true }).waitFor()
+  await page.waitForFunction(() =>
+    document.querySelector(".session-inbox-row-tooltip")?.contains(document.activeElement),
+  )
   await page.keyboard.press("Escape")
   await page.waitForFunction(() => document.activeElement?.classList.contains("execution-row-main"))
   await row.locator(".execution-row-main").focus()

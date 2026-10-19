@@ -1,9 +1,3 @@
-diff --git a/node_modules/@kobalte/utils/.bun-tag-385e9ddea9768221 b/.bun-tag-385e9ddea9768221
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
-diff --git a/node_modules/@kobalte/utils/.bun-tag-b1f46f3b77c55c9c b/.bun-tag-b1f46f3b77c55c9c
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/dist/index.cjs b/dist/index.cjs
 index 448eaa2d02a217c009672cc2030bc10041b178bb..b35b93e5b152cdb6e279249650dcce7649067ce8 100644
 --- a/dist/index.cjs

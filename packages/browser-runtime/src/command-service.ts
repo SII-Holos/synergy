@@ -27,6 +27,7 @@ interface ExecuteRequest {
 interface OwnerQueue {
   tail: Promise<void>
   dialogTail: Promise<void>
+  interruptTail: Promise<void>
   pendingFingerprints: Map<string, string>
   resumeBinding?: ReturnType<typeof AsyncLocalStorage.snapshot>
   results: Map<string, { fingerprint: string; result?: BrowserBackendResult; error?: unknown; bytes: number }>
@@ -53,7 +54,10 @@ export namespace BrowserCommandService {
     const key = queueKey(owner, request.pageId)
     const enter = () =>
       runtimeState().runtime.withinOwner(owner, (resolved) => executeQueued(resolved, request), request.signal)
-    const resume = request.command.type === "dialog.respond" ? runtimeState().queues.get(key)?.resumeBinding : undefined
+    const resume =
+      request.command.type === "dialog.respond" || interruptsPage(request.command)
+        ? runtimeState().queues.get(key)?.resumeBinding
+        : undefined
     return resume ? resume(enter) : enter()
   }
 
@@ -115,12 +119,14 @@ export namespace BrowserCommandService {
       return replayResult({ fingerprint: pendingFingerprint }, fingerprint, request.commandId)
     }
     queue.pendingFingerprints.set(request.commandId, fingerprint)
-    // Dialog responses must release the page command waiting on them, while
-    // remaining serialized with each other for command replay and disposal.
+    // Control must reach the Host before an Agent wait completes. Each bypass
+    // lane retains replay ordering, and ordinary work/disposal drains both.
     const repliesToDialog = command.type === "dialog.respond"
-    const preceding = repliesToDialog ? queue.dialogTail : queue.tail
+    const interrupts = interruptsPage(command)
+    const bypass = repliesToDialog || interrupts
+    const preceding = repliesToDialog ? queue.dialogTail : interrupts ? queue.interruptTail : queue.tail
     const run = preceding.then(async () => {
-      if (!repliesToDialog) queue.resumeBinding = AsyncLocalStorage.snapshot()
+      if (!bypass) queue.resumeBinding = AsyncLocalStorage.snapshot()
       throwIfAborted(request.signal, request.commandId)
       const repeated = queue.results.get(request.commandId)
       if (repeated) return replayResult(repeated, fingerprint, request.commandId)
@@ -140,7 +146,7 @@ export namespace BrowserCommandService {
         throw normalized
       }
     })
-    const completed = repliesToDialog
+    const completed = bypass
       ? run
       : run.finally(() => {
           queue.resumeBinding = undefined
@@ -159,11 +165,12 @@ export namespace BrowserCommandService {
         () => undefined,
       )
       .finally(() => queue.pendingFingerprints.delete(request.commandId))
-    if (repliesToDialog) {
-      queue.dialogTail = drained
+    if (bypass) {
+      if (repliesToDialog) queue.dialogTail = drained
+      else queue.interruptTail = drained
       queue.tail = Promise.all([queue.tail, drained]).then(() => undefined)
     } else queue.tail = drained
-    return repliesToDialog ? settled : settled.finally(() => queue.dialogTail)
+    return bypass ? settled : settled.finally(() => queue.dialogTail)
   }
 
   export function clear(): void {
@@ -202,6 +209,15 @@ export namespace BrowserCommandService {
   }
 }
 
+function interruptsPage(command: BrowserBackendCommand): boolean {
+  return (
+    command.type === "stop" ||
+    command.type === "close" ||
+    ((command.type === "navigate" || command.type === "history" || command.type === "reload") &&
+      command.source === "user")
+  )
+}
+
 function queueKey(owner: BrowserOwner.Info, pageId: string) {
   if (!pageId)
     throw new BrowserProtocolError({
@@ -216,6 +232,7 @@ function createQueue(): OwnerQueue {
   return {
     tail: Promise.resolve(),
     dialogTail: Promise.resolve(),
+    interruptTail: Promise.resolve(),
     pendingFingerprints: new Map(),
     results: new Map(),
     resultBytes: 0,

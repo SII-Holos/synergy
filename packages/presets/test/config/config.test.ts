@@ -1054,9 +1054,8 @@ test("loads configurable plugin runtime timeout limits from plugin config domain
 test("plugin runtime timeout limits keep shared defaults when unset", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir({ git: true })
-    const { resolvePluginRuntimeLimits } = await import(
-      "@ericsanchezok/synergy-plugin-host/plugin-runtime/runtime-limits"
-    )
+    const { resolvePluginRuntimeLimits } =
+      await import("@ericsanchezok/synergy-plugin-host/plugin-runtime/runtime-limits")
 
     await ScopeContext.provide({
       scope: await tmp.scope(),

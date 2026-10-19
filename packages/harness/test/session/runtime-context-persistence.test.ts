@@ -166,7 +166,7 @@ test("advisory messages survive reopen and fork before their associated output w
             MessageV2.deriveSemantics(original).filter((m) => m.info.role === "user" && m.info.isRoot),
           ).toHaveLength(1)
           expect(original[1]!.info.visible).toBe(false)
-          expect(MessageV2.projectModelMessages(original).messages.map((m) => m.role)).toEqual([
+          expect((await MessageV2.projectModelMessages(original)).messages.map((m) => m.role)).toEqual([
             "user",
             "user",
             "assistant",
@@ -186,15 +186,15 @@ test("advisory messages survive reopen and fork before their associated output w
           ).toBeUndefined()
           const fork = await Session.fork({ sessionID })
           const copied = await Session.messages({ sessionID: fork.id })
-          expect(MessageV2.projectModelMessages(copied).messages).toEqual(
-            MessageV2.projectModelMessages(original).messages,
+          expect((await MessageV2.projectModelMessages(copied)).messages).toEqual(
+            (await MessageV2.projectModelMessages(original)).messages,
           )
           expect(copied.map((m) => m.info.rootID)).toEqual(copied.map(() => copied[0]!.info.id))
           expect(RuntimeAdvisory.read(copied[1]!.info)).toEqual(observation.metadata)
           const imported = await SessionImport.fromReport(await SessionExport.generate({ sessionID, mode: "full" }))
           const restored = await Session.messages({ sessionID: imported.rootSessionID })
-          expect(MessageV2.projectModelMessages(restored).messages).toEqual(
-            MessageV2.projectModelMessages(original).messages,
+          expect((await MessageV2.projectModelMessages(restored)).messages).toEqual(
+            (await MessageV2.projectModelMessages(original)).messages,
           )
           expect(restored.map((m) => m.info.rootID)).toEqual(restored.map(() => restored[0]!.info.id))
           expect(RuntimeAdvisory.history(restored)).toEqual([observation.metadata])
@@ -210,8 +210,8 @@ test("advisory messages survive reopen and fork before their associated output w
       scope: Scope.home(),
       fn: async () => {
         const messages = await Session.messages({ sessionID })
-        expect(MessageV2.projectModelMessages(messages).messages).toEqual(
-          MessageV2.projectModelMessages(original).messages,
+        expect((await MessageV2.projectModelMessages(messages)).messages).toEqual(
+          (await MessageV2.projectModelMessages(original)).messages,
         )
         expect(
           RuntimeAdvisory.prepare({

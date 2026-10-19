@@ -206,23 +206,20 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
             ]
     for (const group of groups) {
       const count = group.count
-      const bins = Array.from(
-        { length: count },
-        (_, index): Unit => ({
-          id: `${group.name}-${index}`,
-          pool,
-          tasks: [],
-          seconds: 0,
-          browser: false,
-          desktop: false,
-          sandbox: false,
-          build: false,
-          policy: false,
-          benchmark: false,
-          core: false,
-          full: false,
-        }),
-      )
+      const bins = Array.from({ length: count }, (_, index): Unit => ({
+        id: `${group.name}-${index}`,
+        pool,
+        tasks: [],
+        seconds: 0,
+        browser: false,
+        desktop: false,
+        sandbox: false,
+        build: false,
+        policy: false,
+        benchmark: false,
+        core: false,
+        full: false,
+      }))
       for (const task of group.entries.toSorted(
         (a, b) =>
           (pool === "docker"
@@ -258,7 +255,12 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
         target.full ||= task.profile === "full"
       }
       for (const bin of bins)
-        bin.tasks.sort((a, b) => taskOrder(tasks.find((task) => task.id === a)!, tasks.find((task) => task.id === b)!))
+        bin.tasks.sort((a, b) =>
+          taskOrder(
+            tasks.find((task) => task.id === a)!,
+            tasks.find((task) => task.id === b)!,
+          ),
+        )
       if (pool !== "linux" && pool !== "docker") for (const bin of bins) bin.id = bin.tasks[0]!
       units.push(...bins.toSorted((a, b) => b.seconds - a.seconds || a.id.localeCompare(b.id)))
     }

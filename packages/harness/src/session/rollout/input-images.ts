@@ -24,6 +24,14 @@ export namespace InputImages {
     return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined
   }
   function data(value: unknown): string | undefined {
+    const tagged = record(value)
+    if (tagged?.type === "data") {
+      if (tagged.data instanceof Uint8Array) return digest(tagged.data)
+      if (typeof tagged.data === "string" && /^[A-Za-z0-9+/]+={0,2}$/.test(tagged.data))
+        return digest(Buffer.from(tagged.data, "base64"))
+      return
+    }
+    if (tagged?.type === "url") value = tagged.url
     if (value instanceof Uint8Array) return digest(value)
     if (value instanceof URL) value = value.href
     if (typeof value !== "string") return
@@ -56,7 +64,7 @@ export namespace InputImages {
           const part = record(value)
           if (part?.type === "image-url") add(part.url)
           if (
-            (part?.type === "image-data" || part?.type === "media") &&
+            (part?.type === "image-data" || part?.type === "file-data" || part?.type === "media") &&
             typeof part.mediaType === "string" &&
             part.mediaType.startsWith("image/") &&
             typeof part.data === "string"

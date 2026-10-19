@@ -330,7 +330,11 @@ for (const { key, change } of [
             !row.closest('[data-component="process-viewport"]') &&
             rect.height > 0 &&
             rect.bottom > bounds.top &&
-            rect.top < bounds.bottom
+            rect.top < bounds.bottom &&
+            [...row.querySelectorAll("p")].some((paragraph) => {
+              const content = paragraph.getBoundingClientRect()
+              return content.height > 0 && content.bottom > bounds.top && content.top < bounds.bottom
+            })
           )
         })!
         return {

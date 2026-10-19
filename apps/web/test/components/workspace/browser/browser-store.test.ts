@@ -462,3 +462,55 @@ test("explicit fixed and fit viewport commands target only their active page", (
     expect(second.viewportMode()).toBe("fixed")
     dispose()
   }))
+
+test("an older catalog snapshot cannot rewind a newer native navigation", () =>
+  createRoot((dispose) => {
+    const store = createBrowserStore()
+    const navigation = {
+      id: "attempt",
+      generation: 2,
+      revision: 4,
+      requestedURL: "https://new.example",
+      phase: "loading" as const,
+      slow: false,
+    }
+    store.replacePages([{ ...page("one"), navigation, isLoading: true }])
+    store.upsertPage({
+      ...page("one"),
+      url: "https://old.example",
+      navigation: { ...navigation, generation: 1, revision: 99 },
+    })
+    expect(store.session.pages[0]!.navigation).toMatchObject({ generation: 2, revision: 4 })
+    store.replacePages([{ ...page("one"), navigation: { ...navigation, revision: 2 } }])
+    expect(store.session.pages[0]!.navigation?.revision).toBe(4)
+    store.replacePages([])
+    expect(store.session.pages).toHaveLength(0)
+    dispose()
+  }))
+
+test("late navigation errors cannot replace a newer page or its current error", () =>
+  createRoot((dispose) => {
+    const store = createBrowserStore()
+    const navigation = {
+      id: "old",
+      generation: 1,
+      revision: 1,
+      requestedURL: "https://one.example.com/old",
+      phase: "failed" as const,
+      slow: false,
+    }
+    store.replacePages([{ ...page("one"), navigation }])
+    const view = store.forPage(
+      () => "one",
+      () => {},
+    )
+    store.setBrowserError({ pageId: "one", severity: "error", message: "old failure", navigation })
+    expect(view.browserError()?.message).toBe("old failure")
+    store.upsertPage({ ...page("one"), navigation: { ...navigation, id: "new", revision: 2, phase: "completed" } })
+    store.setBrowserError({ pageId: "one", severity: "error", message: "late old failure", navigation })
+    expect(view.browserError()).toBeNull()
+    store.setBrowserError({ pageId: "one", severity: "error", message: "popup failure" })
+    store.setBrowserError({ pageId: "one", severity: "error", message: "late old failure", navigation })
+    expect(view.browserError()?.message).toBe("popup failure")
+    dispose()
+  }))

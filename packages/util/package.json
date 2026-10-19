@@ -46,7 +46,8 @@
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "@types/yargs": "17.0.33",
+    "@types/node": "catalog:",
+    "@types/yargs": "17.0.35",
     "typescript": "catalog:"
   }
 }

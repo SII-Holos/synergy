@@ -180,7 +180,7 @@ export namespace EmailImap {
               env.to
                 ?.map((a: { name?: string; address?: string }) => `${a.name ?? ""} <${a.address ?? ""}>`.trim())
                 .join(", ") ?? "",
-            date: env.date ?? new Date(0),
+            date: new Date(env.date ?? 0),
             seen: msg.flags?.has("\\Seen") ?? false,
           })
         }
@@ -233,7 +233,7 @@ export namespace EmailImap {
             env.to
               ?.map((a: { name?: string; address?: string }) => `${a.name ?? ""} <${a.address ?? ""}>`.trim())
               .join(", ") ?? "",
-          date: env.date ?? new Date(0),
+          date: new Date(env.date ?? 0),
           text,
           html,
           seen: msg.flags?.has("\\Seen") ?? false,

@@ -286,6 +286,8 @@ ${inner}
     expect(zodTypeOf('z.object({ level: z.enum(["error", "warning"]).optional() })')).toBe("object")
     expect(zodTypeOf('z.enum(["error", "warning"])')).toBe('"error" | "warning"')
     expect(zodTypeOf("z.record(z.string(), z.string())")).toBe("record")
+    expect(zodTypeOf("z.lazy(() => z.record(z.string(), ProviderSchema())).optional()")).toBe("record")
+    expect(zodTypeOf("z.lazy(() => TreeSchema)")).toBe("TreeSchema")
     expect(zodTypeOf("z.array(z.string())")).toBe("array")
     expect(zodTypeOf("z\n      .number()\n      .int()\n      .optional()")).toBe("number")
   })

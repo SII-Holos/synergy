@@ -497,17 +497,17 @@ function buildEmailPatch(cfg: Config, state: SettingsState, patch: Record<string
   const hasEmailFrom = Boolean(email.fromAddress.trim() || email.fromName.trim())
   const hasEmailSmtp = Boolean(
     email.smtpHost.trim() ||
-      smtpPort !== undefined ||
-      email.smtpUsername.trim() ||
-      email.smtpPassword.trim() ||
-      email.smtpSecure !== true,
+    smtpPort !== undefined ||
+    email.smtpUsername.trim() ||
+    email.smtpPassword.trim() ||
+    email.smtpSecure !== true,
   )
   const hasEmailImap = Boolean(
     email.imapHost.trim() ||
-      imapPort !== undefined ||
-      email.imapUsername.trim() ||
-      email.imapPassword.trim() ||
-      email.imapSecure !== true,
+    imapPort !== undefined ||
+    email.imapUsername.trim() ||
+    email.imapPassword.trim() ||
+    email.imapSecure !== true,
   )
   const shouldMaterializeEmail =
     hasEmailFrom || hasEmailSmtp || hasEmailImap || email.enabled !== true || cfg.email !== undefined

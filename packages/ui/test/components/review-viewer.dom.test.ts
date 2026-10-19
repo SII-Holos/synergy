@@ -103,6 +103,7 @@ test("continuous review bounds a full large file and reaches distant files witho
     .locator("diffs-container")
     .filter({ has: page.getByRole("button", { name: "file-60", exact: true }) })
   const middleHeader = await middle.locator("[data-review-header]").boundingBox()
+  await middle.getByRole("button", { name: "Select line 1 in after", exact: true }).waitFor()
   const middleLine = await middle.getByRole("button", { name: "Select line 1 in after", exact: true }).boundingBox()
   expect(middleLine!.y).toBeGreaterThanOrEqual(middleHeader!.y + middleHeader!.height - 1)
   await page.getByRole("button", { name: "Last file", exact: true }).click()
@@ -111,6 +112,7 @@ test("continuous review bounds a full large file and reaches distant files witho
     .locator("diffs-container")
     .filter({ has: page.getByRole("button", { name: "file-119", exact: true }) })
   const header = await last.locator("[data-review-header]").boundingBox()
+  await last.getByRole("button", { name: "Select line 1 in after", exact: true }).waitFor()
   const firstLine = await last.getByRole("button", { name: "Select line 1 in after", exact: true }).boundingBox()
   expect(firstLine!.y).toBeGreaterThanOrEqual(header!.y + header!.height - 1)
   const connected = await last

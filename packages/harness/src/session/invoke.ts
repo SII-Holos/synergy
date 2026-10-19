@@ -1243,7 +1243,7 @@ export namespace SessionInvoke {
                   baseline: SessionMemoryPressure.currentSnapshot(),
                 })
                 await memoryTurn.stabilizeBeforeProjection()
-                function projectHistory() {
+                async function projectHistory() {
                   const messages = WorkflowUserWrapper.projectMessages({
                     messages: sessionMessages,
                     session,
@@ -1252,7 +1252,7 @@ export namespace SessionInvoke {
                   })
                   return {
                     messages,
-                    projection: MessageV2.projectModelMessages(messages, {
+                    projection: await MessageV2.projectModelMessages(messages, {
                       maxHistoryImages: jobCtx.compactionMaxHistoryImages,
                       model: {
                         providerID: model.providerID,
@@ -1263,7 +1263,7 @@ export namespace SessionInvoke {
                     }),
                   }
                 }
-                let { messages: modelSessionMessages, projection: modelProjection } = projectHistory()
+                let { messages: modelSessionMessages, projection: modelProjection } = await projectHistory()
                 const { converted, dropped, failed } = modelProjection.sanitization
                 if (converted + dropped + failed > 0) {
                   log.info("model prompt sanitized non-JSON-safe values", {
@@ -1359,7 +1359,7 @@ export namespace SessionInvoke {
                         }
                       }),
                     }))
-                    ;({ messages: modelSessionMessages, projection: modelProjection } = projectHistory())
+                    ;({ messages: modelSessionMessages, projection: modelProjection } = await projectHistory())
                     memoryTurn.projected({ historyAfterBytes: LLMTurnMemory.estimateBytes(modelProjection.messages) })
                     preparedMessages = prepareMessages()
                     promptPlan = await buildPromptPlan()

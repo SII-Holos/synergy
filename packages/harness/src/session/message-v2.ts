@@ -1450,13 +1450,13 @@ export namespace MessageV2 {
     return new Set(canonical.values())
   }
 
-  export function projectModelMessages(
+  export async function projectModelMessages(
     input: WithParts[],
     opts?: {
       maxHistoryImages?: number
       model?: { providerID: string; modelID: string; profileID?: string; apiModelID?: string }
     },
-  ): { messages: ModelMessage[]; provenance: ModelMessageProvenance; sanitization: PromptSanitizationStats } {
+  ): Promise<{ messages: ModelMessage[]; provenance: ModelMessageProvenance; sanitization: PromptSanitizationStats }> {
     // Pass 1: collect unique image hashes in order of first appearance
     const imageHashSet = new Set<string>()
     const orderedHashes: string[] = []
@@ -1687,20 +1687,22 @@ export namespace MessageV2 {
     }
 
     return {
-      messages: convertToModelMessages(result.filter((msg) => msg.parts.some((part) => part.type !== "step-start"))),
+      messages: await convertToModelMessages(
+        result.filter((msg) => msg.parts.some((part) => part.type !== "step-start")),
+      ),
       provenance,
       sanitization,
     }
   }
 
-  export function toModelMessage(
+  export async function toModelMessage(
     input: WithParts[],
     opts?: {
       maxHistoryImages?: number
       model?: { providerID: string; modelID: string; profileID?: string; apiModelID?: string }
     },
-  ): ModelMessage[] {
-    return projectModelMessages(input, opts).messages
+  ): Promise<ModelMessage[]> {
+    return (await projectModelMessages(input, opts)).messages
   }
 
   export function compareStorageOrder(a: Info, b: Info): number {

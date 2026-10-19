@@ -15,7 +15,11 @@ CI `package:check` builds its own package closure and runs on the separate contr
 
 Electron fixtures that await renderer animations must keep their test WebContents unthrottled when another application can occlude the window. A visible native window can still have a hidden document with paused animation time. Diagnose that state before changing production animation behavior or extending a deadline.
 
+Native modifier and middle-click acceptance should open a real local HTTP destination and verify its document after the tab appears. Install Vite fixture middleware through `configureServer` before its HTML fallback. Browser-created tabs can begin their first request before page-level interception is installed; a destination URL alone does not prove that the intended document loaded. Keep OS pointer and focus operations out of explicitly background-only acceptance.
+
 Keep validation for private source-only test packages in `typecheck`. Declare `build` only when the package emits the distribution consumed by preparation.
+
+When upgrading compiler or patched UI dependencies, resolve the installed transitive versions before rebasing patches. Exercise each patched behavior through that resolved entrypoint. Keep mocked JSX prop tests explicitly compiled with their fixture factory, and real Solid DOM tests compiled through the current Babel preset API; a passing production bundle does not validate the test loader.
 
 ## Local Joint Acceptance
 

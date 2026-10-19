@@ -37,9 +37,10 @@ async function holosStatusRow(): Promise<RuntimeStatusRow | undefined> {
         CHANNEL_CONNECT_TIMEOUT,
       )
       const spin = setInterval(async () => {
-        const nextStatus = await HolosRuntime.status().catch(
-          (): HolosStatus => ({ status: "failed", error: "status unavailable" }),
-        )
+        const nextStatus = await HolosRuntime.status().catch((): HolosStatus => ({
+          status: "failed",
+          error: "status unavailable",
+        }))
         if (nextStatus.status !== "connecting") {
           finish(nextStatus)
         }

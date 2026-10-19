@@ -203,7 +203,7 @@ export const DataMergeCommand = cmd({
                 )
                 libraryMerged = true
               } catch (e) {
-                librarySpinner.stop("Failed to merge library.db", 1)
+                librarySpinner.error("Failed to merge library.db")
                 errors.push(`library.db: ${e instanceof Error ? e.message : String(e)}`)
               }
             }
@@ -230,7 +230,7 @@ export const DataMergeCommand = cmd({
             const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
             spinner.stop(`Merged ${subdir}/${skippedNote}`)
           } catch (e) {
-            spinner.stop(`Failed to merge ${subdir}/`, 1)
+            spinner.error(`Failed to merge ${subdir}/`)
             errors.push(`${subdir}: ${e instanceof Error ? e.message : String(e)}`)
           }
         }
@@ -300,7 +300,7 @@ async function prepareSource(sourceArg: string): Promise<SourceInfo | null> {
         cleanup: () => fs.rm(tmpDir, { recursive: true, force: true }),
       }
     } catch (e) {
-      spinner.stop("Failed to extract archive", 1)
+      spinner.error("Failed to extract archive")
       prompts.log.error(`Extraction failed: ${e instanceof Error ? e.message : String(e)}`)
       return null
     }

@@ -1,5 +1,5 @@
 import { APICallError } from "ai"
-import type { LanguageModelV2Middleware } from "@ai-sdk/provider"
+import type { LanguageModelV4Middleware } from "@ai-sdk/provider"
 import { providerRetryable } from "./retry"
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -30,14 +30,30 @@ export function responsesError(value: unknown): APICallError | undefined {
   })
 }
 
-// The locked OpenAI adapter drops response.failed and error.headers during schema projection.
-// Inspect its existing raw event once, before projection, without another SSE parser or retry owner.
-export function responsesErrorMiddleware(): LanguageModelV2Middleware {
+// The adapter can throw before exposing a stream or emit a raw failure during it.
+// Both paths retain the same classification and retry hints without another SSE parser or retry owner.
+export function responsesErrorMiddleware(): LanguageModelV4Middleware {
   return {
-    middlewareVersion: "v2",
+    specificationVersion: "v4",
     transformParams: async ({ params }) => ({ ...params, includeRawChunks: true }),
     async wrapStream({ doStream }) {
-      const result = await doStream()
+      let result: Awaited<ReturnType<typeof doStream>>
+      try {
+        result = await doStream()
+      } catch (error) {
+        if (APICallError.isInstance(error)) {
+          const projected = responsesError(error.data)
+          if (projected) {
+            throw new APICallError({
+              ...error,
+              message: projected.message,
+              isRetryable: projected.isRetryable,
+              responseHeaders: { ...error.responseHeaders, ...projected.responseHeaders },
+            })
+          }
+        }
+        throw error
+      }
       return {
         ...result,
         stream: result.stream.pipeThrough(

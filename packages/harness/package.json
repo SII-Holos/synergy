@@ -397,7 +397,7 @@
     "./session/execution-owners": "./src/session/execution-owners.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/harness",
     "test:ci": "bun ../testing/script/test-ci.ts",
@@ -405,18 +405,18 @@
     "benchmark:secrets": "bun script/secrets-benchmark.ts"
   },
   "dependencies": {
-    "@ai-sdk/provider": "2.0.3",
+    "@ai-sdk/provider": "4.0.29",
     "@ericsanchezok/synergy-secret-detection": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
-    "@zip.js/zip.js": "2.8.26",
+    "@zip.js/zip.js": "2.24.0",
     "ai": "catalog:",
-    "ajv": "8.18.0",
-    "decimal.js": "10.5.0",
+    "ajv": "8.20.0",
+    "decimal.js": "10.6.0",
     "diff": "catalog:",
-    "fuzzysort": "3.1.0",
+    "fuzzysort": "4.0.2",
     "gray-matter": "4.0.3",
     "hono": "catalog:",
-    "ignore": "7.0.5",
+    "ignore": "7.0.12",
     "jsonc-parser": "3.3.1",
     "remeda": "catalog:",
     "tiktoken": "1.0.22",
@@ -428,7 +428,7 @@
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "@typescript/typescript6": "catalog:",
     "hono-openapi": "catalog:",
     "js-tiktoken": "1.0.21",
     "typescript": "catalog:"

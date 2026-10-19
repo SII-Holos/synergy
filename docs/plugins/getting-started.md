@@ -12,6 +12,8 @@ bun install
 
 Available templates are `tool-ui`, `workbench-panel`, `navigation`, `api-connector`, and `theme-icon`.
 
+Generated projects use TypeScript 7 with explicit Bun runtime types. The Shell template also declares its CSS imports so `bun run typecheck` checks the complete project.
+
 The generated project exports one definition from `src/index.ts`:
 
 ```ts
