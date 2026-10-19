@@ -38,6 +38,8 @@ Native unread indicators use `build/unread-overlay.png` for the Windows taskbar 
 
 ## Release Artifacts
 
+macOS Desktop requires macOS 13 or later. Installer and updater metadata must retain that minimum alongside the bundled Electron version.
+
 Recommended Desktop installer artifacts:
 
 - `Synergy-darwin-x64-${version}.pkg`

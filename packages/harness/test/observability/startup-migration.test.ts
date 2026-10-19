@@ -8,7 +8,8 @@ import { Storage } from "../../src/storage/storage"
 import { ObservabilityConfig } from "../../src/observability/config"
 import { ObservabilityStore } from "../../src/observability/store"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
-import { registerObservabilityMigrations } from "../../src/observability/migration"
+import { ObservabilityMigration, registerObservabilityMigrations } from "../../src/observability/migration"
+import { ObservabilityResourceSchema } from "../../src/observability/resource-schema"
 
 test("empty telemetry startup completes together without creating a database, then recording creates the current schema", async () => {
   await using fixture = await migrationFixture({ env: { SYNERGY_OBSERVABILITY_INLINE: "1" } })
@@ -81,6 +82,41 @@ test("a failed telemetry file proof leaves every completion pending", async () =
       expect((await getMigrationStatus()).observability.pending).toHaveLength(6)
     } finally {
       stat.mockRestore()
+    }
+  })
+})
+
+test("resource migration retains write ownership between schema inspection and version publication", async () => {
+  await using fixture = await migrationFixture({ env: { SYNERGY_OBSERVABILITY_INLINE: "1" } })
+  await fixture.run(async () => {
+    const db = ObservabilityStore.initializeForMigration()
+    db.query("UPDATE obs_meta SET value='4' WHERE key='schemaVersion'").run()
+    const writer = new Database(ObservabilityStore.pathName())
+    writer.exec("PRAGMA busy_timeout=0")
+    const write = () => writer.query("INSERT INTO obs_meta (key,value) VALUES ('concurrent-writer','retained')").run()
+    const apply = ObservabilityResourceSchema.applyV5
+    let blocked: unknown
+    const inspect = spyOn(ObservabilityResourceSchema, "applyV5").mockImplementation((target) => {
+      apply(target)
+      try {
+        write()
+      } catch (error) {
+        blocked = error
+      }
+    })
+    try {
+      await ObservabilityMigration.addResourceCgroupColumns()
+      expect(blocked).toMatchObject({ code: "SQLITE_BUSY" })
+      expect(db.query("SELECT value FROM obs_meta WHERE key='schemaVersion'").get()).toEqual({
+        value: String(ObservabilityStore.schemaVersion),
+      })
+      write()
+      expect(db.query("SELECT value FROM obs_meta WHERE key='concurrent-writer'").get()).toEqual({
+        value: "retained",
+      })
+    } finally {
+      inspect.mockRestore()
+      writer.close()
     }
   })
 })
