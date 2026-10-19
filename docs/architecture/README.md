@@ -19,7 +19,7 @@ The full product is a client-server system built around the same persistent runt
 
 Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same runtime model. They do not own parallel session or permission semantics.
 
-## Core Documents
+## Architecture Documents
 
 | Document                                         | Contract                                                                                                                        |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |

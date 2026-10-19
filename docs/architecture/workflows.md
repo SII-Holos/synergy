@@ -49,7 +49,7 @@ The Blueprint-owned Note document-kind policy allows Blueprint creation and modi
 
 ## BlueprintLoop State Machine
 
-The retired waiting-status upgrade runs at startup over global BlueprintLoop records. Blueprint separately upgrades the matching Session phase on access or import, using its own per-session receipt even when the old shared receipts are complete. Core and other workflow owners retain the unknown Blueprint state without creating a pause. The conversion and its receipt share a transaction; existing pauses and unrelated history remain unchanged.
+The retired waiting-status upgrade runs at startup over global BlueprintLoop records. Blueprint separately upgrades the matching Session phase on access or import, using its own per-session receipt even when the old shared receipts are complete. Harness and other workflow owners retain the unknown Blueprint state without creating a pause. The conversion and its receipt share a transaction; existing pauses and unrelated history remain unchanged.
 
 A BlueprintLoop persists:
 

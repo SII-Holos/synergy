@@ -3,7 +3,7 @@
 Read only sections relevant to the current change. Search the headings and domain terms before loading unrelated cases.
 
 - [Local Performance Experiments](#local-performance-experiments)
-- [Run Core Suites Through the Orchestrators](#run-core-suites-through-the-orchestrators)
+- [Run Harness Suites Through the Orchestrators](#run-harness-suites-through-the-orchestrators)
 - [Run Narrow to Broad](#run-narrow-to-broad)
 - [Diagnose Failures](#diagnose-failures)
 
@@ -27,7 +27,7 @@ Use the [benchmark workspace](../../../../benchmark/README.md) for model-backed 
 
 For concurrent-session performance changes, use the [production performance fixtures](../../../../apps/web/test/performance/README.md). Establish behavioral bounds before timing: one file-status request per Workspace generation, no hidden-consumer refresh, a finite owner-scoped execution revision cut, owner-only gap repair, root-only context headers, shared cancellation and one-second progress/depth aggregation. Compare baseline and candidate on the same device sequentially, counting work by affected category instead of reapplying a past percentage target. Separate real deterministic-model execution from synthetic stream throughput; report admitted, active and queued tasks and pressure limits. Preserve six Session residents and eight panel residents. A cold navigation is ready only when target body text is readable and its composer accepts input; verify drafts, scroll, selection and disclosure across warm switches and reconnects. Retain failed panel continuity reports even when both revisions fail.
 
-## Run Core Suites Through the Orchestrators
+## Run Harness Suites Through the Orchestrators
 
 Do not pass `--no-orphans` to a test batch or inherit `BUN_FEATURE_FLAG_NO_ORPHANS` into its environment. Bun propagates this watchdog through nested Bun processes, killing intentionally detached work and recovery supervisors before their owning implementation can settle them. Keep explicit fixture cleanup and process-drain assertions; a runner's automatic kill is not evidence that product ownership worked. The shared runner's detached-process regression verifies the interval after launcher exit and before the fixture releases its worker.
 
@@ -46,7 +46,7 @@ bun run test:coverage
 
 ## Run Narrow to Broad
 
-Core runtime commands run from `packages/harness`:
+Harness runtime commands run from `packages/harness`:
 
 ```bash
 bun test test/<domain>/<file>.test.ts

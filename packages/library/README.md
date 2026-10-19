@@ -2,7 +2,7 @@
 
 Knowledge storage, memory and experience retrieval, embedding, encoding, Chronicler, tools, routes, configuration and migrations.
 
-Register the capability explicitly. Model work must retain cancellation, usage, budget and execution provenance through Harness. Core context receives a typed contribution without owning retrieval policy.
+Register the capability explicitly. Model work must retain cancellation, usage, budget and execution provenance through Harness. Harness context receives a typed contribution without owning retrieval policy.
 
 Cross-package imports use the explicit entries in `package.json`. Tests and fixtures belong in this package’s `test/` tree. Full API composition tests belong in `presets/test/`.
 

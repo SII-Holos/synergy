@@ -2,7 +2,7 @@
 
 ## Ownership
 
-Harness owns persistent Host identity, Ed25519 keys, pairing grants and request authorization. Server owns the authenticated gateway and local HTTP/WebSocket proxy. The public optional `hostConnection` Plugin Host Service lets an approved plugin publish a gateway, probe devices and manage pairing. A provider plugin owns its network client, discovery, login, Serve configuration and settings UI. Core does not depend on Tailscale or import provider code.
+Harness owns persistent Host identity, Ed25519 keys, pairing grants and request authorization. Server owns the authenticated gateway and local HTTP/WebSocket proxy. The public optional `hostConnection` Plugin Host Service lets an approved plugin publish a gateway, probe devices and manage pairing. A provider plugin owns its network client, discovery, login, Serve configuration and settings UI. Harness does not depend on Tailscale or import provider code.
 
 Plugin API4 and IPC9 remain unchanged. `host.connection.manage` is required in both the plugin manifest and the invoking contribution. Agent calls and invocations originating through the remote gateway cannot manage connections. Existing `runtime.endpoint.read` keeps its credential-free listener contract. The new `endpoint()` returns the loopback gateway path, without a bearer token or private key.
 

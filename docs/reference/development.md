@@ -86,7 +86,7 @@ The config copy preserves provider setup while `SYNERGY_HOME` isolates data, log
 
 ## Tests
 
-Core runtime tests run from `packages/harness`:
+Harness runtime tests run from `packages/harness`:
 
 ```bash
 cd packages/harness

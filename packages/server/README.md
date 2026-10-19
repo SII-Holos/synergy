@@ -2,7 +2,7 @@
 
 HTTP/WS transport, authentication, core API routes, and explicit domain route contributions. Presets registers the full API before opening Server.
 
-Core routes stay here. Domain routes belong with the domain service and are mounted through server contributions; importing the full product from Server is forbidden.
+Shared runtime routes stay here. Domain routes belong with the domain service and are mounted through server contributions; importing the full product from Server is forbidden.
 
 The explicit `webApp({ directory })` component serves built Web assets. Known page paths negotiate HTML navigation before optional API handlers, after authentication, CORS and Scope resolution; JSON and fetch requests retain their API behavior. This allows a bookmarked Library page and its generated SDK endpoint to share a path.
 
