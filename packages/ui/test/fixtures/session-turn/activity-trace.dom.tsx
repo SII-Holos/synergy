@@ -376,6 +376,20 @@ const dagReceipt = {
   },
 }
 
+const moveDestinationFile = {
+  file: "nested/destination.ts",
+  additions: 1,
+  deletions: 1,
+  preview:
+    '--- nested/destination.ts\n+++ nested/destination.ts\n@@ -1,1 +1,1 @@\n-export const destination = "before";\n+export const moved = "after";\n',
+}
+const moveSourceFile = {
+  file: "source.ts",
+  additions: 0,
+  deletions: 1,
+  preview: '--- source.ts\n+++ source.ts\n@@ -1,1 +0,0 @@\n-export const moved = "before";\n',
+}
+
 const i18n = setupI18n()
 const navigateCalls: string[] = []
 const data = {
@@ -506,6 +520,66 @@ render(
               defaultOpen
             />
           </div>
+          {(["applied", "partial", "unresolved"] as const).map((outcome) => (
+            <div id={`patch-move-${outcome}`}>
+              <ToolResultBody
+                part={{
+                  id: `patch-move-${outcome}`,
+                  sessionID: "s",
+                  messageID: "m1",
+                  type: "tool",
+                  callID: `patch-move-${outcome}`,
+                  tool: "apply_patch",
+                  state: {
+                    ...(outcome === "applied"
+                      ? { status: "completed" as const, title: "Move applied", output: "Raw Move ledger" }
+                      : { status: "error" as const, error: "Raw Move ledger" }),
+                    input: { patch: "retained move patch" },
+                    metadata: {
+                      outcome,
+                      sections: [
+                        {
+                          source: moveSourceFile.file,
+                          destination: moveDestinationFile.file,
+                          operation: "update",
+                          state: outcome === "applied" ? "committed" : outcome === "partial" ? "failed" : "unknown",
+                          diff: outcome === "partial" ? moveDestinationFile.preview : moveSourceFile.preview,
+                          observedPath: outcome === "partial" ? moveDestinationFile.file : moveSourceFile.file,
+                          filediff: outcome === "partial" ? moveDestinationFile : moveSourceFile,
+                          files:
+                            outcome === "applied"
+                              ? [moveDestinationFile, moveSourceFile]
+                              : outcome === "partial"
+                                ? [moveDestinationFile]
+                                : [],
+                          operations: [
+                            {
+                              phase: "write",
+                              path: moveDestinationFile.file,
+                              state: outcome === "unresolved" ? "unknown" : "committed",
+                            },
+                            ...(outcome === "unresolved"
+                              ? []
+                              : [
+                                  {
+                                    phase: "delete",
+                                    path: moveSourceFile.file,
+                                    state: outcome === "applied" ? "committed" : "failed",
+                                  },
+                                ]),
+                          ],
+                        },
+                      ],
+                    },
+                    time: { start: 1, end: 2 },
+                  },
+                }}
+                serverUrl="http://localhost"
+                resultOnly
+                defaultOpen
+              />
+            </div>
+          ))}
           {(["edit", "revise_file"] as const).map((tool) => (
             <div id={`result-${tool}`}>
               <ToolResultBody

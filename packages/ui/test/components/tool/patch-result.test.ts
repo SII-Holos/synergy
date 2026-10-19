@@ -82,3 +82,77 @@ test("historical patch diffs use their recorded file identity without guessing a
   ])
   expect(sections.map((section) => section.observedPath)).toEqual(["new.ts", "old.ts", undefined, "old.ts"])
 })
+
+test("move presentation retains both recorded file patches instead of only the last observed path", () => {
+  const sections = patchSections([
+    {
+      source: "old.ts",
+      destination: "nested/new.ts",
+      state: "committed",
+      observedPath: "old.ts",
+      diff: "-source",
+      filediff: { file: "old.ts", preview: "-source" },
+      files: [
+        {
+          file: "nested/new.ts",
+          additions: 1,
+          deletions: 1,
+          patch: "-destination\n+replacement",
+          preview: "short preview with characters omitted",
+          truncated: true,
+        },
+        { file: "old.ts", additions: 0, deletions: 1, preview: "-source" },
+      ],
+    },
+  ])
+  expect(sections[0]?.files).toEqual([
+    { file: "nested/new.ts", patch: "-destination\n+replacement" },
+    { file: "old.ts", patch: "-source" },
+  ])
+})
+
+test("partial moves retain only the destination write recorded before source deletion failed", () => {
+  const sections = patchSections([
+    {
+      source: "old.ts",
+      destination: "nested/new.ts",
+      state: "failed",
+      observedPath: "nested/new.ts",
+      diff: "legacy single diff",
+      files: [{ file: "nested/new.ts", additions: 1, deletions: 0, preview: "+replacement" }],
+      operations: [
+        { phase: "write", path: "nested/new.ts", state: "committed" },
+        { phase: "delete", path: "old.ts", state: "failed" },
+      ],
+    },
+  ])
+  expect(sections[0]?.files).toEqual([{ file: "nested/new.ts", patch: "+replacement" }])
+})
+
+test("empty or previewless file evidence never falls back to planned or single-path effects", () => {
+  const sections = patchSections([
+    {
+      source: "old.ts",
+      destination: "new.ts",
+      state: "unknown",
+      observedPath: "old.ts",
+      diff: "+stale single diff",
+      files: [],
+    },
+    { source: "old.ts", destination: "new.ts", state: "unknown", diff: "+planned" },
+    {
+      source: "old.ts",
+      destination: "new.ts",
+      state: "unknown",
+      observedPath: "old.ts",
+      diff: "+stale single diff",
+      files: [
+        null,
+        { file: 1 },
+        { file: "", preview: "+invalid" },
+        { file: "recorded.ts", additions: 0, deletions: 0 },
+      ],
+    },
+  ])
+  expect(sections.map((section) => section.files)).toEqual([[], [], [{ file: "recorded.ts", patch: undefined }]])
+})

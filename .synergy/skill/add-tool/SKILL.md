@@ -48,6 +48,8 @@ Authorize file search observations against the actual selected file paths before
 
 For patch-like multi-file writes, use one pure grammar for policy and execution and the selected-view mutation owners. Preflight before effects, then revalidate identities and perform conditional sequential writes. Test content/mode and parent replacement, unrelated object revisions, update-then-move failure and cancellation through rollout capture. Keep the full stage ledger even when display text is bounded; a post-publication error is not proof of no effect. Never retry with a new operation identity to obtain a cleaner result.
 
+When adopting another tool's capabilities, pin and replay its behavioral fixtures through the real execution owner, not only its syntax parser. List host-specific differences explicitly. Patch matching changes must cover tier priority, repeated context, Unicode whitespace and source order; replacement/move changes must verify every actual target's read evidence, permissions, mode, conditional versions and partial effects. Record destination writes and source removals separately, retain complete per-file patches independently of bounded previews, and verify them through both tool presentation and Review without inventing historical paths. When a later destructive stage depends on a formatted file, advance its observation only through the formatter owner; test real in-place and atomic-replacement formatters as well as arbitrary listener replacements.
+
 ## Register the Web Presentation
 
 Complete all five first-party registrations:

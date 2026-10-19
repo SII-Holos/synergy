@@ -1,5 +1,6 @@
 import path from "node:path"
 import fs from "node:fs/promises"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
@@ -113,6 +114,26 @@ export namespace FileView {
     entry?: WorkspaceProtocol.Item
     bytes?: Uint8Array
     version: string | null
+  }
+
+  const writeObservation = new AsyncLocalStorage<{ path: string; observed: Observation }>()
+
+  export async function afterWrite(filename: string, observed: Observation, notify: () => Promise<void>) {
+    const state = { path: resolve(filename), observed }
+    await writeObservation.run(state, notify)
+    const current = await revalidate(filename, state.observed)
+    if (current.entry?.kind !== "file") throw new NativeFileMutation.ConflictError()
+    return current
+  }
+
+  // Only the formatter owner advances this short-lived write observation; arbitrary event listeners cannot authorize deletion.
+  export async function formatting<T>(filename: string, run: () => Promise<T | undefined>) {
+    const state = writeObservation.getStore()
+    const tracked = state?.path === resolve(filename) ? state : undefined
+    if (tracked) await revalidate(filename, tracked.observed)
+    const result = await run()
+    if (tracked && result !== undefined) tracked.observed = await observe(filename)
+    return result
   }
 
   export async function observe(filename: string, signal?: AbortSignal): Promise<Observation> {
@@ -320,6 +341,7 @@ export namespace FileView {
     protectSensitive?: boolean,
     operationID?: string,
     expectedEntryVersion?: string | null,
+    mode?: number,
   ) {
     signal?.throwIfAborted()
     const info = await selected()
@@ -333,6 +355,7 @@ export namespace FileView {
       expectedEntryVersion,
       signal,
       protectSensitive,
+      ...(mode === undefined ? {} : { mode }),
     })
     return {
       mtime: Date.now(),

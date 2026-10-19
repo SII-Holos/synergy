@@ -3,6 +3,7 @@ import { TOOL_TITLE_DESC } from "../../../../src/components/tool-title-descripto
 
 const registrations = new Map<string, (props: Record<string, any>) => unknown>()
 let capturedTrigger: Record<string, unknown> | undefined
+const capturedPreviews: { path?: string; patch?: string }[] = []
 ;(globalThis as typeof globalThis & { React: unknown }).React = {
   createElement(type: unknown, props: Record<string, unknown> | null, ...children: unknown[]) {
     if (typeof type === "function") return type({ ...(props ?? {}), children })
@@ -24,7 +25,8 @@ beforeAll(async () => {
   }))
   mock.module("solid-js", () => ({
     createMemo: (fn: () => unknown) => fn,
-    For: () => null,
+    For: (props: { each?: unknown[]; children: [(value: unknown) => unknown] }) =>
+      props.each?.map((value) => props.children[0](value)),
     Show: () => null,
   }))
   mock.module("solid-js/web", () => ({ Dynamic: () => null }))
@@ -51,7 +53,10 @@ beforeAll(async () => {
   mock.module("../../../../src/components/tool/diff-preview", () => ({ ToolDiffPreview: () => null }))
   mock.module("../../../../src/components/tool/content-preview", () => ({
     ToolFilePreview: () => null,
-    ToolPatchPreview: () => null,
+    ToolPatchPreview: (props: { path?: string; patch?: string }) => {
+      capturedPreviews.push({ path: props.path, patch: props.patch })
+      return null
+    },
   }))
   mock.module("../../../../src/components/diff-patch", () => ({
     DiffPatchGate: () => null,
@@ -71,6 +76,7 @@ function renderResolveConflicts(props: Record<string, any>) {
 
 beforeEach(() => {
   capturedTrigger = undefined
+  capturedPreviews.length = 0
 })
 
 test("patch card retains partial and unresolved outcomes", () => {
@@ -81,6 +87,106 @@ test("patch card retains partial and unresolved outcomes", () => {
       { label: outcome === "partial" ? "Partially applied" : "Outcome unconfirmed", tone: "warning" },
     ])
   }
+})
+
+test("move card renders the recorded destination replacement and source deletion", () => {
+  registrations.get("apply_patch")?.({
+    input: {},
+    status: "completed",
+    metadata: {
+      outcome: "applied",
+      sections: [
+        {
+          source: "old.ts",
+          destination: "nested/new.ts",
+          state: "committed",
+          observedPath: "old.ts",
+          diff: "-source",
+          filediff: { file: "old.ts", preview: "-source" },
+          files: [
+            { file: "nested/new.ts", additions: 1, deletions: 1, preview: "-destination\n+replacement" },
+            { file: "old.ts", additions: 0, deletions: 1, preview: "-source" },
+          ],
+        },
+      ],
+    },
+  })
+  expect(capturedPreviews).toEqual([
+    { path: "nested/new.ts", patch: "-destination\n+replacement" },
+    { path: "old.ts", patch: "-source" },
+  ])
+})
+
+test("partial move card renders only the recorded destination write", () => {
+  registrations.get("apply_patch")?.({
+    input: {},
+    status: "error",
+    metadata: {
+      outcome: "partial",
+      sections: [
+        {
+          source: "old.ts",
+          destination: "nested/new.ts",
+          state: "failed",
+          files: [{ file: "nested/new.ts", additions: 1, deletions: 0, preview: "+replacement" }],
+          operations: [
+            { phase: "write", path: "nested/new.ts", state: "committed" },
+            { phase: "delete", path: "old.ts", state: "failed" },
+          ],
+        },
+      ],
+    },
+  })
+  expect(capturedPreviews).toEqual([{ path: "nested/new.ts", patch: "+replacement" }])
+})
+
+test("historical move card renders one saved diff at its recorded path", () => {
+  registrations.get("apply_patch")?.({
+    input: {},
+    status: "completed",
+    metadata: {
+      outcome: "applied",
+      sections: [
+        {
+          source: "old.ts",
+          destination: "new.ts",
+          state: "committed",
+          diff: "+legacy",
+          filediff: { file: "old.ts" },
+        },
+      ],
+    },
+  })
+  expect(capturedPreviews).toEqual([{ path: "old.ts", patch: "+legacy" }])
+})
+
+test("patch cards keep previewless files without inventing effects from empty or unknown receipts", () => {
+  registrations.get("apply_patch")?.({
+    input: {},
+    status: "error",
+    metadata: {
+      outcome: "unresolved",
+      sections: [
+        {
+          source: "old.ts",
+          destination: "new.ts",
+          state: "unknown",
+          observedPath: "old.ts",
+          diff: "+stale",
+          files: [],
+        },
+        { source: "old.ts", destination: "new.ts", state: "unknown", diff: "+planned" },
+        {
+          source: "old.ts",
+          destination: "new.ts",
+          state: "unknown",
+          diff: "+planned",
+          files: [{ file: "recorded.ts", additions: 0, deletions: 0 }],
+        },
+      ],
+    },
+  })
+  expect(capturedPreviews).toEqual([{ path: "recorded.ts", patch: undefined }])
 })
 
 describe("resolve_conflicts file-ops renderer", () => {

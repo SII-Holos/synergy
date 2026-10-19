@@ -57,15 +57,15 @@ ToolRegistry.register({
             <p class="break-words text-sm">{error()}</p>
           </Show>
           <div class="flex flex-col gap-4" data-component="patch-result">
-            <For each={sections().filter((section) => section.diff && section.observedPath)}>
+            <For each={sections().filter((section) => section.files.length)}>
               {(section) => (
                 <div class="flex flex-col gap-2" data-component="patch-section" data-state={section.state}>
                   <Show when={!resultOnly && section.error}>
                     <p class="break-words text-sm">{section.error}</p>
                   </Show>
-                  <Show when={section.diff && section.observedPath}>
-                    <ToolPatchPreview tool={props} path={section.observedPath!} patch={section.diff} />
-                  </Show>
+                  <For each={section.files}>
+                    {(file) => <ToolPatchPreview tool={props} path={file.file} patch={file.patch} />}
+                  </For>
                 </div>
               )}
             </For>

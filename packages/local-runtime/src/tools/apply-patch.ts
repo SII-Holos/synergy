@@ -6,6 +6,7 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { WorkspaceOperations } from "@ericsanchezok/synergy-harness/workspace/operations"
+import { WorkspaceProtocol } from "@ericsanchezok/synergy-harness/workspace/protocol"
 import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 import { RuntimeReloadPath } from "@ericsanchezok/synergy-harness/config/reload-path"
 import { RuntimeReloadExecutor } from "@ericsanchezok/synergy-harness/config/reload-executor"
@@ -31,11 +32,19 @@ interface SectionResult {
   beforeVersion?: string | null
   afterVersion?: string | null
   operationID?: string
-  operations: { id?: string; phase: string; state: State }[]
+  operations: {
+    id?: string
+    phase: string
+    path: string
+    state: State
+    beforeVersion: string | null
+    afterVersion?: string | null
+  }[]
   error?: string
   diff?: string
   observedPath?: string
   filediff?: SnapshotSchema.FileDiff
+  files: SnapshotSchema.FileDiff[]
 }
 interface Prepared {
   section: FilePatch.Section
@@ -43,6 +52,7 @@ interface Prepared {
   destination?: string
   before: FileView.Observation
   destinationBefore?: FileView.Observation
+  destinationOld?: string
   old: string
   content: string
   result: SectionResult
@@ -91,35 +101,39 @@ async function prepare(
     const source = FileView.resolve(section.path)
     const before = await FileView.observe(source, ctx.abort)
     claim(before.canonical)
-    if (section.type === "add" ? !!before.entry : before.entry?.kind !== "file")
-      throw new Error(
-        section.type === "add"
-          ? `Add destination already exists: ${section.path}`
-          : `Patch source must be an existing regular file: ${section.path}`,
-      )
+    if (before.entry ? before.entry.kind !== "file" : section.type !== "add")
+      throw new Error(`Patch target must be a regular UTF-8 text file: ${section.path}`)
     if (before.entry?.identity) {
       if (identities.has(before.entry.identity)) throw new Error(`Patch has aliased source entries: ${section.path}`)
       identities.add(before.entry.identity)
     }
     const old = decode(before.bytes)
-    if (section.type !== "add") FileTime.assert(ctx.sessionID, source, before.bytes!)
+    if (before.entry) FileTime.assert(ctx.sessionID, source, before.bytes!)
     const content =
       section.type === "add" ? section.content : section.type === "update" ? FilePatch.update(old, section) : ""
+    if (!FileView.native() && Buffer.byteLength(content) > WorkspaceProtocol.writeBytes)
+      throw new Error(`Patch output exceeds the selected Workspace write limit: ${section.path}`)
     const destination = section.type === "update" && section.move ? FileView.resolve(section.move) : undefined
     const destinationBefore = destination ? await FileView.observe(destination, ctx.abort) : undefined
+    const destinationOld = destinationBefore ? decode(destinationBefore.bytes) : undefined
     if (destinationBefore) {
       claim(destinationBefore.canonical)
-      if (destinationBefore.entry)
-        throw new Error(`Move destination already exists: ${section.type === "update" ? section.move : ""}`)
-      await parent(destination!, false)
+      if (destinationBefore.entry && destinationBefore.entry.kind !== "file")
+        throw new Error(`Move destination must be a regular UTF-8 text file: ${FileView.display(destination!)}`)
+      if (destinationBefore.entry?.identity) {
+        if (identities.has(destinationBefore.entry.identity))
+          throw new Error(`Patch has aliased destination entries: ${FileView.display(destination!)}`)
+        identities.add(destinationBefore.entry.identity)
+      }
+      if (destinationBefore.entry) FileTime.assert(ctx.sessionID, destination!, destinationBefore.bytes!)
+      await parent(destination!, true)
     }
     await parent(source, section.type === "add")
     const result = results[index]!
     result.beforeVersion = before.version
-    result.diff = trimDiff(
-      createTwoFilesPatch(section.path, destination ? FileView.display(destination) : section.path, old, content),
-    )
-    prepared.push({ section, source, destination, before, destinationBefore, old, content, result })
+    const target = destination ? FileView.display(destination) : section.path
+    result.diff = trimDiff(createTwoFilesPatch(target, target, destinationOld ?? old, content))
+    prepared.push({ section, source, destination, before, destinationBefore, destinationOld, old, content, result })
   }
   return prepared
 }
@@ -129,34 +143,48 @@ async function validate(item: Prepared, signal: AbortSignal) {
   if (item.destination && item.destinationBefore)
     await FileView.revalidate(item.destination, item.destinationBefore, signal)
   await parent(item.source, item.section.type === "add")
-  if (item.destination) await parent(item.destination, false)
+  if (item.destination) await parent(item.destination, true)
   return source
 }
 
-function record(item: Prepared, target: string, content: string, ctx: Tool.Context) {
+function record(item: Prepared, target: string, content: string, ctx: Tool.Context, deleted = false) {
+  const old = target === item.destination ? item.destinationOld! : item.old
   item.result.observedPath = FileView.display(target)
-  item.result.afterVersion = item.section.type === "delete" ? null : FileTime.version(content)
-  item.result.diff = trimDiff(createTwoFilesPatch(item.section.path, item.result.observedPath, item.old, content))
-  item.result.filediff = SnapshotSchema.fromContents({
+  item.result.afterVersion = deleted ? null : FileTime.version(content)
+  const operation = item.result.operations.findLast((operation) => operation.path === item.result.observedPath)
+  if (operation) operation.afterVersion = item.result.afterVersion
+  item.result.diff = trimDiff(createTwoFilesPatch(item.result.observedPath, item.result.observedPath, old, content))
+  item.result.filediff = SnapshotSchema.fromPatch({
     file: item.result.observedPath,
-    before: item.old,
-    after: content,
+    beforeBytes: Buffer.byteLength(old),
+    afterBytes: Buffer.byteLength(content),
     ...diffStats(item.result.diff),
-    preview: item.result.diff,
+    patch: item.result.diff,
   })
-  if (item.section.type !== "delete") FileTime.read(ctx.sessionID, target, content)
+  const index = item.result.files.findIndex((file) => file.file === item.result.observedPath)
+  if (index === -1) item.result.files.push(item.result.filediff)
+  else item.result.files[index] = item.result.filediff
+  FileTime.read(ctx.sessionID, target, deleted ? undefined : content)
 }
 
 async function effect(
   item: Prepared,
   phase: "write" | "move" | "delete",
+  target: string,
   ctx: Tool.Context,
   save: () => Promise<void>,
   run: (id?: string) => Promise<unknown>,
 ) {
   ctx.abort.throwIfAborted()
   const id = FileView.native() ? undefined : EnvironmentResources.nextOperationID()
-  const operation: SectionResult["operations"][number] = { id, phase, state: "unknown" }
+  const before = target === item.destination ? item.destinationBefore! : item.before
+  const operation: SectionResult["operations"][number] = {
+    id,
+    phase,
+    path: FileView.display(target),
+    state: "unknown",
+    beforeVersion: before.version,
+  }
   item.result.operations.push(operation)
   item.result.operationID = id
   item.result.phase = phase
@@ -205,6 +233,7 @@ export const ApplyPatchTool = Tool.define(
         phase: "prepared",
         state: "not_started",
         operations: [],
+        files: [],
       }))
       const metadata = {
         error: undefined as string | undefined,
@@ -215,7 +244,7 @@ export const ApplyPatchTool = Tool.define(
         runtimeReload: undefined as Awaited<ReturnType<typeof RuntimeReloadExecutor.reload>> | undefined,
       }
       const save = async () => {
-        metadata.files = results.flatMap((result) => (result.filediff ? [result.filediff] : []))
+        metadata.files = results.flatMap((result) => result.files)
         await ctx.metadata({ title: `${sections.length} file section(s)`, metadata: structuredClone(metadata) })
       }
       const changed = new Set<string>()
@@ -230,93 +259,74 @@ export const ApplyPatchTool = Tool.define(
             FileView.display(item.source),
             ...(item.destination ? [FileView.display(item.destination)] : []),
           ]),
-          metadata: { sections: results, diff: results.map((result) => result.diff).join("\n") },
+          metadata: {
+            sections: results,
+            diff: plan
+              .flatMap((item) => [
+                ...(item.destination ? [createTwoFilesPatch(item.section.path, item.section.path, item.old, "")] : []),
+                item.result.diff,
+              ])
+              .join("\n"),
+          },
         })
         for (const item of plan) await validate(item, ctx.abort)
         for (const item of plan) {
           ctx.abort.throwIfAborted()
-          let observed = await validate(item, ctx.abort)
+          const observed = await validate(item, ctx.abort)
           if (item.section.type === "update" && item.old === item.content && !item.destination) {
             item.result.phase = "noop"
             await save()
             continue
           }
-          if (item.section.type !== "delete" && (item.section.type === "add" || item.old !== item.content)) {
-            await effect(item, "write", ctx, save, (operationID) =>
+          const target = item.destination ?? item.source
+          const before = item.destination
+            ? await FileView.revalidate(item.destination, item.destinationBefore!, ctx.abort)
+            : observed
+          if (
+            item.section.type !== "delete" &&
+            (item.destination || item.section.type === "add" || item.old !== item.content)
+          ) {
+            await effect(item, "write", target, ctx, save, (operationID) =>
               FileMutation.write({
-                path: item.source,
+                path: target,
                 content: item.content,
-                expectedVersion: observed.version,
-                expectedEntryVersion: observed.entry?.entryVersion ?? null,
-                createParents: item.section.type === "add",
+                expectedVersion: before.version,
+                expectedEntryVersion: before.entry?.entryVersion ?? null,
+                ...(item.destination && !before.entry ? { mode: observed.entry!.mode & 0o777 } : {}),
+                createParents: !!item.destination || item.section.type === "add",
                 signal: ctx.abort,
                 operationID,
                 validate: async () => {
-                  await FileView.revalidate(item.source, item.before, ctx.abort)
+                  await validate(item, ctx.abort)
                 },
               }),
             )
-            changed.add(item.source)
-            committed.add(item.source)
-            item.result.afterVersion = FileTime.version(item.content)
+            changed.add(target)
+            committed.add(target)
+            record(item, target, item.content, ctx)
             item.result.phase = "post_write"
             await save()
-            await WorkspaceEvents.publish(File.Event.Edited, {
-              file: item.source,
-              contentVersion: item.result.afterVersion,
-            })
-            observed = await FileView.observe(item.source)
-            if (observed.entry?.kind !== "file")
-              throw new Error(`Written file is no longer a regular file: ${item.section.path}`)
-            item.before = observed
-            record(item, item.source, decode(observed.bytes), ctx)
+            const published = await FileView.observe(target)
+            if (published.entry?.kind !== "file" || published.version !== FileTime.version(item.content))
+              throw new FileMutation.ConflictError()
+            const written = await FileView.afterWrite(target, published, () =>
+              WorkspaceEvents.publish(File.Event.Edited, {
+                file: target,
+                contentVersion: FileTime.version(item.content),
+              }),
+            )
+            if (item.destination) item.destinationBefore = written
+            else item.before = written
+            record(item, target, decode(written.bytes), ctx)
             await save()
           }
-          if (item.section.type === "delete") {
-            await effect(item, "delete", ctx, save, (id) =>
-              FileView.native()
+          if (item.section.type === "delete" || item.destination) {
+            await effect(item, "delete", item.source, ctx, save, async (id) => {
+              const removing = await validate(item, ctx.abort)
+              return FileView.native()
                 ? FileEntry.remove({
                     path: item.source,
-                    expectedVersion: observed.entry!.entryVersion,
-                    signal: ctx.abort,
-                    validate: async () => {
-                      await FileView.revalidate(item.source, item.before, ctx.abort)
-                    },
-                  })
-                : FileView.mutate(
-                    {
-                      kind: "remove",
-                      path: FileView.relative(item.source),
-                      expectedVersion: observed.entry!.entryVersion,
-                    },
-                    ctx.abort,
-                    undefined,
-                    id,
-                  ),
-            )
-            changed.add(item.source)
-            committed.add(item.source)
-            await WorkspaceEvents.publish(FileWatcherEvent.Updated, {
-              file: FileView.relative(item.source),
-              event: "deleted",
-              parent: FileView.relative(FileView.dirname(item.source)),
-            })
-          } else if (item.destination) {
-            item.result.phase = "move"
-            try {
-              observed = await FileView.revalidate(item.source, item.before, ctx.abort)
-              await FileView.revalidate(item.destination, item.destinationBefore!, ctx.abort)
-            } catch (error) {
-              item.result.state = "failed"
-              item.result.operations.push({ phase: "move", state: "failed" })
-              throw error
-            }
-            await effect(item, "move", ctx, save, (id) =>
-              FileView.native()
-                ? FileEntry.move({
-                    from: item.source,
-                    to: item.destination!,
-                    expectedVersion: observed.entry!.entryVersion,
+                    expectedVersion: removing.entry!.entryVersion,
                     signal: ctx.abort,
                     validate: async () => {
                       await validate(item, ctx.abort)
@@ -324,30 +334,24 @@ export const ApplyPatchTool = Tool.define(
                   })
                 : FileView.mutate(
                     {
-                      kind: "move",
-                      from: FileView.relative(item.source),
-                      to: FileView.relative(item.destination!),
-                      expectedVersion: observed.entry!.entryVersion,
+                      kind: "remove",
+                      path: FileView.relative(item.source),
+                      expectedVersion: removing.entry!.entryVersion,
                     },
                     ctx.abort,
                     undefined,
                     id,
-                  ),
-            )
+                  )
+            })
             changed.add(item.source)
-            changed.add(item.destination)
             committed.add(item.source)
-            committed.add(item.destination)
+            record(item, item.source, "", ctx, true)
             await WorkspaceEvents.publish(FileWatcherEvent.Updated, {
-              file: FileView.relative(item.destination),
-              oldPath: FileView.relative(item.source),
-              event: "renamed",
-              parent: FileView.relative(FileView.dirname(item.destination)),
+              file: FileView.relative(item.source),
+              event: "deleted",
+              parent: FileView.relative(FileView.dirname(item.source)),
             })
           }
-          const target = item.destination ?? item.source
-          const final = item.section.type === "delete" ? "" : decode((await FileView.observe(target)).bytes)
-          record(item, target, final, ctx)
           item.result.phase = "complete"
           await save()
         }
@@ -364,47 +368,40 @@ export const ApplyPatchTool = Tool.define(
         )
         if (active) active.error ??= error instanceof Error ? error.message : String(error)
         for (const item of plan) {
-          const operation = item.result.operations.at(-1)
-          if (
-            !operation ||
-            (operation.state !== "committed" &&
+          if (item.result.phase === "complete") continue
+          for (const operation of item.result.operations) {
+            if (
+              operation.state !== "committed" &&
               !(
                 FileView.native() &&
                 operation.state === "unsaved" &&
                 error instanceof FileEntry.PartialError &&
                 error.completed.length
-              ))
-          )
-            continue
-          const target = operation.phase === "move" ? item.destination! : item.source
-          const publish = !changed.has(target)
-          changed.add(item.source)
-          changed.add(target)
-          if (operation.state === "committed") {
-            committed.add(item.source)
-            committed.add(target)
-          }
-          if (item.result.phase === "complete") continue
-          try {
-            const observed = await FileView.observe(target)
-            if (item.section.type === "delete" ? !!observed.entry : observed.entry?.kind !== "file") continue
-            record(item, target, decode(observed.bytes), ctx)
-            if (publish)
-              await WorkspaceEvents.publish(FileWatcherEvent.Updated, {
-                file: FileView.relative(target),
-                event:
-                  operation.phase === "delete"
-                    ? "deleted"
-                    : operation.phase === "move"
-                      ? "renamed"
-                      : item.section.type === "add"
-                        ? "added"
-                        : "changed",
-                ...(operation.phase === "move" ? { oldPath: FileView.relative(item.source) } : {}),
-                parent: FileView.relative(FileView.dirname(target)),
-              })
-          } catch {
-            // Keep the settled receipt when observation is unavailable; never replay an effect for evidence.
+              )
+            )
+              continue
+            const target = FileView.resolve(operation.path)
+            const publish = !changed.has(target)
+            changed.add(target)
+            if (operation.state === "committed") committed.add(target)
+            try {
+              if (!item.result.files.some((file) => file.file === operation.path))
+                record(
+                  item,
+                  target,
+                  operation.phase === "delete" ? "" : item.content,
+                  ctx,
+                  operation.phase === "delete",
+                )
+              if (publish)
+                await WorkspaceEvents.publish(FileWatcherEvent.Updated, {
+                  file: FileView.relative(target),
+                  event: operation.phase === "delete" ? "deleted" : "changed",
+                  parent: FileView.relative(FileView.dirname(target)),
+                })
+            } catch {
+              // Keep the settled receipt when observation is unavailable; never replay an effect for evidence.
+            }
           }
         }
         await save()

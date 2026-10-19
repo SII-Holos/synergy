@@ -39,6 +39,22 @@ describe("EnforcementGate path classification", () => {
       expect(isolated.decision).not.toBe("allow")
       expect(() => gate.classify("apply_patch", { patch: args.patch + "\ntrailing" })).toThrow()
     }))
+  test("lenient patch syntax cannot hide an external move destination from policy", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/fixture/work",
+        workspaceType: "worktree",
+        profileId: "guarded",
+      })
+      const args = {
+        patch:
+          "<<'EOF'\n  *** Begin Patch  \n*** Update File: safe.txt\n*** Move to: /Users/test/.ssh/id_rsa\n-old\n+new\n  *** End Patch  \nEOF",
+      }
+      const result = gate.classify("apply_patch", args)
+      expect(result.capabilities.some((item) => item.class === "protected_op" || item.class === "secrets")).toBe(true)
+      const isolated = await gate.evaluateIsolated("apply_patch", args, new AbortController().signal)
+      expect(isolated.decision).not.toBe("allow")
+    }))
   test("read within active worktree is classified as file_read (inside)", () =>
     runtime.run(async () => {
       const gate = await EnforcementGate.create({

@@ -27,7 +27,11 @@ export function toolReviewDiffs(part: ToolPart, path?: string): FileDiff[] {
     Array.isArray(metadata.sections) && (part.tool === "apply_patch" || part.tool === "revise_file")
       ? metadata.sections.filter((value) => {
           const section = record(value)
-          return typeof section.observedPath === "string" || typeof record(section.filediff).file === "string"
+          return (
+            Array.isArray(section.files) ||
+            typeof section.observedPath === "string" ||
+            typeof record(section.filediff).file === "string"
+          )
         })
       : undefined
   const values =
@@ -38,6 +42,24 @@ export function toolReviewDiffs(part: ToolPart, path?: string): FileDiff[] {
         : [metadata]
   const diffs = values.flatMap((value): FileDiff[] => {
     const item = record(value)
+    if (values === sections && Array.isArray(item.files)) {
+      return item.files.flatMap((value): FileDiff[] => {
+        const diff = record(value)
+        if (typeof diff.file !== "string" || !diff.file) return []
+        const patch = [diff.patch, diff.preview].find(
+          (value): value is string => typeof value === "string" && value.length > 0,
+        )
+        return [
+          {
+            file: diff.file,
+            additions: typeof diff.additions === "number" ? diff.additions : 0,
+            deletions: typeof diff.deletions === "number" ? diff.deletions : 0,
+            ...(patch ? { patch, preview: patch } : {}),
+            ...(diff.truncated === true ? { truncated: true } : {}),
+          },
+        ]
+      })
+    }
     const diff = record(item.filediff)
     const patch = [item.diff, diff.patch, diff.preview].find(
       (value): value is string => typeof value === "string" && value.length > 0,
@@ -68,7 +90,8 @@ export function toolReviewDiffs(part: ToolPart, path?: string): FileDiff[] {
   return [...groups.values()].map((group) => {
     const first = group[0]!
     if (group.length === 1) return first
-    const patch = group.map((diff) => diff.patch).join("\n")
+    const patches = group.flatMap((diff) => (diff.patch ? [diff.patch] : []))
+    const patch = patches.length ? patches.join("\n") : undefined
     return {
       ...first,
       patch,

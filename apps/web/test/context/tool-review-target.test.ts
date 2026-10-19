@@ -35,6 +35,17 @@ test("review uses the stored tool patch, including content outside the inline pr
   expect(toolReviewDiffs(part)[0]?.file).toBe("file.ts")
 })
 
+test("non-section tools retain their saved patch when files metadata is an unrelated list", () => {
+  const part = toolPart({
+    diff: "+saved",
+    filediff: { file: "file.ts", additions: 1 },
+    files: [],
+  })
+  expect(toolReviewDiffs(part)).toEqual([
+    { file: "file.ts", additions: 1, deletions: 0, patch: "+saved", preview: "+saved" },
+  ])
+})
+
 test("multiple edits to the same file remain one review row containing every recorded patch", () => {
   const part = toolPart({
     results: [
@@ -93,4 +104,120 @@ test("historical revisions without per-file evidence retain their saved fallback
   })
   part.tool = "revise_file"
   expect(toolReviewDiffs(part)[0]?.patch).toBe("legacy diff")
+})
+
+test("move review prefers both recorded files to the last observed source deletion", () => {
+  const part = toolPart({
+    sections: [
+      {
+        source: "old.ts",
+        destination: "nested/new.ts",
+        state: "committed",
+        observedPath: "old.ts",
+        diff: "-source",
+        filediff: { file: "old.ts", additions: 0, deletions: 1, preview: "-source" },
+        files: [
+          {
+            file: "nested/new.ts",
+            additions: 1,
+            deletions: 1,
+            patch: "-destination\n+replacement",
+            preview: "short preview with characters omitted",
+            truncated: true,
+          },
+          { file: "old.ts", additions: 0, deletions: 1, preview: "-source" },
+        ],
+      },
+    ],
+  })
+  part.tool = "apply_patch"
+  expect(toolReviewDiffs(part, "nested/new.ts")).toEqual([
+    {
+      file: "nested/new.ts",
+      additions: 1,
+      deletions: 1,
+      patch: "-destination\n+replacement",
+      preview: "-destination\n+replacement",
+      truncated: true,
+    },
+    { file: "old.ts", additions: 0, deletions: 1, patch: "-source", preview: "-source" },
+  ])
+})
+
+test("partial move review includes only the destination write before source deletion failed", () => {
+  const part = toolPart({
+    sections: [
+      {
+        source: "old.ts",
+        destination: "nested/new.ts",
+        state: "failed",
+        files: [{ file: "nested/new.ts", additions: 1, deletions: 0, patch: "+replacement", preview: "+short" }],
+        operations: [
+          { phase: "write", path: "nested/new.ts", state: "committed" },
+          { phase: "delete", path: "old.ts", state: "failed" },
+        ],
+      },
+    ],
+  })
+  part.tool = "apply_patch"
+  expect(toolReviewDiffs(part, "old.ts")).toEqual([
+    { file: "nested/new.ts", additions: 1, deletions: 0, patch: "+replacement", preview: "+replacement" },
+  ])
+})
+
+test("historical move review retains only the single saved file identity", () => {
+  const part = toolPart({
+    sections: [
+      {
+        source: "old.ts",
+        destination: "new.ts",
+        state: "committed",
+        diff: "+legacy",
+        filediff: { file: "old.ts", additions: 1, deletions: 0 },
+      },
+    ],
+  })
+  part.tool = "apply_patch"
+  expect(toolReviewDiffs(part, "new.ts")).toEqual([
+    { file: "old.ts", additions: 1, deletions: 0, patch: "+legacy", preview: "+legacy" },
+  ])
+})
+
+test("patch review never recovers inferred effects from empty or unknown file receipts", () => {
+  const part = toolPart({
+    diff: "+aggregate",
+    filediff: { file: "new.ts" },
+    files: [{ file: "new.ts", additions: 1, deletions: 0, preview: "+aggregate" }],
+    sections: [
+      {
+        source: "old.ts",
+        destination: "new.ts",
+        state: "unknown",
+        observedPath: "old.ts",
+        diff: "+stale",
+        files: [],
+      },
+      { source: "old.ts", destination: "new.ts", state: "unknown", diff: "+planned" },
+      { source: "old.ts", destination: "new.ts", state: "not_started", files: [null, { preview: "+invalid" }] },
+    ],
+  })
+  part.tool = "apply_patch"
+  expect(toolReviewDiffs(part, "new.ts")).toEqual([])
+})
+
+test("recorded patch files without text previews retain their identity without a fabricated patch", () => {
+  const part = toolPart({
+    sections: [
+      {
+        source: "old.ts",
+        destination: "new.ts",
+        state: "unknown",
+        observedPath: "old.ts",
+        diff: "+planned",
+        files: [{ file: "recorded.ts", additions: 0, deletions: 0 }],
+      },
+    ],
+  })
+  part.tool = "apply_patch"
+  expect(toolReviewDiffs(part, "new.ts")).toEqual([{ file: "recorded.ts", additions: 0, deletions: 0 }])
 })

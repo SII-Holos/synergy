@@ -358,7 +358,11 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         if (input.protectSensitive) this.protectedTarget(mount, target)
         const current = await NativeFileMutation.snapshot(target)
         if (receipt.effectStarted) {
-          if (current?.version === `sha256:${WorkspaceTree.hash(bytes)}`) return
+          if (
+            current?.version === `sha256:${WorkspaceTree.hash(bytes)}` &&
+            (input.mode === undefined || (current.mode & 0o777) === input.mode)
+          )
+            return
           throw new Error("Workspace write outcome is unknown; the mutation cannot be repeated")
         }
         if ((current?.version ?? null) !== input.expectedVersion) throw new NativeFileMutation.ConflictError()
@@ -367,6 +371,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
             path: path.join(mount.path, input.path),
             content: bytes,
             expectedVersion: input.expectedVersion,
+            mode: input.mode,
             createParents: true,
             owner: this.options.owner,
             start,
