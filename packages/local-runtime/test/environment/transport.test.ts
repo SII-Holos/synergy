@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
+import fs from "node:fs/promises"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/executor"
 import { NativeExecutor } from "../../src/environment/native-executor"
@@ -10,6 +11,50 @@ import { z } from "zod"
 import { NativeFileMutation } from "../../src/file/mutation-core"
 
 const Socket = WebSocket as unknown as { new (url: URL, options: Bun.WebSocketOptions): WebSocket }
+
+test.skipIf(process.platform === "win32")(
+  "Workspace write modes survive the remote bridge and participate in receipt identity",
+  async () => {
+    await using tmp = await tmpdir()
+    const target = { environmentID: "environment", allocationID: "allocation", generation: 1 }
+    const token = "test-token-with-at-least-thirty-two-bytes"
+    await using executor = await NativeExecutor.open({
+      target,
+      directory: path.join(tmp.path, "receipts"),
+      coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+    })
+    await using host = ExecutionHost.listen({ executor, target, token, listen: { hostname: "127.0.0.1", port: 0 } })
+    const remote = new RemoteExecutor({ url: host.url, target, token })
+    const root = path.join(tmp.path, "workspace")
+    await fs.mkdir(root)
+    const mount = await remote.files.mount({
+      id: "mount",
+      workspaceID: "workspace",
+      generation: 1,
+      readOnly: false,
+      source: { kind: "directory", path: root },
+    })
+    const input = { id: "write", mount, path: "nested/script", data: "c2F2ZWQ=", expectedVersion: null, mode: 0o751 }
+    const checkpoint = await remote.files.write(input)
+    expect((await remote.files.stat(mount, input.path))?.mode).toBe(0o751)
+    expect((await fs.stat(path.join(root, input.path))).mode & 0o777).toBe(0o751)
+    expect(await remote.files.write(input)).toEqual(checkpoint)
+    await expect(remote.files.write({ ...input, mode: 0o750 })).rejects.toThrow("different input")
+    await remote.files.acknowledge(input.id)
+    const before = await remote.files.read({ mount, path: input.path, maximumBytes: 100 })
+    const overwrite = {
+      id: "overwrite",
+      mount,
+      path: input.path,
+      data: "dXBkYXRlZA==",
+      expectedVersion: before.version,
+    }
+    const overwritten = await remote.files.write(overwrite)
+    expect(await remote.files.write(overwrite)).toEqual(overwritten)
+    expect((await remote.files.stat(mount, input.path))?.mode).toBe(0o751)
+    await remote.files.acknowledge(overwrite.id)
+  },
+)
 
 test("a legacy Execution Host is rejected before command dispatch", async () => {
   const target = { environmentID: "environment", allocationID: "allocation", generation: 1 }

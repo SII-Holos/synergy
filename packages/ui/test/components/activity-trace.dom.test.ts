@@ -66,6 +66,61 @@ test("successful patches present one result without repeating the model output",
   expect(host.textContent).not.toContain("Patch applied.")
 })
 
+function patchPreviews(host: Element) {
+  return Array.from(host.querySelectorAll('[data-component="tool-patch-preview"]'), (preview) => ({
+    path: preview.querySelector('[data-slot="tool-patch-path"]')?.textContent?.replaceAll("\u200e", ""),
+    rows: Array.from(preview.querySelectorAll('[data-slot="tool-patch-line"]'), (row) => ({
+      kind: row.getAttribute("data-kind"),
+      text: row.querySelector("code")?.textContent,
+    })),
+  }))
+}
+
+test("successful Moves render exactly the recorded destination replacement and source deletion", async () => {
+  await rendered('#patch-move-applied [data-slot="tool-patch-line"]')
+  const host = document.getElementById("patch-move-applied")!
+  expect(host.querySelectorAll('[data-component="diff-patch"]')).toHaveLength(2)
+  expect(patchPreviews(host)).toEqual([
+    {
+      path: "nested/destination.ts",
+      rows: [
+        { kind: "delete", text: 'export const destination = "before";' },
+        { kind: "add", text: 'export const moved = "after";' },
+      ],
+    },
+    {
+      path: "source.ts",
+      rows: [{ kind: "delete", text: 'export const moved = "before";' }],
+    },
+  ])
+})
+
+test("partial Moves with failed source removal render only the recorded destination diff", async () => {
+  await rendered('#patch-move-partial [data-slot="tool-patch-line"]')
+  const host = document.getElementById("patch-move-partial")!
+  expect(patchPreviews(host)).toEqual([
+    {
+      path: "nested/destination.ts",
+      rows: [
+        { kind: "delete", text: 'export const destination = "before";' },
+        { kind: "add", text: 'export const moved = "after";' },
+      ],
+    },
+  ])
+  expect(host.textContent).not.toContain("source.ts")
+  expect(host.textContent).not.toContain('export const moved = "before";')
+})
+
+test("unconfirmed Moves with authoritative empty files suppress legacy diff and observedPath previews", async () => {
+  await rendered('#patch-move-unresolved [data-component="patch-result"]')
+  const host = document.getElementById("patch-move-unresolved")!
+  expect(patchPreviews(host)).toEqual([])
+  expect(host.querySelector('[data-component="diff-patch"]')).toBeNull()
+  expect(host.textContent).not.toContain("source.ts")
+  expect(host.textContent).not.toContain("destination.ts")
+  expect(host.textContent).not.toContain('export const moved = "before";')
+})
+
 test("edit and multi-file revise results share file diff cards without operation summaries", async () => {
   for (const tool of ["edit", "revise_file"]) {
     await rendered(`#result-${tool} [data-component="tool-patch-preview"]`)

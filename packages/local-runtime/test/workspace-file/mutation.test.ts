@@ -168,6 +168,99 @@ test("concurrent native processes cannot both replace the same content version",
   }
 }, 10_000)
 
+test.skipIf(process.platform === "win32")(
+  "explicit native write modes are exact under a restrictive umask",
+  async () => {
+    await using tmp = await tmpdir()
+    const implementation = path.resolve(import.meta.dir, "../../src/file/mutation-core.ts")
+    const job = Bun.spawn(
+      [
+        process.execPath,
+        "-e",
+        `
+        import fs from "node:fs/promises";
+        import path from "node:path";
+        import { NativeFileMutation } from ${JSON.stringify(implementation)};
+        process.umask(0o077);
+        const root = ${JSON.stringify(tmp.path)};
+        const modes = [];
+        for (const mode of [0o751, 0o777, 0]) {
+          const filename = path.join(root, "nested", String(mode));
+          await NativeFileMutation.write({ path: filename, content: "created", expectedVersion: null, createParents: true, mode });
+          modes.push((await fs.stat(filename)).mode & 0o777);
+        }
+        const filename = path.join(root, "default");
+        await NativeFileMutation.write({ path: filename, content: "created", expectedVersion: null });
+        const defaultMode = (await fs.stat(filename)).mode & 0o777;
+        await fs.chmod(filename, 0o731);
+        await NativeFileMutation.write({ path: filename, content: "preserved" });
+        const preservedMode = (await fs.stat(filename)).mode & 0o777;
+        await NativeFileMutation.write({ path: filename, content: "replaced", mode: 0o750 });
+        console.log(JSON.stringify({ modes, defaultMode, preservedMode, replacedMode: (await fs.stat(filename)).mode & 0o777, content: await fs.readFile(filename, "utf8") }));
+      `,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    )
+    try {
+      const [output, error, code] = await Promise.all([
+        new Response(job.stdout).text(),
+        new Response(job.stderr).text(),
+        job.exited,
+      ])
+      expect(error).toBe("")
+      expect(code).toBe(0)
+      expect(JSON.parse(output)).toEqual({
+        modes: [0o751, 0o777, 0],
+        defaultMode: 0o600,
+        preservedMode: 0o731,
+        replacedMode: 0o750,
+        content: "replaced",
+      })
+    } finally {
+      if (job.exitCode === null) job.kill()
+    }
+  },
+)
+
+test("invalid native write modes cannot create files or parents", async () => {
+  await using tmp = await tmpdir()
+  for (const mode of [-1, 0o1000, 1.5, NaN, Infinity]) {
+    const input = { path: path.join(tmp.path, "absent", "file"), content: "never", createParents: true, mode }
+    await expect(NativeFileMutation.write(input)).rejects.toThrow()
+    expect(await fs.stat(path.dirname(input.path)).catch(() => undefined)).toBeUndefined()
+  }
+})
+
+test.skipIf(process.platform === "win32")(
+  "explicit write modes cannot bypass native version or mode checks",
+  async () => {
+    await using tmp = await tmpdir()
+    const filename = path.join(tmp.path, "file")
+    await Bun.write(filename, "original")
+    const entries = (await fs.readdir(tmp.path)).sort()
+    await fs.chmod(filename, 0o600)
+    const input = { path: filename, content: "never", mode: 0o777 }
+    await expect(NativeFileMutation.write({ ...input, expectedVersion: "stale" })).rejects.toThrow("changed")
+    expect((await fs.stat(filename)).mode & 0o777).toBe(0o600)
+    let validations = 0
+    await expect(
+      NativeFileMutation.write({
+        ...input,
+        expectedVersion: FileTime.version("original"),
+        async validate() {
+          if (++validations === 2) await fs.chmod(filename, 0o640)
+        },
+      }),
+    ).rejects.toThrow("changed")
+    expect(await Bun.file(filename).text()).toBe("original")
+    expect((await fs.stat(filename)).mode & 0o777).toBe(0o640)
+    await fs.chmod(filename, 0o444)
+    await expect(NativeFileMutation.write(input)).rejects.toThrow("read-only")
+    expect((await fs.stat(filename)).mode & 0o777).toBe(0o444)
+    expect((await fs.readdir(tmp.path)).sort()).toEqual(entries)
+  },
+)
+
 test("a changed parent symlink or cancelled write leaves the targets untouched", async () => {
   await using tmp = await tmpdir()
   await using other = await tmpdir()
@@ -183,6 +276,7 @@ test("a changed parent symlink or cancelled write leaves the targets untouched",
       path: path.join(link, "a.txt"),
       content: "new",
       expectedVersion: FileTime.version("old"),
+      mode: 0o751,
       async validate() {
         if (++validations === 1) {
           await fs.unlink(link)

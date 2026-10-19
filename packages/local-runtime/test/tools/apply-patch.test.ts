@@ -9,6 +9,7 @@ import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ApplyPatchTool } from "../../src/tools/apply-patch"
 import { FileEntry } from "../../src/file/entry"
 import { FileMutation } from "../../src/file/mutation"
+import { FileView } from "../../src/file/view"
 import { File } from "../../src/file"
 import { testRuntime } from "../support/runtime"
 
@@ -67,7 +68,6 @@ test("preflights a whole patch and applies add, update/move and delete in order"
 for (const body of [
   "*** Add File: added.txt\n+x\n*** Update File: a.txt\n@@\n-missing\n+new",
   "*** Add File: added.txt\n+x\n*** Delete File: missing.txt",
-  "*** Update File: a.txt\n*** Move to: b.txt",
   "*** Update File: a.txt\n*** Move to: x.txt\n*** Add File: a.txt\n+alias",
   "*** Delete File: a.txt\n*** Delete File: ./a.txt",
 ])
@@ -96,6 +96,125 @@ test("permission refusal, stale reads, invalid UTF-8 and symlinks have zero effe
     await Bun.write(path.join(dir, "bad.bin"), new Uint8Array([0xff, 0]))
     await expect(tool.execute({ patch: patch("*** Delete File: bad.bin") }, ctx)).rejects.toThrow()
     expect(await Bun.file(path.join(dir, "a.txt")).text()).toBe("one\r\ntwo")
+  }))
+
+test("Add replaces an observed regular file without bypassing read evidence", () =>
+  fixture(async (dir, tool, ctx) => {
+    const input = { patch: patch("*** Add File: a.txt\n+replacement") }
+    await expect(tool.execute(input, { ...ctx, sessionID: "unread-add" })).rejects.toThrow("read")
+    const result = await tool.execute(input, ctx)
+    expect(await Bun.file(path.join(dir, "a.txt")).text()).toBe("replacement\n")
+    expect(result.metadata.files).toMatchObject([{ file: "a.txt", beforeBytes: 8, afterBytes: 12 }])
+  }))
+
+test("Move writes an observed destination and removes the source with both real file diffs", () =>
+  fixture(async (dir, tool, ctx) => {
+    const input = { patch: patch("*** Update File: a.txt\n*** Move to: b.txt\n@@\n-one\n+ONE") }
+    const result = await tool.execute(input, ctx)
+    expect(await Bun.file(path.join(dir, "a.txt")).exists()).toBe(false)
+    expect(await Bun.file(path.join(dir, "b.txt")).text()).toBe("ONE\r\ntwo")
+    expect(result.metadata.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ file: "a.txt", beforeBytes: 8, afterBytes: 0 }),
+        expect.objectContaining({ file: "b.txt", beforeBytes: 10, afterBytes: 8 }),
+      ]),
+    )
+    expect(result.metadata.sections[0]!.operations).toMatchObject([
+      {
+        phase: "write",
+        path: "b.txt",
+        state: "committed",
+        beforeVersion: FileTime.version("delete me\n"),
+        afterVersion: FileTime.version("ONE\r\ntwo"),
+      },
+      {
+        phase: "delete",
+        path: "a.txt",
+        state: "committed",
+        beforeVersion: FileTime.version("one\r\ntwo"),
+        afterVersion: null,
+      },
+    ])
+    expect(() => FileTime.assert(ctx.sessionID, path.join(dir, "a.txt"), "")).toThrow("read")
+    FileTime.assert(ctx.sessionID, path.join(dir, "b.txt"), "ONE\r\ntwo")
+  }))
+
+test("Move creates missing parent directories through the selected writer", () =>
+  fixture(async (dir, tool, ctx) => {
+    const result = await tool.execute({ patch: patch("*** Update File: a.txt\n*** Move to: new/deep/file.txt") }, ctx)
+    expect(result.metadata.outcome).toBe("applied")
+    expect(await Bun.file(path.join(dir, "new/deep/file.txt")).text()).toBe("one\r\ntwo")
+    expect(await Bun.file(path.join(dir, "a.txt")).exists()).toBe(false)
+  }))
+
+test("Move retains complete patches for both files beyond the bounded inline previews", () =>
+  fixture(async (dir, tool, ctx) => {
+    const source = Array.from({ length: 12 }, (_, index) => `source-${index}: ${"a".repeat(400)}`).join("\n") + "\n"
+    const destination = source.replaceAll("source-", "destination-")
+    const changed = source.replaceAll("a", "b")
+    for (const [file, content] of [
+      ["a.txt", source],
+      ["b.txt", destination],
+    ] as const) {
+      await Bun.write(path.join(dir, file), content)
+      FileTime.read(ctx.sessionID, path.join(dir, file), content)
+    }
+    const result = await tool.execute(
+      {
+        patch: patch(
+          `*** Update File: a.txt\n*** Move to: b.txt\n@@\n${source
+            .trimEnd()
+            .split("\n")
+            .map((line) => `-${line}`)
+            .join("\n")}\n${changed
+            .trimEnd()
+            .split("\n")
+            .map((line) => `+${line}`)
+            .join("\n")}`,
+        ),
+      },
+      ctx,
+    )
+    const files = result.metadata.sections[0]!.files
+    expect(result.metadata.files).toEqual(files)
+    expect(files.map((file) => file.file)).toEqual(["b.txt", "a.txt"])
+    const destinationDiff = files[0]!
+    expect(destinationDiff.preview).toContain("characters omitted")
+    expect(destinationDiff.patch!.length).toBeGreaterThan(destinationDiff.preview!.length)
+    expect(destinationDiff.patch).not.toContain("characters omitted")
+    expect(destinationDiff.patch).toContain(`-destination-6: ${"a".repeat(400)}`)
+    expect(destinationDiff.patch).toContain(`+source-6: ${"b".repeat(400)}`)
+    expect(files[1]!.patch).toContain(`-source-6: ${"a".repeat(400)}`)
+    expect(await Bun.file(path.join(dir, "b.txt")).text()).toBe(changed)
+  }))
+
+test("Move to a missing file preserves source permissions while overwrites retain destination permissions", () =>
+  fixture(async (dir, tool, ctx) => {
+    if (process.platform === "win32") return
+    await fs.chmod(path.join(dir, "a.txt"), 0o751)
+    await fs.chmod(path.join(dir, "b.txt"), 0o640)
+    await tool.execute({ patch: patch("*** Update File: a.txt\n*** Move to: new/script.sh") }, ctx)
+    expect((await fs.stat(path.join(dir, "new/script.sh"))).mode & 0o777).toBe(0o751)
+    await tool.execute({ patch: patch("*** Update File: new/script.sh\n*** Move to: b.txt") }, ctx)
+    expect((await fs.stat(path.join(dir, "b.txt"))).mode & 0o777).toBe(0o640)
+  }))
+
+test("overwritten destinations still require current read evidence and authorization-time identities", () =>
+  fixture(async (dir, tool, ctx) => {
+    await Bun.write(path.join(dir, "target.txt"), "target\n")
+    const input = { patch: patch("*** Update File: a.txt\n*** Move to: target.txt") }
+    await expect(tool.execute(input, ctx)).rejects.toThrow("read")
+    FileTime.read(ctx.sessionID, path.join(dir, "target.txt"), "target\n")
+    await expect(
+      tool.execute(input, {
+        ...ctx,
+        async ask() {
+          await Bun.write(path.join(dir, "target.txt"), "concurrent\n")
+        },
+      }),
+    ).rejects.toThrow()
+    expect(await Bun.file(path.join(dir, "a.txt")).text()).toBe("one\r\ntwo")
+    expect(await Bun.file(path.join(dir, "target.txt")).text()).toBe("concurrent\n")
   }))
 
 test("authorization wait revalidates every target before the first effect", () =>
@@ -161,10 +280,10 @@ test("cancellation after a committed section preserves partial metadata and raw 
     expect(ledgers.length).toBeGreaterThan(1)
   }))
 
-test("failed move reports the committed update at its original path", () =>
+test("failed source removal retains the committed destination without replaying the move", () =>
   fixture(async (dir, tool, ctx) => {
     let captured: unknown
-    using failure = spyOn(FileEntry, "move").mockRejectedValue(new Error("move failed"))
+    using failure = spyOn(FileEntry, "remove").mockRejectedValue(new Error("remove failed"))
     await expect(
       tool.execute(
         { patch: patch("*** Update File: a.txt\n*** Move to: moved.txt\n@@\n-one\n+ONE\n*** Delete File: b.txt") },
@@ -175,22 +294,53 @@ test("failed move reports the committed update at its original path", () =>
           },
         },
       ),
-    ).rejects.toThrow(/write: committed, move: failed/)
-    expect(await Bun.file(path.join(dir, "a.txt")).text()).toBe("ONE\r\ntwo")
-    expect(await Bun.file(path.join(dir, "moved.txt")).exists()).toBe(false)
+    ).rejects.toThrow(/write: committed, delete: failed/)
+    expect(await Bun.file(path.join(dir, "a.txt")).text()).toBe("one\r\ntwo")
+    expect(await Bun.file(path.join(dir, "moved.txt")).text()).toBe("ONE\r\ntwo")
     expect(await Bun.file(path.join(dir, "b.txt")).exists()).toBe(true)
     expect(captured).toMatchObject({
       metadata: {
         outcome: "partial",
+        files: [{ file: "moved.txt", beforeBytes: 0, afterBytes: 8 }],
         sections: [
           {
             operations: [
-              { phase: "write", state: "committed" },
-              { phase: "move", state: "failed" },
+              { phase: "write", path: "moved.txt", state: "committed" },
+              { phase: "delete", path: "a.txt", state: "failed" },
             ],
           },
           { state: "not_started" },
         ],
+      },
+    })
+  }))
+
+test("cancelling a Move after destination commit preserves the source and only records the written target", () =>
+  fixture(async (dir, tool, ctx) => {
+    const abort = new AbortController()
+    let captured: unknown
+    await expect(
+      tool.execute(
+        { patch: patch("*** Update File: a.txt\n*** Move to: moved.txt\n@@\n-one\n+ONE") },
+        {
+          ...ctx,
+          abort: abort.signal,
+          metadata(value) {
+            if (value.metadata?.sections?.[0]?.operations?.[0]?.state === "committed") abort.abort()
+          },
+          async captureResult(value) {
+            captured = value
+          },
+        },
+      ),
+    ).rejects.toThrow(/partial/i)
+    expect(await Bun.file(path.join(dir, "a.txt")).text()).toBe("one\r\ntwo")
+    expect(await Bun.file(path.join(dir, "moved.txt")).text()).toBe("ONE\r\ntwo")
+    expect(captured).toMatchObject({
+      metadata: {
+        outcome: "partial",
+        files: [{ file: "moved.txt", beforeBytes: 0, afterBytes: 8 }],
+        sections: [{ operations: [{ phase: "write", path: "moved.txt", state: "committed" }] }],
       },
     })
   }))
@@ -230,12 +380,15 @@ test("a post-effect durability failure is unsaved and never retried", () =>
     })
   }))
 
-test("move precondition failure after formatting records the failed move separately", () =>
+test("a changed source after destination formatting prevents removal and retains only the destination diff", () =>
   fixture(async (dir, tool, ctx) => {
     let captured: unknown
     const unsubscribe = WorkspaceEvents.subscribe(File.Event.Edited, async () => {
-      await Bun.write(path.join(dir, "a.txt"), "FORMATTED\r\ntwo")
-      await Bun.write(path.join(dir, "moved.txt"), "concurrent destination\n")
+      await Bun.write(path.join(dir, "a.txt"), "concurrent source\n")
+      await FileView.formatting(path.join(dir, "moved.txt"), async () => {
+        await Bun.write(path.join(dir, "moved.txt"), "FORMATTED\r\ntwo")
+        return { exitCode: 0 }
+      })
     })
     try {
       await expect(
@@ -248,32 +401,77 @@ test("move precondition failure after formatting records the failed move separat
             },
           },
         ),
-      ).rejects.toThrow(/write: committed, move: failed/)
+      ).rejects.toThrow(/write: committed, delete: failed/)
       expect(captured).toMatchObject({
         metadata: {
           outcome: "partial",
+          files: [{ file: "moved.txt", beforeBytes: 0, afterBytes: 14 }],
           sections: [
             {
-              phase: "move",
+              phase: "delete",
               state: "failed",
-              observedPath: "a.txt",
+              observedPath: "moved.txt",
               afterVersion: FileTime.version("FORMATTED\r\ntwo"),
               operations: [
-                { phase: "write", state: "committed" },
-                { phase: "move", state: "failed" },
+                { phase: "write", path: "moved.txt", state: "committed" },
+                { phase: "delete", path: "a.txt", state: "failed" },
               ],
             },
             { state: "not_started" },
           ],
         },
       })
-      expect(await Bun.file(path.join(dir, "a.txt")).text()).toBe("FORMATTED\r\ntwo")
-      expect(await Bun.file(path.join(dir, "moved.txt")).text()).toBe("concurrent destination\n")
+      expect(await Bun.file(path.join(dir, "a.txt")).text()).toBe("concurrent source\n")
+      expect(await Bun.file(path.join(dir, "moved.txt")).text()).toBe("FORMATTED\r\ntwo")
       expect(await Bun.file(path.join(dir, "b.txt")).text()).toBe("delete me\n")
     } finally {
       unsubscribe()
     }
   }))
+
+for (const replace of [false, true])
+  test(`a ${replace ? "replaced" : "rewritten"} Move destination during file-edited callbacks cannot authorize source deletion`, () =>
+    fixture(async (dir, tool, ctx) => {
+      let captured: unknown
+      const target = path.join(dir, "b.txt")
+      const unsubscribe = WorkspaceEvents.subscribe(File.Event.Edited, async () => {
+        if (replace) {
+          const replacement = path.join(dir, "replacement.txt")
+          await Bun.write(replacement, "unrelated concurrent replacement\n")
+          await fs.rename(replacement, target)
+        } else await Bun.write(target, "unrelated concurrent replacement\n")
+      })
+      try {
+        await expect(
+          tool.execute(
+            { patch: patch("*** Update File: a.txt\n*** Move to: b.txt") },
+            {
+              ...ctx,
+              async captureResult(result) {
+                captured = result
+              },
+            },
+          ),
+        ).rejects.toThrow()
+        expect(await Bun.file(path.join(dir, "a.txt")).text()).toBe("one\r\ntwo")
+        expect(await Bun.file(target).text()).toBe("unrelated concurrent replacement\n")
+        expect(captured).toMatchObject({
+          metadata: {
+            outcome: "partial",
+            files: [{ file: "b.txt", beforeBytes: 10, afterBytes: 8 }],
+            sections: [
+              {
+                operations: [
+                  { phase: "write", path: "b.txt", state: "committed", afterVersion: FileTime.version("one\r\ntwo") },
+                ],
+              },
+            ],
+          },
+        })
+      } finally {
+        unsubscribe()
+      }
+    }))
 
 test("hard-linked source aliases are rejected before any target mutation", () =>
   fixture(async (dir, tool, ctx) => {

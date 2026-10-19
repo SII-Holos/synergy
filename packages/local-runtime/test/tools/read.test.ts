@@ -8,6 +8,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { ApplyPatchTool } from "../../src/tools/apply-patch"
 
 const MODELS_FIXTURE = new URL(import.meta.resolve("@ericsanchezok/synergy-testing/models-api.json"))
 
@@ -20,6 +21,28 @@ const ctx = {
   metadata: () => {},
   ask: async () => {},
 }
+
+test("UTF-8 data extensions can obtain read evidence and be patched without admitting binary content", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "settings.dat"), "old\n")
+        await Bun.write(path.join(dir, "binary.dat"), new Uint8Array([0, 255, 1]))
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const read = await ReadTool.init()
+        expect((await read.execute({ filePath: "settings.dat" }, ctx)).output).toContain("old")
+        await (
+          await ApplyPatchTool.init()
+        ).execute({ patch: "*** Begin Patch\n*** Add File: settings.dat\n+new\n*** End Patch" }, ctx)
+        expect(await Bun.file(path.join(tmp.path, "settings.dat")).text()).toBe("new\n")
+        await expect(read.execute({ filePath: "binary.dat" }, ctx)).rejects.toThrow("binary")
+      },
+    })
+  }))
 
 describe("tool.read external_directory permission", () => {
   test("allows reading absolute path inside project directory", () =>

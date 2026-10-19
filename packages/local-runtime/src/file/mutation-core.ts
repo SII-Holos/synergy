@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import { constants } from "node:fs"
 import path from "node:path"
+import { z } from "zod"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
@@ -54,6 +55,7 @@ export namespace NativeFileMutation {
       content: string | Uint8Array
       expectedVersion?: string | null
       createParents?: boolean
+      mode?: number
       signal?: AbortSignal
       start?: () => Promise<void>
       owner?: FileOwnership.Owner
@@ -61,11 +63,13 @@ export namespace NativeFileMutation {
     },
     canonicalTarget?: string,
   ) {
+    const mode = z.number().int().min(0).max(0o777).optional().parse(input.mode)
     const target = canonicalTarget ?? (await canonical(input.path))
     return withFileLock({ directory: await lockDirectory(), key: target, signal: input.signal }, async () => {
       input.signal?.throwIfAborted()
       await input.validate?.(target)
       const before = await snapshot(target, input.signal)
+      const desiredMode = mode ?? (before ? before.mode & 0o777 : undefined)
       if (input.expectedVersion !== undefined && input.expectedVersion !== (before?.version ?? null))
         throw new ConflictError()
       if (before && (before.mode & 0o222) === 0) throw new AccessDeniedError("Access denied: file is read-only")
@@ -76,11 +80,11 @@ export namespace NativeFileMutation {
       const temporary = path.join(parent, `.${path.basename(target)}.synergy-write-${process.pid}-${randomUUID()}`)
       let published = false
       try {
-        const file = await fs.open(temporary, "wx", before ? before.mode & 0o777 : 0o666)
+        const file = await fs.open(temporary, "wx", desiredMode ?? 0o666)
         try {
           await file.writeFile(input.content)
           if (input.owner) await file.chown(input.owner.uid, input.owner.gid)
-          if (before) await file.chmod(before.mode & 0o777)
+          if (desiredMode !== undefined) await file.chmod(desiredMode)
           await file.sync()
         } finally {
           await file.close()

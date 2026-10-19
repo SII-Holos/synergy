@@ -70,6 +70,7 @@ export namespace WorkspaceProtocol {
     expectedVersion: z.string().nullable(),
     expectedEntryVersion: z.string().nullable().optional(),
     protectSensitive: z.boolean().optional(),
+    mode: z.number().int().min(0).max(0o777).optional(),
   })
   export type WriteInput = z.infer<typeof WriteInput>
   export const Change = z.discriminatedUnion("kind", [

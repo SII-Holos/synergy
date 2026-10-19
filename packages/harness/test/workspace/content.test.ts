@@ -3,6 +3,7 @@ import { WorkspaceCatalog } from "../../src/workspace/catalog"
 import { WorkspaceContent, WorkspaceBlobs, type BlobStore } from "../../src/workspace/content"
 import { WorkspaceTree } from "../../src/workspace/tree"
 import { WorkspaceOperations } from "../../src/workspace/operations"
+import { WorkspaceProtocol } from "../../src/workspace/protocol"
 import { Storage } from "../../src/storage/storage"
 import { testRuntime } from "../support/runtime"
 
@@ -134,7 +135,21 @@ test("object directory operations commit their receipt with the head and allocat
     await WorkspaceOperations.write(write)
     await WorkspaceOperations.write(write)
     expect((await WorkspaceCatalog.get(info.id, info.scopeID)).content?.revision).toBe(2)
-    expect((await WorkspaceOperations.get("write", info.scopeID)).state).toBe("completed")
+    const operation = await WorkspaceOperations.get("write", info.scopeID)
+    expect(operation.state).toBe("completed")
+    expect(operation.input).not.toHaveProperty("mode")
+    expect(operation.digest).toBe(
+      WorkspaceTree.hash(
+        new TextEncoder().encode(
+          JSON.stringify({
+            workspaceID: info.id,
+            path: write.path,
+            data: Buffer.from(write.data).toString("base64"),
+            expectedVersion: null,
+          }),
+        ),
+      ),
+    )
     const version = async (filename: string) => {
       const current = await WorkspaceCatalog.get(info.id, info.scopeID)
       const tree = await WorkspaceContent.manifest(current, blobs)
@@ -170,4 +185,54 @@ test("object directory operations commit their receipt with the head and allocat
     expect(await Storage.list(["environment"])).toHaveLength(0)
     expect(await Storage.list(["workspace_operation_active"])).toHaveLength(0)
   })
+})
+
+test("object write operations persist explicit modes and include them in replay identity", async () => {
+  const blobs: BlobStore = {
+    put: (hash, bytes) => Storage.writeBinary(["test_blobs", hash], bytes),
+    get: (hash) => Storage.readBinary(["test_blobs", hash]),
+  }
+  await using runtime = await testRuntime({ register: () => WorkspaceBlobs.register("fixture", blobs) })
+  await runtime.run(async () => {
+    const workspace = await WorkspaceCatalog.create({
+      scopeID: "scope",
+      backend: { provider: "objects", spec: { blobStore: "fixture" } },
+    })
+    for (const mode of [0, 0o751, 0o777]) {
+      const input = {
+        scopeID: workspace.scopeID,
+        workspaceID: workspace.id,
+        id: `mode-${mode}`,
+        path: `nested/file-${mode}`,
+        data: Buffer.from("saved"),
+        expectedVersion: null,
+        mode,
+      }
+      const operation = await WorkspaceOperations.write(input)
+      expect(operation.input).toHaveProperty("mode", mode)
+      expect(await WorkspaceOperations.write(input)).toEqual(operation)
+      await expect(WorkspaceOperations.write({ ...input, mode: mode ^ 0o100 })).rejects.toThrow("different input")
+      const latest = await WorkspaceCatalog.get(workspace.id, workspace.scopeID)
+      expect(
+        (await WorkspaceContent.manifest(latest, blobs)).entries.find((entry) => entry.path === input.path)?.mode,
+      ).toBe(mode)
+    }
+    expect((await WorkspaceCatalog.get(workspace.id, workspace.scopeID)).content?.revision).toBe(3)
+    expect(await Storage.list(["environment"])).toHaveLength(0)
+  })
+})
+
+test("Workspace write mode schema is optional and accepts only ordinary permission bits", () => {
+  const input = {
+    id: "write",
+    mount: { id: "mount", workspaceID: "workspace", generation: 1 },
+    path: "file",
+    data: "eA==",
+    expectedVersion: null,
+  }
+  expect(WorkspaceProtocol.WriteInput.parse(input)).toEqual(input)
+  for (const mode of [0, 0o751, 0o777])
+    expect(WorkspaceProtocol.WriteInput.parse({ ...input, mode })).toHaveProperty("mode", mode)
+  for (const mode of [-1, 0o1000, 1.5, NaN, Infinity])
+    expect(() => WorkspaceProtocol.WriteInput.parse({ ...input, mode })).toThrow()
 })
