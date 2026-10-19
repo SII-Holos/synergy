@@ -20,7 +20,10 @@
     "test:ci": "bun ../testing/script/test-ci.ts"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
+    "@typescript/typescript6": "catalog:",
     "typescript": "catalog:"
   },
   "dependencies": {

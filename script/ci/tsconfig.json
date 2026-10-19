@@ -1,11 +1,15 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../packages/testing/node_modules/@tsconfig/bun/tsconfig.json",
   "compilerOptions": {
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
     "types": ["bun"],
-    "typeRoots": ["../../packages/testing/node_modules/@types"]
+    "typeRoots": ["../../packages/testing/node_modules/@types"],
+    "paths": {
+      "@typescript/typescript6": ["../../packages/testing/node_modules/@typescript/typescript6"],
+      "@ericsanchezok/synergy-util/runtime-startup": ["../../packages/util/src/runtime-startup.ts"]
+    }
   },
   "include": ["../ci.ts", "../verify.ts", "./*.ts"]
 }

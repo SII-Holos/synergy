@@ -383,6 +383,8 @@
     "packages/testing": {
       "entry": ["script/**/*.ts", "test/**/*.ts"],
       "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+      // Root CI planning consumes these through this workspace's filtered installation.
+      "ignoreDependencies": ["@ericsanchezok/synergy-util", "@typescript/typescript6"],
     },
     "apps/web": {
       "entry": ["lingui.config.ts", "src/**/*.{ts,tsx}", "script/**/*.ts", "test/**/*.{ts,tsx}"],

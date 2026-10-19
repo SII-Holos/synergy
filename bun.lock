@@ -1411,7 +1411,10 @@
         "@zip.js/zip.js": "2.24.0",
       },
       "devDependencies": {
+        "@ericsanchezok/synergy-util": "workspace:*",
+        "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
+        "@typescript/typescript6": "catalog:",
         "typescript": "catalog:",
       },
     },
