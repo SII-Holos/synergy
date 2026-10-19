@@ -19,6 +19,8 @@ For every sessionless call:
 
 Asynchronous derived work must carry the identity of its persisted source task, not resolve whichever task happens to be latest when the queue runs. Keep root-only prompt and model overrides out of attribution-only envelopes. Propagate `RolloutRecordingError` through optional-result fallback paths so the owning task stops and retains its failed recording state. Pass the original root ID to recording-error cancellation; a delayed auxiliary failure must not cancel a newer root in the same session.
 
+Keep historical prompt material separate from execution ownership. For work retriggered by a current turn, capture that turn's root at scheduling and use it for `AgentCall` attribution even when the prompt describes an earlier message. For title recovery, exercise the real `AgentCall` and Rollout ledger with a failed first attempt, a completed first run, and a later triggering root; replacing `AgentCall.text` with a successful mock cannot verify terminal-run admission. Historical work without a current owning turn follows the explicit operation rule in [Retries and accounting](retries-accounting.md#ownership-and-accounting).
+
 Control Plane operations that consume non-streaming results use `RolloutCall.execute()` around the actual provider operation, preserving the same intent, transport-attempt, and terminal commit contract as streaming calls. Drain parallel owned calls before returning and preserve recording failures ahead of secondary cancellation errors.
 
 A sessionless call does not create session history, Cortex progress, completion notices, or Experience lineage. Do not imply those properties in UI or events.

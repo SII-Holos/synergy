@@ -1,6 +1,7 @@
 import { expect, spyOn, test } from "bun:test"
 import * as Formatter from "../../src/formatter"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { FormatterProcess } from "../../src/process"
 import { Format } from "../../src/index"
@@ -137,6 +138,82 @@ test("file edits invoke configured formatter processes and isolate failures from
     })
     await Format.reload()
   }))
+
+for (const change of ["in-place", "atomic-replacement", "remove"] as const)
+  test(`Move ${change === "remove" ? "retains its source after a deleting formatter" : `accepts ${change} formatter output before removing its source`}`, () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        config: {
+          fileToolGroup: "patch",
+          formatter: {
+            fixture: {
+              command: [
+                process.execPath,
+                "-e",
+                `const fs = await import('node:fs/promises'); const file = process.argv[1]; const content = (await fs.readFile(file, 'utf8')).replace('before', 'formatted'); ${change === "remove" ? "await fs.unlink(file)" : change === "atomic-replacement" ? "await fs.writeFile(file + '.format', content); await fs.rename(file + '.format', file)" : "await fs.writeFile(file, content)"}`,
+                "$FILE",
+              ],
+              extensions: [".fixture"],
+            },
+          },
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await Format.reload()
+          Format.init()
+          const source = path.join(tmp.path, "source.fixture")
+          const target = path.join(tmp.path, "target.fixture")
+          await Bun.write(source, "before\n")
+          FileTime.read("patch-format", source, "before\n")
+          const tool = await ToolRegistry.find("apply_patch")
+          if (!tool) throw new Error("Patch tool is unavailable")
+          let captured: unknown
+          const execution = tool.execute(
+            { patch: "*** Begin Patch\n*** Update File: source.fixture\n*** Move to: target.fixture\n*** End Patch" },
+            {
+              sessionID: "patch-format",
+              messageID: "message",
+              callID: "patch-format",
+              agent: "fixture",
+              abort: new AbortController().signal,
+              metadata() {},
+              async ask() {},
+              async captureResult(result) {
+                captured = result
+              },
+            },
+          )
+          if (change === "remove") {
+            await expect(execution).rejects.toThrow("Patch partial")
+            expect(await Bun.file(source).text()).toBe("before\n")
+            expect(await Bun.file(target).exists()).toBe(false)
+            expect(captured).toMatchObject({
+              metadata: {
+                outcome: "partial",
+                files: [{ file: "target.fixture", afterBytes: 7 }],
+                sections: [{ operations: [{ phase: "write", state: "committed" }] }],
+              },
+            })
+            await Format.reload()
+            return
+          }
+          const result = await execution
+          expect(await Bun.file(source).exists()).toBe(false)
+          expect(await Bun.file(target).text()).toBe("formatted\n")
+          expect(result.metadata).toMatchObject({
+            outcome: "applied",
+            files: [
+              { file: "target.fixture", afterBytes: 10, patch: expect.stringContaining("+formatted") },
+              { file: "source.fixture", afterBytes: 0 },
+            ],
+          })
+          FileTime.assert("patch-format", target, "formatted\n")
+          await Format.reload()
+        },
+      })
+    }))
 
 test("global formatter opt-out leaves file edits untouched", () =>
   runtime.run(async () => {

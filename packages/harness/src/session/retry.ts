@@ -14,15 +14,9 @@ const STORAGE_BUSY_PREFIX = /^(?:Error: )?StorageBusyError(?::|$)/
 export type RetryDecision = { message: string; maxAttempts: number }
 
 export namespace SessionRetry {
-  export const RETRY_INITIAL_DELAY = 2000
-  export const RETRY_BACKOFF_FACTOR = 2
-  export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
+  const RETRY_DELAY_CEILINGS = [2_000, 4_000, 8_000, 16_000, 30_000, 60_000, 120_000] as const
   export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
   export const RETRY_MAX_ATTEMPTS = 10
-  // An unmapped verification failure is indeterminate rather than proven transient, so its attempt
-  // budget stays narrower than a classified transport failure's; backoff shares the transport ceiling.
-  export const RETRY_TLS_VERIFICATION_MAX_ATTEMPTS = 6
-  export const RETRY_TLS_VERIFICATION_MAX_DELAY = 30_000
   export const RETRY_TLS_VERIFICATION_MESSAGE = "Secure connection could not be verified; retrying"
 
   export const sleep = retrySleep
@@ -34,8 +28,7 @@ export namespace SessionRetry {
   export function delay(attempt: number, error?: MessageV2.APIError, random = Math.random) {
     const hint = retryAfterMs(error?.data.responseHeaders)
     if (hint !== undefined) return Math.min(hint, RETRY_MAX_DELAY)
-    const ceiling = isTlsVerification(error) ? RETRY_TLS_VERIFICATION_MAX_DELAY : RETRY_MAX_DELAY_NO_HEADERS
-    const maximum = Math.min(RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1), ceiling)
+    const maximum = RETRY_DELAY_CEILINGS[Math.min(attempt - 1, RETRY_DELAY_CEILINGS.length - 1)]!
     return maximum * (0.5 + random() / 2)
   }
 
@@ -50,8 +43,7 @@ export namespace SessionRetry {
 
     if (MessageV2.APIError.isInstance(error)) {
       if (!error.data.isRetryable) return undefined
-      if (isTlsVerification(error))
-        return { message: RETRY_TLS_VERIFICATION_MESSAGE, maxAttempts: RETRY_TLS_VERIFICATION_MAX_ATTEMPTS }
+      if (isTlsVerification(error)) return { message: RETRY_TLS_VERIFICATION_MESSAGE, maxAttempts: RETRY_MAX_ATTEMPTS }
       return {
         message: error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message,
         maxAttempts: RETRY_MAX_ATTEMPTS,
@@ -59,7 +51,7 @@ export namespace SessionRetry {
     }
 
     if (classifyNetworkError(rawMessage)?.category === "tls-verification")
-      return { message: RETRY_TLS_VERIFICATION_MESSAGE, maxAttempts: RETRY_TLS_VERIFICATION_MAX_ATTEMPTS }
+      return { message: RETRY_TLS_VERIFICATION_MESSAGE, maxAttempts: RETRY_MAX_ATTEMPTS }
     if (providerRetryable(rawMessage) === true)
       return { message: "Provider is temporarily unavailable", maxAttempts: RETRY_MAX_ATTEMPTS }
     return undefined

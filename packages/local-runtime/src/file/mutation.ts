@@ -65,6 +65,7 @@ export namespace FileMutation {
         input.protectSensitive,
         input.operationID,
         input.expectedEntryVersion,
+        input.mode,
       )
     }
     const target = await canonical(input.path)

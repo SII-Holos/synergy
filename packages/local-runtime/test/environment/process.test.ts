@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { once } from "node:events"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
@@ -33,6 +33,7 @@ test("activation observes native readiness before paused output applies backpres
       needs: { execution: "exec" },
     })
     const executor = resources.executor!
+    const waits = spyOn(executor, "waitForChange")
     const start = executor.start.bind(executor)
     const status = executor.status.bind(executor)
     const deadline = Date.now() + 20_000
@@ -59,14 +60,14 @@ test("activation observes native readiness before paused output applies backpres
       }
       return status(id)
     }
-    const expected = Buffer.from("activation-保存\n".repeat(16_384))
+    const expected = Buffer.from("activation-保存\n".repeat(524_288))
     const execution = await EnvironmentProcess.prepare({
       id: "activation-before-output",
       scopeID: "scope",
       resources,
       command: {
         command: process.execPath,
-        args: ["-e", 'await Bun.write(Bun.stdout, "activation-保存\\n".repeat(16_384))'],
+        args: ["-e", 'await Bun.write(Bun.stdout, "activation-保存\\n".repeat(524_288))'],
         cwd: resources.directory!,
         env: {},
         useRoots: [],
@@ -96,6 +97,7 @@ test("activation observes native readiness before paused output applies backpres
       execution.child.stdout.resume()
       await Promise.race([execution.completion, timeout.promise])
       expect(Buffer.concat(chunks)).toEqual(expected)
+      expect(waits.mock.calls.filter(([, status]) => ExecutionProtocol.terminal(status))).toHaveLength(0)
       expect((await EnvironmentExecution.get(execution.executionID, "scope")).state).toBe("completed")
       expect(execution.child.exitCode).toBe(0)
       expect(await coordinator.inspect()).toEqual([])
@@ -106,6 +108,7 @@ test("activation observes native readiness before paused output applies backpres
       try {
         await execution.stop()
       } finally {
+        waits.mockRestore()
         executor.start = start
         executor.status = status
       }
@@ -383,3 +386,61 @@ test.each(["command", "mutation"])(
   },
   30_000,
 )
+
+test("idle native execution waits for changes without repeatedly reading authority", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+  await using runtime = await testRuntime({
+    register() {
+      WorkspaceAccess.register(coordinator)
+      registerNativeEnvironment({ coordinator })
+    },
+  })
+  await runtime.run(async () => {
+    const environment = await Environment.bind({ scopeID: "idle", ownerID: "idle", provider: "native", spec: {} })
+    await using resources = await EnvironmentResources.resolve({
+      scopeID: "idle",
+      environmentID: environment.id,
+      needs: { execution: "exec" },
+    })
+    const operation = await EnvironmentProcess.prepare({
+      id: "idle-change",
+      scopeID: "idle",
+      resources,
+      command: {
+        command: process.execPath,
+        args: [
+          "-e",
+          'console.log("ready"); for await (const chunk of Bun.stdin.stream()) { console.log("done"); break }',
+        ],
+        cwd: resources.directory!,
+        env: {},
+        useRoots: [],
+      },
+    })
+    const ready = Promise.withResolvers<void>()
+    const chunks: Buffer[] = []
+    operation.child.stdout.on("data", (chunk: Buffer) => {
+      chunks.push(chunk)
+      if (Buffer.concat(chunks).includes("ready")) ready.resolve()
+    })
+    operation.child.stderr.resume()
+    try {
+      await operation.activate()
+      await ready.promise
+      const reads = spyOn(Storage, "readMany")
+      try {
+        await Bun.sleep(750)
+        expect(reads.mock.calls.length).toBeLessThan(30)
+      } finally {
+        reads.mockRestore()
+      }
+      operation.child.stdin.end("finish\n")
+      await operation.completion
+      expect(Buffer.concat(chunks).toString()).toBe("ready\ndone\n")
+      expect(operation.child.exitCode).toBe(0)
+    } finally {
+      await operation.stop()
+    }
+  })
+}, 20_000)

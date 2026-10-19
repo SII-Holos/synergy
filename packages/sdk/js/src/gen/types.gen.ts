@@ -3940,6 +3940,16 @@ export type ProviderProfileMetadata = {
   recommendation?: ProviderRecommendation
 }
 
+export type ProviderConnectionCustomModel = {
+  id: string
+  name?: string
+  context: number
+  output: number
+  toolCall: boolean
+  image: boolean
+  reasoning: boolean
+}
+
 export type ProviderConnection = {
   id: string
   name: string
@@ -3950,6 +3960,8 @@ export type ProviderConnection = {
   configured: boolean
   removable: boolean
   canCreateSibling: boolean
+  protocol?: "openai-completions" | "openai-responses" | "anthropic-messages"
+  models?: Array<ProviderConnectionCustomModel>
 }
 
 export type ProviderAuthHealth = {
@@ -11169,10 +11181,20 @@ export type ProviderConnectionCreateInput = {
   enabled?: boolean
 }
 
+export type ProviderConnectionCustomInput = {
+  id: string
+  name: string
+  endpoint: string
+  protocol: "openai-completions" | "openai-responses" | "anthropic-messages"
+  models: Array<ProviderConnectionCustomModel>
+}
+
 export type ProviderConnectionUpdateInput = {
   name?: string
   endpoint?: string | null
   enabled?: boolean
+  protocol?: "openai-completions" | "openai-responses" | "anthropic-messages"
+  models?: Array<ProviderConnectionCustomModel>
 }
 
 export type ProviderConnectionRemoveResponse = {
@@ -24166,6 +24188,40 @@ export type ProviderConnectionCreateResponses = {
 
 export type ProviderConnectionCreateResponse =
   ProviderConnectionCreateResponses[keyof ProviderConnectionCreateResponses]
+
+export type ProviderConnectionCreateCustomData = {
+  body?: ProviderConnectionCustomInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/connections/custom"
+}
+
+export type ProviderConnectionCreateCustomErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderConnectionCreateCustomError =
+  ProviderConnectionCreateCustomErrors[keyof ProviderConnectionCreateCustomErrors]
+
+export type ProviderConnectionCreateCustomResponses = {
+  /**
+   * Custom provider connection created
+   */
+  200: ProviderConnection
+}
+
+export type ProviderConnectionCreateCustomResponse =
+  ProviderConnectionCreateCustomResponses[keyof ProviderConnectionCreateCustomResponses]
 
 export type ProviderConnectionRemoveData = {
   body?: never

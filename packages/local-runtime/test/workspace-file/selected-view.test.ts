@@ -10,6 +10,7 @@ import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { WorkspaceFileService as Files } from "../../src/workspace-file/service"
 import { FileView } from "../../src/file/view"
+import { FileMutation } from "../../src/file/mutation"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -132,3 +133,91 @@ test("file workbench edits and browses dormant and live views without a controll
     }),
   )
 }, 30_000)
+
+for (const live of [false, true])
+  test.skipIf(live && process.platform === "win32")(
+    `file mutations retain explicit and omitted modes in ${live ? "live" : "object"} views`,
+    async () => {
+      await using runtime = await testRuntime({
+        register() {
+          WorkspaceBlobs.register("fixture", {
+            put: (hash, bytes) => Storage.writeBinary(["fixture", hash], bytes),
+            get: (hash) => Storage.readBinary(["fixture", hash]),
+          })
+        },
+      })
+      await runtime.run(() =>
+        ScopeContext.provide({
+          scope: Scope.home(),
+          workspace: null,
+          fn: async () => {
+            const workspace = await WorkspaceCatalog.create({
+              scopeID: Scope.home().id,
+              backend: { provider: "objects", spec: { blobStore: "fixture" } },
+            })
+            const environment = await Environment.bind({
+              scopeID: workspace.scopeID,
+              ownerID: "owner",
+              provider: "native",
+              spec: {},
+            })
+            const selection = { scopeID: workspace.scopeID, workspaceID: workspace.id, environmentID: environment.id }
+            {
+              await using resources = await EnvironmentResources.resolve({
+                ...selection,
+                needs: live ? { execution: "exec" } : { workspace: true },
+              })
+              await EnvironmentResources.provide(resources, "write-modes", async () => {
+                const input = {
+                  path: "nested/script",
+                  content: "created",
+                  expectedVersion: null,
+                  createParents: true,
+                  mode: 0o751,
+                }
+                const created = await FileMutation.write({ ...input, operationID: "create-mode" })
+                expect((await FileView.stat(input.path))?.mode).toBe(0o751)
+                await FileMutation.write({ ...input, operationID: "create-mode" })
+                await expect(FileMutation.write({ ...input, mode: 0o750, operationID: "create-mode" })).rejects.toThrow(
+                  "different input",
+                )
+                const entry = await FileView.stat(input.path)
+                await expect(
+                  FileMutation.write({ ...input, content: "stale", expectedVersion: "stale" }),
+                ).rejects.toThrow("changed")
+                await expect(
+                  FileMutation.write({
+                    ...input,
+                    content: "stale",
+                    expectedVersion: created.contentVersion,
+                    expectedEntryVersion: "stale",
+                  }),
+                ).rejects.toThrow("changed")
+                expect(await FileView.stat(input.path)).toEqual(entry)
+                const updated = await FileMutation.write({
+                  path: input.path,
+                  content: "updated",
+                  expectedVersion: created.contentVersion,
+                  expectedEntryVersion: entry!.entryVersion,
+                  mode: 0o731,
+                })
+                expect((await FileView.stat(input.path))?.mode).toBe(0o731)
+                await FileMutation.write({
+                  path: input.path,
+                  content: "preserved",
+                  expectedVersion: updated.contentVersion,
+                })
+                expect((await FileView.stat(input.path))?.mode).toBe(0o731)
+                expect(await FileView.file(input.path).text()).toBe("preserved")
+                await FileMutation.write({ path: "default", content: "default", expectedVersion: null })
+                expect((await FileView.stat("default"))?.mode).toBe(live ? 0o666 & ~process.umask() : 0o644)
+              })
+            }
+            expect((await Environment.get(environment.id, workspace.scopeID)).state).toBe(live ? "ready" : "idle")
+            await Environment.deallocate(environment.id, { scopeID: workspace.scopeID })
+          },
+        }),
+      )
+    },
+    30_000,
+  )

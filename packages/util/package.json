@@ -38,7 +38,9 @@
     "test": "bun test test/*.test.ts"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE.codex",
+    "NOTICE"
   ],
   "dependencies": {
     "marked": "catalog:",

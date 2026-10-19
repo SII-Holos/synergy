@@ -16,6 +16,7 @@ import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 import { File } from "@ericsanchezok/synergy-local-runtime/file"
+import { FileView } from "@ericsanchezok/synergy-local-runtime/file/view"
 import { registerConfig } from "../../src/config-schema"
 import { Format } from "../../src"
 
@@ -71,10 +72,14 @@ test("configured formatters use the active Environment and leave dormant object 
           await WorkspaceState.provide({ id: workspace.id, scopeID, generation: workspace.binding.generation }, () =>
             EnvironmentResources.provide(resources, `format-${live}`, async () => {
               Format.init()
-              await WorkspaceEvents.publish(File.Event.Edited, {
-                file: resources.directory ? resources.directory + "/file.fixture" : "file.fixture",
-                contentVersion: FileTime.version("original"),
-              })
+              const file = resources.directory ? resources.directory + "/file.fixture" : "file.fixture"
+              const observed = await FileView.afterWrite(file, await FileView.observe(file), () =>
+                WorkspaceEvents.publish(File.Event.Edited, {
+                  file,
+                  contentVersion: FileTime.version("original"),
+                }),
+              )
+              expect(observed.version).toBe(FileTime.version(live ? "formatted" : "original"))
               await Format.reload()
             }),
           )

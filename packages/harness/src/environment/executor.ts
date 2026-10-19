@@ -193,6 +193,8 @@ export interface Executor {
   readonly files?: WorkspaceFileHost
   start(request: ExecutionProtocol.Request): Promise<ExecutionProtocol.Status>
   status(id: string): Promise<ExecutionProtocol.Status | undefined>
+  /** A bounded wake-up hint; callers still reconcile canonical authority after waking. */
+  waitForChange?(id: string, observed: ExecutionProtocol.Status, timeoutMs: number): Promise<void>
   output(id: string, after: number, limit: number): Promise<ExecutionProtocol.Chunk[]>
   stdin(id: string, data: Uint8Array, end?: boolean): Promise<void>
   resize(id: string, cols: number, rows: number): Promise<void>

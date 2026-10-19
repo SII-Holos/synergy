@@ -83,6 +83,7 @@ export type SqliteRequest = {
   filename?: string
   readonly?: boolean
   statement?: string
+  cacheStatement?: boolean
   values?: SqlValue[]
   maintenance?: StorageMaintenanceOperation
   maintain?: SqliteMaintenanceRequest

@@ -18,8 +18,8 @@ function apiError(headers?: Record<string, string>): MessageV2.APIError {
 describe("session.retry.delay", () => {
   test("caps fallback delay even when unrelated headers exist", () => {
     const delay = SessionRetry.delay(10, apiError({ "content-type": "application/json" }))
-    expect(delay).toBeGreaterThanOrEqual(15000)
-    expect(delay).toBeLessThanOrEqual(30000)
+    expect(delay).toBeGreaterThanOrEqual(60000)
+    expect(delay).toBeLessThanOrEqual(120000)
   })
   test.each(["-1", "Infinity", "3garbage"])("ignores unsafe retry-after-ms %s", (value) => {
     expect(SessionRetry.delay(1, apiError({ "retry-after-ms": value }))).toBeGreaterThanOrEqual(1000)
@@ -29,10 +29,11 @@ describe("session.retry.delay", () => {
     const reason = new DOMException("cancelled", "AbortError")
     await expect(SessionRetry.sleep(1, AbortSignal.abort(reason))).rejects.toBe(reason)
   })
-  test("caps delay at 30 seconds when headers missing", () => {
+  test("extends the recovery schedule to a 120-second ceiling when headers are missing", () => {
     const error = apiError()
     const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error, () => 1))
-    expect(delays).toStrictEqual([2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000, 30000, 30000])
+    expect(delays).toStrictEqual([2000, 4000, 8000, 16000, 30000, 60000, 120000, 120000, 120000, 120000])
+    expect(SessionRetry.delay(10, undefined, () => 1)).toBe(120000)
   })
 
   test("prefers retry-after-ms when shorter than exponential", () => {
@@ -43,6 +44,7 @@ describe("session.retry.delay", () => {
   test("uses retry-after seconds when reasonable", () => {
     const error = apiError({ "retry-after": "30" })
     expect(SessionRetry.delay(3, error)).toBe(30000)
+    expect(SessionRetry.delay(10, error)).toBe(30000)
   })
 
   test("accepts http-date retry-after values", () => {
@@ -376,9 +378,23 @@ test("an unmapped certificate verification failure becomes a bounded retry", () 
   const retryable = SessionRetry.retryable(parsed)
   expect(retryable).toEqual({
     message: "Secure connection could not be verified; retrying",
-    maxAttempts: SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS,
+    maxAttempts: SessionRetry.RETRY_MAX_ATTEMPTS,
   })
-  expect(retryable?.maxAttempts).toBe(6)
+  expect(retryable?.maxAttempts).toBe(10)
+})
+
+test("a persisted unknown TLS error keeps the full session retry budget", () => {
+  const parsed = MessageV2.fromError(
+    Object.assign(new TypeError("unknown certificate verification error"), {
+      code: "UNKNOWN_CERTIFICATE_VERIFICATION_ERROR",
+    }),
+    { providerID: "test" },
+  )
+  expect(parsed.name).toBe("UnknownError")
+  expect(SessionRetry.retryable(parsed)).toEqual({
+    message: "Secure connection could not be verified; retrying",
+    maxAttempts: 10,
+  })
 })
 
 test("reports the TLS reason instead of claiming the provider is unavailable", () => {
@@ -400,9 +416,10 @@ test("caps the TLS retry backoff at the transport ceiling", () => {
     metadata: { category: "tls-verification", networkKind: "indeterminate" },
   }).toObject() as MessageV2.APIError
 
-  const delays = Array.from({ length: 6 }, (_, index) => SessionRetry.delay(index + 1, error, () => 1))
-  expect(Math.max(...delays)).toBe(SessionRetry.RETRY_TLS_VERIFICATION_MAX_DELAY)
-  expect(SessionRetry.delay(10, error, () => 1)).toBeLessThanOrEqual(SessionRetry.RETRY_TLS_VERIFICATION_MAX_DELAY)
+  const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error, () => 1))
+  expect(delays).toEqual([2000, 4000, 8000, 16000, 30000, 60000, 120000, 120000, 120000, 120000])
+  const minimumDelays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error, () => 0))
+  expect(minimumDelays).toEqual(delays.map((delay) => delay / 2))
 })
 
 test("still honors a valid retry-after hint for a TLS verification failure", () => {
@@ -413,12 +430,6 @@ test("still honors a valid retry-after hint for a TLS verification failure", () 
     metadata: { category: "tls-verification" },
   }).toObject() as MessageV2.APIError
   expect(SessionRetry.delay(4, error)).toBe(30000)
-})
-
-test("leaves the transport retry ceiling unchanged for classified failures", () => {
-  const error = apiError()
-  const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error, () => 1))
-  expect(delays).toStrictEqual([2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000, 30000, 30000])
 })
 
 test("keeps the full attempt budget for a classified transient failure", () => {

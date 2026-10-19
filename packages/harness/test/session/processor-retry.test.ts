@@ -69,6 +69,7 @@ async function run(
     | "reused"
     | "cancel"
     | "tls"
+    | "mixed-network"
     | "empty"
     | "empty-then-text"
     | "reasoning-only"
@@ -200,7 +201,8 @@ async function run(
               const failed =
                 ((mode === "stream" || mode === "reused" || mode === "cancel") && attempt === 1) ||
                 mode === "exhausted" ||
-                mode === "tls"
+                mode === "tls" ||
+                (mode === "mixed-network" && attempt <= 10)
               yield { type: "text-start" as const, id: "text" }
               yield {
                 type: "text-delta" as const,
@@ -228,9 +230,13 @@ async function run(
                   type: "error" as const,
                   error:
                     failure ??
-                    (mode === "tls"
-                      ? new Error("unknown certificate verification error")
-                      : Object.assign(new TypeError("getaddrinfo ETIMEOUT example.invalid"), { code: "ETIMEOUT" })),
+                    (mode === "mixed-network" && attempt % 2 === 0
+                      ? Object.assign(new TypeError("unknown certificate verification error"), {
+                          code: "UNKNOWN_CERTIFICATE_VERIFICATION_ERROR",
+                        })
+                      : mode === "tls"
+                        ? new Error("unknown certificate verification error")
+                        : Object.assign(new TypeError("getaddrinfo ETIMEOUT example.invalid"), { code: "ETIMEOUT" })),
                 }
               }
             })(),
@@ -450,8 +456,8 @@ test(
   "an unmapped certificate verification failure retries within a bounded budget and persists evidence",
   runtime.bind(async () => {
     const result = await run("tls")
-    expect(result.calls).toBe(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
-    expect(result.calls).toBe(7)
+    expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
+    expect(result.calls).toBe(11)
     expect(result.effects).toBe(0)
     expect(result.message.info).toMatchObject({
       finish: "error",
@@ -475,7 +481,22 @@ test(
   runtime.bind(async () => {
     const result = await run("exhausted")
     expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
-    expect(result.calls).toBeGreaterThan(1 + SessionRetry.RETRY_TLS_VERIFICATION_MAX_ATTEMPTS)
+    expect(result.calls).toBe(11)
+  }),
+)
+
+test(
+  "mixed transport and TLS failures can recover on the tenth retry without replaying tools",
+  runtime.bind(async () => {
+    const result = await run("mixed-network")
+    expect(result.calls).toBe(11)
+    expect(result.effects).toBe(1)
+    expect(result.recordedCalls.map((call) => call.retryIndex)).toEqual(Array.from({ length: 11 }, (_, index) => index))
+    expect(result.recordedCalls.map((call) => call.status)).toEqual([...Array(10).fill("failed"), "completed"])
+    expect(result.message.info).not.toHaveProperty("error")
+    expect(result.message.parts.filter((part) => part.type === "text").map((part) => part.text)).toEqual([
+      "valid answer",
+    ])
   }),
 )
 

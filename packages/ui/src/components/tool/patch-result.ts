@@ -41,6 +41,17 @@ export function patchSections(value: unknown) {
       !Object.hasOwn(PATCH_STATES, row.state)
     )
       return []
+    const diff = "diff" in row && typeof row.diff === "string" ? row.diff : undefined
+    const observedPath =
+      "observedPath" in row && typeof row.observedPath === "string"
+        ? row.observedPath
+        : "filediff" in row &&
+            row.filediff &&
+            typeof row.filediff === "object" &&
+            "file" in row.filediff &&
+            typeof row.filediff.file === "string"
+          ? row.filediff.file
+          : undefined
     return [
       {
         source: row.source,
@@ -52,17 +63,28 @@ export function patchSections(value: unknown) {
         state: row.state as keyof typeof PATCH_STATES,
         ...("error" in row && typeof row.error === "string" ? { error: row.error } : {}),
         phase: "phase" in row && typeof row.phase === "string" ? row.phase : undefined,
-        diff: "diff" in row && typeof row.diff === "string" ? row.diff : undefined,
-        observedPath:
-          "observedPath" in row && typeof row.observedPath === "string"
-            ? row.observedPath
-            : "filediff" in row &&
-                row.filediff &&
-                typeof row.filediff === "object" &&
-                "file" in row.filediff &&
-                typeof row.filediff.file === "string"
-              ? row.filediff.file
-              : undefined,
+        diff,
+        observedPath,
+        files:
+          "files" in row && Array.isArray(row.files)
+            ? row.files.flatMap((file: unknown) => {
+                if (
+                  !file ||
+                  typeof file !== "object" ||
+                  !("file" in file) ||
+                  typeof file.file !== "string" ||
+                  !file.file
+                )
+                  return []
+                const patch = [
+                  "patch" in file ? file.patch : undefined,
+                  "preview" in file ? file.preview : undefined,
+                ].find((value): value is string => typeof value === "string" && value.length > 0)
+                return [{ file: file.file, patch }]
+              })
+            : diff && observedPath
+              ? [{ file: observedPath, patch: diff }]
+              : [],
         operations:
           "operations" in row && Array.isArray(row.operations)
             ? row.operations.flatMap((operation: unknown) => {

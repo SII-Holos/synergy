@@ -29,10 +29,11 @@ let dom: JSDOM
 let harness: ActivityDomHarness
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-async function rendered(selector: string) {
+async function rendered(target: string | (() => boolean)) {
+  const present = typeof target === "string" ? () => !!document.querySelector(target) : target
   const deadline = Date.now() + 2000
-  while (!document.querySelector(selector) && Date.now() < deadline) await wait(5)
-  expect(document.querySelector(selector)).not.toBeNull()
+  while (!present() && Date.now() < deadline) await wait(5)
+  expect(present()).toBe(true)
 }
 const reducedMotion = { current: false }
 
@@ -64,6 +65,80 @@ test("successful patches present one result without repeating the model output",
   expect(host.querySelector('[data-component="diff-patch"]')).not.toBeNull()
   expect(host.querySelector('[data-component="tool-output-text"]')).toBeNull()
   expect(host.textContent).not.toContain("Patch applied.")
+})
+
+function patchPreviews(host: Element) {
+  return Array.from(host.querySelectorAll('[data-component="tool-patch-preview"]'), (preview) => {
+    const highlighted = preview
+      .querySelector("diffs-container")
+      ?.shadowRoot?.querySelectorAll("[data-line][data-line-type]")
+    return {
+      path: preview.querySelector('[data-slot="tool-patch-path"]')?.textContent?.replaceAll("\u200e", ""),
+      rows: highlighted?.length
+        ? Array.from(highlighted, (row) => {
+            const kind = row.getAttribute("data-line-type")
+            return {
+              kind: kind === "change-addition" ? "add" : kind === "change-deletion" ? "delete" : kind,
+              text: row.textContent,
+            }
+          })
+        : Array.from(preview.querySelectorAll('[data-slot="tool-patch-line"]'), (row) => ({
+            kind: row.getAttribute("data-kind"),
+            text: row.querySelector("code")?.textContent,
+          })),
+    }
+  })
+}
+
+test("successful Moves render exactly the recorded destination replacement and source deletion", async () => {
+  const host = document.getElementById("patch-move-applied")!
+  await rendered(() => {
+    const previews = patchPreviews(host)
+    return previews.length === 2 && previews.every((preview) => preview.rows.length > 0)
+  })
+  expect(host.querySelectorAll('[data-component="diff-patch"]')).toHaveLength(2)
+  expect(patchPreviews(host)).toEqual([
+    {
+      path: "nested/destination.ts",
+      rows: [
+        { kind: "delete", text: 'export const destination = "before";' },
+        { kind: "add", text: 'export const moved = "after";' },
+      ],
+    },
+    {
+      path: "source.ts",
+      rows: [{ kind: "delete", text: 'export const moved = "before";' }],
+    },
+  ])
+})
+
+test("partial Moves with failed source removal render only the recorded destination diff", async () => {
+  const host = document.getElementById("patch-move-partial")!
+  await rendered(() => {
+    const previews = patchPreviews(host)
+    return previews.length === 1 && previews[0].rows.length > 0
+  })
+  expect(patchPreviews(host)).toEqual([
+    {
+      path: "nested/destination.ts",
+      rows: [
+        { kind: "delete", text: 'export const destination = "before";' },
+        { kind: "add", text: 'export const moved = "after";' },
+      ],
+    },
+  ])
+  expect(host.textContent).not.toContain("source.ts")
+  expect(host.textContent).not.toContain('export const moved = "before";')
+})
+
+test("unconfirmed Moves with authoritative empty files suppress legacy diff and observedPath previews", async () => {
+  await rendered('#patch-move-unresolved [data-component="patch-result"]')
+  const host = document.getElementById("patch-move-unresolved")!
+  expect(patchPreviews(host)).toEqual([])
+  expect(host.querySelector('[data-component="diff-patch"]')).toBeNull()
+  expect(host.textContent).not.toContain("source.ts")
+  expect(host.textContent).not.toContain("destination.ts")
+  expect(host.textContent).not.toContain('export const moved = "before";')
 })
 
 test("edit and multi-file revise results share file diff cards without operation summaries", async () => {

@@ -138,7 +138,7 @@ export const ReadTool = Tool.define(
         }
       }
 
-      const isBinary = await isBinaryFile(filepath, file)
+      const isBinary = await isBinaryFile(file)
       if (isBinary) throw new Error(`Cannot read binary file: ${filepath}`)
 
       const limit = params.limit ?? DEFAULT_READ_LIMIT
@@ -213,40 +213,7 @@ export const ReadTool = Tool.define(
   { requiresWorkspace: true, fileToolGroups: ["replace", "patch"] },
 )
 
-async function isBinaryFile(filepath: string, file: ReturnType<typeof FileView.file>): Promise<boolean> {
-  const ext = path.extname(filepath).toLowerCase()
-  // binary check for common non-text extensions
-  switch (ext) {
-    case ".zip":
-    case ".tar":
-    case ".gz":
-    case ".exe":
-    case ".dll":
-    case ".so":
-    case ".class":
-    case ".jar":
-    case ".war":
-    case ".7z":
-    case ".doc":
-    case ".xls":
-    case ".ppt":
-    case ".odt":
-    case ".ods":
-    case ".odp":
-    case ".bin":
-    case ".dat":
-    case ".obj":
-    case ".o":
-    case ".a":
-    case ".lib":
-    case ".wasm":
-    case ".pyc":
-    case ".pyo":
-      return true
-    default:
-      break
-  }
-
+async function isBinaryFile(file: ReturnType<typeof FileView.file>): Promise<boolean> {
   const stat = await file.stat()
   const fileSize = stat.size
   if (fileSize === 0) return false

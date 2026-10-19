@@ -198,7 +198,7 @@ export namespace PerformanceAnalysis {
     }
 
     const summaryPromise = PerformanceDashboard.summary({ windowMs: input.windowMs })
-    const timeline = PerformanceTimeline.get({ windowMs: input.windowMs, metric: analysisMetricNames })
+    const timeline = await PerformanceTimeline.get({ windowMs: input.windowMs, metric: analysisMetricNames })
     const inflight = PerformanceInflight.get({ limit: 20 })
     const data = snapshot({ summary: await summaryPromise, timeline, inflight })
     const session = await Session.create({

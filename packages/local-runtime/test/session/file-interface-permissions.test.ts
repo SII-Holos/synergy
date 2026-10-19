@@ -166,7 +166,7 @@ test("boundary recovery does not recommend tools outside the selected interface"
   })
 }, 30_000)
 
-test("production patch execution persists the committed write before a failed move", async () => {
+test("production patch execution persists the destination write when source removal fails", async () => {
   await using runtime = await testRuntime({
     env: { SYNERGY_CONFIG_CONTENT: JSON.stringify({ provider: { openai: { options: { apiKey: "fixture-key" } } } }) },
   })
@@ -182,28 +182,29 @@ test("production patch execution persists the committed write before a failed mo
       fn: async () => {
         await using prepared = await prepare(PermissionNext.fromConfig({ "*": "allow" }))
         await prepared.execute("read", { filePath: "source.txt" })
-        using failure = spyOn(FileEntry, "move").mockRejectedValue(new Error("move rejected by filesystem"))
+        using failure = spyOn(FileEntry, "remove").mockRejectedValue(new Error("source removal rejected by filesystem"))
         await expect(
           prepared.execute("apply_patch", {
             patch:
               "*** Begin Patch\n*** Update File: source.txt\n*** Move to: destination.txt\n@@\n-before\n+after\n*** Add File: unattempted.txt\n+x\n*** End Patch",
           }),
-        ).rejects.toThrow("move rejected")
+        ).rejects.toThrow("source removal rejected")
+        expect(failure).toHaveBeenCalledTimes(1)
         const part = (await prepared.parts()).find((part) => part.type === "tool" && part.tool === "apply_patch")
         expect(part).toMatchObject({
           state: {
             status: "error",
             metadata: {
               outcome: "partial",
-              files: [{ file: "source.txt" }],
+              files: [{ file: "destination.txt", beforeBytes: 0, afterBytes: 6 }],
               sections: [
                 {
                   source: "source.txt",
-                  observedPath: "source.txt",
+                  observedPath: "destination.txt",
                   state: "failed",
                   operations: [
-                    { phase: "write", state: "committed" },
-                    { phase: "move", state: "failed" },
+                    { phase: "write", path: "destination.txt", state: "committed" },
+                    { phase: "delete", path: "source.txt", state: "failed" },
                   ],
                 },
                 { source: "unattempted.txt", state: "not_started" },
@@ -211,8 +212,9 @@ test("production patch execution persists the committed write before a failed mo
             },
           },
         })
-        expect(await Bun.file(path.join(tmp.path, "source.txt")).text()).toBe("after\n")
-        expect(await Bun.file(path.join(tmp.path, "destination.txt")).exists()).toBe(false)
+        expect(await Bun.file(path.join(tmp.path, "source.txt")).text()).toBe("before\n")
+        expect(await Bun.file(path.join(tmp.path, "destination.txt")).text()).toBe("after\n")
+        expect(await Bun.file(path.join(tmp.path, "unattempted.txt")).exists()).toBe(false)
       },
     })
   })

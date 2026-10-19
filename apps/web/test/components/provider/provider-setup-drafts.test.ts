@@ -54,3 +54,34 @@ test("an account write remains pending across consumers until its receipt settle
   drafts.update("edit:service", { pending: false })
   expect(drafts.pending()).toBe(false)
 })
+
+test("custom model-only changes remain dirty across settings sections", () => {
+  const drafts = createProviderSetupDrafts()
+  drafts.get("custom:new")
+  drafts.update("custom:new", {
+    custom: {
+      providerID: "",
+      protocol: "openai-completions",
+      models: [
+        {
+          key: "one",
+          id: "model-a",
+          name: "",
+          context: "",
+          output: "",
+          toolCall: true,
+          image: false,
+          reasoning: false,
+          expanded: false,
+        },
+      ],
+    },
+    customBaseline: "",
+  })
+  expect(drafts.dirty()).toBe(true)
+  drafts.setView("customOpen", true)
+  expect(drafts.view.customOpen).toBe(true)
+  drafts.clear()
+  expect(drafts.dirty()).toBe(false)
+  expect(drafts.view.customOpen).toBe(false)
+})

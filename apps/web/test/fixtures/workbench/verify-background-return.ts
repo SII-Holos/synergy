@@ -32,15 +32,25 @@ const inference = Bun.serve({
       messages?: { role: string; content: unknown }[]
     }
     const key = JSON.stringify(input.messages ?? []).match(/background-return-([\w-]+)/)?.[1]
-    if (input.model === "background-aux" || !key)
+    if (input.model === "background-aux" || !key) {
+      const message = { role: "assistant", content: "Background return acceptance" }
+      if (input.stream)
+        return new Response(
+          [
+            { choices: [{ index: 0, delta: message, finish_reason: null }] },
+            { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+          ]
+            .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+            .join("") + "data: [DONE]\n\n",
+          { headers: { "Content-Type": "text/event-stream" } },
+        )
       return Response.json({
         id: "aux",
         object: "chat.completion",
-        choices: [
-          { index: 0, message: { role: "assistant", content: "Background return acceptance" }, finish_reason: "stop" },
-        ],
+        choices: [{ index: 0, message, finish_reason: "stop" }],
         usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
       })
+    }
     return new Response(
       new ReadableStream({
         start(controller) {
@@ -202,6 +212,13 @@ try {
       if (ended) {
         streams.get(key)!.finish()
         await wait(async () => (await client.session.statuses(options)).data[session.id]?.type !== "busy")
+        const messages = (await client.session.messages({ scopeID: "home", sessionID: session.id }, options)).data
+        const assistants = messages.filter((message) => message.info.role === "assistant")
+        assert.ok(
+          assistants.length > 0 &&
+            assistants.every((message) => message.info.role === "assistant" && !message.info.error),
+        )
+        assert.ok(assistants.some((message) => message.info.role === "assistant" && message.info.finish === "stop"))
       }
       await page.waitForTimeout(400)
       const afterHidden = Object.fromEntries(reads)

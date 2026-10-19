@@ -40,6 +40,7 @@ export function registerTitleJob() {
       return {
         type: "ensure-title",
         sessionID: ctx.sessionID,
+        user: ctx.lastUser,
         modelID: ctx.lastUser.model.modelID,
         providerID: ctx.lastUser.model.providerID,
       }
@@ -56,6 +57,7 @@ export function registerTitleJob() {
       ])
       await ensureTitle({
         session,
+        user: input.user,
         modelID: input.modelID,
         providerID: input.providerID,
         history,
@@ -68,6 +70,7 @@ export function registerTitleJob() {
 
 export async function ensureTitle(input: {
   session: Info
+  user: MessageV2.User
   history: MessageV2.WithParts[]
   providerID: string
   modelID: string
@@ -91,7 +94,7 @@ export async function ensureTitle(input: {
   const fallbackModel = await Provider.getModel(input.providerID, input.modelID).catch(() => undefined)
   const result = await AgentCall.text({
     agent: "title",
-    user: firstRealUser.info as MessageV2.User,
+    user: { ...input.user, system: undefined },
     sessionId: input.session.id,
     fallbackModel,
     signal: input.abort,

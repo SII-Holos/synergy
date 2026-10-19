@@ -147,12 +147,14 @@ export namespace Format {
           for (const item of await getFormatter(path.extname(file), s.controller.signal)) {
             if (s.controller.signal.aborted) return
             try {
-              const result = await FormatterProcess.run({
-                command: item.command.map((value) => value.replaceAll("$FILE", target)),
-                environment: item.environment,
-                signal: s.controller.signal,
-                expectedFile: { path: FileView.resolve(file), canonical: target, version: expectedVersion },
-              })
+              const result = await FileView.formatting(file, () =>
+                FormatterProcess.run({
+                  command: item.command.map((value) => value.replaceAll("$FILE", target)),
+                  environment: item.environment,
+                  signal: s.controller.signal,
+                  expectedFile: { path: FileView.resolve(file), canonical: target, version: expectedVersion },
+                }),
+              )
               if (!result) return
               expectedVersion = (await FileMutation.snapshot(target))?.version ?? null
               if (result.exitCode !== 0) log.error("formatter failed", { name: item.name, exitCode: result.exitCode })

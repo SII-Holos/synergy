@@ -22,7 +22,15 @@ export namespace PerformanceDashboard {
 
   const SUMMARY_CACHE_MS = 1000
   const runtimeState = RuntimeContext.state(() => ({
-    cached: undefined as { key: string; at: number; value: Promise<PerformanceSchema.DashboardSummary> } | undefined,
+    cached: undefined as
+      | {
+          key: string
+          version: number
+          pending: boolean
+          at: number
+          value: Promise<PerformanceSchema.DashboardSummary>
+        }
+      | undefined,
     labelsCache: new WeakMap<object, Record<string, unknown>>(),
   }))
 
@@ -42,18 +50,31 @@ export namespace PerformanceDashboard {
   ): Promise<PerformanceSchema.DashboardSummary> {
     const instanceState = runtimeState()
 
-    const key = `${input.windowMs ?? 300_000}:${input.scopeID ?? ""}:${ObservabilityStore.dataVersion()}`
+    const key = `${input.windowMs ?? 300_000}:${input.scopeID ?? ""}`
+    const version = ObservabilityStore.dataVersion()
     const now = Date.now()
-    if (instanceState.cached && instanceState.cached.key === key && now - instanceState.cached.at < SUMMARY_CACHE_MS)
+    if (
+      instanceState.cached?.key === key &&
+      (instanceState.cached.pending ||
+        (instanceState.cached.version === version && now - instanceState.cached.at < SUMMARY_CACHE_MS))
+    )
       return instanceState.cached.value
     const value = computeSummary(input)
-    const wrapped = value.catch((error) => {
-      const instanceState = runtimeState()
+    const wrapped = value
+      .then((result) => {
+        if (instanceState.cached?.value === wrapped) {
+          instanceState.cached.pending = false
+          instanceState.cached.at = Date.now()
+        }
+        return result
+      })
+      .catch((error) => {
+        const instanceState = runtimeState()
 
-      if (instanceState.cached?.value === wrapped) instanceState.cached = undefined
-      throw error
-    })
-    instanceState.cached = { key, at: now, value: wrapped }
+        if (instanceState.cached?.value === wrapped) instanceState.cached = undefined
+        throw error
+      })
+    instanceState.cached = { key, version, pending: true, at: now, value: wrapped }
     return wrapped
   }
   async function computeSummary(
@@ -63,19 +84,48 @@ export namespace PerformanceDashboard {
     // Storage uses an exclusive upper bound; include observations in the current millisecond.
     const until = Date.now() + 1
     const since = until - windowMs
-    const metrics = ObservabilityStore.queryMetricHighlights({ since, until, scopeID: input.scopeID })
-    const aggregate = (name: string) =>
-      ObservabilityStore.queryMetricBuckets({
-        since,
-        until,
-        scopeID: input.scopeID,
-        names: [name],
-        bucketMs: windowMs + 1,
-      })[0]
-    const requests = aggregate("http.request.duration")
-    const turnSummary = aggregate("session.turn.duration")
-    const resourceSummary = aggregate("frontend.resource.duration")
-    const counts = ObservabilityStore.queryMetricCounts({ since, until, scopeID: input.scopeID })
+    const filter = { since, until, scopeID: input.scopeID }
+    const aggregate = async (name: string) =>
+      (
+        await ObservabilityStore.queryMetricBuckets({
+          since,
+          until,
+          scopeID: input.scopeID,
+          names: [name],
+          bucketMs: windowMs + 1,
+        })
+      )[0]
+    const [requests, turnSummary, resourceSummary, counts, toolSums, activeSessions] = await Promise.all([
+      aggregate("http.request.duration"),
+      aggregate("session.turn.duration"),
+      aggregate("frontend.resource.duration"),
+      ObservabilityStore.queryMetricCounts(filter),
+      ObservabilityStore.queryMetricSums({ ...filter, names: ["tool.execution.count", "tool.execution.error"] }),
+      ObservabilityStore.countMetricSessions({ ...filter, since: Math.max(since, until - 300_000) }),
+    ])
+    const highlightNames = counts
+      .filter(
+        (row) =>
+          (row.module === "llm" && row.name.endsWith(".duration")) ||
+          [
+            "http.request.duration",
+            "session.turn.duration",
+            "tool.execution.duration",
+            "storage.operation.duration",
+            "library.operation.duration",
+            "frontend.resource.duration",
+            "frontend.long_task.duration",
+            "frontend.web_vital",
+            "service.memory.current",
+            "service.memory.working_set",
+            "service.memory.reclaimable",
+            "service.memory.peak",
+          ].includes(row.name),
+      )
+      .map((row) => row.name)
+    const metrics = highlightNames.length
+      ? await ObservabilityStore.queryMetricHighlights({ ...filter, names: [...new Set(highlightNames)] })
+      : []
     const count = (name: string) => counts.filter((row) => row.name === name).reduce((sum, row) => sum + row.count, 0)
     const resourceRows = ObservabilityStore.resourceSince(since, { limit: 50_000 })
     const serverResourceRows = resourceRows.filter((row) => row.process_role === "server")
@@ -131,14 +181,7 @@ export namespace PerformanceDashboard {
     const turns = metrics.filter((row) => row.name === "session.turn.duration")
     const llm = metrics.filter((row) => row.module === "llm" && row.name.endsWith(".duration"))
     const tools = metrics.filter((row) => row.name === "tool.execution.duration")
-    const toolFailures = rankToolFailures(
-      ObservabilityStore.queryMetricSums({
-        since,
-        until,
-        scopeID: input.scopeID,
-        names: ["tool.execution.count", "tool.execution.error"],
-      }),
-    )
+    const toolFailures = rankToolFailures(toolSums)
     const storage = metrics.filter((row) => row.name === "storage.operation.duration")
     const library = metrics.filter((row) => row.name === "library.operation.duration")
     const frontendResources = metrics.filter((row) => row.name === "frontend.resource.duration")
@@ -240,11 +283,7 @@ export namespace PerformanceDashboard {
         p50RequestMs: requests?.p50,
         p95RequestMs: requests?.p95,
         p99RequestMs: requests?.p99,
-        activeSessions: ObservabilityStore.countMetricSessions({
-          since: Math.max(since, until - 300_000),
-          until,
-          scopeID: input.scopeID,
-        }),
+        activeSessions,
         pendingSessions: diagnostics?.sessions.paused.length ?? 0,
       },
       resources: {

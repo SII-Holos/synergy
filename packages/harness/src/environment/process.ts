@@ -152,10 +152,14 @@ export namespace EnvironmentProcess {
         }
         // Output can advance beyond this status snapshot and block a paused reader before activation resolves.
         if (!active && !terminal) {
-          await new Promise<void>((resolve) => setTimeout(resolve, 25))
+          await wait(info.status)
           continue
         }
-        for (const chunk of await EnvironmentExecution.output(input.id, input.scopeID, cursor)) {
+        const chunks =
+          info.status && info.status.cursor > cursor
+            ? await EnvironmentExecution.output(input.id, input.scopeID, cursor)
+            : []
+        for (const chunk of chunks) {
           if (chunk.cursor !== cursor + 1) throw new globalThis.Error("Execution output cursor is discontinuous")
           const target = chunk.stream === "stdout" ? child.stdout : child.stderr
           if (!target.destroyed && !target.write(Buffer.from(chunk.data, "base64")))
@@ -204,8 +208,14 @@ export namespace EnvironmentProcess {
           completed.resolve()
           return
         }
-        await new Promise<void>((resolve) => setTimeout(resolve, 25))
+        if (info.status && cursor < info.status.cursor) continue
+        await wait(info.status)
       }
+    }
+    function wait(status: ExecutionProtocol.Status | undefined) {
+      const executor = input.resources.executor
+      if (status && executor?.waitForChange) return executor.waitForChange(input.id, status, 250)
+      return new Promise<void>((resolve) => setTimeout(resolve, 25))
     }
     function activate() {
       if (finished) return completed.promise

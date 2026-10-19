@@ -68,6 +68,8 @@ The Docker provider negotiates Docker Engine API versions over a Unix socket or 
 
 The Docker image compiles Linux sandbox profiles on the execution host and uses the same bubblewrap policy as native Linux execution. Its outer seccomp policy permits unprivileged namespace setup; the remaining upstream syscall restrictions remain enabled. The outer procfs has no child overmounts, allowing each command sandbox to mount a private PID namespace. Commands remain UID 1000 without capabilities or supervisor credentials. Kernel or security-module rejection fails the command; there is no automatic unconfined retry.
 
+Native execution adapters can provide a bounded `waitForChange` hint after status or durable output changes. The process facade still reconciles canonical operation and allocation authority on every wake and at least every 250 ms while idle; adapters without notifications retain polling. Unchanged validated observations avoid entering the storage writer queue, and an unchanged output cursor avoids an empty output read. Cancellation, terminal stream drainage, checkpoint publication and release remain owned by the existing execution protocol. See [bounded observation work](../decisions/implemented/architecture/2026-10-19-bound-observation-work.md).
+
 ## Workspace attachment and checkpointing
 
 Tool discovery and execution use the Session's selected Workspace ID even when there is no local directory. Listing capabilities neither materializes files nor allocates compute; permission and user-tool filters remain independent.

@@ -134,6 +134,62 @@ test("active file host retains a mutation until its checkpoint is acknowledged a
   expect(await Bun.file(path.join(root, "file")).text()).toBe("saved")
 })
 
+test.skipIf(process.platform === "win32")(
+  "an interrupted write with matching bytes but a different explicit mode remains unknown without replay",
+  async () => {
+    await using tmp = await tmpdir()
+    const root = path.join(tmp.path, "workspace")
+    await fs.mkdir(root)
+    const filename = path.join(root, "file")
+    await Bun.write(filename, "saved")
+    await fs.chmod(filename, 0o640)
+    const inode = (await fs.stat(filename)).ino
+    const options = {
+      directory: path.join(tmp.path, "receipts"),
+      materializationRoot: path.join(tmp.path, "views"),
+      coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+      owner: {
+        get uid(): number {
+          throw new Error("write interrupted before publication")
+        },
+        gid: process.getgid!(),
+      },
+    }
+    const mount = { id: "mount", workspaceID: "workspace", generation: 1 }
+    const input = {
+      id: "write-mode",
+      mount,
+      path: "file",
+      data: Buffer.from("saved").toString("base64"),
+      expectedVersion: `sha256:${WorkspaceTree.hash(Buffer.from("saved"))}`,
+      mode: 0o751,
+    }
+    const host = new NativeWorkspaceFiles(options)
+    try {
+      await host.mount({ ...mount, readOnly: false, source: { kind: "directory", path: root } })
+      await expect(host.write(input)).rejects.toThrow("write interrupted before publication")
+      expect((await host.checkpointStatus(input.id))?.state).toBe("pending")
+    } finally {
+      await host.close()
+    }
+    const recovered = new NativeWorkspaceFiles(options)
+    try {
+      await expect(recovered.write(input)).rejects.toThrow("outcome is unknown")
+      expect((await recovered.checkpointStatus(input.id))?.state).toBe("pending")
+      expect((await fs.stat(filename)).ino).toBe(inode)
+      expect((await fs.stat(filename)).mode & 0o777).toBe(0o640)
+      expect(await Bun.file(filename).text()).toBe("saved")
+      await fs.chmod(filename, input.mode)
+      const checkpoint = await recovered.write(input)
+      expect((await fs.stat(filename)).ino).toBe(inode)
+      expect(await recovered.write(input)).toEqual(checkpoint)
+      await recovered.acknowledge(input.id)
+    } finally {
+      await recovered.close()
+    }
+  },
+)
+
 test("closing a file host cancels queued mutations without writing after shutdown", async () => {
   await using tmp = await tmpdir()
   const root = path.join(tmp.path, "workspace")
